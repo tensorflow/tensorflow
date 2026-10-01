@@ -19,9 +19,9 @@ from typing import Union
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_summary_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
@@ -72,44 +72,50 @@ class SummaryV1AudioOpTest(test.TestCase):
       self,
       tensor: np.ndarray,
       step: Union[int, np.ndarray] = 0,
-      tag: Union[str, np.ndarray] = "audio_test",
       sample_rate: Union[float, np.ndarray] = 16000.0,
   ) -> None:
-    """Helper to call write_audio_summary with standard test parameters."""
-    logdir = self.get_temp_dir()
-    with context.eager_mode():
-      writer = summary_ops_v2.create_file_writer_v2(logdir)
-      try:
-        gen_summary_ops.write_audio_summary(
-            writer=writer._resource,
-            step=step,
-            tag=tag,
-            tensor=tensor,
-            sample_rate=sample_rate,
-            max_outputs=3)
-      finally:
-        writer.close()
+    """Writes `tensor` with summary_ops_v2.audio in graph or eager mode."""
+    writer = summary_ops_v2.create_file_writer_v2(self.get_temp_dir())
+    self.evaluate(writer.init())
+    try:
+      with writer.as_default(), summary_ops_v2.always_record_summaries():
+        self.evaluate(
+            summary_ops_v2.audio(
+                "audio_test",
+                tensor,
+                sample_rate=sample_rate,
+                max_outputs=3,
+                step=step))
+    finally:
+      self.evaluate(writer.close())
 
+  @test_util.run_in_graph_and_eager_modes
   def testWriteAudioSummaryRejectsScalarTensor(self):
     scalar_tensor = np.array(1.0, dtype=np.float32)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "2 or 3"):
       self._WriteAudioSummary(scalar_tensor)
 
+  @test_util.run_in_graph_and_eager_modes
   def testWriteAudioSummaryRejects1DTensor(self):
     one_d_tensor = np.array([1.0, 2.0], dtype=np.float32)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "2 or 3"):
       self._WriteAudioSummary(one_d_tensor)
 
+  @test_util.run_in_graph_and_eager_modes
   def testWriteAudioSummaryAccepts2DTensor(self):
     two_d_tensor = np.zeros((1, 100), dtype=np.float32)
     # no exception should be raised
     self._WriteAudioSummary(two_d_tensor)
 
+  @test_util.run_in_graph_and_eager_modes
   def testWriteAudioSummaryAccepts3DTensor(self):
     three_d_tensor = np.zeros((1, 100, 2), dtype=np.float32)
     # no exception should be raised
     self._WriteAudioSummary(three_d_tensor)
 
+  @test_util.run_in_graph_and_eager_modes
   def testWriteAudioSummaryAcceptsEmptyTensor(self):
     # Test length_frames = 0
     empty_tensor_frames = np.zeros((1, 0), dtype=np.float32)
@@ -119,28 +125,57 @@ class SummaryV1AudioOpTest(test.TestCase):
     empty_tensor_batch = np.zeros((0, 100), dtype=np.float32)
     self._WriteAudioSummary(empty_tensor_batch)
 
+  @test_util.run_in_graph_and_eager_modes
   def testWriteAudioSummaryRejectsZeroChannels(self):
     empty_tensor_channels = np.zeros((1, 100, 0), dtype=np.float32)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "num_channels"):
+    # The empty tensor can have a null data pointer (seen on CUDA builds), and
+    # EncodeAudioAsS16LEWav checks for that before it checks num_channels.
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "num_channels|audio is null"):
       self._WriteAudioSummary(empty_tensor_channels)
 
+  @test_util.run_in_graph_and_eager_modes
   def testWriteAudioSummaryRejects4DTensor(self):
     four_d_tensor = np.zeros((1, 10, 2, 2), dtype=np.float32)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "2 or 3"):
       self._WriteAudioSummary(four_d_tensor)
 
+  @test_util.run_in_graph_and_eager_modes
   def testWriteAudioSummaryRejectsNonScalarInputs(self):
     tensor = np.zeros((1, 100), dtype=np.float32)
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "step must be a scalar"):
+    # summary_ops_v2 rejects a step with more than one element in Python.
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "step`? must be a scalar"):
       self._WriteAudioSummary(tensor, step=np.array([1, 2], dtype=np.int64))
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "tag must be a scalar"):
-      self._WriteAudioSummary(tensor, tag=np.array(["a", "b"]))
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
+    # A one-element step passes that check and reaches the kernel.
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                "step must be a scalar"):
+      self._WriteAudioSummary(tensor, step=np.array([5], dtype=np.int64))
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                 "sample_rate must be a scalar"):
       self._WriteAudioSummary(
           tensor, sample_rate=np.array([1.0, 2.0], dtype=np.float32))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWriteAudioSummaryRejectsNonScalarTag(self):
+    # summary_ops_v2.audio builds the tag from a name string, so only the raw
+    # op can pass a non-scalar tag.
+    writer = summary_ops_v2.create_file_writer_v2(self.get_temp_dir())
+    self.evaluate(writer.init())
+    try:
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                  "tag must be a scalar"):
+        self.evaluate(
+            gen_summary_ops.write_audio_summary(
+                writer=writer._resource,
+                step=0,
+                tag=np.array(["a", "b"]),
+                tensor=np.zeros((1, 100), dtype=np.float32),
+                sample_rate=16000.0,
+                max_outputs=3))
+    finally:
+      self.evaluate(writer.close())
 
 
 if __name__ == "__main__":
