@@ -53,6 +53,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/backends/gpu/target_config/cudnn_device_props.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -3989,6 +3991,17 @@ static absl::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
   return {std::move(plan)};
 }
 
+// Sets the SM version in the cuDNN graph. Without this, cuDNN will fallback to
+// querying the GPU, which doesn't work for deviceless compilation.
+absl::Status SetGraphSmVersion(cudnn_frontend::graph::Graph& graph,
+                               const DeviceDescription& gpu_device_info) {
+  const CudaComputeCapability* cc =
+      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
+  TF_RET_CHECK(cc != nullptr);
+  graph.set_sm_version(cc->major * 10 + cc->minor);
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 void FixDimsForRaggedOffset(std::vector<int64_t>& dims, int max_reg_per_batch) {
@@ -4036,6 +4049,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   graph.set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_io_data_type(ioDataType)
       .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
   int64_t uid = 0;
   auto next_uid = [&]() -> int64_t { return CuDnnTensorUID(uid++); };
 
@@ -4285,6 +4299,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
   graph.set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_io_data_type(ioDataType)
       .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
 
   auto next_uid = [uid = 0]() mutable -> int { return CuDnnTensorUID(uid++); };
 
@@ -4419,6 +4434,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
   graph.set_compute_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_io_data_type(ioDataType);
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
 
   auto next_uid = [uid = 0]() mutable -> int { return CuDnnTensorUID(uid++); };
 
@@ -4606,6 +4622,7 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
           << "\n global_scale: " << has_global_scale;
 
   cudnn_frontend::graph::Graph graph;
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
   auto compute_type = cudnn_frontend::DataType_t::FLOAT;
   graph.set_compute_data_type(compute_type);
   graph.set_intermediate_data_type(compute_type);
@@ -4716,6 +4733,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
 
   using cudnn_frontend::graph::Tensor_attributes;
   cudnn_frontend::graph::Graph graph;
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
   if (!(q_desc.type() == k_desc.type() && k_desc.type() == p_desc.type() &&
         p_desc.type() == v_desc.type() && v_desc.type() == do_desc.type() &&
         do_desc.type() == dq_desc.type() && dq_desc.type() == dk_desc.type() &&
@@ -6920,6 +6938,8 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
     }
     return absl::OkStatus();
   };
+
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph_, gpu_device_info));
 
   if (dnn_support) {
     const CudnnSupport& cudnn_support =
