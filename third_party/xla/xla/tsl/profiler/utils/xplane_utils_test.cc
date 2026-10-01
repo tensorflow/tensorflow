@@ -41,6 +41,8 @@ namespace tsl {
 namespace profiler {
 namespace {
 
+using ::testing::ElementsAre;
+using ::testing::Pair;
 using ::testing::Property;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
@@ -243,6 +245,18 @@ void CheckXEvent(const XEvent& event, const XPlane& plane,
   EXPECT_EQ(event.offset_ps(), NanoToPico(offset_ns));
   EXPECT_EQ(event.duration_ps(), NanoToPico(duration_ns));
   EXPECT_EQ(event.stats_size(), stats_size);
+}
+
+// Returns the name and offset of each event on the only line of `plane`.
+std::vector<std::pair<std::string, int64_t>> GetLineEvents(
+    const XPlane& plane) {
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(&plane);
+  XLineVisitor line(&plane_visitor, &plane.lines(0));
+  std::vector<std::pair<std::string, int64_t>> events;
+  line.ForEachEvent([&](const XEventVisitor& event) {
+    events.emplace_back(event.Name(), event.OffsetPs());
+  });
+  return events;
 }
 }  // namespace
 
@@ -1040,6 +1054,74 @@ TEST(XplaneUtilsTest, MergeXSpaceTest) {
   ASSERT_EQ(to->planes_size(), 1);  // Planes with same name are merged
   EXPECT_EQ(to->planes(0).name(), "p1");
   EXPECT_EQ(to->planes(0).lines_size(), 2);  // Both lines should be present
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceKeepsMergedLineSorted) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    XLineBuilder line = CreateXLine(&p1, "line", "line", /*id=*/1,
+                                    /*timestamp_ns=*/1000);
+    CreateXEvent(&p1, line, "child", /*display=*/std::nullopt,
+                 /*offset_ns=*/20, /*duration_ns=*/10);  // Starts at 1020ns.
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    XLineBuilder line = CreateXLine(&p2, "line", "line", /*id=*/1,
+                                    /*timestamp_ns=*/500);
+    // A scope that was entered before `child` but only recorded when it exited
+    // in a later chunk.
+    CreateXEvent(&p2, line, "parent", /*display=*/std::nullopt,
+                 /*offset_ns=*/510, /*duration_ns=*/40);  // Starts at 1010ns.
+    CreateXEvent(&p2, line, "later", /*display=*/std::nullopt,
+                 /*offset_ns=*/560, /*duration_ns=*/10);  // Starts at 1060ns.
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 1);
+  EXPECT_EQ(to->planes(0).lines(0).timestamp_ns(), 500);
+  EXPECT_THAT(GetLineEvents(to->planes(0)),
+              ElementsAre(Pair("parent", 510'000), Pair("child", 520'000),
+                          Pair("later", 560'000)));
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceKeepsTiedEventsInMergeOrder) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    XLineBuilder line = CreateXLine(&p1, "line", "line", /*id=*/1,
+                                    /*timestamp_ns=*/1000);
+    CreateXEvent(&p1, line, "to_first", /*display=*/std::nullopt,
+                 /*offset_ns=*/0, /*duration_ns=*/10);
+    CreateXEvent(&p1, line, "to_tied", /*display=*/std::nullopt,
+                 /*offset_ns=*/20, /*duration_ns=*/10);
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    XLineBuilder line = CreateXLine(&p2, "line", "line", /*id=*/1,
+                                    /*timestamp_ns=*/1000);
+    CreateXEvent(&p2, line, "from_between", /*display=*/std::nullopt,
+                 /*offset_ns=*/10, /*duration_ns=*/5);
+    // Same timespan as `to_tied`, so it must stay after it.
+    CreateXEvent(&p2, line, "from_tied", /*display=*/std::nullopt,
+                 /*offset_ns=*/20, /*duration_ns=*/10);
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 1);
+  EXPECT_THAT(GetLineEvents(to->planes(0)),
+              ElementsAre(Pair("to_first", 0), Pair("from_between", 10'000),
+                          Pair("to_tied", 20'000), Pair("from_tied", 20'000)));
 }
 
 TEST(XPlaneUtilsTest, RemoveNonExistentLine) {

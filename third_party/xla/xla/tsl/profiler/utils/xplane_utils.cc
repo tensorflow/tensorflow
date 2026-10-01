@@ -878,7 +878,8 @@ void MergeLine(std::unique_ptr<XLine> from_line, XLine* to_line,
     }
   }
 
-  // Move events preserving chronological order by first releasing into a
+  const int num_to_events = to_line->events_size();
+  // Move events preserving their relative order by first releasing into a
   // temporary LIFO stack.
   std::vector<XEvent*> events_to_move;
   events_to_move.reserve(from_line->events_size());
@@ -892,6 +893,27 @@ void MergeLine(std::unique_ptr<XLine> from_line, XLine* to_line,
   }
   to_line->set_duration_ps(
       std::max(to_line->duration_ps(), from_line->duration_ps()));
+
+  // Events from `from_line` may start before events already in `to_line`
+  // (e.g. a scope entered in an earlier chunk that is only recorded when it
+  // exits), so restore the order that consumers such as event grouping rely on.
+  // Both halves are normally sorted already, so merging them is linear instead
+  // of re-sorting the whole line, which grows with every merged chunk.
+  auto& events = *to_line->mutable_events();
+  auto begin = events.pointer_begin();
+  auto mid = begin + num_to_events;
+  auto end = events.pointer_end();
+  XEventsComparator comparator;
+  if (!std::is_sorted(begin, mid, comparator) ||
+      !std::is_sorted(mid, end, comparator)) {
+    SortXLine(to_line);
+  } else if (mid != begin && mid != end && comparator(*mid, *(mid - 1))) {
+    // `std::upper_bound` finds the first `to_line` event ordered after the
+    // first `from_line` event (`*mid`), i.e., the element to start inserting
+    // from. `std::inplace_merge` is stable, so the result matches `SortXLine`.
+    std::inplace_merge(std::upper_bound(begin, mid, *mid, comparator), mid, end,
+                       comparator);
+  }
 }
 
 // Iterates over all lines in `from_plane` and merges them into `to_plane`,
