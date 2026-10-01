@@ -12,46 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Overlay BUILD for @roc_mori//src/application. Symlinked over the extracted
-# tarball's src/application/BUILD.bazel by tf_http_archive (see workspace.bzl).
+# Overlay BUILD for @roc_mori//src/cco. Symlinked over the extracted tarball's
+# src/cco/BUILD.bazel by tf_http_archive (see workspace.bzl).
 #
-# Mirrors src/application/CMakeLists.txt: a single cc_library named
-# mori_application. All sources are host C++ (CMake sets LANGUAGE CXX on
-# them); they just call into the ROCm runtime APIs (HIP, HSA, rocm-smi,
-# hsakmt) plus ibverbs. No device kernels live here.
+# Mirrors the host-side mori_cco target in src/cco/CMakeLists.txt: a single
+# host TU (cco_init.cpp) layered on top of mori_application (which CMake
+# whole-archives into libmori_cco.so). The device wrapper
+# device/cco_device_wrapper.cpp is excluded here — like the shmem device
+# wrapper, it is JIT/prebuilt into bitcode elsewhere, not part of this lib.
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
-    name = "mori_application",
-    srcs = glob(
-        ["**/*.cpp"],
-        exclude = [
-            "bootstrap/mpi_bootstrap.cpp",
-            "bootstrap/torch_bootstrap.cpp",
-        ],
-    ),
+    name = "mori_cco",
+    srcs = ["cco_init.cpp"],
+    # PUBLIC BUILD_CCO_SDMA=1 mirrors src/cco/CMakeLists.txt: it must match the
+    # value every dependent that includes mori/cco/cco.hpp compiles with.
+    defines = ["BUILD_CCO_SDMA=1"],
     linkopts = [
         "-ldl",
     ],
     deps = [
+        "@roc_mori//src/application:mori_application",
         "@roc_mori//:mori_application_headers",
-        # symmetric_memory.cpp includes mori/shmem/internal.hpp.
+        # symmetric_memory.cpp (pulled in transitively) includes
+        # mori/shmem/internal.hpp.
         "@roc_mori//:mori_shmem_headers",
         # CMake hip::host: libamdhip64.so + HIP host headers.
         "@local_config_rocm//rocm:hip",
-        # CMake find_library(ROCM_SMI_LIB rocm_smi64): librocm_smi64.so.
-        "@local_config_rocm//rocm:rocm_smi",
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:hsa_runtime",
         "@local_config_rocm//rocm:hsakmt",
-        # CMake ibverbs: system libibverbs.so (rdma-core).
+        # infiniband/verbs.h via transport/rdma providers.
         "@roc_mori//:ibverbs",
-        # System libdrm + libdrm_amdgpu. Required transitively by libhsakmt.a
-        # (amdgpu_get_marketing_name, amdgpu_query_gpu_info, amdgpu_*, drmClose).
+        # libdrm + libdrm_amdgpu, required transitively by libhsakmt.a.
         "@roc_mori//:libdrm",
-        # System libnuma. Required transitively by libhsakmt.a (numa_available,
-        # numa_max_node, numa_bitmask_*, mbind, numa_node_size64).
+        # libnuma, required transitively by libhsakmt.a.
         "@roc_mori//:libnuma",
         # mori_logging interface lib in CMake is spdlog::spdlog_header_only.
         "@spdlog",
