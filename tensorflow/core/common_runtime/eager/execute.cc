@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/validate_function_devices.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
@@ -1415,16 +1416,21 @@ absl::Status GetOrCreateKernelAndDevice(
         // Only validate when _XlaMustCompile was explicitly set (user's
         // jit_compile=True), not when compile_with_xla is inferred from
         // the function being on an XLA device (TPU/XLA_GPU/XLA_CPU).
+        //
+        // Only strictly enforce device constraints when soft placement is
+        // disabled: with soft placement enabled, an unsatisfiable constraint
+        // would be relaxed by the runtime and execution falls back to an
+        // available device, matching standard eager behavior.
         bool has_xla_must_compile = false;
         GetFuncAttr(op, ctx, kXlaMustCompileAttr, &has_xla_must_compile)
             .IgnoreError();
-        if (has_xla_must_compile) {
+        if (has_xla_must_compile && !ctx.AllowSoftPlacement()) {
           const FunctionDef* fdef = op->GetFunctionDef();
           if (fdef != nullptr) {
             std::vector<DeviceAttributes> device_attrs;
             ctx.ListDevices(&device_attrs);
             TF_RETURN_IF_ERROR(ValidateFunctionDeviceConstraints(
-                *fdef, device_attrs));
+                *fdef, ctx.FuncLibDef(), device_attrs));
           }
         }
         if (ctx.JitCompileRewrite()) {

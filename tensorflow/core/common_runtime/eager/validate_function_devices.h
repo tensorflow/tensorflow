@@ -19,20 +19,26 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 
 namespace tensorflow {
 
+class FunctionLibraryDefinition;
+
 // Validates that device constraints specified on nodes within a FunctionDef
-// can be satisfied by the available devices. This is used to ensure that
-// tf.device() constraints are validated even for XLA-compiled functions
-// (jit_compile=True), where the Placer is bypassed.
+// (and, recursively, within any functions it calls via PartitionedCall /
+// StatefulPartitionedCall) can be satisfied by the available devices. This is
+// used to ensure that tf.device() constraints are validated even for
+// XLA-compiled functions (jit_compile=True), where the Placer is bypassed.
+//
+// `flib_def` may be nullptr, in which case only the nodes of `fdef` itself are
+// validated.
 //
 // Returns OK if all device constraints are satisfiable, or an error status
 // describing the first unsatisfiable device constraint.
 absl::Status ValidateFunctionDeviceConstraints(
-    const FunctionDef& fdef,
+    const FunctionDef& fdef, const FunctionLibraryDefinition* flib_def,
     const std::vector<DeviceAttributes>& available_devices);
 
 }  // namespace tensorflow

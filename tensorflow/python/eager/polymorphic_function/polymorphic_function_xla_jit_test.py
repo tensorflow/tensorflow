@@ -1256,13 +1256,34 @@ class FunctionTest(xla_test.XLATestCase):
       x, y = constant_op.constant([2, 3]), constant_op.constant([2, 3])
       self._compareTwoMethodsCompilerIROutput(f, [x, y], {})
 
+
+class DevicePlacementValidationTest(test.TestCase):
+  """Tests that tf.device() constraints are enforced under jit_compile=True.
+
+  Standard eager execution soft-places operations onto available devices by
+  default, so unsatisfiable device constraints are only reported with soft
+  device placement disabled. The jit_compile=True validation (see #124880)
+  runs on the same eager execution path and therefore follows the same
+  setting, so these tests run with soft placement strictly disabled.
+  """
+
+  def setUp(self):
+    super().setUp()
+    self._old_soft_placement = context.context().soft_device_placement
+    context.context().soft_device_placement = False
+
+  def tearDown(self):
+    context.context().soft_device_placement = self._old_soft_placement
+    super().tearDown()
+
   def testDevicePlacementValidationWithJitCompile(self):
     """Test that jit_compile=True validates tf.device() constraints.
 
     When using tf.device() with a device that cannot exist (e.g., a
     nonexistent device type), eager execution correctly fails with
-    "Could not satisfy device specification". This test ensures jit_compile=True
-    also validates device constraints instead of silently ignoring them.
+    "Could not satisfy device specification". This test ensures
+    jit_compile=True also validates device constraints instead of silently
+    ignoring them.
 
     See https://github.com/tensorflow/tensorflow/issues/124880
     """
@@ -1276,16 +1297,10 @@ class FunctionTest(xla_test.XLATestCase):
 
     x = constant_op.constant([1.0, 2.0])
 
-    # Eager mode soft-places onto CPU by default, so the constraint is only
-    # enforced with soft device placement disabled (see #124880).
-    old_soft_placement = context.context().soft_device_placement
-    try:
-      context.context().soft_device_placement = False
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'Could not satisfy device specification'):
-        compute(x).numpy()
-    finally:
-      context.context().soft_device_placement = old_soft_placement
+    # Eager execution should fail (soft placement is disabled in setUp).
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      compute(x).numpy()
 
     # jit_compile=True should also fail (this is the fix for #124880)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
@@ -1305,16 +1320,10 @@ class FunctionTest(xla_test.XLATestCase):
 
     x = constant_op.constant([1.0, 2.0])
 
-    # Eager mode soft-places onto CPU by default, so the constraint is only
-    # enforced with soft device placement disabled (see #124880).
-    old_soft_placement = context.context().soft_device_placement
-    try:
-      context.context().soft_device_placement = False
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'Could not satisfy device specification'):
-        compute(x).numpy()
-    finally:
-      context.context().soft_device_placement = old_soft_placement
+    # Eager execution should fail (soft placement is disabled in setUp).
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      compute(x).numpy()
 
     # jit_compile=True should also fail
     with self.assertRaisesRegex(errors.InvalidArgumentError,
@@ -1336,7 +1345,8 @@ class FunctionTest(xla_test.XLATestCase):
     # jit_compile=True must also succeed: the partial constraint
     # '/job:localhost' is satisfied by the local devices.
     self.assertAllClose(
-        polymorphic_function.function(compute, jit_compile=True)(x), [2.0, 4.0])
+        polymorphic_function.function(compute, jit_compile=True)(x),
+        [2.0, 4.0])
 
   def testDevicePlacementValidationLocalDeviceNamesWithJitCompile(self):
     """Local device names are validated under jit_compile=True."""
@@ -1356,21 +1366,39 @@ class FunctionTest(xla_test.XLATestCase):
       with ops.device('CPU:99'):
         return math_ops.add(x, x)
 
-    # A nonexistent local device ID must fail in both modes. Eager mode
-    # soft-places by default, so disable it for the eager assertion.
-    old_soft_placement = context.context().soft_device_placement
-    try:
-      context.context().soft_device_placement = False
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'Could not satisfy device specification'):
-        compute_invalid(x).numpy()
-    finally:
-      context.context().soft_device_placement = old_soft_placement
+    # A nonexistent local device ID must fail in both modes.
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      compute_invalid(x).numpy()
 
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 'Could not satisfy device specification'):
       polymorphic_function.function(
           compute_invalid, jit_compile=True)(x).numpy()
+
+  def testDevicePlacementValidationNestedFunctionWithJitCompile(self):
+    """Device constraints inside nested functions must be validated too.
+
+    The top-level function contains no tf.device() constraint; the invalid
+    constraint lives in a nested @tf.function called from the compiled
+    function, whose nodes reside in a separate FunctionDef reached through a
+    (Stateful)PartitionedCall node in the function library.
+    """
+    invalid_device = '/device:NONEXISTENT:0'
+
+    @polymorphic_function.function
+    def inner(x):
+      with ops.device(invalid_device):
+        return math_ops.add(x, x)
+
+    @polymorphic_function.function(jit_compile=True)
+    def outer(x):
+      return inner(x)
+
+    x = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      outer(x).numpy()
 
 
 if __name__ == '__main__':
