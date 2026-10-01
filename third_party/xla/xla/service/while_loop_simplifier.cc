@@ -67,8 +67,8 @@ using std::optional;
 // Assuming a while loop with known trip count, k, loop induction variable i,
 // and the initial loop induction value c, a compare(i,x) instruction is trivial
 // if:
-//   1) x is a constant and x >= k + c.
-//   2) x is a constant x <= c.
+//   1) x is a constant and x >= k + c (for LT) or x >= k + c - 1 (for GT).
+//   2) x is a constant and x <= c (for LT) or x < c (for GT).
 static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
   std::optional<int64_t> indvar_index = GetLoopInductionVarTupleIdx(while_op);
   if (indvar_index.has_value()) {
@@ -91,33 +91,34 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
                                m::Constant(&constant).IsConstantScalar()))) {
             std::optional<int64_t> constant_value =
                 LiteralUtil::LiteralAsScalarInt64(constant->literal());
-            if (constant_value.has_value()) {
-              // x <= c && i >= c --> !(i < x)
-              // x < c && i >= c --> i > x
-              if (constant_value.value() <= init_value.value() &&
-                  body_instr->comparison_direction() ==
-                      ComparisonDirection::kLt) {
-                ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
-                    body_instr, MakeScalarLike(body_instr, false)));
-                return true;
-              }
-              if (constant_value.value() < init_value.value() &&
-                  body_instr->comparison_direction() ==
-                      ComparisonDirection::kGt) {
-                ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
-                    body_instr, MakeScalarLike(body_instr, true)));
-                return true;
-              }
-              // x >= c + k && i < c + k --> i < x
-              if (constant_value.value() >=
-                  init_value.value() + trip_count.value()) {
-                if (body_instr->comparison_direction() ==
-                    ComparisonDirection::kLt) {
+            if (constant_value.has_value() && init_value.has_value()) {
+              const int64_t min_i = *init_value;
+              const int64_t max_i = *init_value + *trip_count - 1;
+              const int64_t rhs = *constant_value;
+              if (body_instr->comparison_direction() ==
+                  ComparisonDirection::kLt) {
+                if (min_i >= rhs) {
+                  // i >= min_i >= rhs, so (i < rhs) is always false.
+                  ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, false)));
+                  return true;
+                }
+                if (max_i < rhs) {
+                  // i <= max_i < rhs, so (i < rhs) is always true.
                   ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
                       body_instr, MakeScalarLike(body_instr, true)));
                   return true;
-                } else if (body_instr->comparison_direction() ==
-                           ComparisonDirection::kGt) {
+                }
+              } else if (body_instr->comparison_direction() ==
+                         ComparisonDirection::kGt) {
+                if (min_i > rhs) {
+                  // i >= min_i > rhs, so (i > rhs) is always true.
+                  ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, true)));
+                  return true;
+                }
+                if (max_i <= rhs) {
+                  // i <= max_i <= rhs, so (i > rhs) is always false.
                   ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
                       body_instr, MakeScalarLike(body_instr, false)));
                   return true;
