@@ -855,6 +855,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.trace(np.array(5))
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(np.array([1, 2, 3]))
+    # A rank-1 input has no valid trace axes: the out-of-bounds default
+    # axes (axis1=-2, axis2=-1) must raise, not silently route the input
+    # to the rank>=2-only `math_ops.trace` fast path.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array([1.0, 2.0, 3.0]), axis1=-2, axis2=-1)
 
   def testIsInf(self):
     x1 = ops.convert_to_tensor(-2147483648)

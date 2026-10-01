@@ -391,36 +391,40 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   else:
     # `axis1`/`axis2` are runtime values (e.g. scalar `tf.Tensor`s) or the
     # rank is only known at runtime: Python-level comparisons on Tensors
-    # are not allowed in graph mode, so assert the same bounds (plus the
-    # duplicate-axis rule) at runtime and normalize under the assert's
-    # control dependency. Note: under `jit_compile=True`, tf2xla lowers
-    # `Assert` to a no-op (see tf2xla/kernels/assert_op.cc), so these
-    # errors do not surface inside a fully XLA-compiled function.
+    # are not allowed in graph mode, so normalization happens with tensor
+    # ops instead. Only in-bounds negative axes are normalized;
+    # out-of-bounds axes flow untouched to `moveaxis`/`transpose`, which
+    # reject them with an `InvalidArgumentError` (the pre-existing
+    # `moveaxis` runtime assert and the C++ Transpose kernel's permutation
+    # checks, respectively). Duplicate axes are likewise rejected by the
+    # Transpose kernel's permutation check. Keeping this path free of
+    # validation-only `Assert` nodes avoids injecting extra graph nodes
+    # and eager dispatch overhead into the green path; per policy, bounds
+    # enforcement belongs in the C++ backend.
     axis1_t = ops.convert_to_tensor(axis1)
     axis2_t = ops.convert_to_tensor(axis2)
+    # Canonicalize both axes to a common dtype: comparing a `tf.int64`
+    # `axis1` against a default `tf.int32` `axis2` directly would fail
+    # graph tracing with a `TypeError`. int32 also matches the rank
+    # dtype produced by `array_ops.rank` downstream.
+    if axis1_t.dtype != dtypes.int32:
+      axis1_t = math_ops.cast(axis1_t, dtypes.int32)
+    if axis2_t.dtype != dtypes.int32:
+      axis2_t = math_ops.cast(axis2_t, dtypes.int32)
     if maybe_rank is not None:
-      rank_t = math_ops.cast(ops.convert_to_tensor(maybe_rank), axis1_t.dtype)
+      rank_t = ops.convert_to_tensor(maybe_rank, dtype=dtypes.int32)
     else:
-      rank_t = math_ops.cast(array_ops.rank(a), axis1_t.dtype)
-    assert_op = control_flow_assert.Assert(
-        math_ops.reduce_all(
-            math_ops.logical_and(
-                math_ops.logical_and(
-                    math_ops.logical_and(axis1_t >= -rank_t, axis1_t < rank_t),
-                    math_ops.logical_and(axis2_t >= -rank_t, axis2_t < rank_t),
-                ),
-                math_ops.not_equal(axis1_t, axis2_t),
-            )
-        ),
-        [
-            'axis1', axis1_t, 'and axis2', axis2_t,
-            'must be different and within bounds for array of dimension',
-            rank_t,
-        ],
+      rank_t = array_ops.rank(a)
+    axis1 = array_ops.where_v2(
+        math_ops.logical_and(axis1_t < 0, axis1_t >= -rank_t),
+        axis1_t + rank_t,
+        axis1_t,
     )
-    with ops.control_dependencies([assert_op]):
-      axis1 = array_ops.where_v2(axis1_t < 0, axis1_t + rank_t, axis1_t)
-      axis2 = array_ops.where_v2(axis2_t < 0, axis2_t + rank_t, axis2_t)
+    axis2 = array_ops.where_v2(
+        math_ops.logical_and(axis2_t < 0, axis2_t >= -rank_t),
+        axis2_t + rank_t,
+        axis2_t,
+    )
 
   if (
       maybe_rank is not None
@@ -1956,27 +1960,18 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
     # Static Python-level bounds checking can't run here, and normalizing
     # `axis + rank` unconditionally would silently mask an out-of-bounds
     # negative axis (e.g. axis=-5 on a rank-3 tensor) into an in-bounds
-    # one. So assert the same bounds at runtime before normalizing,
-    # keeping eager and graph mode consistent. Note: under
-    # `jit_compile=True`, tf2xla lowers `Assert` to a no-op (see
-    # tf2xla/kernels/assert_op.cc), so this check does not raise inside
-    # a fully dynamic-rank XLA-compiled function.
+    # one. So only in-bounds negative axes are normalized below;
+    # out-of-bounds axes flow untouched and are rejected downstream by
+    # the C++ kernels with an `InvalidArgumentError`.
     axis_t = ops.convert_to_tensor(axis)
     rank_t = math_ops.cast(ops.convert_to_tensor(rank), axis_t.dtype)
-    assert_op = control_flow_assert.Assert(
-        math_ops.reduce_all(
-            math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
-        ),
-        ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
+    # Only normalize in-bounds negative axes; let out-of-bounds axes
+    # flow to the underlying C++ op to trigger C++ validation.
+    axis = array_ops.where_v2(
+        math_ops.logical_and(axis_t < 0, axis_t >= -rank_t),
+        axis_t + rank_t,
+        axis_t
     )
-    # Normalize under the assert's control dependency so the OOB axis can
-    # never flow downstream. Tensor-based select (instead of a Python
-    # branch) also keeps this correct when `axis` itself is a scalar
-    # Tensor. Note: under `jit_compile=True`, tf2xla still lowers `Assert`
-    # to a no-op (see tf2xla/kernels/assert_op.cc), so the error does not
-    # surface inside a fully dynamic-rank XLA-compiled function.
-    with ops.control_dependencies([assert_op]):
-      axis = array_ops.where_v2(axis_t < 0, axis_t + rank_t, axis_t)
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.

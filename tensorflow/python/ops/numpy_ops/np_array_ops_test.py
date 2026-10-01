@@ -590,9 +590,11 @@ class ArrayCreationTest(test.TestCase):
     if test_util.is_xla_enabled():
       self.skipTest("Not supported when compiled with XLA.")
     # Scalar `tf.Tensor` axes on a static-rank input route to the dynamic
-    # path: bounds and the duplicate-axis rule are checked with a runtime
-    # assert, and valid axes normalize under its control dependency.
-    x = np_array_ops.arange(6.0).reshape(2, 3)
+    # path: only in-bounds negative axes are normalized with a `where_v2`,
+    # while out-of-bounds and duplicate axes flow untouched to `moveaxis`/
+    # `transpose` and are rejected there (C++ `InvalidArgumentError`).
+    x = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                             dtypes.float32)
 
     @def_function.function
     def f(x, axis1, axis2):
@@ -604,9 +606,32 @@ class ArrayCreationTest(test.TestCase):
     self.assertAllClose(
         np.diagonal([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], axis1=-2, axis2=-1),
         f(x, constant_op.constant(-2), constant_op.constant(-1)))
+    # Duplicate axes are rejected by the C++ Transpose kernel's permutation
+    # check (the dynamic path no longer inserts a Python-level assert).
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                'must be different'):
+                                'missing from'):
       f(x, constant_op.constant(1), constant_op.constant(1))
+
+  def testDiagonalMixedDtypeTensorAxesTracing(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
+    # A `tf.int64` `axis1` alongside an int `axis2` (tensor-converted to
+    # `tf.int32`) must not crash graph tracing with a dtype-promotion
+    # `TypeError`: both axes are cast to a common dtype in the dynamic
+    # path before any tensor comparison.
+    x = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                             dtypes.float32)
+
+    @def_function.function
+    def f(x, axis1, axis2):
+      return np_array_ops.diagonal(x, axis1=axis1, axis2=axis2)
+
+    self.assertAllClose(
+        np.diagonal([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        f(x, constant_op.constant(0, dtypes.int64), 1))
+    self.assertAllClose(
+        np.diagonal([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], axis1=-2, axis2=-1),
+        f(x, constant_op.constant(-2, dtypes.int64), -1))
 
   def match_shape(self, actual, expected, msg=None):
     if msg:
@@ -1469,7 +1494,7 @@ class ArrayMethodsTest(test.TestCase):
     def f(x, ind, axis):
       return np_array_ops.take_along_axis(x, ind, axis=axis)
 
-    expected = np.take_along_axis(x, ind, axis=1)
+    expected = np.take_along_axis(x.numpy(), ind.numpy(), axis=1)
     self.assertAllClose(expected, f(x, ind, constant_op.constant(1)))
     self.assertAllClose(expected, f(x, ind, constant_op.constant(-1)))
 
@@ -1477,9 +1502,12 @@ class ArrayMethodsTest(test.TestCase):
     if test_util.is_xla_enabled():
       self.skipTest("Not supported when compiled with XLA.")
     # With the rank known only at runtime, an out-of-bounds axis (positive
-    # or negative) must still raise: the runtime assert runs before
-    # negative-axis normalization, otherwise `axis + rank` would silently
-    # mask e.g. axis=-5 on a rank-3 input into an in-bounds axis.
+    # or negative) must still raise: only in-bounds negative axes are
+    # normalized, so an out-of-bounds axis flows untouched to the
+    # underlying scatter/gather ops, whose C++ kernels reject it with an
+    # `InvalidArgumentError`. (Unconditional `axis + rank` normalization
+    # would silently mask e.g. axis=-5 on a rank-3 input into an in-bounds
+    # axis.)
     x = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
                              dtypes.float32)
     ind = constant_op.constant([[0], [2]], dtype=dtypes.int64)
@@ -1494,9 +1522,27 @@ class ArrayMethodsTest(test.TestCase):
       def f(x, ind, axis=axis):
         return np_array_ops.take_along_axis(x, ind, axis=axis)
 
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  'out of bounds'):
+      # Out-of-bounds axes flow untouched to the underlying ops and are
+      # rejected by C++ kernels with an `InvalidArgumentError` (the exact
+      # message differs by axis sign: negative indices are flagged by the
+      # scatter kernel, positive ones by the transpose permutation check).
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         f(x, ind)
+
+    # A negative out-of-bounds axis reaches the scatter op that computes
+    # the broadcast shapes, whose C++ kernel flags the offending index.
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int64),
+        ]
+    )
+    def g(x, ind):
+      return np_array_ops.take_along_axis(x, ind, axis=-5)
+
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                'does not index into shape'):
+      g(x, ind)
 
   def testWhere(self):
     self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],
