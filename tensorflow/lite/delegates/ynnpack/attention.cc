@@ -351,38 +351,33 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   const size_t g_heads_per_kv = static_cast<size_t>(n_q / n_kv);
 
   const int q_seq_dim = is_seq_major ? 1 : 2;
-  bool use_decode1 =
-      !is_seq_major &&
-      (q_tensor.dims->data[q_seq_dim] * static_cast<int>(g_heads_per_kv) <= 32);
+  const int q_seq = q_tensor.dims->data[q_seq_dim];
+  const bool use_decode1 =
+      !is_seq_major && (q_seq * static_cast<int>(g_heads_per_kv) <= 8);
   // Prefill with grouped heads: keep the head axis as [n_kv, g] and let the dot
   // broadcast K/V over g, instead of folding g into the row axis.
   const bool gqa_batch = g_heads_per_kv > 1 && !is_seq_major && !use_decode1;
   const bool gqa_fold = g_heads_per_kv > 1 && !gqa_batch;
 
-  if (gqa_fold) {
-    uint32_t q_5d_id = YNN_INVALID_VALUE_ID;
-    const size_t q_splits[2] = {static_cast<size_t>(n_kv), g_heads_per_kv};
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_split_dim(subgraph, /*axis=*/1,
-                                                   /*num_splits=*/2, q_splits,
-                                                   q_trans_id, &q_5d_id, 0));
-    uint32_t q_packed_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_fuse_dim(
-        subgraph, /*axis=*/2, /*axes_count=*/2, q_5d_id, &q_packed_id, 0));
-    q_trans_id = q_packed_id;
-  }
-
-  if (gqa_batch) {
+  if (g_heads_per_kv > 1) {
     const size_t q_splits[2] = {static_cast<size_t>(n_kv), g_heads_per_kv};
     uint32_t q_5d_id = YNN_INVALID_VALUE_ID;
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_split_dim(subgraph, /*axis=*/1,
                                                    /*num_splits=*/2, q_splits,
                                                    q_trans_id, &q_5d_id, 0));
-    q_trans_id = q_5d_id;
-    const int32_t expand_axis = 2;
-    uint32_t k_5d_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-        subgraph, /*num_new_axes=*/1, &expand_axis, k_trans_id, &k_5d_id, 0));
-    k_trans_id = k_5d_id;
+    if (gqa_fold) {
+      uint32_t q_packed_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_fuse_dim(
+          subgraph, /*axis=*/2, /*axes_count=*/2, q_5d_id, &q_packed_id, 0));
+      q_trans_id = q_packed_id;
+    } else {
+      q_trans_id = q_5d_id;
+      const int32_t expand_axis = 2;
+      uint32_t k_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
+          subgraph, /*num_new_axes=*/1, &expand_axis, k_trans_id, &k_5d_id, 0));
+      k_trans_id = k_5d_id;
+    }
   }
 
   bool need_slice_out = false;
@@ -453,12 +448,11 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
 
   uint32_t masked_logits_id = YNN_INVALID_VALUE_ID;
   if (mask_val_to_add_id != YNN_INVALID_VALUE_ID) {
+    const TfLiteTensor& mask_tensor = context->tensors[sdpa_inputs.mask_index];
     uint32_t mask_to_add_id = mask_val_to_add_id;
     if (sdpa_inputs.param_index != -1) {
       // Slice the mask along its kv-seq (last) axis using the logits as the
       // template.
-      const TfLiteTensor& mask_tensor =
-          context->tensors[sdpa_inputs.mask_index];
       int32_t mask_seq_axis = mask_tensor.dims->size - 1;
       uint32_t sliced_mask_id = YNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_YNN_STATUS(ynn_define_slice_like(
@@ -466,7 +460,12 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
           &sliced_mask_id, /*flags=*/0));
       mask_to_add_id = sliced_mask_id;
     }
-    if (gqa_fold || gqa_batch) {
+    // When gqa_fold is used with T == 1 (or any query-independent [B, 1, 1, S]
+    // mask), the 4D mask already broadcasts across the folded [g * T] axis, so
+    // only masks with mask_q_seq > 1 need 5D expansion and logits split/fuse.
+    const bool gqa_fold_needs_5d_mask =
+        gqa_fold && mask_tensor.dims->data[2] != 1;
+    if (gqa_batch || gqa_fold_needs_5d_mask) {
       const int32_t expand_axis = 2;
       uint32_t mask_5d_id = YNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
@@ -474,7 +473,7 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
           &mask_5d_id, 0));
       mask_to_add_id = mask_5d_id;
     }
-    if (gqa_fold) {
+    if (gqa_fold_needs_5d_mask) {
       const size_t logits_splits[2] = {g_heads_per_kv, 0};
       uint32_t logits_5d_id = YNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_YNN_STATUS(
@@ -526,7 +525,7 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   }
 
   // O = P @ V.
-  if (use_decode1 && !is_seq_major) {
+  if (use_decode1) {
     // Rewrite BMM2: O = (V @ P^T)^T to avoid transposing V.
     // P is [B, N, 1, S] -> P^T is [B, N, S, 1]
     // V is [B, N, H, S]
@@ -560,32 +559,18 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   uint32_t post_trans_id = *post_bmm_ptr;
   uint32_t* post_trans_ptr = &post_trans_id;
 
-  if (gqa_fold) {
-    const size_t out_splits[2] = {g_heads_per_kv, 0};
-    uint32_t out_5d_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_split_dim(subgraph, /*axis=*/2, /*num_splits=*/2, out_splits,
-                             *post_bmm_ptr, &out_5d_id, 0));
-    if (is_seq_major) {
-      const int32_t perm_5d[] = {0, 3, 1, 2, 4};
-      uint32_t out_trans_5d_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-          subgraph, 5, perm_5d, out_5d_id, &out_trans_5d_id, 0));
-      post_trans_ptr = need_slice_out ? &post_trans_id : &output_val_id;
+  if (g_heads_per_kv > 1) {
+    uint32_t out_5d_id = *post_bmm_ptr;
+    if (gqa_fold) {
+      const size_t out_splits[2] = {g_heads_per_kv, 0};
+      out_5d_id = YNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_YNN_STATUS(
-          ynn_define_fuse_dim(subgraph, /*axis=*/2, /*axes_count=*/2,
-                              out_trans_5d_id, post_trans_ptr, 0));
-    } else {
-      post_trans_ptr = need_slice_out ? &post_trans_id : &output_val_id;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_fuse_dim(subgraph, /*axis=*/1,
-                                                    /*axes_count=*/2, out_5d_id,
-                                                    post_trans_ptr, 0));
+          ynn_define_split_dim(subgraph, /*axis=*/2, /*num_splits=*/2,
+                               out_splits, *post_bmm_ptr, &out_5d_id, 0));
     }
-  } else if (gqa_batch) {
     post_trans_ptr = need_slice_out ? &post_trans_id : &output_val_id;
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_fuse_dim(subgraph, /*axis=*/1, /*axes_count=*/2,
-                            *post_bmm_ptr, post_trans_ptr, 0));
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_fuse_dim(
+        subgraph, /*axis=*/1, /*axes_count=*/2, out_5d_id, post_trans_ptr, 0));
   } else if (is_seq_major) {
     if (!need_slice_out) {
       post_trans_ptr = &output_val_id;
