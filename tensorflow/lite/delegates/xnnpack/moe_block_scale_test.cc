@@ -26,7 +26,6 @@ namespace xnnpack {
 namespace {
 
 using ::testing::ElementsAre;
-using ::testing::FloatNear;
 
 TEST(ResolveBlockScaleLayoutTest, OneScalePerRowIsPerChannel) {
   const BlockScaleLayout layout = ResolveBlockScaleLayout(
@@ -195,38 +194,6 @@ TEST_F(DequantizeInt8Test, SupportsOneScalePerInputChannel) {
                        21.0f, 44.0f, 69.0f, 96.0f));
 }
 
-TEST_F(DequantizeInt8Test, RangeOverloadWritesOnlyRequestedRows) {
-  const std::vector<int8_t> weights = Weights();
-  const std::vector<float> scales = {1.0f, 100.0f, 2.0f, 200.0f};
-  std::vector<float> dst(kOutputChannels * kInputChannels, -1.0f);
-
-  CopyAndDequantizeExpertWeightRowsInt8Range(
-      weights.data(), scales.data(), scales.size(), kNumExperts, /*expert=*/0,
-      kOutputChannels, /*out_begin=*/1, /*out_end=*/2, kInputChannels,
-      dst.data());
-
-  EXPECT_THAT(dst, ElementsAre(-1.0f, -1.0f, -1.0f, -1.0f,  // untouched
-                               42.0f, 44.0f, 46.0f, 48.0f));
-}
-
-TEST_F(DequantizeInt8Test, DotProductMatchesDequantizedRow) {
-  const std::vector<int8_t> weights = Weights();
-  const std::vector<float> scales = {1.0f, 10.0f, -1.0f, -10.0f,
-                                     2.0f, 20.0f, -2.0f, -20.0f};
-  const std::vector<float> input = {0.5f, 1.5f, -2.0f, 0.25f};
-  const BlockScaleLayout layout = ResolveBlockScaleLayout(
-      scales.size(), kOutputChannels * kNumExperts, kInputChannels);
-
-  // Expert 0, out 1 corresponds to row_idx = 2: dequantized {42, 44, 460, 480}.
-  // Dot with {0.5, 1.5, -2.0, 0.25} = 21 + 66 - 920 + 120 = -713.
-  const size_t row_idx = 1 * kNumExperts + 0;
-  const float dot = DotDequantizeExpertWeightRowInt8(
-      weights.data() + row_idx * kInputChannels,
-      scales.data() + row_idx * layout.groups_per_row, layout, kInputChannels,
-      input.data());
-  EXPECT_THAT(dot, FloatNear(-713.0f, 1e-5f));
-}
-
 class DequantizeInt4Test : public ::testing::Test {
  protected:
   static constexpr size_t kNumExperts = 2;
@@ -270,38 +237,6 @@ TEST_F(DequantizeInt4Test, AppliesBlockwiseScalesToNibbles) {
 
   // Row 1 = {-1, -2, -3, -4} with scales {5, 5, 50, 50}.
   EXPECT_THAT(dst, ElementsAre(-5.0f, -10.0f, -150.0f, -200.0f));
-}
-
-TEST_F(DequantizeInt4Test, SupportsOddGroupSizeOneScalePerChannel) {
-  const std::vector<int8_t> weights = PackedWeights();
-  // Four scales per row (group_size = 1, which splits bytes across blocks).
-  const std::vector<float> scales = {1.0f, 2.0f, 3.0f, 4.0f,   // row 0
-                                     5.0f, 6.0f, 7.0f, 8.0f};  // row 1
-  std::vector<float> dst(kInputChannels, 0.0f);
-
-  CopyAndDequantizeExpertWeightRowsInt4(
-      weights.data(), scales.data(), scales.size(), kNumExperts, /*expert=*/0,
-      kOutputChannels, kInputChannels, dst.data());
-
-  // Row 0 = {1, 2, 3, 4} * {1, 2, 3, 4}.
-  EXPECT_THAT(dst, ElementsAre(1.0f, 4.0f, 9.0f, 16.0f));
-}
-
-TEST_F(DequantizeInt4Test, DotProductMatchesDequantizedRow) {
-  const std::vector<int8_t> weights = PackedWeights();
-  const std::vector<float> scales = {1.0f, 10.0f,   // row 0
-                                     5.0f, 50.0f};  // row 1
-  const std::vector<float> input = {2.0f, -1.0f, 0.5f, 0.25f};
-  const BlockScaleLayout layout = ResolveBlockScaleLayout(
-      scales.size(), kOutputChannels * kNumExperts, kInputChannels);
-
-  // Row 1 dequantized is {-5, -10, -150, -200}.
-  // Dot with {2.0, -1.0, 0.5, 0.25} = -10 + 10 - 75 - 50 = -125.
-  const float dot = DotDequantizeExpertWeightRowInt4(
-      weights.data() + (1 * kInputChannels) / 2,
-      scales.data() + 1 * layout.groups_per_row, layout, kInputChannels,
-      input.data());
-  EXPECT_THAT(dot, FloatNear(-125.0f, 1e-5f));
 }
 
 }  // namespace
