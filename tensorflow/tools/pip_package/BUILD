@@ -28,7 +28,7 @@ load(
     "verify_manylinux_compliance_test",
 )
 load("@xla//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
-load("@xla//third_party/rules_python/python:defs.bzl", "py_binary", "py_test")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow:tf_version.bzl", "TF_SEMANTIC_VERSION_SUFFIX", "TF_VERSION")
@@ -254,12 +254,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools:grpc_tpu_worker_service",
 ])
 
-py_binary(
-    name = "build_pip_package_py",
-    srcs = [
-        "build_pip_package.py",
-    ],
-    main = "build_pip_package.py",
+py_library(
+    name = "build_pip_package_lib",
+    srcs = ["build_pip_package.py"],
     deps = [
         "//tensorflow/tools/pip_package/utils:py_utils",
         "@pypi//setuptools",
@@ -267,11 +264,18 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "build_pip_package_py",
+    srcs = ["build_pip_package_main.py"],
+    main = "build_pip_package_main.py",
+    deps = [":build_pip_package_lib"],
+)
+
 py_test(
     name = "build_pip_package_test",
     size = "small",
     srcs = ["build_pip_package_test.py"],
-    deps = [":build_pip_package_py"],
+    deps = [":build_pip_package_lib"],
 )
 
 collect_data_files(

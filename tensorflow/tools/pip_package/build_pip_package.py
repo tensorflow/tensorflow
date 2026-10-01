@@ -441,7 +441,7 @@ def build_wheel(
     cwd: str,
     project_name: str,
     platform: str,
-    collab: str = False,
+    collab: str = "False",
 ) -> None:
   """Build the wheel in the target directory.
 
@@ -483,7 +483,8 @@ def build_wheel(
   )
 
 
-if __name__ == "__main__":
+def main() -> None:
+  """Prepare the wheel sources and build the pip package."""
   args = parse_args()
   temp_dir = tempfile.TemporaryDirectory(prefix="tensorflow_wheel")
   temp_dir_path = temp_dir.name
@@ -505,3 +506,7 @@ if __name__ == "__main__":
     )
   finally:
     temp_dir.cleanup()
+
+
+if __name__ == "__main__":
+  main()
