@@ -296,6 +296,16 @@ TEST(CSRSparseMatrix, DecodeRejectsInvalidComponentValues) {
   }
 }
 
+TEST(CSRSparseMatrix, DecodeRejectsUninitializedBatchPointers) {
+  VariantTensorData data = EncodeValidBatchedMatrix();
+  // A default-constructed tensor is uninitialized and backed by a null buffer;
+  // Decode must reject it instead of dereferencing flat<int32_t>().data() on
+  // the host.
+  data.tensors_[1] = Tensor();
+  CSRSparseMatrix decoded;
+  EXPECT_FALSE(decoded.Decode(data));
+}
+
 }  // namespace
 }  // namespace tensorflow
 

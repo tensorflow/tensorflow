@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -46,7 +47,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
   const int64_t num_rows = (rank == 2) ? dense_shape_vec(0) : dense_shape_vec(1);
   const int64_t num_cols = (rank == 2) ? dense_shape_vec(1) : dense_shape_vec(2);
   if (batch_size < 0 || num_rows < 0 || num_cols < 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return errors::InvalidArgument(absl::StrCat(
         "CSRSparseMatrix::Validate: dense_shape has a negative dimension: ",
         dense_shape.SummarizeValue(5)));
   }
@@ -59,54 +60,64 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
   const int32_t* col_ind = col_indices.flat<int32_t>().data();
 
   // batch_pointers: 0, ..., total_nnz (non-decreasing offsets into the values).
+  // Anchoring at 0 and rejecting any decrease keeps every entry non-negative,
+  // so carry the previous value in a register and drop the redundant < 0 test.
   if (batch_ptr[0] != 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return errors::InvalidArgument(absl::StrCat(
         "CSRSparseMatrix::Validate: batch_pointers[0] = ", batch_ptr[0],
         " but should be 0"));
   }
+  int32_t prev_batch = 0;
   for (int64_t b = 0; b < batch_size; ++b) {
-    if (batch_ptr[b] < 0 || batch_ptr[b + 1] < batch_ptr[b]) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "CSRSparseMatrix::Validate: batch_pointers must be non-negative and "
-          "non-decreasing, saw ",
-          batch_ptr[b], " -> ", batch_ptr[b + 1], " at batch ", b));
+    const int32_t next_batch = batch_ptr[b + 1];
+    if (next_batch < prev_batch) {
+      return errors::InvalidArgument(absl::StrCat(
+          "CSRSparseMatrix::Validate: batch_pointers must be non-decreasing, "
+          "saw ",
+          prev_batch, " -> ", next_batch, " at batch ", b));
     }
+    prev_batch = next_batch;
   }
   if (batch_ptr[batch_size] != total_nnz) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return errors::InvalidArgument(absl::StrCat(
         "CSRSparseMatrix::Validate: batch_pointers[batch_size] = ",
         batch_ptr[batch_size], " but should equal nnz = ", total_nnz));
   }
 
-  // row_pointers: within each batch, 0, ..., nnz(batch) (non-decreasing).
+  // row_pointers: within each batch, 0, ..., nnz(batch) (non-decreasing). Same
+  // reasoning as above: anchored at 0 and non-decreasing implies non-negative.
   for (int64_t b = 0; b < batch_size; ++b) {
     const int64_t base = b * (num_rows + 1);
     const int32_t batch_nnz = batch_ptr[b + 1] - batch_ptr[b];
     if (row_ptr[base] != 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return errors::InvalidArgument(absl::StrCat(
           "CSRSparseMatrix::Validate: row_pointers for batch ", b,
           " should start at 0, saw ", row_ptr[base]));
     }
+    int32_t prev_row = 0;
     for (int64_t r = 0; r < num_rows; ++r) {
-      if (row_ptr[base + r] < 0 || row_ptr[base + r + 1] < row_ptr[base + r]) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "CSRSparseMatrix::Validate: row_pointers must be non-negative and "
-            "non-decreasing, saw ",
-            row_ptr[base + r], " -> ", row_ptr[base + r + 1], " in batch ", b));
+      const int32_t next_row = row_ptr[base + r + 1];
+      if (next_row < prev_row) {
+        return errors::InvalidArgument(absl::StrCat(
+            "CSRSparseMatrix::Validate: row_pointers must be non-decreasing, "
+            "saw ",
+            prev_row, " -> ", next_row, " in batch ", b));
       }
+      prev_row = next_row;
     }
     if (row_ptr[base + num_rows] != batch_nnz) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return errors::InvalidArgument(absl::StrCat(
           "CSRSparseMatrix::Validate: last row_pointer for batch ", b, " = ",
           row_ptr[base + num_rows], " but should equal the batch nnz = ",
           batch_nnz));
     }
   }
 
-  // col_indices: every column index is in [0, num_cols).
+  // col_indices: every column index is in [0, num_cols). A single unsigned
+  // compare folds the negative and >= num_cols cases into one branch.
   for (int64_t i = 0; i < total_nnz; ++i) {
-    if (col_ind[i] < 0 || col_ind[i] >= num_cols) {
-      return absl::InvalidArgumentError(absl::StrCat(
+    if (static_cast<uint64_t>(col_ind[i]) >= static_cast<uint64_t>(num_cols)) {
+      return errors::InvalidArgument(absl::StrCat(
           "CSRSparseMatrix::Validate: column index ", col_ind[i],
           " is outside of the valid range [0, ", num_cols, ")"));
     }

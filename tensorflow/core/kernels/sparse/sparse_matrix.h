@@ -349,16 +349,20 @@ class CSRSparseMatrix {
     Tensor values(p.tensors_[4]);
 
     // ValidateTypesAndShapes and the value checks below read dense_shape and
-    // the index arrays directly on the host (e.g. dense_shape.vec<int64_t>()).
-    // A crafted or custom-pipeline variant could hand us device-resident
-    // tensors, so reject them up front rather than dereference device memory
-    // from host.
-    auto on_device = [](const Tensor& t) {
-      return t.NumElements() > 0 && t.IsInitialized() &&
+    // the index arrays directly on the host (e.g. dense_shape.vec<int64_t>(),
+    // col_indices.flat<int32_t>().data()). A crafted or custom-pipeline variant
+    // could hand us device-resident tensors, or uninitialized ones whose buffer
+    // pointer is null, so reject both up front rather than dereference them from
+    // host.
+    auto is_invalid_for_host_check = [](const Tensor& t) {
+      if (!t.IsInitialized()) return true;
+      return t.NumElements() > 0 &&
              t.GetMemoryType() == AllocatorMemoryType::kDevice;
     };
-    if (on_device(dense_shape) || on_device(batch_pointers) ||
-        on_device(row_pointers) || on_device(col_indices)) {
+    if (is_invalid_for_host_check(dense_shape) ||
+        is_invalid_for_host_check(batch_pointers) ||
+        is_invalid_for_host_check(row_pointers) ||
+        is_invalid_for_host_check(col_indices)) {
       return false;
     }
 
