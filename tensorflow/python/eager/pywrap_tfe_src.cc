@@ -1160,8 +1160,22 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   if (TF_GetCode(status) == TF_OK) return 0;
   const char* msg = TF_Message(status);
   if (exception == nullptr) {
-    PyReaderMutexLock lock(&exception_class_mutex);
-    if (exception_class != nullptr) {
+    PyObject* registered_exception_class = nullptr;
+#ifdef Py_GIL_DISABLED
+    {
+      PyReaderMutexLock lock(&exception_class_mutex);
+      registered_exception_class = exception_class;
+      Py_XINCREF(registered_exception_class);
+    }
+#else
+    registered_exception_class = exception_class;
+#endif
+
+    if (registered_exception_class != nullptr) {
+#ifdef Py_GIL_DISABLED
+      tensorflow::Safe_PyObjectPtr registered_exception_class_ref(
+          registered_exception_class);
+#endif
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
       for (const auto& payload :
            tensorflow::errors::GetPayloads(StatusFromTF_Status(status))) {
@@ -1180,7 +1194,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
         // Consider adding a message explaining this.
         return -1;
       }
-      PyErr_SetObject(exception_class, val.get());
+      PyErr_SetObject(registered_exception_class, val.get());
       return -1;
     } else {
       exception = PyExc_RuntimeError;
@@ -1198,8 +1212,22 @@ int MaybeRaiseExceptionFromStatus(const absl::Status& status,
   if (status.ok()) return 0;
   const char* msg = absl::StatusMessageAsCStr(status);
   if (exception == nullptr) {
-    PyReaderMutexLock lock(&exception_class_mutex);
-    if (exception_class != nullptr) {
+    PyObject* registered_exception_class = nullptr;
+#ifdef Py_GIL_DISABLED
+    {
+      PyReaderMutexLock lock(&exception_class_mutex);
+      registered_exception_class = exception_class;
+      Py_XINCREF(registered_exception_class);
+    }
+#else
+    registered_exception_class = exception_class;
+#endif
+
+    if (registered_exception_class != nullptr) {
+#ifdef Py_GIL_DISABLED
+      tensorflow::Safe_PyObjectPtr registered_exception_class_ref(
+          registered_exception_class);
+#endif
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
       for (const auto& element : tensorflow::errors::GetPayloads(status)) {
         PyDict_SetItem(payloads.get(),
@@ -1209,7 +1237,7 @@ int MaybeRaiseExceptionFromStatus(const absl::Status& status,
       tensorflow::Safe_PyObjectPtr val(
           Py_BuildValue("siO", FormatErrorStatusStackTrace(status).c_str(),
                         status.code(), payloads.get()));
-      PyErr_SetObject(exception_class, val.get());
+      PyErr_SetObject(registered_exception_class, val.get());
       return -1;
     } else {
       exception = PyExc_RuntimeError;

@@ -624,6 +624,78 @@ class TFETest(test_util.TensorFlowTestCase):
       pywrap_tfe.TFE_Py_RegisterExceptionClass(str)
     pywrap_tfe.TFE_Py_RegisterExceptionClass(core._NotOkStatusException)  # pylint: disable=protected-access
 
+  def testConcurrentExceptionRaisingAndRegistration(self):
+    init_started = threading.Event()
+    allow_init_to_finish = threading.Event()
+    init_timed_out = threading.Event()
+    worker_errors = []
+
+    class SlowNotOkStatusException(core._NotOkStatusException):  # pylint: disable=protected-access
+
+      def __init__(self, message, code, payloads):
+        init_started.set()
+        if not allow_init_to_finish.wait(timeout=5.0):
+          init_timed_out.set()
+        super().__init__(message, code, payloads)
+
+    self.addCleanup(
+        lambda: pywrap_tfe.TFE_Py_RegisterExceptionClass(
+            core._NotOkStatusException  # pylint: disable=protected-access
+        )
+    )
+    pywrap_tfe.TFE_Py_RegisterExceptionClass(SlowNotOkStatusException)
+
+    three = constant_op.constant(3)
+    five = constant_op.constant(5)
+
+    def raise_status_error():
+      try:
+        execute(
+            b'Mul',
+            num_outputs=0,
+            inputs=[three, five],
+            attrs=('T', dtypes.int32.as_datatype_enum),
+        )
+      except errors.InvalidArgumentError:
+        pass
+      except Exception as e:  # pylint: disable=broad-exception-caught
+        worker_errors.append(e)
+      else:
+        worker_errors.append(
+            AssertionError('Expected invalid output-count status.')
+        )
+
+    def reregister_exception_class():
+      if not init_started.wait(timeout=10.0):
+        worker_errors.append(
+            AssertionError('Exception class was not instantiated.')
+        )
+        allow_init_to_finish.set()
+        return
+      pywrap_tfe.TFE_Py_RegisterExceptionClass(
+          core._NotOkStatusException  # pylint: disable=protected-access
+      )
+      allow_init_to_finish.set()
+
+    raise_thread = threading.Thread(target=raise_status_error)
+    register_thread = threading.Thread(target=reregister_exception_class)
+    raise_thread.start()
+    register_thread.start()
+
+    raise_thread.join(timeout=10.0)
+    register_thread.join(timeout=10.0)
+
+    self.assertFalse(
+        raise_thread.is_alive() or register_thread.is_alive(),
+        'Exception raising/registration threads deadlocked or exceeded timeout.',
+    )
+    self.assertFalse(
+        init_timed_out.is_set(),
+        'Exception __init__ was blocked by exception-class registration.',
+    )
+    if worker_errors:
+      raise worker_errors[0]
+
   # TODO(agarwal): add tests passing incorrect typed values to attrs.
   def testExecuteBasic(self):
     three = constant_op.constant(3)
