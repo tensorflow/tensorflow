@@ -18,6 +18,7 @@ import os
 
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -1093,6 +1094,11 @@ class RoundingTest(test.TestCase):
     # Simulate no visible GPUs so that op placement cannot be overridden by
     # the GPU runtime or XLA.  This ensures the CPU kernel (with the FTZ/DAZ
     # workaround) is always exercised, even in cwise_ops_test_xla_gpu runs.
+    original_visible_devices = config.get_visible_devices('GPU')
+    config.set_visible_devices([], 'GPU')
+    self.addCleanup(
+        config.set_visible_devices, original_visible_devices, 'GPU')
+
     with test_util.force_cpu():
       # --- Boundary checks ---
       # Empty tensor (N=0): floor must return empty tensor, same dtype/shape.
@@ -1153,6 +1159,11 @@ class RoundingTest(test.TestCase):
     # Simulate no visible GPUs so that op placement cannot be overridden by
     # the GPU runtime or XLA.  This ensures the CPU kernel (with the FTZ/DAZ
     # workaround) is always exercised, even in cwise_ops_test_xla_gpu runs.
+    original_visible_devices = config.get_visible_devices('GPU')
+    config.set_visible_devices([], 'GPU')
+    self.addCleanup(
+        config.set_visible_devices, original_visible_devices, 'GPU')
+
     with test_util.force_cpu():
       # --- double ---
       with self.subTest(dtype=np.float64):
@@ -1221,8 +1232,14 @@ class RoundingTest(test.TestCase):
               self.evaluate(
                   math_ops.floor(np.array([], dtype=dtype))))
           # Boundary: rank-0 scalar (N=1).
+          # Keep scalar_val as a 0-D numpy array (not a Python float).
+          # Calling .item() would extract a C++ double, which passes through
+          # float32 in the bfloat16 Tensor construction path; the host DAZ
+          # flag then flushes the bfloat16 subnormal (-9.18e-41) to -0.0
+          # before the kernel ever sees it.  A 0-D ndarray uses memcpy
+          # directly, preserving the raw 0x8001 bits.
           scalar_val = bits_neg_sub(
-              np.uint16(0x8001)).astype(dtype).item()
+              np.uint16(0x8001)).astype(dtype)
           self.assertEqual(
               -1.0,
               self.evaluate(math_ops.floor(
