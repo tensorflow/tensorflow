@@ -647,24 +647,21 @@ class TFETest(test_util.TensorFlowTestCase):
     )
     pywrap_tfe.TFE_Py_RegisterExceptionClass(SlowNotOkStatusException)
 
-    three = constant_op.constant(3)
-    five = constant_op.constant(5)
+    ctx = context.context()
+    ctx.ensure_initialized()
 
     def raise_status_error():
       try:
-        execute(
-            b'AddN',
-            num_outputs=1,
-            inputs=[three, five],
-            attrs=('T', dtypes.int32.as_datatype_enum, 'N', '2'),
+        pywrap_tfe.TFE_Py_FastPathExecute(
+            ctx, 'DefinitelyNotARegisteredOp', None
         )
-      except errors.InvalidArgumentError:
+      except SlowNotOkStatusException:
         pass
       except Exception as e:  # pylint: disable=broad-exception-caught
         worker_errors.append(e)
       else:
         worker_errors.append(
-            AssertionError('Expected invalid integer attribute status.')
+            AssertionError('Expected unknown-op status exception.')
         )
 
     def reregister_exception_class():
