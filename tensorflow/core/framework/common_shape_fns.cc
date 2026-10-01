@@ -1678,6 +1678,7 @@ absl::Status MatrixDiagV2Shape(shape_inference::InferenceContext* c) {
   // lower_diag_index and upper_diag_index.
   const int32_t input_rank = c->Rank(input_shape);
   if (lower_diag_index < upper_diag_index) {
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(input_shape, 2, &input_shape));
     const int32_t num_diags = c->Value(c->Dim(input_shape, input_rank - 2));
     const int32_t other_dim = c->Value(c->Dim(input_shape, input_rank - 1));
 

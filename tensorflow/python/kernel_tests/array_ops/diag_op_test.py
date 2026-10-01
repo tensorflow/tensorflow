@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
@@ -538,9 +539,9 @@ class MatrixDiagTest(test.TestCase):
   def testInvalidShape(self):
     with self.assertRaisesRegex(ValueError, "must be at least rank 1"):
       array_ops.matrix_diag(0)
-    with self.assertRaisesRegex(ValueError, "must have at least rank 2"):
+    with self.assertRaisesRegex(ValueError, "must be at least rank 2"):
       array_ops.matrix_diag([1, 2], k=[1, 2])
-    with self.assertRaisesRegex(ValueError, "must have at least rank 2"):
+    with self.assertRaisesRegex(ValueError, "must be at least rank 2"):
       array_ops.matrix_diag([1, 2], k=(-1, 1))
 
   @test_util.run_deprecated_v1
@@ -549,6 +550,22 @@ class MatrixDiagTest(test.TestCase):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("diagonal must be at least 1-dim"):
         array_ops.matrix_diag(v).eval(feed_dict={v: 0.0})
+      with self.assertRaisesOpError(
+          "The number of diagonals provided in the input does not match"):
+        array_ops.matrix_diag(v, k=[1, 2]).eval(feed_dict={v: [1.0, 2.0]})
+      with self.assertRaisesOpError(
+          "The number of diagonals provided in the input does not match"):
+        array_ops.matrix_diag(v, k=(-1, 1)).eval(feed_dict={v: [1.0, 2.0]})
+
+  def testMatrixDiagV3MultiDiagRankInvariant(self):
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      gen_array_ops.matrix_diag_v3(
+          diagonal=[1.0, 2.0],
+          k=[1, 2],
+          num_rows=-1,
+          num_cols=-1,
+          padding_value=0.0,
+          align="RIGHT_LEFT")
 
   @test_util.run_deprecated_v1
   def testGrad(self):
