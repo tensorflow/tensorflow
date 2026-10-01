@@ -1269,12 +1269,13 @@ class DevicePlacementValidationTest(test.TestCase):
 
   def setUp(self):
     super().setUp()
-    self._old_soft_placement = context.context().soft_device_placement
-    context.context().soft_device_placement = False
+    old_soft_placement = context.context().soft_device_placement
 
-  def tearDown(self):
-    context.context().soft_device_placement = self._old_soft_placement
-    super().tearDown()
+    def restore():
+      context.context().soft_device_placement = old_soft_placement
+
+    self.addCleanup(restore)
+    context.context().soft_device_placement = False
 
   def testDevicePlacementValidationWithJitCompile(self):
     """Test that jit_compile=True validates tf.device() constraints.

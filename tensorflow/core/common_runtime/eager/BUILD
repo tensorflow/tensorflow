@@ -717,6 +717,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/util:device_name_utils",
     ],
 )
 
