@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for summary V1 audio op."""
 
+from typing import Union
+
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
@@ -69,9 +71,9 @@ class SummaryV1AudioOpTest(test.TestCase):
   def _WriteAudioSummary(
       self,
       tensor: np.ndarray,
-      step: int | np.ndarray = 0,
-      tag: str | np.ndarray = "audio_test",
-      sample_rate: float | np.ndarray = 16000.0,
+      step: Union[int, np.ndarray] = 0,
+      tag: Union[str, np.ndarray] = "audio_test",
+      sample_rate: Union[float, np.ndarray] = 16000.0,
   ) -> None:
     """Helper to call write_audio_summary with standard test parameters."""
     logdir = self.get_temp_dir()
