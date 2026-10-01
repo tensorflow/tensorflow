@@ -228,10 +228,9 @@ struct SparseXentEigenImpl {
     // In float64, p(label) can round to 1 while other class probabilities are
     // still finite. Compute the labeled component from those probabilities so
     // the small gradient signal is retained.
-    // Float64 is only registered on CPU. Do not access device memory from
-    // the host if a GPU specialization is instantiated.
+    // Restrict the host-side correction to the CPU thread-pool device.
     if constexpr (std::is_same<T, double>::value &&
-                  !std::is_same<Device, Eigen::GpuDevice>::value) {
+                  std::is_same<Device, Eigen::ThreadPoolDevice>::value) {
       // Removing the row sum from the labeled gradient retains the negative
       // non-label probability sum without a per-element masking generator.
       To32Bit(scratch).device(d) = To32Bit(backprop).sum(along_class);
