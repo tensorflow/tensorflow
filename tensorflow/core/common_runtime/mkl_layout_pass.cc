@@ -3724,9 +3724,7 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
                         "Unsupported rewrite cause found."
                         "RewriteNode will fail.");
   }
-  if (!ret_status.ok()) {
-    return ret_status;
-  }
+  TF_RETURN_IF_ERROR(ret_status);
 
   // Copy the runtime device assigned from original code to new node.
   new_node->set_assigned_device_name(orig_node->assigned_device_name());
