@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <limits>
 
 #include "tensorflow/core/framework/fake_input.h"
@@ -88,6 +89,30 @@ TEST_F(RaggedTensorToSparseTest, EmptyRows) {
                                test::AsTensor<int>({1, 2, 3, 4, 5, 6}));
   test::ExpectTensorEqual<int64_t>(*GetOutput(kSparseDenseShapeOutput),
                                    test::AsTensor<int64_t>({5, 4}));
+}
+
+TEST_F(RaggedTensorToSparseTest, EmptyValuesRank1) {
+  BuildRaggedTensorToSparseGraph<int>({{0, 0, 0}}, TensorShape({0}), {});
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int64_t>(
+      *GetOutput(kSparseIndicesOutput),
+      test::AsTensor<int64_t>({}, TensorShape({0, 2})));
+  test::ExpectTensorEqual<int>(*GetOutput(kSparseValuesOutput),
+                             test::AsTensor<int>({}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSparseDenseShapeOutput),
+                                 test::AsTensor<int64_t>({2, 0}));
+}
+
+TEST_F(RaggedTensorToSparseTest, EmptyValuesWithInnerZeroDimension) {
+  BuildRaggedTensorToSparseGraph<int>({{0, 2}}, TensorShape({2, 0}), {});
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int64_t>(
+      *GetOutput(kSparseIndicesOutput),
+      test::AsTensor<int64_t>({}, TensorShape({0, 3})));
+  test::ExpectTensorEqual<int>(*GetOutput(kSparseValuesOutput),
+                             test::AsTensor<int>({}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSparseDenseShapeOutput),
+                                 test::AsTensor<int64_t>({1, 2, 0}));
 }
 
 TEST_F(RaggedTensorToSparseTest, EmptyValuesWithLargeDenseSuffix) {

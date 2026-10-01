@@ -59,7 +59,6 @@ class RaggedTensorToSparseOp : public OpKernel {
     //   dimension.
     // - `index_middle` is the index in the last ragged dimension.
     // - `index_suffix` is the index in the dense value dimensions.
-    std::vector<int64_t> index_prefix(rt_nested_splits_len);
     std::vector<std::vector<int64_t>> index_suffixes;
     if (rt_dense_values_in.NumElements() != 0) {
       index_suffixes = MakeIndexSuffixes(rt_dense_values_in.shape());
@@ -77,52 +76,55 @@ class RaggedTensorToSparseOp : public OpKernel {
                                           &sparse_indices_out));
     auto sparse_indices = sparse_indices_out->tensor<int64_t, 2>();
 
-    // pos[i] is the current position in rt_nested_splits[i].  final_pos is a
-    // reference to make it easier to refer to pos[-1].
-    std::vector<int64_t> pos(rt_nested_splits_len);
-    int64_t& final_pos = pos[rt_nested_splits_len - 1];
+    if (nvals > 0) {
+      std::vector<int64_t> index_prefix(rt_nested_splits_len);
+      // pos[i] is the current position in rt_nested_splits[i].  final_pos is a
+      // reference to make it easier to refer to pos[-1].
+      std::vector<int64_t> pos(rt_nested_splits_len);
+      int64_t& final_pos = pos[rt_nested_splits_len - 1];
 
-    // Each iteration through the loop, we increment pos[-1], and add indices
-    // for all the values corresponding to
-    // rt_nested_splits[-1][pos[-1]:pos[-1]+1].
-    int64_t next_index = 0;
-    int64_t max_final_pos = rt_nested_splits.back().size() - 1;
-    for (; final_pos < max_final_pos; ++final_pos) {
-      // Update `pos` to skip over completed elements (i.e., elements where
-      // we have already generated indices for all contained values).
-      for (int dim = rt_nested_splits_len - 2; dim >= 0; --dim) {
-        while (IsCompleted(pos, dim, rt_nested_splits)) {
-          pos[dim] += 1;
+      // Each iteration through the loop, we increment pos[-1], and add indices
+      // for all the values corresponding to
+      // rt_nested_splits[-1][pos[-1]:pos[-1]+1].
+      int64_t next_index = 0;
+      int64_t max_final_pos = rt_nested_splits.back().size() - 1;
+      for (; final_pos < max_final_pos; ++final_pos) {
+        // Update `pos` to skip over completed elements (i.e., elements where
+        // we have already generated indices for all contained values).
+        for (int dim = rt_nested_splits_len - 2; dim >= 0; --dim) {
+          while (IsCompleted(pos, dim, rt_nested_splits)) {
+            pos[dim] += 1;
+          }
+        }
+
+        // Update index_prefix.
+        for (int dim = 0; dim < index_prefix.size(); ++dim) {
+          int64_t start = dim > 0 ? rt_nested_splits[dim - 1](pos[dim - 1]) : 0;
+          index_prefix[dim] = pos[dim] - start;
+        }
+
+        // Get length of the final-ragged-dimension slice.
+        const auto& final_splits = rt_nested_splits[rt_nested_splits_len - 1];
+        int64_t slice_len = final_splits(final_pos + 1) - final_splits(final_pos);
+
+        // Add sparse_indices for this slice.
+        for (int64_t i = 0; i < slice_len; ++i) {
+          for (const auto& index_suffix : index_suffixes) {
+            int dim = 0;
+            for (int64_t index : index_prefix) {  // index_prefix
+              sparse_indices(next_index, dim++) = index;
+            }
+            sparse_indices(next_index, dim++) = i;  // index_middle
+            for (int64_t index : index_suffix) {    // index_suffix
+              sparse_indices(next_index, dim++) = index;
+            }
+            DCHECK_EQ(dim, indices_len);
+            ++next_index;
+          }
         }
       }
-
-      // Update index_prefix.
-      for (int dim = 0; dim < index_prefix.size(); ++dim) {
-        int64_t start = dim > 0 ? rt_nested_splits[dim - 1](pos[dim - 1]) : 0;
-        index_prefix[dim] = pos[dim] - start;
-      }
-
-      // Get length of the final-ragged-dimension slice.
-      const auto& final_splits = rt_nested_splits[rt_nested_splits_len - 1];
-      int64_t slice_len = final_splits(final_pos + 1) - final_splits(final_pos);
-
-      // Add sparse_indices for this slice.
-      for (int64_t i = 0; i < slice_len; ++i) {
-        for (const auto& index_suffix : index_suffixes) {
-          int dim = 0;
-          for (int64_t index : index_prefix) {  // index_prefix
-            sparse_indices(next_index, dim++) = index;
-          }
-          sparse_indices(next_index, dim++) = i;  // index_middle
-          for (int64_t index : index_suffix) {    // index_suffix
-            sparse_indices(next_index, dim++) = index;
-          }
-          DCHECK_EQ(dim, indices_len);
-          ++next_index;
-        }
-      }
+      DCHECK_EQ(next_index, nvals);
     }
-    DCHECK_EQ(next_index, nvals);
 
     // Output the `sparse_values` Tensor.
     if (rt_dense_values_in.dims() == 1) {
