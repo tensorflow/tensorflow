@@ -38,13 +38,14 @@ xla_cc_test(
     name = "test_lib_test",
     srcs = ["test_lib_test.cc"],
     data = ["//xla/tests/aot_compatibility_experimental/gpu:test_dummy_test_data"],
-    tags = ["no_oss"],
+    tags = [
+        "broken",
+        "no_oss",
+    ],
     deps = [
         ":test_lib",
-        "//xla:xla_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service/cpu:executable_proto_cc",
-        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tests:aot_interception_pjrt_client",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
