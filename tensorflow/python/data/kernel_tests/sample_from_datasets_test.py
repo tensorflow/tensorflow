@@ -348,7 +348,8 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Skipping replaces all-zero weights with a float weight, so their dtype
     # has to be checked before.
     weights = _get_weights_of_type(np.asarray([0, 0], np.int32), weights_type)
-    with self.assertRaisesRegex(TypeError, "`tf.float32` or `tf.float64`"):
+    with self.assertRaisesRegex(
+        TypeError, "`tf.float16`, `tf.bfloat16`, `tf.float32` or `tf.float64`"):
       dataset_ops.Dataset.sample_from_datasets(
           [dataset_ops.Dataset.range(10),
            dataset_ops.Dataset.range(20)],
@@ -375,26 +376,22 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsRuntimeZeroWeightsWithCheckNumerics(self):
-    # The callbacks enable_check_numerics() adds are thread-local, and are
-    # removed again below.
+    # The callbacks enable_check_numerics() adds are thread-local.
     check_numerics_callback.enable_check_numerics()
-    try:
+    self.addCleanup(check_numerics_callback.disable_check_numerics)
 
-      @def_function.function(
-          input_signature=[tensor_spec.TensorSpec([2], dtypes.float32)])
-      def count(weights):
-        datasets = [
-            dataset_ops.Dataset.range(3),
-            dataset_ops.Dataset.range(3).repeat()
-        ]
-        sample_dataset = dataset_ops.Dataset.sample_from_datasets(
-            datasets, weights=weights, stop_on_empty_dataset=False)
-        return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.float32)])
+    def count(weights):
+      datasets = [
+          dataset_ops.Dataset.range(3),
+          dataset_ops.Dataset.range(3).repeat()
+      ]
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          datasets, weights=weights, stop_on_empty_dataset=False)
+      return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
 
-      self.assertEqual(self.evaluate(count(constant_op.constant([1., 0.]))),
-                       3)
-    finally:
-      check_numerics_callback.disable_check_numerics()
+    self.assertEqual(self.evaluate(count(constant_op.constant([1., 0.]))), 3)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
@@ -500,7 +497,8 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
            dataset_ops.Dataset.range(20)],
           weights=[0.25, 0.25, 0.25, 0.25])
 
-    with self.assertRaisesRegex(TypeError, "`tf.float32` or `tf.float64`"):
+    with self.assertRaisesRegex(
+        TypeError, "`tf.float16`, `tf.bfloat16`, `tf.float32` or `tf.float64`"):
       dataset_ops.Dataset.sample_from_datasets(
           [dataset_ops.Dataset.range(10),
            dataset_ops.Dataset.range(20)],
