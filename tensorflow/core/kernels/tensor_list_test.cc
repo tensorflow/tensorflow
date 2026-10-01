@@ -221,6 +221,20 @@ TEST(TensorListTest, DecodeRejectsShapeRankMismatchWithMatchingCount) {
   EXPECT_FALSE(TensorList().Decode(data));
 }
 
+TEST(TensorListTest, DecodeRejectsEmptyTensorMismatchedShape) {
+  // A zero-element tensor still has a shape. element_shape [1] and element shape
+  // [0] share no common count and are incompatible, so an empty element must be
+  // rejected just like a non-empty one.
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(1);
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = Tensor(DT_FLOAT, TensorShape({0}));
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
 TEST(TensorListTest, DecodeRejectsOutOfRangeMaxNumElements) {
   TensorShapeProto shape;
   VariantTensorData data;
