@@ -655,8 +655,11 @@ class TFETest(test_util.TensorFlowTestCase):
         pywrap_tfe.TFE_Py_FastPathExecute(
             ctx, 'DefinitelyNotARegisteredOp', None
         )
-      except SlowNotOkStatusException:
-        pass
+      except SlowNotOkStatusException as e:
+        if 'DefinitelyNotARegisteredOp' not in str(e):
+          worker_errors.append(
+              AssertionError('Unexpected error message: %s' % e)
+          )
       except Exception as e:  # pylint: disable=broad-exception-caught
         worker_errors.append(e)
       else:
