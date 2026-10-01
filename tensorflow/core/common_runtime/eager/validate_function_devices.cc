@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/validate_function_devices.h"
 
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -93,7 +92,7 @@ absl::Status ValidateFunctionDeviceConstraintsImpl(
     // visited_functions before the lookup, including negative results for
     // plain ops, so every distinct name is resolved at most once.
     if (flib_def != nullptr) {
-      auto validate_inner = [&](absl::string_view func_name) -> absl::Status {
+      auto validate_inner = [&](const std::string& func_name) -> absl::Status {
         if (!visited_functions.insert(func_name).second) {
           return absl::OkStatus();
         }
