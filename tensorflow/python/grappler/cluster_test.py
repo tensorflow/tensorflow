@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for the swig wrapper of clusters."""
 
+import concurrent.futures
+
 from tensorflow.core.protobuf import device_properties_pb2
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -132,6 +134,28 @@ class ClusterTest(test.TestCase):
       self.assertTrue('Add' in op_names)
       self.assertTrue('MatMul' in op_names)
       self.assertEqual(op_names, sorted(op_names))
+
+  def testConcurrentListDevices(self):
+    cpu_properties = device_properties_pb2.DeviceProperties(
+        type='CPU', frequency=3000, num_cores=8)
+    gpu_properties = device_properties_pb2.DeviceProperties(
+        type='GPU', frequency=1000, num_cores=60)
+    named_cpu = device_properties_pb2.NamedDevice(
+        properties=cpu_properties, name='/CPU:0')
+    named_gpu = device_properties_pb2.NamedDevice(
+        properties=gpu_properties, name='/GPU:0')
+    grappler_cluster = cluster.Cluster(devices=[named_cpu, named_gpu])
+    self.addCleanup(grappler_cluster.Shutdown)
+
+    def list_device_names(_):
+      return sorted(device.name for device in grappler_cluster.ListDevices())
+
+    expected = ['/CPU:0', '/GPU:0']
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+      results = list(executor.map(list_device_names, range(64)))
+
+    for names in results:
+      self.assertEqual(names, expected)
 
   def testSupportDevices(self):
     with ops.Graph().as_default() as g:
