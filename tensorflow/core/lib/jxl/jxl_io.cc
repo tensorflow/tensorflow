@@ -75,10 +75,10 @@ bool DecodeHeader(absl::string_view encoded, int* width, int* height,
     // and the caller then builds a TensorShape from it, which CHECK-fails and
     // aborts the process. The channel bound also leaves room for the alpha
     // channel added below so that sum cannot overflow either.
-    constexpr uint32_t max_int =
+    constexpr uint32_t kMaxInt =
         static_cast<uint32_t>(std::numeric_limits<int>::max());
-    if (info.xsize > max_int || info.ysize > max_int ||
-        info.num_color_channels > max_int - (info.alpha_bits != 0 ? 1 : 0)) {
+    if (info.xsize > kMaxInt || info.ysize > kMaxInt ||
+        info.num_color_channels > kMaxInt - (info.alpha_bits != 0 ? 1 : 0)) {
       return false;
     }
     const uint32_t num_channels =
