@@ -1419,8 +1419,7 @@ absl::Status GetOrCreateKernelAndDevice(
         GetFuncAttr(op, ctx, kXlaMustCompileAttr, &has_xla_must_compile)
             .IgnoreError();
         if (has_xla_must_compile) {
-          const FunctionLibraryDefinition* func_lib = ctx.FuncLibDef();
-          const FunctionDef* fdef = func_lib->Find(op->Name());
+          const FunctionDef* fdef = op->GetFunctionDef();
           if (fdef != nullptr) {
             std::vector<DeviceAttributes> device_attrs;
             ctx.ListDevices(&device_attrs);

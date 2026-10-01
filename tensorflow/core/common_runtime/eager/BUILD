@@ -720,6 +720,20 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "validate_function_devices_test",
+    srcs = ["validate_function_devices_test.cc"],
+    deps = [
+        ":validate_function_devices",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_cc_test(
     name = "execute_test",
     srcs = ["execute_test.cc"],
     deps = [

@@ -1259,16 +1259,16 @@ class FunctionTest(xla_test.XLATestCase):
   def testDevicePlacementValidationWithJitCompile(self):
     """Test that jit_compile=True validates tf.device() constraints.
 
-    When using tf.device() with a non-existent device (e.g., GPU on CPU-only
-    machine), eager execution correctly fails with
+    When using tf.device() with a device that cannot exist (e.g., a
+    nonexistent device type), eager execution correctly fails with
     "Could not satisfy device specification". This test ensures jit_compile=True
     also validates device constraints instead of silently ignoring them.
 
     See https://github.com/tensorflow/tensorflow/issues/124880
     """
-    # Use a device specification that doesn't exist on this machine.
-    # The test runs on CPU, so GPU device should fail.
-    invalid_device = '/job:worker/replica:0/task:0/device:GPU:0'
+    # Use a device type that exists on no machine, so the expectation holds
+    # regardless of whether the test runner has GPUs.
+    invalid_device = '/device:NONEXISTENT:0'
 
     def compute(x):
       with ops.device(invalid_device):
@@ -1278,13 +1278,81 @@ class FunctionTest(xla_test.XLATestCase):
 
     # Eager execution should fail
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                 'Could not satisfy device specification'):
+                                'Could not satisfy device specification'):
       compute(x).numpy()
 
     # jit_compile=True should also fail (this is the fix for #124880)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                 'Could not satisfy device specification'):
+                                'Could not satisfy device specification'):
       polymorphic_function.function(compute, jit_compile=True)(x).numpy()
+
+  def testDevicePlacementValidationInvalidDeviceIdWithJitCompile(self):
+    """Nonexistent device IDs must fail under jit_compile=True.
+
+    A partially-specified constraint with an invalid ID (e.g. 'CPU:99') must
+    not be silently accepted just because the device type exists.
+    """
+
+    def compute(x):
+      with ops.device('/device:CPU:99'):
+        return math_ops.add(x, x)
+
+    x = constant_op.constant([1.0, 2.0])
+
+    # Eager execution should fail
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      compute(x).numpy()
+
+    # jit_compile=True should also fail
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      polymorphic_function.function(compute, jit_compile=True)(x).numpy()
+
+  def testDevicePlacementValidationPartialConstraintWithJitCompile(self):
+    """Valid partial device constraints must pass under jit_compile=True."""
+
+    def compute(x):
+      with ops.device('/job:localhost'):
+        return math_ops.add(x, x)
+
+    x = constant_op.constant([1.0, 2.0])
+
+    # Eager execution succeeds
+    self.assertAllClose(compute(x), [2.0, 4.0])
+
+    # jit_compile=True must also succeed: the partial constraint
+    # '/job:localhost' is satisfied by the local devices.
+    self.assertAllClose(
+        polymorphic_function.function(compute, jit_compile=True)(x), [2.0, 4.0])
+
+  def testDevicePlacementValidationLocalDeviceNamesWithJitCompile(self):
+    """Local device names are validated under jit_compile=True."""
+    x = constant_op.constant([1.0, 2.0])
+
+    def compute_valid(x):
+      with ops.device('CPU:0'):
+        return math_ops.add(x, x)
+
+    # Local name 'CPU:0' resolves to the available CPU device.
+    self.assertAllClose(compute_valid(x), [2.0, 4.0])
+    self.assertAllClose(
+        polymorphic_function.function(compute_valid, jit_compile=True)(x),
+        [2.0, 4.0])
+
+    def compute_invalid(x):
+      with ops.device('CPU:99'):
+        return math_ops.add(x, x)
+
+    # A nonexistent local device ID must fail in both modes.
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      compute_invalid(x).numpy()
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      polymorphic_function.function(
+          compute_invalid, jit_compile=True)(x).numpy()
 
 
 if __name__ == '__main__':

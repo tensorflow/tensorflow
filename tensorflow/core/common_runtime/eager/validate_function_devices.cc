@@ -19,14 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -34,70 +29,57 @@ namespace tensorflow {
 absl::Status ValidateFunctionDeviceConstraints(
     const FunctionDef& fdef,
     const std::vector<DeviceAttributes>& available_devices) {
-  // Build a set of available device types and full device names.
-  std::vector<DeviceType> supported_device_types;
-  std::vector<std::string> available_device_names;
+  // Pre-parse available devices once upfront.
+  std::vector<DeviceNameUtils::ParsedName> parsed_available_devices;
+  parsed_available_devices.reserve(available_devices.size());
   for (const auto& dev : available_devices) {
     DeviceNameUtils::ParsedName parsed;
     if (DeviceNameUtils::ParseFullName(dev.name(), &parsed)) {
-      supported_device_types.push_back(DeviceType(parsed.type));
+      parsed_available_devices.push_back(parsed);
     }
-    available_device_names.push_back(dev.name());
   }
 
   for (const NodeDef& node : fdef.node_def()) {
     const std::string& device = node.device();
     if (device.empty()) {
-      continue;  // No device constraint on this node.
-    }
-
-    DeviceNameUtils::ParsedName parsed_device;
-    if (!DeviceNameUtils::ParseFullName(device, &parsed_device)) {
-      // If the device name can't be parsed, skip it. Other validation passes
-      // will catch malformed device names.
       continue;
     }
 
-    // Check if the requested device type is available.
-    bool device_type_available = false;
-    for (const DeviceType& avail_type : supported_device_types) {
-      if (absl::EqualsIgnoreCase(parsed_device.type, avail_type.type_string())) {
-        device_type_available = true;
+    DeviceNameUtils::ParsedName parsed_device;
+    if (!DeviceNameUtils::ParseFullOrLocalName(device, &parsed_device)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Malformed device specification '", device, "' for operation ",
+          node.name(), " (", node.op(), ")."));
+    }
+
+    if (!DeviceNameUtils::HasSomeDetails(parsed_device)) {
+      continue;
+    }
+
+    // The constraint is satisfied if at least one available device matches
+    // every component specified in the constraint. IsSpecification checks
+    // all specified attributes without requiring the constraint to be fully
+    // specified, so partial constraints (e.g. '/job:localhost') and local
+    // names (e.g. 'CPU:0') are handled uniformly.
+    bool satisfied = false;
+    for (const auto& avail_parsed : parsed_available_devices) {
+      if (DeviceNameUtils::IsSpecification(parsed_device, avail_parsed)) {
+        satisfied = true;
         break;
       }
     }
 
-    if (!device_type_available) {
+    if (!satisfied) {
+      std::vector<std::string> available_device_names;
+      available_device_names.reserve(available_devices.size());
+      for (const auto& dev : available_devices) {
+        available_device_names.push_back(dev.name());
+      }
       return absl::InvalidArgumentError(absl::StrCat(
           "Could not satisfy device specification '", device,
           "' for operation ", node.name(), " (", node.op(),
           "). Available devices [",
           absl::StrJoin(available_device_names, ", "), "]."));
-    }
-
-    // For fully-specified device names, check if an exact match exists.
-    if (parsed_device.has_job && parsed_device.has_replica &&
-        parsed_device.has_task && parsed_device.has_type &&
-        parsed_device.has_id) {
-      bool exact_match = false;
-      for (const auto& dev : available_devices) {
-        DeviceNameUtils::ParsedName avail_parsed;
-        if (DeviceNameUtils::ParseFullName(dev.name(), &avail_parsed)) {
-          if (DeviceNameUtils::IsCompleteSpecification(parsed_device,
-                                                       avail_parsed)) {
-            exact_match = true;
-            break;
-          }
-        }
-      }
-
-      if (!exact_match) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Could not satisfy device specification '", device,
-            "' for operation ", node.name(), " (", node.op(),
-            "). Available devices [",
-            absl::StrJoin(available_device_names, ", "), "]."));
-      }
     }
   }
 
