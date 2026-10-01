@@ -18,7 +18,6 @@ import os
 
 import numpy as np
 
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -1087,60 +1086,53 @@ class RoundingTest(test.TestCase):
     # Simulate no visible GPUs so that op placement cannot be overridden by
     # the GPU runtime or XLA.  This ensures the CPU kernel (with the FTZ/DAZ
     # workaround) is always exercised, even in cwise_ops_test_xla_gpu runs.
-    original_gpus = config.get_visible_devices('GPU')
-    try:
-      config.set_visible_devices([], 'GPU')
+    with test_util.force_cpu():
+      # --- Boundary checks ---
+      # Empty tensor (N=0): floor must return empty tensor, same dtype/shape.
+      empty_out = self.evaluate(
+          math_ops.floor(np.array([], dtype=np.float32)))
+      self.assertAllEqual(np.array([], dtype=np.float32), empty_out)
 
-      with test_util.force_cpu():
-        # --- Boundary checks ---
-        # Empty tensor (N=0): floor must return empty tensor, same dtype/shape.
-        empty_out = self.evaluate(
-            math_ops.floor(np.array([], dtype=np.float32)))
-        self.assertAllEqual(np.array([], dtype=np.float32), empty_out)
+      # Rank-0 scalar tensor (N=1): a negative subnormal must floor to -1.0.
+      scalar_out = self.evaluate(
+          math_ops.floor(
+              constant_op.constant(-1.40129846e-45,
+                                   dtype=dtypes_lib.float32)))
+      self.assertEqual(-1.0, scalar_out)
 
-        # Rank-0 scalar tensor (N=1): a negative subnormal must floor to -1.0.
-        scalar_out = self.evaluate(
-            math_ops.floor(
-                constant_op.constant(-1.40129846e-45,
-                                     dtype=dtypes_lib.float32)))
-        self.assertEqual(-1.0, scalar_out)
+      # --- Scalar / short-array test (skipped on Windows) ---
+      # MSVC flushes negative subnormals to -0.0f through an XMM register
+      # before bit_cast can read the original bits; skip on Windows only.
+      if os.name != 'nt':
+        out = self.evaluate(math_ops.floor(neg_subnormals))
+        self.assertAllEqual(neg_subnormals_exp, out)
 
-        # --- Scalar / short-array test (skipped on Windows) ---
-        # MSVC flushes negative subnormals to -0.0f through an XMM register
-        # before bit_cast can read the original bits; skip on Windows only.
-        if os.name != 'nt':
-          out = self.evaluate(math_ops.floor(neg_subnormals))
-          self.assertAllEqual(neg_subnormals_exp, out)
+      # --- Vectorized (packet) test: runs on all platforms ---
+      # Build an array long enough to fill full SIMD packets (AVX=8-wide,
+      # AVX-512=16-wide) plus a scalar tail.  safe_base is placed first so
+      # that base[:5] (the scalar tail) contains only safe elements — on
+      # Windows this avoids the MSVC scalar-flush issue for the tail, while
+      # the negative subnormals in the full-packet region still exercise
+      # packetOp on all platforms.
+      base = np.concatenate([safe_base, neg_subnormals])
+      base_exp = np.concatenate([safe_expected, neg_subnormals_exp])
 
-        # --- Vectorized (packet) test: runs on all platforms ---
-        # Build an array long enough to fill full SIMD packets (AVX=8-wide,
-        # AVX-512=16-wide) plus a scalar tail.  safe_base is placed first so
-        # that base[:5] (the scalar tail) contains only safe elements — on
-        # Windows this avoids the MSVC scalar-flush issue for the tail, while
-        # the negative subnormals in the full-packet region still exercise
-        # packetOp on all platforms.
-        base = np.concatenate([safe_base, neg_subnormals])
-        base_exp = np.concatenate([safe_expected, neg_subnormals_exp])
+      x = np.concatenate([np.tile(base, 8), base[:5]])
+      expected = np.concatenate([np.tile(base_exp, 8), base_exp[:5]])
 
-        x = np.concatenate([np.tile(base, 8), base[:5]])
-        expected = np.concatenate([np.tile(base_exp, 8), base_exp[:5]])
-
-        for inp, exp in (
-            (x, expected),
-            (np.tile(base, (8, 1)), np.tile(base_exp, (8, 1))),
-        ):
-          out = self.evaluate(math_ops.floor(inp))
-          self.assertAllEqual(exp, out)
-          # assertAllEqual treats -0.0 == +0.0; check sign bits for non-NaN
-          # elements only.  IEEE-754 does not specify sign-bit semantics for
-          # quiet NaNs under arithmetic operations like floor, so SIMD
-          # implementations may not preserve the sign bit of negative NaNs.
-          non_nan_mask = ~np.isnan(exp)
-          self.assertAllEqual(
-              np.signbit(exp[non_nan_mask]), np.signbit(out[non_nan_mask]))
-
-    finally:
-      config.set_visible_devices(original_gpus, 'GPU')
+      for inp, exp in (
+          (x, expected),
+          (np.tile(base, (8, 1)), np.tile(base_exp, (8, 1))),
+      ):
+        out = self.evaluate(math_ops.floor(inp))
+        self.assertAllEqual(exp, out)
+        # assertAllEqual treats -0.0 == +0.0; check sign bits for non-NaN
+        # elements only.  IEEE-754 does not specify sign-bit semantics for
+        # quiet NaNs under arithmetic operations like floor, so SIMD
+        # implementations may not preserve the sign bit of negative NaNs.
+        non_nan_mask = ~np.isnan(exp)
+        self.assertAllEqual(
+            np.signbit(exp[non_nan_mask]), np.signbit(out[non_nan_mask]))
 
   def testFloorAcrossNonFloat32Dtypes(self):
     """Verify floor correctness for all non-float32 registered CPU types.
@@ -1149,109 +1141,120 @@ class RoundingTest(test.TestCase):
     bfloat16.  Each dtype is tested for:
       - negative subnormals flooring to -1.0
       - -0.0 sign preservation
-      - normal value correctness
+      - normal values and IEEE-754 edge cases (inf, nan)
     """
-    original_gpus = config.get_visible_devices('GPU')
-    try:
-      config.set_visible_devices([], 'GPU')
-      with test_util.force_cpu():
-        # --- double ---
-        with self.subTest(dtype=np.float64):
+    # Simulate no visible GPUs so that op placement cannot be overridden by
+    # the GPU runtime or XLA.  This ensures the CPU kernel (with the FTZ/DAZ
+    # workaround) is always exercised, even in cwise_ops_test_xla_gpu runs.
+    with test_util.force_cpu():
+      # --- double ---
+      with self.subTest(dtype=np.float64):
+        # Boundary: empty tensor (N=0).
+        self.assertAllEqual(
+            np.array([], dtype=np.float64),
+            self.evaluate(
+                math_ops.floor(np.array([], dtype=np.float64))))
+        # Boundary: rank-0 scalar (N=1), smallest negative double subnormal.
+        self.assertEqual(
+            -1.0,
+            self.evaluate(math_ops.floor(
+                constant_op.constant(
+                    np.float64(-5e-324), dtype=dtypes_lib.float64))))
+        # Negative subnormals -> -1.0.
+        neg_sub64 = np.array(
+            [-5e-324, -1e-310, -2.2250738585072009e-308],
+            dtype=np.float64)
+        self.assertAllEqual(
+            np.full_like(neg_sub64, -1.0),
+            self.evaluate(math_ops.floor(neg_sub64)))
+        # 2D batched input exercises sharding logic.
+        self.assertAllEqual(
+            np.tile(np.full_like(neg_sub64, -1.0), (4, 1)),
+            self.evaluate(
+                math_ops.floor(np.tile(neg_sub64, (4, 1)))))
+        # Positive subnormals -> +0.0 (sign bit clear).
+        pos_sub64 = np.array([5e-324, 1e-310], dtype=np.float64)
+        out_ps = self.evaluate(math_ops.floor(pos_sub64))
+        self.assertAllEqual(np.zeros_like(pos_sub64), out_ps)
+        self.assertAllEqual(
+            np.signbit(np.zeros_like(pos_sub64)), np.signbit(out_ps))
+        # -0.0 must be preserved.
+        neg_zero64 = np.array([-0.0], dtype=np.float64)
+        out_nz = self.evaluate(math_ops.floor(neg_zero64))
+        self.assertAllEqual(np.signbit(neg_zero64), np.signbit(out_nz))
+        # Normal values and IEEE-754 edge cases.
+        normal64 = np.array(
+            [-1.5, -0.5, 0.0, 0.5, 1.5,
+             np.inf, -np.inf, np.nan],
+            dtype=np.float64)
+        exp64 = np.array(
+            [-2.0, -1.0, 0.0, 0.0, 1.0,
+             np.inf, -np.inf, np.nan],
+            dtype=np.float64)
+        self.assertAllEqual(
+            exp64,
+            self.evaluate(math_ops.floor(normal64)))
+
+      # --- float16 and bfloat16 ---
+      for dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
+        with self.subTest(dtype=dtype):
+          # Helper: create a dtype value from its raw uint16 bit pattern.
+          def _from_bits(b, dt=dtype):
+            return np.frombuffer(
+                np.array(b, dtype=np.uint16).tobytes(), dtype=dt)[0]
+          bits_neg_sub = np.frompyfunc(_from_bits, 1, 1)
+
           # Boundary: empty tensor (N=0).
           self.assertAllEqual(
-              np.array([], dtype=np.float64),
+              np.array([], dtype=dtype),
               self.evaluate(
-                  math_ops.floor(np.array([], dtype=np.float64))))
-          # Boundary: rank-0 scalar (N=1), smallest negative double subnormal.
+                  math_ops.floor(np.array([], dtype=dtype))))
+          # Boundary: rank-0 scalar (N=1).
+          scalar_val = bits_neg_sub(
+              np.uint16(0x8001)).astype(dtype).item()
           self.assertEqual(
               -1.0,
               self.evaluate(math_ops.floor(
-                  constant_op.constant(
-                      np.float64(-5e-324), dtype=dtypes_lib.float64))))
+                  constant_op.constant(scalar_val, dtype=dtype))))
           # Negative subnormals -> -1.0.
-          neg_sub64 = np.array(
-              [-5e-324, -1e-310, -2.2250738585072009e-308],
-              dtype=np.float64)
+          neg_sub = bits_neg_sub(
+              np.array([0x8001, 0x8002, 0x8003], dtype=np.uint16)
+          ).astype(dtype)
+          out_sub = self.evaluate(math_ops.floor(neg_sub))
           self.assertAllEqual(
-              np.full_like(neg_sub64, -1.0),
-              self.evaluate(math_ops.floor(neg_sub64)))
+              np.full(len(neg_sub), -1.0, dtype=dtype), out_sub)
           # 2D batched input exercises sharding logic.
           self.assertAllEqual(
-              np.tile(np.full_like(neg_sub64, -1.0), (4, 1)),
+              np.tile(
+                  np.full(len(neg_sub), -1.0, dtype=dtype), (4, 1)),
               self.evaluate(
-                  math_ops.floor(np.tile(neg_sub64, (4, 1)))))
+                  math_ops.floor(np.tile(neg_sub, (4, 1)))))
           # Positive subnormals -> +0.0 (sign bit clear).
-          pos_sub64 = np.array([5e-324, 1e-310], dtype=np.float64)
-          out_ps = self.evaluate(math_ops.floor(pos_sub64))
-          self.assertAllEqual(np.zeros_like(pos_sub64), out_ps)
+          pos_sub = bits_neg_sub(
+              np.array([0x0001, 0x0002], dtype=np.uint16)
+          ).astype(dtype)
+          out_ps = self.evaluate(math_ops.floor(pos_sub))
+          self.assertAllEqual(np.zeros_like(pos_sub), out_ps)
           self.assertAllEqual(
-              np.signbit(np.zeros_like(pos_sub64)), np.signbit(out_ps))
+              np.signbit(np.zeros_like(pos_sub)),
+              np.signbit(out_ps))
           # -0.0 must be preserved.
-          neg_zero64 = np.array([-0.0], dtype=np.float64)
-          out_nz = self.evaluate(math_ops.floor(neg_zero64))
-          self.assertAllEqual(np.signbit(neg_zero64), np.signbit(out_nz))
-          # Normal values.
-          normal64 = np.array(
-              [-1.5, -0.5, 0.0, 0.5, 1.5], dtype=np.float64)
+          neg_zero = np.array([-0.0], dtype=dtype)
+          out_nz = self.evaluate(math_ops.floor(neg_zero))
           self.assertAllEqual(
-              np.array([-2.0, -1.0, 0.0, 0.0, 1.0], dtype=np.float64),
-              self.evaluate(math_ops.floor(normal64)))
-
-        # --- float16 and bfloat16 ---
-        for dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
-          with self.subTest(dtype=dtype):
-            # Helper: create a dtype value from its raw uint16 bit pattern.
-            def _from_bits(b, dt=dtype):
-              return np.frombuffer(
-                  np.array(b, dtype=np.uint16).tobytes(), dtype=dt)[0]
-            bits_neg_sub = np.frompyfunc(_from_bits, 1, 1)
-
-            # Boundary: empty tensor (N=0).
-            self.assertAllEqual(
-                np.array([], dtype=dtype),
-                self.evaluate(
-                    math_ops.floor(np.array([], dtype=dtype))))
-            # Boundary: rank-0 scalar (N=1).
-            scalar_val = bits_neg_sub(
-                np.uint16(0x8001)).astype(dtype).item()
-            self.assertEqual(
-                -1.0,
-                self.evaluate(math_ops.floor(
-                    constant_op.constant(scalar_val, dtype=dtype))))
-            # Negative subnormals -> -1.0.
-            neg_sub = bits_neg_sub(
-                np.array([0x8001, 0x8002, 0x8003], dtype=np.uint16)
-            ).astype(dtype)
-            out_sub = self.evaluate(math_ops.floor(neg_sub))
-            self.assertAllEqual(
-                np.full(len(neg_sub), -1.0, dtype=dtype), out_sub)
-            # 2D batched input exercises sharding logic.
-            self.assertAllEqual(
-                np.tile(np.full(len(neg_sub), -1.0, dtype=dtype), (4, 1)),
-                self.evaluate(
-                    math_ops.floor(np.tile(neg_sub, (4, 1)))))
-            # Positive subnormals -> +0.0 (sign bit clear).
-            pos_sub = bits_neg_sub(
-                np.array([0x0001, 0x0002], dtype=np.uint16)
-            ).astype(dtype)
-            out_ps = self.evaluate(math_ops.floor(pos_sub))
-            self.assertAllEqual(np.zeros_like(pos_sub), out_ps)
-            self.assertAllEqual(
-                np.signbit(np.zeros_like(pos_sub)),
-                np.signbit(out_ps))
-            # -0.0 must be preserved.
-            neg_zero = np.array([-0.0], dtype=dtype)
-            out_nz = self.evaluate(math_ops.floor(neg_zero))
-            self.assertAllEqual(
-                np.signbit(neg_zero), np.signbit(out_nz))
-            # Normal values.
-            normal_vals = np.array(
-                [-1.5, -0.5, 0.0, 0.5, 1.5], dtype=dtype)
-            self.assertAllEqual(
-                np.array([-2.0, -1.0, 0.0, 0.0, 1.0], dtype=dtype),
-                self.evaluate(math_ops.floor(normal_vals)))
-    finally:
-      config.set_visible_devices(original_gpus, 'GPU')
+              np.signbit(neg_zero), np.signbit(out_nz))
+          # Normal values and IEEE-754 edge cases.
+          normal_vals = np.array(
+              [-1.5, -0.5, 0.0, 0.5, 1.5,
+               np.inf, -np.inf, np.nan],
+              dtype=dtype)
+          exp_vals = np.array(
+              [-2.0, -1.0, 0.0, 0.0, 1.0,
+               np.inf, -np.inf, np.nan],
+              dtype=dtype)
+          self.assertAllEqual(
+              exp_vals,
+              self.evaluate(math_ops.floor(normal_vals)))
 
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64,
