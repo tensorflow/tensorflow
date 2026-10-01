@@ -11,6 +11,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/parallel_interleave_dataset_op.h"
 
+#include <limits>
+
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
@@ -322,7 +324,8 @@ ParallelInterleaveDatasetParams ExcessiveCycleLengthParams() {
       /*node_name=*/kNodeName);
 }
 
-ParallelInterleaveDatasetParams InvalidBlockLengthParams() {
+ParallelInterleaveDatasetParams InvalidBlockLengthParams(
+    int64_t block_length = -1) {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
                                             {0, 1, 2, 3, 4, 5, 6, 7, 8})},
@@ -331,7 +334,7 @@ ParallelInterleaveDatasetParams InvalidBlockLengthParams() {
       tensor_slice_dataset_params,
       /*other_arguments=*/{},
       /*cycle_length=*/1,
-      /*block_length=*/-1,
+      /*block_length=*/block_length,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*buffer_output_elements=*/1,
       /*prefetch_input_elements=*/1,
@@ -370,7 +373,8 @@ ParallelInterleaveDatasetParams InvalidBufferOutputElementsParams() {
       /*node_name=*/kNodeName);
 }
 
-ParallelInterleaveDatasetParams InvalidPrefetchInputElementsParams() {
+ParallelInterleaveDatasetParams InvalidPrefetchInputElementsParams(
+    int64_t cycle_length = 1, int64_t prefetch_input_elements = -1) {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
                                             {0, 1, 2, 3, 4, 5, 6, 7, 8})},
@@ -378,11 +382,11 @@ ParallelInterleaveDatasetParams InvalidPrefetchInputElementsParams() {
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
       /*other_arguments=*/{},
-      /*cycle_length=*/1,
+      /*cycle_length=*/cycle_length,
       /*block_length=*/1,
       /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*buffer_output_elements=*/1,
-      /*prefetch_input_elements=*/-1,
+      /*prefetch_input_elements=*/prefetch_input_elements,
       /*func=*/
       MakeTensorSliceDatasetFunc(
           DataTypeVector({DT_INT64}),
@@ -392,6 +396,18 @@ ParallelInterleaveDatasetParams InvalidPrefetchInputElementsParams() {
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({1})},
       /*node_name=*/kNodeName);
+}
+
+ParallelInterleaveDatasetParams ExcessiveBlockLengthParams() {
+  return InvalidBlockLengthParams(
+      ParallelInterleaveDatasetOp::kMaxCycleLength + 1);
+}
+
+ParallelInterleaveDatasetParams ExcessivePrefetchInputElementsParams(
+    int64_t prefetch_input_elements =
+        ParallelInterleaveDatasetOp::kMaxCycleLength) {
+  return InvalidPrefetchInputElementsParams(/*cycle_length=*/2,
+                                           prefetch_input_elements);
 }
 
 std::vector<GetNextTestCase<ParallelInterleaveDatasetParams>>
@@ -540,8 +556,10 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(ParallelInterleaveDatasetOpTest,
 TEST_F(ParallelInterleaveDatasetOpTest, InvalidArguments) {
   std::vector<ParallelInterleaveDatasetParams> invalid_params = {
       InvalidCycleLengthParams(), ExcessiveCycleLengthParams(),
-      InvalidBlockLengthParams(), InvalidBufferOutputElementsParams(),
-      InvalidPrefetchInputElementsParams()};
+      InvalidBlockLengthParams(), ExcessiveBlockLengthParams(),
+      InvalidBufferOutputElementsParams(), InvalidPrefetchInputElementsParams(),
+      ExcessivePrefetchInputElementsParams(),
+      ExcessivePrefetchInputElementsParams(std::numeric_limits<int64_t>::max())};
   for (auto& dataset_params : invalid_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
               absl::StatusCode::kInvalidArgument);

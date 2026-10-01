@@ -1263,6 +1263,10 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(ctx, block_length > 0,
               absl::InvalidArgumentError("`block_length` must be > 0"));
+  OP_REQUIRES(
+      ctx, block_length <= kMaxCycleLength,
+      absl::InvalidArgumentError(absl::StrCat(
+          "`block_length` must be <= ", kMaxCycleLength)));
 
   if (op_version_ == 1) {
     bool sloppy = false;
@@ -1289,6 +1293,11 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(
       ctx, prefetch_input_elements >= 0,
       absl::InvalidArgumentError("`prefetch_input_elements` must be >= 0"));
+  OP_REQUIRES(
+      ctx, prefetch_input_elements <= kMaxCycleLength - cycle_length,
+      absl::InvalidArgumentError(absl::StrCat(
+          "`cycle_length` + `prefetch_input_elements` must be <= ",
+          kMaxCycleLength)));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,
