@@ -105,7 +105,7 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       # input.
       # A list of bfloat16 scalars can't be converted to a tensor, but an
       # array of them can. A list with tensors in it is converted as is.
-      if not isinstance(weights, tensor.Tensor) and not any(
+      if isinstance(weights, (list, tuple)) and not any(
           isinstance(weight, tensor.Tensor) for weight in weights):
         weights = np.asarray(weights)
       weights = ops.convert_to_tensor(weights, name="weights")
@@ -115,7 +115,7 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
                         f"`tf.float16`, `tf.bfloat16`, `tf.float32` or "
                         f"`tf.float64` but is {weights.dtype}.")
       weights_value = tensor_util.constant_value(weights)
-      if weights_value is not None:
+      if weights_value is not None and not (weights_value > 0).all():
         datasets, weights = _skip_datasets_with_zero_weight(
             datasets, weights_value)
         weights = ops.convert_to_tensor(np.asarray(weights), name="weights")
@@ -126,6 +126,10 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
         datasets, logits = _empty_datasets_with_zero_weight(
             datasets, weights, stop_on_empty_dataset)
       else:
+        # Return before building the logits, which a single dataset doesn't
+        # need.
+        if len(datasets) == 1:
+          return datasets[0]
         logits = math_ops.log(weights, name="logits")
       logits = array_ops.expand_dims(logits, 0)
 
