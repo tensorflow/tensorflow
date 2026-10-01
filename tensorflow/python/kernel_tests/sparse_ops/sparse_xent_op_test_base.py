@@ -227,6 +227,25 @@ class SparseXentOpTestBase(test.TestCase):
       self.assertEqual(single_gradient[0, 0], 0.0)
       self.assertFalse(np.signbit(single_gradient[0, 0]))
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDoubleTailAcrossClassCounts(self):
+    for label_dtype in (np.int32, np.int64):
+      for num_classes in (3, 8, 17, 33):
+        for tail_logit in (20.0, 40.0, 700.0):
+          with self.subTest(label_dtype=label_dtype, num_classes=num_classes,
+                            tail_logit=tail_logit):
+            labels = np.array([0, num_classes // 2, num_classes - 1],
+                              dtype=label_dtype)
+            logits = np.zeros([3, num_classes], dtype=np.float64)
+            logits[np.arange(3), labels] = tail_logit
+            _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+            tail = np.exp(-tail_logit)
+            tail_probability = tail / (1.0 + (num_classes - 1) * tail)
+            expected = np.full_like(logits, tail_probability)
+            expected[np.arange(3), labels] = (
+                -(num_classes - 1) * tail_probability)
+            self.assertAllClose(expected, gradient, rtol=1e-13, atol=0)
+
   def testHalf(self):
     for label_dtype in np.int32, np.int64:
       self._testXent(

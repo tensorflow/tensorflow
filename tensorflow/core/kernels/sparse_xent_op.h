@@ -127,35 +127,6 @@ class SparseXentGradGenerator {
   const Index max_depth_;
 };
 
-// Masks the labeled component before summing non-label gradients.
-template <typename T, typename Index>
-class SparseXentNonLabelGradGenerator {
- public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseXentNonLabelGradGenerator(
-      typename TTypes<const T, 2>::Tensor32Bit gradients,
-      typename TTypes<const Index, 1>::Tensor32Bit labels,
-      const Index max_depth)
-      : gradients_(gradients),
-        labels_(labels),
-        max_depth_(max_depth) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<int, 2>& coords) const {
-    const int batch = coords[0];
-    const int depth = coords[1];
-    const Index label = tensorflow::internal::SubtleMustCopy(labels_(batch));
-    if (!FastBoundsCheck(label, max_depth_)) {
-      return Eigen::NumTraits<T>::quiet_NaN();
-    }
-    return TF_PREDICT_FALSE(depth == label) ? T(0.0) : gradients_(coords);
-  }
-
- private:
-  typename TTypes<const T, 2>::Tensor32Bit gradients_;
-  typename TTypes<const Index, 1>::Tensor32Bit labels_;
-  const Index max_depth_;
-};
-
 }  // namespace generator
 
 namespace functor {
@@ -257,15 +228,14 @@ struct SparseXentEigenImpl {
     // In float64, p(label) can round to 1 while other class probabilities are
     // still finite. Compute the labeled component from those probabilities so
     // the small gradient signal is retained.
-    if (std::is_same<T, double>::value) {
-      generator::SparseXentNonLabelGradGenerator<T, Index> non_label_grad_gen(
-          sparse_xent_helpers::To32BitConst<T>(backprop), To32Bit(labels),
-          backprop.dimension(1) /* max_depth */);
-      To32Bit(scratch).device(d) =
-          To32Bit(backprop).generate(non_label_grad_gen).sum(along_class);
+    // Float64 is only registered on CPU. Do not access device memory from
+    // the host if a GPU specialization is instantiated.
+    if constexpr (std::is_same<T, double>::value &&
+                  !std::is_same<Device, Eigen::GpuDevice>::value) {
+      // Removing the row sum from the labeled gradient retains the negative
+      // non-label probability sum without a per-element masking generator.
+      To32Bit(scratch).device(d) = To32Bit(backprop).sum(along_class);
 
-      // Float64 is only registered on CPU. Update the B labeled entries
-      // directly instead of running another B x C tensor assignment.
       auto backprop_mat = To32Bit(backprop);
       auto labels_vec = To32Bit(labels);
       auto scratch_vec = To32Bit(scratch);
@@ -273,8 +243,7 @@ struct SparseXentEigenImpl {
       for (int b = 0; b < batch_size; ++b) {
         const Index label = tensorflow::internal::SubtleMustCopy(labels_vec(b));
         if (FastBoundsCheck(label, max_depth)) {
-          const T sum = scratch_vec(b);
-          backprop_mat(b, label) = (sum == T(0.0)) ? T(0.0) : -sum;
+          backprop_mat(b, label) -= scratch_vec(b);
         }
       }
     }
