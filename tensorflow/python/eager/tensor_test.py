@@ -396,6 +396,21 @@ class TFETensorTest(test_util.TensorFlowTestCase):
               convert(invalid, dtype=dtypes.uint64)
             self.assertAllEqual(convert(1, dtype=dtypes.uint64), 1)
 
+  def testNumpyIntegerConversionFailure(self):
+    class InvalidInteger(np.int64):
+
+      def __int__(self):
+        raise RuntimeError("integer conversion failed")
+
+    for dtype in (dtypes.int32, dtypes.int64, dtypes.uint64):
+      error = RuntimeError if dtype == dtypes.uint64 else ValueError
+      for value in (InvalidInteger(1), [InvalidInteger(1)],
+                    [[InvalidInteger(1)]]):
+        with self.subTest(dtype=dtype, value=value):
+          with self.assertRaises(error):
+            _create_tensor(value, dtype=dtype)
+          self.assertAllEqual(_create_tensor(1, dtype=dtype), 1)
+
   def testUint64BoundaryValues(self):
     values = [0, 2**63, 2**64 - 1]
     for convert in (_create_tensor, constant_op.constant,

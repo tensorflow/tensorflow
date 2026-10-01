@@ -350,6 +350,7 @@ struct ConverterTraits<int64_t> {
 #else
       Safe_PyObjectPtr as_int = make_safe(PyNumber_Long(v));
 #endif
+      if (TF_PREDICT_FALSE(as_int == nullptr)) return ErrorConverting;
       return ConvertScalar(as_int.get(), out);
     }
     if (IsPyFloat(v)) return ErrorFoundFloat;
@@ -432,6 +433,7 @@ struct ConverterTraits<int32_t> {
 #else
       Safe_PyObjectPtr as_int = make_safe(PyNumber_Long(v));
 #endif
+      if (TF_PREDICT_FALSE(as_int == nullptr)) return ErrorConverting;
       return ConvertScalar(as_int.get(), out);
     } else if (IsPyFloat(v)) {
       return ErrorFoundFloat;
