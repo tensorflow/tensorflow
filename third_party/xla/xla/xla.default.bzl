@@ -67,7 +67,6 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla/service:metrics_proto_cc_impl"),
     Label("//xla/service/gpu:backend_configs_cc_impl"),
     Label("//xla/service/gpu/model:hlo_op_profile_proto_cc_impl"),
-    Label("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
     Label("//xla/stream_executor:device_description_proto_cc_impl"),
     Label("//xla/stream_executor:stream_executor_impl"),
     Label("//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl"),

@@ -31,7 +31,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/AsmParser/Parser.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/InstIterator.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
@@ -39,12 +43,13 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -90,7 +95,8 @@ constexpr absl::string_view kUnoptimizedIr = R"(
 
 // Parses the LLVM IR into a ThreadSafeModule.
 static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
-    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name) {
+    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name,
+    absl::string_view memory_region_name = "ir_compiler_test") {
   llvm::SMDiagnostic diagnostic;
   llvm::MemoryBufferRef ir_buffer(ir, name);
 
@@ -100,7 +106,7 @@ static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
                     diagnostic.getMessage().str());
   }
 
-  SetModuleMemoryRegionName(*m, "ir_compiler_test");
+  SetModuleMemoryRegionName(*m, memory_region_name);
 
   return m;
 }
@@ -189,10 +195,10 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
       << non_vectorized_module_ir;
 
   EXPECT_THAT(vectorized_module_ir,
-              ::testing::ContainsRegex("fadd <[0-9]+ x float>"))
+              ::testing::ContainsRegex("fadd contract <[0-9]+ x float>"))
       << vectorized_module_ir;
-  EXPECT_THAT(non_vectorized_module_ir,
-              ::testing::Not(::testing::ContainsRegex("fadd <[0-9]+ x float>")))
+  EXPECT_THAT(non_vectorized_module_ir, ::testing::Not(::testing::ContainsRegex(
+                                            "fadd contract <[0-9]+ x float>")))
       << non_vectorized_module_ir;
 }
 
@@ -279,6 +285,19 @@ TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
             "+foo-feature,-bar-feature");
 }
 
+TEST(IrCompilerTest, InferTargetMachineWithEmptyTriple) {
+  ASSERT_OK_AND_ASSIGN(
+      TargetMachineOptions target_machine_options,
+      TargetMachineOptions::FromProto(TargetMachineOptionsProto()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<llvm::TargetMachine> target_machine,
+      IrCompiler::InferTargetMachine(llvm::TargetOptions(),
+                                     llvm::CodeGenOptLevel::Default,
+                                     target_machine_options));
+  EXPECT_EQ(target_machine->getTargetTriple().getTriple(),
+            llvm::sys::getProcessTriple());
+}
+
 TEST(IrCompilerTest, EmitIntrinsicCall) {
   constexpr absl::string_view kModuleName = "test_module";
   constexpr absl::string_view kMemcpyCall = R"(
@@ -318,6 +337,84 @@ TEST(IrCompilerTest, EmitIntrinsicCall) {
   EXPECT_THAT(ir, ::testing::Not(::testing::HasSubstr("store i8")));
 }
 
+// IR with one of every floating point opcode we care about, and deliberately
+// no fast-math flags. Every value feeds the returned one so that nothing is
+// folded away or removed as dead.
+constexpr absl::string_view kFpArithmeticIr = R"(
+  define float @fp_arithmetic(float %a, float %b, double %c) {
+  entry:
+    %mul = fmul float %a, %b
+    %add = fadd float %mul, %b
+    %sub = fsub float %add, %a
+    %div = fdiv float %sub, %b
+    %trunc = fptrunc double %c to float
+    %result = fdiv float %div, %trunc
+    ret float %result
+  }
+)";
+
+// XLA:CPU gets all of its FMA contraction from the `contract` fast-math flag
+// that IrCompiler stamps onto every fadd/fsub/fmul after running the IR
+// pipeline. If the positive half of this test fails, CPU codegen has silently
+// stopped forming FMAs; fix the compiler, not the test.
+//
+// The negative half pins the deliberate restriction to those three opcodes:
+// `contract` on fp_round/fp_extend would unlock DAGCombiner folds (double
+// fp_round collapse, eliminateFPCastPair) that the old
+// `TargetOptions::AllowFPOpFusion` gate never allowed, so widening the opcode
+// set is a real behavior change and not a cleanup.
+TEST(IrCompilerTest, MarksOnlyFpAddSubMulAsContractable) {
+  llvm::LLVMContext context;
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      compilation_hooks);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<llvm::Module> ir_module,
+      ParseModule(context, kFpArithmeticIr, "fp_arithmetic_module"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<llvm::TargetMachine> target_machine,
+                       ir_compiler->build_target_machine());
+
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  cantFail((*ir_compiler)(*ir_module));
+
+  int num_contractable = 0;
+  int num_non_contractable = 0;
+  for (llvm::Function& function : *ir_module) {
+    for (llvm::Instruction& instruction : llvm::instructions(function)) {
+      switch (instruction.getOpcode()) {
+        case llvm::Instruction::FAdd:
+        case llvm::Instruction::FSub:
+        case llvm::Instruction::FMul:
+          ++num_contractable;
+          EXPECT_TRUE(instruction.hasAllowContract())
+              << llvm_ir::DumpToString(&instruction);
+          break;
+        case llvm::Instruction::FDiv:
+        case llvm::Instruction::FPTrunc:
+        case llvm::Instruction::FPExt:
+          ++num_non_contractable;
+          EXPECT_FALSE(instruction.hasAllowContract())
+              << llvm_ir::DumpToString(&instruction);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  // Guard against the module being optimized down to nothing, which would make
+  // both expectations above vacuous.
+  EXPECT_EQ(num_contractable, 3) << llvm_ir::DumpToString(ir_module.get());
+  EXPECT_GE(num_non_contractable, 1) << llvm_ir::DumpToString(ir_module.get());
+}
+
 class IrCompilerParameterizedTest
     : public ::testing::TestWithParam<std::string> {};
 
@@ -352,6 +449,89 @@ INSTANTIATE_TEST_SUITE_P(IrCompilerParameterizedTestInstantiation,
                          IrCompilerParameterizedTest,
                          ::testing::Values("x86_64-grtev4-linux-gnu",
                                            "aarch64-unknown-linux-gnu"));
+
+TEST(IrCompilerTest, EmitsBufferIdentifierWithCoarseAndUniqueNames) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(llvm::TargetOptions(), IrCompiler::Options(),
+                         IrCompiler::CompilationHooks());
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module, ParseModule(*context, kUnoptimizedIr,
+                                                   "unique_kernel_module_name",
+                                                   "coarse_emitter_fusion"));
+
+  ASSERT_OK_AND_ASSIGN(auto target_machine,
+                       ir_compiler->build_target_machine());
+
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+
+  auto memory_buffer = cantFail((*ir_compiler)(*ir_module));
+  ASSERT_NE(memory_buffer, nullptr);
+
+  absl::string_view buffer_identifier = memory_buffer->getBufferIdentifier();
+  EXPECT_EQ(ExtractMemoryRegionName(buffer_identifier),
+            "coarse_emitter_fusion");
+  EXPECT_EQ(ExtractModuleIdentifier(buffer_identifier),
+            "unique_kernel_module_name");
+}
+
+TEST(ObjectBufferIdentifierTest, EncodeAndExtract) {
+  std::string encoded =
+      EncodeBufferIdentifier("my_region", "unique_module_123");
+  EXPECT_EQ(ExtractMemoryRegionName(encoded), "my_region");
+  EXPECT_EQ(ExtractModuleIdentifier(encoded), "unique_module_123");
+
+  // Backward compatibility with raw / un-delimited identifiers.
+  EXPECT_EQ(ExtractMemoryRegionName("legacy_region"), "legacy_region");
+  EXPECT_EQ(ExtractModuleIdentifier("legacy_region"), "legacy_region");
+  EXPECT_EQ(ExtractMemoryRegionName(""), "");
+  EXPECT_EQ(ExtractModuleIdentifier(""), "");
+}
+
+// Compiles the given LLVM IR using IrCompiler and returns the modified module.
+static absl::StatusOr<std::unique_ptr<llvm::Module>> CompileIr(
+    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name,
+    IrCompiler::Options options = IrCompiler::Options()) {
+  ABSL_ASSIGN_OR_RETURN(auto ir_module, ParseModule(context, ir, name));
+  IrCompiler::CompilationHooks hooks;
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(llvm::TargetOptions(), options, hooks);
+  ABSL_ASSIGN_OR_RETURN(auto target_machine, ir_compiler->build_target_machine());
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  if (llvm::Error err = (*ir_compiler)(*ir_module).takeError()) {
+    return Internal("IrCompiler failed: %s", llvm::toString(std::move(err)));
+  }
+  return ir_module;
+}
+
+TEST(IrCompilerTest, DataFlowSanitizerInstrumentsPolynomialApproximations) {
+  constexpr absl::string_view kExpIr = R"(
+  declare float @llvm.exp.f32(float)
+
+  define float @test_exp(float %x) {
+    %res = call float @llvm.exp.f32(float %x)
+    ret float %res
+  }
+  )";
+
+  llvm::LLVMContext context;
+  IrCompiler::Options options{
+      /*opt_level=*/llvm::CodeGenOptLevel::None,
+      /*optimize_for_size=*/false,
+      TargetMachineOptions(kTargetTripleForHost, kTargetCpuForHost, ""),
+  };
+  options.dfsan_enabled = true;
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module,
+                       CompileIr(context, kExpIr, "test_exp_module", options));
+
+  auto ir = llvm_ir::DumpToString(ir_module.get());
+  EXPECT_THAT(ir, HasSubstr("@test_exp.dfsan"));
+  EXPECT_THAT(ir, HasSubstr("fmul contract"));
+  EXPECT_THAT(ir, HasSubstr("store i8 %1, ptr @__dfsan_retval_tls"));
+}
 
 }  // namespace
 

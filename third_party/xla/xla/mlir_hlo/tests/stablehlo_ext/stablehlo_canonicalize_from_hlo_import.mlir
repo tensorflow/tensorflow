@@ -216,3 +216,26 @@ func.func @while_op_original_value_index_shifting(
   }
   return %1#0, %1#2, %1#3 : tensor<10xf32>, tensor<10xf32>, tensor<10xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @concatenate_single_operand
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2x4xf32>) -> tensor<2x4xf32>
+func.func @concatenate_single_operand(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK-NOT: stablehlo.concatenate
+  // CHECK: return %[[ARG0]] : tensor<2x4xf32>
+  %0 = stablehlo.concatenate %arg0, dim = 0 : (tensor<2x4xf32>) -> tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @concatenate_remove_empty
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<0x4xf32>) -> tensor<2x4xf32>
+func.func @concatenate_remove_empty(%arg0: tensor<2x4xf32>, %arg1: tensor<0x4xf32>) -> tensor<2x4xf32> {
+  // CHECK-NOT: stablehlo.concatenate
+  // CHECK: return %[[ARG0]] : tensor<2x4xf32>
+  %0 = stablehlo.concatenate %arg0, %arg1, dim = 0 : (tensor<2x4xf32>, tensor<0x4xf32>) -> tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+

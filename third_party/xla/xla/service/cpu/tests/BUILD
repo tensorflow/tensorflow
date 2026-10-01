@@ -104,22 +104,6 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
-    name = "cpu_external_constants_test",
-    srcs = ["cpu_external_constants_test.cc"],
-    deps = [
-        ":cpu_pjrt_codegen_test",
-        "//xla:array2d",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/cpu:cpu_options",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:test",
-    ],
-)
-
 xla_test(
     name = "cpu_noalias_test",
     srcs = ["cpu_noalias_test.cc"],
@@ -186,7 +170,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",
@@ -286,10 +270,12 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service:llvm_compiler",
         "//xla/service:platform_util",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:cpu_compiler",
         "//xla/stream_executor:platform",
         "//xla/tests:codegen_utils",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -301,7 +287,6 @@ xla_cc_test(
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-        "@tsl//tsl/platform",
         "@tsl//tsl/platform:platform_port",
     ],
 )
@@ -394,8 +379,6 @@ xla_test(
     backends = ["cpu"],
     deps = [
         "//xla:literal",
-        "//xla/service/cpu:fusion_wrapper",
-        "//xla/service/cpu:target_machine_features_stub",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

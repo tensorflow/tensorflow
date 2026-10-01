@@ -24,12 +24,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -58,7 +60,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -335,8 +336,8 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
     inputs.push_back(std::move(input_data));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto results, RunKernel<float>(executors, inputs, ReductionKind::SUM));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       RunKernel<float>(executors, inputs, ReductionKind::SUM));
 
   const Literal expected_output_literal =
       LiteralUtil::CreateFromArray<float>(expected_output);
@@ -376,7 +377,7 @@ TEST_P(AllReduceKernelTest, KernelTestAddBF16) {
     inputs.push_back(std::move(input_data));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto results, RunKernel<bfloat16>(executors, inputs, ReductionKind::SUM));
 
   for (int i = 0; i < kNumRanks; ++i) {
@@ -413,8 +414,8 @@ TEST_P(AllReduceKernelTest, KernelTestOrPred) {
 
   // There are no logical operations in all-reduce reduction kind, so OR is
   // simulated with MAX on uint8.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto results, RunKernel<bool>(executors, inputs, ReductionKind::MAX));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       RunKernel<bool>(executors, inputs, ReductionKind::MAX));
 
   for (int i = 0; i < kNumRanks; ++i) {
     EXPECT_EQ(results[i], expected_output);
@@ -477,8 +478,8 @@ TEST_F(AllReduceHloTest, DefaultDeviceAssnWithHloRunner) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   Literal input = LiteralUtil::CreateR1<float>(std::vector<float>(1, 2));
 
   EXPECT_THAT(test_runner().Execute(std::move(module), {std::move(input)}),

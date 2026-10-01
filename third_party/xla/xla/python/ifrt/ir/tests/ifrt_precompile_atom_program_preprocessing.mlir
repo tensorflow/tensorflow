@@ -29,7 +29,7 @@ module @call_twice {
     return %1 : !array
   }
 
-  // CHECK: module @[[MODULE]] attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE]] <sym_visibility = "private">
   // CHECK: func.func @main
   // CHECK:  %arg0: tensor<2x2xi32>
   // CHECK-SDY-NOT: mhlo.sharding
@@ -38,9 +38,8 @@ module @call_twice {
   // CHECK-SDY-NOT:  mhlo.sharding
   // CHECK-MHLO: mhlo.sharding = "{devices=[2,1]<=[2]}"}
   // CHECK-NOT: ifrt
-  module @add_one attributes {
+  module @add_one <sym_visibility = "private"> attributes {
         ifrt.num_devices = 2,
-        sym_visibility = "private",
         ifrt.compile_options_key = "test_override"} {
     func.func @main(%arg0: tensor<2x2xi32> {
         ifrt.sharding = #sharding, ifrt.devices = #ifrt<devices[0, 1]>

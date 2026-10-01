@@ -465,7 +465,10 @@ def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,m
   if axis < 0:
     axis += a.ndim
 
-  assert axis >= 0 and axis < a.ndim
+  if axis < 0 or axis >= a.ndim:
+    raise ValueError(
+        f'Argument `axis` is out of bounds for input of rank {a.ndim}.'
+    )
 
   # `tf.boolean_mask` requires `a`'s size along `axis` to equal `condition`'s
   # length. `np.compress` instead pairs `condition[k]` with `a[k]` along `axis`
@@ -522,8 +525,19 @@ def cumprod(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   if axis is None:
     a = ravel(a)
     axis = 0
-  elif axis < 0:
-    axis += array_ops.rank(a)
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
+    elif axis < 0:
+      axis += array_ops.rank(a)
   return math_ops.cumprod(a, axis)
 
 
@@ -539,8 +553,19 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   if axis is None:
     a = ravel(a)
     axis = 0
-  elif axis < 0:
-    axis += array_ops.rank(a)
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
+    elif axis < 0:
+      axis += array_ops.rank(a)
   return math_ops.cumsum(a, axis)
 
 
@@ -595,6 +620,30 @@ def _reduce(
   if keepdims is None:
     keepdims = False
   a = asarray(a, dtype=dtype)
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error.
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and axis is not None:
+    # Wrap scalar axes into a sequence so both ints and sequences of ints
+    # are validated; 0-d NumPy arrays cannot be iterated directly.
+    if isinstance(axis, (int, np.integer)):
+      static_axes = (axis,)
+    elif isinstance(axis, np.ndarray) and axis.ndim == 0:
+      static_axes = (int(axis),)
+    elif isinstance(axis, (list, tuple, range, np.ndarray)):
+      static_axes = axis
+    else:
+      static_axes = None
+    if static_axes is not None and builtins.all(
+        isinstance(ax, (int, np.integer)) for ax in static_axes
+    ):
+      for ax in static_axes:
+        normalized = ax + maybe_rank if ax < 0 else ax
+        if normalized < 0 or normalized >= maybe_rank:
+          raise ValueError(
+              f'Argument `axis` (received axis={ax}) is out of bounds '
+              f'for input of rank {maybe_rank}.'
+          )
   if (
       dtype == np.bool_ or preserve_bool and a.dtype == np.bool_
   ) and tf_bool_fn is not None:
@@ -908,6 +957,19 @@ def _reshape_method_wrapper(a, *newshape, **kwargs):
 @np_utils.np_doc('expand_dims')
 def expand_dims(a, axis):
   a = asarray(a)
+
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+    # Match np.expand_dims behavior: raise a ValueError at trace time for
+    # an out-of-bounds axis instead of letting the underlying op produce an
+    # opaque error deeper in the stack.
+    normalized = axis + maybe_rank + 1 if axis < 0 else axis
+    if normalized < 0 or normalized > maybe_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+
   return array_ops.expand_dims(a, axis=axis)
 
 
@@ -938,8 +1000,37 @@ def flatten(a, order='C'):
 @np_utils.np_doc('transpose')
 def transpose(a, axes=None):
   a = asarray(a)
+
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and isinstance(axes, (tuple, list)):
+    # Match np.transpose behavior: raise a ValueError at trace time for
+    # invalid `axes` instead of letting the underlying op produce an
+    # opaque error deeper in the stack. Duplicate detection uses a single
+    # integer bitmask (no intermediate list/set allocations), and only
+    # runs when the static rank and Python-int entries are known.
+    if len(axes) != maybe_rank:
+      raise ValueError(
+          f"axes don't match array. Expected {maybe_rank} axes, got "
+          f'{len(axes)}.'
+      )
+    normalized_mask = 0
+    for ax in axes:
+      if isinstance(ax, (int, np.integer)):
+        normalized = ax + maybe_rank if ax < 0 else ax
+        if normalized < 0 or normalized >= maybe_rank:
+          raise ValueError(
+              f"Argument 'axes' (received axes={ax}) is out of bounds for "
+              f'array of rank {maybe_rank}.'
+          )
+        bit = 1 << normalized
+        if normalized_mask & bit:
+          raise ValueError('repeated axis in transpose')
+        normalized_mask |= bit
+
   if axes is not None:
-    axes = asarray(axes)
+    # Specify an integer dtype explicitly: asarray([]) would otherwise
+    # infer float64, which the Transpose op's `Tperm` attr rejects.
+    axes = asarray(axes, dtype=np.int32)
   return array_ops.transpose(a=a, perm=axes)
 
 
@@ -1131,6 +1222,17 @@ def take(a, indices, axis=None, out=None, mode='clip'):
   if axis is None:
     a = array_ops.reshape(a, [-1])
     axis = 0
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
 
   axis_size = array_ops.shape(a, out_type=indices.dtype)[axis]
   if mode == 'clip':
@@ -1290,6 +1392,20 @@ def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
   unwrapped_arrays = [
       a if isinstance(a, np_arrays.ndarray) else a for a in arrays
   ]
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error. `axis` is an insertion
+  # position, so rank itself is in bounds (NumPy 2.x allows axis == rank).
+  if arrays:
+    maybe_rank = asarray(unwrapped_arrays[0]).shape.rank
+    if (
+        maybe_rank is not None
+        and isinstance(axis, (int, np.integer))
+        and not -maybe_rank - 1 <= axis <= maybe_rank
+    ):
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
   return asarray(array_ops_stack.stack(unwrapped_arrays, axis))
 
 
@@ -1557,6 +1673,41 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.rot90', v1=[])
 @np_utils.np_doc('rot90')
 def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
+  m = asarray(m)
+
+  maybe_rank = m.shape.rank
+  if isinstance(axes, (tuple, list, range, np.ndarray)):
+    # Validate the sequence length even when the static rank is unknown:
+    # otherwise invalid lengths only surface as unpacking errors further
+    # down.
+    if len(axes) != 2:
+      raise ValueError('len(axes) must be 2.')
+    if maybe_rank is not None:
+      # Direct scalar checks on the green path (no intermediate list, no
+      # generator expressions). NumPy checks for duplicate axes before
+      # out-of-range axes; `abs(ax0 - ax1) == maybe_rank` catches
+      # mixed-sign duplicates such as (0, -3) on a rank-3 array.
+      ax0, ax1 = axes[0], axes[1]
+      if isinstance(ax0, (int, np.integer)) and isinstance(
+          ax1, (int, np.integer)
+      ):
+        # Convert to Python int before arithmetic: NumPy unsigned scalars
+        # (e.g. np.uint32) perform modular subtraction, so `ax0 - ax1`
+        # would wrap around (e.g. 0 - 1 -> 4294967295) and both the
+        # duplicate check and the bounds check would misbehave.
+        ax0, ax1 = int(ax0), int(ax1)
+        if ax0 == ax1 or abs(ax0 - ax1) == maybe_rank:
+          raise ValueError('Axes must be different.')
+        if (
+            ax0 < -maybe_rank
+            or ax0 >= maybe_rank
+            or ax1 < -maybe_rank
+            or ax1 >= maybe_rank
+        ):
+          raise ValueError(
+              f'Axes={tuple(axes)} out of range for array of ndim={maybe_rank}.'
+          )
+
   m_rank = array_ops.rank(m)
   ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
 
@@ -1611,9 +1762,14 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     delta = -1
 
   x = array_ops.expand_dims(x, -1)
-  return math_ops.pow(
-      x, math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
+  exponents = math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
+  # Avoid 0.0 ** 0.0 in pow, whose gradient evaluates 0 * 0^(-1) = 0 * inf = NaN.
+  # Since x^0 == 1 has zero derivative with respect to x, substituting 1 for x
+  # where exponent == 0 preserves both forward values and exact derivatives.
+  safe_x = array_ops.where_v2(
+      math_ops.equal(exponents, 0), constant_op.constant(1, dtype=x.dtype), x
   )
+  return math_ops.pow(safe_x, exponents)
 
 
 @tf_export.tf_export('experimental.numpy.ix_', v1=[])

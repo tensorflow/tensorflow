@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -126,9 +125,9 @@ class GeneralizeTopk : public HloModulePass {
 };
 
 void ToSortAndSlice(HloModule* module) {
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, GeneralizeTopk().Run(module));
+  ASSERT_OK_AND_ASSIGN(bool changed, GeneralizeTopk().Run(module));
   ASSERT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(module));
+  ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(module));
   ASSERT_TRUE(changed);
 }
 
@@ -140,9 +139,9 @@ TEST_P(TopkTest, ProducesCorrectResult) {
   }
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
-                          TopkHlo(n, k, batch_size, dtype));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                       TopkHlo(n, k, batch_size, dtype));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       TopkSpecializer(device_description().gpu_compute_capability())
           .Run(topk_module.get()));
@@ -232,8 +231,11 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
     }
   )";
 
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo));
+                       ParseAndReturnVerifiedModule(hlo, config));
 
   if (!device_description().gpu_compute_capability().IsCuda()) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
@@ -267,7 +269,7 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,1024]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
 
 // 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, {{.*}} backend_config={is_stable = false}
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, {{.*}} backend_config={is_stable = false}
 
 // 5. Unpack U64 -> U32
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -307,8 +309,11 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
     }
   )";
 
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo));
+                       ParseAndReturnVerifiedModule(hlo, config));
 
   if (!device_description().gpu_compute_capability().IsCuda()) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
@@ -343,7 +348,7 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,65540]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
 
 // 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, {{.*}} backend_config={is_stable = false}
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, {{.*}} backend_config={is_stable = false}
 
 // 5. Unpack U64 -> U32
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -364,6 +369,38 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
   ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                        RunFileCheck(module->ToString(), check_pattern));
   EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(TopkTest, RewriteStableTopKDisabledByDefault) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    ENTRY top_k {
+      arg = f32[8,1024] parameter(0)
+      ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

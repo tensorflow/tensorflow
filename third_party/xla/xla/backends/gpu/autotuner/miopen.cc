@@ -276,22 +276,15 @@ bool MIOpenBackend::IsSupported(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> MIOpenBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  if (IsSupported(instr)) {
-    auto config = std::make_unique<BackendConfig>();
-    config->mutable_algorithm()->set_algo_id(0);
-    return config;
-  }
-  return absl::InvalidArgumentError(
-      "MIOpen backend doesn't support getting a default config for this "
-      "instruction.");
+  return absl::UnimplementedError(
+      "MIOpen backend doesn't support getting a default config");
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
-                                const HloModule* module,
-                                se::StreamExecutor* stream_executor,
-                                se::DeviceAddressAllocator* allocator,
-                                se::Stream* stream) {
+MIOpenBackend::GetConvolutionCustomCallConfigs(
+    const HloCustomCallInstruction* instr, const HloModule* module,
+    se::StreamExecutor* stream_executor, se::DeviceAddressAllocator* allocator,
+    se::Stream* stream) {
   if (stream_executor == nullptr) {
     return absl::InvalidArgumentError("Null stream executor is not supported.");
   }
@@ -357,7 +350,7 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
       gpu_conv_config.filter_descriptor, gpu_conv_params.filter_buf,
       gpu_conv_config.output_descriptor, gpu_conv_params.output_buf,
       gpu_conv_config.conv_desc,
-      /* use_fallback = */ false, &scratch_allocator, engine_options,
+      /* use_fallback = */ do_not_autotune_, &scratch_allocator, engine_options,
       &conv_runners));
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
@@ -373,10 +366,10 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-GetFusedConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
-                                     const HloModule* module,
-                                     se::StreamExecutor* stream_executor,
-                                     se::DeviceAddressAllocator* allocator) {
+MIOpenBackend::GetFusedConvolutionCustomCallConfigs(
+    const HloCustomCallInstruction* instr, const HloModule* module,
+    se::StreamExecutor* stream_executor,
+    se::DeviceAddressAllocator* allocator) {
   if (stream_executor == nullptr) {
     return absl::InvalidArgumentError("Null stream executor is not supported.");
   }
@@ -451,13 +444,6 @@ MIOpenBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return GetFusedConvolutionCustomCallConfigs(custom_call_instr,
                                                 custom_call_instr->GetModule(),
                                                 stream_executor(), allocator_);
-  }
-
-  if (do_not_autotune_) {
-    ABSL_ASSIGN_OR_RETURN(auto default_config, GetDefaultConfig(instr));
-    std::vector<std::unique_ptr<BackendConfig>> configs;
-    configs.push_back(std::move(default_config));
-    return std::move(configs);
   }
 
   return GetConvolutionCustomCallConfigs(

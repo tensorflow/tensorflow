@@ -32,7 +32,8 @@ absl::Status select_k_exec(int device_ordinal,
                            se::DeviceAddressBase data_out,
                            se::DeviceAddressBase indices_out,
                            std::uint32_t batch, std::uint32_t n,
-                           std::uint32_t k) {
+                           std::uint32_t k,
+                           se::DeviceAddressBase scratch_buffer) {
   return absl::UnimplementedError(
       "select_k_exec is not implemented on this platform");
 }
@@ -42,16 +43,17 @@ template absl::Status select_k_exec<float>(int, se::DeviceAddressAllocator*,
                                            se::Stream*, se::DeviceAddressBase,
                                            se::DeviceAddressBase,
                                            se::DeviceAddressBase, std::uint32_t,
-                                           std::uint32_t, std::uint32_t);
+                                           std::uint32_t, std::uint32_t,
+                                           se::DeviceAddressBase);
 
 template absl::Status select_k_exec<::xla::bfloat16>(
     int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
     se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
-    std::uint32_t);
+    std::uint32_t, se::DeviceAddressBase);
 
 template absl::Status select_k_exec<std::uint64_t>(
     int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
     se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
-    std::uint32_t);
+    std::uint32_t, se::DeviceAddressBase);
 
 }  // namespace xla::gpu

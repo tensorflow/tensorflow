@@ -187,6 +187,31 @@ def SelectBufferOp : XTile_Op<"select_buffer", [Pure]> {
   }];
 }
 
+def MemRefBitcastOp : XTile_Op<"memref_bitcast",
+                               [Pure, SameOperandsAndResultShape]> {
+  let summary = "Reinterprets the element type of a memref.";
+  let description = [{
+    Shape, layout and memory space are unchanged, so no data is moved: this is
+    purely a change of how the bits of each element are interpreted.
+
+    Example:
+
+    ```mlir
+    %0 = xtile.memref_bitcast %arg0 : memref<4x16xbf16> -> memref<4x16xi16>
+    ```
+  }];
+
+  let arguments = (ins AnyMemRef:$source);
+  let results = (outs AnyMemRef:$result);
+
+  let assemblyFormat = [{
+    $source `:` type($source) `->` type($result) attr-dict
+  }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
 def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
   let summary = "Extract a tile from a memref.";
   let description = [{
@@ -296,6 +321,14 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
   let summary = "scan operation";
   let description = [{
     Mirrors HLO's kScan operation.
+
+    Unlike HLO, the inits and carries keep the scan dimension as a unit
+    dimension, i.e. they have the same rank as the inputs and outputs. This
+    avoids rank-zero carries for 1D scans, which Triton does not support, and
+    allows broadcasting a carry across a tile without changing its rank.
+
+    Example: for inputs of type `tensor<16x1024xf32>` and `dimension = 1`, the
+    inits and carries have type `tensor<16x1xf32>`.
   }];
 
   let arguments = (
@@ -317,10 +350,12 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
   let assemblyFormat = [{
     `(` $inputs `)` `inits` `(` $inits `)`
     `dimension` `=` $dimension
-    attr-dict
+    prop-dict attr-dict
     `:` `(` type($inputs) `)` `,` `(` type($inits) `)` `->` `(` type($outputs) `)` `,` `(` type($carries) `)`
     $body
   }];
+
+  let hasVerifier = 1;
 }
 
 //
@@ -356,7 +391,7 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
     let results = (outs RankedTensorOf<[AnyFloat]>:$result);
 
     let assemblyFormat = [{
-      $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? attr-dict
+      $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? prop-dict attr-dict
       `:` type($lhs) (`,` type($lhs_scale)^)? `*` type($rhs) (`,` type($rhs_scale)^)? `->` type($result)
     }];
 

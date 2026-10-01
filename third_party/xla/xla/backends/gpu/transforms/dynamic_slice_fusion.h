@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -64,7 +65,7 @@ namespace xla::gpu {
 //     %ds = f32[1,8,8] dynamic-slice(%p0, %offset, %c0, %c0),
 //       dynamic_slice_sizes={1,8,8},
 //       backend_config={"dynamic_slice_config":{
-//         "loop_index":0, "byte_offset":256, "byte_stride":256}}
+//         "loop_index":0, "linear":{"byte_offset":256, "byte_stride":256}}}
 //     %bc_in = f32[8,8] bitcast(%ds)
 //     %hero = f32[8,8] custom-call(%bc_in),
 //       custom_call_target="fake_target"
@@ -72,7 +73,7 @@ namespace xla::gpu {
 //     ROOT %dus = f32[5,8,8] dynamic-update-slice(
 //       %p2, %bc_out, %offset, %c0, %c0),
 //       backend_config={"dynamic_slice_config":{
-//         "loop_index":0, "byte_offset":256, "byte_stride":256}}
+//         "loop_index":0, "linear":{"byte_offset":256, "byte_stride":256}}}
 //   }
 //
 //   body {
@@ -153,7 +154,8 @@ struct DynamicSliceFusion {
     // (the DS source or direct parameter).
     int64_t parameter_number;
 
-    // Shape of the fusion parameter (the full, unsliced buffer).
+    // Shape of the unsliced source buffer fed into the slice (after any
+    // bitcast/reshape on the fusion parameter, matching `slice_shape` rank).
     Shape parameter_shape;
 
     // Shape of the slice fed to the hero (DS output shape, or same as
@@ -182,7 +184,8 @@ struct DynamicSliceFusion {
     // the leaves are numbered 0, 1, 2.
     int64_t result_number = 0;
 
-    // Shape of the DUS target buffer (the full output buffer).
+    // Shape of the unsliced DUS target buffer (after any bitcast/reshape on the
+    // fusion parameter, matching `update_shape` rank).
     Shape result_shape;
 
     // Shape of the DUS update (the hero output slice inserted into the
@@ -282,10 +285,18 @@ inline bool operator==(const DynamicSliceFusion::Offset& a,
 
 inline bool operator==(const DynamicSliceConfig& a,
                        const DynamicSliceConfig& b) {
-  return a.has_loop_index() == b.has_loop_index() &&
-         a.loop_index() == b.loop_index() &&
-         a.byte_offset() == b.byte_offset() &&
-         a.byte_stride() == b.byte_stride();
+  if (a.has_loop_index() != b.has_loop_index() ||
+      a.loop_index() != b.loop_index() ||
+      a.offsets_case() != b.offsets_case()) {
+    return false;
+  }
+
+  if (a.has_table()) {
+    return absl::c_equal(a.table().offsets(), b.table().offsets());
+  }
+
+  return a.linear().byte_offset() == b.linear().byte_offset() &&
+         a.linear().byte_stride() == b.linear().byte_stride();
 }
 
 inline bool operator==(const DynamicSliceFusion::Parameter& a,
@@ -344,8 +355,15 @@ void StringifyConfig(Sink& sink, const std::optional<DynamicSliceConfig>& c) {
     absl::Format(&sink, "config{}");
     return;
   }
+
+  if (c->has_table()) {
+    absl::Format(&sink, "config{loop=%d, offsets=[%s]}", c->loop_index(),
+                 absl::StrJoin(c->table().offsets(), ", "));
+    return;
+  }
+
   absl::Format(&sink, "config{loop=%d, offset=%d, stride=%d}", c->loop_index(),
-               c->byte_offset(), c->byte_stride());
+               c->linear().byte_offset(), c->linear().byte_stride());
 }
 
 template <typename Sink>

@@ -194,11 +194,11 @@ struct MemRefDimOfSqueeze : public OpRewritePattern<memref::DimOp> {
     }
     MemRefType source_type = squeeze_op.getInput().getType();
     FAILUREOR_ASSIGN_OR_RETURN(
-        SmallVector<int> squeezed,
+        SmallVector<int64_t> squeezed,
         computeSqueezedDimsChecked(squeeze_op, source_type.getShape(),
                                    result_type.getShape()));
     int64_t source_dim = dim;
-    for (int squeezed_dim : squeezed) {
+    for (int64_t squeezed_dim : squeezed) {
       if (squeezed_dim <= source_dim) {
         ++source_dim;
       }

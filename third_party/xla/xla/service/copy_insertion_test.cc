@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/service/copy_insertion.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -26,11 +28,21 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -46,6 +58,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/copy_removal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -55,6 +68,17 @@ limitations under the License.
 namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
+
+// Reaches the private interference step so a test can run it on its own.
+class CopyInsertionTestPeer {
+ public:
+  static absl::Status AddCopiesToResolveInterference(
+      CopyInsertion& copy_insertion, HloModule* module) {
+    return copy_insertion.AddCopiesToResolveInterference(
+        module, /*execution_threads=*/{});
+  }
+};
+
 namespace {
 
 using ::testing::NotNull;
@@ -1153,6 +1177,125 @@ ENTRY %WhileEntry () -> (f32[16], f32[16]) {
   EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Negate(), op::Broadcast(),
                                                op::Copy(op::Broadcast())));
   EXPECT_EQ(CountCopies(*module), 1);
+}
+
+// %init_buf reaches the annotated loop twice: directly at index 2 and through
+// the output of %first at index 1, which aliases the init of %first. The
+// duplicate is only visible on the unmodified module: once %first has its init
+// copied, %init_buf no longer shares a buffer with the output of %first.
+constexpr absl::string_view kDuplicateInitBuffersThroughEarlierWhileHlo = R"(
+HloModule DuplicateInitBuffersThroughEarlierWhile
+
+%FirstBody (loop_state: (s32[], f32[16])) -> (s32[], f32[16]) {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %data = f32[16] get-tuple-element(%loop_state), index=1
+  %f1 = f32[] constant(1.0)
+  %c_add = f32[16] broadcast(%f1)
+  %next_data = f32[16] add(%data, %c_add)
+  ROOT %tuple = (s32[], f32[16]) tuple(%next_indvar, %next_data)
+}
+
+%FirstCondition (loop_state: (s32[], f32[16])) -> pred[] {
+  %loop_state = (s32[], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+%Body (loop_state: (s32[], f32[16], f32[16])) -> (s32[], f32[16], f32[16]) {
+  %loop_state = (s32[], f32[16], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %c1 = s32[] constant(1)
+  %next_indvar = s32[] add(%indvar, %c1)
+  %acc1 = f32[16] get-tuple-element(%loop_state), index=1
+  %acc2 = f32[16] get-tuple-element(%loop_state), index=2
+  %f1 = f32[] constant(1.0)
+  %update = f32[4] broadcast(%f1)
+  %c0 = s32[] constant(0)
+  %dus1 = f32[16] dynamic-update-slice(%acc1, %update, %c0),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  %dus2 = f32[16] dynamic-update-slice(%acc2, %update, %c0),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT %tuple = (s32[], f32[16], f32[16]) tuple(%next_indvar, %dus1, %dus2)
+}
+
+%Condition (loop_state: (s32[], f32[16], f32[16])) -> pred[] {
+  %loop_state = (s32[], f32[16], f32[16]) parameter(0)
+  %indvar = s32[] get-tuple-element(%loop_state), index=0
+  %limit = s32[] constant(10)
+  ROOT %cmp = pred[] compare(%indvar, %limit), direction=LT
+}
+
+ENTRY %WhileEntry () -> (f32[16], f32[16], f32[16]) {
+  %c0 = s32[] constant(0)
+  %indvar_init = s32[] negate(%c0)
+  %zero = f32[] constant(0.0)
+  %init_buf = f32[16] broadcast(%zero)
+  %first_init = (s32[], f32[16]) tuple(%indvar_init, %init_buf)
+  %first = (s32[], f32[16]) while(%first_init),
+                condition=%FirstCondition, body=%FirstBody
+  %first_data = f32[16] get-tuple-element(%first), index=1
+  %init_tuple = (s32[], f32[16], f32[16]) tuple(%indvar_init, %first_data, %init_buf)
+  %while = (s32[], f32[16], f32[16]) while(%init_tuple),
+                condition=%Condition, body=%Body,
+                frontend_attributes={xla_disable_while_loop_copies="true"}
+  %out1 = f32[16] get-tuple-element(%while), index=1
+  %out2 = f32[16] get-tuple-element(%while), index=2
+  ROOT %root = (f32[16], f32[16], f32[16]) tuple(%out1, %out2, %init_buf)
+}
+)";
+
+TEST_F(WhileCopyInsertionTest,
+       DisableWhileLoopCopiesDuplicateInitBuffersThroughEarlierWhile) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           kDuplicateInitBuffersThroughEarlierWhileHlo));
+  InsertCopies(module.get());
+
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  // The duplicate at index 2 is copied; %init_buf is live out, so the in-place
+  // update of index 2 could not run on its buffer.
+  const HloInstruction* while_hlo =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(while_hlo->operand(0),
+              op::Tuple(op::Negate(), op::GetTupleElement(op::While()),
+                        op::Copy(op::Broadcast())));
+}
+
+// Same module through the interference step alone, so the copy cannot come
+// from the alias analysis that later steps build.
+TEST_F(WhileCopyInsertionTest,
+       DisableWhileLoopCopiesDuplicateInitBuffersInterferenceStepOnly) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           kDuplicateInitBuffersThroughEarlierWhileHlo));
+  CopyInsertion copy_insertion(&alias_info_);
+  ASSERT_OK(CopyInsertionTestPeer::AddCopiesToResolveInterference(
+      copy_insertion, module.get()));
+
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("Body")), 0);
+  // The step deep copies the init, which leaves get-tuple-element/tuple
+  // rewraps for the tuple simplifier of the full pass; look through them.
+  auto through_rewraps = [](const HloInstruction* instr) {
+    while (instr->opcode() == HloOpcode::kGetTupleElement &&
+           instr->operand(0)->opcode() == HloOpcode::kTuple) {
+      instr = instr->operand(0)->operand(instr->tuple_index());
+    }
+    return instr;
+  };
+  const HloInstruction* while_hlo =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  const HloInstruction* init = while_hlo->operand(0);
+  ASSERT_EQ(init->opcode(), HloOpcode::kTuple);
+  EXPECT_THAT(through_rewraps(init->operand(0)), op::Negate());
+  EXPECT_THAT(through_rewraps(init->operand(1)),
+              op::GetTupleElement(op::While()));
+  const HloInstruction* copy = through_rewraps(init->operand(2));
+  ASSERT_THAT(copy, op::Copy());
+  EXPECT_THAT(through_rewraps(copy->operand(0)), op::Broadcast());
 }
 
 // Tests Copy Insertion when a while feeds another while
@@ -3916,6 +4059,172 @@ ENTRY entry {
   ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
   auto while_1 = FindInstruction(module.get(), "while.1");
   EXPECT_THAT(while_1, op::While(op::Tuple(op::Copy())));
+}
+
+// A view (a custom call colored `kViewColor` that addresses into its operand
+// 0's buffer without storage of its own) is read by its readers, not at the
+// view. With `view_color` set, copy removal counts those readers as uses of
+// the viewed value: the loop carried stack's root copy protects the elementwise
+// producer that would otherwise be merged into the stack's buffer between the
+// view and its reader ($0 orders the reader after the producer). Without the
+// option, or with the reader ordered before the producer, the copy is elided.
+TEST_F(CopyInsertionTest, ViewReadersCountAsUsesOfTheViewedValue) {
+  constexpr int64_t kViewColor = 5;
+  constexpr absl::string_view kHloTemplate = R"(
+HloModule view_readers, is_scheduled=true
+
+cond {
+  p = (s32[], f32[4,8], f32[1,8]) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  n = s32[] constant(3)
+  ROOT lt = pred[] compare(i, n), direction=LT
+}
+
+body {
+  p = (s32[], f32[4,8], f32[1,8]) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  stack = f32[4,8] get-tuple-element(p), index=1
+  acc = f32[1,8] get-tuple-element(p), index=2
+  c0 = s32[] constant(0)
+  view = f32[1,8]{1,0:S(5)} custom-call(stack, i, c0), custom_call_target="view"
+  one = f32[] constant(1)
+  ones = f32[4,8] broadcast(one), dimensions={}
+  $0
+  acc_new = f32[1,8] add(acc, reader)
+  one_s32 = s32[] constant(1)
+  i_new = s32[] add(i, one_s32)
+  copy = f32[4,8] copy(new_stack)
+  ROOT t = (s32[], f32[4,8], f32[1,8]) tuple(i_new, copy, acc_new)
+}
+
+ENTRY entry {
+  stack0 = f32[4,8] parameter(0)
+  acc0 = f32[1,8] parameter(1)
+  i0 = s32[] constant(0)
+  init = (s32[], f32[4,8], f32[1,8]) tuple(i0, stack0, acc0)
+  ROOT loop = (s32[], f32[4,8], f32[1,8]) while(init), condition=cond, body=body
+}
+)";
+  constexpr absl::string_view kReaderAfterProducer =
+      "new_stack = f32[4,8] add(stack, ones)\n"
+      "  reader = f32[1,8] negate(view)";
+  constexpr absl::string_view kReaderBeforeProducer =
+      "reader = f32[1,8] negate(view)\n"
+      "  new_stack = f32[4,8] add(stack, ones)";
+  auto root_copy_survives =
+      [&](absl::string_view order,
+          std::optional<int64_t> view_color) -> absl::StatusOr<bool> {
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> module,
+        ParseAndReturnVerifiedModule(absl::Substitute(kHloTemplate, order)));
+    CopyInsertion copy_insertion(&alias_info_,
+                                 /*use_region_based_live_range_analysis=*/-1,
+                                 /*should_skip_removal=*/nullptr, view_color);
+    ABSL_RETURN_IF_ERROR(copy_insertion.RemoveUnnecessaryCopies(module.get()));
+    const HloInstruction* root =
+        module->GetComputationWithName("body")->root_instruction();
+    return root->operand(1)->opcode() == HloOpcode::kCopy;
+  };
+  EXPECT_THAT(root_copy_survives(kReaderAfterProducer, kViewColor),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(root_copy_survives(kReaderAfterProducer, std::nullopt),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(root_copy_survives(kReaderBeforeProducer, kViewColor),
+              absl_testing::IsOkAndHolds(false));
+}
+
+// A view colored user that writes through the view (an in place op aliasing
+// its output onto the view operand) is a reader at its own position, not a
+// forwarder: the copies copy insertion places around it are elided exactly
+// as without a view color, and the in place writer lands in the viewed
+// buffer.
+TEST_F(CopyInsertionTest, ViewWriterIsNotForwardedAsAView) {
+  constexpr int64_t kViewColor = 5;
+  constexpr absl::string_view kHlo = R"(
+HloModule view_writer, is_scheduled=true
+
+ENTRY entry {
+  base = f32[4,8] parameter(0)
+  update = f32[1,8] parameter(1)
+  c0 = s32[] constant(0)
+  c1 = s32[] constant(1)
+  view = f32[1,8]{1,0:S(5)} custom-call(base, c1, c0), custom_call_target="view"
+  view_copy = f32[1,8]{1,0:S(5)} copy(view)
+  writer = f32[1,8]{1,0:S(5)} custom-call(view_copy, update), custom_call_target="write_through_view", output_to_operand_aliasing={{}: (0, {})}
+  base_copy = f32[4,8] copy(base)
+  ROOT dus = f32[4,8] dynamic-update-slice(base_copy, writer, c1, c0)
+}
+)";
+  for (std::optional<int64_t> view_color :
+       {std::optional<int64_t>(kViewColor), std::optional<int64_t>()}) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(kHlo));
+    CopyInsertion copy_insertion(&alias_info_,
+                                 /*use_region_based_live_range_analysis=*/-1,
+                                 /*should_skip_removal=*/nullptr, view_color);
+    ASSERT_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
+    const HloInstruction* dus = module->entry_computation()->root_instruction();
+    EXPECT_EQ(dus->operand(0)->name(), "base")
+        << "view color " << view_color.value_or(-1) << ":\n"
+        << module->ToString();
+    EXPECT_EQ(dus->operand(1)->operand(0)->name(), "view")
+        << "view color " << view_color.value_or(-1) << ":\n"
+        << module->ToString();
+  }
+}
+
+// The synthesized view uses are seeded from the viewed value only. A view's
+// own readers are already its dataflow uses (through its bitcast position),
+// so walking the view's view colored bitcast again would list every reader a
+// second time and inflate the region analysis use counts.
+TEST_F(CopyInsertionTest, ViewReadersAreListedOncePerValue) {
+  constexpr int64_t kViewColor = 5;
+  constexpr absl::string_view kHlo = R"(
+HloModule view_readers_once, is_scheduled=true
+
+ENTRY entry {
+  stack = f32[4,8] parameter(0)
+  i = s32[] parameter(1)
+  c0 = s32[] constant(0)
+  view = f32[1,8]{1,0:S(5)} custom-call(stack, i, c0), custom_call_target="view"
+  row = f32[8]{0:S(5)} bitcast(view)
+  reader = f32[8] negate(row)
+  other = f32[8] exponential(row)
+  ROOT t = (f32[8], f32[8]) tuple(reader, other)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  DependencyHloOrdering ordering(module.get());
+  CopyRemover remover(*module, *alias_analysis, &alias_info_, &ordering,
+                      /*execution_threads=*/{}, kViewColor);
+  // One "<id> <name>, uses: ..." line per value in CopyRemover::ToString.
+  auto uses_line_of = [&](absl::string_view name) -> std::string {
+    for (absl::string_view line : absl::StrSplit(remover.ToString(), '\n')) {
+      if (absl::StrContains(line, absl::StrCat(" ", name, ">, uses: "))) {
+        return std::string(line);
+      }
+    }
+    return "";
+  };
+  auto count = [](absl::string_view haystack, absl::string_view needle) {
+    int n = 0;
+    for (size_t pos = haystack.find(needle); pos != absl::string_view::npos;
+         pos = haystack.find(needle, pos + needle.size())) {
+      ++n;
+    }
+    return n;
+  };
+  const std::string stack_uses = uses_line_of("stack");
+  const std::string view_uses = uses_line_of("view");
+  ASSERT_FALSE(stack_uses.empty()) << remover.ToString();
+  ASSERT_FALSE(view_uses.empty()) << remover.ToString();
+  for (absl::string_view reader : {"reader, operand 0", "other, operand 0"}) {
+    EXPECT_EQ(count(stack_uses, reader), 1) << stack_uses;
+    EXPECT_EQ(count(view_uses, reader), 1) << view_uses;
+  }
 }
 
 TEST_F(CopyInsertionTest, InPlaceCollectivePermuteCopy) {

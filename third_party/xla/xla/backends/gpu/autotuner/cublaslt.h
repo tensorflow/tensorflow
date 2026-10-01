@@ -17,16 +17,21 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_CUBLASLT_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
@@ -49,13 +54,18 @@ class CublasLtBackend : public GpuCodegenBackend {
   explicit CublasLtBackend(stream_executor::StreamExecutor* stream_executor,
                            const DebugOptions* debug_options,
                            Compiler* compiler,
-                           const Compiler::GpuTargetConfig* target_config)
+                           const Compiler::GpuTargetConfig* target_config,
+                           mlir::MLIRContext* mlir_context = nullptr)
       : GpuCodegenBackend(autotuner::Backend::CUBLASLT, debug_options, compiler,
                           target_config, stream_executor,
-                          /*uses_last_output_for_scratch=*/true) {}
+                          /*uses_last_output_for_scratch=*/true),
+        mlir_context_(mlir_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
+
+  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
+      const HloInstruction& instr) override;
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
@@ -69,6 +79,8 @@ class CublasLtBackend : public GpuCodegenBackend {
 
  private:
   bool IsSupported(const HloInstruction& instr) override;
+
+  mlir::MLIRContext* mlir_context_ = nullptr;
 };
 
 }  // namespace gpu

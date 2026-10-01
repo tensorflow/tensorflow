@@ -302,22 +302,18 @@ cc_library(
 xla_cc_test(
     name = "host_offload_legalize_test",
     srcs = ["host_offload_legalize_test.cc"],
-    shard_count = 11,
     deps = [
         ":host_offload_legalize",
         "//xla:shape_util",
-        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:memory_annotations_hdr",
-        "//xla/service:pattern_matcher",
-        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -344,6 +340,7 @@ cc_library(
         "//xla/service:host_offload_utils",
         "//xla/service:memory_annotations_hdr",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -729,6 +726,7 @@ cc_library(
     hdrs = ["hlo_module_stitcher.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/cleanup",

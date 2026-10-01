@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/base/no_destructor.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -1147,17 +1147,16 @@ TEST_F(CollectiveOpsTestFFI, AllReduce) {
       }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_executable_num_communication_streams(2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module),
-                        /*arguments=*/std::vector<Literal*>(),
-                        /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/false));
 
   absl::Span<const Literal> results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -1227,8 +1226,8 @@ TEST_P(AllReduceTest, DeviceAllReduce) {
 
       ENTRY test_computation {
         id = u32[] replica-id()
-        in = u32[]{:S(1)} copy(id)
-        all-reduce = u32[]{:S(1)} custom-call(in),
+        in = u32[]{:S(7)} copy(id)
+        all-reduce = u32[]{:S(7)} custom-call(in),
           custom_call_target="__xla_test_$0_device_all_reduce",
           api_version=API_VERSION_TYPED_FFI
         ROOT out = u32[] copy(all-reduce)
@@ -1236,14 +1235,13 @@ TEST_P(AllReduceTest, DeviceAllReduce) {
     )",
                                             GetParam());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module),
-                        /*arguments=*/std::vector<Literal*>(),
-                        /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/false));
   SynchronizationSignals* signals = global_signals->get();
   signals->finished_kernels_counter.Wait();
 
@@ -1280,14 +1278,13 @@ TEST_P(AllReduceTest, PeerAllReduce) {
     )",
                                             GetParam());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module),
-                        /*arguments=*/std::vector<Literal*>(),
-                        /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/false));
   SynchronizationSignals* signals = global_signals->get();
   signals->finished_kernels_counter.Wait();
 
@@ -1316,7 +1313,7 @@ TEST_P(AllReduceTest, MulticastAllReduce) {
 
       ENTRY test_computation {
         c0 = u32[] constant(1)
-        in = u32[]{:S(1)} copy(c0)
+        in = u32[]{:S(7)} copy(c0)
         all-reduce = u32[] custom-call(in),
           custom_call_target="__xla_test_$0_multimem_all_reduce",
           api_version=API_VERSION_TYPED_FFI
@@ -1325,14 +1322,13 @@ TEST_P(AllReduceTest, MulticastAllReduce) {
     )",
                                             GetParam());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module),
-                        /*arguments=*/std::vector<Literal*>(),
-                        /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/false));
   SynchronizationSignals* signals = global_signals->get();
   signals->finished_kernels_counter.Wait();
 
@@ -1360,7 +1356,7 @@ TEST_P(AllReduceTest, SymMulticastAllReduce) {
 
       ENTRY test_computation {
         c0 = u32[] constant(1)
-        in = u32[]{:S(1)} copy(c0)
+        in = u32[]{:S(7)} copy(c0)
         all-reduce = u32[] custom-call(in),
           custom_call_target="__xla_test_$0_sym_multimem_all_reduce",
           api_version=API_VERSION_TYPED_FFI
@@ -1369,14 +1365,13 @@ TEST_P(AllReduceTest, SymMulticastAllReduce) {
     )",
                                             GetParam());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module),
-                        /*arguments=*/std::vector<Literal*>(),
-                        /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/false));
   SynchronizationSignals* signals = global_signals->get();
   signals->finished_kernels_counter.Wait();
 
@@ -1405,7 +1400,7 @@ TEST_P(AllReduceTest, SymPeerAllReduce) {
 
       ENTRY test_computation {
         id = u32[] replica-id()
-        in = u32[]{:S(1)} copy(id)
+        in = u32[]{:S(7)} copy(id)
         all-reduce = u32[] custom-call(in),
           custom_call_target="__xla_test_$0_sym_peer_all_reduce",
           api_version=API_VERSION_TYPED_FFI
@@ -1414,14 +1409,13 @@ TEST_P(AllReduceTest, SymPeerAllReduce) {
     )",
                                             GetParam());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module),
-                        /*arguments=*/std::vector<Literal*>(),
-                        /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/false));
   SynchronizationSignals* signals = global_signals->get();
   signals->finished_kernels_counter.Wait();
 
@@ -1442,7 +1436,7 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 // Same as DeviceAllReduce, but uses frontend_attributes to specify memory
-// spaces instead of hardcoded S(1).
+// spaces instead of hardcoded S(7).
 TEST_F(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
@@ -1462,21 +1456,20 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
           custom_call_target="__xla_test_blocked_device_all_reduce",
           api_version=API_VERSION_TYPED_FFI,
           frontend_attributes={
-            operands_memory_spaces="{0:1}",
-            results_memory_spaces="{0:1}"
+            operands_memory_spaces="{0:7}",
+            results_memory_spaces="{0:7}"
           }
         ROOT out = u32[] copy(all-reduce)
       }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module),
-                        /*arguments=*/std::vector<Literal*>(),
-                        /*run_hlo_passes=*/true));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/true));
   SynchronizationSignals* signals = global_signals->get();
   signals->finished_kernels_counter.Wait();
 

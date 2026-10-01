@@ -14,6 +14,7 @@
 # ==============================================================================
 """Generic source code transformation infrastructure."""
 
+import builtins
 import inspect
 import threading
 import types
@@ -140,6 +141,75 @@ def _wrap_into_factory(nodes, entity_name, inner_factory_name,
       outer_factory_name=outer_factory_name)
 
 
+def _annotation_names(annotation):
+  """Returns the set of names referenced by an annotation expression."""
+  return {n.id for n in gast.walk(annotation) if isinstance(n, gast.Name)}
+
+
+def _iter_annotated_args(node):
+  """Yields the argument nodes of a function definition."""
+  args = node.args
+  for arg in getattr(args, 'posonlyargs', ()):
+    yield arg
+  for arg in args.args:
+    yield arg
+  if args.vararg is not None:
+    yield args.vararg
+  for arg in args.kwonlyargs:
+    yield arg
+  if args.kwarg is not None:
+    yield args.kwarg
+
+
+def _remove_unresolvable_annotations(nodes, fn):
+  """Drops annotations that the generated code would fail to evaluate.
+
+  Annotations are evaluated when the `def` statement executes. Because
+  AutoGraph regenerates the function from its AST, any annotation is
+  evaluated a second time. Names that were only visible in the enclosing
+  scope at definition time - for instance a symbol imported inside the
+  enclosing function - are not part of the function's closure: CPython
+  evaluates annotations eagerly, then drops the reference. The second
+  evaluation therefore raises `NameError`, and AutoGraph falls back to
+  running the function as-is.
+
+  Such annotations are removed from the AST. Their original values are
+  restored onto the generated function from `fn.__annotations__`, so the
+  transformation stays transparent.
+
+  Args:
+    nodes: The AST of the entity being transformed.
+    fn: The function object the AST was parsed from.
+  """
+  if not hasattr(fn, '__annotations__') or not fn.__annotations__:
+    return
+
+  resolvable = set(vars(builtins))
+  resolvable.update(fn.__globals__)
+  resolvable.update(fn.__code__.co_freevars)
+  resolvable.update(fn.__code__.co_varnames)
+
+  if isinstance(nodes, gast.FunctionDef):
+    top_level_funcs = [nodes]
+  elif isinstance(nodes, gast.Module):
+    top_level_funcs = [n for n in nodes.body if isinstance(n, gast.FunctionDef)]
+  elif isinstance(nodes, (list, tuple)):
+    top_level_funcs = [n for n in nodes if isinstance(n, gast.FunctionDef)]
+  else:
+    top_level_funcs = []
+
+  for node in top_level_funcs:
+    if node.returns is not None and (
+        _annotation_names(node.returns) - resolvable
+    ):
+      node.returns = None
+    for arg in _iter_annotated_args(node):
+      if arg.annotation is not None and (
+          _annotation_names(arg.annotation) - resolvable
+      ):
+        arg.annotation = None
+
+
 class _PythonFnFactory(object):
   """Helper object that wraps a Python function factory."""
 
@@ -183,11 +253,9 @@ class _PythonFnFactory(object):
     self.module = module
     self.source_map = source_map
 
-  def instantiate(self,
-                  globals_,
-                  closure,
-                  defaults=None,
-                  kwdefaults=None):
+  def instantiate(
+      self, globals_, closure, defaults=None, kwdefaults=None, annotations=None
+  ):
     """Creates a new function instance."""
     if self._unbound_factory is None:
       raise ValueError('call create first')
@@ -216,6 +284,8 @@ class _PythonFnFactory(object):
       new_fn.__defaults__ = defaults
     if kwdefaults:
       new_fn.__kwdefaults__ = kwdefaults
+    if annotations:
+      new_fn.__annotations__ = annotations
 
     return new_fn
 
@@ -465,6 +535,7 @@ class PyToPy(GenericTranspiler):
           logging.log(1, '%s is not cached for subkey %s', fn, cache_subkey)
           # TODO(mdan): Confusing overloading pattern. Fix.
           nodes, ctx = super(PyToPy, self).transform_function(fn, user_context)
+          _remove_unresolvable_annotations(nodes, fn)
 
           if isinstance(nodes, gast.Lambda):
             nodes = gast.Assign(
@@ -492,5 +563,7 @@ class PyToPy(GenericTranspiler):
         globals_=fn.__globals__,
         closure=fn.__closure__ or (),
         defaults=fn.__defaults__,
-        kwdefaults=getattr(fn, '__kwdefaults__', None))
+        kwdefaults=getattr(fn, '__kwdefaults__', None),
+        annotations=getattr(fn, '__annotations__', None),
+    )
     return transformed_fn, factory.module, factory.source_map

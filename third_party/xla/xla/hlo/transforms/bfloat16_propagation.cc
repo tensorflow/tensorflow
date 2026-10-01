@@ -1373,7 +1373,17 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
     }
   }
 
-  ABSL_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
+  // The backward pass and ResolveInconsistencyOfAliasingBuffers read the uses
+  // of the F32 values before the module is mutated, so those are computed up
+  // front in one linear pass; any other value keeps its lazy computation.
+  ABSL_ASSIGN_OR_RETURN(
+      dataflow_,
+      HloDataflowAnalysis::Run(
+          *module, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/[](const HloValue& value) {
+            return value.shape().element_type() == F32;
+          }));
 
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that
@@ -1412,6 +1422,10 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
   // defining instruction's shape has changed. So we need to adjust the output
   // shapes of instructions according to the HLO values they refer to.
   ResolveInconsistencyOfAliasingBuffers(module);
+
+  // From here on the module is rewritten and the analysis no longer describes
+  // it; drop it so a later read fails instead of returning stale values.
+  dataflow_.reset();
 
   // Apply the changes in changes_to_bf16_.
   for (auto& change : changes_to_bf16_) {

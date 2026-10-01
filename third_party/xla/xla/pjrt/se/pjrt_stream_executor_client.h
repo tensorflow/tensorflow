@@ -99,54 +99,11 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
 
 class StreamExecutorExecutable;
-
-class PjRtStreamExecutorDevice : public CommonPjRtDevice {
- public:
-  PjRtStreamExecutorDevice(int id, bool is_addressable, int local_device_id,
-                           int process_index, int process_index_in_partition,
-                           int partition_index, std::string device_kind,
-                           LocalChipId local_hardware_id = LocalChipId(-1))
-      : CommonPjRtDevice(
-            std::make_unique<PjRtStreamExecutorDeviceDescription>(
-                id, local_device_id, process_index, process_index_in_partition,
-                partition_index, std::move(device_kind)),
-            LocalDeviceId(local_device_id),
-            local_hardware_id.value() != -1
-                ? local_hardware_id
-                : (is_addressable ? LocalChipId(local_device_id)
-                                  : LocalChipId(-1)),
-            is_addressable) {}
-
-  ~PjRtStreamExecutorDevice() override = default;
-
-  // Must set client exactly once.
-  void SetClient(PjRtClient* client) override {
-    CommonPjRtDevice::SetClient(client);
-    // We have to define debug_string_ and to_string_ here, because
-    // platform_name() requires client_ to be set.
-    std::string device_name =
-        absl::StrCat(MakeAsciiTitlecase(platform_name()), "Device");
-
-    description().SetDebugString(absl::StrCat(platform_name(), ":", id()));
-    description().SetToString(absl::StrCat(device_name, "(id=", id(), ")"));
-  }
-
-  PjRtStreamExecutorDeviceDescription& description() {
-    return *static_cast<PjRtStreamExecutorDeviceDescription*>(
-        description_ptr());
-  }
-  const PjRtStreamExecutorDeviceDescription& description() const override {
-    return *static_cast<const PjRtStreamExecutorDeviceDescription*>(
-        description_ptr());
-  }
-
-  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
-      const override;
-};
 
 class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
  public:
@@ -223,6 +180,13 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
     return host_memory_allocator_.get();
   }
 
+  int GetNumaNode(LocalDeviceId local_device_id) const override {
+    if (LocalDeviceState* state = device_state(local_device_id)) {
+      return state->executor()->numa_node();
+    }
+    return tsl::port::kNUMANoAffinity;
+  }
+
   bool should_stage_host_to_device_transfers() const {
     return should_stage_host_to_device_transfers_;
   }
@@ -276,19 +240,27 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
-  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+  CreateLinkedEventPromise(LocalDeviceId local_device_id, int memory_kind_id,
                            absl::string_view debug_info) override;
 
-  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
-                                  PjRtRawBufferRef raw_buffer,
-                                  PjRtDeviceEventRefVector definition_events,
-                                  PjRtDeviceEventPromiseRef usage_event_promise,
-                                  Future<std::string> serialized_descriptor,
-                                  PjRtBuffer::RemoteSendCallback on_done);
+  void ScheduleRemoteSend(LocalDeviceId local_device_id, int memory_kind_id,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override;
 
-  absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
+  absl::Status WaitOnStream(LocalDeviceId local_device_id,
                             PjRtDeviceEventRef event,
                             std::intptr_t stream) override;
+
+  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents(
+      LocalDeviceId local_device_id) const override;
+
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats(
+      LocalDeviceId local_device_id) const override;
+
+  absl::Status ClearMemoryStats(LocalDeviceId local_device_id) override;
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
       absl::Span<const PjRtRawBufferRef> buffers,
@@ -300,7 +272,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs);
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
-      PjRtMemorySpace* memory_space, Future<> dependency) override;
+      LocalDeviceId local_device_id, int memory_kind_id,
+      Future<> dependency) override;
 
   PjRtDeviceEventRef CreateErrorDeviceEvent(absl::Status error);
 
@@ -317,7 +290,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       bool is_mutable) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
-      PjRtMemorySpace* memory_space, std::intptr_t stream) override;
+      LocalDeviceId local_device_id, std::intptr_t stream) override;
 
   absl::Status TransferToInfeed(LocalDeviceId local_device_id,
                                 const LiteralSlice& literal) override;

@@ -25,6 +25,24 @@ import numpy as np
 from xla.benchmarks.core import platform_info
 
 
+def vmem_for_operand(
+    d1: int,
+    d2: int,
+    block_d1: int | np.ndarray,
+    block_d2: int | np.ndarray,
+    dtype: jax.typing.DTypeLike,
+) -> int | np.ndarray:
+  """Calculates VMEM buffer usage for an operand including double buffering."""
+  return (
+      # Double-buffer if the operand doesn't fit in the window.
+      (2 - ((d1 == block_d1) & (d2 == block_d2)))
+      * block_d1
+      * block_d2
+      * jax.dtypes.itemsize_bits(dtype)
+      // 8
+  )
+
+
 def _vmem_usage_bytes(
     m: int,
     k: int,
@@ -61,29 +79,18 @@ def _vmem_usage_bytes(
     The estimated VMEM usage in bytes, or an array of VMEM usages for all
     block size combinations.
   """
-
-  def _vmem_for_operand(d1, d2, block_d1, block_d2, dtype):
-    return (
-        # Double-buffer if the operand doesn't fit in the window.
-        (2 - ((d1 == block_d1) & (d2 == block_d2)))
-        * block_d1
-        * block_d2
-        * jax.dtypes.itemsize_bits(dtype)
-        // 8
-    )
-
-  rhs_vmem_usage = _vmem_for_operand(k, n, block_k, block_n, rhs_dtype)
+  rhs_vmem_usage = vmem_for_operand(k, n, block_k, block_n, rhs_dtype)
   if sparse_rhs:
-    rhs_sp_indices_vmem_usage = _vmem_for_operand(
+    rhs_sp_indices_vmem_usage = vmem_for_operand(
         k, n, block_k, block_n, jnp.int2
     )
     rhs_vmem_usage = (
         (rhs_vmem_usage + rhs_sp_indices_vmem_usage) * sp_n // sp_m
     )
   return (
-      _vmem_for_operand(m, k, block_m, block_k, lhs_dtype)
+      vmem_for_operand(m, k, block_m, block_k, lhs_dtype)
       + rhs_vmem_usage
-      + _vmem_for_operand(m, n, block_m, block_n, out_dtype)
+      + vmem_for_operand(m, n, block_m, block_n, out_dtype)
       # Only one accumulator tile is needed.
       + block_m * block_n * jax.dtypes.itemsize_bits(acc_dtype) // 8
   )
@@ -349,21 +356,28 @@ class CostModel:
         sp_n,
         sp_m,
     )
-    # If the LHS is emulated as a different dtype, then the compiler may spill
+    # If the LHS requires any VPU processing, then the compiler may spill
     # the converted LHS operand to VMEM, so we account for this below.
+    spill_bits = None
     emulated_lhs = (
         lhs_dtype not in self._platform_info.matmul_cadence_cycles_by_dtype
     )
     if emulated_lhs:
+      # Emulated dtypes need VPU for unpacking and conversion.
       emulated_dtype = self._platform_info.get_emulated_dtype(
           lhs_dtype,
           self._platform_info.matmul_cadence_cycles_by_dtype,
       )
-      emulated_bits = jax.dtypes.itemsize_bits(emulated_dtype)
+      spill_bits = jax.dtypes.itemsize_bits(emulated_dtype)
+    elif lhs_dtype == jnp.int4 and self._platform_info.generation < 8:
+      # Prior to generation 8, int4 LHS requires VPU for unpacking from
+      # compressed format and repacking to interleaved format.
+      spill_bits = 4
+    if spill_bits is not None:
       block_m = self._block_m
       if subblock_m is not None:
         block_m = np.minimum(self._block_m, subblock_m)
-      self._vmem_usage_bytes += block_m * self._block_k * emulated_bits // 8
+      self._vmem_usage_bytes += block_m * self._block_k * spill_bits // 8
 
   def _compute_matmul_latency_ns_per_iteration(
       self, p_state: int | None

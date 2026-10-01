@@ -112,12 +112,14 @@ absl::StatusOr<bool> CombineConstants(
   return combined > 0;
 }
 
-// An instruction is considered to be equivalent to another only if they
-// share the exact same set of operands.
+// This differs from "normal" HLO Instruction hashing because it takes the
+// operands of an instruction into account. For the purposes of CSEs, two
+// instructions that have different operands are never equivalent, so
+// disambiguating by operands is always useful - but not always sufficient.
 struct CseKey {
   template <typename H>
-  friend H AbslHashValue(H h, const CseKey& key) {
-    auto instruction = key.hlo;
+  static H HashInstruction(H h, const HloInstruction* instruction,
+                           bool hash_operands) {
     h = instruction->shape().IsArray()
             ? H::combine(std::move(h), instruction->opcode(),
                          instruction->shape().dimensions())
@@ -144,26 +146,28 @@ struct CseKey {
     h = result_accuracy_hash(std::move(h), instruction->result_accuracy());
 
     // Hash operands, ignoring operand order on commutative ops.
-    if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
-      CHECK_EQ(instruction->operand_count(), 2);
-      auto id0 = instruction->operand(0)->unique_id();
-      if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
-        id0 = 0;
-      }
-      auto id1 = instruction->operand(1)->unique_id();
-      if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
-        id1 = 0;
-      }
-      if (id0 > id1) {
-        std::swap(id0, id1);
-      }
-      h = H::combine(std::move(h), id0, id1);
-    } else {
-      for (auto operand : instruction->operands()) {
-        if (operand->opcode() == HloOpcode::kIota) {
-          continue;
+    if (hash_operands) {
+      if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
+        CHECK_EQ(instruction->operand_count(), 2);
+        auto id0 = instruction->operand(0)->unique_id();
+        if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
+          id0 = 0;
         }
-        h = H::combine(std::move(h), operand->unique_id());
+        auto id1 = instruction->operand(1)->unique_id();
+        if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
+          id1 = 0;
+        }
+        if (id0 > id1) {
+          std::swap(id0, id1);
+        }
+        h = H::combine(std::move(h), id0, id1);
+      } else {
+        for (auto operand : instruction->operands()) {
+          if (operand->opcode() == HloOpcode::kIota) {
+            continue;
+          }
+          h = H::combine(std::move(h), operand->unique_id());
+        }
       }
     }
 
@@ -171,6 +175,31 @@ struct CseKey {
       h = H::combine(std::move(h), c->root_instruction()->opcode());
     }
     switch (instruction->opcode()) {
+      case HloOpcode::kFusion:
+        // The return post-order for two equal computations will always be the
+        // same, since it's determined purely by operand order, so we should
+        // never expect to hash two equal computations to different values. Note
+        // that the reasons this works are somewhat subtle: (a) We never
+        // consider kFusion commutative, so a dependency on operand order is
+        // safe. (b) Control dependencies may make the post-order traversal
+        // order depend on insertion order, but that's not an issue for fusion
+        // computations. (c) The post-order returned by
+        // HloComputation::MakeInstructionPostOrder() can depend on insertion
+        // order if dead instructions are present, which is why we use
+        // MakeInstructionPostOrderFrom() on the root.
+        for (const HloInstruction* fused_instruction :
+             instruction->fused_instructions_computation()
+                 ->MakeInstructionPostOrderFrom(
+                     *instruction->fused_instructions_computation()
+                          ->root_instruction())) {
+          // Internal instructions of equivalent fusions belong to different
+          // HloComputations (whose IDs are encoded into
+          // HloInstruction::unique_id()), so we can only hash operand
+          // unique_ids for top-level instructions.
+          h = HashInstruction(std::move(h), fused_instruction,
+                              /*hash_operands=*/false);
+        }
+        return H::combine(std::move(h), instruction->fusion_kind());
       case HloOpcode::kSlice:
         return H::combine(std::move(h), instruction->slice_starts(),
                           instruction->slice_strides());
@@ -226,6 +255,11 @@ struct CseKey {
       default:
         return std::move(h);
     }
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CseKey& key) {
+    return HashInstruction(std::move(h), key.hlo, /*hash_operands=*/true);
   }
   HloInstruction* hlo;
 };

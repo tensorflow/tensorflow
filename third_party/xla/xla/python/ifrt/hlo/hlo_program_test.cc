@@ -54,7 +54,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ParseHloProgramString(
 }
 
 TEST(HloProgramTest, BytesRoundTrip) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -62,7 +62,7 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
     return %1 : tensor<f32>
   }
 }
-)";
+)mlir";
   ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
   ASSERT_OK_AND_ASSIGN(auto serialized, program->ToBytes());
   ASSERT_OK_AND_ASSIGN(auto deserialized, HloProgram::FromBytes(serialized));
@@ -70,7 +70,7 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
 }
 
 TEST(HloProgramTest, ToMaybeOwningMlirModule) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -78,7 +78,7 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
     return %1 : tensor<f32>
   }
 }
-)";
+)mlir";
   ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
   mlir::ModuleOp mlir_module = program->mlir_module();
 
@@ -88,7 +88,7 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
 }
 
 TEST(HloProgramTest, GetNameOnNamedModule) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -96,13 +96,13 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
     return %1 : tensor<f32>
   }
 }
-)";
+)mlir";
   ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
   EXPECT_EQ(program->name(), "hlo_module");
 }
 
 TEST(HloProgramTest, GetNameOnUnnamedModule) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
@@ -110,7 +110,7 @@ module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
     return %1 : tensor<f32>
   }
 }
-)";
+)mlir";
   ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
   EXPECT_THAT(program->name(), ContainsRegex(R"(unnamed_[0-9a-f]+)"));
 }

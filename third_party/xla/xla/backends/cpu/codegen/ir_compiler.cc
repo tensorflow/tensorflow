@@ -43,6 +43,8 @@ limitations under the License.
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
@@ -66,6 +68,7 @@ limitations under the License.
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
@@ -428,10 +431,6 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
 
   llvm::ModulePassManager pm;
 
-  if (options_.dfsan_enabled) {
-    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
-  }
-
   llvm::OptimizationLevel opt_level = GetOptimizationLevel(options_);
   if (opt_level == llvm::OptimizationLevel::O0) {
     pm.addPass(pb.buildO0DefaultPipeline(opt_level));
@@ -471,7 +470,34 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
+  // Must run after all optimization passes: middle-end passes behave
+  // differently on instructions that already carry `contract`.
+  llvm_ir::SetAllowContractOnFpArithmetic(module);
+  // Must run after `contract` is set and before sanitizer instrumentation, so
+  // that instrumentation cannot split contractable fmul/fadd pairs into
+  // separate basic blocks.
+  llvm_ir::SinkContractableFMulToFAddFSub(module);
+
+  // Sanitizer instrumentation must be the last IR transformation.
+  if (options_.dfsan_enabled) {
+    // The transformations immediately above are not visible to the analysis
+    // manager; clear its cache.
+    mam.clear();
+
+    RunSanitizerPasses(module, mam);
+  }
+
   return llvm::Error::success();
+}
+
+void IrCompiler::RunSanitizerPasses(llvm::Module& module,
+                                    llvm::ModuleAnalysisManager& mam) const {
+  llvm::ModulePassManager pm;
+
+  if (options_.dfsan_enabled) {
+    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
+  }
+  pm.run(module, mam);
 }
 
 std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
@@ -484,8 +510,6 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   llvm::MCContext* mc_context;
   llvm::legacy::PassManager codegen_passes;
   codegen_passes.add(new llvm::RuntimeLibraryInfoWrapper(
-      target_machine->Options.ExceptionModel,
-      target_machine->Options.EABIVersion,
       target_machine->Options.MCOptions.ABIName,
       target_machine->Options.VecLib));
   target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);
@@ -503,8 +527,17 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   CHECK(md_str != nullptr);
   llvm::StringRef mem_region_name_str = md_str->getString();
 
+  // Each module gets assigned two names encoded into the buffer identifier:
+  // - Memory region name: human-friendly name shared among related kernels,
+  //   so that profilers can aggregate results per kernel.
+  // - Buffer identifier: to refer to each module uniquely. Necessary for
+  //   sanitizers.
+  std::string buffer_identifier = EncodeBufferIdentifier(
+      absl::string_view(mem_region_name_str.data(), mem_region_name_str.size()),
+      module.getModuleIdentifier());
+
   return std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(mc_stream_buffer), mem_region_name_str);
+      std::move(mc_stream_buffer), buffer_identifier);
 }
 
 llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(

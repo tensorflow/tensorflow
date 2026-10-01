@@ -1,8 +1,6 @@
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load(
-    "//xla:xla.default.bzl",
-    "xla_cc_test",
-)
+load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -19,26 +17,34 @@ cc_library(
     srcs = ["gpu_bandwidth_benchmark.cc"],
     hdrs = ["gpu_bandwidth_benchmark.h"],
     deps = [
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor/gpu:gpu_init",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ] + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor:rocm_platform",
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_bandwidth_benchmark_test",
     srcs = ["gpu_bandwidth_benchmark_test.cc"],
-    tags = [
-        "cuda-only",
-        "requires-gpu-sm90",
+    backends = [
+        "h100",
+        "amdgpu_any",
     ],
     deps = [
         ":gpu_bandwidth_benchmark",

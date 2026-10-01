@@ -50,10 +50,10 @@ permissions:
   pull-requests: write
 
 concurrency:
-  # Group by workflow name and branch to ensure runs execute sequentially.
+  # Group by workflow name and branch on push to ensure runs execute sequentially.
   # This prevents parallel postsubmit runs from clashing and ensures accurate
-  # reporting history.
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # reporting history. For workflow_dispatch (autobisect), append the run_id so they run in parallel without cancelling each other.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'push' }}
   cancel-in-progress: false
 
 jobs:

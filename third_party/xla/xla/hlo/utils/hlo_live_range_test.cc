@@ -1202,5 +1202,282 @@ ENTRY entry {
   EXPECT_FALSE(root_buffers.empty());
   EXPECT_TRUE(HloLiveRange::BufferLivesOut(*root_buffers[0], *aa, entry));
 }
+
+TEST_F(HloLiveRangeTest, AsyncInnerBufferStartExtendedToOuterStart) {
+  const std::string hlo_string = R"hlo(
+  HloModule AsyncInnerBufferStart, is_scheduled=true
+
+  %async_wrapped (p: f32[4]) -> f32[4] {
+    %p = f32[4] parameter(0)
+    ROOT %inner_op = f32[4] negate(%p)
+  }
+
+  ENTRY %main (a: f32[4]) -> f32[4] {
+    %a = f32[4] parameter(0)
+    %outer_op = f32[4] negate(%a)
+    %async-start = ((f32[4]), f32[4], u32[]) async-start(%outer_op),
+      calls=%async_wrapped
+    %async-done = f32[4] async-done(%async-start)
+    ROOT %result = f32[4] add(%outer_op, %async-done)
+  }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(module_->schedule(), *alias_analysis_,
+                                         module_->entry_computation()));
+  CheckSchedule();
+
+  HloComputation* async_wrapped =
+      module_->GetComputationWithName("async_wrapped");
+  ASSERT_NE(async_wrapped, nullptr);
+  const HloInstruction* inner_op =
+      async_wrapped->GetInstructionWithName("inner_op");
+  ASSERT_NE(inner_op, nullptr);
+
+  const HloInstruction* async_done =
+      module_->entry_computation()->GetInstructionWithName("async-done");
+  ASSERT_NE(async_done, nullptr);
+  const HloInstruction* result =
+      module_->entry_computation()->GetInstructionWithName("result");
+  ASSERT_NE(result, nullptr);
+
+  const HloInstruction* async_start =
+      module_->entry_computation()->GetInstructionWithName("async-start");
+  ASSERT_NE(async_start, nullptr);
+
+  auto inner_range = LiveRangeAt(inner_op);
+  auto async_start_time =
+      hlo_live_range_->instruction_schedule().at(async_start);
+  auto async_done_time = hlo_live_range_->instruction_schedule().at(async_done);
+  auto result_time = hlo_live_range_->instruction_schedule().at(result);
+
+  EXPECT_EQ(inner_range.start, async_start_time);
+  EXPECT_GT(result_time, async_done_time);
+  EXPECT_EQ(inner_range.end, result_time);
+}
+
+TEST_F(HloLiveRangeTest, AsyncInnerParameterStartExtendedToOuterStart) {
+  const std::string hlo_string = R"hlo(
+  HloModule AsyncInnerParamStart, is_scheduled=true
+
+  %async_wrapped (p: f32[4]) -> f32[4] {
+    %p = f32[4] parameter(0)
+    ROOT %inner_op = f32[4] negate(%p)
+  }
+
+  ENTRY %main (a: f32[4]) -> f32[4] {
+    %a = f32[4] parameter(0)
+    %async-start = ((f32[4]), f32[4], u32[]) async-start(%a),
+      calls=%async_wrapped
+    %async-done = f32[4] async-done(%async-start)
+    ROOT %result = f32[4] negate(%async-done)
+  }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(module_->schedule(), *alias_analysis_,
+                                         module_->entry_computation()));
+  CheckSchedule();
+
+  HloComputation* async_wrapped =
+      module_->GetComputationWithName("async_wrapped");
+  ASSERT_NE(async_wrapped, nullptr);
+
+  const HloInstruction* async_start =
+      module_->entry_computation()->GetInstructionWithName("async-start");
+  ASSERT_NE(async_start, nullptr);
+  const HloInstruction* inner_param =
+      async_wrapped->GetInstructionWithName("p");
+  const HloInstruction* inner_op =
+      async_wrapped->GetInstructionWithName("inner_op");
+  ASSERT_NE(inner_param, nullptr);
+  ASSERT_NE(inner_op, nullptr);
+
+  auto async_start_time =
+      hlo_live_range_->instruction_schedule().at(async_start);
+
+  EXPECT_EQ(LiveRangeAt(inner_param).start, 0);
+  EXPECT_EQ(LiveRangeAt(inner_op).start, async_start_time);
+}
+
+TEST_F(HloLiveRangeTest, AsyncInnerBufferStartIsAsyncStartTime) {
+  const std::string hlo_string = R"hlo(
+  HloModule AsyncInnerOverlap, is_scheduled=true
+
+  %async_wrapped (p: f32[4]) -> f32[4] {
+    %p = f32[4] parameter(0)
+    ROOT %inner_op = f32[4] negate(%p)
+  }
+
+  ENTRY %main (a: f32[4]) -> f32[4] {
+    %a = f32[4] parameter(0)
+    %temp = f32[4] negate(%a)
+    %outer = f32[4] negate(%temp)
+    %async-start = ((f32[4]), f32[4], u32[]) async-start(%outer),
+      calls=%async_wrapped
+    %async-done = f32[4] async-done(%async-start)
+    ROOT %result = f32[4] negate(%async-done)
+  }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(module_->schedule(), *alias_analysis_,
+                                         module_->entry_computation()));
+  CheckSchedule();
+
+  const HloInstruction* async_start =
+      module_->entry_computation()->GetInstructionWithName("async-start");
+  const HloInstruction* temp =
+      module_->entry_computation()->GetInstructionWithName("temp");
+  HloComputation* async_wrapped =
+      module_->GetComputationWithName("async_wrapped");
+  ASSERT_NE(async_start, nullptr);
+  ASSERT_NE(temp, nullptr);
+  ASSERT_NE(async_wrapped, nullptr);
+
+  const HloInstruction* inner_op =
+      async_wrapped->GetInstructionWithName("inner_op");
+  ASSERT_NE(inner_op, nullptr);
+
+  auto async_start_time =
+      hlo_live_range_->instruction_schedule().at(async_start);
+  auto temp_range = LiveRangeAt(temp);
+  auto inner_range = LiveRangeAt(inner_op);
+
+  EXPECT_EQ(inner_range.start, async_start_time);
+  EXPECT_GT(inner_range.start, temp_range.end);
+}
+
+TEST_F(HloLiveRangeTest, AsyncComputationSharedByMultipleCallersUsesMinStart) {
+  const std::string hlo_string = R"hlo(
+  HloModule m, is_scheduled=true
+
+  %nested (q: f32[4]) -> f32[4] {
+    %q = f32[4] parameter(0)
+    %t = f32[4] negate(%q)
+    ROOT %n = f32[4] negate(%t)
+  }
+
+  %async_computation (p: f32[4]) -> f32[4] {
+    %p = f32[4] parameter(0)
+    ROOT %c = f32[4] call(%p), to_apply=%nested
+  }
+
+  %while_cond (wp: ((f32[4]), f32[4], u32[])) -> pred[] {
+    %wp = ((f32[4]), f32[4], u32[]) parameter(0)
+    ROOT %cond = pred[] constant(true)
+  }
+
+  %while_body (bp: ((f32[4]), f32[4], u32[])) -> ((f32[4]), f32[4], u32[]) {
+    %bp = ((f32[4]), f32[4], u32[]) parameter(0)
+    %g = f32[4] get-tuple-element(%bp), index=1
+    ROOT %s = ((f32[4]), f32[4], u32[]) async-start(%g), calls=%async_computation
+  }
+
+  ENTRY %main (a: f32[4]) -> ((f32[4]), f32[4], u32[]) {
+    %a = f32[4] parameter(0)
+    %init = ((f32[4]), f32[4], u32[]) async-start(%a), calls=%async_computation
+    ROOT %loop = ((f32[4]), f32[4], u32[]) while(%init), condition=%while_cond, body=%while_body
+  }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(module_->schedule(), *alias_analysis_,
+                                         module_->entry_computation()));
+  CheckSchedule();
+
+  HloComputation* nested = module_->GetComputationWithName("nested");
+  ASSERT_NE(nested, nullptr);
+  const HloInstruction* t = nested->GetInstructionWithName("t");
+  ASSERT_NE(t, nullptr);
+
+  const HloInstruction* init =
+      module_->entry_computation()->GetInstructionWithName("init");
+  ASSERT_NE(init, nullptr);
+
+  auto init_time = hlo_live_range_->instruction_schedule().at(init);
+  auto t_range = LiveRangeAt(t);
+
+  EXPECT_LE(t_range.start, t_range.end);
+  EXPECT_LT(t_range.start, init_time);
+}
+
+TEST_F(HloLiveRangeTest, NestedAsyncViaCall) {
+  const std::string hlo_string = R"hlo(
+  HloModule NestedAsyncViaCall, is_scheduled=true
+
+  %inner_async_wrapped (p_inner: f32[4]) -> f32[4] {
+    %p_inner = f32[4] parameter(0)
+    ROOT %y = f32[4] negate(%p_inner)
+  }
+
+  %outer_callee (q: f32[4]) -> f32[4] {
+    %q = f32[4] parameter(0)
+    %x = f32[4] negate(%q)
+    %inner_start = ((f32[4]), f32[4], u32[]) async-start(%x),
+      calls=%inner_async_wrapped
+    %inner_done = f32[4] async-done(%inner_start)
+    ROOT %z = f32[4] add(%x, %inner_done)
+  }
+
+  %outer_async_wrapped (p_outer: f32[4]) -> f32[4] {
+    %p_outer = f32[4] parameter(0)
+    ROOT %outer_call = f32[4] call(%p_outer), to_apply=%outer_callee
+  }
+
+  ENTRY %main (a: f32[4]) -> f32[4] {
+    %a = f32[4] parameter(0)
+    %outer_start = ((f32[4]), f32[4], u32[]) async-start(%a),
+      calls=%outer_async_wrapped
+    ROOT %outer_done = f32[4] async-done(%outer_start)
+  }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(alias_analysis_,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(hlo_live_range_,
+                       HloLiveRange::Run(module_->schedule(), *alias_analysis_,
+                                         module_->entry_computation()));
+  CheckSchedule();
+
+  HloComputation* outer_callee =
+      module_->GetComputationWithName("outer_callee");
+  ASSERT_NE(outer_callee, nullptr);
+  const HloInstruction* x = outer_callee->GetInstructionWithName("x");
+  const HloInstruction* z = outer_callee->GetInstructionWithName("z");
+  ASSERT_NE(x, nullptr);
+  ASSERT_NE(z, nullptr);
+
+  const HloInstruction* inner_start =
+      outer_callee->GetInstructionWithName("inner_start");
+  ASSERT_NE(inner_start, nullptr);
+
+  auto x_range = LiveRangeAt(x);
+  auto z_range = LiveRangeAt(z);
+  auto inner_start_time =
+      hlo_live_range_->instruction_schedule().at(inner_start);
+  auto z_time = hlo_live_range_->instruction_schedule().at(z);
+
+  // x is used within its own (nested, called-via-kCall) computation by
+  // inner_start and z; its start must not be pushed later than those uses.
+  EXPECT_LE(x_range.start, inner_start_time);
+  EXPECT_LE(x_range.start, z_time);
+  EXPECT_LE(x_range.start, x_range.end);
+  EXPECT_LE(z_range.start, z_range.end);
+}
+
 }  // namespace
 }  // namespace xla

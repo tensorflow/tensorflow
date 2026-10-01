@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
@@ -650,6 +650,28 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:strcat",
+        "@zlib",
+    ],
+)
+
+tsl_cc_test(
+    name = "zlib_buffers_large_append_test",
+    size = "large",
+    srcs = ["zlib_buffers_large_append_test.cc"],
+    tags = if_google([
+        "requires-mem:16g",
+    ]),
+    deps = [
+        ":random_inputstream",
+        ":zlib_compression_options",
+        ":zlib_inputstream",
+        ":zlib_outputbuffer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:tstring",
         "@zlib",
     ],
 )

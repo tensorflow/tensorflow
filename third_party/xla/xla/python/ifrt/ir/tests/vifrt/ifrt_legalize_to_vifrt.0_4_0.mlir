@@ -469,8 +469,8 @@ func.func @op_call(
   return %1 : !array_op_call
 }
 
-// CHECK-NOT @add_one
-module @add_one attributes {sym_visibility = "private"} {
+// CHECK-NOT: @add_one
+module @add_one <sym_visibility = "private"> {
   func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
     %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
@@ -478,8 +478,8 @@ module @add_one attributes {sym_visibility = "private"} {
   }
 }
 
-// CHECK-NOT @"escaped-module"
-module @"escaped-module" attributes {sym_visibility = "private"} {
+// CHECK-NOT: @"escaped-module"
+module @"escaped-module" <sym_visibility = "private"> {
   func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
     %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
@@ -487,8 +487,8 @@ module @"escaped-module" attributes {sym_visibility = "private"} {
   }
 }
 
-// CHECK-NOT @add_two
-module @add_two attributes {sym_visibility = "private"} {
+// CHECK-NOT: @add_two
+module @add_two <sym_visibility = "private"> {
   func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
     %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>

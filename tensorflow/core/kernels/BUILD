@@ -335,6 +335,21 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
+tf_cuda_only_cc_test(
+    name = "conv_2d_gpu_test",
+    size = "small",
+    srcs = [
+        "conv_2d_gpu.h",
+        "conv_2d_gpu_test.cu.cc",
+    ],
+    features = if_cuda(["-layering_check"]),
+    deps = [
+        ":conv_2d",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "conv_2d_hdrs",
     hdrs = ["conv_2d.h"],
@@ -532,6 +547,7 @@ cc_library(
 tf_cuda_only_cc_test(
     name = "gpu_prim_helpers_test",
     srcs = ["gpu_prim_helpers_test.cu.cc"],
+    extra_copts = if_not_windows(["-Wno-pass-failed"]),
     features = if_cuda(["-layering_check"]),
     tags = ["no_cuda_asan"],  # TODO(b/183963619)
     deps = [
@@ -826,6 +842,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:mutex",
     ],
 )
@@ -1274,6 +1291,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "unique_op",
     deps = ARRAY_DEPS + [
         "//tensorflow/core/framework:types_proto_cc",
@@ -1314,6 +1332,7 @@ tf_kernel_library(
     srcs = ["where_op.cc"],
     hdrs = ["where_op.h"],
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_srcs = [
         "where_op.h",
         "where_op_gpu.cu.h",
@@ -2800,7 +2819,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tensor_array_ops",
     prefix = "tensor_array_ops",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + ["//tensorflow/core/util:overflow"],
 )
 
 DYNAMIC_DEPS = [
@@ -2814,6 +2833,7 @@ DYNAMIC_DEPS = [
 tf_kernel_library(
     name = "dynamic_partition_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "dynamic_partition_op",
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
@@ -3711,6 +3731,10 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3817,6 +3841,15 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "integer_pow_gpu",
+    prefix = "integer_pow_gpu",
+    deps = MATH_DEPS + [
+        "//tensorflow/core:framework_internal",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_kernel_library(
     name = "cross_op",
     prefix = "cross_op",
     deps = MATH_DEPS,
@@ -3837,8 +3870,11 @@ tf_kernel_library(
     ),
     prefix = "cwise_op",
     deps = MATH_DEPS + [
+        ":integer_pow_gpu",
         "//tensorflow/core/kernels/mlir_generated:cwise_op",
         "@com_google_absl//absl/base:prefetch",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3879,6 +3915,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "reduction_ops",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
     deps = MATH_DEPS + [
@@ -3890,6 +3927,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "segment_reduction_ops",
     deps = MATH_DEPS + [
         "//tensorflow/core/util:determinism_for_kernels",
@@ -3907,6 +3945,7 @@ tf_kernel_library(
     srcs = ["scan_ops.cc"],
     hdrs = ["scan_ops.h"],
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_srcs = [
         "scan_ops.h",
         "scan_ops_gpu.h",
@@ -4309,6 +4348,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
@@ -4338,10 +4378,15 @@ cc_library(
     deps = [
         ":ops_util",
         "//tensorflow/core:framework",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -4462,6 +4507,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "bias_op",
     deps = NN_DEPS + [
         ":loose_headers",
@@ -4499,6 +4545,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "in_topk_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "in_topk_op",
     deps = NN_DEPS + [
         ":reduction_ops",
@@ -4536,6 +4583,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "softmax_op",
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "softmax_op",
     deps = NN_DEPS + if_cuda_or_rocm([
         ":reduction_ops",
@@ -4579,6 +4627,7 @@ tf_kernel_library(
     name = "topk_op",
     srcs = ["topk_op.cc"],
     hdrs = ["topk_op.h"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_srcs = [
         "topk_op.h",
         "topk_op_gpu.h",
@@ -4611,11 +4660,16 @@ tf_kernel_library(
     name = "xent_op",
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "xent_op",
-    deps = NN_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = NN_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
     name = "bincount_op",
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "bincount_op",
     deps = [
         ":fill_functor",
@@ -4632,6 +4686,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "histogram_op",
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "histogram_op",
     deps = [
         ":gpu_prim_hdrs",
@@ -4647,6 +4702,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "l2loss_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "l2loss_op",
     deps = [
         ":gpu_prim_hdrs",
@@ -5313,6 +5369,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_concat_op",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "sparse_concat_op",
     deps = SPARSE_DEPS + [
         "//tensorflow/core/util:overflow",
@@ -5342,6 +5399,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "fill_empty_rows_functor",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "fill_empty_rows_functor",
     deps = [
         ":gpu_prim_hdrs",
@@ -5392,6 +5450,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reorder_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "sparse_reorder_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_prim_hdrs",
@@ -5411,6 +5470,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_slice_grad_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "sparse_slice_grad_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_prim_hdrs",
@@ -5420,6 +5480,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_slice_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "sparse_slice_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_device_array",
@@ -5442,6 +5503,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_split_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "sparse_split_op",
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_device_array",
@@ -5489,7 +5551,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_xent_op",
     features = if_cuda(["-layering_check"]),
-    gpu_copts = tf_disable_ptxas_warning_flags(),
+    gpu_copts = tf_disable_ptxas_warning_flags() + if_not_windows(["-Wno-pass-failed"]),
     prefix = "sparse_xent_op",
     deps = SPARSE_DEPS + [
         "//tensorflow/core:lib_internal",
@@ -6142,6 +6204,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "multinomial_op",
     features = if_cuda(["-layering_check"]),
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "multinomial_op",
     deps = [
         ":gpu_prim_hdrs",
@@ -8285,8 +8348,11 @@ cc_library(
         "//tensorflow:__subpackages__",
     ] + LOOSE_HEADER_VISIBILITY,
     deps = [
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
