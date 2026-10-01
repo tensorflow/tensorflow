@@ -1059,6 +1059,7 @@ class RoundingTest(test.TestCase):
     y = [-2., -2., -0., 0., 2., 2., 2.]
     self._compare_values(x, y=y)
 
+  @test_util.run_in_graph_and_eager_modes
   def testNegativeFloat32SubnormalsFloorToMinusOne(self):
     # Scalar subnormal arrays: MSVC flushes negative subnormals to -0.0f
     # through an XMM register before bit_cast can read the original bits, so
@@ -1159,6 +1160,7 @@ class RoundingTest(test.TestCase):
         self.assertAllEqual(
             np.signbit(exp[non_nan_mask]), np.signbit(out[non_nan_mask]))
 
+  @test_util.run_in_graph_and_eager_modes
   def testFloorAcrossNonFloat32Dtypes(self):
     """Verify floor correctness for all non-float32 registered CPU types.
 
