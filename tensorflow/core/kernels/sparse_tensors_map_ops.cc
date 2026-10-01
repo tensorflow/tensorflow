@@ -197,15 +197,12 @@ class AddSparseToTensorsMapOp : public SparseTensorAccessingOp {
     SparseTensor st;
     OP_REQUIRES_OK(context, SparseTensor::Create(*input_indices, *input_values,
                                                  input_shape_object, &st));
+    Tensor* sparse_handle = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &sparse_handle));
     int64_t handle;
     OP_REQUIRES_OK(context, map->AddSparseTensor(context, st, &handle));
-
-    Tensor sparse_handle(DT_INT64, TensorShape({}));
-    auto sparse_handle_t = sparse_handle.scalar<int64_t>();
-
-    sparse_handle_t() = handle;
-
-    context->set_output(0, sparse_handle);
+    sparse_handle->scalar<int64_t>()() = handle;
   }
 };
 
@@ -308,8 +305,14 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
       const auto values = subset.values<T>();
       const int64_t num_entries = values.size();
 
-      Tensor output_indices = Tensor(DT_INT64, {num_entries, rank - 1});
-      Tensor output_values = Tensor(DataTypeToEnum<T>::value, {num_entries});
+      Tensor output_indices;
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DT_INT64, TensorShape({num_entries, rank - 1}),
+                                  &output_indices));
+      Tensor output_values;
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  TensorShape({num_entries}), &output_values));
 
       auto output_indices_t = output_indices.matrix<int64_t>();
       auto output_values_t = output_values.vec<T>();
@@ -333,8 +336,14 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
     // Fill in any gaps; we must provide an empty ST for batch entries
     // the grouper didn't find.
     if (visited.size() < N) {
-      Tensor empty_indices(DT_INT64, {0, rank - 1});
-      Tensor empty_values(DataTypeToEnum<T>::value, {0});
+      Tensor empty_indices;
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_INT64, TensorShape({0, rank - 1}),
+                                            &empty_indices));
+      Tensor empty_values;
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DataTypeToEnum<T>::value,
+                                            TensorShape({0}), &empty_values));
       SparseTensor empty_st;
       OP_REQUIRES_OK(context, SparseTensor::Create(empty_indices, empty_values,
                                                    output_shape, &empty_st));
@@ -370,143 +379,107 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
   void Compute(OpKernelContext* context) override {
     SparseTensorsMap* map = nullptr;
     OP_REQUIRES_OK(context, GetMap(context, false /* is_writing */, &map));
-
     const Tensor& sparse_handles = context->input(0);
-
     OP_REQUIRES(context, TensorShapeUtils::IsVector(sparse_handles.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
                     "sparse_handles should be a vector but received shape ",
                     sparse_handles.shape().DebugString())));
-
-    int64_t N = sparse_handles.shape().dim_size(0);
-
+    const int64_t N = sparse_handles.dim_size(0);
     OP_REQUIRES(context, N > 0,
                 absl::InvalidArgumentError(
                     "Must have at least 1 serialized SparseTensor, "
                     "but input matrix has 0 rows"));
 
-    std::vector<Tensor> indices_to_concat;
-    std::vector<Tensor> values_to_concat;
-    std::vector<TensorShape> shapes_to_concat;
-
-    const auto& sparse_handles_t = sparse_handles.vec<int64_t>();
-
     std::vector<SparseTensor> sparse_tensors;
-
     OP_REQUIRES_OK(context, map->RetrieveAndClearSparseTensors(
-                                context, sparse_handles_t, &sparse_tensors));
+                                context, sparse_handles.vec<int64_t>(),
+                                &sparse_tensors));
 
+    const int rank = sparse_tensors[0].dims();
+    std::vector<int64_t> output_shape(rank + 1, 0);
+    output_shape[0] = N;
+    int64_t total_entries = 0;
     for (int64_t i = 0; i < N; ++i) {
       const SparseTensor& st = sparse_tensors[i];
-      const Tensor& output_indices = st.indices();
-      const Tensor& output_values = st.values();
-      const auto output_shape = st.shape();
-
-      OP_REQUIRES(context, TensorShapeUtils::IsMatrix(output_indices.shape()),
+      const Tensor& input_indices = st.indices();
+      const Tensor& input_values = st.values();
+      OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices.shape()),
                   absl::InvalidArgumentError(absl::StrCat(
                       "Expected sparse_handles[", i,
                       "] to represent an index matrix but received shape ",
-                      output_indices.shape().DebugString())));
-      OP_REQUIRES(context, TensorShapeUtils::IsVector(output_values.shape()),
+                      input_indices.shape().DebugString())));
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(input_values.shape()),
                   absl::InvalidArgumentError(absl::StrCat(
                       "Expected sparse_handles[", i,
                       "] to represent a values vector but received shape ",
-                      output_values.shape().DebugString())));
+                      input_values.shape().DebugString())));
       OP_REQUIRES(
-          context, DataTypeToEnum<T>::value == output_values.dtype(),
+          context, DataTypeToEnum<T>::value == input_values.dtype(),
           errors::InvalidArgument(
               "Requested SparseTensor of type ",
               DataTypeString(DataTypeToEnum<T>::value), " but SparseTensor[", i,
-              "].values.dtype() == ", DataTypeString(output_values.dtype())));
-
-      int64_t num_entries = output_indices.dim_size(0);
-      OP_REQUIRES(context, num_entries == output_values.dim_size(0),
+              "].values.dtype() == ", DataTypeString(input_values.dtype())));
+      const int64_t num_entries = input_indices.dim_size(0);
+      OP_REQUIRES(context, num_entries == input_values.dim_size(0),
                   absl::InvalidArgumentError(absl::StrCat(
                       "Expected row counts of SparseTensor[", i,
                       "].indices and SparseTensor[", i,
                       "].values to match but they do not: ", num_entries,
-                      " vs. ", output_values.dim_size(0))));
-      int rank = output_indices.dim_size(1);
-      OP_REQUIRES(context, rank == output_shape.size(),
+                      " vs. ", input_values.dim_size(0))));
+      const int tensor_rank = input_indices.dim_size(1);
+      OP_REQUIRES(context, tensor_rank == st.dims(),
                   absl::InvalidArgumentError(absl::StrCat(
                       "Expected column counts of SparseTensor[", i,
                       "].indices to match size of SparseTensor[", i,
-                      "].shape "
-                      "but they do not: ",
-                      rank, " vs. ", output_shape.size())));
-
-      // Now we expand each SparseTensors' indices and shape by
-      // prefixing a dimension
-      Tensor expanded_indices(
-          DT_INT64, TensorShape({num_entries, 1 + output_indices.dim_size(1)}));
-      Tensor expanded_shape(DT_INT64, TensorShape({1 + rank}));
-      const auto& output_indices_t = output_indices.matrix<int64_t>();
-      auto expanded_indices_t = expanded_indices.matrix<int64_t>();
-      auto expanded_shape_t = expanded_shape.vec<int64_t>();
-      expanded_indices_t.chip<1>(0).setZero();
-      Eigen::DSizes<Eigen::DenseIndex, 2> indices_start(0, 1);
-      Eigen::DSizes<Eigen::DenseIndex, 2> indices_sizes(num_entries, rank);
-      expanded_indices_t.slice(indices_start, indices_sizes) = output_indices_t;
-      expanded_shape_t(0) = 1;
-      // TODO: copy shape from TensorShape to &expanded_shape_t(1)
-      // std::copy_n(&output_shape_t(0), rank, &expanded_shape_t(1));
-      for (int i = 0; i < rank; ++i) {
-        expanded_shape_t(i + 1) = output_shape[i];
-      }
-      TensorShape expanded_tensor_shape(expanded_shape_t);
-
-      indices_to_concat.push_back(std::move(expanded_indices));
-      values_to_concat.push_back(output_values);
-      shapes_to_concat.push_back(std::move(expanded_tensor_shape));
-    }
-
-    int rank = -1;
-    for (int i = 0; i < N; ++i) {
-      if (rank < 0) rank = shapes_to_concat[i].dims();
-      OP_REQUIRES(context, rank == shapes_to_concat[i].dims(),
+                      "].shape but they do not: ", tensor_rank, " vs. ",
+                      st.dims())));
+      OP_REQUIRES(context, rank == tensor_rank,
                   absl::InvalidArgumentError(absl::StrCat(
                       "Inconsistent rank across SparseTensors: rank prior to "
                       "SparseTensor[",
-                      i, "] was: ", rank, " but rank of SparseTensor[", i,
-                      "] is: ", shapes_to_concat[i].dims())));
-    }
-
-    // SparseTensor::Concat requires consistent shape for all but the
-    // primary order dimension (dimension 0 in this case).  So we get
-    // the maximum value across all the input SparseTensors for each
-    // dimension and use that.
-    TensorShape preconcat_shape(shapes_to_concat[0]);
-    for (int i = 0; i < N; ++i) {
+                      i, "] was: ", rank + 1, " but rank of SparseTensor[", i,
+                      "] is: ", tensor_rank + 1)));
+      total_entries = AddWithoutOverflow(total_entries, num_entries);
+      OP_REQUIRES(context, total_entries >= 0,
+                  absl::ResourceExhaustedError("Too many sparse entries"));
       for (int d = 0; d < rank; ++d) {
-        preconcat_shape.set_dim(d, std::max(preconcat_shape.dim_size(d),
-                                            shapes_to_concat[i].dim_size(d)));
+        output_shape[d + 1] = std::max(output_shape[d + 1], st.shape()[d]);
       }
     }
 
-    // Dimension 0 is the primary dimension.
-    absl::InlinedVector<int64_t, 8UL> std_order(rank);
-    std::iota(std_order.begin(), std_order.end(), 0);
-
-    std::vector<SparseTensor> tensors_to_concat;
-    tensors_to_concat.reserve(N);
-    for (int i = 0; i < N; ++i) {
-      SparseTensor tensor;
-      OP_REQUIRES_OK(context,
-                     SparseTensor::Create(std::move(indices_to_concat[i]),
-                                          std::move(values_to_concat[i]),
-                                          preconcat_shape, std_order, &tensor));
-      tensors_to_concat.push_back(std::move(tensor));
+    // Allocate the concatenated outputs directly; SparseTensor::Concat uses
+    // unchecked Tensor constructors and bypasses the context allocator.
+    Tensor* indices = nullptr;
+    Tensor* values = nullptr;
+    Tensor* shape = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, TensorShape({total_entries, rank + 1}),
+                                &indices));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                1, TensorShape({total_entries}), &values));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                2, TensorShape({rank + 1}), &shape));
+    auto indices_t = indices->matrix<int64_t>();
+    auto values_t = values->vec<T>();
+    std::copy(output_shape.begin(), output_shape.end(),
+              shape->vec<int64_t>().data());
+    int64_t offset = 0;
+    for (int64_t i = 0; i < N; ++i) {
+      const SparseTensor& st = sparse_tensors[i];
+      const int64_t num_entries = st.num_entries();
+      if (num_entries > 0) {
+        const auto input_indices = st.indices().matrix<int64_t>();
+        for (int64_t row = 0; row < num_entries; ++row) {
+          indices_t(offset + row, 0) = i;
+          for (int d = 0; d < rank; ++d) {
+            indices_t(offset + row, d + 1) = input_indices(row, d);
+          }
+        }
+        std::copy_n(st.values().vec<T>().data(), num_entries,
+                    values_t.data() + offset);
+      }
+      offset += num_entries;
     }
-
-    auto output = SparseTensor::Concat<T>(tensors_to_concat);
-    Tensor final_output_shape(DT_INT64, TensorShape({output.dims()}));
-
-    std::copy_n(output.shape().data(), output.dims(),
-                final_output_shape.vec<int64_t>().data());
-
-    context->set_output(0, output.indices());
-    context->set_output(1, output.values());
-    context->set_output(2, final_output_shape);
   }
 };
 
