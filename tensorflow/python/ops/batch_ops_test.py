@@ -296,6 +296,52 @@ class BatchOpsTest(test.TestCase):
             shared_name="",
         )
 
+  def testUnbatchInvalidSplitRanges(self):
+    min_index = np.iinfo(np.int64).min
+    max_index = np.iinfo(np.int64).max
+    invalid_ranges = (
+        ([[0, 2, 1]], "Invalid batch_index range"),
+        ([[0, 0, -1]], "Invalid batch_index range"),
+        ([[0, max_index, min_index]], "Invalid batch_index range"),
+        ([[0, 0, 3]], "Sum of split sizes"),
+        ([[0, min_index, max_index]], "Sum of split sizes"),
+        ([[0, min_index, 0]], "Sum of split sizes"),
+        ([[0, 0, 2], [1, 0, 1]], "Sum of split sizes"),
+        ([[0, 0, 2], [1, 2, 1]], "Invalid batch_index range"),
+    )
+    for width in (2, 16):
+      for batch_index, message in invalid_ranges:
+        with self.subTest(width=width, batch_index=batch_index):
+          with self.assertRaisesRegex(errors.InvalidArgumentError, message):
+            result = batch_ops.unbatch(
+                batched_tensor=constant_op.constant(
+                    np.zeros((2, width)), dtype=dtypes.float32),
+                batch_index=constant_op.constant(
+                    batch_index, dtype=dtypes.int64),
+                id=constant_op.constant(0, dtype=dtypes.int64),
+                timeout_micros=0)
+            self.evaluate(result)
+
+  def testUnbatchSplitRanges(self):
+    for dtype in (dtypes.float32, dtypes.int32, dtypes.string):
+      for width in (2, 16):
+        values = np.arange(2 * width).reshape((2, width))
+        if dtype == dtypes.string:
+          values = values.astype(str)
+        batched_tensor = constant_op.constant(values, dtype=dtype)
+        for first_size in (0, 1):
+          with self.subTest(dtype=dtype, width=width, first_size=first_size):
+            result = batch_ops.unbatch(
+                batched_tensor=batched_tensor,
+                batch_index=constant_op.constant(
+                    [[0, 0, first_size], [1, first_size, 2]],
+                    dtype=dtypes.int64),
+                id=constant_op.constant(0, dtype=dtypes.int64),
+                timeout_micros=0,
+                shared_name=f"unbatch_{dtype.name}_{width}_{first_size}")
+            self.assertAllEqual(self.evaluate(batched_tensor[:first_size]),
+                                self.evaluate(result))
+
   def testUnbatchGradInvalidIndexRank(self):
     # A batch_index that is not a rank-2 matrix was rejected only by way of
     # an out-of-range dimension access whose result happened to fail a later
