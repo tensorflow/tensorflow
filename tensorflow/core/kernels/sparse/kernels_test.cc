@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -304,6 +305,25 @@ TEST(CSRSparseMatrix, DecodeRejectsUninitializedBatchPointers) {
   data.tensors_[1] = Tensor();
   CSRSparseMatrix decoded;
   EXPECT_FALSE(decoded.Decode(data));
+}
+
+TEST(CSRSparseMatrix, DecodeRejectsNegativeDenseShapeDimension) {
+  VariantTensorData data = EncodeValidBatchedMatrix();
+  data.tensors_[0] = test::AsTensor<int64_t>({2, -1, 3}, TensorShape({3}));
+  CSRSparseMatrix tampered;
+  EXPECT_FALSE(tampered.Decode(data));
+}
+
+TEST(CSRSparseMatrix, DecodeRejectsOverflowingDenseShape) {
+  // num_rows = INT64_MAX makes batch_size * (num_rows + 1) wrap to 0, so a
+  // 0-element row_pointers slips past the shape check; Decode must still reject
+  // it instead of indexing a null row_pointers buffer.
+  VariantTensorData data = EncodeValidBatchedMatrix();
+  data.tensors_[0] = test::AsTensor<int64_t>(
+      {2, std::numeric_limits<int64_t>::max(), 1}, TensorShape({3}));
+  data.tensors_[2] = Tensor(DT_INT32, TensorShape({0}));
+  CSRSparseMatrix tampered;
+  EXPECT_FALSE(tampered.Decode(data));
 }
 
 }  // namespace

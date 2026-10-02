@@ -19,12 +19,14 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "tensorflow/core/kernels/sparse/sparse_matrix.h"
+
 #include <cstdint>
+#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -49,6 +51,18 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
   if (batch_size < 0 || num_rows < 0 || num_cols < 0) {
     return errors::InvalidArgument(absl::StrCat(
         "CSRSparseMatrix::Validate: dense_shape has a negative dimension: ",
+        dense_shape.SummarizeValue(5)));
+  }
+  // ValidateTypesAndShapes sizes row_pointers as batch_size * (num_rows + 1).
+  // With dimensions taken straight from an untrusted dense_shape that product
+  // can wrap in int64 (e.g. num_rows = INT64_MAX makes it 0), letting a
+  // 0-element row_pointers pass the shape check and reach the loop below, where
+  // row_ptr[base] reads a null buffer. Reject dimensions that would overflow.
+  if (num_rows == std::numeric_limits<int64_t>::max() ||
+      (batch_size > 0 &&
+       (num_rows + 1) > std::numeric_limits<int64_t>::max() / batch_size)) {
+    return errors::InvalidArgument(absl::StrCat(
+        "CSRSparseMatrix::Validate: dense_shape dimensions overflow int64: ",
         dense_shape.SummarizeValue(5)));
   }
 
@@ -105,11 +119,12 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
       }
       prev_row = next_row;
     }
-    if (row_ptr[base + num_rows] != batch_nnz) {
+    // prev_row already holds row_ptr[base + num_rows] (or 0 when num_rows == 0),
+    // so compare it directly instead of reloading from memory.
+    if (prev_row != batch_nnz) {
       return errors::InvalidArgument(absl::StrCat(
           "CSRSparseMatrix::Validate: last row_pointer for batch ", b, " = ",
-          row_ptr[base + num_rows], " but should equal the batch nnz = ",
-          batch_nnz));
+          prev_row, " but should equal the batch nnz = ", batch_nnz));
     }
   }
 
