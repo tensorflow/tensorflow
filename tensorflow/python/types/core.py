@@ -370,6 +370,11 @@ class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
     """
     pass
 
+  @abc.abstractmethod
+  def clear_cache(self) -> None:
+    """Removes all cached concrete functions for this tf.function."""
+    pass
+
 
 @runtime_checkable
 class TensorProtocol(Protocol):

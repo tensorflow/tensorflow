@@ -345,6 +345,28 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(cache.lookup(f_type2, ctx))
     self.assertIsNotNone(cache.lookup(f_type3, ctx))
 
+  def testMaxCapacitySubtypeDispatchMarksTargetAsMRU(self):
+    cache = function_cache.FunctionCache(max_capacity=2)
+    f_type_gen = make_single_param_type(MockSubtypeOf2(2))
+    f_type_other = make_type(1)
+    f_type_new = make_type(4)
+
+    ctx = function_cache.FunctionContext()
+    cache.add(MockFunction(f_type_gen, "generalized"), ctx)
+    cache.add(MockFunction(f_type_other, "other"), ctx)
+
+    # Looking up a subtype (MockSubtypeOf2(3) is subtype of MockSubtypeOf2(2))
+    # dispatches to f_type_gen and should promote f_type_gen to MRU.
+    f_type_sub = make_single_param_type(MockSubtypeOf2(3))
+    self.assertEqual(cache.lookup(f_type_sub, ctx).test_string, "generalized")
+
+    # Adding a 3rd function should evict f_type_other (the LRU entry), NOT f_type_gen.
+    cache.add(MockFunction(f_type_new, "new"), ctx)
+
+    self.assertIsNotNone(cache.lookup(f_type_sub, ctx))
+    self.assertIsNone(cache.lookup(f_type_other, ctx))
+    self.assertIsNotNone(cache.lookup(f_type_new, ctx))
+
 
 class FunctionCacheBenchmark(test.Benchmark):
 
