@@ -181,7 +181,8 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     indices = np.array([-1, -2], dtype=np.int32)
     for reduction in (self._unsortedSegmentSum, self._unsortedSegmentProd,
                       self._unsortedSegmentMin, self._unsortedSegmentMax):
-      self.assertEqual(reduction(data, indices, 0).shape, (0, 3))
+      self.assertAllEqual(
+          reduction(data, indices, 0), np.zeros([0, 3], dtype=np.float32))
 
   def testUnsortedSegmentSum0DIndices1DData(self):
     for dtype in self.numeric_types:
