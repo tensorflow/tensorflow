@@ -913,14 +913,14 @@ class UnbatchResource : public ResourceBase {
       for (int64_t i = 0; i < num_indices; ++i) {
         const int64_t start = batch_indices(i, 1);
         const int64_t limit = batch_indices(i, 2);
-        if (start < 0 || limit < start) {
+        if (TF_PREDICT_FALSE(start < 0 || limit < start)) {
           return absl::InvalidArgumentError(absl::StrCat(
               "Invalid batch_index range at row ", i, ": [", start, ", ", limit,
               "). The start must be non-negative and the limit must not be "
               "less than the start."));
         }
         const int64_t size = limit - start;
-        if (size > remaining_size) {
+        if (TF_PREDICT_FALSE(size > remaining_size)) {
           return absl::InvalidArgumentError(
               "Sum of split sizes must not exceed dim0-size of input tensor");
         }

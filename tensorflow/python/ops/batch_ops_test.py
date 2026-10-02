@@ -176,11 +176,9 @@ class BatchOpsTest(test.TestCase):
       batched, index, _ = batch_ops.batch(
           [inp0, inp1], num_batch_threads=1, max_batch_size=2,
           batch_timeout_micros=0, grad_timeout_micros=0, batching_queue="")
-      with self.assertRaises(Exception) as raised:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "must have equal 0th-dimension size"):
         _ = sess.run([batched, index], feed_dict={inp0: [0], inp1: [1, 2]})
-      self.assertGreater(
-          raised.exception.message.find("must have equal 0th-dimension size"),
-          0)
 
   def testBasicUnbatch(self):
     """Tests that batch and unbatch work together."""
