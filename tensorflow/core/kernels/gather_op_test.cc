@@ -17,6 +17,8 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <vector>
+
+#include <gmock/gmock.h>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -214,11 +216,10 @@ TEST_F(GatherOpTest, Error_AxisMinInt64) {
   AddInputFromArray<int64_t>(TensorShape({}),
                              {std::numeric_limits<int64_t>::min()});
   absl::Status s = RunOpKernel();
-  EXPECT_TRUE(
-      s.ToString().find(
-          "axis must be greater than std::numeric_limits<int64_t>::min()") !=
-      std::string::npos)
-      << s;
+  EXPECT_THAT(
+      s.ToString(),
+      ::testing::HasSubstr(
+          "axis must be greater than std::numeric_limits<int64_t>::min()"));
 }
 
 TEST_F(GatherOpTest, Error_AxisMaxInt64) {
@@ -231,11 +232,10 @@ TEST_F(GatherOpTest, Error_AxisMaxInt64) {
   AddInputFromArray<int64_t>(TensorShape({}),
                              {std::numeric_limits<int64_t>::max()});
   absl::Status s = RunOpKernel();
-  EXPECT_TRUE(
-      s.ToString().find(
-          "axis must be less than std::numeric_limits<int64_t>::max()") !=
-      std::string::npos)
-      << s;
+  EXPECT_THAT(
+      s.ToString(),
+      ::testing::HasSubstr(
+          "axis must be less than std::numeric_limits<int64_t>::max()"));
 }
 
 constexpr int kLookups = 2000;
