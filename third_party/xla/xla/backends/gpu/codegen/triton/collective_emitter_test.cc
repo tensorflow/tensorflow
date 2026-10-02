@@ -375,7 +375,7 @@ TEST_P(CollectiveEmitterParameterizedTest,
   };
   DebugOptions debug_options;
   CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
-                                            debug_options);
+                                            debug_options, *gpu_topology_);
 
   ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
       []() { return CreateMlirContext(); });

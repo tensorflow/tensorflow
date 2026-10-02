@@ -263,6 +263,13 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
           stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
               descriptor()
                   ->FindFieldByName("cub_version"),
+          // GpuTopology embeds the compile host's driver/toolkit/CPU details.
+          // Only the topology shape (partitions/hosts/devices) is stable across
+          // hosts of the same arch.
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"gpu_topology", "gpu_target_config"}),
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"gpu_topology", "host_target_machine_options"}),
       });
 }
 
