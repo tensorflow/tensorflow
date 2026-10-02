@@ -171,21 +171,24 @@ PYBIND11_MODULE(
           }
 
           const auto& cluster_devices = cluster->GetDevices();
-          std::vector<std::string> device_names;
-          device_names.reserve(cluster_devices.size());
+          std::vector<const std::pair<
+              const std::string, tensorflow::DeviceProperties>*>
+              sorted_devices;
+          sorted_devices.reserve(cluster_devices.size());
           for (const auto& dev : cluster_devices) {
-            device_names.push_back(dev.first);
+            sorted_devices.push_back(&dev);
           }
-          std::sort(device_names.begin(), device_names.end());
+          std::sort(sorted_devices.begin(), sorted_devices.end(),
+                    [](const auto* a, const auto* b) {
+                      return a->first < b->first;
+                    });
 
           std::vector<py::bytes> named_devices;
-          named_devices.reserve(device_names.size());
-          for (const std::string& name : device_names) {
-            const auto it = cluster_devices.find(name);
-            DCHECK(it != cluster_devices.end());
+          named_devices.reserve(sorted_devices.size());
+          for (const auto* dev : sorted_devices) {
             tensorflow::NamedDevice d;
-            d.set_name(name);
-            *d.mutable_properties() = it->second;
+            d.set_name(dev->first);
+            *d.mutable_properties() = dev->second;
             named_devices.push_back(d.SerializeAsString());
           }
           return named_devices;
