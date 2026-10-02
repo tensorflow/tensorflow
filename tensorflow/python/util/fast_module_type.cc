@@ -228,17 +228,12 @@ static PyObject *FastDictContains(FastModuleObject *self, PyObject *args) {
   Py_RETURN_FALSE;
 }
 
-// Calls a function 'func' with inputs 'self' and 'args'.
-static PyObject *CallFunc(FastModuleObject *self, PyObject *args,
+// Calls a function 'func' with inputs 'self' and 'name'.
+static PyObject *CallFunc(FastModuleObject *self, PyObject *name,
                           PyObject *func) {
   if (func == nullptr) {
     PyErr_SetString(PyExc_NameError,
                     "Attempting to call a callback that was not defined");
-    return nullptr;
-  }
-  PyObject *name;
-  if (!PyArg_ParseTuple(args, "O", &name)) {
-    PyErr_SetString(PyExc_TypeError, "CallFunc: incorrect inputs");
     return nullptr;
   }
   PyObject *arglist = Py_BuildValue("(OO)", self, name);
@@ -283,18 +278,16 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
     cb_getattribute = fast_module->cb_getattribute;
     Py_XINCREF(cb_getattribute);
   }
-  PyObject *arglist = Py_BuildValue("(O)", name);
-  PyObject *result;
+  PyObject *result = nullptr;
   // Prefer the customized callback function over the default function.
   if (cb_getattribute != nullptr) {
-    result = CallFunc(fast_module, arglist, cb_getattribute);
+    result = CallFunc(fast_module, name, cb_getattribute);
     Py_DECREF(cb_getattribute);
   } else {
     result = PyModule_Type.tp_getattro(module, name);
   }
   // Return result if it's found
   if (result != nullptr) {
-    Py_DECREF(arglist);
     return result;
   }
   // If the default lookup fails and an AttributeError is raised,
@@ -308,11 +301,9 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   }
   if (cb_getattr != nullptr) {
     PyErr_Clear();
-    result = CallFunc(fast_module, arglist, cb_getattr);
+    result = CallFunc(fast_module, name, cb_getattr);
     Py_DECREF(cb_getattr);
   }
-  // If all options were used up
-  Py_DECREF(arglist);
   return result;
 }
 
