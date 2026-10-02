@@ -639,7 +639,9 @@ class BatchOpsTest(test.TestCase):
       self.assertEqual(len(thread_results), 0)
 
   def testUnbatchGradInvalidId(self):
-    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Shape must be rank 0|Expected `id` to be scalar"):
       self.evaluate(
           gen_batch_ops.unbatch_grad(
               original_input=constant_op.constant([1]),
@@ -787,7 +789,9 @@ class BatchOpsTest(test.TestCase):
             self.evaluate(unbatch_grad([[batch_id, 0, 1]])), [2.0])
 
   def testUnbatchGradInvalidBatchId(self):
-    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Dimension must be 3|Expected 1st dimension size to be 3"):
       self.evaluate(
           gen_batch_ops.unbatch_grad(
               original_input=constant_op.constant([1]),
@@ -797,9 +801,7 @@ class BatchOpsTest(test.TestCase):
               grad=constant_op.constant([
                   1,
               ]),
-              id=constant_op.constant([
-                  1,
-              ], dtype=dtypes.int64)))
+              id=constant_op.constant(1, dtype=dtypes.int64)))
 
   def testUnbatchGradInvalidArgs(self):
     original_input = random_ops.random_uniform(
@@ -810,7 +812,10 @@ class BatchOpsTest(test.TestCase):
         shape=(3, 1), dtype=dtypes.float64, maxval=None)
     batch_id = random_ops.random_uniform(
         shape=(3, 1), dtype=dtypes.int64, maxval=65536)
-    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Shape must be rank 0|Expected `id` to be scalar|"
+        r"Dimension must be 3|Expected 1st dimension size to be 3"):
       self.evaluate(
           gen_batch_ops.unbatch_grad(
               original_input=original_input,
