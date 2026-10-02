@@ -293,7 +293,8 @@ TEST_F(QuantizedPoolingTest, KsizeLargerThanInputDimReturnsInvalidArgument) {
   AddInputFromArray<float>(TensorShape({}), {input_max});
   Status status = RunOpKernel();
   EXPECT_TRUE(absl::IsInvalidArgument(status));
-  EXPECT_TRUE(absl::StrContains(status.message(), "ksize dimension"));
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Computed output size would be negative"));
 }
 
 }  // namespace tensorflow
