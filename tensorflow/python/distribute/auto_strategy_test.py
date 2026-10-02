@@ -136,7 +136,9 @@ class AutoStrategyTest(test.TestCase):
     cpu_dev = device_cls(name="/device:CPU:0", device_type="CPU")
     mock_list_logical_devices.side_effect = (
         lambda device_type=None: (
-            [gpu_dev] if device_type == "GPU" else ([cpu_dev] if device_type == "CPU" else [])
+            [gpu_dev]
+            if device_type == "GPU"
+            else ([cpu_dev] if device_type == "CPU" else [])
         )
     )
     strategy = auto_strategy.auto_strategy()
@@ -153,10 +155,14 @@ class AutoStrategyTest(test.TestCase):
       mock_mirrored_cls,
   ):
     mock_get_visible_devices.side_effect = (
-        lambda device_type=None: ["GPU:0", "GPU:1"] if device_type == "GPU" else []
+        lambda device_type=None: (
+            ["GPU:0", "GPU:1"] if device_type == "GPU" else []
+        )
     )
     mock_list_logical_devices.side_effect = (
-        lambda device_type=None: ["GPU:0", "GPU:1"] if device_type == "GPU" else []
+        lambda device_type=None: (
+            ["GPU:0", "GPU:1"] if device_type == "GPU" else []
+        )
     )
     strategy = auto_strategy.auto_strategy()
     mock_mirrored_cls.assert_called_once()
