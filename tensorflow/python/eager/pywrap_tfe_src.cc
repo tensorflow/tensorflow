@@ -88,11 +88,13 @@ namespace {
 using PyReaderMutexLock = absl::ReaderMutexLock;
 using PyWriterMutexLock = absl::WriterMutexLock;
 #else
-struct PyReaderMutexLock {
-  explicit PyReaderMutexLock(absl::Mutex*) {}
+struct TF_SCOPED_LOCKABLE PyReaderMutexLock {
+  explicit PyReaderMutexLock(absl::Mutex* mu) TF_SHARED_LOCK_FUNCTION(mu) {}
+  ~PyReaderMutexLock() TF_UNLOCK_FUNCTION() {}
 };
-struct PyWriterMutexLock {
-  explicit PyWriterMutexLock(absl::Mutex*) {}
+struct TF_SCOPED_LOCKABLE PyWriterMutexLock {
+  explicit PyWriterMutexLock(absl::Mutex* mu) TF_EXCLUSIVE_LOCK_FUNCTION(mu) {}
+  ~PyWriterMutexLock() TF_UNLOCK_FUNCTION() {}
 };
 #endif
 
@@ -1168,6 +1170,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
       Py_XINCREF(registered_exception_class);
     }
 #else
+    PyReaderMutexLock lock(&exception_class_mutex);
     registered_exception_class = exception_class;
 #endif
 
@@ -1220,6 +1223,7 @@ int MaybeRaiseExceptionFromStatus(const absl::Status& status,
       Py_XINCREF(registered_exception_class);
     }
 #else
+    PyReaderMutexLock lock(&exception_class_mutex);
     registered_exception_class = exception_class;
 #endif
 
