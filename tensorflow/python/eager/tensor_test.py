@@ -406,21 +406,26 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         raise RuntimeError("integer conversion failed")
 
     for dtype in (None, dtypes.int32, dtypes.int64, dtypes.uint64):
-      # Scalars use NumPy's array conversion; sequences use ConvertScalar.
-      self.assertAllEqual(_create_tensor(InvalidInteger(1), dtype=dtype), 1)
-      for value in ([InvalidInteger(1)], [[InvalidInteger(1)]]):
-        with self.subTest(dtype=dtype, value=value):
-          with self.assertRaisesRegex(
-              RuntimeError, "integer conversion failed"):
-            _create_tensor(value, dtype=dtype)
-          self.assertAllEqual(_create_tensor(1, dtype=dtype), 1)
+      for convert in (_create_tensor, constant_op.constant,
+                      ops.convert_to_tensor):
+        # Scalars use NumPy's array conversion; sequences use ConvertScalar.
+        self.assertAllEqual(convert(InvalidInteger(1), dtype=dtype), 1)
+        for value in ([InvalidInteger(1)], [[InvalidInteger(1)]]):
+          with self.subTest(convert=convert.__name__, dtype=dtype, value=value):
+            with self.assertRaisesRegex(
+                RuntimeError, "integer conversion failed"):
+              convert(value, dtype=dtype)
+            self.assertAllEqual(convert(1, dtype=dtype), 1)
 
   def testFloat64IntegerOverflow(self):
-    for value in (10**310, [10**310]):
-      with self.assertRaisesRegex(ValueError, "out-of-range integer"):
-        constant_op.constant(value, dtype=dtypes.float64)
-      self.assertAllEqual(
-          constant_op.constant([1.0], dtype=dtypes.float64).numpy(), [1.0])
+    for convert in (_create_tensor, constant_op.constant,
+                    ops.convert_to_tensor):
+      for value in (10**310, [10**310], [[0, 10**310]]):
+        with self.subTest(convert=convert.__name__, value=value):
+          with self.assertRaisesRegex(ValueError, "out-of-range integer"):
+            convert(value, dtype=dtypes.float64)
+          self.assertAllEqual(
+              convert([1.0], dtype=dtypes.float64).numpy(), [1.0])
 
   def testUint64BoundaryValues(self):
     values = [0, 2**63, 2**64 - 1]
