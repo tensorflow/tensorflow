@@ -126,7 +126,9 @@ class AutoStrategyTest(test.TestCase):
   def testSingleGPUDetection(
       self, mock_get_visible_devices, mock_list_logical_devices
   ):
-    mock_get_visible_devices.return_value = ["GPU:0"]
+    mock_get_visible_devices.side_effect = (
+        lambda device_type=None: ["GPU:0"] if device_type == "GPU" else []
+    )
     device_cls = collections.namedtuple(
         "LogicalDevice", ["name", "device_type"]
     )
@@ -134,7 +136,7 @@ class AutoStrategyTest(test.TestCase):
     cpu_dev = device_cls(name="/device:CPU:0", device_type="CPU")
     mock_list_logical_devices.side_effect = (
         lambda device_type=None: (
-            [gpu_dev] if device_type == "GPU" else [cpu_dev]
+            [gpu_dev] if device_type == "GPU" else ([cpu_dev] if device_type == "CPU" else [])
         )
     )
     strategy = auto_strategy.auto_strategy()
@@ -150,8 +152,12 @@ class AutoStrategyTest(test.TestCase):
       mock_list_logical_devices,
       mock_mirrored_cls,
   ):
-    mock_get_visible_devices.return_value = ["GPU:0", "GPU:1"]
-    mock_list_logical_devices.return_value = ["GPU:0", "GPU:1"]
+    mock_get_visible_devices.side_effect = (
+        lambda device_type=None: ["GPU:0", "GPU:1"] if device_type == "GPU" else []
+    )
+    mock_list_logical_devices.side_effect = (
+        lambda device_type=None: ["GPU:0", "GPU:1"] if device_type == "GPU" else []
+    )
     strategy = auto_strategy.auto_strategy()
     mock_mirrored_cls.assert_called_once()
     self.assertIs(strategy, mock_mirrored_cls.return_value)
@@ -186,10 +192,7 @@ class AutoStrategyTest(test.TestCase):
     mock_tpu_strategy_cls.assert_called_once_with(mock_resolver)
     self.assertIs(strategy, mock_tpu_strategy_cls.return_value)
 
-  @mock.patch.object(config, "get_visible_devices", return_value=[])
-  def testMaskedVisibleGPUsFallbackToCPU(
-      self, mock_get_visible_devices
-  ):
+  def testMaskedVisibleGPUsFallbackToCPU(self):
     strategy = auto_strategy.auto_strategy()
     self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
     self.assertIn("CPU:0", strategy.extended._device)
