@@ -49,6 +49,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::FieldsAre;
+using ::testing::UnorderedElementsAre;
 
 namespace m = ::xla::match;
 
@@ -669,7 +670,7 @@ ENTRY e {
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
 }
 
-TEST_P(GemmFusionTest, FuseSliceWithOtherUsersWhenDotHasSmallK) {
+TEST_P(GemmFusionTestVersioned, FuseSliceWithOtherUsersWhenDotHasSmallK) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -689,18 +690,16 @@ ENTRY e {
 
   // Check that the second dot is fused and the fusion contains sl1.
   // We make no assumptions about other fusions.
-  constexpr absl::string_view kExpectedHloText = R"(
-    CHECK: %[[FUSION_DOT:.*]] (
-    CHECK:   %[[SLICE:.*]] = bf16[512,64]{1,0} slice(%parameter_0), slice={[0:512], [14336:14400]}
-    CHECK:   ROOT {{.*}} = bf16[512,14336]{1,0} dot(%[[SLICE]], %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    CHECK: ENTRY
-    CHECK-DAG: %[[FUSION_D1:.*]] = bf16[512,14336]{1,0} fusion({{.*}}, {{.*}}), kind=kCustom, calls=%[[FUSION_DOT]]
-    CHECK-DAG: ROOT %a0 = bf16[512,14336]{1,0} add({{.*}}, %[[FUSION_D1]])
-  )";
-  MatchHloModule(*module, kExpectedHloText);
+  const HloInstruction* fusion_d1 = nullptr;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Op(), m::Fusion(&fusion_d1))));
+  EXPECT_THAT(
+      fusion_d1->called_computations()[0]->root_instruction(),
+      GmockMatch(m::Dot(m::Slice(m::Parameter()).WithShape(BF16, {512, 64}),
+                        m::Parameter())));
 }
 
-TEST_P(GemmFusionTest, DoNotFuseSliceOfMixedDimensions) {
+TEST_P(GemmFusionTestVersioned, DoNotFuseSliceOfMixedDimensions) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -708,12 +707,23 @@ ENTRY e {
   s0 = bf16[768,32] slice(p0), slice={[0:768], [0:32]}
   b0 = bf16[256,3,32] reshape(s0)
   b1 = bf16[256,96] reshape(b0)
-  p1 = bf16[256,96] parameter(1)
-  ROOT d = bf16[96,96] dot(b1, p1),
+  p1 = s8[256,96] parameter(1)
+  c1 = bf16[256,96] convert(p1)
+  ROOT d = bf16[96,96] dot(b1, c1),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
 
-  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion()));
+  // The slice must stay outside the fusion. V1 fuses the reshapes above it,
+  // while V2 leaves them outside too.
+  EXPECT_THAT(root->operands(),
+              UnorderedElementsAre(
+                  GmockMatch(m::Parameter(1)),
+                  GmockMatch(m::AnyOf<HloInstruction>(
+                      m::Slice(m::Parameter(0)),
+                      m::Bitcast(m::Reshape(m::Slice(m::Parameter(0))))))));
 }
 
 TEST_P(GemmFusionTestVersioned, DoNotFuseSlicesOfNonMajorFragments) {
@@ -889,7 +899,8 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
 }
 
-TEST_P(GemmFusionTest, BinaryElementwiseOfUnsupportedBroadcastIsNotFused) {
+TEST_P(GemmFusionTestVersioned,
+       BinaryElementwiseOfUnsupportedBroadcastIsNotFused) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -899,11 +910,17 @@ ENTRY e {
   p0 = f16[8192,3072] parameter(0)
   p0c = f32[8192,3072] convert(p0)
   a = f32[8192,3072] add(p0c, s)
-  p1 = f32[3072,768] parameter(1)
-  ROOT r = f32[8192,768] dot(a, p1),
+  p1 = f16[3072,768] parameter(1)
+  p1c = f32[3072,768] convert(p1)
+  ROOT r = f32[8192,768] dot(a, p1c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion()));
+  EXPECT_THAT(
+      root->operands(),
+      UnorderedElementsAre(GmockMatch(m::Add()), GmockMatch(m::Parameter(1))));
 }
 
 TEST_P(GemmFusionTestVersioned, ConcatenationDivisibleBy64IsFused) {
@@ -1113,7 +1130,7 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerDotOperand + 1);
 }
 
-TEST_P(GemmFusionTest, DoNotFuseTooManyParametersForConcat) {
+TEST_P(GemmFusionTestVersioned, DoNotFuseTooManyParametersForConcat) {
   static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
   // The concat shouldn't overgo the allowed parameter limit.
@@ -1576,7 +1593,7 @@ e {
                                     /*broadcast_multiplier=*/1)));
 }
 
-TEST_P(GemmFusionTest, IndivisibleConcatenationIsNotFused) {
+TEST_P(GemmFusionTestVersioned, IndivisibleConcatenationIsNotFused) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 e {
@@ -1589,11 +1606,14 @@ e {
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })"));
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion()));
+  EXPECT_THAT(root->operands(),
+              UnorderedElementsAre(GmockMatch(m::Concatenate()),
+                                   GmockMatch(m::Parameter())));
 }
 
-TEST_P(GemmFusionTest, ConcatenationOfContractingIsNotFused) {
+TEST_P(GemmFusionTestVersioned, ConcatenationOfContractingIsNotFused) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 e {
@@ -1606,8 +1626,11 @@ e {
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })"));
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion()));
+  EXPECT_THAT(root->operands(),
+              UnorderedElementsAre(GmockMatch(m::Concatenate()),
+                                   GmockMatch(m::Parameter())));
 }
 
 TEST_P(GemmFusionTest, ConcatenationOfBatchIsNotFused) {
