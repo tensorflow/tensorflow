@@ -2191,9 +2191,36 @@ LogicalResult ScanOp::verify() {
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
   }
-  if (getKind() != ReductionKind::kSum && getKind() != ReductionKind::kMax &&
-      getKind() != ReductionKind::kMin) {
-    return emitOpError("Only sum, max and min reductions are supported.");
+  switch (getKind()) {
+    case ReductionKind::kSum:
+      break;
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(input_ty.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type.");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(input_ty.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type.");
+      }
+      break;
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead.");
+    case ReductionKind::kArgMax:
+    case ReductionKind::kArgMin:
+    case ReductionKind::kFindFirstSet:
+      return emitOpError("Only sum, max and min reductions are supported.");
   }
 
   if (getMask() == nullptr) {
@@ -3121,14 +3148,45 @@ LogicalResult AllReduceOp::verify() {
 
   switch (kind) {
     case ReductionKind::kSum:
-    case ReductionKind::kMax:
-    case ReductionKind::kMin:
       if (in_ty != out_ty) {
         return emitOpError(
             "Sum, max, and min reductions must have the same "
             "input and output type");
       }
       break;
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(in_ty.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type");
+      }
+      if (in_ty != out_ty) {
+        return emitOpError(
+            "Sum, max, and min reductions must have the same "
+            "input and output type");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(in_ty.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type");
+      }
+      if (in_ty != out_ty) {
+        return emitOpError(
+            "Sum, max, and min reductions must have the same "
+            "input and output type");
+      }
+      break;
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead");
     case ReductionKind::kArgMax:
     case ReductionKind::kArgMin:
       if (in_ty.getShape() != out_ty.getShape()) {
@@ -3155,7 +3213,6 @@ LogicalResult AllReduceOp::verify() {
       break;
     case ReductionKind::kFindFirstSet:
       return emitOpError("Only i1 input is supported for find_first_set");
-      break;
   }
   return success();
 }
@@ -3255,9 +3312,40 @@ LogicalResult ReduceOp::verify() {
           "arg_max/arg_min not supported - use tpu.reduce_index instead");
     case ReductionKind::kFindFirstSet:
       return emitOpError("find_first_set not supported");
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead");
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(input_type.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type");
+      }
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(input_type.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type");
+      }
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
     case ReductionKind::kSum:
-    case ReductionKind::kMax:
-    case ReductionKind::kMin:
       // TODO(tlongeri): Might be worth allowing things like bf16 -> f32.
       if (input_type.getElementType() != output_type.getElementType()) {
         return emitOpError(
