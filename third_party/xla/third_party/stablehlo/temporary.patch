@@ -2892,6 +2892,24 @@ diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stable
    // TODO(#1725): Figure out how to test the outfeed queue.
    return results;
  }
+diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
+--- stablehlo/stablehlo/reference/Ops.cpp
++++ stablehlo/stablehlo/reference/Ops.cpp
+@@ -1777,12 +1777,8 @@
+         dotGeneralOp(reversedLhsWindow, rhs, lhsContractingDimensions,
+                      rhsContractingDimensions, resultType.getElementType());
+ 
+-    Sizes resultNonSpatialDims;
+-    for (auto i = 0; i < result.getRank(); ++i)
+-      if (llvm::find(outputSpatialDimensions, i) ==
+-          outputSpatialDimensions.end())
+-        resultNonSpatialDims.push_back(result.getShape()[i]);
+-
++    Sizes resultNonSpatialDims{result.getShape()[outputBatchDimension],
++                               result.getShape()[outputFeatureDimension]};
+     Axes resultPermutation;
+     resultPermutation.push_back(outputBatchDimension);
+     resultPermutation.append(outputSpatialDimensions.begin(),
 diff --ruN a/stablehlo/stablehlo/reference/Process.cpp b/stablehlo/stablehlo/reference/Process.cpp
 --- stablehlo/stablehlo/reference/Process.cpp
 +++ stablehlo/stablehlo/reference/Process.cpp
@@ -3381,6 +3399,28 @@ diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/st
  // CHECK-LABEL:   func.func @mulhi_i32(
  // CHECK-SAME:      %[[ARG0:.*]]: tensor<4xi32>,
  // CHECK-SAME:      %[[ARG1:.*]]: tensor<4xi32>) -> tensor<4xi32> {
+diff --ruN a/stablehlo/stablehlo/tests/interpret/convolution.mlir b/stablehlo/stablehlo/tests/interpret/convolution.mlir
+--- stablehlo/stablehlo/tests/interpret/convolution.mlir
++++ stablehlo/stablehlo/tests/interpret/convolution.mlir
+@@ -134,3 +134,18 @@
+                                          [[21, 21, 29, 29]]]]> : tensor<1x2x1x4xi64>
+   func.return
+ }
++
++// -----
++
++func.func @convolution_op_test_feature_before_batch() {
++  %lhs = stablehlo.constant dense<[[[1.0]], [[2.0]]]> : tensor<2x1x1xf32>
++  %rhs = stablehlo.constant dense<[[[3.0, 4.0]]]> : tensor<1x1x2xf32>
++  %result = stablehlo.convolution(%lhs, %rhs)
++    dim_numbers = [0, f, b]x[0, i, o]->[0, f, b],
++    window = {stride = [1], pad = [[0, 0]], rhs_dilate = [1]}
++    {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
++    : (tensor<2x1x1xf32>, tensor<1x1x2xf32>) -> tensor<2x2x1xf32>
++  check.expect_almost_eq_const %result,
++    dense<[[[3.0], [4.0]], [[6.0], [8.0]]]> : tensor<2x2x1xf32>
++  func.return
++}
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
 --- stablehlo/stablehlo/tests/ops_chlo.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo.mlir
