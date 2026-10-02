@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <numeric>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -281,8 +282,7 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
                                 input_shape->NumElements() - 1, &output_shape));
 
     // Get groups by minibatch dimension
-    std::vector<SparseTensor> staged_tensors(N);
-    std::vector<bool> visited(N, false);
+    std::unordered_set<int64_t> visited;
     sparse::GroupIterable minibatch = input_st.group({0});
     for (const auto& subset : minibatch) {
       const int64_t b = subset.group()[0];
@@ -291,7 +291,7 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
           absl::InvalidArgumentError(absl::StrCat(
               "Received unexpected column 0 value in input SparseTensor: ", b,
               " < 0 or >= N (= ", N, ")")));
-      visited[b] = true;
+      visited.insert(b);
 
       const auto indices = subset.indices();
       const auto values = subset.values<T>();
@@ -320,12 +320,14 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
       OP_REQUIRES_OK(context,
                      SparseTensor::Create(output_indices, output_values,
                                           output_shape, &st_i));
-      staged_tensors[b] = std::move(st_i);
+      int64_t handle;
+      OP_REQUIRES_OK(context, map->AddSparseTensor(context, st_i, &handle));
+      sparse_handles_t(b) = handle;
     }
 
     // Fill in any gaps; we must provide an empty ST for batch entries
     // the grouper didn't find.
-    if (std::find(visited.begin(), visited.end(), false) != visited.end()) {
+    if (visited.size() < N) {
       Tensor empty_indices;
       OP_REQUIRES_OK(context,
                      context->allocate_temp(DT_INT64, TensorShape({0, rank - 1}),
@@ -340,17 +342,13 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
 
       for (int64_t b = 0; b < N; ++b) {
         // We skipped this batch entry.
-        if (!visited[b]) {
-          staged_tensors[b] = empty_st;
+        if (visited.find(b) == visited.end()) {
+          int64_t handle;
+          OP_REQUIRES_OK(context,
+                         map->AddSparseTensor(context, empty_st, &handle));
+          sparse_handles_t(b) = handle;
         }
       }
-    }
-    // Publish handles only after all tensor allocations have succeeded.
-    for (int64_t b = 0; b < N; ++b) {
-      int64_t handle;
-      OP_REQUIRES_OK(context,
-                     map->AddSparseTensor(context, staged_tensors[b], &handle));
-      sparse_handles_t(b) = handle;
     }
   }
 };
