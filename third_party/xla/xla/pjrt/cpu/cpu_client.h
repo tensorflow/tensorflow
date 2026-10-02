@@ -205,6 +205,10 @@ class PjRtCpuRawClient : public PjRtRawClient {
   absl::Status TransferFromOutfeed(LocalDeviceId local_device_id,
                                    MutableBorrowingLiteral literal) override;
 
+  bool IsDmaMapped(const void* data, int64_t transfer_size) const override {
+    return true;
+  }
+
   class LocalDeviceState {
    public:
     explicit LocalDeviceState(int max_inflight_computations = 32)

@@ -198,13 +198,17 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   se::DeviceAddressAllocator* allocator() const { return allocator_; }
   LocalClient* client() const { return client_; }
 
+  bool IsDmaMapped(const void* data, int64_t transfer_size) const override {
+    return executor_ != nullptr &&
+           executor_->IsHostMemoryPinned(data, transfer_size);
+  }
+
   bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) const {
     // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
     // using a staging buffer is probably worse than not using one.
     // TODO(phawkins): add chunking for transfers.
     return should_stage_host_to_device_transfers_ &&
-           size < (int64_t{1} << 30) &&
-           (executor_ == nullptr || !executor_->IsHostMemoryPinned(data, size));
+           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
   }
 
   tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
@@ -393,12 +397,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
     return absl::down_cast<PjRtStreamExecutorRawClient*>(
         CommonPjRtClientImpl::raw_client());
   }
-
-  bool ShouldPerformZeroCopyLinearize(
-      const void* data, const xla::Shape& device_shape, PrimitiveType type,
-      absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      PjRtMemorySpace* memory_space) override;
 
   bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
                               const Shape& shape,

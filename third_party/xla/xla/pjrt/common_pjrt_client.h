@@ -83,6 +83,7 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool allow_fallback_for_donation() const { return false; }
   virtual bool supports_two_phase_launch() const { return true; }
   virtual bool dump_on_deserialize() const { return false; }
+  virtual bool should_stage_host_to_device_transfers() const { return false; }
   // Returns true if we should skip the staging buffer during ToLiteral.
   virtual bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
                                       const Shape& shape,
@@ -198,13 +199,11 @@ class CommonPjRtClient : public PjRtClient {
       HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer);
 
   // Tests if a buffer is eligible for zero copy linearization.
-  virtual bool ShouldPerformZeroCopyLinearize(
+  bool ShouldPerformZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape, PrimitiveType type,
       absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
-      PjRtMemorySpace* memory_space) {
-    return false;
-  }
+      PjRtMemorySpace* memory_space);
 
   // Creates a staging buffer directly from host data for zero copy.
   tsl::AsyncValueRef<PjRtStagingBuffer> CreateStagingForZeroCopyLinearize(
@@ -1167,6 +1166,9 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
     return use_stream_based_compaction_;
   }
   bool dump_on_deserialize() const override { return dump_on_deserialize_; }
+  bool should_stage_host_to_device_transfers() const override {
+    return should_stage_host_to_device_transfers_;
+  }
 
  private:
   const PjRtPlatformId platform_id_;
@@ -1202,6 +1204,7 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   bool allows_execute_recursion_;
   bool use_stream_based_compaction_ = false;
   bool dump_on_deserialize_ = false;
+  bool should_stage_host_to_device_transfers_ = false;
 };
 
 // A common base class for PjRtDevice implementations that delegate to

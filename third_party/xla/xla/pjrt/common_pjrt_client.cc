@@ -755,6 +755,58 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeInto(
                            dynamic_sizes, raw_buffer);
 }
 
+bool CommonPjRtClient::ShouldPerformZeroCopyLinearize(
+    const void* data, const xla::Shape& device_shape, PrimitiveType type,
+    absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    PjRtMemorySpace* memory_space) {
+  if (!device_shape.layout().tiles().empty()) {
+    if (dims.size() != 1 || primitive_util::ByteWidth(type) != 4) {
+      return false;
+    }
+  }
+  if ((absl::bit_cast<std::uintptr_t>(data) &
+       (raw_client()->GetDmaHostAlignment() - 1)) != 0) {
+    return false;
+  }
+  Shape on_host_shape = ShapeUtil::MakeShape(type, dims);
+  absl::InlinedVector<int64_t, 4> tmp_strides;
+  if (!byte_strides) {
+    tmp_strides.resize(dims.size());
+    if (!ShapeUtil::UnpackedByteStrides(on_host_shape,
+                                        absl::MakeSpan(tmp_strides))
+             .ok()) {
+      return false;
+    }
+    byte_strides = tmp_strides;
+  }
+  int64_t size = ShapeUtil::ByteSizeOf(on_host_shape);
+  absl::StatusOr<int64_t> dma_size = GetDmaByteCount(device_shape);
+  if (!dma_size.ok()) {
+    return false;
+  }
+  absl::InlinedVector<int64_t, 4> shape_strides(
+      device_shape.dimensions().size());
+  if (!ShapeUtil::UnpackedByteStrides(device_shape,
+                                      absl::MakeSpan(shape_strides))
+           .ok()) {
+    return false;
+  }
+  bool host_and_device_strides_equal =
+      (size == 0 || *byte_strides == shape_strides);
+
+  // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
+  // using a staging buffer is probably worse than not using one.
+  // TODO(phawkins): add chunking for transfers.
+  bool should_stage_transfers =
+      should_stage_host_to_device_transfers() &&
+      (!IsGpuId(platform_id()) || size < (int64_t{1} << 30)) &&
+      !raw_client()->IsDmaMapped(data, size);
+
+  return host_and_device_strides_equal && (*dma_size == size) &&
+         !should_stage_transfers;
+}
+
 absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
@@ -4502,6 +4554,8 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
   set_bool_attr_from_plugin_attrs("use_stream_based_compaction",
                                   use_stream_based_compaction_);
   set_bool_attr_from_plugin_attrs("dump_on_deserialize", dump_on_deserialize_);
+  set_bool_attr_from_plugin_attrs("should_stage_host_to_device_transfers",
+                                  should_stage_host_to_device_transfers_);
 }
 
 void CommonPjRtClientImpl::AttachDevices(
