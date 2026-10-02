@@ -130,7 +130,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/ragged_all_to_all_canonicalizer.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_decomposer.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_multi_host_decomposer.h"
-#include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/backends/gpu/transforms/reduction_degenerate_dim_remover.h"
 #include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
@@ -2255,15 +2254,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Triton compilation needs normalized operations on bf16 (i.e. converted to
   // f32).
   add_float_normalization(pipeline);
-
-  // RaggedDotFusionRewriter converts ragged dots into cuDNN fusions, which is
-  // only supported on NVIDIA/CUDA devices. On AMD ROCm, ragged dots are handled
-  // by hipBLASLt GroupedMatMul via GemmRewriter instead.
-  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
-      debug_options.xla_gpu_experimental_use_ragged_dot_fusion() &&
-      gpu_target_config.device_description.gpu_compute_capability().IsCuda()) {
-    pipeline.AddPass<RaggedDotFusionRewriter>();
-  }
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();

@@ -81,6 +81,17 @@ HloPassPipeline FusionPipeline(
     fusion.AddPass<ConvFusionRewriter>(gpu_device_info);
   }
 
+  // RaggedDotFusionRewriter converts ragged dots into cuDNN fusions, which is
+  // only supported on NVIDIA/CUDA devices. On AMD ROCm, ragged dots are
+  // handled by hipBLASLt GroupedMatMul via GemmRewriter instead. Runs before
+  // PriorityFusion so it sees a raw ragged-dot rather than one PriorityFusion
+  // has already started fusing neighbors around.
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      debug_options.xla_gpu_experimental_use_ragged_dot_fusion() &&
+      gpu_device_info.gpu_compute_capability().IsCuda()) {
+    fusion.AddPass<RaggedDotFusionRewriter>();
+  }
+
   GpuHloCostAnalysis::Options cost_analysis_options{
       shape_size_bytes_function,
       /*per_second_rates=*/{},

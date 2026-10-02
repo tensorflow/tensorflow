@@ -1861,7 +1861,6 @@ cc_library(
         "//xla/backends/gpu/transforms:ragged_all_to_all_canonicalizer",
         "//xla/backends/gpu/transforms:ragged_all_to_all_decomposer",
         "//xla/backends/gpu/transforms:ragged_all_to_all_multi_host_decomposer",
-        "//xla/backends/gpu/transforms:ragged_dot_fusion_rewriter",
         "//xla/backends/gpu/transforms:reduce_scatter_creator",
         "//xla/backends/gpu/transforms:reduction_degenerate_dim_remover",
         "//xla/backends/gpu/transforms:reduction_dimension_grouper",
