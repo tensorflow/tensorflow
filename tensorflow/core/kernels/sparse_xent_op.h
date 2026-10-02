@@ -72,7 +72,7 @@ class SparseXentLossGenerator {
   operator()(const Eigen::array<int, 2>& coords) const {
     const int batch = coords[0];
     const int depth = coords[1];
-    const Index label = tensorflow::internal::SubtleMustCopy(labels_(batch));
+    const Index label = internal::SubtleMustCopy(labels_(batch));
     if (!FastBoundsCheck(label, max_depth_)) {
       return Eigen::NumTraits<T>::quiet_NaN();
     }
@@ -112,7 +112,7 @@ class SparseXentGradGenerator {
   operator()(const Eigen::array<int, 2>& coords) const {
     const int batch = coords[0];
     const int depth = coords[1];
-    const Index label = tensorflow::internal::SubtleMustCopy(labels_(batch));
+    const Index label = internal::SubtleMustCopy(labels_(batch));
     if (!FastBoundsCheck(label, max_depth_)) {
       return Eigen::NumTraits<T>::quiet_NaN();
     }

@@ -188,6 +188,7 @@ class SparseXentOpTestBase(test.TestCase):
                                                  4.]]).astype(np.float64))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  @test_util.disable_xla("This test exercises the standard CPU OpKernel.")
   def testDoublePreservesSmallGradient(self):
     tail_logit = 37.42994775023705
     tail_probability = 5.551115123125776e-17
@@ -228,6 +229,7 @@ class SparseXentOpTestBase(test.TestCase):
       self.assertFalse(np.signbit(single_gradient[0, 0]))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  @test_util.disable_xla("This test exercises the standard CPU OpKernel.")
   def testDoubleTailAcrossClassCounts(self):
     for label_dtype in (np.int32, np.int64):
       for num_classes in (3, 8, 17, 33):
