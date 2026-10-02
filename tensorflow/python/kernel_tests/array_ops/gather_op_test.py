@@ -392,6 +392,62 @@ class GatherTest(test.TestCase, parameterized.TestCase):
               "Shape must be at least rank .* but is rank 1"):
             fn(params, indices, axis=bad_axis)
 
+  def testAxisExtremeBounds(self):
+    params = constant_op.constant([[0.69]])
+    indices = constant_op.constant([0])
+    int64_min = -(2**63)
+    int64_max = 2**63 - 1
+
+    @def_function.function(autograph=False, jit_compile=False)
+    def gather_graph(x, idx, axis):
+      return array_ops.gather(x, idx, axis=axis)
+
+    functions = [("eager", array_ops.gather), ("graph", gather_graph)]
+    for fn_name, fn in functions:
+      with self.subTest(fn_name=fn_name, axis="int64_min"):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            r"axis must be greater than .*min\(\)"):
+          fn(params, indices,
+             axis=constant_op.constant(int64_min, dtype=dtypes.int64))
+
+      with self.subTest(fn_name=fn_name, axis="int64_max"):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            r"axis must be less than .*max\(\)"):
+          fn(params, indices,
+             axis=constant_op.constant(int64_max, dtype=dtypes.int64))
+
+  def testBatchDimsExtremeBounds(self):
+    params = constant_op.constant([[0.69]])
+    indices = constant_op.constant([0])
+    int32_min = -(2**31)
+    int32_max = 2**31 - 1
+
+    @def_function.function(autograph=False, jit_compile=False)
+    def gather_graph(x, idx, batch_dims):
+      return array_ops.gather(x, idx, batch_dims=batch_dims)
+
+    @def_function.function(autograph=False, jit_compile=False)
+    def gather_graph_unknown_shape(x, idx, batch_dims):
+      x = array_ops.placeholder_with_default(x, shape=None)
+      idx = array_ops.placeholder_with_default(idx, shape=None)
+      return array_ops.gather(x, idx, batch_dims=batch_dims)
+
+    functions = [
+        ("eager", array_ops.gather),
+        ("graph", gather_graph),
+        ("graph_unknown_shape", gather_graph_unknown_shape)
+    ]
+    for fn_name, fn in functions:
+      with self.subTest(fn_name=fn_name, batch_dims="int32_min"):
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          fn(params, indices, batch_dims=int32_min)
+
+      with self.subTest(fn_name=fn_name, batch_dims="int32_max"):
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          fn(params, indices, batch_dims=int32_max)
+
   def testEmptySlices(self):
     for dtype in _TEST_TYPES:
       for itype in _INDEX_TYPES:

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdlib>
 #include <limits>
 #include <ostream>
 #include <vector>
@@ -1302,6 +1303,15 @@ REGISTER_OP("GatherV2")
         axis = axis_t->scalar<int64_t>()();
       }
 
+      if (axis <= std::numeric_limits<int64_t>::min()) {
+        return absl::InvalidArgumentError(
+            "axis must be greater than std::numeric_limits<int64_t>::min()");
+      }
+      if (axis >= std::numeric_limits<int64_t>::max()) {
+        return absl::InvalidArgumentError(
+            "axis must be less than std::numeric_limits<int64_t>::max()");
+      }
+
       // Check that params has rank of at least axis + 1.
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(
@@ -1311,14 +1321,18 @@ REGISTER_OP("GatherV2")
       int32_t batch_dims;
       TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
       // -rank(indices) <= batch_dims <= rank(indices)
-      TF_RETURN_IF_ERROR(
-          c->WithRankAtLeast(indices_shape, std::abs(batch_dims), &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          indices_shape, std::abs(static_cast<int64_t>(batch_dims)), &unused));
       if (batch_dims < 0) {
+        if (!c->RankKnown(indices_shape)) {
+          c->set_output(0, c->UnknownShape());
+          return absl::OkStatus();
+        }
         batch_dims += c->Rank(indices_shape);
       }
       // rank(params) > batch_dims
-      TF_RETURN_IF_ERROR(
-          c->WithRankAtLeast(params_shape, batch_dims + 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          params_shape, static_cast<int64_t>(batch_dims) + 1, &unused));
 
       ShapeHandle params_outer_subshape;
       TF_RETURN_IF_ERROR(
