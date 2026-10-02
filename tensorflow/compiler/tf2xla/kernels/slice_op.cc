@@ -202,6 +202,11 @@ class SliceOp : public XlaOpKernel {
         for (int i = 0; i < input_dims; i++) {
           xla::XlaOp dynamic_size =
               xla::Reshape(xla::Slice(ctx->Input(2), {i}, {i + 1}, {1}), {});
+          // SetDimensionSize takes an S32 size, and the sizes and bounds
+          // inferred below are read as int32.
+          if (ctx->input_xla_type(2) != xla::S32) {
+            dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
+          }
           if (constant_size_is_minus_one && size[i] == -1) {
             // size = input_.dim_size(i) - begin[i]
             dynamic_size = xla::ConstantR0<int32_t>(ctx->builder(),

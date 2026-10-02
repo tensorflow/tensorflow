@@ -78,18 +78,20 @@ class SliceTest(xla_test.XLATestCase):
     # Regression test for GitHub issue 128405. When `size` is only known at
     # run time, a size beyond the input, which eager rejects as out of range,
     # was set as the dimension size of an output that holds at most one
-    # element, which corrupted the heap on some platforms.
+    # element, which corrupted the heap on some platforms. `size` has to be
+    # computed in the function: one passed in is compiled as a constant.
 
     @def_function.function(jit_compile=True)
     def slice_size(m, w):
-      v = math_ops.matvec(m, math_ops.cast(w, dtypes.int32))  # [19]
+      v = math_ops.matvec(m, math_ops.cast(w, m.dtype))  # [19]
       return array_ops.shape(array_ops.slice(v, v, v))
 
-    with self.session():
-      with self.test_scope():
-        m = constant_op.constant([[1, 5]])
-        w = constant_op.constant([4, 3], dtype=dtypes.uint8)
-        self.assertLessEqual(self.evaluate(slice_size(m, w))[0], 1)
+    for dtype in (dtypes.int32, dtypes.int64):
+      with self.subTest(dtype=dtype.name), self.session():
+        with self.test_scope():
+          m = constant_op.constant([[1, 5]], dtype=dtype)
+          w = constant_op.constant([4, 3], dtype=dtypes.uint8)
+          self.assertLessEqual(self.evaluate(slice_size(m, w))[0], 1)
 
   def test3D(self):
     for dtype in self.numeric_types:
