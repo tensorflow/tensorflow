@@ -761,12 +761,16 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       return mm::CoshOp::create(b, inputs[0]);
     case HloOpcode::kExp:
       return mm::ExpOp::create(b, inputs[0]);
+    case HloOpcode::kExp2:
+      return mm::Exp2Op::create(b, inputs[0]);
     case HloOpcode::kErf:
       return mm::ErfOp::create(b, inputs[0]);
     case HloOpcode::kExpm1:
       return mm::ExpM1Op::create(b, inputs[0]);
     case HloOpcode::kLog:
       return mm::LogOp::create(b, inputs[0]);
+    case HloOpcode::kLog2:
+      return mm::Log2Op::create(b, inputs[0]);
     case HloOpcode::kLog1p:
       return mm::Log1pOp::create(b, inputs[0]);
     case HloOpcode::kPower:

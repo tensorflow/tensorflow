@@ -268,9 +268,11 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
 
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLog2:
       return true;
 
       // Expensive instructions or unusual instructions for which fusion is

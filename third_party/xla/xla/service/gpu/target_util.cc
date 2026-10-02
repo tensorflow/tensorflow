@@ -301,6 +301,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kExp: {
       return {"__nv_exp", "__ocml_exp", "_Z15__spirv_ocl_exp"};
     }
+    case TargetDeviceFunctionID::kExp2: {
+      return {"__nv_exp2", "__ocml_exp2", "_Z16__spirv_ocl_exp2"};
+    }
     case TargetDeviceFunctionID::kExpm1: {
       return {"__nv_expm1", "__ocml_expm1", "_Z17__spirv_ocl_expm1"};
     }
@@ -315,6 +318,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     }
     case TargetDeviceFunctionID::kLog1p: {
       return {"__nv_log1p", "__ocml_log1p", "_Z17__spirv_ocl_log1p"};
+    }
+    case TargetDeviceFunctionID::kLog2: {
+      return {"__nv_log2", "__ocml_log2", "_Z16__spirv_ocl_log2"};
     }
     case TargetDeviceFunctionID::kPow: {
       return {"__nv_pow", "__ocml_pow", "_Z15__spirv_ocl_pow"};
@@ -356,11 +362,13 @@ bool HasF16Implementation(TargetDeviceFunctionID func_id,
           func_id == TargetDeviceFunctionID::kCbrt ||
           func_id == TargetDeviceFunctionID::kCos ||
           func_id == TargetDeviceFunctionID::kExp ||
+          func_id == TargetDeviceFunctionID::kExp2 ||
           func_id == TargetDeviceFunctionID::kExpm1 ||
           func_id == TargetDeviceFunctionID::kFmod ||
           func_id == TargetDeviceFunctionID::kHypot ||
           func_id == TargetDeviceFunctionID::kLog ||
           func_id == TargetDeviceFunctionID::kLog1p ||
+          func_id == TargetDeviceFunctionID::kLog2 ||
           func_id == TargetDeviceFunctionID::kPow ||
           func_id == TargetDeviceFunctionID::kRsqrt ||
           func_id == TargetDeviceFunctionID::kSin ||
