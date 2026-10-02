@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -907,6 +908,7 @@ class UnbatchResource : public ResourceBase {
       const int64_t num_indices = batch_index_t.dim_size(0);
       sizes.reserve(num_indices);
       batch_keys.reserve(num_indices);
+      split_inputs.reserve(num_indices);
       auto batch_indices =
           batch_index_t.shaped<int64_t, 2>({num_indices, 3});
       int64_t remaining_size = data_t.dim_size(0);
