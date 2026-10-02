@@ -151,9 +151,43 @@ class AutoStrategyTest(test.TestCase):
     mock_mirrored_cls.assert_called_once()
     self.assertIs(strategy, mock_mirrored_cls.return_value)
 
+  @mock.patch.object(remote, "connect_to_cluster")
+  @mock.patch.object(
+      tpu_strategy_util, "get_initialized_tpu_systems", return_value=[]
+  )
+  @mock.patch.object(tpu_cluster_resolver, "initialize_tpu_system")
+  @mock.patch.object(tpu_cluster_resolver, "TPUClusterResolver")
+  @mock.patch.object(tpu_strategy, "TPUStrategy")
+  @mock.patch.object(config, "list_physical_devices")
+  def testLocalTPUVMClusterResolver(
+      self,
+      mock_list_physical_devices,
+      mock_tpu_strategy_cls,
+      mock_resolver_cls,
+      mock_init,
+      mock_get_init,
+      mock_connect,
+  ):
+    mock_resolver = mock.MagicMock()
+    mock_resolver_cls.return_value = mock_resolver
+    mock_list_physical_devices.side_effect = (
+        lambda device_type=None: ["TPU:0"] if device_type == "TPU" else []
+    )
+
+    strategy = auto_strategy.auto_strategy()
+    mock_resolver_cls.assert_called_once_with(tpu="local")
+    mock_connect.assert_called_once_with(mock_resolver)
+    mock_init.assert_called_once_with(mock_resolver)
+    mock_tpu_strategy_cls.assert_called_once_with(mock_resolver)
+    self.assertIs(strategy, mock_tpu_strategy_cls.return_value)
+
   @mock.patch.object(config, "get_visible_devices", return_value=[])
   @mock.patch.object(
-      config, "list_physical_devices", return_value=["GPU:0", "GPU:1"]
+      config,
+      "list_physical_devices",
+      side_effect=lambda device_type=None: (
+          ["GPU:0", "GPU:1"] if device_type == "GPU" else []
+      ),
   )
   def testMaskedVisibleGPUsFallbackToCPU(
       self, mock_list_physical_devices, mock_get_visible_devices
