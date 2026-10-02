@@ -213,9 +213,11 @@ class SparseXentOpTestBase(test.TestCase):
         _, gradient = self._opFwdBwd(labels=labels, logits=logits)
         gradient = self.evaluate(gradient)
         expected = [
-            [-(tail_probability + smaller_tail), tail_probability, smaller_tail],
+            [-(tail_probability + smaller_tail), tail_probability,
+             smaller_tail],
             [1.0 / 3.0, -2.0 / 3.0, 1.0 / 3.0],
-            [tail_probability, smaller_tail, -(tail_probability + smaller_tail)],
+            [tail_probability, smaller_tail,
+             -(tail_probability + smaller_tail)],
         ]
         self.assertAllClose(expected, gradient, rtol=1e-14, atol=0)
         for row, label in enumerate(labels):
