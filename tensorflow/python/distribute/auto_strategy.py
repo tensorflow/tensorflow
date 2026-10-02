@@ -25,25 +25,26 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
+from tensorflow.python.framework import errors
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distribute.AutoStrategy", v1=[])
-def AutoStrategy() -> distribute_lib.StrategyBase:
+@tf_export("distribute.experimental.auto_strategy", v1=[])
+def auto_strategy() -> distribute_lib.StrategyBase:
   """Automatically detects hardware and returns the optimal strategy.
 
-  `AutoStrategy` is a factory that detects the available hardware configuration
-  (TPUs, multiple GPUs, multi-worker clusters) and instantiates the most
-  appropriate `tf.distribute.Strategy`. This eliminates the need for manual
-  device profiling and strategy selection.
+  `auto_strategy` is a factory that detects the available hardware
+  configuration (TPUs, multiple GPUs, multi-worker clusters) and instantiates
+  the most appropriate `tf.distribute.Strategy`. This eliminates the need for
+  manual device profiling and strategy selection.
 
   Returns:
     An instance of a `tf.distribute.Strategy`.
 
   Example:
   ```python
-  strategy = tf.distribute.AutoStrategy()
+  strategy = tf.distribute.experimental.auto_strategy()
   with strategy.scope():
     model = ...
   ```
@@ -59,12 +60,18 @@ def AutoStrategy() -> distribute_lib.StrategyBase:
     if isinstance(tf_config, dict):
       cluster = tf_config.get("cluster", {})
       if isinstance(cluster, dict):
-        workers = cluster.get("worker") or []
-        chiefs = cluster.get("chief") or []
-        if (isinstance(workers, (list, tuple)) and len(workers) > 1) or (
-            isinstance(chiefs, (list, tuple)) and len(chiefs) > 0
-        ):
-          return collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+        task = tf_config.get("task", {})
+        if task.get("type") == "evaluator":
+          pass  # Do not use multi-worker strategy for evaluator
+        else:
+          workers = cluster.get("worker") or []
+          chiefs = cluster.get("chief") or []
+          if (
+              isinstance(workers, (list, tuple))
+              and isinstance(chiefs, (list, tuple))
+              and len(workers) + len(chiefs) > 1
+          ):
+            return collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
   # Check for TPUs
   if config.list_logical_devices("TPU") or os.environ.get("TPU_NAME"):
@@ -74,7 +81,7 @@ def AutoStrategy() -> distribute_lib.StrategyBase:
         remote.connect_to_cluster(resolver)
         tpu_cluster_resolver.initialize_tpu_system(resolver)
       return tpu_strategy.TPUStrategy(resolver)
-    except (ValueError, RuntimeError, ImportError):
+    except (ValueError, RuntimeError, ImportError, errors.OpError):
       pass
 
   # Check for GPUs
