@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/context.h"
+#include "tsl/platform/platform.h"
 
 namespace tsl {
 namespace internal {
@@ -182,11 +183,11 @@ class AsyncValue {
   static bool AsyncValueAllocationTrackingEnabled() {
     // For now we track the number of alive AsyncValue instances only in debug
     // builds.
-#ifdef NDEBUG
-    return false;
-#else
-    return true;
-#endif
+    if constexpr (tsl::kIsDebugBuild) {
+      return true;
+    } else {
+      return false;
+    }
   }
 
   // What sort of AsyncValue this is.
@@ -450,8 +451,13 @@ class AsyncValue {
     GetErrorFn get_error;
     SetErrorFn set_error;
 #ifndef NDEBUG
-    // This function is only used in debug builds, so it can be omitted from the
-    // type info in optimized builds for better data locality of other members.
+    // This function is only used in debug builds, so it is omitted from
+    // TypeInfo in optimized builds for better data locality of other members.
+    // We keep `#ifndef NDEBUG` here (and at the call site in `get<T>()`) rather
+    // than `if constexpr (tsl::kIsDebugBuild)` because omitting a struct field
+    // in C++17 without preprocessor conditionals requires non-trivial layout
+    // workarounds, and `has_data` cannot be called directly on
+    // `ConcreteAsyncValue<T>` when `T` is an upcast abstract base class.
     HasDataFn has_data;
 #endif
   };
@@ -930,12 +936,12 @@ inline AsyncValue* AsyncValue::AddRef(uint32_t count) {
   // Always enable reference counting in debug builds to verify that the use of
   // async values is "ref count correct". In optimized builds the async value
   // owner is responsible for destructing the non-reference-counted async value.
-#if defined(NDEBUG)
-  // We try hard to make the fast path for non-refcounted async values to be
-  // as fast as possible. It's ok if we mispredict this branch, because atomic
-  // operations below are order of magnitude more expensive.
-  if (ABSL_PREDICT_TRUE(!is_refcounted_)) return this;
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    // We try hard to make the fast path for non-refcounted async values to be
+    // as fast as possible. It's ok if we mispredict this branch, because atomic
+    // operations below are order of magnitude more expensive.
+    if (ABSL_PREDICT_TRUE(!is_refcounted_)) return this;
+  }
 
   if (ABSL_PREDICT_FALSE(count == 0)) {
     return this;
@@ -955,12 +961,12 @@ inline void AsyncValue::DropRef(uint32_t count) {
   // Always enable reference counting in debug builds to verify that the use of
   // async values is "ref count correct". In optimized builds the async value
   // owner is responsible for destructing the non-reference-counted async value.
-#if defined(NDEBUG)
-  // We try hard to make the fast path for non-refcounted async values to be
-  // as fast as possible. It's ok if we mispredict this branch, because atomic
-  // operations below are order of magnitude more expensive.
-  if (ABSL_PREDICT_TRUE(!is_refcounted_)) return;
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    // We try hard to make the fast path for non-refcounted async values to be
+    // as fast as possible. It's ok if we mispredict this branch, because atomic
+    // operations below are order of magnitude more expensive.
+    if (ABSL_PREDICT_TRUE(!is_refcounted_)) return;
+  }
 
   if (ABSL_PREDICT_FALSE(count == 0)) {
     return;
@@ -1004,6 +1010,8 @@ T& AsyncValue::get() const {
   switch (kind()) {
     case Kind::kConcrete:
 #ifndef NDEBUG
+      // Uses `#ifndef NDEBUG` because `TypeInfo::has_data` is only present in
+      // debug builds (see comment on `TypeInfo::has_data`).
       if (!GetTypeInfo().has_data(this)) {
         LOG(FATAL) << "Cannot call get() when ConcreteAsyncValue"
                    << " isn't constructed; state: " << s.DebugString() << ","
@@ -1013,25 +1021,25 @@ T& AsyncValue::get() const {
 #endif  // NDEBUG
       return GetConcreteValue<T>();
     case Kind::kIndirect: {
-#ifndef NDEBUG
-      if (s != State::kConcrete) {
-        LOG(FATAL) << "Cannot call get() when IndirectAsyncValue"
-                   << " isn't concrete; state: " << s.DebugString() << ","
-                   << " error message: "
-                   << (IsError() ? GetError().message() : "None");
+      if constexpr (tsl::kIsDebugBuild) {
+        if (s != State::kConcrete) {
+          LOG(FATAL) << "Cannot call get() when IndirectAsyncValue"
+                     << " isn't concrete; state: " << s.DebugString() << ","
+                     << " error message: "
+                     << (IsError() ? GetError().message() : "None");
+        }
       }
-#endif  // NDEBUG
       auto* iv_value = static_cast<const IndirectAsyncValue*>(this)->value_;
       DCHECK(iv_value) << "Indirect value not resolved";
       return iv_value->get<T>();
     }
     case Kind::kSharedPtr:
-#ifndef NDEBUG
-      if (s != State::kConcrete) {
-        LOG(FATAL) << "Cannot call get() when SharedPtrAsyncValue"
-                   << " isn't concrete; state: " << s.DebugString();
+      if constexpr (tsl::kIsDebugBuild) {
+        if (s != State::kConcrete) {
+          LOG(FATAL) << "Cannot call get() when SharedPtrAsyncValue"
+                     << " isn't concrete; state: " << s.DebugString();
+        }
       }
-#endif  // NDEBUG
       DCHECK(IsTypeIdCompatible<T>()) << "Incorrect accessor";
       return *reinterpret_cast<T*>(
           static_cast<const internal::SharedPtrAsyncValue*>(this)->ptr());

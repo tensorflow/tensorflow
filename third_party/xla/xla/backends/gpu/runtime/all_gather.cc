@@ -42,12 +42,12 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
 absl::Status IsAllGatherKernelSupported(int64_t num_elements,
+                                        int64_t num_devices,
                                         PrimitiveType element_type) {
   // Only types in kSupportedAllGatherTypes are allowed. Complex types, tokens,
   // tuples, and exotic types (e.g. 4-bit, 8-bit floats) are not supported.
@@ -59,11 +59,11 @@ absl::Status IsAllGatherKernelSupported(int64_t num_elements,
         primitive_util::LowercasePrimitiveTypeName(element_type)));
   }
 
-  const int64_t byte_size =
-      num_elements * primitive_util::ByteWidth(element_type);
-  if (byte_size > kMaxAllGatherSizeBytes) {
+  const int64_t output_byte_size =
+      num_elements * num_devices * primitive_util::ByteWidth(element_type);
+  if (output_byte_size > kMaxAllGatherSizeBytes) {
     return absl::UnimplementedError(
-        "Custom all-gather strategy is only supported for small inputs.");
+        "Custom all-gather strategy is only supported for small outputs.");
   }
 
   return absl::OkStatus();
@@ -123,7 +123,7 @@ absl::Status IsAllGatherKernelSupported(
         "dimension to be a power of 2. Got %d.",
         per_rank_gather_dim_size));
   }
-  return IsAllGatherKernelSupported(num_elements, element_type);
+  return IsAllGatherKernelSupported(num_elements, num_devices, element_type);
 }
 
 absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
@@ -157,7 +157,7 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
   }
   ABSL_ASSIGN_OR_RETURN(
       const bool is_local,
-      IsAllReplicasLocal(gpu_topology, *all_gather, device_assignment));
+      AreAllReplicasOnSameSlice(gpu_topology, *all_gather, device_assignment));
   ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
       is_collective_kernel_enabled, device_info, num_operands, num_devices,
       num_elements, per_rank_gather_dim_size, element_type, is_local,
@@ -198,7 +198,8 @@ LaunchDimensions AllGatherLaunchDimensions(
 }
 
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type) {
   int64_t group_size = instr->GetModule()->config().replica_count();
   if (!instr->replica_groups().empty() &&
       instr->replica_groups()[0].replica_ids_size() > 0) {
@@ -216,13 +217,6 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
   // exchanged via kXlaRendezvous so every rank can read from each peer.
   const int64_t remote_size =
       xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
-
-  const DebugOptions& debug_options =
-      instr->GetModule()->config().debug_options();
-  const SymmetricMemoryType sym_mem_type =
-      IsCrossHostOneShotKernelEnabled(debug_options, DebugOptions::ALLGATHER)
-          ? SymmetricMemoryType::kLoadStoreAccessible
-          : SymmetricMemoryType::kXlaRendezvous;
 
   CollectiveKernelSpec kernel_spec = {
       /* .codegen_config= */ {
@@ -242,10 +236,10 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
             /*index=*/1}},  // remote scratch buffers
           /* .sync_count_increment= */ 1u},
       /* .scratch_buffers= */
-      {{signal_size, /*requires_multimem=*/false, sym_mem_type,
+      {{signal_size, /*requires_multimem=*/false, scratch_memory_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
-       {remote_size, /*requires_multimem=*/false, sym_mem_type,
+       {remote_size, /*requires_multimem=*/false, scratch_memory_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/true}}};
   return kernel_spec;

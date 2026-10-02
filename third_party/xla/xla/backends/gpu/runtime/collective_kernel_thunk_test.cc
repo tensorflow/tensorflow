@@ -41,8 +41,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
-#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
@@ -184,22 +182,11 @@ struct CollectiveKernelThunkMetadata {
   std::vector<CollectiveThunk::Buffer> buffers;
 };
 
-DebugOptions DefaultDebugOptions() {
-  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
-  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
-      DebugOptions::ALLCOLLECTIVES);
-  return debug_options;
-}
-
 CollectiveKernelSpec CreateCollectiveKernelSpec(
     int64_t num_elements, int64_t signal_size, int64_t remote_size,
     bool is_multimem_enabled,
-    const DebugOptions& debug_options = DefaultDebugOptions()) {
-  const SymmetricMemoryType sym_mem_type =
-      IsCrossHostOneShotKernelEnabled(debug_options,
-                                      DebugOptions::ALLCOLLECTIVES)
-          ? SymmetricMemoryType::kLoadStoreAccessible
-          : SymmetricMemoryType::kXlaRendezvous;
+    SymmetricMemoryType scratch_memory_type =
+        SymmetricMemoryType::kLoadStoreAccessible) {
   return {
       /*codegen_config=*/{
           /*copy_input_to_scratch=*/false,
@@ -215,11 +202,11 @@ CollectiveKernelSpec CreateCollectiveKernelSpec(
            {KernelArgType::kScratchBuffer, 1}},
       },
       /*scratch_buffers=*/
-      {{signal_size, /*requires_multimem=*/false, sym_mem_type,
+      {{signal_size, /*requires_multimem=*/false, scratch_memory_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
        {remote_size,
-        /*requires_multimem=*/is_multimem_enabled, sym_mem_type,
+        /*requires_multimem=*/is_multimem_enabled, scratch_memory_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/true}},
   };
@@ -227,7 +214,8 @@ CollectiveKernelSpec CreateCollectiveKernelSpec(
 
 CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
     int num_devices, int num_elements, bool is_multimem_enabled, bool use_ptx,
-    const DebugOptions& debug_options = DefaultDebugOptions()) {
+    SymmetricMemoryType scratch_memory_type =
+        SymmetricMemoryType::kLoadStoreAccessible) {
   const int64_t input_size_bytes = num_elements * sizeof(uint64_t);
   Shape input_shape = ShapeUtil::MakeShape(U64, {num_elements});
   ReplicaGroup replica_group;
@@ -268,7 +256,7 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
   result.thunk = std::make_unique<CollectiveKernelThunk>(
       std::move(thunk_info), collective_config,
       CreateCollectiveKernelSpec(num_elements, signal_size, remote_size,
-                                 is_multimem_enabled, debug_options),
+                                 is_multimem_enabled, scratch_memory_type),
       result.buffers, /*is_collective_kernel_enabled=*/true,
       /*kernel_name=*/kKernelName,
       /*launch_dimensions=*/launch_dimensions,
@@ -505,7 +493,7 @@ TEST(CollectiveKernelThunkTest, MultiprocessTest) {
   CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
       /*num_devices=*/kDevicesCount, /*num_elements=*/kNumElements,
       /*is_multimem_enabled=*/false, /*use_ptx=*/true,
-      /*debug_options=*/DebugOptions());
+      /*scratch_memory_type=*/SymmetricMemoryType::kXlaRendezvous);
   EXPECT_THAT(RunCollectiveKernelThunkOnDevices(metadata,
                                                 /*emulate_multiprocess=*/true),
               StatusIs(absl::StatusCode::kInvalidArgument));

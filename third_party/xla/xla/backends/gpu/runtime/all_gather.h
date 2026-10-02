@@ -45,9 +45,10 @@ inline constexpr auto kSupportedAllGatherTypes =
 // The number is somewhat arbitrary and should be revisited.
 inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 64;
 
-// Optimal threshold for one-shot all-gather in bytes for the collective kernel.
+// Optimal threshold for one-shot all-gather in bytes for the collective kernel,
+// applied to the gathered output buffer size.
 // Base on the experimental results.
-inline constexpr int64_t kMaxAllGatherSizeBytes = 512 * 1024;  // 512 KB
+inline constexpr int64_t kMaxAllGatherSizeBytes = 16 * 1024 * 1024;  // 16 MB
 
 // Encapsulates the information needed to perform an all-gather via the Triton
 // collective kernel backend.
@@ -58,9 +59,10 @@ struct AllGatherInfo {
 };
 
 // Returns absl::OkStatus() if the all-gather kernel is supported for the given
-// element type and number of elements, or an error status detailing why it is
-// not supported.
+// element type, per-rank input element count, and number of devices, or an
+// error status detailing why it is not supported.
 absl::Status IsAllGatherKernelSupported(int64_t num_elements,
+                                        int64_t num_devices,
                                         PrimitiveType element_type);
 
 // A broader check for all-gather kernel support that verifies device, operand
@@ -98,8 +100,10 @@ LaunchDimensions AllGatherLaunchDimensions(
 //   [3] invocation count (kInvocationCount)
 //   [4] signal flags (kScratchBuffer, index 0)
 //   [5] remote scratch buffer pointer table (kScratchBuffer, index 1)
+// `scratch_memory_type` is used for both scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type);
 
 }  // namespace xla::gpu
 

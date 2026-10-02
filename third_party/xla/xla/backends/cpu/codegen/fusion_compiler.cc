@@ -126,6 +126,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
+#include "tsl/platform/platform.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -148,10 +149,10 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, mlir::PassManager& pm,
     pm.enableIRPrinting();
   }
 
-#if NDEBUG
-  pm.enableVerifier(verification_level > 0);
-  module.getContext()->printOpOnDiagnostic(verification_level > 0);
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    pm.enableVerifier(verification_level > 0);
+    module.getContext()->printOpOnDiagnostic(verification_level > 0);
+  }
 
   tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
   return diagnostic_handler.consumeStatus(pm.run(module));
@@ -505,9 +506,9 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
       tiled_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)) {
   // Only enable verifier in debug builds.
   bool should_verify = false;
-#ifndef NDEBUG
-  should_verify = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    should_verify = true;
+  }
   scalar_pass_manager_.enableVerifier(should_verify);
   bool should_dump_mlir_passes = ShouldLogMLIRFusionPasses(hlo_module_);
 

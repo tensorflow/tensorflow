@@ -236,6 +236,12 @@ class PjRtRawClient {
     return absl::UnimplementedError("DmaUnmap is not supported.");
   }
 
+  // Returns true if the host memory range [data, data + transfer_size) is
+  // already DMA-mapped (e.g. pinned on GPU or in a premapped buffer on TPU).
+  virtual bool IsDmaMapped(const void* data, int64_t transfer_size) const {
+    return false;
+  }
+
   // Returns the host memory allocator for the client or null if not supported.
   virtual HostMemoryAllocator* GetHostMemoryAllocator() const {
     return nullptr;

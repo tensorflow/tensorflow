@@ -227,6 +227,49 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   return mlir::cast<TensorValue>(all_reduce_op.getResult(0));
 }
 
+absl::StatusOr<TensorValue> EmitReduceScatter(
+    EmitterContext& emitter_ctx,
+    const HloReduceScatterInstruction* reduce_scatter,
+    const ge::TiledHloInstruction& tiled_reduce_scatter, ValueRange operands) {
+  if (reduce_scatter->device_list()->replica_groups().empty()) {
+    return Internal(
+        "Triton emitting ReduceScatter (%s) without replica groups is not "
+        "supported.",
+        reduce_scatter->name());
+  }
+
+  llvm::SmallVector<int64_t> flattened_replica_group_ids;
+  for (const auto& replica_group : reduce_scatter->replica_groups()) {
+    for (const auto& replica_id : replica_group.replica_ids()) {
+      flattened_replica_group_ids.push_back(replica_id);
+    }
+  }
+
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  ABSL_ASSIGN_OR_RETURN(auto output_element_type,
+                   xtile::PrimitiveTypeToMlirType(
+                       b, reduce_scatter->shape().element_type()));
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                   tiled_reduce_scatter.tile().GetStaticTileSizes());
+  auto output_type = mlir::RankedTensorType::get(GetPaddedTileSizes(tile_sizes),
+                                                 output_element_type);
+
+  auto replica_groups_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(reduce_scatter->replica_groups().size()),
+       static_cast<int64_t>(
+           reduce_scatter->replica_groups()[0].replica_ids_size())},
+      b.getI64Type());
+  auto replica_groups_attr = mlir::DenseIntElementsAttr::get(
+      replica_groups_type, flattened_replica_group_ids);
+  auto reduce_scatter_op = mlir::stablehlo::ReduceScatterOp::create(
+      b, output_type, operands[0], reduce_scatter->scatter_dimension(),
+      replica_groups_attr, /*channel_handle=*/nullptr);
+
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(
+      b, reduce_scatter, reduce_scatter->to_apply(), reduce_scatter_op));
+  return mlir::cast<TensorValue>(reduce_scatter_op.getResult());
+}
+
 absl::StatusOr<TensorValue> EmitBroadcast(
     mlir::ImplicitLocOpBuilder& b,
     const ge::TiledHloInstruction& tiled_broadcast, TensorValue input) {
@@ -673,26 +716,23 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
         return;
       }
       for (const ge::TiledHloInstruction* op : t->operands()) {
-        for (const auto& ri :
-             tiled_ragged_dot.hlo_regions().front().instructions()) {
-          if (ri.get() == op) {
-            collect(op);
-            break;
-          }
+        if (absl::c_linear_search(
+                tiled_ragged_dot.hlo_regions().front().instructions(), op)) {
+          collect(op);
         }
       }
     };
     collect(operand_t);
     TensorValue result;
-    for (const auto& region_instr :
+    for (const ge::TiledHloInstruction* region_instr :
          tiled_ragged_dot.hlo_regions().front().instructions()) {
-      if (!deps.count(region_instr.get())) {
+      if (!deps.count(region_instr)) {
         continue;
       }
       ABSL_ASSIGN_OR_RETURN(TensorValue v,
                        EmitTiledHloInstruction(emitter_ctx, *region_instr));
-      emitter_ctx.MapTiledHloToTensorValue(region_instr.get(), v);
-      if (region_instr.get() == operand_t) {
+      emitter_ctx.MapTiledHloToTensorValue(region_instr, v);
+      if (region_instr == operand_t) {
         result = v;
       }
     }
@@ -717,12 +757,9 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
         return;
       }
       for (const ge::TiledHloInstruction* op : t->operands()) {
-        for (const auto& ri :
-             tiled_ragged_dot.hlo_regions().front().instructions()) {
-          if (ri.get() == op) {
-            collect(op);
-            break;
-          }
+        if (absl::c_linear_search(
+                tiled_ragged_dot.hlo_regions().front().instructions(), op)) {
+          collect(op);
         }
       }
     };
@@ -730,15 +767,15 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
 
     // Emit each dep in def-before-use (region) order.
     TensorValue gs_tile;
-    for (const auto& region_instr :
+    for (const ge::TiledHloInstruction* region_instr :
          tiled_ragged_dot.hlo_regions().front().instructions()) {
-      if (!gs_deps.count(region_instr.get())) {
+      if (!gs_deps.count(region_instr)) {
         continue;
       }
       ABSL_ASSIGN_OR_RETURN(TensorValue result,
                        EmitTiledHloInstruction(emitter_ctx, *region_instr));
-      emitter_ctx.MapTiledHloToTensorValue(region_instr.get(), result);
-      if (region_instr.get() == gs_t) {
+      emitter_ctx.MapTiledHloToTensorValue(region_instr, result);
+      if (region_instr == gs_t) {
         gs_tile = result;
       }
     }
@@ -1966,6 +2003,11 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     case HloOpcode::kPad: {
       return EmitPad(emitter_ctx, tiled_hlo);
     }
+    case HloOpcode::kReduceScatter: {
+      return EmitReduceScatter(emitter_ctx,
+                               xla::Cast<HloReduceScatterInstruction>(hlo),
+                               tiled_hlo, operands);
+    }
     case HloOpcode::kReshape: {
       ABSL_ASSIGN_OR_RETURN(auto logical_tile_sizes,
                        tiled_hlo.tile().GetStaticTileSizes());
@@ -2000,12 +2042,12 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots) {
-  for (const auto& tiled_hlo : region.instructions()) {
+  for (const auto* tiled_hlo : region.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
     ABSL_ASSIGN_OR_RETURN(TensorValue result,
                      EmitTiledHloInstruction(emitter_ctx, *tiled_hlo));
-    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(tiled_hlo.get(), result))
+    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(tiled_hlo, result))
         << hlo->ToString();
   }
   std::vector<TensorValue> results;
@@ -2400,8 +2442,8 @@ class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
   void PopulateMap(const ge::TiledHloInstruction* tiled_hlo) {
     hlo_to_tiled_[tiled_hlo->hlo()] = tiled_hlo;
     for (const auto& region : tiled_hlo->hlo_regions()) {
-      for (const auto& region_instruction : region.instructions()) {
-        PopulateMap(region_instruction.get());
+      for (const auto* region_instruction : region.instructions()) {
+        PopulateMap(region_instruction);
       }
     }
   }

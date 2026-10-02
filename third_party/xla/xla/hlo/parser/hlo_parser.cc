@@ -159,6 +159,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFloor:
@@ -170,6 +171,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLog2:
     case HloOpcode::kLogistic:
     case HloOpcode::kAnd:
     case HloOpcode::kNot:
@@ -1845,9 +1847,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAsin:
     case HloOpcode::kAsinh:
     case HloOpcode::kAtanh:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLog2:
     case HloOpcode::kLogistic:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:

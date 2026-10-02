@@ -15,13 +15,25 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -136,6 +148,22 @@ INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
                                "cuda_", cuda_version.major_version(), "_",
                                cuda_version.minor_version());
                          });
+
+TEST(UtilsTest, CompileToPtxCapsAtMaxPtxIsaVersion) {
+  llvm::LLVMContext context;
+  llvm::Module module("test", context);
+  new llvm::GlobalVariable(
+      module, llvm::Type::getInt32Ty(context), true,
+      llvm::GlobalValue::ExternalLinkage,
+      llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0), "gv");
+
+  absl::StatusOr<std::string> ptx = nvptx::CompileToPtx(
+      &module, se::GpuComputeCapability(se::CudaComputeCapability::Ampere()),
+      DebugOptions(), /*configure_target=*/nullptr,
+      /*max_ptx_isa_version=*/80);
+  ASSERT_THAT(ptx, ::absl_testing::IsOk());
+  EXPECT_THAT(*ptx, ::testing::HasSubstr(".version 8.0"));
+}
 
 }  // namespace
 }  // namespace gpu

@@ -49,6 +49,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@rules_python//python/cc:current_py_cc_headers",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],

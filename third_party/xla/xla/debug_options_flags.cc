@@ -265,7 +265,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_xnnpack(true);
-  opts.set_xla_cpu_use_new_xtile_lowering(false);
+  opts.set_xla_cpu_use_new_xtile_lowering(true);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.add_xla_cpu_experimental_ynn_fusion_type(
@@ -515,6 +515,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_execution_terminate_timeout("inf");
+  opts.set_xla_gpu_device_execution_terminate_timeout("inf");
   opts.set_xla_gpu_execution_progress_tracking(0);
 
   opts.set_xla_gpu_first_collective_call_warn_stuck_timeout_seconds(20);
@@ -3270,7 +3271,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       duration_setter_for(
           &DebugOptions::set_xla_gpu_execution_terminate_timeout),
       debug_options->xla_gpu_execution_terminate_timeout(),
-      "Set timeout for XLA:GPU execution to prevent undetected deadlocks"));
+      "Set timeout for host-side XLA:GPU execution "
+      "(inf to disable); does not wait for asynchronous device work"));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_device_execution_terminate_timeout",
+      duration_setter_for(
+          &DebugOptions::set_xla_gpu_device_execution_terminate_timeout),
+      debug_options->xla_gpu_device_execution_terminate_timeout(),
+      "Set timeout to abort if enqueued XLA:GPU device work does not complete "
+      "after host dispatch (inf to disable)"));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_execution_progress_tracking",

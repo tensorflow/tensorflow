@@ -3206,6 +3206,112 @@ TEST_F(HloInstructionTest,
                                   m::Add(m::Parameter(0), m::Parameter(1)))));
 }
 
+// Tests that MergeFusionInstructionIntoMultiOutput relays control dependencies
+// from both instruction_to_merge and its GTE users to the destination fusion
+// before removal.
+//
+// Before merge:
+//
+//        +---------+                 +----------+
+//        | pred_op |                 | gte_pred |
+//        +----+----+                 +----+-----+
+//             | (control)                 | (control)
+//             v                           v
+//       +-----+----+       (data)    +----+---+          +----------+
+//       | sibling1 |---------------->|  gte0  |          | sibling2 |
+//       +-----+----+                 +----+---+          +----+-----+
+//             | (control)                 | (control)         | (data)
+//             v                           v                   v
+//        +----+----+                 +----+-----+          +--+--+
+//        | succ_op |                 | gte_succ |          | res |
+//        +---------+                 +----------+          +-----+
+//
+// After sibling2->MergeFusionInstructionIntoMultiOutput(sibling1):
+//
+//        +---------+                 +----------+
+//        | pred_op |                 | gte_pred |
+//        +----+----+                 +----+-----+
+//             |                           |
+//             \-------+           +-------/
+//            (control)|           |(control)
+//                     v           v
+//              +------+-----------+------+
+//              |    sibling2+sibling1    | (merged MOF)
+//              +------+-----------+------+
+//                     |     |     \ (data)
+//            (control)|     |      \
+//            +--------/     |       v
+//            |      (control|     +---+---+
+//            v              v     |  res  |
+//       +----+----+   +-----+----+|       |
+//       | succ_op |   | gte_succ |+-------+
+//       +---------+   +----------+
+//
+//   sibling1 and gte0 are removed; their control predecessors (pred_op,
+//   gte_pred) and successors (succ_op, gte_succ) are rewired to sibling2.
+TEST_F(HloInstructionTest, MergeFusionWithControlDependencies) {
+  const std::string& hlo_string = R"(
+    HloModule mof
+    mof_sibling1 {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      mul = f32[10]{0} multiply(p0, p1)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(mul, p1)
+    }
+
+    mof_sibling2 {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      add = f32[10]{0} add(p0, p1)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(p1, add)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      pred_op = f32[10]{0} negate(p0)
+      gte_pred = f32[10]{0} abs(p0)
+      sibling1 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_sibling1, control-predecessors={pred_op}
+      gte0 = f32[10]{0} get-tuple-element(sibling1), index=0, control-predecessors={gte_pred}
+      gte1 = f32[10]{0} get-tuple-element(sibling1), index=1
+      sibling2 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_sibling2
+      gte2 = f32[10]{0} get-tuple-element(sibling2), index=0
+      gte3 = f32[10]{0} get-tuple-element(sibling2), index=1
+      succ_op = f32[10]{0} floor(p0), control-predecessors={sibling1}
+      gte_succ = f32[10]{0} ceil(p0), control-predecessors={gte0}
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(gte0, gte1, gte2, gte3, pred_op, succ_op, gte_pred, gte_succ)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* pred_op = FindInstruction(module.get(), "pred_op");
+  HloInstruction* gte_pred = FindInstruction(module.get(), "gte_pred");
+  HloInstruction* sibling1 = FindInstruction(module.get(), "sibling1");
+  HloInstruction* gte0 = FindInstruction(module.get(), "gte0");
+  HloInstruction* sibling2 = FindInstruction(module.get(), "sibling2");
+  HloInstruction* succ_op = FindInstruction(module.get(), "succ_op");
+  HloInstruction* gte_succ = FindInstruction(module.get(), "gte_succ");
+
+  EXPECT_THAT(sibling1->control_predecessors(), ElementsAre(pred_op));
+  EXPECT_THAT(succ_op->control_predecessors(), ElementsAre(sibling1));
+  EXPECT_THAT(gte0->control_predecessors(), ElementsAre(gte_pred));
+  EXPECT_THAT(gte_succ->control_predecessors(), ElementsAre(gte0));
+  EXPECT_THAT(sibling2->control_predecessors(), ::testing::IsEmpty());
+  EXPECT_THAT(sibling2->control_successors(), ::testing::IsEmpty());
+
+  sibling2->MergeFusionInstructionIntoMultiOutput(sibling1);
+
+  // Both sibling1 and gte0 are removed; sibling2 inherits all incoming and
+  // outgoing control dependencies from both.
+  EXPECT_THAT(sibling2->control_predecessors(),
+              UnorderedElementsAre(pred_op, gte_pred));
+  EXPECT_THAT(sibling2->control_successors(),
+              UnorderedElementsAre(succ_op, gte_succ));
+  EXPECT_THAT(succ_op->control_predecessors(), ElementsAre(sibling2));
+  EXPECT_THAT(gte_succ->control_predecessors(), ElementsAre(sibling2));
+}
+
 TEST_F(HloInstructionTest, UnfuseInstruction) {
   const std::string& hlo_string = R"(
     HloModule mof

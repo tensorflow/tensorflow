@@ -64,12 +64,7 @@ TfLiteStatus DefineMaxPool2DNode(TfLiteContext* context,
                                  ynn_subgraph_t subgraph,
                                  TensorToValueIdMap& tensor_to_value_id,
                                  const NodeInfo& node) {
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
-  const auto* params =
-      static_cast<const TfLitePoolParams*>(tflite_node->builtin_data);
+  const auto* params = static_cast<const TfLitePoolParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int input_tensor_index = node.inputs[0];
@@ -126,12 +121,7 @@ TfLiteStatus DefineAveragePool2DNode(TfLiteContext* context,
                                      ynn_subgraph_t subgraph,
                                      TensorToValueIdMap& tensor_to_value_id,
                                      const NodeInfo& node) {
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
-  const auto* params =
-      static_cast<const TfLitePoolParams*>(tflite_node->builtin_data);
+  const auto* params = static_cast<const TfLitePoolParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   return DefineDecomposedUnaryNode(

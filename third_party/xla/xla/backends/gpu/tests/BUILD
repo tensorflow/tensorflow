@@ -1713,6 +1713,36 @@ xla_test(
 )
 
 xla_test(
+    name = "reduce_scatter_e2e_test",
+    srcs = ["reduce_scatter_e2e_test.cc"],
+    args = ["--heap_check="],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":collective_ops_e2e_test_base",
+        "//xla:array2d",
+        "//xla:array3d",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tests:literal_test_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "all_gather_e2e_multiprocess_test",
     srcs = ["all_gather_e2e_multiprocess_test.cc"],
     backend_tags = {

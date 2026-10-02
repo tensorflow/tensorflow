@@ -13133,6 +13133,99 @@ ENTRY entry {
       AllOf(op::GetTupleElement(op::While()), op::Shape("c128[1,1,3]")));
 }
 
+TEST_P(SpmdPartitioningTest, FftBatchDimension) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  input = c64[8,16] parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT fft = c64[8,16] fft(input), fft_type=FFT, fft_length={16},
+    sharding={devices=[2,1]<=[2]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Fft(op::Parameter()), op::Shape("c64[4,16]")));
+  VerifyNoCollectives(module.get());
+}
+
+TEST_P(SpmdPartitioningTest, IfftBatchDimension) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  input = c64[8,4,16] parameter(0), sharding={devices=[2,1,1]<=[2]}
+  ROOT fft = c64[8,4,16] fft(input), fft_type=IFFT, fft_length={4,16},
+    sharding={devices=[2,1,1]<=[2]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Fft(op::Parameter()), op::Shape("c64[4,4,16]")));
+  VerifyNoCollectives(module.get());
+}
+
+TEST_P(SpmdPartitioningTest, RfftBatchDimension) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  input = f32[8,4,16,32] parameter(0),
+    sharding={devices=[2,1,1,1]<=[2]}
+  ROOT fft = c64[8,4,16,17] fft(input), fft_type=RFFT,
+    fft_length={16,32}, sharding={devices=[2,1,1,1]<=[2]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Fft(op::Parameter()), op::Shape("c64[4,4,16,17]")));
+  VerifyNoCollectives(module.get());
+}
+
+TEST_P(SpmdPartitioningTest, IrfftBatchDimension) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  input = c64[8,4,16,17] parameter(0),
+    sharding={devices=[2,1,1,1]<=[2]}
+  ROOT fft = f32[8,4,16,32] fft(input), fft_type=IRFFT,
+    fft_length={16,32}, sharding={devices=[2,1,1,1]<=[2]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Fft(op::Parameter()), op::Shape("f32[4,4,16,32]")));
+  VerifyNoCollectives(module.get());
+}
+
+TEST_P(SpmdPartitioningTest, FftBatchDimensionWithPartialReplication) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  input = c64[8,16] parameter(0),
+    sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  ROOT fft = c64[8,16] fft(input), fft_type=FFT, fft_length={16},
+    sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Fft(op::Parameter()), op::Shape("c64[4,16]")));
+  VerifyNoCollectives(module.get());
+}
+
 TEST_P(SpmdPartitioningTest, Fft3DSmallShardFallsBack) {
   // The last FFT dimension is sharded down to a per-shard size of 1, so halo
   // exchange (which establishes the divisibility that the per-partition shuffle

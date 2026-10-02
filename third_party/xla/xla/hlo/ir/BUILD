@@ -23,6 +23,7 @@ cc_library(
     srcs = [
         "dfs_hlo_visitor.cc",
         "dynamic_parameter_binding.cc",
+        "hlo_clone_context.cc",
         "hlo_computation.cc",
         "hlo_input_output_alias_config.cc",
         "hlo_instruction.cc",

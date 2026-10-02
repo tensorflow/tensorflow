@@ -97,13 +97,12 @@ int StridedSliceEndForAxis(const TfLiteStridedSliceParams* params,
   return end;
 }
 
-TfLiteStatus GetReshapeTargetShape(TfLiteContext* context,
-                                   const TfLiteNode* tflite_node,
+TfLiteStatus GetReshapeTargetShape(TfLiteContext* context, const int* inputs,
+                                   int num_inputs, const void* builtin_data,
                                    int32_t* target_shape,
                                    int* target_shape_size, bool static_shape) {
-  if (tflite_node->inputs->size == 2) {
-    const TfLiteTensor& shape_tensor =
-        context->tensors[tflite_node->inputs->data[1]];
+  if (num_inputs == 2) {
+    const TfLiteTensor& shape_tensor = context->tensors[inputs[1]];
     if (IsConstant(shape_tensor, static_shape)) {
       int num_elements = tflite::NumElements(&shape_tensor);
       TF_LITE_ENSURE_MSG(context, num_elements <= YNN_MAX_TENSOR_RANK,
@@ -117,8 +116,7 @@ TfLiteStatus GetReshapeTargetShape(TfLiteContext* context,
     }
   }
 
-  const auto* params =
-      static_cast<const TfLiteReshapeParams*>(tflite_node->builtin_data);
+  const auto* params = static_cast<const TfLiteReshapeParams*>(builtin_data);
   if (params && params->num_dimensions > 0) {
     TF_LITE_ENSURE_MSG(context, params->num_dimensions <= YNN_MAX_TENSOR_RANK,
                        "Reshape shape dimensions %d exceeds max %d",
@@ -350,7 +348,8 @@ TfLiteStatus IsReshapeSupported(const TfLiteRegistration* registration,
   int32_t target_shape[YNN_MAX_TENSOR_RANK];
   int target_shape_size = 0;
   TF_LITE_ENSURE_STATUS(GetReshapeTargetShape(
-      context, node, target_shape, &target_shape_size, options.static_shape));
+      context, node->inputs->data, node->inputs->size, node->builtin_data,
+      target_shape, &target_shape_size, options.static_shape));
 
   // This is a weird special case that apparently old models use, indicating
   // scalar input and scalar output. Let's not handle it.
@@ -518,12 +517,7 @@ TfLiteStatus DefineSliceNode(TfLiteContext* context, ynn_subgraph_t subgraph,
     const TfLiteTensor& strides_tensor = context->tensors[strides_tensor_index];
     strides_data = reinterpret_cast<const int32_t*>(strides_tensor.data.raw);
 
-    TfLiteNode* tflite_node;
-    TfLiteRegistration* registration;
-    TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-        context, node.node_index, &tflite_node, &registration));
-    params =
-        static_cast<const TfLiteStridedSliceParams*>(tflite_node->builtin_data);
+    params = static_cast<const TfLiteStridedSliceParams*>(node.builtin_data);
   }
 
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(rank);
@@ -586,12 +580,8 @@ TfLiteStatus DefineConcatenationNode(TfLiteContext* context,
   bool is_output_quantized = IsQuantized(output_tensor);
   ynn_type internal_type = GetYnnType(output_tensor.type);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteConcatenationParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteConcatenationParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   std::vector<uint32_t> input_val_ids;
@@ -666,16 +656,11 @@ TfLiteStatus DefineReshapeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   int input_tensor_index = node.inputs[0];
   int output_tensor_index = node.outputs[0];
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
-
   int32_t target_shape[YNN_MAX_TENSOR_RANK];
   int target_shape_size = 0;
-  TF_LITE_ENSURE_STATUS(GetReshapeTargetShape(context, tflite_node,
-                                              target_shape, &target_shape_size,
-                                              options.static_shape));
+  TF_LITE_ENSURE_STATUS(GetReshapeTargetShape(
+      context, node.inputs.data(), node.inputs.size(), node.builtin_data,
+      target_shape, &target_shape_size, options.static_shape));
 
   uint32_t input_val_id = GetOrCreateValueId(
       context, subgraph, tensor_to_value_id, input_tensor_index);
@@ -991,12 +976,8 @@ TfLiteStatus DefineSpaceToDepthNode(TfLiteContext* context,
   TF_LITE_ENSURE(context, input_val_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteSpaceToDepthParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteSpaceToDepthParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
   const size_t block_size = params->block_size;
 
@@ -1039,12 +1020,8 @@ TfLiteStatus DefineDepthToSpaceNode(TfLiteContext* context,
   TF_LITE_ENSURE(context, input_val_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteDepthToSpaceParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteDepthToSpaceParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
   const size_t block_size = params->block_size;
 
@@ -1117,10 +1094,8 @@ TfLiteStatus DefineGatherNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   TF_LITE_ENSURE(context, node.inputs.size() == 2 || node.inputs.size() == 3);
   TF_LITE_ENSURE_EQ(context, node.outputs.size(), 1);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
+  const auto* params =
+      static_cast<const TfLiteGatherParams*>(node.builtin_data);
 
   int input_tensor_index = node.inputs[0];
   int indices_tensor_index = node.inputs[1];
@@ -1147,8 +1122,7 @@ TfLiteStatus DefineGatherNode(TfLiteContext* context, ynn_subgraph_t subgraph,
     const TfLiteTensor& axis_tensor = context->tensors[axis_tensor_index];
     axis = axis_tensor.data.i32[0];
   } else {
-    const auto* params =
-        reinterpret_cast<const TfLiteGatherParams*>(tflite_node->builtin_data);
+    TF_LITE_ENSURE(context, params != nullptr);
     axis = params->axis;
   }
 
@@ -1157,9 +1131,7 @@ TfLiteStatus DefineGatherNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   }
 
   int batch_dims = 0;
-  if (tflite_node->builtin_data != nullptr) {
-    const auto* params =
-        reinterpret_cast<const TfLiteGatherParams*>(tflite_node->builtin_data);
+  if (params != nullptr) {
     batch_dims = params->batch_dims;
     if (batch_dims < 0) {
       batch_dims += indices_tensor.dims->size;

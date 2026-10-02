@@ -8444,7 +8444,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     return ReplaceInstruction(dynamic_update_slice, updated);
   }
 
-  // dus(a,dus(ds(a,id),c,inner_id)),id) is equivalent to dus(a,c,inner_id + id)
+  // dus(a,dus(ds(a,id),c,inner_id)),id) ->
+  //   dus(a, c, clamp(0, id, operand_size - inner_size) +
+  //             clamp(0, inner_id, inner_size - update_size))
   if (dus_update->opcode() == HloOpcode::kDynamicUpdateSlice &&
       (dus_update->operand(0)->opcode() == HloOpcode::kDynamicSlice &&
        dus_update->operand(0)->operand(0) == dynamic_update_slice->operand(0) &&
@@ -8456,6 +8458,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
         1, dus_update->mutable_operand(1)));
     for (int64_t i = 2; i < dynamic_update_slice->operand_count(); ++i) {
       HloInstruction* index = dynamic_update_slice->mutable_operand(i);
+      index = index->AddInstruction(HloInstruction::CreateTernary(
+          index->shape(), HloOpcode::kClamp, MakeScalarLike(index, 0), index,
+          MakeScalarLike(index,
+                         dynamic_update_slice->shape().dimensions(i - 2) -
+                             dus_update->shape().dimensions(i - 2))));
       HloInstruction* inner_index = dus_update->mutable_operand(i);
       inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
           inner_index->shape(), HloOpcode::kClamp,

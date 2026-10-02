@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 
+#include <cstdint>
 #include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -31,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -707,14 +712,33 @@ TEST(IsSpmdGeneratedTest, ReturnsTrueWhenBackendConfigSet) {
   EXPECT_TRUE(IsSpmdGenerated(*ar));
 }
 
+namespace {
+
+GpuTopology MakeGpuTopology(int32_t num_partitions,
+                            int32_t num_hosts_per_partition,
+                            int32_t num_devices_per_host,
+                            int32_t num_devices_per_process,
+                            bool is_cuda = true) {
+  se::DeviceDescription device_info =
+      is_cuda ? TestGpuDeviceInfo::H100SXMDeviceInfo()
+              : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+  target_config_proto.set_platform_name(is_cuda ? "CUDA" : "ROCM");
+  absl::StatusOr<GpuTargetConfig> target_config =
+      GpuTargetConfig::FromProto(target_config_proto);
+  CHECK_OK(target_config);
+  return GpuTopology(
+      /*platform_version=*/"", num_partitions, num_hosts_per_partition,
+      num_devices_per_host, *target_config,
+      /*host_target_machine_options=*/std::nullopt, num_devices_per_process);
+}
+
 TEST(IsAllReplicasLocalTest, SingleHostSingleProcess) {
-  GpuTopology topology(
-      /*platform_version=*/"",
+  GpuTopology topology = MakeGpuTopology(
       /*num_partitions=*/1,
       /*num_hosts_per_partition=*/1,
       /*num_devices_per_host=*/8,
-      /*gpu_target_config=*/std::nullopt,
-      /*host_target_machine_options=*/std::nullopt,
       /*num_devices_per_process=*/8);
 
   ReplicaGroup group;
@@ -726,17 +750,14 @@ TEST(IsAllReplicasLocalTest, SingleHostSingleProcess) {
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA));
 }
 
-TEST(IsAllReplicasLocalTest,
+TEST(AreAllReplicasOnSameSliceTest,
      SingleGBClusterHostMultiProcess_DefaultDisabled_ReturnsFalse) {
   // A single GB cluster host with 2 processes (each having 1 device).
   // num_hosts_per_partition = 2, num_devices_per_host = 1, slice_size = 2.
-  GpuTopology topology(
-      /*platform_version=*/"",
+  GpuTopology topology = MakeGpuTopology(
       /*num_partitions=*/1,
       /*num_hosts_per_partition=*/2,
       /*num_devices_per_host=*/1,
-      /*gpu_target_config=*/std::nullopt,
-      /*host_target_machine_options=*/std::nullopt,
       /*num_devices_per_process=*/1);
 
   DeviceAssignment da(2, 1);
@@ -748,22 +769,19 @@ TEST(IsAllReplicasLocalTest,
   group.add_replica_ids(1);
 
   // Without the flag enabled, multi-process within a GB cluster host is NOT
-  // local.
+  // considered on the same collective kernel slice.
   DebugOptions debug_options;
-  EXPECT_FALSE(IsAllReplicasLocal(
+  EXPECT_FALSE(AreAllReplicasOnSameSlice(
       topology, debug_options, DebugOptions::ALLREDUCE, {group},
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
 }
 
-TEST(IsAllReplicasLocalTest,
+TEST(AreAllReplicasOnSameSliceTest,
      SingleGBClusterHostMultiProcess_FlagEnabled_ReturnsTrue) {
-  GpuTopology topology(
-      /*platform_version=*/"",
+  GpuTopology topology = MakeGpuTopology(
       /*num_partitions=*/1,
       /*num_hosts_per_partition=*/2,
       /*num_devices_per_host=*/1,
-      /*gpu_target_config=*/std::nullopt,
-      /*host_target_machine_options=*/std::nullopt,
       /*num_devices_per_process=*/1);
 
   DeviceAssignment da(2, 1);
@@ -779,7 +797,7 @@ TEST(IsAllReplicasLocalTest,
   DebugOptions debug_options;
   debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
       DebugOptions::ALLREDUCE);
-  EXPECT_TRUE(IsAllReplicasLocal(
+  EXPECT_TRUE(AreAllReplicasOnSameSlice(
       topology, debug_options, DebugOptions::ALLREDUCE, {group},
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
 
@@ -787,20 +805,17 @@ TEST(IsAllReplicasLocalTest,
   DebugOptions all_collectives_opts;
   all_collectives_opts.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
       DebugOptions::ALLCOLLECTIVES);
-  EXPECT_TRUE(IsAllReplicasLocal(
+  EXPECT_TRUE(AreAllReplicasOnSameSlice(
       topology, all_collectives_opts, DebugOptions::ALLREDUCE, {group},
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
 }
 
-TEST(IsAllReplicasLocalTest,
+TEST(AreAllReplicasOnSameSliceTest,
      SingleGBClusterHostMultiProcess_FlagEnabledForDifferentCollective) {
-  GpuTopology topology(
-      /*platform_version=*/"",
+  GpuTopology topology = MakeGpuTopology(
       /*num_partitions=*/1,
       /*num_hosts_per_partition=*/2,
       /*num_devices_per_host=*/1,
-      /*gpu_target_config=*/std::nullopt,
-      /*host_target_machine_options=*/std::nullopt,
       /*num_devices_per_process=*/1);
 
   DeviceAssignment da(2, 1);
@@ -815,20 +830,17 @@ TEST(IsAllReplicasLocalTest,
   DebugOptions debug_options;
   debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
       DebugOptions::ALLGATHER);
-  EXPECT_FALSE(IsAllReplicasLocal(
+  EXPECT_FALSE(AreAllReplicasOnSameSlice(
       topology, debug_options, DebugOptions::ALLREDUCE, {group},
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
 }
 
-TEST(IsAllReplicasLocalTest, CrossGBClusterPartitionReturnsFalse) {
+TEST(AreAllReplicasOnSameSliceTest, CrossGBClusterPartitionReturnsFalse) {
   // 2 GB cluster partitions with 2 devices each (slice_size = 2).
-  GpuTopology topology(
-      /*platform_version=*/"",
+  GpuTopology topology = MakeGpuTopology(
       /*num_partitions=*/2,
       /*num_hosts_per_partition=*/2,
       /*num_devices_per_host=*/1,
-      /*gpu_target_config=*/std::nullopt,
-      /*host_target_machine_options=*/std::nullopt,
       /*num_devices_per_process=*/1);
 
   DeviceAssignment da(2, 1);
@@ -843,9 +855,174 @@ TEST(IsAllReplicasLocalTest, CrossGBClusterPartitionReturnsFalse) {
   debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
       DebugOptions::ALLREDUCE);
 
-  EXPECT_FALSE(IsAllReplicasLocal(
+  EXPECT_FALSE(AreAllReplicasOnSameSlice(
       topology, debug_options, DebugOptions::ALLREDUCE, {group},
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA, &da));
 }
 
+TEST(IsCollectiveSingleHostAndCrossHostTest, SingleHostAndCrossHostSameSlice) {
+  absl::string_view kHlo = R"(
+    HloModule m, replica_count=2
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] all-reduce(p), replica_groups={{0,1}}, to_apply=add
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_gpu_unsupported_use_cross_host_one_shot_kernel();
+  const HloInstruction* instr = module->entry_computation()->root_instruction();
+
+  DeviceAssignment da(2, 1);
+  da(0, 0) = 0;
+  da(1, 0) = 1;
+
+  // Single host: 1 host with 2 devices per process.
+  GpuTopology single_host_topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/1,
+      /*num_devices_per_host=*/2,
+      /*num_devices_per_process=*/2);
+  EXPECT_THAT(IsCollectiveSingleHost(single_host_topology, *instr, &da),
+              IsOkAndHolds(true));
+  EXPECT_THAT(
+      IsCrossHostCollectiveKernelPossible(single_host_topology, *instr, &da),
+      IsOkAndHolds(false));
+  EXPECT_THAT(AreAllReplicasOnSameSlice(single_host_topology, *instr, &da),
+              IsOkAndHolds(true));
+
+  // Cross-host within same NVLink slice: 2 hosts, 1 device per process.
+  GpuTopology cross_host_topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/1,
+      /*num_devices_per_process=*/1);
+  EXPECT_THAT(IsCollectiveSingleHost(cross_host_topology, *instr, &da),
+              IsOkAndHolds(false));
+  EXPECT_THAT(
+      IsCrossHostCollectiveKernelPossible(cross_host_topology, *instr, &da),
+      IsOkAndHolds(false));
+  EXPECT_THAT(AreAllReplicasOnSameSlice(cross_host_topology, *instr, &da),
+              IsOkAndHolds(false));
+
+  // Enable cross-host one-shot kernel flag.
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+          DebugOptions::ALLREDUCE);
+  EXPECT_THAT(IsCollectiveSingleHost(cross_host_topology, *instr, &da),
+              IsOkAndHolds(false));
+  EXPECT_THAT(
+      IsCrossHostCollectiveKernelPossible(cross_host_topology, *instr, &da),
+      IsOkAndHolds(true));
+  EXPECT_THAT(AreAllReplicasOnSameSlice(cross_host_topology, *instr, &da),
+              IsOkAndHolds(true));
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, IsProcessWithoutFlag) {
+  // One NVLink partition of 2 hosts with one 4-device process each.
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/4,
+      /*num_devices_per_process=*/4);
+
+  DebugOptions debug_options;
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            4);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest,
+     IsSliceWhenFlagEnabledAndSliceSpansProcesses) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/4,
+      /*num_devices_per_process=*/4);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            8);
+  // Without an op type the flag does not apply.
+  EXPECT_EQ(
+      GetCollectiveKernelDomainSize(topology, debug_options, std::nullopt), 4);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, FlagOnlyAppliesToListedCollective) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/4,
+      /*num_devices_per_process=*/4);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLREDUCE);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            8);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLGATHER),
+            4);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, IsProcessWhenSliceIsOneProcess) {
+  // Two NVLink partitions (e.g. two H100 hosts) with one 8-device process each.
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/2,
+      /*num_hosts_per_partition=*/1,
+      /*num_devices_per_host=*/8,
+      /*num_devices_per_process=*/8);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            8);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, IsProcessWhenLsaNotPossible) {
+  GpuTopology topology = MakeGpuTopology(
+      /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/2,
+      /*num_devices_per_host=*/4,
+      /*num_devices_per_process=*/4,
+      /*is_cuda=*/false);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            4);
+}
+
+TEST(GetCollectiveKernelDomainSizeTest, IsProcessForAsymmetricTopology) {
+  GpuTopology topology(/*platform_version=*/"", /*num_partitions=*/-1,
+                       /*num_hosts_per_partition=*/-1,
+                       /*num_devices_per_host=*/-1);
+
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
+  EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
+                                          DebugOptions::ALLREDUCE),
+            topology.num_devices_per_process());
+}
+
+}  // namespace
 }  // namespace xla::gpu

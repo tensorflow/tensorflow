@@ -1,0 +1,54 @@
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+// Reproducer for reproducing test for of pad OOB access (b/568080363) and
+// iterating on fully padded tiles (b/477265261).
+//
+// Bad behavior exhibited:
+// - Padded tiles (pid mod 16 in [4, 15]) operate entirely on padding.
+// - Tile propagation backwards through the pad propagates tile offset
+//   (pid mod 16) into both p0 and p1 without clamping or guarding.
+// - For p0, propagating through the bitcast produces offsets
+//  ((pid mod 16) * 16) up to 15*16 = 240 into a [64] dimension.
+// - Similarly for p1, the tile offset (pid mod 16) is [0, 15] for [4] dimension.
+// - Upstream loads execute unconditionally for all tiles before being masked by
+//   the select in EmitPad.
+
+triton_computation {
+  p0 = f32[4,64]{1,0} parameter(0)
+  bitcast0 = f32[4,4,16]{2,1,0} bitcast(p0)
+  p1 = f32[4,1,16]{2,1,0} parameter(1)
+  bitcast1 = f32[4,16]{1,0} bitcast(p1)
+  broadcast = f32[4,4,16]{2,1,0} broadcast(bitcast1), dimensions={1,2}
+  mul = f32[4,4,16]{2,1,0} multiply(bitcast0, broadcast)
+  c0 = f32[] constant(0)
+  ROOT pad = f32[4,16,16]{2,1,0} pad(mul, c0), padding=0_0x0_12x0_0
+}
+
+// TODO(b/568080363): Checks here capture the current *incorrect* IR.
+// CHECK: #indexing_map = #xla.indexing_map<"({{.*}}) -> ({{.*}} / 16), domain: {{.*}} in [0, 63]">
+// CHECK: #indexing_map1 = #xla.indexing_map<"({{.*}}) -> (({{.*}} mod 16) * 16), domain: {{.*}} in [0, 63]">
+// CHECK: #indexing_map2 = #xla.indexing_map<"({{.*}}) -> ({{.*}} mod 16), domain: {{.*}} in [0, 63]">
+// CHECK: xtile.entry_func @triton_fn(%arg0: memref<4x64xf32>, %arg1: memref<4x1x16xf32>, %arg2: memref<4x16x16xf32>, %arg3: index
+// CHECK: %[[PID_DIV_16:.*]] = xla.apply_indexing #indexing_map(%arg3)
+// CHECK: %[[OOB_OFFSET_ARG0:.*]] = xla.apply_indexing #indexing_map1(%arg3)
+// CHECK: %[[EXTRACT0:.*]] = xtile.extract %arg0[%[[PID_DIV_16]], %[[OOB_OFFSET_ARG0]]] [1, 16] [1, 1] : memref<4x64xf32> -> tensor<1x16xf32>
+// CHECK: %[[OOB_OFFSET_ARG1:.*]] = xla.apply_indexing #indexing_map2(%arg3)
+// CHECK: %[[EXTRACT1:.*]] = xtile.extract %arg1[%[[OOB_OFFSET_ARG1]], %c0, %c0] [1, 1, 16] [1, 1, 1] : memref<4x1x16xf32> -> tensor<1x1x16xf32>
+// CHECK: %[[MUL:.*]] = arith.mulf
+// CHECK: %[[SELECT:.*]] = arith.select %{{.*}}, %[[MUL]], %{{.*}}
+// CHECK: xtile.insert %[[SELECT]] into %arg2
+
+ENTRY main {
+  p0 = f32[4,64]{1,0} parameter(0)
+  p1 = f32[4,1,16]{2,1,0} parameter(1)
+  ROOT triton_fusion = f32[4,16,16]{2,1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1","1","16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

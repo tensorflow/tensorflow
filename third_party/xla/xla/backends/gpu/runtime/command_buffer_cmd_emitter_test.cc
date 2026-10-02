@@ -949,12 +949,15 @@ TEST_F(AsyncCommandBufferCmdEmitterTest, PreservesFlattenedAsyncOrder) {
   ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
                        ConvertToCommands(thunks, options_));
   EXPECT_EQ(commands.size(), 6);
-  EXPECT_TRUE(commands.execution_graph()->is_sequential());
+  EXPECT_FALSE(commands.execution_graph()->is_sequential());
   EXPECT_TRUE(HappensBefore(commands, "before", "async_a"));
+  EXPECT_TRUE(HappensBefore(commands, "before", "main_a"));
   EXPECT_TRUE(HappensBefore(commands, "async_a", "async_b"));
-  EXPECT_TRUE(HappensBefore(commands, "async_b", "main_a"));
   EXPECT_TRUE(HappensBefore(commands, "main_a", "main_b"));
+  EXPECT_TRUE(HappensBefore(commands, "async_b", "after"));
   EXPECT_TRUE(HappensBefore(commands, "main_b", "after"));
+  EXPECT_FALSE(HappensBefore(commands, "async_b", "main_a"));
+  EXPECT_FALSE(HappensBefore(commands, "main_b", "async_a"));
 }
 
 }  // namespace

@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
 namespace {
@@ -535,16 +534,46 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
          sizes [ts_0]
          strides [1]
          upper bounds [10]
+         constraints {tid_0 * ts_0 in [0, 9]}
     1) (tid_0)
       -> offsets [tid_0 * ts_0 - 10]
          sizes [ts_0]
          strides [1]
          upper bounds [20]
+         constraints {tid_0 * ts_0 - 10 in [0, 19]}
     2) (tid_0)
       -> offsets [tid_0 * ts_0 - 30]
          sizes [ts_0]
          strides [1]
          upper bounds [30]
+         constraints {tid_0 * ts_0 - 30 in [0, 29]}
+  )"));
+  EXPECT_OK(tiling_space->AssignTileSizes({10}));
+  ASSERT_OK_AND_ASSIGN(Tiles concrete_tiled_operands,
+                       PropagateTileToInput(*tiling_space, *root,
+                                            tiling_space->tiled_roots()[0], 0));
+  for (auto& tile : concrete_tiled_operands) {
+    tile.Simplify();
+  }
+  EXPECT_THAT(concrete_tiled_operands, MatchToString(R"(
+    0) (tid_0)
+      -> offsets [0]
+         sizes [10]
+         strides [1]
+         upper bounds [10]
+         constraints {tid_0 * 10 in [0, 9]}
+    1) (tid_0)
+      -> offsets [tid_0 * 10 - 10]
+         sizes [10]
+         strides [1]
+         upper bounds [20]
+         constraints {tid_0 * 10 - 10 in [0, 19]}
+    2) (tid_0)
+      -> offsets [tid_0 * 10 - 30]
+         sizes [10]
+         strides [1]
+         upper bounds [30]
+         constraints {tid_0 * 10 - 30 in [0, 29]}
   )"));
 }
 
@@ -637,16 +666,19 @@ TEST_F(TilePropagationTest,
          sizes [ts_0]
          strides [1]
          upper bounds [10]
+         constraints {tid_0 * ts_0 in [0, 9]}
     1) (tid_0)
       -> offsets [tid_0 * ts_0 - 10]
          sizes [ts_0]
          strides [1]
          upper bounds [15]
+         constraints {tid_0 * ts_0 - 10 in [0, 19]}
     2) (tid_0)
       -> offsets [tid_0 * ts_0 - 30]
          sizes [ts_0]
          strides [1]
          upper bounds [0]
+         constraints {tid_0 * ts_0 - 30 in [0, 29]}
   )"));
 }
 
@@ -678,16 +710,19 @@ TEST_F(TilePropagationTest,
          sizes [ts_0]
          strides [1]
          upper bounds [max(min(tid_0 * 30, 10), 0)]
+         constraints {tid_0 * ts_0 in [0, 9]}
     1) (tid_0)
       -> offsets [tid_0 * ts_0 - 10]
          sizes [ts_0]
          strides [1]
          upper bounds [max(min(tid_0 * 30 - 10, 20), 0)]
+         constraints {tid_0 * ts_0 - 10 in [0, 19]}
     2) (tid_0)
       -> offsets [tid_0 * ts_0 - 30]
          sizes [ts_0]
          strides [1]
          upper bounds [max(min(tid_0 * 30 - 30, 30), 0)]
+         constraints {tid_0 * ts_0 - 30 in [0, 29]}
   )"));
 }
 

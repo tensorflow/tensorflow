@@ -336,7 +336,7 @@ bool IsSupportedDotAlgorithmOnGpu(
              output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
-      return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
+      return (is_cuda_ge_ampere || is_rocm_mi100_and_above || is_sycl) &&
              lhs_storage_type == rhs_storage_type && lhs_storage_type == F32 &&
              output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_F32_F32_F32:

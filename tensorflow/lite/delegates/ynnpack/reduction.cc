@@ -85,12 +85,8 @@ TfLiteStatus DefineReductionNode(TfLiteContext* context,
   const int32_t* axes_data =
       reinterpret_cast<const int32_t*>(axes_tensor.data.raw);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteReducerParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteReducerParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   bool is_quantized = IsQuantized(input_tensor);

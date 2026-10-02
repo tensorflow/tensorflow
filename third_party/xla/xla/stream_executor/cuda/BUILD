@@ -1036,6 +1036,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/log",
@@ -1048,6 +1049,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:nvptxcompiler",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1322,6 +1324,7 @@ cc_library(
         "//xla/tsl/cuda:nvjitlink",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/log",
@@ -2275,11 +2278,15 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:path",
     ],

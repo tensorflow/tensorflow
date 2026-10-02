@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/platform.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -1471,19 +1472,19 @@ absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
     // Nothing to do other than sanity checks. Parameters' values are stored in
     // the state_.args() array.
     CHECK_LT(parameter->parameter_number(), state_.args().size());
-#ifndef NDEBUG
-    const Literal* input_literal = state_.arg(parameter->parameter_number());
-    VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-    bool check_layout = parameter->shape().has_layout();
-    DCHECK(Shape::Equal()
-               .IgnoreLayout(!check_layout)
-               .MinorToMajorOnlyInLayout()(parameter->shape(),
-                                           input_literal->shape()))
-        << "parameter shape is: "
-        << ShapeUtil::HumanStringWithLayout(parameter->shape())
-        << ", but input literal shape is: "
-        << ShapeUtil::HumanStringWithLayout(input_literal->shape());
-#endif
+    if constexpr (tsl::kIsDebugBuild) {
+      const Literal* input_literal = state_.arg(parameter->parameter_number());
+      VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
+      bool check_layout = parameter->shape().has_layout();
+      DCHECK(Shape::Equal()
+                 .IgnoreLayout(!check_layout)
+                 .MinorToMajorOnlyInLayout()(parameter->shape(),
+                                             input_literal->shape()))
+          << "parameter shape is: "
+          << ShapeUtil::HumanStringWithLayout(parameter->shape())
+          << ", but input literal shape is: "
+          << ShapeUtil::HumanStringWithLayout(input_literal->shape());
+    }
   }
 
   return absl::OkStatus();
@@ -4395,19 +4396,19 @@ absl::Status HloEvaluator::HandleSort(const HloInstruction* sort) {
                     HloEvaluator* embedded_evaluator) -> absl::StatusOr<bool> {
     ABSL_ASSIGN_OR_RETURN(bool a_is_smaller,
                      comparator(literals_to_sort, a, b, embedded_evaluator));
-#ifndef NDEBUG
-    // Let's see if the comparator violates strict weak ordering.
-    // N.B. This does not test transitivity.
-    ABSL_ASSIGN_OR_RETURN(bool b_is_smaller,
-                     comparator(literals_to_sort, b, a, embedded_evaluator));
-    TF_RET_CHECK(!(b_is_smaller && a_is_smaller));
-    ABSL_ASSIGN_OR_RETURN(bool b_is_reflexive,
-                     comparator(literals_to_sort, b, b, embedded_evaluator));
-    TF_RET_CHECK(!b_is_reflexive);
-    ABSL_ASSIGN_OR_RETURN(bool a_is_reflexive,
-                     comparator(literals_to_sort, a, a, embedded_evaluator));
-    TF_RET_CHECK(!a_is_reflexive);
-#endif
+    if constexpr (tsl::kIsDebugBuild) {
+      // Let's see if the comparator violates strict weak ordering.
+      // N.B. This does not test transitivity.
+      ABSL_ASSIGN_OR_RETURN(bool b_is_smaller,
+                       comparator(literals_to_sort, b, a, embedded_evaluator));
+      TF_RET_CHECK(!(b_is_smaller && a_is_smaller));
+      ABSL_ASSIGN_OR_RETURN(bool b_is_reflexive,
+                       comparator(literals_to_sort, b, b, embedded_evaluator));
+      TF_RET_CHECK(!b_is_reflexive);
+      ABSL_ASSIGN_OR_RETURN(bool a_is_reflexive,
+                       comparator(literals_to_sort, a, a, embedded_evaluator));
+      TF_RET_CHECK(!a_is_reflexive);
+    }
     return a_is_smaller;
   };
   std::function<absl::Status(absl::Span<const Literal>, absl::Span<int64_t>,
