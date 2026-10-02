@@ -789,7 +789,6 @@ cc_library(
         "hip_blas_lt.h",
         "hip_blas_utils.h",
     ],
-    defines = {"__HIP_DISABLE_CPP_FUNCTIONS__": "1"},
     tags = [
         "gpu",
         "rocm-only",
