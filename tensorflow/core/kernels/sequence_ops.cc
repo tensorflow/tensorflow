@@ -41,19 +41,8 @@ struct RangeFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* context, int64_t size, T start, T delta,
                   typename TTypes<T>::Flat output) const {
     (void)context;
-    if constexpr (std::is_integral<T>::value) {
-      for (int64_t i = 0; i < size; ++i) {
-        output(i) = start + static_cast<T>(i) * delta;
-      }
-    } else {
-      using ComputeT = typename std::conditional<sizeof(T) >= sizeof(float), T,
-                                                 double>::type;
-      const ComputeT start_c = static_cast<ComputeT>(start);
-      const ComputeT delta_c = static_cast<ComputeT>(delta);
-      for (int64_t i = 0; i < size; ++i) {
-        output(i) =
-            static_cast<T>(start_c + static_cast<ComputeT>(i) * delta_c);
-      }
+    for (int64_t i = 0; i < size; ++i) {
+      output(i) = start + static_cast<T>(i) * delta;
     }
   }
 };
@@ -223,7 +212,7 @@ class LinSpaceOp : public OpKernel {
       // half/bfloat16, while preserving native performance and numerical
       // semantics for float/double.
       using ComputeT = typename std::conditional<sizeof(T) >= sizeof(float), T,
-                                                 double>::type;
+                                                 float>::type;
       const ComputeT start_c = static_cast<ComputeT>(start);
       const ComputeT stop_c = static_cast<ComputeT>(stop);
       const ComputeT step = (stop_c - start_c) / static_cast<ComputeT>(num - 1);

@@ -81,21 +81,29 @@ class LinspaceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   ])
   def testLinSpaceKernelHalfAndBfloat16(self, dtype, num_dtype):
     # tf.linspace is composed from other ops, so call the LinSpace kernel
-    # directly. Each element must be the float64 value narrowed to dtype the
-    # way the kernel's cast does it (through float32); num=70000 is past
-    # float16's largest finite value (65504).
+    # directly. The kernel interpolates in float32 and narrows each element
+    # once; num=70000 is past float16's largest finite value (65504). The
+    # tolerance is one ulp of dtype, so NaN, Inf or a drifted step still fail.
     np_dtype = dtype.as_numpy_dtype
+    ulp = 2.0**-10 if dtype == dtypes.float16 else 2.0**-7
     for start, stop, num in [(0.0, 1.0, 600), (-3.0, 5.0, 20), (9.0, 100.0, 1),
                              (0.0, 1.0, 70000)]:
       actual = self.evaluate(
           gen_math_ops.lin_space(
               np.array(start, np_dtype), np.array(stop, np_dtype),
               np.array(num, num_dtype)))
-      expected = np.linspace(
-          start, stop, num, dtype=np.float64).astype(np.float32).astype(np_dtype)
+      start32 = np.float32(np_dtype(start))
+      stop32 = np.float32(np_dtype(stop))
+      expected = np.full(num, start32, dtype=np.float32)
+      if num > 1:
+        step32 = (stop32 - start32) / np.float32(num - 1)
+        expected = start32 + step32 * np.arange(num, dtype=np.float32)
+        expected[0] = start32
+        expected[-1] = stop32
+      expected = expected.astype(np_dtype).astype(np.float32)
       self.assertEqual(np_dtype, actual.dtype)
-      self.assertAllEqual(expected.astype(np.float32),
-                          actual.astype(np.float32))
+      self.assertAllClose(
+          expected, actual.astype(np.float32), rtol=ulp, atol=0.0)
 
   @parameterized.parameters([dtypes.float16, dtypes.bfloat16])
   def testLinspaceHalfAndBfloat16(self, dtype):

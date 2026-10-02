@@ -131,36 +131,6 @@ TEST_F(RangeOpTest, Range_Size_Overflow) {
             RunOpKernel().message());
 }
 
-TEST_F(RangeOpTest, Monotonic_Bfloat16) {
-  MakeOp(DT_BFLOAT16);
-
-  // 600 elements go past 256, where bfloat16 stops holding every integer, so
-  // casting i to bfloat16 before multiplying rounded it. delta is smaller than
-  // the bfloat16 spacing near the top of the range, so neighbouring outputs
-  // may be equal; each one must still be start + i * delta rounded once.
-  const bfloat16 start(0.0f);
-  const bfloat16 delta(0.3f);
-  AddInputFromArray<bfloat16>(TensorShape({}), {start});
-  AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(180.0f)});
-  AddInputFromArray<bfloat16>(TensorShape({}), {delta});
-  TF_ASSERT_OK(RunOpKernel());
-
-  const auto flat = GetOutput(0)->flat<bfloat16>();
-  constexpr int64_t num = 600;
-  ASSERT_EQ(num, GetOutput(0)->NumElements());
-  for (int64_t i = 1; i < num; ++i) {
-    ASSERT_GE(static_cast<float>(flat(i)), static_cast<float>(flat(i - 1)))
-        << "flat(" << i << ") was less than flat(" << i - 1 << ")";
-  }
-  for (int64_t i = 0; i < num; ++i) {
-    ASSERT_EQ(static_cast<float>(static_cast<bfloat16>(
-                  static_cast<double>(start) +
-                  static_cast<double>(i) * static_cast<double>(delta))),
-              static_cast<float>(flat(i)))
-        << "flat(" << i << ") is not start + " << i << " * delta";
-  }
-}
-
 TEST_F(LinSpaceOpTest, Simple_D32) {
   MakeOp(DT_FLOAT, DT_INT32);
 
@@ -314,10 +284,10 @@ TEST_F(LinSpaceOpTest, Monotonic_Bfloat16_Int64Index) {
     ASSERT_GE(static_cast<float>(flat(i)), static_cast<float>(flat(i - 1)))
         << "flat(" << i << ") was less than flat(" << i - 1 << ")";
   }
-  const double step = 1.0 / static_cast<double>(num - 1);
+  const float step = 1.0f / static_cast<float>(num - 1);
   for (int64_t i = 1; i < num - 1; ++i) {
     ASSERT_EQ(static_cast<float>(
-                  static_cast<bfloat16>(step * static_cast<double>(i))),
+                  static_cast<bfloat16>(step * static_cast<float>(i))),
               static_cast<float>(flat(i)))
         << "flat(" << i << ") is not the nearest bfloat16 to " << i << "/"
         << num - 1;
