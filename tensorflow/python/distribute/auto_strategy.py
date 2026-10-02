@@ -49,35 +49,6 @@ def auto_strategy() -> distribute_lib.StrategyBase:
     model = ...
   ```
   """
-  # Check for Multi-worker setup in TF_CONFIG
-  tf_config_str = os.environ.get("TF_CONFIG", "")
-  if tf_config_str:
-    try:
-      tf_config = json.loads(tf_config_str)
-    except (ValueError, TypeError):
-      tf_config = {}
-
-    if isinstance(tf_config, dict):
-      cluster = tf_config.get("cluster", {})
-      if isinstance(cluster, dict):
-        task = tf_config.get("task") or {}
-        if isinstance(task, dict) and task.get("type") == "evaluator":
-          pass  # Do not use multi-worker strategy for evaluator
-        elif isinstance(task, dict) and task.get("type"):
-          workers = cluster.get("worker") or []
-          chiefs = cluster.get("chief") or []
-          if (
-              isinstance(workers, (list, tuple))
-              and isinstance(chiefs, (list, tuple))
-              and len(workers) + len(chiefs) > 1
-          ):
-            try:
-              return (
-                  collective_all_reduce_strategy.CollectiveAllReduceStrategy()
-              )
-            except (ValueError, TypeError, KeyError):
-              pass
-
   # Check for TPUs
   tpu_physical = config.list_physical_devices("TPU")
   if (
@@ -97,6 +68,35 @@ def auto_strategy() -> distribute_lib.StrategyBase:
       return tpu_strategy.TPUStrategy(resolver)
     except (ValueError, RuntimeError, ImportError, errors.OpError):
       pass
+
+  # Check for Multi-worker setup in TF_CONFIG
+  tf_config_str = os.environ.get("TF_CONFIG", "")
+  if tf_config_str:
+    try:
+      tf_config = json.loads(tf_config_str)
+    except (ValueError, TypeError):
+      tf_config = {}
+
+    if isinstance(tf_config, dict):
+      cluster = tf_config.get("cluster", {})
+      if isinstance(cluster, dict):
+        task = tf_config.get("task") or {}
+        if isinstance(task, dict) and task.get("type") == "evaluator":
+          pass  # Do not use multi-worker strategy for evaluator
+        elif isinstance(task, dict) and task.get("type") in ("worker", "chief"):
+          workers = cluster.get("worker") or []
+          chiefs = cluster.get("chief") or []
+          if (
+              isinstance(workers, (list, tuple))
+              and isinstance(chiefs, (list, tuple))
+              and len(workers) + len(chiefs) > 1
+          ):
+            try:
+              return (
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+              )
+            except (ValueError, TypeError, KeyError):
+              pass
 
   # Check for GPUs
   visible_gpus = config.get_visible_devices("GPU")
