@@ -1297,8 +1297,8 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(
       ctx, prefetch_input_elements <= kMaxCycleLength - cycle_length,
       absl::InvalidArgumentError(absl::StrCat(
-          "`cycle_length` + `prefetch_input_elements` must be <= ",
-          kMaxCycleLength)));
+          "`prefetch_input_elements` must be <= ", kMaxCycleLength,
+          " - `cycle_length`")));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,

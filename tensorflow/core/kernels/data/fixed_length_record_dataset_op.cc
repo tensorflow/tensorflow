@@ -332,8 +332,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
             absl::string_view lookahead_cache_view(lookahead_cache_);
             record = tstring(
                 lookahead_cache_view.substr(0, dataset()->record_bytes_));
-            lookahead_cache_ = tstring(
-                lookahead_cache_view.substr(dataset()->record_bytes_));
+            lookahead_cache_.erase(0, dataset()->record_bytes_);
             // Produce the record as output.
             Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
             record_tensor.scalar<tstring>()() = std::move(record);
