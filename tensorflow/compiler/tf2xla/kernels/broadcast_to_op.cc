@@ -46,13 +46,19 @@ class BroadcastToOp : public XlaOpKernel {
 
     // xla::BroadcastTo also tiles an input dimension into an output dimension
     // that is a multiple of it, but TensorFlow only broadcasts dimensions of
-    // size 1. Check TensorFlow's rule where both sizes are static; a dynamic
-    // size is only known by its bound here. BroadcastTo checks the ranks.
+    // size 1. Check TensorFlow's rules, with the BroadcastTo kernel's errors,
+    // for dimensions whose sizes are static; a dynamic size is only known by
+    // its bound here.
     const TensorShape input_shape = context->InputShape(0);
+    OP_REQUIRES(context, input_shape.dims() <= output_shape.dims(),
+                errors::InvalidArgument(
+                    "Rank of input (", input_shape.dims(),
+                    ") must be no greater than rank of output shape (",
+                    output_shape.dims(), ")."));
     OP_REQUIRES_VALUE(xla::Shape input_xla_shape, context,
                       context->InputXlaShape(0));
     const int rank_difference = output_shape.dims() - input_shape.dims();
-    for (int i = 0; i < input_shape.dims() && rank_difference >= 0; ++i) {
+    for (int i = 0; i < input_shape.dims(); ++i) {
       const int64_t input_size = input_shape.dim_size(i);
       const int64_t output_size = output_shape.dim_size(i + rank_difference);
       OP_REQUIRES(context,
