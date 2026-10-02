@@ -1281,11 +1281,18 @@ REGISTER_OP("GatherV2")
       const Tensor* axis_t = c->input_tensor(2);
 
       // If axis is unknown, we can only infer that the result is params_rank +
-      // indices_rank - 1.
+      // indices_rank - 1 - batch_dims.
       if (axis_t == nullptr) {
         if (c->RankKnown(params_shape) && c->RankKnown(indices_shape)) {
           int32_t batch_dims;
           TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
+          if (batch_dims < 0) {
+            batch_dims += c->Rank(indices_shape);
+          }
+          if (batch_dims < 0 || batch_dims > c->Rank(indices_shape) ||
+              batch_dims >= c->Rank(params_shape)) {
+            return absl::InvalidArgumentError("batch_dims is out of bounds");
+          }
           c->set_output(0, c->UnknownShapeOfRank(c->Rank(params_shape) +
                                                  c->Rank(indices_shape) - 1 -
                                                  batch_dims));
