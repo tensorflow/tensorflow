@@ -1761,6 +1761,19 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array((3, 7, 8, 9), dtype=np.int32),
           expected=np.tile(x, (1, 7, 8, 9)))
 
+  def testBroadcastToRejectsTiling(self):
+    # xla::BroadcastTo tiles an input dimension into an output dimension that
+    # is a multiple of it, but TensorFlow only broadcasts dimensions of size 1.
+    for shape in ([2, 6], [2, 4]):
+      with self.subTest(shape=shape):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "Incompatible shapes"):
+          self._testBinary(
+              array_ops.broadcast_to,
+              np.array([[1, 2]], dtype=np.float32),
+              np.array(shape, dtype=np.int32),
+              expected=None)
+
   def testMulGradientOnBoundedDynamicDimension(self):
     # tf.slice(x, [0], [n]), where n is itself only known at runtime, has an
     # output size that's bounded by x's static shape but not statically
