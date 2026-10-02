@@ -107,6 +107,35 @@ ENTRY entry {
                Field(&CallGraphNodeProps::fingerprint, 3120016136002281788U))));
 }
 
+TEST_F(HloGumgraphTest, CreateWithLateBoundAsyncUpdateWorks) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule LateBoundAsyncUpdate, is_scheduled=true
+
+InnerComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT add = f32[16]{0} add(p0, p0)
+}
+
+AsyncWrappedComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT call = f32[16]{0} call(p0), to_apply=InnerComputation
+}
+
+ENTRY main () -> f32[16]{0} {
+  p = f32[16]{0} parameter(0)
+  async-start = ((f32[16]{0}), (), s32[]{:S(2)}) async-start(p), calls=AsyncWrappedComputation
+  async-update = ((f32[16]{0}), f32[16]{0}, s32[]{:S(2)}) async-update(async-start)
+  ROOT async-done = f32[16]{0} async-done(async-update)
+}
+)"));
+
+  // Building the graph runs HloValueTracing; before the fix this aborted.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
+  EXPECT_NE(SelectNodeByName(*graph, "async-update"), nullptr);
+}
+
 TEST_F(HloGumgraphTest, CreateHloModuleWithFusionInstructionWorks) {
   // Create a module with entry computation containing the following structure:
   // [Param p0] ---> [Param p2] ---> ┌-------┐      ┌----------┐      ┌------┐

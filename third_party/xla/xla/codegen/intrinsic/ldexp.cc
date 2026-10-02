@@ -81,7 +81,7 @@ absl::StatusOr<llvm::Function*> Ldexp::CreateDefinition(llvm::Module* module,
       vector_type, {vector_type, input_int_type}, false);
   llvm::Function* ldexp_func =
       llvm::Function::Create(ldexp_func_type, llvm::Function::InternalLinkage,
-                             Ldexp::Name(base, exp_type), module);
+                             Ldexp::Name({base, exp_type}), module);
   ldexp_func->addFnAttr(llvm::Attribute::AlwaysInline);
   llvm::Argument* a = ldexp_func->getArg(0);
   a->setName("a");

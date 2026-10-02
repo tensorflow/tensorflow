@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/tsl/platform/macros.h"
 #include "tsl/platform/regexp.h"
 
 namespace tsl {
@@ -92,12 +93,13 @@ std::optional<TfOp> GetMemcpyOp(absl::string_view tf_op_fullname) {
 
 }  // namespace
 
-const absl::string_view kUnknownOp = "";  // op types are non-empty strings
-const absl::string_view kDatasetOp = "Dataset";
-const absl::string_view kMemcpyHToDOp = "MemcpyHToD";
-const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
-const absl::string_view kMemcpyDToDOp = "MemcpyDToD";
-const absl::string_view kMemcpyHToHOp = "MemcpyHToH";
+TF_CONST_INIT const absl::string_view kUnknownOp =
+    "";  // op types are non-empty strings
+TF_CONST_INIT const absl::string_view kDatasetOp = "Dataset";
+TF_CONST_INIT const absl::string_view kMemcpyHToDOp = "MemcpyHToD";
+TF_CONST_INIT const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
+TF_CONST_INIT const absl::string_view kMemcpyDToDOp = "MemcpyDToD";
+TF_CONST_INIT const absl::string_view kMemcpyHToHOp = "MemcpyHToH";
 
 // Example inputs: "MyOpName", "MyNamespace>MyOpName"
 bool IsTfOpName(absl::string_view op_name) {

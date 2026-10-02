@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/make_batch_pointers.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -90,11 +90,11 @@ absl::StatusOr<std::unique_ptr<TriangularSolveThunk>>
 TriangularSolveThunk::FromProto(
     ThunkInfo thunk_info, const TriangularSolveThunkProto& proto,
     absl::Span<const BufferAllocation> allocations) {
-  ASSIGN_OR_RETURN(ShapedSlice a_buffer,
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice a_buffer,
                    ShapedSlice::FromProto(proto.a_buffer(), allocations));
-  ASSIGN_OR_RETURN(ShapedSlice b_buffer,
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice b_buffer,
                    ShapedSlice::FromProto(proto.b_buffer(), allocations));
-  ASSIGN_OR_RETURN(ShapedSlice temp_buffer,
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice temp_buffer,
                    ShapedSlice::FromProto(proto.temp_buffer(), allocations));
 
   if (b_buffer.shape.dimensions().size() < 2) {
@@ -132,11 +132,11 @@ absl::StatusOr<ThunkProto> TriangularSolveThunk::ToProto() const {
           transpose_a_);
   }
 
-  ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_a_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_a_buffer(),
                    a_buffer_.ToProto());
-  ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_b_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_b_buffer(),
                    b_buffer_.ToProto());
-  ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_temp_buffer(),
+  ABSL_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_temp_buffer(),
                    temp_buffer_.ToProto());
   return proto;
 }
@@ -214,9 +214,9 @@ absl::Status RunTriangularSolve(se::DeviceAddressBase a_data,
     se::DeviceAddressBase b_pointers(temp_base + batch_size,
                                      batch_pointers_bytes);
 
-    RETURN_IF_ERROR(MakeBatchPointers(stream, a_data, a_batch_stride,
+    ABSL_RETURN_IF_ERROR(MakeBatchPointers(stream, a_data, a_batch_stride,
                                       batch_size, a_pointers));
-    RETURN_IF_ERROR(MakeBatchPointers(stream, b_data, b_batch_stride,
+    ABSL_RETURN_IF_ERROR(MakeBatchPointers(stream, b_data, b_batch_stride,
                                       batch_size, b_pointers));
 
     switch (type) {

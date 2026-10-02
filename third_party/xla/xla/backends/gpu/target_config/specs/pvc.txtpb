@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# proto-file: third_party/tensorflow/compiler/xla/stream_executor/device_description.proto
+# proto-message: stream_executor.GpuTargetConfigProto
+
 gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
@@ -20,7 +23,7 @@ gpu_device_info {
   threads_per_core_limit: 1024
   core_count: 56
   fpus_per_core: 128
-  block_dim_limit_x: 4294967295 
+  block_dim_limit_x: 4294967295
   block_dim_limit_y: 4294967295
   block_dim_limit_z: 4294967295
   memory_bandwidth: 1228800000000

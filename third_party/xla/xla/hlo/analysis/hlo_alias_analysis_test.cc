@@ -24,8 +24,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
@@ -646,6 +648,7 @@ ENTRY main {
   EXPECT_FALSE(AnyValuesInSameBufferInterfere());
 }
 
+
 TEST_F(HloAliasAnalysisTest, SequentialWhiles) {
   // Test sequential while instructions. The while body includes a
   // pass-through value. HLO:
@@ -1014,6 +1017,496 @@ ENTRY main {
       module_->entry_computation()->GetInstructionWithName("negate0");
   EXPECT_NE(analysis.GetUniqueBufferAt(negate0),
             analysis.GetUniqueBufferAt(fusion));
+}
+
+TEST_F(HloAliasAnalysisTest, DISABLED_MegachipLateBindingAsyncChain) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  add = f32[16] add(p0, p1)
+  ROOT tuple = (f32[16]) tuple(add)
+}
+
+ENTRY main {
+  tc_operand0 = f32[16] parameter(0)
+  tc_operand1 = f32[16] parameter(1)
+
+  // async-start only binds tc_operand0 (subset!)
+  // Aliases both logical parameters.
+  // this is blocked by this the current implementation for async-done
+  // to be updated if it breaks other tests
+  async_start = ((f32[16]), (f32[16]), s32[]) async-start(tc_operand0),
+    calls=async_wrapped_computation, async_execution_thread="sparsecore",
+    output_to_operand_aliasing={{0,0}: (0, {}), {0,1}: (1, {})}
+
+  // async-update binds tc_operand1 (late binding!)
+  async_update = ((f32[16], f32[16]), (f32[16])) async-update(async_start, tc_operand1)
+
+  ROOT async_done = (f32[16]) async-done(async_update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* tc_operand0 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand0");
+  const HloInstruction* tc_operand1 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand1");
+  const HloInstruction* async_start =
+      module_->entry_computation()->GetInstructionWithName("async_start");
+  const HloInstruction* async_update =
+      module_->entry_computation()->GetInstructionWithName("async_update");
+  const HloInstruction* async_done =
+      module_->entry_computation()->GetInstructionWithName("async_done");
+
+  // 1. Verify async-start input aliasing (only logical operand 0 is passed
+  // physically)
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_start, {0, 0}));
+
+  // 2. Verify async-update input aliasing (forwarding previous operand)
+  EXPECT_EQ(analysis.GetUniqueBufferAt(async_start, {0, 0}),
+            analysis.GetUniqueBufferAt(async_update, {0, 0}));
+
+  // 3. Verify async-update newly bound operand aliasing
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand1),
+            analysis.GetUniqueBufferAt(async_update, {0, 1}));
+
+  // 4. Verify async-done output aliasing with intermediate result
+  EXPECT_EQ(analysis.GetUniqueBufferAt(async_update, {1, 0}),
+            analysis.GetUniqueBufferAt(async_done, {0}));
+}
+
+TEST_F(HloAliasAnalysisTest, MegachipLateBindingAsyncChain_CrossCall_1) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  add = f32[16] add(p0, p1)
+  ROOT tuple = (f32[16]) tuple(add)
+}
+
+ENTRY main {
+  tc_operand0 = f32[16] parameter(0)
+  tc_operand1 = f32[16] parameter(1)
+
+  // async-start only binds tc_operand0 (subset!). Aliases both logical parameters.
+  async_start = ((f32[16]), (), s32[]) async-start(tc_operand0),
+    calls=async_wrapped_computation, async_execution_thread="sparsecore",
+    output_to_operand_aliasing={{1, 0}: (0, {})}
+
+  // async-update binds tc_operand1 (late binding!)
+  async_update = ((f32[16], f32[16]), (f32[16])) async-update(async_start, tc_operand1)
+
+  ROOT async_done = (f32[16]) async-done(async_update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* tc_operand0 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand0");
+  const HloInstruction* tc_operand1 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand1");
+  const HloInstruction* async_start =
+      module_->entry_computation()->GetInstructionWithName("async_start");
+  const HloInstruction* async_update =
+      module_->entry_computation()->GetInstructionWithName("async_update");
+  const HloInstruction* async_done =
+      module_->entry_computation()->GetInstructionWithName("async_done");
+
+  // 1. Verify async-start input aliasing (only logical operand 0 is passed
+  // physically)
+  // this is from dataflow analysis
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_start, {0, 0}));
+
+  // 2. Verify async-update input aliasing (forwarding previous operand)
+  EXPECT_EQ(analysis.GetUniqueBufferAt(async_start, {0, 0}),
+            analysis.GetUniqueBufferAt(async_update, {0, 0}));
+
+  // 3. Verify async-update newly bound operand aliasing
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand1),
+            analysis.GetUniqueBufferAt(async_update, {0, 1}));
+
+  // 4. Verify async-done output aliasing with intermediate result
+  EXPECT_EQ(analysis.GetUniqueBufferAt(async_update, {1, 0}),
+            analysis.GetUniqueBufferAt(async_done, {0}));
+
+  // 5. Verify async-done output aliasing with intermediate result
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_done, {0}));
+}
+
+TEST_F(HloAliasAnalysisTest, MegachipLateBindingAsyncChain_CrossCall_2) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  add = f32[16] add(p0, p1)
+  ROOT tuple = (f32[16]) tuple(add)
+}
+
+ENTRY main {
+  tc_operand0 = f32[16] parameter(0)
+  tc_operand1 = f32[16] parameter(1)
+
+  // async-start only binds tc_operand0 (subset!). Aliases both logical parameters.
+  async_start = ((f32[16]), (), s32[]) async-start(tc_operand0),
+    calls=async_wrapped_computation, async_execution_thread="sparsecore",
+    output_to_operand_aliasing={{1, 0}: (0, {})}
+
+  // async-update binds tc_operand1 (late binding!)
+  async_update = ((f32[16], f32[16]), ()) async-update(async_start, tc_operand1)
+
+  ROOT async_done = (f32[16]) async-done(async_update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* tc_operand0 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand0");
+  const HloInstruction* tc_operand1 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand1");
+  const HloInstruction* async_start =
+      module_->entry_computation()->GetInstructionWithName("async_start");
+  const HloInstruction* async_update =
+      module_->entry_computation()->GetInstructionWithName("async_update");
+  const HloInstruction* async_done =
+      module_->entry_computation()->GetInstructionWithName("async_done");
+
+  // 1. Verify async-start input aliasing (only logical operand 0 is passed
+  // physically)
+  // this is from dataflow analysis
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_start, {0, 0}));
+
+  // 2. Verify async-update input aliasing (forwarding previous operand)
+  EXPECT_EQ(analysis.GetUniqueBufferAt(async_start, {0, 0}),
+            analysis.GetUniqueBufferAt(async_update, {0, 0}));
+
+  // 3. Verify async-update newly bound operand aliasing
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand1),
+            analysis.GetUniqueBufferAt(async_update, {0, 1}));
+
+  // 4. Verify async-done output aliasing with intermediate result
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_done, {0}));
+}
+
+TEST_F(HloAliasAnalysisTest, MegachipLateBindingAsyncChain_CrossCall_3) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  ROOT add = f32[16] add(p0, p1)
+}
+
+ENTRY main {
+  tc_operand0 = f32[16] parameter(0)
+  tc_operand1 = f32[16] parameter(1)
+
+  // async-start only binds tc_operand0 (subset!). Aliases both logical parameters.
+  async_start = ((f32[16]), (), s32[]) async-start(tc_operand0),
+    calls=async_wrapped_computation, async_execution_thread="sparsecore",
+    output_to_operand_aliasing={{1}: (0, {})}
+
+  // async-update binds tc_operand1 (late binding!)
+  async_update = ((f32[16], f32[16]), ()) async-update(async_start, tc_operand1)
+
+  ROOT async_done = f32[16] async-done(async_update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* tc_operand0 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand0");
+  const HloInstruction* tc_operand1 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand1");
+  const HloInstruction* async_start =
+      module_->entry_computation()->GetInstructionWithName("async_start");
+  const HloInstruction* async_update =
+      module_->entry_computation()->GetInstructionWithName("async_update");
+  const HloInstruction* async_done =
+      module_->entry_computation()->GetInstructionWithName("async_done");
+
+  // 1. Verify async-start input aliasing (only logical operand 0 is passed
+  // physically)
+  // this is from dataflow analysis
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_start, {0, 0}));
+
+  // 2. Verify async-update input aliasing (forwarding previous operand)
+  EXPECT_EQ(analysis.GetUniqueBufferAt(async_start, {0, 0}),
+            analysis.GetUniqueBufferAt(async_update, {0, 0}));
+
+  // 3. Verify async-update newly bound operand aliasing
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand1),
+            analysis.GetUniqueBufferAt(async_update, {0, 1}));
+
+  // 4. Verify async-done output aliasing with intermediate result
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_done, {}));
+}
+
+TEST_F(HloAliasAnalysisTest, MegachipLateBindingAsyncChain_CrossOperands) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  ROOT add = f32[16] add(p0, p1)
+}
+
+ENTRY main {
+  tc_operand0 = f32[16] parameter(0)
+  tc_operand1 = f32[16] parameter(1)
+
+  // async-start only binds tc_operand0 (subset!). Aliases both logical parameters.
+  async_start = ((), (), s32[]) async-start(),
+    calls=async_wrapped_computation, async_execution_thread="sparsecore",
+    output_to_operand_aliasing={{1}: (1, {})}
+
+  // async-update binds tc_operand1 (late binding!)
+  async_update-0 = ((f32[16]), ()) async-update(async_start, tc_operand0)
+  async_update-1 = ((f32[16], f32[16]), ()) async-update(async_update-0, tc_operand1)
+
+  ROOT async_done = f32[16] async-done(async_update-1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* tc_operand0 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand0");
+  const HloInstruction* tc_operand1 =
+      module_->entry_computation()->GetInstructionWithName("tc_operand1");
+  const HloInstruction* async_update_0 =
+      module_->entry_computation()->GetInstructionWithName("async_update-0");
+  const HloInstruction* async_update_1 =
+      module_->entry_computation()->GetInstructionWithName("async_update-1");
+
+  const HloInstruction* async_done =
+      module_->entry_computation()->GetInstructionWithName("async_done");
+
+  // 1. Verify async-update input aliasing (forwarding previous operand)
+  EXPECT_EQ(analysis.GetUniqueBufferAt(async_update_0, {0, 0}),
+            analysis.GetUniqueBufferAt(async_update_1, {0, 0}));
+
+  // 2. Verify async-update newly bound operand aliasing
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_update_1, {0, 0}));
+
+  // 3. Verify async-update newly bound operand aliasing
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand1),
+            analysis.GetUniqueBufferAt(async_update_1, {0, 1}));
+
+  // 4. Verify async-done output aliasing with intermediate result
+  EXPECT_NE(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(async_done, {}));
+  // 5. tc_operand1 should share the same buffer as async_done
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tc_operand1),
+            analysis.GetUniqueBufferAt(async_done, {}));
+  // 6. tc_operand0 should not share the same buffer as tc_operand1
+  EXPECT_NE(analysis.GetUniqueBufferAt(tc_operand0),
+            analysis.GetUniqueBufferAt(tc_operand1));
+}
+
+TEST_F(HloAliasAnalysisTest, CallOutputToOperandAliasing) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+callme {
+  sub_p0 = f32[16] parameter(0)
+  sub_p1 = f32[16] parameter(1)
+  add0 = f32[16] add(sub_p0, sub_p1)
+  add1 = f32[16] add(sub_p0, sub_p0)
+  ROOT tuple = (f32[16], f32[16]) tuple(add0, add1)
+}
+
+ENTRY main {
+  entry_p0 = f32[16] parameter(0)
+  entry_p1 = f32[16] parameter(1)
+  ROOT call = (f32[16], f32[16]) call(entry_p0, entry_p1), to_apply=callme
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  auto* call = Cast<HloCallInstruction>(
+      module_->entry_computation()->GetInstructionWithName("call"));
+  call->set_output_to_operand_aliasing({{{0}, {0, {}}}, {{1}, {1, {}}}});
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* entry_p0 =
+      module_->entry_computation()->GetInstructionWithName("entry_p0");
+  const HloInstruction* entry_p1 =
+      module_->entry_computation()->GetInstructionWithName("entry_p1");
+
+  ASSERT_NE(entry_p0, nullptr);
+  ASSERT_NE(entry_p1, nullptr);
+  ASSERT_NE(call, nullptr);
+
+  EXPECT_EQ(analysis.GetUniqueBufferAt(entry_p0),
+            analysis.GetUniqueBufferAt(call, {0}));
+  EXPECT_EQ(analysis.GetUniqueBufferAt(entry_p1),
+            analysis.GetUniqueBufferAt(call, {1}));
+}
+
+TEST_F(HloAliasAnalysisTest,
+       AsyncComputationMultipleCallersMultipleBuffersAllowed) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+async_computation {
+  ROOT p = f32[16] parameter(0)
+}
+
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  async-start.0 = ((f32[16]), f32[16], s32[]) async-start(p0), calls=async_computation
+  async-done.0 = f32[16] async-done(async-start.0), calls=async_computation
+  async-start.1 = ((f32[16]), f32[16], s32[]) async-start(p1), calls=async_computation
+  async-done.1 = f32[16] async-done(async-start.1), calls=async_computation
+  ROOT tuple = (f32[16], f32[16]) tuple(async-done.0, async-done.1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloComputation* async_computation =
+      module_->GetComputationWithName("async_computation");
+  ASSERT_NE(async_computation, nullptr);
+  const HloInstruction* param = async_computation->GetInstructionWithName("p");
+  ASSERT_NE(param, nullptr);
+
+  const HloInstruction* p0 =
+      module_->entry_computation()->GetInstructionWithName("p0");
+  const HloInstruction* p1 =
+      module_->entry_computation()->GetInstructionWithName("p1");
+  ASSERT_NE(p0, nullptr);
+  ASSERT_NE(p1, nullptr);
+
+  const HloBuffer& buffer0 = analysis.GetUniqueBufferAt(p0);
+  const HloBuffer& buffer1 = analysis.GetUniqueBufferAt(p1);
+  EXPECT_NE(&buffer0, &buffer1);
+
+  // Because async_computation has two callers operating on two different
+  // buffers (p0 and p1), multiple buffers are allowed at positions inside and
+  // flowing out of async_computation without triggering a crash.
+  std::vector<const HloBuffer*> param_buffers =
+      analysis.ComputeBuffersAt(param);
+  EXPECT_THAT(param_buffers, UnorderedElementsAre(&buffer0, &buffer1));
+
+  const HloInstruction* async_done0 =
+      module_->entry_computation()->GetInstructionWithName("async-done.0");
+  ASSERT_NE(async_done0, nullptr);
+  std::vector<const HloBuffer*> done0_buffers =
+      analysis.ComputeBuffersAt(async_done0);
+  EXPECT_THAT(done0_buffers, UnorderedElementsAre(&buffer0, &buffer1));
+
+  const HloInstruction* tuple =
+      module_->entry_computation()->GetInstructionWithName("tuple");
+  ASSERT_NE(tuple, nullptr);
+  std::vector<const HloBuffer*> tuple_elem0_buffers =
+      analysis.ComputeBuffersAt(tuple, {0});
+  EXPECT_THAT(tuple_elem0_buffers, UnorderedElementsAre(&buffer0, &buffer1));
+}
+
+TEST_F(HloAliasAnalysisTest, WhileInsideEmbeddedComputationWithNestedCalls) {
+  // A while loop inside a computation called in an embedded context (the
+  // called computation of a custom-call) whose init value and body root value
+  // both come from nested kCalls. The callees are additionally called from the
+  // entry computation so that the dataflow worklist visits the nested calls
+  // before the callees' roots are complete. The nested calls used to be left
+  // with empty value sets, which made the while's value set empty at index {0}
+  // and crashed alias analysis when it looked up the while value aliased by
+  // the body parameter.
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+init_callee {
+  init_constant = f32[] constant(1.0)
+  ROOT init_tuple = (f32[]) tuple(init_constant)
+}
+
+body_callee {
+  body_constant = f32[] constant(2.0)
+  ROOT body_tuple = (f32[]) tuple(body_constant)
+}
+
+condition {
+  cond_param = (f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
+
+body {
+  body_param = (f32[]) parameter(0)
+  body_call = (f32[]) call(), to_apply=body_callee
+  body_gte = f32[] get-tuple-element(body_call), index=0
+  ROOT body_root = (f32[]) tuple(body_gte)
+}
+
+embedded_computation {
+  embedded_param = f32[] parameter(0)
+  init_call = (f32[]) call(), to_apply=init_callee
+  init_gte = f32[] get-tuple-element(init_call), index=0
+  init = (f32[]) tuple(init_gte)
+  while_loop = (f32[]) while(init), condition=condition, body=body
+  while_gte = f32[] get-tuple-element(while_loop), index=0
+  ROOT embedded_add = f32[] add(embedded_param, while_gte)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  entry_init_call = (f32[]) call(), to_apply=init_callee
+  entry_init_gte = f32[] get-tuple-element(entry_init_call), index=0
+  entry_body_call = (f32[]) call(), to_apply=body_callee
+  entry_body_gte = f32[] get-tuple-element(entry_body_call), index=0
+  ROOT custom_call = f32[] custom-call(param, entry_init_gte, entry_body_gte), custom_call_target="foo", called_computations={embedded_computation}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* init = FindInstruction(module_.get(), "init");
+  const HloInstruction* while_loop =
+      FindInstruction(module_.get(), "while_loop");
+  const HloInstruction* body_param =
+      FindInstruction(module_.get(), "body_param");
+  const HloInstruction* body_root = FindInstruction(module_.get(), "body_root");
+  ASSERT_NE(init, nullptr);
+  ASSERT_NE(while_loop, nullptr);
+  ASSERT_NE(body_param, nullptr);
+  ASSERT_NE(body_root, nullptr);
+
+  // The while's init, body parameter and body root share the while's buffer.
+  const HloBuffer& while_buffer = analysis.GetUniqueBufferAt(while_loop, {0});
+  EXPECT_EQ(analysis.GetUniqueBufferAt(init, {0}), while_buffer);
+  EXPECT_EQ(analysis.GetUniqueBufferAt(body_param, {0}), while_buffer);
+  EXPECT_EQ(analysis.GetUniqueBufferAt(body_root, {0}), while_buffer);
 }
 
 }  // namespace

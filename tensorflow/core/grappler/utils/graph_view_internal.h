@@ -159,7 +159,7 @@ class NodeViewInternal {
   const std::string& GetName() const { return node()->name(); }
 
   // Returns the op of the node.
-  const string& GetOp() const { return node()->op(); }
+  const std::string& GetOp() const { return node()->op(); }
 
   // Returns the device set for the node.
   const string& GetDevice() const { return node()->device(); }
@@ -391,8 +391,8 @@ struct NodeViewDiff {
   int num_regular_inputs_to_remove = 0;
   absl::flat_hash_set<std::string> controlling_inputs_to_add;
   std::set<int> controlling_inputs_to_remove;
-  absl::flat_hash_map<string, AttrValue> attrs_to_add;
-  absl::flat_hash_set<string> attrs_to_remove;
+  absl::flat_hash_map<std::string, AttrValue> attrs_to_add;
+  absl::flat_hash_set<std::string> attrs_to_remove;
   // AttrValueMap constructor and destructor are very expensive, we will
   // initialize it lazily only if needed.
   absl::optional<AttrValueMap> processed_attrs;
@@ -420,7 +420,7 @@ inline bool UpdateOp(NodeViewDiff<GraphViewT>* diff, absl::string_view op) {
     diff->op.clear();
     diff->update_op = false;
   } else {
-    diff->op = string(op);
+    diff->op = std::string(op);
     diff->update_op = true;
   }
   return true;
@@ -726,7 +726,7 @@ inline bool IsWellFormed(
           return false;
         }
       } else {
-        const string& regular_name =
+        const std::string& regular_name =
             node_view->GetRegularFanin(i).node_view()->GetName();
         if (regular_name == node_name) {
           return false;

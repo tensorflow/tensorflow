@@ -50,7 +50,9 @@ cc_library(
         "//xla/tsl/profiler/utils:lock_free_queue",
         "//xla/tsl/profiler/utils:per_thread",
         "//xla/tsl/profiler/utils:traceme_global_flags",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
 )
@@ -174,6 +176,25 @@ cc_library(
         "@tsl//tsl/platform:__subpackages__",
         "//xla/tsl/platform:__subpackages__",
     ]),
+)
+
+tsl_cc_test(
+    name = "threadpool_listener_test",
+    srcs = ["threadpool_listener_test.cc"],
+    deps = [
+        ":threadpool_listener",
+        ":traceme_recorder_impl",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "//xla/tsl/profiler/utils:time_utils",
+        "//xla/tsl/profiler/utils:time_utils_impl",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:tracing",
+    ],
 )
 
 cc_library(

@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
@@ -105,6 +105,7 @@ DistributedRuntimeCoordinationServiceClient::
   }
   config.heartbeat_timeout = options.heartbeat_timeout;
   config.shutdown_barrier_timeout = options.shutdown_timeout;
+  config.extra_error_propagation_time = options.extra_error_propagation_time;
   config.agent_destruction_without_shutdown = !options.shutdown_on_destruction;
   config.poll_for_error_from_service_at_startup =
       options.poll_for_error_from_service_at_startup;
@@ -182,7 +183,7 @@ DistributedRuntimeCoordinationServiceClient::KeyValueIncrement(
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
     absl::string_view key) {
-  ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
+  ABSL_ASSIGN_OR_RETURN(const auto results, coord_agent_->GetKeyValueDir(key));
 
   std::vector<std::pair<std::string, std::string>> kvs;
   kvs.reserve(results.size());
@@ -239,7 +240,7 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodesWithIncarnations(
   }
 
   // Get the set of live tasks.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const std::vector<CoordinationServiceAgent::AliveTask> live_tasks,
       coord_agent_->GetAliveTasks(tasks));
 
@@ -297,6 +298,10 @@ class DistributedKeyValueStore : public KeyValueStoreInterface {
 
   absl::Status Set(absl::string_view key, absl::string_view value) override {
     return client_->KeyValueSet(absl::StrCat(prefix_, key), value);
+  }
+
+  absl::Status Delete(absl::string_view key) override {
+    return client_->KeyValueDelete(absl::StrCat(prefix_, key));
   }
 
   std::shared_ptr<tsl::CallOptions> AsyncGet(

@@ -18,7 +18,6 @@ limitations under the License.
 // custom atomic functions that will be implemented in platform-specific passes
 // later in the Triton pipeline.
 
-#include <memory>
 #include <string>
 #include <utility>
 

@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: sdy_opt %s --split-input-file -xla-sdy-round-trip-export-pipeline 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
 // RUN: sdy_opt %s --split-input-file -xla-sdy-round-trip-export-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
 
@@ -294,4 +308,20 @@ func.func @trivial_manual_computation(%arg0: tensor<8x16xf32> {sdy.sharding = #s
     sdy.return %1 : tensor<8x16xf32>
   } : (tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
+}
+
+// -----
+
+sdy.mesh @mesh_1 = <["x"=8, "y"=4]>
+
+// CHECK-LABEL: func @unreduced_max_min_export(
+// CHECK-V2-SAME:      %arg0: tensor<8x8xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh_1, [{}, {}], unreduced=max{\22x\22}>"}, mhlo.sharding = "{devices=[1,1,8,4]<=[32] last_tile_dims={unreduced, replicated} metadata={op_type=\22sdy::reduction_op\22 op_name=\22MAX\22}}"},
+// CHECK-V3-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh['x'=8,'y'=4], [{}, {}], unreduced=max{'x'}}"},
+// CHECK-V2-SAME:      %arg1: tensor<8x8xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh_1, [{}, {}], unreduced=min{\22x\22}>"}, mhlo.sharding = "{devices=[1,1,8,4]<=[32] last_tile_dims={unreduced, replicated} metadata={op_type=\22sdy::reduction_op\22 op_name=\22MIN\22}}"}
+// CHECK-V3-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{mesh['x'=8,'y'=4], [{}, {}], unreduced=min{'x'}}"}
+func.func @unreduced_max_min_export(
+    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}], unreduced=max{"x"}>},
+    %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}], unreduced=min{"x"}>}) -> tensor<8x8xf32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
 }

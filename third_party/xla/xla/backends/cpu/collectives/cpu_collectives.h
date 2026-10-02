@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_rendezvous.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

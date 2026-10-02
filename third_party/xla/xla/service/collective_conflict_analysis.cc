@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -101,11 +100,10 @@ void GetAbstractReplicaGroups(HloInstruction* instr,
       instr->opcode() == HloOpcode::kRecv) {
     auto* sr = Cast<HloSendRecvInstruction>(instr);
     CHECK(!sr->is_host_transfer());
-    std::optional<std::string> source_target_pairs_str =
+    const std::string& source_target_pairs_str =
         sr->frontend_attributes().map().at(kSendRecvSourceTargetPairsAttr);
-    CHECK(source_target_pairs_str.has_value());
     absl::StatusOr<std::vector<ReplicaGroup>> source_target_pairs =
-        ParseReplicaGroupsOnly(*source_target_pairs_str);
+        ParseReplicaGroupsOnly(source_target_pairs_str);
     CHECK(source_target_pairs.ok() && "Expect valid source_target_pairs");
     for (auto& replica_group : *source_target_pairs) {
       add_replica_group(replica_group);

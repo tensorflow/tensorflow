@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -69,7 +69,7 @@ absl::StatusOr<bool> MemorySpacePropagation::RunImpl(
   // between a fusion input and output and these two values are in different
   // memory spaces, we can get inconsistent memory spaces between the parameter
   // and fusion operand or root and fusion output.
-  ASSIGN_OR_RETURN(auto dataflow_analysis,
+  ABSL_ASSIGN_OR_RETURN(auto dataflow_analysis,
                    HloDataflowAnalysis::Run(*module, /*ssa_form=*/false,
                                             /*bitcast_defines_value=*/true));
   dataflow_analysis_ = std::move(dataflow_analysis);

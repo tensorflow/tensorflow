@@ -16,17 +16,20 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -39,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/test.h"
@@ -58,14 +62,27 @@ using ::testing::HasSubstr;
 TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveKernelEnabled, bool);
 TSL_LIB_GTL_DEFINE_INT_TYPE(MultimemEnabled, bool);
 
+// Number of devices per host in the test topology. Large enough for all replica
+// groups used in these tests to be local, including groups that exceed the
+// maximum number of ranks supported by the all-reduce kernel.
+constexpr int32_t kNumDevicesPerHost = 2 * se::gpu::kMaxNumAllReduceInputPtrs;
+
+// Returns a replica group containing replicas [0, num_replicas).
+std::vector<int32_t> IotaReplicaGroup(int64_t num_replicas) {
+  std::vector<int32_t> replica_group(num_replicas);
+  absl::c_iota(replica_group, 0);
+  return replica_group;
+}
+
 class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
  protected:
-  // Helper to reduce boilerplate while keeping tests independent.
-  absl::StatusOr<AllReduceInfo> BuildInfo(
+  // Helper to reduce boilerplate while keeping tests independent. Supports
+  // multiple (possibly non-uniform) replica groups.
+  absl::StatusOr<AllReduceInfo> BuildInfoWithGroups(
       CollectiveKernelEnabled collective_kernel_enabled,
       MultimemEnabled multimem_enabled, PrimitiveType element_type,
       std::vector<int64_t> shape, HloOpcode hlo_opcode,
-      std::vector<int32_t> replica_groups) {
+      std::vector<std::vector<int64_t>> replica_groups) {
     constexpr absl::string_view kModuleStr = R"(
     HloModule test
      apply_op {
@@ -86,26 +103,29 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
         ->mutable_device_interconnect_info()
         ->set_active_links(18);
     target_config_proto.set_platform_name("CUDA");
-    ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
+    ABSL_ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
                      gpu::GpuTargetConfig::FromProto(target_config_proto));
     GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
                              /*num_hosts_per_partition=*/1,
-                             /*num_devices_per_host=*/16, target_config);
-    std::string replica_groups_str =
-        replica_groups.empty()
-            ? ""
-            : absl::StrFormat("{%s}", absl::StrJoin(replica_groups, ","));
+                             /*num_devices_per_host=*/kNumDevicesPerHost,
+                             target_config);
+    int64_t num_replicas = 0;
+    std::vector<std::string> group_strs;
+    group_strs.reserve(replica_groups.size());
+    for (const std::vector<int64_t>& group : replica_groups) {
+      num_replicas += group.size();
+      group_strs.push_back(absl::StrFormat("{%s}", absl::StrJoin(group, ",")));
+    }
     const std::string module_str = absl::StrFormat(
         kModuleStr, primitive_util::LowercasePrimitiveTypeName(element_type),
         absl::StrJoin(shape, ","), HloOpcodeString(hlo_opcode),
-        replica_groups_str);
+        absl::StrJoin(group_strs, ","));
 
     SCOPED_TRACE(testing::Message() << "module_str: " << module_str);
 
-    ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> module,
-        ParseAndReturnVerifiedModule(
-            module_str, replica_groups.empty() ? 1 : replica_groups.size()));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(
+                         module_str, num_replicas == 0 ? 1 : num_replicas));
     const HloInstruction* hlo_instr =
         HloHardwareIndependentTestBase::FindInstruction(module.get(),
                                                         HloOpcode::kAllReduce);
@@ -113,6 +133,21 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
                               multimem_enabled.value(), gpu_topology,
                               Cast<HloAllReduceInstruction>(hlo_instr),
                               /*device_assignment=*/nullptr);
+  }
+
+  // Single-group convenience wrapper.
+  absl::StatusOr<AllReduceInfo> BuildInfo(
+      CollectiveKernelEnabled collective_kernel_enabled,
+      MultimemEnabled multimem_enabled, PrimitiveType element_type,
+      std::vector<int64_t> shape, HloOpcode hlo_opcode,
+      std::vector<int32_t> replica_groups) {
+    std::vector<std::vector<int64_t>> groups;
+    if (!replica_groups.empty()) {
+      groups.emplace_back(replica_groups.begin(), replica_groups.end());
+    }
+    return BuildInfoWithGroups(collective_kernel_enabled, multimem_enabled,
+                               element_type, std::move(shape), hlo_opcode,
+                               std::move(groups));
   }
 };
 
@@ -127,11 +162,26 @@ TEST_F(BuildAllReduceInfoTest, ReturnsOneShotStrategyForSmallS32) {
 
 TEST_F(BuildAllReduceInfoTest, ReturnsTwoShotStrategyForLargerF32) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {128, 1024}, HloOpcode::kAdd, {0, 1}),
+                        F32, {1024, 1024}, HloOpcode::kAdd, {0, 1}),
               IsOkAndHolds(AllOf(
                   Field(&AllReduceInfo::reduction_kind, ReductionKind::SUM),
                   Field(&AllReduceInfo::all_reduce_strategy,
                         AllReduceStrategy::kTwoShot))));
+}
+
+TEST_F(BuildAllReduceInfoTest, StrategyDependsOnReadSizeBytes) {
+  // 512 KB input (128K F32 elements):
+  // - On 2 devices: read_size_bytes = 1 MB <= 2 MB -> kOneShot.
+  // - On 8 devices: read_size_bytes = 4 MB > 2 MB -> kTwoShot.
+  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
+                        F32, {128, 1024}, HloOpcode::kAdd, {0, 1}),
+              IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                                 AllReduceStrategy::kOneShot)));
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false), F32,
+                {128, 1024}, HloOpcode::kAdd, {0, 1, 2, 3, 4, 5, 6, 7}),
+      IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                         AllReduceStrategy::kTwoShot)));
 }
 
 TEST_F(BuildAllReduceInfoTest, ReturnsMultimemStrategy) {
@@ -157,12 +207,23 @@ TEST_F(BuildAllReduceInfoTest, FailsForNonPowerOfTwoDevices) {
                        HasSubstr("only supported for power of 2")));
 }
 
-TEST_F(BuildAllReduceInfoTest, FailsForTooManyDevices) {
+TEST_F(BuildAllReduceInfoTest, SupportsMaxNumDevices) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
                         F32, {1024}, HloOpcode::kAdd,
-                        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}),
-              StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("does not support more than 8 ranks")));
+                        IotaReplicaGroup(se::gpu::kMaxNumAllReduceInputPtrs)),
+              IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                                 AllReduceStrategy::kOneShot)));
+}
+
+TEST_F(BuildAllReduceInfoTest, FailsForTooManyDevices) {
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false), F32,
+                {1024}, HloOpcode::kAdd,
+                IotaReplicaGroup(2 * se::gpu::kMaxNumAllReduceInputPtrs)),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr(absl::StrCat("does not support more than ",
+                                      se::gpu::kMaxNumAllReduceInputPtrs,
+                                      " ranks"))));
 }
 
 TEST_F(BuildAllReduceInfoTest, FailsForUnsupportedTypeCombination) {
@@ -174,7 +235,7 @@ TEST_F(BuildAllReduceInfoTest, FailsForUnsupportedTypeCombination) {
 
 TEST_F(BuildAllReduceInfoTest, FailsForLargeInputs) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {2, 1024, 1024}, HloOpcode::kAdd, {0, 1}),
+                        F32, {8, 1024, 1024}, HloOpcode::kAdd, {0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("only supported for small inputs")));
 }
@@ -185,6 +246,22 @@ TEST_F(BuildAllReduceInfoTest, FailsIfReplicaGroupsEmpty) {
                 {1024}, HloOpcode::kAdd, {}),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("Replica groups must be explicitly provided")));
+}
+
+TEST_F(BuildAllReduceInfoTest, FailsForNonUniformReplicaGroups) {
+  EXPECT_THAT(
+      BuildInfoWithGroups(CollectiveKernelEnabled(true), MultimemEnabled(false),
+                          F32, {1024}, HloOpcode::kAdd, {{0, 1}, {2, 3, 4, 5}}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("all replica groups to have the same size")));
+}
+
+TEST_F(BuildAllReduceInfoTest, SupportsUniformMultiGroup) {
+  EXPECT_THAT(
+      BuildInfoWithGroups(CollectiveKernelEnabled(true), MultimemEnabled(false),
+                          F32, {1024}, HloOpcode::kAdd, {{0, 1}, {2, 3}}),
+      IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                         AllReduceStrategy::kOneShot)));
 }
 
 }  // namespace

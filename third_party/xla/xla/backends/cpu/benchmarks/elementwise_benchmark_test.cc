@@ -90,6 +90,58 @@ static void BM_AddBF16(benchmark::State& state, HloBenchmarkOptions options) {
       RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
+static void BM_AddU32(benchmark::State& state, HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule add_u32_$d0
+
+    ENTRY e {
+      p0 = u32[1,2,1,$d0,256] parameter(0)
+      p1 = u32[1,2,1,$d0,256] parameter(1)
+      ROOT add = u32[1,2,1,$d0,256] add(p0, p1)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(U32, {1, 2, 1, d0, 256});
+  ASSERT_OK_AND_ASSIGN(Literal p0, LiteralUtil::CreateRandomLiteral<U32>(
+                                       shape, &engine, 100, 1));
+  ASSERT_OK_AND_ASSIGN(Literal p1, LiteralUtil::CreateRandomLiteral<U32>(
+                                       shape, &engine, 100, 1));
+
+  std::vector<const Literal*> args = {&p0, &p1};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
+static void BM_AddU64(benchmark::State& state, HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule add_u64_$d0
+
+    ENTRY e {
+      p0 = u64[1,2,1,$d0,256] parameter(0)
+      p1 = u64[1,2,1,$d0,256] parameter(1)
+      ROOT add = u64[1,2,1,$d0,256] add(p0, p1)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(U64, {1, 2, 1, d0, 256});
+  ASSERT_OK_AND_ASSIGN(Literal p0, LiteralUtil::CreateRandomLiteral<U64>(
+                                       shape, &engine, 100, 1));
+  ASSERT_OK_AND_ASSIGN(Literal p1, LiteralUtil::CreateRandomLiteral<U64>(
+                                       shape, &engine, 100, 1));
+
+  std::vector<const Literal*> args = {&p0, &p1};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
 static void BM_UnaryOp(benchmark::State& state,
                        const HloBenchmarkOptions& options, PrimitiveType type,
                        HloOpcode op) {
@@ -173,6 +225,8 @@ static void BM_ConvertF32ToBF16(benchmark::State& state,
 
 BENCHMARK_SIZES(BM_AddF32);
 BENCHMARK_SIZES(BM_AddBF16);
+BENCHMARK_SIZES(BM_AddU32);
+BENCHMARK_SIZES(BM_AddU64);
 BENCHMARK_SIZES(BM_ConvertF32ToBF16);
 
 #define BM_UNARY_OP(OP, TYPE)                              \

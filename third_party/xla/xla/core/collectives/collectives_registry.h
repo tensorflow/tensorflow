@@ -59,14 +59,13 @@ class CollectivesRegistry {
 #define XLA_COLLECTIVES_REGISTER_(PLATFORM, NAME, PRIORITY, IMPL, N) \
   XLA_COLLECTIVES_REGISTER__(PLATFORM, NAME, PRIORITY, IMPL, N)
 #define XLA_COLLECTIVES_REGISTER__(PLATFORM, NAME, PRIORITY, IMPL, N)         \
-  ABSL_ATTRIBUTE_UNUSED static const bool xla_collectives_##N##_registered_ = \
-      [] {                                                                    \
-        absl::Status status = ::xla::CollectivesRegistry::Register(           \
-            PLATFORM, NAME, PRIORITY, IMPL);                                  \
-        if (!status.ok()) {                                                   \
-          LOG(ERROR) << "Failed to register XLA collectives: " << status;     \
-        }                                                                     \
-        return true;                                                          \
-      }()
+  [[maybe_unused]] static const bool xla_collectives_##N##_registered_ = [] { \
+    absl::Status status =                                                     \
+        ::xla::CollectivesRegistry::Register(PLATFORM, NAME, PRIORITY, IMPL); \
+    if (!status.ok()) {                                                       \
+      LOG(ERROR) << "Failed to register XLA collectives: " << status;         \
+    }                                                                         \
+    return true;                                                              \
+  }()
 
 #endif  // XLA_CORE_COLLECTIVES_COLLECTIVES_REGISTRY_H_

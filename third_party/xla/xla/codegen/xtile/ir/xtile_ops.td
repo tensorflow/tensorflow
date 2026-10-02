@@ -78,6 +78,8 @@ def TiledBufferInterface : OpInterface<"TiledBufferInterface",
 
 // Define your custom entry operation
 def EntryFuncOp : XTile_Op<"entry_func", [
+    SymbolName,
+    SymbolVisibility,
     Symbol,
     IsolatedFromAbove,
     AutomaticAllocationScope,
@@ -95,12 +97,12 @@ def EntryFuncOp : XTile_Op<"entry_func", [
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
-                       OptionalAttr<XTile_TilingInfoAttr>:$tile_info,
                        OptionalAttr<DictArrayAttr>:$res_attrs,
                        // The number of arguments that are opaque to tiling
                        // infrastructure and hence do not correspond to a memref
                        // argument.
-                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args
+                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args,
+                       OptionalAttr<StrAttr>:$sym_visibility
   );
 
   // The entry function has no return values.
@@ -128,7 +130,7 @@ def EntryFuncOp : XTile_Op<"entry_func", [
           .drop_back();
     }
 
-    mlir::Value getTileId() {
+    mlir::Value getProgramId() {
       return getBody().getArguments().back();
     }
 
@@ -183,6 +185,31 @@ def SelectBufferOp : XTile_Op<"select_buffer", [Pure]> {
   let assemblyFormat = [{
     $source `[` $replica_id `]` `:` type($source) `->` type($result) attr-dict
   }];
+}
+
+def MemRefBitcastOp : XTile_Op<"memref_bitcast",
+                               [Pure, SameOperandsAndResultShape]> {
+  let summary = "Reinterprets the element type of a memref.";
+  let description = [{
+    Shape, layout and memory space are unchanged, so no data is moved: this is
+    purely a change of how the bits of each element are interpreted.
+
+    Example:
+
+    ```mlir
+    %0 = xtile.memref_bitcast %arg0 : memref<4x16xbf16> -> memref<4x16xi16>
+    ```
+  }];
+
+  let arguments = (ins AnyMemRef:$source);
+  let results = (outs AnyMemRef:$result);
+
+  let assemblyFormat = [{
+    $source `:` type($source) `->` type($result) attr-dict
+  }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
@@ -277,11 +304,31 @@ def MaskOp : XTile_Op<"mask",
   let hasFolder = 1;
 }
 
+def YieldOp : XTile_Op<"yield", [Pure, ReturnLike, Terminator,
+                                   HasParent<"ScanOp">]> {
+  let summary = "Yield values from an xtile region";
+  let description = [{
+    This operation yields values from an xtile region, such as the body of
+    an xtile.scan operation. It can yield values of any type, including
+    scalars and tensors.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$results);
+  let assemblyFormat = "attr-dict ($results^ `:` type($results))?";
+}
 
 def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSegments]> {
   let summary = "scan operation";
   let description = [{
     Mirrors HLO's kScan operation.
+
+    Unlike HLO, the inits and carries keep the scan dimension as a unit
+    dimension, i.e. they have the same rank as the inputs and outputs. This
+    avoids rank-zero carries for 1D scans, which Triton does not support, and
+    allows broadcasting a carry across a tile without changing its rank.
+
+    Example: for inputs of type `tensor<16x1024xf32>` and `dimension = 1`, the
+    inits and carries have type `tensor<16x1xf32>`.
   }];
 
   let arguments = (
@@ -303,10 +350,12 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
   let assemblyFormat = [{
     `(` $inputs `)` `inits` `(` $inits `)`
     `dimension` `=` $dimension
-    attr-dict
+    prop-dict attr-dict
     `:` `(` type($inputs) `)` `,` `(` type($inits) `)` `->` `(` type($outputs) `)` `,` `(` type($carries) `)`
     $body
   }];
+
+  let hasVerifier = 1;
 }
 
 //
@@ -325,8 +374,8 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
 
     let arguments = (
       ins
-      // inputs are floats if we have a type for them, otherwise (fp4),
-      // they are packed in pairs in an I8Tensor
+      // Data operands carry logical element types separately from their tensor
+      // element types because packed operands use i8 storage.
       RankedTensorOf<[AnyFloat,I8]>:$lhs,
       RankedTensorOf<[AnyFloat,I8]>:$rhs,
       Optional<RankedTensorOf<[AnyFloat,I8]>>:$lhs_scale,
@@ -334,16 +383,19 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
       BoolAttr:$fastMath,
       DefaultValuedAttr<BoolAttr, "true">:$lhs_k_pack,
       DefaultValuedAttr<BoolAttr, "true">:$rhs_k_pack,
+      TypeAttr:$lhs_elem_type,
+      TypeAttr:$rhs_elem_type,
       OptionalAttr<AnyAttr>:$dot_dimension_numbers
     );
 
     let results = (outs RankedTensorOf<[AnyFloat]>:$result);
 
     let assemblyFormat = [{
-      $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? attr-dict
+      $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? prop-dict attr-dict
       `:` type($lhs) (`,` type($lhs_scale)^)? `*` type($rhs) (`,` type($rhs_scale)^)? `->` type($result)
     }];
+
+    let hasVerifier = 1;
 }
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_OPS
-

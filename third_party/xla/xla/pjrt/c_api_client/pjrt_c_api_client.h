@@ -67,7 +67,7 @@ limitations under the License.
 #include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -372,6 +372,8 @@ class PjRtCApiClient : public PjRtClient {
       const PJRT_Api* c_api, PJRT_Client* c_client,
       std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data);
 
+  bool IsCApi() const override;
+
   int process_index() const override;
 
   int device_count() const override;
@@ -422,6 +424,9 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
+
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
 
@@ -454,7 +459,6 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
-  absl::StatusOr<HostAllocator*> GetHostAllocator() const override;
   HostMemoryAllocator* GetHostMemoryAllocator() const override;
 
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
@@ -595,8 +599,6 @@ class PjRtCApiClient : public PjRtClient {
   // from GetTopologyDescription().
   absl::StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
   absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
-  // Not all PJRT C API implementations support the host allocator extension.
-  absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>> host_allocator_;
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   const std::string platform_version_;
@@ -742,8 +744,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   GetCostAnalysis() const override;
 
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override;
+  absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const override;
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
     return pjrt::GetCompiledMemoryStats(c_api_, executable_.get());
@@ -996,7 +997,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       SendRecvCallbackData& send_recv_callback_data,
       std::vector<int64_t>& non_donatable_input_indices_storage,
       std::vector<int>& task_ids_storage,
-      std::vector<int64_t>& incarnation_ids_storage) const;
+      std::vector<int64_t>& incarnation_ids_storage,
+      std::vector<PJRT_NamedValue>& c_custom_options) const;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteWithSingleDevice(absl::Span<PjRtBuffer* const> argument_handles,

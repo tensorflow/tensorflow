@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_op_def_registry, m) {
+PYBIND11_MODULE(_op_def_registry, m, pybind11::mod_gil_not_used()) {
   m.def("get", [](const std::string& name) {
     const tensorflow::OpDef* op_def = nullptr;
     auto status = tensorflow::OpRegistry::Global()->LookUpOpDef(name, &op_def);

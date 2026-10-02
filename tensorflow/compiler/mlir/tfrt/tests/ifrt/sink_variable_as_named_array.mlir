@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -split-input-file -tf-device-decompose-resource-ops -sink-variable-as-named-array %s | FileCheck %s
 
 // -----
@@ -128,3 +142,16 @@ module {
     return %result : tensor<1x1xf32>
   }
 }
+
+// -----
+// Variables used by AssignVariableOp are recorded in module attribute.
+//
+// CHECK-LABEL: module attributes {tf_ifrt.modified_variable_names = ["__assigned_var"]}
+module {
+  func.func @serving_default(%arg0: tensor<1x3xf32>) {
+    %0 = "tf.VarHandleOp"() <{container = "", shared_name = "assigned_var"}> : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
+    "tf.AssignVariableOp"(%0, %arg0) : (tensor<!tf_type.resource<tensor<1x3xf32>>>, tensor<1x3xf32>) -> ()
+    return
+  }
+}
+

@@ -28,6 +28,9 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/autotuner/triton/embed_default_configs.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 
 namespace xla::gpu {
 namespace {
@@ -44,7 +47,7 @@ std::vector<TritonGemmConfig> ParseConfig(absl::string_view config_str) {
     configs.push_back(*config);
   }
   return configs;
-};
+}
 
 absl::string_view GetDefaultConfigStr(absl::string_view filename) {
   const struct FileToc* toc = configs::embed_default_configs_create();
@@ -79,6 +82,42 @@ const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
                 {TritonConfigsPlatform::kMI350,
                  ParseConfig(GetDefaultConfigStr("mi350.txtpb"))}});
   return kConfigs->at(platform);
+}
+
+const std::vector<TritonGemmConfig>& GetDefaultTritonConfigs(
+    const stream_executor::GpuComputeCapability& compute_capability) {
+  if (compute_capability.IsRocm()) {
+    const stream_executor::RocmComputeCapability* rocm_cc =
+        compute_capability.rocm_compute_capability();
+    if (rocm_cc->gfx9_mi300()) {
+      return GetTritonConfigsForPlatform(TritonConfigsPlatform::kMI300);
+    }
+    if (rocm_cc->gfx9_mi350()) {
+      return GetTritonConfigsForPlatform(TritonConfigsPlatform::kMI350);
+    }
+    return GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultRocm);
+  }
+
+  CHECK(compute_capability.IsCuda());
+  const stream_executor::CudaComputeCapability* cuda_compute_capability =
+      compute_capability.cuda_compute_capability();
+
+  if (cuda_compute_capability->IsBlackwell()) {
+    // SM 10.0 (datacenter: B200, B100)
+    return GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);
+  }
+  if (cuda_compute_capability->IsAtLeastBlackwell()) {
+    // SM 11.0+ / 12.0+ (consumer: RTX 5090, etc.)
+    return GetTritonConfigsForPlatform(
+        TritonConfigsPlatform::kBlackwellConsumer);
+  }
+  if (cuda_compute_capability->IsHopper()) {
+    return GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper);
+  }
+  if (cuda_compute_capability->IsAmpere()) {
+    return GetTritonConfigsForPlatform(TritonConfigsPlatform::kAmpere);
+  }
+  return GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultCuda);
 }
 
 }  // namespace xla::gpu

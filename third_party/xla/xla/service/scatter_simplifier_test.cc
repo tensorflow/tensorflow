@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -344,6 +344,205 @@ TEST_F(ScatterSimplifierTest, VariadicScatterIntoScalar) {
   )");
 }
 
+TEST_F(ScatterSimplifierTest, ReordersOperandDimsForCoalescing) {
+  // The scatter writes strided [4,1] columns of the operand. With
+  // reorder_operand_dims_for_coalescing, the operand dims are permuted so
+  // that the writes become contiguous [1,4] rows, with transposes restoring
+  // the original order.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    ENTRY kernel_entry {
+      operand = f32[4,10] parameter(0)
+      indices = s32[5,1] parameter(1)
+      update = f32[5,4,1] parameter(2)
+      ROOT scatter = f32[4,10] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={1},
+          index_vector_dim=1
+    })";
+
+  RunAndFilecheckHloRewrite(
+      kModuleStr,
+      ScatterSimplifier(/*reorder_operand_dims_for_coalescing=*/true), R"(
+      CHECK: %[[OPERAND:.*]] = f32[10,4]{1,0} transpose(%operand), dimensions={1,0}
+      CHECK: %[[UPDATE:.*]] = f32[5,1,4]{2,1,0} transpose(%update), dimensions={0,2,1}
+      CHECK: %[[SCATTER:.*]] = f32[10,4]{1,0} scatter(%[[OPERAND]], %indices, %[[UPDATE]]),
+      CHECK-SAME: update_window_dims={1,2},
+      CHECK-SAME: inserted_window_dims={},
+      CHECK-SAME: scatter_dims_to_operand_dims={0},
+      CHECK-SAME: index_vector_dim=1,
+      CHECK: ROOT %{{.*}} = f32[4,10]{1,0} transpose(%[[SCATTER]]), dimensions={1,0}
+  )");
+}
+
+TEST_F(ScatterSimplifierTest, DoesNotReorderCoalescedScatter) {
+  // The scatter already writes contiguous [1,4] rows; no reason to permute.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    ENTRY kernel_entry {
+      operand = f32[10,4] parameter(0)
+      indices = s32[5,1] parameter(1)
+      update = f32[5,1,4] parameter(2)
+      ROOT scatter = f32[10,4] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+
+  RunAndFilecheckHloRewrite(
+      kModuleStr,
+      ScatterSimplifier(/*reorder_operand_dims_for_coalescing=*/true),
+      std::nullopt);
+}
+
+TEST_F(ScatterSimplifierTest, ReordersOperandDimsWithInsertedWindowDims) {
+  // A non-monotonic scatter_dims_to_operand_dims with an inserted window dim:
+  // the reorder must remap the dimension numbers through the permutation.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    ENTRY kernel_entry {
+      operand = f32[4,6,10] parameter(0)
+      indices = s32[50,2] parameter(1)
+      update = f32[50,4,1] parameter(2)
+      ROOT scatter = f32[4,6,10] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={1},
+          scatter_dims_to_operand_dims={2,1},
+          index_vector_dim=1
+    })";
+
+  RunAndFilecheckHloRewrite(
+      kModuleStr,
+      ScatterSimplifier(/*reorder_operand_dims_for_coalescing=*/true), R"(
+      CHECK: %[[OPERAND:.*]] = f32[10,6,4]{2,1,0} transpose(%operand), dimensions={2,1,0}
+      CHECK: %[[SCATTER:.*]] = f32[10,6,4]{2,1,0} scatter(%[[OPERAND]], %indices,
+      CHECK-SAME: update_window_dims={1,2,3},
+      CHECK-SAME: inserted_window_dims={},
+      CHECK-SAME: scatter_dims_to_operand_dims={0,1},
+      CHECK-SAME: index_vector_dim=1,
+      CHECK: ROOT %{{.*}} = f32[4,6,10]{2,1,0} transpose(%[[SCATTER]]), dimensions={2,1,0}
+  )");
+}
+
+TEST_F(ScatterSimplifierTest, DoesNotReorderVariadicScatter) {
+  // Variadic scatters are not reordered.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = f32[] parameter(2)
+      p3 = f32[] parameter(3)
+      add0 = f32[] add(p0, p2)
+      add1 = f32[] add(p1, p3)
+      ROOT tuple = tuple(add0, add1)
+    }
+
+    ENTRY kernel_entry {
+      operand0 = f32[4,10] parameter(0)
+      operand1 = f32[4,10] parameter(1)
+      indices = s32[5,1] parameter(2)
+      update0 = f32[5,4,1] parameter(3)
+      update1 = f32[5,4,1] parameter(4)
+      ROOT scatter = (f32[4,10], f32[4,10]) scatter(operand0, operand1,
+                                                    indices, update0, update1),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={1},
+          index_vector_dim=1
+    })";
+
+  RunAndFilecheckHloRewrite(
+      kModuleStr,
+      ScatterSimplifier(/*reorder_operand_dims_for_coalescing=*/true),
+      std::nullopt);
+}
+
+TEST_F(ScatterSimplifierTest, DoesNotReorderWhenUpdatesAreSmall) {
+  // The written volume is tiny compared to the operand: two operand-sized
+  // transposes would cost more than the coalescing wins.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    ENTRY kernel_entry {
+      operand = f32[2,262144] parameter(0)
+      indices = s32[3,1] parameter(1)
+      update = f32[3,2,1] parameter(2)
+      ROOT scatter = f32[2,262144] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={1},
+          index_vector_dim=1
+    })";
+
+  RunAndFilecheckHloRewrite(
+      kModuleStr,
+      ScatterSimplifier(/*reorder_operand_dims_for_coalescing=*/true),
+      std::nullopt);
+}
+
+TEST_F(ScatterSimplifierTest, DoesNotReorderOperandDimsByDefault) {
+  // Without reorder_operand_dims_for_coalescing, a simplified scatter with
+  // permuted scatter_dims_to_operand_dims is left alone.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    ENTRY kernel_entry {
+      operand = f32[4,10] parameter(0)
+      indices = s32[5,1] parameter(1)
+      update = f32[5,4,1] parameter(2)
+      ROOT scatter = f32[4,10] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={1},
+          index_vector_dim=1
+    })";
+
+  RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), std::nullopt);
+}
+
 class SimpleScatterExampleTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(SimpleScatterExampleTest, 1x1d) {
@@ -367,7 +566,7 @@ TEST_F(SimpleScatterExampleTest, 1x1d) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -375,7 +574,7 @@ TEST_F(SimpleScatterExampleTest, 1x1d) {
   Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{2}});
   Literal updates = LiteralUtil::CreateR2<int32_t>({{2, 3}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -403,7 +602,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d) {
           scatter_dims_to_operand_dims={0,1},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -412,7 +611,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d) {
   Literal updates = LiteralUtil::CreateR3<int32_t>(
       {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -442,7 +641,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d_n_less_than_N) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -451,7 +650,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d_n_less_than_N) {
   Literal updates = LiteralUtil::CreateR3<int32_t>(
       {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -481,7 +680,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d_nofit) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -493,7 +692,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d_nofit) {
   Literal updates = LiteralUtil::CreateR3<int32_t>(
       {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -522,7 +721,7 @@ TEST_F(SimpleScatterExampleTest, 3x1d) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -531,7 +730,7 @@ TEST_F(SimpleScatterExampleTest, 3x1d) {
   Literal updates =
       LiteralUtil::CreateR2<int32_t>({{1, 2}, {10, 20}, {200, 300}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(

@@ -185,10 +185,11 @@ struct Helper {
 
   // Encoder of simple type T to a string.  We do a copy.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
+  static bool Encode(TensorBuffer* in, int64_t n, Destination* out) {
     DCHECK_EQ(in->size(), sizeof(T) * n);
     port::AssignRefCounted(
         absl::string_view(in->base<const char>(), in->size()), in, out);
+    return true;
   }
 
   // Decoder of simple type T. Copy the bytes from "in" into the
@@ -241,8 +242,9 @@ struct Helper<tstring> {
   // Encodes "n" elements of type string stored in "in" into Cord
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
+  static bool Encode(TensorBuffer* in, int64_t n, Destination* out) {
     port::EncodeStringList(in->base<const tstring>(), n, out);
+    return true;
   }
 
   // Decodes "n" elements of type string from "in" and constructs a
@@ -278,9 +280,10 @@ struct Helper<ResourceHandle> {
   // Encodes "n" elements of type ResourceHandle stored in "in" into destination
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
+  static bool Encode(TensorBuffer* in, int64_t n, Destination* out) {
     EncodeResourceHandleList(in->base<const ResourceHandle>(), n,
                              port::NewStringListEncoder(out));
+    return true;
   }
 
   // Decodes "n" elements of type string from "in" and constructs a
@@ -310,9 +313,9 @@ struct Helper<Variant> {
   // Encodes "n" elements of type Variant stored in "in" into destination
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
-  static void Encode(TensorBuffer* in, int64_t n, Destination* out) {
-    EncodeVariantList(in->base<const Variant>(), n,
-                      port::NewStringListEncoder(out));
+  static bool Encode(TensorBuffer* in, int64_t n, Destination* out) {
+    return EncodeVariantList(in->base<const Variant>(), n,
+                             port::NewStringListEncoder(out));
   }
 
   // Decodes "n" elements of type Variant from "in" and constructs a
@@ -462,14 +465,15 @@ struct ProtoHelper<Variant> {
   static size_t NumElements(const TensorProto& proto) {
     return proto.variant_val().size();
   }
-  static void Fill(const Variant* data, size_t n, TensorProto* proto) {
+  static bool Fill(const Variant* data, size_t n, TensorProto* proto) {
     auto* variant_values = proto->mutable_variant_val();
     variant_values->Clear();
     for (size_t i = 0; i < n; ++i) {
       VariantTensorData tmp;
-      data[i].Encode(&tmp);
-      tmp.ToProto(variant_values->Add());
+      if (!data[i].Encode(&tmp)) return false;
+      if (!tmp.ToProto(variant_values->Add())) return false;
     }
+    return true;
   }
 };
 
@@ -581,6 +585,10 @@ template <>
 struct ProtoHelper<float8_e5m2fnuz>
     : public Float8ProtoHelper<float8_e5m2fnuz> {};
 
+template <>
+struct ProtoHelper<float8_e8m0fnu> : public Float8ProtoHelper<float8_e8m0fnu> {
+};
+
 template <typename Float4>
 struct Float4ProtoHelper {
   typedef std::string RepeatedFieldType;
@@ -635,9 +643,49 @@ Buffer<T>::~Buffer() {
 // (tensor_content). This is used when we expect the TensorProto is
 // used by a client program which may not know how to encode a tensor
 // in the compact binary representation.
+// Maximum allocation (in bytes) allowed when the proto's typed fields contain
+// no data at all (in_n <= 0).  A proto with an empty value list but a huge
+// shape is the hallmark of an amplification attack: a tiny serialized message
+// triggers an arbitrarily large zero-filled allocation.  Legitimate protos
+// that broadcast a single value to a large shape always have in_n >= 1, so
+// this guard does not restrict normal usage.
+//
+// 2 GB is chosen because:
+//   - It matches the 2 GB ceiling on a single serialized protobuf message, the
+//     natural upper bound for any tensor that could be parsed from a proto.
+//   - It still bounds amplification: a tiny no-data message triggers at most a
+//     2 GB zero-filled allocation, not the unbounded allocation possible with
+//     no guard (CWE-770).
+//   - It accommodates legitimately default-initialized large tensors, e.g. a
+//     [2,1024,1024,1024] bool variable set to False serializes with an empty
+//     value list (in_n == 0) and must still deserialize.
+static constexpr int64_t kMaxBytesFromProtoNoData = int64_t{2} << 30;  // 2 GB
+
+// Returns false only when the proto carries no typed values (in_n <= 0, a
+// fabricated zero-fill) AND the requested allocation exceeds
+// kMaxBytesFromProtoNoData. Broadcasting one or more real values to a larger
+// shape (in_n > 0) is legitimate TF behavior (e.g. large constant variable
+// initializers), so it is always allowed. The size check uses division to
+// avoid int64 overflow on `n * element_size`.
+inline bool IsSafeProtoAllocation(int64_t in_n, int64_t n,
+                                  size_t element_size) {
+  if (in_n > 0) return true;  // Allow broadcast for legitimate initialization.
+  return n <= kMaxBytesFromProtoNoData / static_cast<int64_t>(element_size);
+}
+
 template <typename T>
 TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<T>::NumElements(in);
+  // Block amplification: broadcasting or zero-filling a tiny proto into a huge
+  // allocation. Covers both the no-data (in_n <= 0) and the few-value
+  // broadcast (0 < in_n < n) cases, and is overflow-safe.
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(T))) {
+    LOG(ERROR) << "FromProtoField rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s) "
+               << "(amplification guard).";
+    return nullptr;
+  }
   Buffer<T>* buf = new Buffer<T>(a, n);
   T* data = buf->template base<T>();
   if (data == nullptr) {
@@ -645,7 +693,6 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
     return nullptr;
   }
 
-  const int64_t in_n = ProtoHelper<T>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, T());
   } else {
@@ -671,13 +718,18 @@ template <typename T>
 TensorBuffer* Int4OrInt2FromProtoField(Allocator* a, const TensorProto& in,
                                        int64_t n) {
   n = std::max<int64_t>(n, 0);
+  const int64_t in_n = in.int_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(T))) {
+    LOG(ERROR) << "Int4OrInt2FromProtoField rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<T>* buf = new Buffer<T>(a, n);
   int8_t* data = buf->template base<int8_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.int_val().size();
   auto begin = in.int_val().begin();
   if (n <= in_n) {
 // swapping bits of the data pointer for big endian systems
@@ -728,13 +780,18 @@ template <>
 TensorBuffer* FromProtoField<ResourceHandle>(Allocator* a,
                                              const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<ResourceHandle>::NumElements(in);
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(ResourceHandle))) {
+    LOG(ERROR) << "FromProtoField<ResourceHandle> rejected: proto requests "
+               << n << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<ResourceHandle>* buf = new Buffer<ResourceHandle>(a, n);
   ResourceHandle* data = buf->template base<ResourceHandle>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = ProtoHelper<ResourceHandle>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, ResourceHandle());
   } else {
@@ -765,13 +822,18 @@ template <>
 TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
                                       int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<Variant>::NumElements(in);
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(Variant))) {
+    LOG(ERROR) << "FromProtoField<Variant> rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<Variant>* buf = new Buffer<Variant>(a, n);
   Variant* data = buf->template base<Variant>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = ProtoHelper<Variant>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, Variant());
   } else {
@@ -784,7 +846,7 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
       data[i] = in.variant_val(i);
       if (!DecodeUnaryVariant(&data[i])) {
         LOG(ERROR) << "Could not decode variant with type_name: \""
-                   << data[i].TypeName()
+                   << in.variant_val(i).type_name()
                    << "\".  Perhaps you forgot to register a "
                       "decoder via REGISTER_UNARY_VARIANT_DECODE_FUNCTION?";
         buf->Unref();
@@ -805,13 +867,18 @@ template <>
 TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
                                           int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = in.half_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(Eigen::half))) {
+    LOG(ERROR) << "FromProtoField<Eigen::half> rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
   uint16_t* data = buf->template base<uint16_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
@@ -829,13 +896,18 @@ template <>
 TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
                                        int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = in.half_val().size();
+  if (!IsSafeProtoAllocation(in_n, n, sizeof(bfloat16))) {
+    LOG(ERROR) << "FromProtoField<bfloat16> rejected: proto requests " << n
+               << " elements from " << in_n << " input value(s).";
+    return nullptr;
+  }
   Buffer<bfloat16>* buf = new Buffer<bfloat16>(a, n);
   uint16_t* data = buf->template base<uint16_t>();
   if (data == nullptr) {
     buf->Unref();
     return nullptr;
   }
-  const int64_t in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
@@ -852,13 +924,18 @@ TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
 // Copies T[n] stored in the buffer "in" into the repeated field in
 // "out" corresponding to type T.
 template <typename T>
-void ToProtoField(const TensorBuffer& in, int64_t n, TensorProto* out) {
+bool ToProtoField(const TensorBuffer& in, int64_t n, TensorProto* out) {
   const T* data = in.base<const T>();
   // NOTE: T may not the same as
   // ProtoHelper<T>::FieldType::value_type.  E.g., T==int16,
   // ProtoHelper<T>::FieldType::value_type==int32.  If performance is
   // critical, we can specialize T=float and do memcpy directly.
-  ProtoHelper<T>::Fill(data, n, out);
+  if constexpr (std::is_same_v<T, Variant>) {
+    return ProtoHelper<T>::Fill(data, n, out);
+  } else {
+    ProtoHelper<T>::Fill(data, n, out);
+    return true;
+  }
 }
 
 void RefIfNonNull(core::RefCounted* buf) {
@@ -962,7 +1039,7 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
 #define SINGLE_ARG(...) __VA_ARGS__
 #define CASE(TYPE, STMTS)               \
   case DataTypeToEnum<TYPE>::value: {   \
-    typedef TF_ATTRIBUTE_UNUSED TYPE T; \
+    typedef TYPE T TF_ATTRIBUTE_UNUSED; \
     STMTS;                              \
     break;                              \
   }
@@ -996,6 +1073,7 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     CASE(float8_e4m3fnuz, SINGLE_ARG(STMTS))                   \
     CASE(float8_e4m3b11fnuz, SINGLE_ARG(STMTS))                \
     CASE(float8_e5m2fnuz, SINGLE_ARG(STMTS))                   \
+    CASE(float8_e8m0fnu, SINGLE_ARG(STMTS))                    \
     CASE(float4_e2m1fn, SINGLE_ARG(STMTS))                     \
     CASE(int4, SINGLE_ARG(STMTS))                              \
     CASE(uint4, SINGLE_ARG(STMTS))                             \
@@ -1217,23 +1295,25 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   return true;
 }
 
-void Tensor::AsProtoField(TensorProto* proto) const {
+bool Tensor::AsProtoField(TensorProto* proto) const {
   proto->Clear();
   shape_.AsProto(proto->mutable_tensor_shape());
   proto->set_dtype(dtype());
   if (buf_) {
-    CASES(dtype(), ToProtoField<T>(*buf_, shape_.num_elements(), proto));
+    CASES(dtype(), return ToProtoField<T>(*buf_, shape_.num_elements(), proto));
   }
+  return true;
 }
 
-void Tensor::AsProtoTensorContent(TensorProto* proto) const {
+bool Tensor::AsProtoTensorContent(TensorProto* proto) const {
   proto->Clear();
   proto->set_dtype(dtype());
   shape_.AsProto(proto->mutable_tensor_shape());
   if (buf_) {
-    CASES(dtype(), Helper<T>::Encode(buf_, shape_.num_elements(),
-                                     proto->mutable_tensor_content()));
+    CASES(dtype(), return Helper<T>::Encode(buf_, shape_.num_elements(),
+                                            proto->mutable_tensor_content()));
   }
+  return true;
 }
 
 size_t Tensor::TotalBytes() const {
@@ -1298,7 +1378,19 @@ float PrintOneElement(float8_e4m3fn f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+float PrintOneElement(float8_e4m3fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 float PrintOneElement(float8_e4m3b11fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+float PrintOneElement(float8_e5m2fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+float PrintOneElement(float8_e8m0fnu f, bool print_v2) {
   return static_cast<float>(f);
 }
 
@@ -1504,9 +1596,18 @@ std::string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     case DT_FLOAT8_E4M3FN:
       return SummarizeArray<float8_e4m3fn>(limit, num_elts, shape_, data,
                                            print_v2);
+    case DT_FLOAT8_E4M3FNUZ:
+      return SummarizeArray<float8_e4m3fnuz>(limit, num_elts, shape_, data,
+                                             print_v2);
     case DT_FLOAT8_E4M3B11FNUZ:
       return SummarizeArray<float8_e4m3b11fnuz>(limit, num_elts, shape_, data,
                                                 print_v2);
+    case DT_FLOAT8_E5M2FNUZ:
+      return SummarizeArray<float8_e5m2fnuz>(limit, num_elts, shape_, data,
+                                             print_v2);
+    case DT_FLOAT8_E8M0FNU:
+      return SummarizeArray<float8_e8m0fnu>(limit, num_elts, shape_, data,
+                                            print_v2);
     case DT_FLOAT4_E2M1FN:
       return SummarizeArray<float4_e2m1fn>(limit, num_elts, shape_, data,
                                            print_v2);

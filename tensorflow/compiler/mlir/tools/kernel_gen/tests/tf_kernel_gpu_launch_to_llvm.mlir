@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: kernel-gen-opt %s -tf-kernel-to-llvm -reconcile-unrealized-casts -split-input-file | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: module @main
@@ -17,7 +31,7 @@ gpu.module @kernel_module attributes {gpu.binary_blob = "BLOB!"} {
 // CHECK-LABEL: llvm.func @launch
 // CHECK-SAME: (%[[CTX:.*]]: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i64, %{{.*}}: i64, %{{.*}}: i64, %{{.*}}: i64, %{{.*}}: i64
 func.func @launch(%ctx: !tf_framework.op_kernel_context, %memref: memref<?x10xf32>) {
-  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
+  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64) : i64
   // CHECK: %[[BLOB:.*]] = llvm.mlir.addressof @kernel_module_blob : !llvm.ptr
   // CHECK: %[[BLOB_PTR:.*]] = llvm.getelementptr %[[BLOB]][0, 0] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<5 x i8>
   // CHECK: %[[NAME:.*]] = llvm.mlir.addressof @kernel_module_the_kernel_kernel_name : !llvm.ptr

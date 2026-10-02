@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt -split-input-file %s | FileCheck %s
 // RUN: mlir-hlo-opt -split-input-file %s | mlir-hlo-opt -split-input-file | FileCheck %s
 
@@ -194,8 +208,8 @@ func.func @pairwise_ops(%arg0 : tensor<4xf32>) -> () {
 // CHECK-LABEL: func @select_op
 func.func @select_op(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>,
                   %arg2: tensor<2x?xi32>, %arg3: tensor<?x2xi32>) -> () {
-  // CHECK      %0 = mhlo.select %arg0, %arg1, %arg1 : tensor<2x3xi1>, tensor<2x3xi32>
-  // CHECK-NEXT %1 = mhlo.select %arg0, %arg2, %arg3 : (tensor<2x3xi1>, tensor<2x?xi32>, tensor<?x2xi32>) -> tensor<2x?xi32>
+  // CHECK:      %0 = mhlo.select %arg0, %arg1, %arg1 : tensor<2x3xi1>, tensor<2x3xi32>
+  // CHECK-NEXT: %1 = mhlo.select %arg0, %arg2, %arg3 : (tensor<2x3xi1>, tensor<2x?xi32>, tensor<?x2xi32>) -> tensor<2x?xi32>
   %0 = "mhlo.select"(%arg0, %arg1, %arg1) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   %1 = "mhlo.select"(%arg0, %arg2, %arg3) : (tensor<2x3xi1>, tensor<2x?xi32>, tensor<?x2xi32>) -> tensor<2x?xi32>
   "mhlo.return"() : () -> ()

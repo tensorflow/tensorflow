@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -147,12 +147,8 @@ static absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
   return result;
 }
 
-absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
-    const HloFusionAdaptor& fusion_adaptor,
-    std::function<absl::StatusOr<BufferAllocation::Slice>(
-        const HloInstruction* instr, const ShapeIndex& index)>
-        get_allocation_slice,
-    const HloInstruction* fusion) {
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSlice(
+    const HloFusionAdaptor& fusion_adaptor) {
   std::vector<HloInstructionAdaptor> dus_instrs =
       GetOutputDefiningDynamicUpdateSlices(fusion_adaptor.GetRoots());
 
@@ -166,9 +162,7 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
 
   Shape update_shape = dus_instrs[0].GetOperand(1).shape();
 
-  for (int i = 0; i < dus_instrs.size(); ++i) {
-    const auto& dus = dus_instrs[i];
-
+  for (const auto& dus : dus_instrs) {
     // DynamicUpdateSlice ops should have a single path to the root to avoid
     // allowing a dynamic slice update to depend on another, as this would not
     // be guaranteed to work with the current codegen.
@@ -199,8 +193,8 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
 
     // Find "real" DUS operand by skipping bitcasted operands.
     HloInstructionAdaptor operand = dus.GetOperand(0);
-    if (fusion_adaptor.ContainsInstruction(operand) &&
-        operand.opcode() == HloOpcode::kBitcast) {
+    while (fusion_adaptor.ContainsInstruction(operand) &&
+           operand.opcode() == HloOpcode::kBitcast) {
       operand = operand.GetOperand(0);
     }
 
@@ -263,22 +257,46 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
     // be necessary for the shape to be the same for all the dynamic slice
     // updates. Note that this equality check purposefully ignores the element
     // type.
-    if (Cast<HloDynamicUpdateSliceInstruction>(&dus.instruction())
-            ->update()
-            ->shape() != update_shape) {
+    if (dus.GetOperand(1).shape() != update_shape) {
       return false;
     }
+  }
 
-    if (fusion != nullptr) {
+  return true;
+}
+
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
+    const HloFusionAdaptor& fusion_adaptor,
+    std::function<absl::StatusOr<BufferAllocation::Slice>(
+        const HloInstruction* instr, const ShapeIndex& index)>
+        get_allocation_slice,
+    const HloInstruction* fusion) {
+  ABSL_ASSIGN_OR_RETURN(bool can_emit,
+                   CanEmitFusedDynamicUpdateSlice(fusion_adaptor));
+  if (!can_emit) {
+    return false;
+  }
+
+  if (fusion != nullptr) {
+    std::vector<HloInstructionAdaptor> dus_instrs =
+        GetOutputDefiningDynamicUpdateSlices(fusion_adaptor.GetRoots());
+    for (int i = 0; i < dus_instrs.size(); ++i) {
+      const auto& dus = dus_instrs[i];
+      HloInstructionAdaptor operand = dus.GetOperand(0);
+      while (fusion_adaptor.ContainsInstruction(operand) &&
+             operand.opcode() == HloOpcode::kBitcast) {
+        operand = operand.GetOperand(0);
+      }
+
       ShapeIndex root_index = {};
       if (fusion->IsMultiOutputFusion()) {
         root_index = {i};
       }
       // Get output buffer for the fusion root.
-      ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
+      ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
                        get_allocation_slice(fusion, root_index));
 
-      ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
+      ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
                        get_allocation_slice(&operand.instruction(), {}));
       if (lhs_buffer != output_buffer) {
         return false;

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/sparse_expander_common.h"
 
+#include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"

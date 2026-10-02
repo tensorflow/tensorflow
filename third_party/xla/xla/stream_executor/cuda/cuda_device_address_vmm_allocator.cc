@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
@@ -45,38 +45,37 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 CudaDeviceAddressVmmAllocator::CudaDeviceAddressVmmAllocator(
-    const Platform* platform)
-    : DeviceAddressVmmAllocator(platform) {}
+    const Platform* platform,
+    std::optional<int64_t> reclaim_exempt_memory_space)
+    : DeviceAddressVmmAllocator(platform, reclaim_exempt_memory_space) {}
 
-CudaDeviceAddressVmmAllocator::~CudaDeviceAddressVmmAllocator() {
-  absl::Status status = SynchronizeAllPendingOperations();
-  if (!status.ok()) {
-    LOG(FATAL) << "Failed to synchronize pending CUDA VMM deallocations: "
-               << status;
-  }
-}
+CudaDeviceAddressVmmAllocator::~CudaDeviceAddressVmmAllocator() = default;
 
 absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>>
-CudaDeviceAddressVmmAllocator::Create(const Platform* platform,
-                                      absl::Span<const DeviceConfig> devices) {
-  auto allocator =
-      absl::WrapUnique(new CudaDeviceAddressVmmAllocator(platform));
-  RETURN_IF_ERROR(PopulateDevices(allocator.get(), devices));
+CudaDeviceAddressVmmAllocator::Create(
+    const Platform* platform, absl::Span<const DeviceConfig> devices,
+    std::optional<int64_t> reclaim_exempt_memory_space) {
+  auto allocator = absl::WrapUnique(
+      new CudaDeviceAddressVmmAllocator(platform, reclaim_exempt_memory_space));
+  ABSL_RETURN_IF_ERROR(PopulateDevices(allocator.get(), devices));
   return allocator;
 }
 
 absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>>
-CudaDeviceAddressVmmAllocator::Create(StreamExecutor* executor, Stream* stream,
-                                      uint64_t pa_budget) {
+CudaDeviceAddressVmmAllocator::Create(
+    StreamExecutor* executor, Stream* stream, uint64_t pa_budget,
+    std::optional<int64_t> reclaim_exempt_memory_space) {
   return Create(executor->GetPlatform(),
-                {{DeviceConfig{executor, stream, pa_budget}}});
+                {{DeviceConfig{executor, stream, pa_budget}}},
+                reclaim_exempt_memory_space);
 }
 
 absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>>
 CudaDeviceAddressVmmAllocator::Create(
     const Platform* platform, double memory_fraction,
     std::optional<int64_t> gpu_system_memory_size,
-    absl::Span<const std::pair<StreamExecutor*, Stream*>> devices) {
+    absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
+    std::optional<int64_t> reclaim_exempt_memory_space) {
   LOG(INFO) << "Using VMM device-address allocator.";
   std::vector<DeviceConfig> device_configs;
   device_configs.reserve(devices.size());
@@ -98,7 +97,7 @@ CudaDeviceAddressVmmAllocator::Create(
               << executor->device_ordinal() << ": " << pa_budget << " bytes.";
     device_configs.push_back({executor, stream, pa_budget});
   }
-  return Create(platform, device_configs);
+  return Create(platform, device_configs, reclaim_exempt_memory_space);
 }
 
 absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
@@ -108,10 +107,10 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
   // Verify that the device supports 64-bit stream memory operations
   // (cuStreamWriteValue64), which requires compute capability >= 7.0.
   CUdevice cu_device;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&cu_device, ordinal), "cuDeviceGet"));
   int supported = 0;
-  RETURN_IF_ERROR(cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuDeviceGetAttribute(&supported,
                            CU_DEVICE_ATTRIBUTE_CAN_USE_64_BIT_STREAM_MEM_OPS,
                            cu_device),
@@ -133,7 +132,7 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
   CUdeviceptr dev_ptr = 0;
   {
     std::unique_ptr<ActivateContext> activation = state.executor->Activate();
-    RETURN_IF_ERROR(cuda::ToStatus(
+    ABSL_RETURN_IF_ERROR(cuda::ToStatus(
         cuMemHostAlloc(&host_ptr, sizeof(uint64_t), CU_MEMHOSTALLOC_PORTABLE),
         "cuMemHostAlloc for timeline counter"));
     *static_cast<volatile uint64_t*>(host_ptr) = 0;
@@ -147,7 +146,7 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
     }
   }
 
-  ASSIGN_OR_RETURN(CudaDeviceAllocator::Options device_allocator_options,
+  ABSL_ASSIGN_OR_RETURN(CudaDeviceAllocator::Options device_allocator_options,
                    QueryDeviceAllocatorOptions(cu_device));
   CUmemAllocationProp alloc_props =
       BuildVmmAllocationProp(cu_device, device_allocator_options);

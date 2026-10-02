@@ -25,11 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -123,11 +126,25 @@ class MaxOp : public XlaReductionOp {
 REGISTER_XLA_OP(Name("Max").CompileTimeConstantInput("reduction_indices"),
                 MaxOp);
 
+// Mean divides the accumulated sum by the number of reduced elements, so an
+// accumulator that wraps does not merely produce a wrapped sum the way Sum
+// does, it produces a quotient that is wrong in both sign and magnitude. That
+// is why Mean needs a wider accumulator than the other reductions:
+// `SumAccumulationType` already widens the 8 and 16 bit integer types to avoid
+// overflow, but leaves the 32 bit ones alone, so reducing int32 or uint32 gave
+// a negative mean for strictly positive inputs and disagreed with the eager
+// kernel. The 64 bit types have nothing wider to accumulate in and keep
+// wrapping, which is what the eager kernel does for them as well.
+DataType MeanAccumulationType(const DataType& dtype) {
+  if (dtype == DT_INT32) return DT_INT64;
+  if (dtype == DT_UINT32) return DT_UINT64;
+  return XlaHelpers::SumAccumulationType(dtype);
+}
+
 class MeanOp : public XlaReductionOp {
  public:
   explicit MeanOp(OpKernelConstruction* ctx)
-      : XlaReductionOp(ctx,
-                       XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
+      : XlaReductionOp(ctx, MeanAccumulationType(ctx->input_type(0))) {}
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::Zero(builder, xla_reduction_type_);
@@ -203,6 +220,45 @@ class AnyOp : public XlaReductionOp {
 
 REGISTER_XLA_OP(Name("Any").CompileTimeConstantInput("reduction_indices"),
                 AnyOp);
+
+class EuclideanNormOp : public XlaReductionOp {
+ public:
+  explicit EuclideanNormOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx,
+                       XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::Zero(builder, xla_reduction_type_);
+  }
+
+  xla::XlaOp PreprocessInput(xla::XlaBuilder* /*builder*/,
+                             const xla::XlaOp& data) override {
+    return xla::Mul(data, xla::MaybeConjugate(data, true));
+  }
+
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::Add(scalar_lhs, scalar_rhs);
+  }
+
+  xla::XlaOp BuildFinalizer(
+      xla::XlaBuilder* /*builder*/, const xla::XlaOp& input,
+      const xla::XlaOp& reduce_output,
+      const std::vector<int64_t>& dimensions_to_reduce) override {
+    if (xla::primitive_util::IsIntegralType(xla_reduction_type_)) {
+      // XLA only supports float and complex sqrt.
+      // Thus, cast integral type to F32 for computation.
+      return XlaHelpers::ConvertElementType(
+          xla::Sqrt(xla::ConvertElementType(reduce_output, xla::F32)),
+          input_type(0));
+    }
+    return XlaHelpers::ConvertElementType(xla::Sqrt(reduce_output),
+                                          input_type(0));
+  }
+};
+
+REGISTER_XLA_OP(
+    Name("EuclideanNorm").CompileTimeConstantInput("reduction_indices"),
+    EuclideanNormOp);
 
 }  // namespace
 }  // namespace tensorflow

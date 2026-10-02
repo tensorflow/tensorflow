@@ -19,12 +19,12 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/log_entry.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/grpcpp.h"
 #include "xla/pjrt/distributed/util.h"
@@ -115,7 +115,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
 
     ::grpc::ClientContext context;
     GrpcGetVersionResponse response;
-    RETURN_IF_ERROR(xla::FromGrpcStatus(
+    ABSL_RETURN_IF_ERROR(xla::FromGrpcStatus(
         control_path_stub->GetVersion(&context, request, &response)));
 
     CHECK_GE(response.version().protocol_version(),
@@ -150,7 +150,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
         promise.Set(resp);
       });
 
-  ASSIGN_OR_RETURN(auto init_response, init_response_future.Await());
+  ABSL_ASSIGN_OR_RETURN(auto init_response, init_response_future.Await());
 
   auto host_buffer_store = std::make_unique<GrpcClientHostBufferStore>(
       CreateGrpcStub(server_address), metadata.version(),

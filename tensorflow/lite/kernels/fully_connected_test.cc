@@ -31,6 +31,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/absl_check.h"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -462,7 +463,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
                  BuiltinOptions_FullyConnectedOptions, options);
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
-        ops::builtin::Register_FULLY_CONNECTED_PIE());
+        ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
                      num_threads, /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/true);
@@ -502,7 +503,6 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
-    {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
 });
 
 class FloatFullyConnectedOpTest : public SingleOpTest {
@@ -512,26 +512,17 @@ class FloatFullyConnectedOpTest : public SingleOpTest {
   }
 };
 
-const auto kKernelMapNoPie = new std::map<string, TfLiteRegistration*>({
-    {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
-    {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
-});
-
 class QuantizedFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
 const auto kKernelMapHybrid = new std::map<string, TfLiteRegistration*>({
-    {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
-    // Only Pie supports the hybrid path, so the optimized kernel should fall
-    // back to the Pie path in such cases.
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
 });
 
-// Hybrid mode is used by the Pie quantized kernel.
 class HybridFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
@@ -628,13 +619,14 @@ TEST_P(FloatFullyConnectedOpTest, FilterWithZeroSecondDimension3) {
 
 TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
   // The optimized kernel assumes that the bias is specified.
-  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
-                               /*units=*/1, /*batches=*/2,
-                               /*input=*/{TensorType_FLOAT32, {2, 2}},
-                               /*output=*/{TensorType_FLOAT32},
-                               /*bias_type=*/TensorType_FLOAT32,
-                               /*keep_num_dims=*/false,
-                               /*bias_tensor_optional=*/true);
+  FloatFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*units=*/1, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 2}},
+      /*output=*/{TensorType_FLOAT32},
+      /*bias_type=*/TensorType_FLOAT32,
+      /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/true);
   m.SetWeights({
       2,
       4,  // u = 0
@@ -658,17 +650,18 @@ TEST(FloatFullyConnectedOpTest, SimpleTestEmptyOutput) {
     return;
   }
 
-  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
-                               /*units=*/1, /*batches=*/2,
-                               /*input=*/{TensorType_FLOAT32, {0, 2}},
-                               /*output=*/{TensorType_FLOAT32},
-                               /*bias_type=*/TensorType_FLOAT32,
-                               /*keep_num_dims=*/false,
-                               /*bias_tensor_optional=*/true,
-                               /*activation_func=*/ActivationFunctionType_RELU,
-                               /*weights_format=*/
-                               FullyConnectedOptionsWeightsFormat_DEFAULT,
-                               /*input_size=*/2);
+  FloatFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*units=*/1, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {0, 2}},
+      /*output=*/{TensorType_FLOAT32},
+      /*bias_type=*/TensorType_FLOAT32,
+      /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/true,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/
+      FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*input_size=*/2);
   m.SetWeights({
       2,
       4,  // u = 0
@@ -2171,7 +2164,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 INSTANTIATE_TEST_SUITE_P(
     QuantizedFullyConnectedOpTest, QuantizedFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 // TODO(ahentz): Reconsider this test. Having arbitrary weights makes it hard
 // to debug errors and doesn't necessarily test all the important details.
@@ -2310,7 +2303,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
 class SparseFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
@@ -2334,7 +2327,7 @@ class SparseHybridFullyConnectedOpTest
 
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
   TfLiteRegistration* GetRegistration() {
     return GetKernelMap().at(GetParam().kernel_tag);
@@ -2742,7 +2735,7 @@ TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16PerChannelTest) {
 
 INSTANTIATE_TEST_SUITE_P(
     SparseFullyConnectedOpTest, SparseFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 std::vector<SparseTestParam> GenerateSparseTestParam(
     std::vector<std::string> kernel_tags) {
@@ -2757,7 +2750,7 @@ std::vector<SparseTestParam> GenerateSparseTestParam(
 INSTANTIATE_TEST_SUITE_P(SparseHybridFullyConnectedOpTest,
                          SparseHybridFullyConnectedOpTest,
                          ::testing::ValuesIn(GenerateSparseTestParam(
-                             SingleOpTest::GetKernelTags(*kKernelMapNoPie))));
+                             SingleOpTest::GetKernelTags(*kKernelMap))));
 
 class SparseQuantizedFullyConnectedOpModel
     : public SparseFullyConnectedOpModel<float> {
@@ -2775,7 +2768,7 @@ class SparseQuantizedFullyConnectedOpModel
 class SparseQuantizedFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
@@ -2954,9 +2947,260 @@ TEST(FullyConnectedInt16FilterInt16IndexingTest, RejectsShapeProductOverflow) {
             kTfLiteError);
 }
 
+// Builds a FullyConnected carrying an opaque `quant_spec`.
+//
+// The `cint2_fp32_int4_e8m0_drq` contract is selected by that string alone:
+// nothing in the tensor types distinguishes it from a standard hybrid
+// FullyConnected, so these tests drive the op through the flatbuffer rather
+// than through the higher level helpers above.
+class QuantSpecFullyConnectedOpModel : public SingleOpModel {
+ public:
+  QuantSpecFullyConnectedOpModel(int units, int batches,
+                                 const TensorData& input,
+                                 const TensorData& weights,
+                                 const std::string& spec_name,
+                                 float act_dilation,
+                                 bool corrupt_quant_spec = false)
+      : batches_(batches), units_(units) {
+    input_ = AddInput(input);
+    weights_ = AddInput(weights);
+    bias_ = AddInput({TensorType_FLOAT32, {units_}});
+    output_ = AddOutput({TensorType_FLOAT32});
+
+    flexbuffers::Builder fbb;
+    const size_t map_start = fbb.StartMap();
+    fbb.String("spec", spec_name);
+    fbb.Double("act_dilation", act_dilation);
+    fbb.EndMap(map_start);
+    fbb.Finish();
+    std::vector<uint8_t> payload = fbb.GetBuffer();
+    if (corrupt_quant_spec) {
+      // Truncating the payload leaves the trailing byte-width/type bytes that
+      // the flexbuffer root is located from pointing outside the buffer.
+      payload.resize(payload.size() / 2);
+    }
+
+    const auto quant_spec = builder_.CreateVector(payload);
+    const auto options =
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE,
+                                    FullyConnectedOptionsWeightsFormat_DEFAULT,
+                                    /*keep_num_dims=*/false,
+                                    /*asymmetric_quantize_inputs=*/false,
+                                    TensorType_FLOAT32, quant_spec)
+            .Union();
+    SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
+                 BuiltinOptions_FullyConnectedOptions, options);
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED,
+        ops::builtin::Register_FULLY_CONNECTED_REF());
+    // The reference kernel is the point of these tests, so no delegate.
+    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  }
+
+  using SingleOpModel::AllocateTensors;
+
+  void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
+  void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
+
+  // Writes raw 2 bit codes. The centered grid this kernel implements is not
+  // reachable through the symmetric quantize-and-populate helpers.
+  void SetRawWeights(const std::vector<int8_t>& codes) {
+    PopulateTensor2bit(weights_, /*offset=*/0, codes.data(),
+                       codes.data() + codes.size());
+  }
+  void SetRawInt8Weights(const std::vector<int8_t>& codes) {
+    PopulateTensor(weights_, codes);
+  }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int input_;
+  int weights_;
+  int bias_;
+  int output_;
+  int batches_;
+  int units_;
+};
+
+constexpr int kA4W2TestBlockSize = 32;
+
+TEST(A4W2DrqFullyConnectedTest, MatchesHandComputedResult) {
+  // One block of 32, two output channels.
+  const std::vector<float> per_channel_scales = {0.5f, 0.25f};
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       /*min=*/0.0f,
+       /*max=*/0.0f,
+       /*scale=*/0.0f,
+       /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       per_channel_scales,
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f);
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+
+  // max_abs is 8, so raw_scale = 8 / (7 + 1.5) = 0.941..., which rounds up to
+  // the power of two 2^0 = 1. Every input is then an exact 4 bit code.
+  std::vector<float> input(kA4W2TestBlockSize, 1.0f);
+  input[0] = -8.0f;
+  m.SetInput(input);
+
+  // Channel 0 is all code 1, channel 1 is all code -2. The kernel reconstructs
+  // them as (code + 0.5) * per_channel_scale.
+  std::vector<int8_t> weights(kA4W2TestBlockSize, 1);
+  weights.insert(weights.end(), kA4W2TestBlockSize, -2);
+  m.SetRawWeights(weights);
+
+  m.SetBias({1.0f, 2.0f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Channel 0: sum(q_a * 1.5) = (-8 * 1.5) + (31 * 1.5) = 34.5
+  //            out = 1.0 * 0.5 * 34.5 + 1.0 = 18.25
+  // Channel 1: sum(q_a * -1.5) = (-8 * -1.5) + (31 * -1.5) = -34.5
+  //            out = 1.0 * 0.25 * -34.5 + 2.0 = -6.625
+  EXPECT_THAT(m.GetOutput(), ElementsAre(18.25f, -6.625f));
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsUnimplementedSpec) {
+  // schema.fbs requires a runtime that does not implement the named contract
+  // to reject the op rather than silently fall back to standard hybrid
+  // quantization, which would produce plausible but wrong numbers.
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"a4w2_drq_v99", /*act_dilation=*/1.5f);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsMalformedQuantSpec) {
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f,
+      /*corrupt_quant_spec=*/true);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsInt8Filter) {
+  // The kernel unpacks the filter as 2 bit values, so an int8 filter would
+  // make it read four times past the end of the buffer. `is_hybrid` alone does
+  // not exclude it, so `Prepare` has to.
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT8,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsInputSizeThatIsNotAWholeNumberOfBlocks) {
+  // 48 is not a multiple of the 32 element block size; without this check the
+  // kernel would silently drop the trailing 16 elements of every row.
+  constexpr int kInputSize = 48;
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kInputSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kInputSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// `act_dilation` comes out of the model buffer and lands in the denominator of
+// the activation scale, so values that make that denominator non-positive, or
+// that are not finite, have to be rejected rather than producing inf/NaN
+// scales and silently poisoning every output.
+TEST(A4W2DrqFullyConnectedTest, RejectsActDilationThatCollapsesTheScale) {
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq", /*act_dilation=*/-7.0f);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsNonFiniteActDilation) {
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       0.0f,
+       0.0f,
+       0.0f,
+       0,
+       /*per_channel_quantization=*/true,
+       {0.5f, 0.25f},
+       {0, 0},
+       0},
+      /*spec_name=*/"cint2_fp32_int4_e8m0_drq",
+      /*act_dilation=*/std::numeric_limits<float>::quiet_NaN());
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SparseQuantizedFullyConnectedOpTest, SparseQuantizedFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 }  // namespace
 }  // namespace tflite

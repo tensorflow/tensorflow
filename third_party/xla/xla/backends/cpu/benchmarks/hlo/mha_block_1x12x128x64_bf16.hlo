@@ -1,0 +1,52 @@
+HloModule jit_f, entry_computation_layout={(bf16[1,12,128,64]{3,2,1,0}, bf16[1,12,128,64]{3,2,1,0}, bf16[1,12,128,64]{3,2,1,0})->bf16[1,12,128,64]{3,2,1,0}}
+
+region_0.1 {
+  reduce_max.3 = bf16[] parameter(0)
+  reduce_max.4 = bf16[] parameter(1)
+  ROOT reduce_max.5 = bf16[] maximum(reduce_max.3, reduce_max.4)
+}
+
+region_1.2 {
+  reduce_sum.3 = f32[] parameter(0)
+  reduce_sum.4 = f32[] parameter(1)
+  ROOT reduce_sum.5 = f32[] add(reduce_sum.3, reduce_sum.4)
+}
+
+ENTRY main.3 {
+  q.1 = bf16[1,12,128,64]{3,2,1,0} parameter(0)
+  squeeze.4 = bf16[12,128,64]{2,1,0} reshape(q.1)
+  k.1 = bf16[1,12,128,64]{3,2,1,0} parameter(1)
+  transpose.1 = bf16[1,12,64,128]{2,3,1,0} transpose(k.1), dimensions={0,1,3,2}
+  squeeze.5 = bf16[12,64,128]{2,1,0} reshape(transpose.1)
+  dot_general.2 = bf16[12,128,128]{2,1,0} dot(squeeze.4, squeeze.5), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  broadcast_in_dim.4 = bf16[1,12,128,128]{3,2,1,0} reshape(dot_general.2)
+  constant.5 = bf16[] constant(0.125)
+  mul.2 = bf16[1,12,128,128]{3,2,1,0} broadcast(constant.5), dimensions={}
+  mul.3 = bf16[1,12,128,128]{3,2,1,0} multiply(broadcast_in_dim.4, mul.2)
+  constant.7 = bf16[] constant(-inf)
+  reduce_max.7 = bf16[1,12,128]{2,1,0} reduce(mul.3, constant.7), dimensions={3}, to_apply=region_0.1
+  constant.4 = bf16[] constant(-inf)
+  max.2 = bf16[1,12,128]{2,1,0} broadcast(constant.4), dimensions={}
+  max.3 = bf16[1,12,128]{2,1,0} maximum(reduce_max.7, max.2)
+  broadcast_in_dim.5 = bf16[1,12,128,1]{3,2,1,0} reshape(max.3)
+  sub.4 = bf16[1,12,128,1]{3,2,1,0} broadcast(broadcast_in_dim.5), dimensions={0,1,2,3}
+  sub.5 = bf16[1,12,128]{2,1,0} reshape(sub.4)
+  sub.6 = bf16[1,12,128,128]{3,2,1,0} broadcast(sub.5), dimensions={0,1,2}
+  sub.7 = bf16[1,12,128,128]{3,2,1,0} subtract(mul.3, sub.6)
+  exp.1 = bf16[1,12,128,128]{3,2,1,0} exponential(sub.7)
+  convert_element_type.2 = f32[1,12,128,128]{3,2,1,0} convert(exp.1)
+  constant.6 = f32[] constant(0)
+  reduce_sum.7 = f32[1,12,128]{2,1,0} reduce(convert_element_type.2, constant.6), dimensions={3}, to_apply=region_1.2
+  broadcast_in_dim.6 = f32[1,12,128,1]{3,2,1,0} reshape(reduce_sum.7)
+  convert_element_type.3 = bf16[1,12,128,1]{3,2,1,0} convert(broadcast_in_dim.6)
+  div.4 = bf16[1,12,128,1]{3,2,1,0} broadcast(convert_element_type.3), dimensions={0,1,2,3}
+  div.5 = bf16[1,12,128]{2,1,0} reshape(div.4)
+  div.6 = bf16[1,12,128,128]{3,2,1,0} broadcast(div.5), dimensions={0,1,2}
+  div.7 = bf16[1,12,128,128]{3,2,1,0} divide(exp.1, div.6)
+  squeeze.6 = bf16[12,128,128]{2,1,0} reshape(div.7)
+  v.1 = bf16[1,12,128,64]{3,2,1,0} parameter(2)
+  squeeze.7 = bf16[12,128,64]{2,1,0} reshape(v.1)
+  dot_general.3 = bf16[12,128,64]{2,1,0} dot(squeeze.6, squeeze.7), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  ROOT broadcast_in_dim.7 = bf16[1,12,128,64]{3,2,1,0} reshape(dot_general.3)
+}
+

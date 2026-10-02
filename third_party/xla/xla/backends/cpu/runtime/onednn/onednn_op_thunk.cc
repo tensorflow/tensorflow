@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "Eigen/ThreadPool"
-#include "xla/tsl/platform/status_macros.h"
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
@@ -181,7 +181,7 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   base_resources.arg_memrefs.reserve(num_operands);
   for (size_t i = 0; i < num_operands; ++i) {
     const auto& shape = op_buffers_.arguments_shapes[i];
-    ASSIGN_OR_RETURN(se::DeviceAddressBase arg,
+    ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase arg,
                      params.buffer_allocations->GetDeviceAddress(
                          op_buffers_.arguments_buffers[i]));
 
@@ -199,7 +199,7 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   base_resources.result_memrefs.reserve(num_results);
   for (size_t i = 0; i < num_results; ++i) {
     const auto& shape = op_buffers_.results_shapes[i];
-    ASSIGN_OR_RETURN(se::DeviceAddressBase res,
+    ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase res,
                      params.buffer_allocations->GetDeviceAddress(
                          op_buffers_.results_buffers[i]));
 

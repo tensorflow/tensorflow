@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
@@ -55,17 +55,15 @@ class SyclTimerTest : public xla::gpu::HloPjRtGpuTestBase {
 
     xla::HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<xla::HloModule> hlo_module,
-        xla::ParseAndReturnUnverifiedModule(hlo_ir, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                         xla::ParseAndReturnUnverifiedModule(hlo_ir, config));
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         hlo_module, compiler()->RunHloPasses(std::move(hlo_module), executor,
                                              /*device_allocator=*/nullptr));
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<xla::Executable> exec,
-        compiler()->RunBackend(std::move(hlo_module), executor,
-                               /*device_allocator=*/nullptr));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::Executable> exec,
+                         compiler()->RunBackend(std::move(hlo_module), executor,
+                                                /*device_allocator=*/nullptr));
     auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
     ASSERT_NE(gpu_exec, nullptr);
 
@@ -83,7 +81,7 @@ class SyclTimerTest : public xla::gpu::HloPjRtGpuTestBase {
     const KernelLoaderSpec& kernel_spec =
         kernel_thunk->custom_kernel().kernel_spec();
 
-    TF_ASSERT_OK_AND_ASSIGN(auto add, AddKernel::Create(executor, kernel_spec));
+    ASSERT_OK_AND_ASSIGN(auto add, AddKernel::Create(executor, kernel_spec));
 
     constexpr int64_t kLength = 4;
     constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
@@ -102,14 +100,14 @@ class SyclTimerTest : public xla::gpu::HloPjRtGpuTestBase {
 
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Platform * platform,
         stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(kDefaultDeviceOrdinal));
     executor_ = static_cast<SyclExecutor*>(executor);
-    TF_ASSERT_OK_AND_ASSIGN(stream_,
-                            executor_->CreateStream(/*priority=*/std::nullopt));
+    ASSERT_OK_AND_ASSIGN(stream_,
+                         executor_->CreateStream(/*priority=*/std::nullopt));
   }
 
   SyclExecutor* executor_;
@@ -117,15 +115,14 @@ class SyclTimerTest : public xla::gpu::HloPjRtGpuTestBase {
 };
 
 TEST_F(SyclTimerTest, Create) {
-  TF_ASSERT_OK_AND_ASSIGN(SyclTimer timer,
-                          SyclTimer::Create(executor_, stream_.get()));
+  ASSERT_OK_AND_ASSIGN(SyclTimer timer,
+                       SyclTimer::Create(executor_, stream_.get()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.
   LaunchSomeKernel(executor_, stream_.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(absl::Duration timer_result,
-                          timer.GetElapsedDuration());
+  ASSERT_OK_AND_ASSIGN(absl::Duration timer_result, timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));

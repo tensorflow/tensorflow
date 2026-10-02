@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -63,7 +62,7 @@ SmallVector<uint32_t> GetDimsToSqueeze(RankedTensorType type) {
       result.push_back(dim);
     }
   }
-  if (result.size() == type.getRank()) {
+  if (!result.empty() && result.size() == type.getRank()) {
     result.pop_back();  // Keep one unit dimension.
   }
   return result;

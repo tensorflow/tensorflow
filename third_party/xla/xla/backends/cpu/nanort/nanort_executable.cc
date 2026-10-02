@@ -22,27 +22,30 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_aot_loader.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
@@ -139,7 +142,7 @@ static absl::StatusOr<std::vector<size_t>> ResolveResultMapping(
 
   std::vector<size_t> result_to_allocation_index(executable_res_index.size());
 
-  RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
       entry_layout.result_shape(),
       [&](const Shape&, const ShapeIndex& index) -> absl::Status {
         // Skip buffer allocations assigned to non-leaf results (tuples).
@@ -155,7 +158,7 @@ static absl::StatusOr<std::vector<size_t>> ResolveResultMapping(
         }
 
         const HloValue* value = sources.values().front();
-        ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+        ABSL_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                          buffer_assignment.GetUniqueSlice(value->instruction(),
                                                           value->index()));
 
@@ -266,14 +269,14 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
   }
 
   // Mappings from argument/result index to buffer allocation index.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<size_t> argument_to_allocation_index,
       ResolveArgumentsMapping(module, cpu_executable->buffer_assignment()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<size_t> result_to_allocation_index,
       ResolveResultMapping(module, cpu_executable->buffer_assignment()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::optional<size_t> temp_allocation_index,
       ResolveTempAllocationIndex(cpu_executable->buffer_assignment()));
 
@@ -295,7 +298,7 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
     CompilationResultProto aot_compilation_result,
     std::optional<ProgramShape> program_shape) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       CpuAotLoader::LoadExecutable(std::move(aot_compilation_result)));
   return Create(std::move(executable), program_shape);
@@ -403,7 +406,8 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   struct ExecutionContext {
     ExecutionContext(cpu::BufferAllocations::Buffers buffers,
                      FunctionLibrary* function_library,
-                     const ExecuteOptions& options)
+                     const ExecuteOptions& options,
+                     std::optional<Thunk::YnnParams> ynn_params)
         : allocations(std::move(buffers)),
           execute_params(Thunk::ExecuteParams{function_library, &allocations,
                                               /*xfeed=*/nullptr,
@@ -416,15 +420,19 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
               options.device_assignment(), /*collectives=*/nullptr),
           custom_call_execute_params(
               RunId(options.launch_id()), options.local_device_id().value(),
-              options.intra_op_thread_pool(), options.ffi_context()) {
+              options.intra_op_thread_pool(), options.ffi_context()),
+          ynn_params(std::move(ynn_params)) {
       execute_params.collective_params = &collective_execute_params;
       execute_params.custom_call_params = &custom_call_execute_params;
+      execute_params.ynn_params =
+          this->ynn_params.has_value() ? &*this->ynn_params : nullptr;
     }
 
     cpu::BufferAllocations allocations;
     Thunk::ExecuteParams execute_params;
     Thunk::CollectiveExecuteParams collective_execute_params;
     Thunk::CustomCallExecuteParams custom_call_execute_params;
+    std::optional<Thunk::YnnParams> ynn_params;
   };
 
   // Do a heap allocation if we're running with a thread pool, using
@@ -433,8 +441,18 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   // allocation when it is not required.
   if (options.intra_op_thread_pool() || options.ffi_context() ||
       options.device_assignment()) {
+    // Prepare for executing YNNPACK fusions. Without a YNN threadpool, YNNPACK
+    // fusions run single-threaded in the caller thread.
+    std::optional<Thunk::YnnParams> ynn_params;
+    if (executable->has_ynn_fusions() && options.intra_op_thread_pool()) {
+      ABSL_ASSIGN_OR_RETURN(YnnThreadpool ynn_threadpool,
+                       CreateYnnThreadpool(options.intra_op_thread_pool()));
+      ynn_params.emplace(std::move(ynn_threadpool));
+    }
+
     auto execution_context = std::make_unique<ExecutionContext>(
-        std::move(buffers), executable->function_library(), options);
+        std::move(buffers), executable->function_library(), options,
+        std::move(ynn_params));
 
     auto execute_event =
         executable->thunks().Execute(execution_context->execute_params);

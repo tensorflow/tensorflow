@@ -17,6 +17,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -880,6 +881,14 @@ void LaunchConvBackpropFilterOpImpl(
           : TensorShape({filter_shape.dim_size(4), dims.filter_size(0),
                          dims.filter_size(1), dims.filter_size(2),
                          filter_shape.dim_size(3)});
+  // Validate filter element count before allocation to prevent OOM on invalid
+  // inputs. GPU transformation uses 32-bit indexing via To32Bit().
+  OP_REQUIRES(
+      context,
+      filter_backprop->NumElements() <= std::numeric_limits<int32>::max(),
+      errors::InvalidArgument("Filter tensor num elements (",
+                              filter_backprop->NumElements(),
+                              ") exceeds 32-bit limit for GPU transformation"));
   OP_REQUIRES_OK(context,
                  context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
                                         &pre_transformed_filter_backprop));

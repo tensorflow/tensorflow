@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"

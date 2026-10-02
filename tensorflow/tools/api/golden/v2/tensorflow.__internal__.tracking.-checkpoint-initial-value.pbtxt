@@ -10,4 +10,8 @@ tf_class {
     name: "__init__"
     argspec: "args=[\'self\', \'checkpoint_position\', \'shape\', \'shard_info\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
+  member_method {
+    name: "__tf_tensor__"
+    argspec: "args=[\'self\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
 }

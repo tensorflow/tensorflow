@@ -19,12 +19,13 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
@@ -114,6 +115,48 @@ class MatrixSolveOpTest(test.TestCase):
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testInvalidRank(self):
+    for fn in (linalg_ops.matrix_solve, gen_linalg_ops.matrix_solve):
+      for bad_shape in ([], [2]):
+        for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+          bad_val = constant_op.constant(np.zeros(bad_shape, dtype=dtype))
+          valid_matrix = constant_op.constant(np.eye(2, dtype=dtype))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)
+          ):
+            with test_util.use_gpu():
+              self.evaluate(fn(bad_val, bad_val))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)
+          ):
+            with test_util.use_gpu():
+              self.evaluate(fn(valid_matrix, bad_val))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)
+          ):
+            with test_util.use_gpu():
+              self.evaluate(fn(bad_val, valid_matrix))
+          bad_val_dyn = array_ops.placeholder_with_default(bad_val, shape=None)
+          valid_matrix_dyn = array_ops.placeholder_with_default(
+              valid_matrix, shape=None
+          )
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)
+          ):
+            with test_util.use_gpu():
+              self.evaluate(fn(bad_val_dyn, bad_val_dyn))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)
+          ):
+            with test_util.use_gpu():
+              self.evaluate(fn(valid_matrix_dyn, bad_val_dyn))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)
+          ):
+            with test_util.use_gpu():
+              self.evaluate(fn(bad_val_dyn, valid_matrix_dyn))
+
   def testNotInvertible(self):
     # The input should be invertible.
     with self.assertRaisesOpError("Input matrix is not invertible."):
@@ -121,6 +164,20 @@ class MatrixSolveOpTest(test.TestCase):
       matrix = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
                                      [0., -1., 1.]])
       self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testNotInvertibleGpu(self):
+    for matrix_values in (
+        [[1.0, 2.0], [2.0, 4.0]],
+        [[1.0, 0.0, -1.0], [-1.0, 1.0, 0.0], [0.0, -1.0, 1.0]],
+        [
+            [[1.0, 0.0, -1.0], [-1.0, 1.0, 0.0], [0.0, -1.0, 1.0]],
+            [[1.0, 0.0, -1.0], [-1.0, 1.0, 0.0], [0.0, -1.0, 1.0]],
+        ],
+    ):
+      with self.assertRaisesOpError("Input matrix is not invertible."):
+        matrix = constant_op.constant(matrix_values)
+        self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrent(self):

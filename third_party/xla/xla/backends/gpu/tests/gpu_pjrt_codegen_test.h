@@ -75,21 +75,43 @@ class GpuPjRtCodegenTest : public HloPjRtGpuTestBase {
   absl::Status CompileAndVerifyIr(std::unique_ptr<HloModule> module,
                                   absl::string_view expected_llvm_ir,
                                   bool match_optimized_ir = false,
-                                  bool run_optimization_passes = true);
+                                  bool run_optimization_passes = true,
+                                  bool match_ir_from_hlo_passes = false);
 
   // A thin wrapper around CompileAndVerifyIr that takes a string instead of a
   // HloModule.
   absl::Status CompileAndVerifyIr(absl::string_view hlo_text,
                                   absl::string_view expected_llvm_ir,
                                   bool match_optimized_ir = false,
-                                  bool run_optimization_passes = true);
+                                  bool run_optimization_passes = true,
+                                  bool match_ir_from_hlo_passes = false);
 
-  bool IsBuiltWithRocm() {
+  bool IsBuiltWithRocm() const {
     return runner_type_ == HloRunnerPropertyTag::kUsingGpuRocm;
   }
 
-  bool IsBuiltWithOneAPI() {
+  bool IsBuiltWithOneAPI() const {
     return runner_type_ == HloRunnerPropertyTag::kUsingGpuOneAPI;
+  }
+
+  std::string GpuKernelType() const {
+    if (IsBuiltWithRocm()) {
+      return "amdgpu_kernel";
+    }
+    if (IsBuiltWithOneAPI()) {
+      return "spir_kernel";
+    }
+    return "ptx_kernel";
+  }
+
+  std::string GpuBarrier() const {
+    if (IsBuiltWithRocm()) {
+      return "void @llvm.amdgcn.s.barrier()";
+    }
+    if (IsBuiltWithOneAPI()) {
+      return "spir_func void @_Z7barrierj(i32 3)";
+    }
+    return "void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)";
   }
 
  private:

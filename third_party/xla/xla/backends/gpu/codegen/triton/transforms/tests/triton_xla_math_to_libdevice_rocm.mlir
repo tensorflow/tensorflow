@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-opt %s -split-input-file -triton-xla-math-to-libdevice=' \
 // RUN: libdevice_path=/path/to/libdevice triple=amdgcn-amd-amdhsa' \
 // RUN: | FileCheck %s
@@ -69,3 +83,52 @@ func.func @exp_f16(%arg0: tensor<1024xf16>) -> tensor<1024xf16> {
 // CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
 // CHECK-SAME:    pure = true, symbol = "__ocml_exp_f16"}
 // CHECK-NOT:   arith.truncf
+
+// -----
+
+func.func @atan(%arg0: tensor<1024xf32>) -> tensor<1024xf32> {
+  %result = math.atan %arg0 : tensor<1024xf32>
+  return %result : tensor<1024xf32>
+}
+
+// CHECK:       tt.extern_elementwise %arg0
+// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    pure = true, symbol = "__ocml_atan_f32"}
+
+// -----
+
+func.func @atan_f16(%arg0: tensor<1024xf16>) -> tensor<1024xf16> {
+  %result = math.atan %arg0 : tensor<1024xf16>
+  return %result : tensor<1024xf16>
+}
+
+// CHECK-NOT:   arith.extf
+// CHECK:       tt.extern_elementwise %arg0
+// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    pure = true, symbol = "__ocml_atan_f16"}
+// CHECK-NOT:   arith.truncf
+
+// -----
+
+func.func @atan_bf16(%arg0: tensor<1024xbf16>) -> tensor<1024xbf16> {
+  %result = math.atan %arg0 : tensor<1024xbf16>
+  return %result : tensor<1024xbf16>
+}
+
+// CHECK:       %[[CAST:.*]] = arith.extf %arg0 : tensor<1024xbf16> to tensor<1024xf32>
+// CHECK:       tt.extern_elementwise %[[CAST]]
+// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    pure = true, symbol = "__ocml_atan_f32"}
+// CHECK:       arith.truncf {{.*}} : tensor<1024xf32> to tensor<1024xbf16>
+
+// -----
+
+func.func @atan_f64(%arg0: tensor<1024xf64>) -> tensor<1024xf64> {
+  %result = math.atan %arg0 : tensor<1024xf64>
+  return %result : tensor<1024xf64>
+}
+
+// CHECK:       tt.extern_elementwise %arg0
+// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    pure = true, symbol = "__ocml_atan_f64"}
+

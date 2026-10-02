@@ -51,134 +51,12 @@ typedef struct TpuRuntimeVersion {
   size_t metadata_size;
 } TpuRuntimeVersion;
 
-typedef struct SE_Platform SE_Platform;
-typedef struct SE_StreamExecutor SE_StreamExecutor;
-typedef struct SE_Stream SE_Stream;
-typedef struct SE_Event SE_Event;
-
 // An empty proto is always represented as (bytes=nullptr, size=0).
 // There is no other valid way to represent it.
 typedef struct TpuSerializedProto {
   const char* bytes;
   size_t size;
 } TpuSerializedProto;
-
-typedef struct SE_PlatformId {
-  void* id;  // aka stream_executor::Platform::Id
-} SE_PlatformId;
-typedef TF_Status* (*SE_StatusCallback)(void*);
-
-typedef struct SE_DeviceAddressBase {
-  void* opaque;
-  uint64_t size;
-  uint64_t payload;
-} SE_DeviceAddressBase;
-
-typedef struct SE_ScopedDeviceAddress {
-  SE_DeviceAddressBase wrapped;
-  int device_ordinal;
-} SE_ScopedDeviceAddress;
-
-typedef struct SE_AllocatorStats {
-  int64_t num_allocs;
-  int64_t bytes_in_use;
-  int64_t peak_bytes_in_use;
-  int64_t largest_alloc_size;
-
-  bool has_bytes_limit;
-  int64_t bytes_limit;
-
-  int64_t bytes_reserved;
-  int64_t peak_bytes_reserved;
-
-  bool has_bytes_reservable_limit;
-  int64_t bytes_reservable_limit;
-
-  int64_t largest_free_block_bytes;
-} SE_AllocatorStats;
-
-// Note, due to the... odd way in which DeviceAddressAllocator is used in TF, we
-// cannot simply wrap an underlying pointer. Instead, we reverse the call
-// direction and request memory via a callback.
-typedef void (*SE_AllocateFn)(void* ctx, int device_ordinal, uint64_t size,
-                              bool retry_on_failure, int64_t memory_space,
-                              SE_ScopedDeviceAddress* result,
-                              TF_Status* status);
-
-typedef void (*SE_DeallocateFn)(void* ctx, SE_DeviceAddressBase* base,
-                                int device_ordinal, TF_Status* status);
-
-typedef struct SE_DeviceAddressAllocator {
-  SE_Platform* platform;
-  void* ctx;
-  SE_AllocateFn allocate;
-  SE_DeallocateFn deallocate;
-} SE_DeviceAddressAllocator;
-
-typedef struct SE_DeviceDescription {
-  char* device_vendor;
-  char* platform_version;
-  char* driver_version;
-  char* runtime_version;
-  char* pci_bus_id;
-  char* name;
-
-  int64_t thread_dim_limit_x;
-  int64_t thread_dim_limit_y;
-  int64_t thread_dim_limit_z;
-  int64_t block_dim_limit_x;
-  int64_t block_dim_limit_y;
-  int64_t block_dim_limit_z;
-
-  int64_t threads_per_core_limit;
-  int64_t threads_per_block_limit;
-  int64_t threads_per_warp;
-
-  int64_t registers_per_core_limit;
-  int64_t registers_per_block_limit;
-
-  int64_t device_address_bits;
-  int64_t device_memory_size;
-  int64_t memory_bandwidth;
-
-  int64_t shared_memory_per_core;
-  int64_t shared_memory_per_block;
-
-  float clock_rate_ghz;
-
-  int cuda_compute_capability_major;
-  int cuda_compute_capability_minor;
-
-  int numa_node;
-  int core_count;
-  bool ecc_enabled;
-} SE_DeviceDescription;
-
-typedef struct Tpu_Compiler Tpu_Compiler;
-typedef struct SE_Executable SE_Executable;
-
-typedef struct SE_ExecutableRunOptions {
-  SE_DeviceAddressAllocator allocator;
-  int device_ordinal;
-  SE_Stream* stream;
-  SE_Stream* host_to_device_stream;
-  TpuSerializedProto device_assignment;
-  int rng_seed;
-  int64_t run_id;
-  int launch_id;
-} SE_ExecutableRunOptions;
-
-typedef struct SE_ExecutableSerializationHandle
-    SE_ExecutableSerializationHandle;
-
-typedef struct SE_MaybeOwningDeviceAddress {
-  SE_DeviceAddressBase memory;
-  bool owned;
-
-  // Set if owned
-  int device_ordinal;
-  SE_DeviceAddressAllocator allocator;
-} SE_MaybeOwningDeviceAddress;
 
 typedef struct IntList {
   union {
@@ -256,15 +134,6 @@ typedef struct XLA_Shape {
   XLA_Layout layout;
 } XLA_Shape;
 
-// Represents a leaf node for a XLA shaped buffer.
-typedef struct XLA_ShapedBuffer {
-  XLA_Shape on_device_shape;
-  int device_ordinal;
-
-  SE_DeviceAddressBase* bases;
-  size_t count;
-} XLA_ShapedBuffer;
-
 // Represents a leaf XLA literal.
 typedef struct XLA_Literal {
   char** buffers;
@@ -273,30 +142,10 @@ typedef struct XLA_Literal {
   XLA_Shape shape;
 } XLA_Literal;
 
-typedef struct XLA_MaybeOwningDeviceAddressShapeTree {
-  XLA_Shape shape;
-  SE_MaybeOwningDeviceAddress* buffers;
-} XLA_MaybeOwningDeviceAddressShapeTree;
-
 typedef struct XLA_ShapeIndex {
   int64_t indices[8];
   int64_t count;
 } XLA_ShapeIndex;
-
-typedef struct SE_ExecutionInput {
-  XLA_MaybeOwningDeviceAddressShapeTree shape_tree;
-  XLA_ShapeIndex* unowned_indices;
-  int unowned_indices_size;
-  XLA_Shape dynamic_shape;
-} SE_ExecutionInput;
-
-typedef struct SE_ExecutionOutput {
-  XLA_ShapedBuffer result;
-  SE_MaybeOwningDeviceAddress* to_be_released;
-  int to_be_released_size;
-  XLA_ShapeIndex* aliased_indices;
-  int aliased_indices_size;
-} SE_ExecutionOutput;
 
 typedef struct XLA_ComputationLayout {
   int parameter_count;
@@ -324,11 +173,6 @@ typedef struct XLA_HloModuleConfig {
 
 typedef struct SE_HloExecutionProfile SE_HloExecutionProfile;
 
-typedef struct SE_StreamExecutorList {
-  SE_StreamExecutor** exec;
-  int count;
-} SE_StreamExecutorList;
-
 typedef struct XLA_HloModuleGroup {
   TpuSerializedProto proto;
   XLA_HloModuleConfig* module_config;
@@ -339,10 +183,7 @@ typedef struct XLA_HloModule {
   XLA_HloModuleConfig module_config;
 } XLA_HloModule;
 
-typedef struct XLA_TransferManager XLA_TransferManager;
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
-
-typedef struct XLA_ComputationPlacer XLA_ComputationPlacer;
 
 typedef void (*XLA_CallbackFn)(void*);
 typedef void (*XLA_StatusCallbackFn)(void*, TF_Status*);

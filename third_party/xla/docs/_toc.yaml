@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 toc:
 - heading: XLA documentation
 - title: Getting started
@@ -49,6 +64,10 @@ toc:
     path: /xla/persisted_autotuning
   - title: Determinism (GPU)
     path: /xla/determinism
+  - title: GPU AOT compilation
+    path: /xla/gpu_aot
+  - title: GPU AOT compatibility
+    path: /xla/gpu_aot_compatibility
   # TPU backend sub-section
   - heading: TPU backend
   - title: Sparsecore (embeddings)
@@ -82,12 +101,16 @@ toc:
     path: /xla/oom_debugging
   - title: Debug Megascale
     path: /xla/megascale/debugging_workflow
+  - title: Tune Megascale
+    path: /xla/megascale/performance_tuning
     # XLA Tools sub-section
   - heading: XLA tools
   - title: XLA tooling
     path: /xla/tools
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
+  - title: HLO Isolation tool for numeric issues
+    path: /xla/hlo_isolation
 
 - title: Contributing
   # This is the default tab for the Contributing section.
@@ -100,6 +123,8 @@ toc:
     path: /xla/build_from_source
   - title: Testing HLO passes
     path: /xla/test_hlo_passes
+  - title: "Avoiding #ifdefs"
+    path: /xla/avoiding_ifdefs
   - title: Copybara quirks
     path: /xla/copybara
 

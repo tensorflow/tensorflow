@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 
@@ -38,7 +38,7 @@ absl::StatusOr<std::unique_ptr<const CpuTopology>> CpuTopology::FromProto(
                                 cpu_device_proto.local_hardware_id()});
   }
 
-  ASSIGN_OR_RETURN(auto target_machine_options,
+  ABSL_ASSIGN_OR_RETURN(auto target_machine_options,
                    cpu::TargetMachineOptions::FromProto(
                        cpu_topology_proto.target_machine_options()));
 

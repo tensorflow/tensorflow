@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -220,7 +220,7 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
         VLOG(3) << "Skipping user " << user->name() << " (already replaced)";
         continue;
       }
-      RETURN_IF_ERROR(ReplaceUserRecursive(user, new_instruction));
+      ABSL_RETURN_IF_ERROR(ReplaceUserRecursive(user, new_instruction));
     }
     return absl::OkStatus();
   }
@@ -254,7 +254,7 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
           user->CloneWithNewOperands(new_shape(user), new_operands));
     } else {
       auto* gte = Cast<HloGetTupleElementInstruction>(user);
-      ASSIGN_OR_RETURN(new_user,
+      ABSL_ASSIGN_OR_RETURN(new_user,
                        MakeGetTupleElementHlo(operand, gte->tuple_index(),
                                               &user->metadata()));
     }

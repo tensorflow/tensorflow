@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-opt %s -triton-xla-implement-extern-element-wise="target=rocm" | FileCheck %s
 
 // Test ROCm implementation of extern_elementwise atomic functions
@@ -18,7 +32,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
   llvm.func @test_atomic_write_unmasked(%ptr: !llvm.ptr<1>, %value: i32) -> i32 {
     // CHECK-NOT: llvm.call @xla_atomicwrite_release_system_nomask
     // CHECK: [[POISON:%.*]] = llvm.mlir.poison : i32
-    // CHECK: llvm.store %arg1, %arg0 atomic release {alignment = 4 : i64} : i32, !llvm.ptr<1>
+    // CHECK: llvm.store %arg1, %arg0 atomic release <alignment = 4> : i32, !llvm.ptr<1>
     // CHECK: llvm.return [[POISON]]
     %result = llvm.call @xla_atomicwrite_release_system_nomask(%ptr, %value) : (!llvm.ptr<1>, i32) -> i32
     llvm.return %result : i32
@@ -29,7 +43,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
     // CHECK-NOT: llvm.call @xla_atomicspinwait_acquire_system_lt_nomask
     // CHECK: llvm.br ^[[LOOP:.*]]
     // CHECK: ^[[LOOP]]:
-    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire {alignment = 4 : i64} : !llvm.ptr<1> -> i32
+    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
     // CHECK:   [[COND:%.*]] = llvm.icmp "ult" [[LOADED]], %arg1
     // CHECK:   llvm.cond_br [[COND]], ^[[EXIT:.*]], ^[[LOOP]]
     // CHECK: ^[[EXIT]]:
@@ -42,7 +56,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
   llvm.func @test_atomic_spin_wait_eq(%ptr: !llvm.ptr<1>, %expected: i32) -> i32 {
     // CHECK: llvm.br ^[[LOOP:.*]]
     // CHECK: ^[[LOOP]]:
-    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire {alignment = 4 : i64} : !llvm.ptr<1> -> i32
+    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
     // CHECK:   [[COND:%.*]] = llvm.icmp "eq" [[LOADED]], %arg1
     // CHECK:   llvm.cond_br [[COND]], ^[[EXIT:.*]], ^[[LOOP]]
     // CHECK: ^[[EXIT]]:
@@ -54,7 +68,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
   // CHECK-LABEL: llvm.func @test_relaxed_ordering
   llvm.func @test_relaxed_ordering(%ptr: !llvm.ptr<1>, %value: i32) -> i32 {
     // CHECK: [[POISON:%.*]] = llvm.mlir.poison : i32
-    // CHECK: llvm.store %arg1, %arg0 atomic monotonic {alignment = 4 : i64} : i32, !llvm.ptr<1>
+    // CHECK: llvm.store %arg1, %arg0 atomic monotonic <alignment = 4> : i32, !llvm.ptr<1>
     // CHECK: llvm.return [[POISON]]
     %result = llvm.call @xla_atomicwrite_relaxed_system_nomask(%ptr, %value) : (!llvm.ptr<1>, i32) -> i32
     llvm.return %result : i32
@@ -63,7 +77,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
   // CHECK-LABEL: llvm.func @test_agent_scope
   llvm.func @test_agent_scope(%ptr: !llvm.ptr<1>, %value: i32) -> i32 {
     // CHECK: [[POISON:%.*]] = llvm.mlir.poison : i32
-    // CHECK: llvm.store %arg1, %arg0 atomic syncscope("agent") release {alignment = 4 : i64} : i32, !llvm.ptr<1>
+    // CHECK: llvm.store %arg1, %arg0 atomic syncscope("agent") release <alignment = 4> : i32, !llvm.ptr<1>
     // CHECK: llvm.return [[POISON]]
     %result = llvm.call @xla_atomicwrite_release_gpu_nomask(%ptr, %value) : (!llvm.ptr<1>, i32) -> i32
     llvm.return %result : i32
@@ -72,7 +86,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
   // CHECK-LABEL: llvm.func @test_workgroup_scope
   llvm.func @test_workgroup_scope(%ptr: !llvm.ptr<1>, %value: i32) -> i32 {
     // CHECK: [[POISON:%.*]] = llvm.mlir.poison : i32
-    // CHECK: llvm.store %arg1, %arg0 atomic syncscope("workgroup") release {alignment = 4 : i64} : i32, !llvm.ptr<1>
+    // CHECK: llvm.store %arg1, %arg0 atomic syncscope("workgroup") release <alignment = 4> : i32, !llvm.ptr<1>
     // CHECK: llvm.return [[POISON]]
     %result = llvm.call @xla_atomicwrite_release_cta_nomask(%ptr, %value) : (!llvm.ptr<1>, i32) -> i32
     llvm.return %result : i32
@@ -82,7 +96,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
   llvm.func @test_acquire_ordering(%ptr: !llvm.ptr<1>, %expected: i32) -> i32 {
     // CHECK: llvm.br ^[[LOOP:.*]]
     // CHECK: ^[[LOOP]]:
-    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire {alignment = 4 : i64} : !llvm.ptr<1> -> i32
+    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
     // CHECK:   [[COND:%.*]] = llvm.icmp "ult" [[LOADED]], %arg1
     // CHECK:   llvm.cond_br [[COND]], ^[[EXIT:.*]], ^[[LOOP]]
     // CHECK: ^[[EXIT]]:
@@ -118,7 +132,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
     // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[ZERO]]
     // CHECK: llvm.cond_br [[MASK_NONZERO]], ^[[ATOMIC:.*]], ^[[EXIT:.*]]
     // CHECK: ^[[ATOMIC]]:
-    // CHECK:   llvm.store %arg1, %arg0 atomic release {alignment = 4 : i64} : i32, !llvm.ptr<1>
+    // CHECK:   llvm.store %arg1, %arg0 atomic release <alignment = 4> : i32, !llvm.ptr<1>
     // CHECK:   llvm.br ^[[EXIT]]
     // CHECK: ^[[EXIT]]:
     // CHECK:   llvm.return [[POISON]]
@@ -133,7 +147,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
     // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[ZERO]]
     // CHECK: llvm.cond_br [[MASK_NONZERO]], ^[[LOOP:.*]], ^[[EXIT:.*]]([[ZERO]]
     // CHECK: ^[[LOOP]]:
-    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire {alignment = 4 : i64} : !llvm.ptr<1> -> i32
+    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
     // CHECK:   [[COND:%.*]] = llvm.icmp "ult" [[LOADED]], %arg1
     // CHECK:   llvm.cond_br [[COND]], ^[[EXIT]]([[LOADED]] : i32), ^[[LOOP]]
     // CHECK: ^[[EXIT]]([[RESULT:%.*]]: i32):
@@ -148,7 +162,7 @@ module attributes {llvm.target_triple = "amdgcn-amd-amdhsa"} {
     // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[ZERO]]
     // CHECK: llvm.cond_br [[MASK_NONZERO]], ^[[LOOP:.*]], ^[[EXIT:.*]]([[ZERO]]
     // CHECK: ^[[LOOP]]:
-    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire {alignment = 4 : i64} : !llvm.ptr<1> -> i32
+    // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
     // CHECK:   [[COND:%.*]] = llvm.icmp "eq" [[LOADED]], %arg1
     // CHECK:   llvm.cond_br [[COND]], ^[[EXIT]]([[LOADED]] : i32), ^[[LOOP]]
     // CHECK: ^[[EXIT]]([[RESULT:%.*]]: i32):

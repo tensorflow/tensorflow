@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/xfeed_queue.h"
 #include "xla/shape.h"
@@ -60,7 +60,7 @@ static absl::StatusOr<se::DeviceAddressHandle> CopyBufferToDevice(
   se::StreamExecutor* executor = stream->parent();
   se::DeviceAddressHandle buffer(executor,
                                  executor->AllocateArray<uint8_t>(size));
-  RETURN_IF_ERROR(stream->Memcpy(buffer.address_ptr(), source, size));
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(buffer.address_ptr(), source, size));
 
   return std::move(buffer);
 }
@@ -79,7 +79,7 @@ absl::Status InfeedManager::TransferLiteralToInfeed(
   for (auto& leaf : buffer_tree.leaves()) {
     const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
     CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         leaf.second,
         CopyBufferToDevice(stream(), ShapeUtil::ByteSizeOf(sub_shape),
                            literal.untyped_data(leaf.first)));

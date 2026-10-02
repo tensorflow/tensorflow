@@ -26,7 +26,6 @@
 #include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
@@ -39,6 +38,7 @@
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -144,8 +144,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
   ON_CALL(device2, Id()).WillByDefault(Return(DeviceId(2)));
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*devices=*/{},
-      /*addressable_devices=*/{},
+      /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
@@ -226,7 +225,7 @@ TEST_F(LoadedExecutableTest, Execute) {
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*devices=*/{}, /*addressable_devices=*/{},
+      /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
@@ -310,18 +309,16 @@ TEST_F(LoadedExecutableTest, Execute) {
   const auto output0 = result.outputs[0];
   EXPECT_EQ(output0->dtype(), DType(DType::kF32));
   EXPECT_EQ(output0->shape(), Shape({4, 4}));
-  EXPECT_EQ(llvm::cast<Array>(output0.get())
-                ->GetHandleUnknownIfBeingDonated()
-                ->handle,
-            3000);
+  EXPECT_EQ(
+      cast<Array>(output0.get())->GetHandleUnknownIfBeingDonated()->handle,
+      3000);
 
   const auto output1 = result.outputs[1];
   EXPECT_EQ(output1->dtype(), DType(DType::kF16));
   EXPECT_EQ(output1->shape(), Shape({8}));
-  EXPECT_EQ(llvm::cast<Array>(output1.get())
-                ->GetHandleUnknownIfBeingDonated()
-                ->handle,
-            3001);
+  EXPECT_EQ(
+      cast<Array>(output1.get())->GetHandleUnknownIfBeingDonated()->handle,
+      3001);
 
   // Execute again. This time, the client already knows the output spec and so
   // will supply client-generated handles.
@@ -356,11 +353,11 @@ TEST_F(LoadedExecutableTest, Execute) {
 
   ASSERT_THAT(result.outputs, SizeIs(2));
   ASSERT_THAT(execute_req.result_array_handle(), SizeIs(2));
-  EXPECT_EQ(llvm::cast<Array>(result.outputs[0].get())
+  EXPECT_EQ(cast<Array>(result.outputs[0].get())
                 ->GetHandleUnknownIfBeingDonated()
                 ->handle,
             execute_req.result_array_handle()[0]);
-  EXPECT_EQ(llvm::cast<Array>(result.outputs[1].get())
+  EXPECT_EQ(cast<Array>(result.outputs[1].get())
                 ->GetHandleUnknownIfBeingDonated()
                 ->handle,
             execute_req.result_array_handle()[1]);
@@ -392,7 +389,7 @@ TEST_F(LoadedExecutableTest, DeviceTime) {
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/1, /*devices=*/{}, /*addressable_devices=*/{},
+      /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 

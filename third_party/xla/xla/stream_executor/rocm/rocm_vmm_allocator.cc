@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_address.h"
@@ -53,7 +53,7 @@ VmmAllocate(StreamExecutor* executor, uint64_t size) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   hipDevice_t device;
-  RETURN_IF_ERROR(ToStatus(hipDeviceGet(&device, executor->device_ordinal())));
+  ABSL_RETURN_IF_ERROR(ToStatus(hipDeviceGet(&device, executor->device_ordinal())));
 
   hipMemAllocationProp properties = {};
   properties.type = hipMemAllocationTypePinned;
@@ -61,13 +61,13 @@ VmmAllocate(StreamExecutor* executor, uint64_t size) {
   properties.location.id = device;
   properties.requestedHandleTypes = hipMemHandleTypeNone;
   size_t granularity = 0;
-  RETURN_IF_ERROR(ToStatus(hipMemGetAllocationGranularity(
+  ABSL_RETURN_IF_ERROR(ToStatus(hipMemGetAllocationGranularity(
       &granularity, &properties, hipMemAllocationGranularityRecommended)));
 
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
   hipMemGenericAllocationHandle_t handle;
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ToStatus(hipMemCreate(&handle, padded_size, &properties, 0ULL)));
 
   hipDeviceptr_t ptr = nullptr;
@@ -99,7 +99,7 @@ VmmAllocate(StreamExecutor* executor, uint64_t size) {
   // Set access for this device and all P2P-capable peers, matching the CUDA
   // pattern that gates on CanEnablePeerAccessTo().
   int device_count = 0;
-  RETURN_IF_ERROR(ToStatus(hipGetDeviceCount(&device_count)));
+  ABSL_RETURN_IF_ERROR(ToStatus(hipGetDeviceCount(&device_count)));
   for (int peer = 0; peer < device_count; peer++) {
     if (peer != executor->device_ordinal()) {
       auto peer_executor_or = const_cast<Platform*>(executor->GetPlatform())
@@ -110,7 +110,7 @@ VmmAllocate(StreamExecutor* executor, uint64_t size) {
       }
     }
     hipMemAccessDesc access_desc = GetVmmAccessDescriptor(peer);
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ToStatus(hipMemSetAccess(ptr, padded_size, &access_desc, 1)));
   }
 
@@ -189,7 +189,7 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> RocmVmmAllocator::Allocate(
                                                      nullptr);
   }
 
-  ASSIGN_OR_RETURN(auto result, VmmAllocate(executor_, size));
+  ABSL_ASSIGN_OR_RETURN(auto result, VmmAllocate(executor_, size));
   auto [ptr, padded_size, handle] = result;
 
   return std::make_unique<RocmVmmMemoryAllocation>(executor_, ptr, size,

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -28,13 +29,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
-#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -116,9 +115,22 @@ class HloAliasAnalysis {
   // A map indicating which buffer a value is contained in.
   absl::flat_hash_map<const HloValue*, HloBuffer*> value_to_buffer_;
 
+  // Returns whether the computation has a chain of callers where every
+  // computation up to the entry computation has exactly one caller.
+  bool HasLinearCallerChainToRoot(const HloComputation* computation) const;
+
+  // Returns whether the set of given buffers are allowed to exist at one
+  // position before inlining.
+  bool MultipleBuffersAllowedBeforeInlining(
+      absl::Span<const HloBuffer* const> buffers) const;
+
   // A lazily constructed vector containing all HloBuffers sorted by
   // HloBuffer::Id.
   std::vector<HloBuffer> buffers_;
+
+  // Cache for whether an HloComputation has a single-caller chain to root.
+  mutable absl::flat_hash_map<const HloComputation*, bool>
+      has_linear_caller_chain_to_root_;
 };
 
 }  // namespace xla

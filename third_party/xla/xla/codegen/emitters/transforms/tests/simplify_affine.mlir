@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt --allow-unregistered-dialect %s -split-input-file -xla-simplify-affine | FileCheck %s
 
 func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.ptr) {
@@ -246,15 +260,38 @@ func.func @lower_ceildiv_constant(%arg0: index) -> index {
 
 // -----
 
-func.func @unsafe_max(%arg0: index {xla.range = [-10 : index, 10 : index]}, %arg1: index) -> index {
+func.func @signed_max(%arg0: index {xla.range = [-10 : index, 10 : index]}, %arg1: index) -> index {
   %0 = xla.apply_indexing
     #xla.indexing_map<
       "()[s0, s1] -> (max(s0, s1)),"
       "domain: s0 in [-10, 10], s1 in [0, 5]">[%arg0, %arg1]
   return %0 : index
 }
-// CHECK-LABEL: @unsafe_max
-// CHECK:       xla.apply_indexing
+// CHECK-LABEL: @signed_max
+// CHECK-SAME:    (%[[ARG0:.*]]: index {{.*}}, %[[ARG1:.*]]: index)
+// CHECK-NOT:   xla.apply_indexing
+// CHECK:       %[[RET:.*]] = arith.maxsi %[[ARG0]], %[[ARG1]]
+// CHECK-NEXT:  return %[[RET]]
+
+// -----
+
+// min/max can't be expressed with affine.apply, so possibly negative operands
+// are lowered to signed arith ops. Operations with provably non-negative
+// operands still use unsigned ops.
+func.func @signed_clamp_of_floordiv(%arg0: index, %arg1: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "(d0, d1) -> (min(max((-(d1 mod 3) - (d1 floordiv 3) * 24 - d0 * 13920 + 111317) floordiv 3, 0), 8)),"
+      "domain: d0 in [0, 7], d1 in [0, 1739]">(%arg0, %arg1)
+  return %0 : index
+}
+// CHECK-LABEL: @signed_clamp_of_floordiv
+// CHECK-NOT:   xla.apply_indexing
+// CHECK-NOT:   affine.apply
+// CHECK:       %[[DIV:.*]] = arith.floordivsi
+// CHECK:       %[[MAX:.*]] = arith.maxsi %[[DIV]]
+// CHECK:       %[[MIN:.*]] = arith.minui %[[MAX]]
+// CHECK-NEXT:  return %[[MIN]]
 
 // -----
 

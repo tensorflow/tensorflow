@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <optional>
@@ -24,14 +25,20 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -39,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -50,8 +58,11 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
+using ::testing::UnorderedElementsAreArray;
 
 // Test is parameterized on a bool which is whether the dataflow analysis is
 // performed with SSA form.
@@ -396,6 +407,74 @@ ENTRY main {
                            HloUse{add, 0, {}}));
 
   EXPECT_TRUE(analysis.GetValueDefinedAt(add).live_out_of_module());
+}
+
+TEST_P(HloDataflowAnalysisTest, CallInsideEmbeddedComputation) {
+  // A kCall nested inside a computation called in an embedded context (here
+  // the called computation of a custom-call) forwards the values of its
+  // callee's root, even though parameters in that context define their own
+  // values. The callee is additionally called from the entry computation so
+  // that its instructions are visited after the embedded call in the dataflow
+  // worklist (instructions reachable only through the custom-call get the
+  // lowest priority). The embedded call therefore has to be revisited once the
+  // callee's root value set is complete, otherwise its value set stays stale
+  // (empty at index {0}).
+  std::string hlo_str = R"(
+HloModule CallInsideEmbeddedComputation
+
+callee {
+  constant = f32[] constant(1.0)
+  ROOT tuple = (f32[]) tuple(constant)
+}
+
+embedded_computation {
+  embedded_param = f32[] parameter(0)
+  embedded_call = (f32[]) call(), to_apply=callee
+  embedded_gte = f32[] get-tuple-element(embedded_call), index=0
+  ROOT embedded_add = f32[] add(embedded_param, embedded_gte)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  entry_call = (f32[]) call(), to_apply=callee
+  entry_gte = f32[] get-tuple-element(entry_call), index=0
+  ROOT custom_call = f32[] custom-call(param, entry_gte), custom_call_target="foo", called_computations={embedded_computation}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  // Run the analysis directly, without flattening the call graph, so that the
+  // callee keeps both of its callers.
+  TF_ASSERT_OK_AND_ASSIGN(analysis_,
+                          HloDataflowAnalysis::Run(*module_, ssa_form));
+  const HloDataflowAnalysis& analysis = *analysis_;
+
+  const HloInstruction* constant = FindInstruction(module_.get(), "constant");
+  const HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  const HloInstruction* embedded_call =
+      FindInstruction(module_.get(), "embedded_call");
+  const HloInstruction* embedded_gte =
+      FindInstruction(module_.get(), "embedded_gte");
+  const HloInstruction* entry_call =
+      FindInstruction(module_.get(), "entry_call");
+  const HloInstruction* entry_gte = FindInstruction(module_.get(), "entry_gte");
+
+  // Both calls forward the values of the callee's root.
+  for (const HloInstruction* call : {embedded_call, entry_call}) {
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(call, /*index=*/{}));
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(call, /*index=*/{0}));
+    EXPECT_THAT(HloValuesAt(call, /*index=*/{}),
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(tuple)));
+    EXPECT_THAT(HloValuesAt(call, /*index=*/{0}),
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
+  }
+  EXPECT_THAT(HloValuesAt(embedded_gte),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
+  EXPECT_THAT(HloValuesAt(entry_gte),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
 }
 
 TEST_P(HloDataflowAnalysisTest, SingleWhile) {
@@ -871,6 +950,52 @@ ENTRY main {
   }
 }
 
+TEST_P(HloDataflowAnalysisTest, LateBoundAsyncUpdateTypeSafety) {
+  // Test that a late-bound async-update that expands an empty tuple slot
+  // into a physical array tensor leaf does not pollute its value set with
+  // the predecessor's dummy tuple value.
+  std::string hlo_str = R"(
+HloModule LateBoundAsyncUpdateTypeSafety, is_scheduled=true
+
+InnerComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT add = f32[16]{0} add(p0, p0)
+}
+
+AsyncWrappedComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT call = f32[16]{0} call(p0), to_apply=InnerComputation
+}
+
+ENTRY main () -> f32[16]{0} {
+  p = f32[16]{0} parameter(0)
+  async-start = ((f32[16]{0}), (), s32[]{:S(2)}) async-start(p), calls=AsyncWrappedComputation
+  async-update = ((f32[16]{0}), f32[16]{0}, s32[]{:S(2)}) async-update(async-start)
+  ROOT async-done = f32[16]{0} async-done(async-update)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  HloInstruction* async_update = FindInstruction(module_.get(), "async-update");
+  HloComputation* inner_comp =
+      FindComputation(module_.get(), "InnerComputation");
+  HloInstruction* add = inner_comp->root_instruction();
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis =
+      RunAnalysis(ssa_form, /*bitcast_defines_value=*/false, /*run_dce=*/false);
+
+  // The value set for the expanded leaf array output slot (index {1}) should
+  // contain exactly ONE type-safe HloValue pointer originating from the wrapped
+  // computation's root operation, and MUST NOT contain the predecessor's tuple
+  // value!
+  const HloValueSet& output_value_set = analysis.GetValueSet(async_update, {1});
+  EXPECT_EQ(output_value_set.values().size(), 1);
+  EXPECT_EQ(output_value_set.values().at(0)->defining_instruction(), add);
+}
+
 TEST_P(HloDataflowAnalysisTest, TupleCopy) {
   // Test that a tuple-shaped copy only copies (defines) the top-level value.
   std::string hlo_str = R"(
@@ -1034,20 +1159,54 @@ TEST_P(HloDataflowAnalysisTest, AsyncOps) {
   EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{}));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{0, 0}));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{1}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
   EXPECT_THAT(HloValuesAt(async_update, /*index=*/{0, 0}),
               UnorderedElementsAre(&analysis.GetValueDefinedAt(param, {})));
   EXPECT_THAT(HloValuesAt(async_update, /*index=*/{1}),
               UnorderedElementsAre(
                   &analysis.GetValueDefinedAt(async_wrapped_instruction, {})));
-  EXPECT_THAT(
-      HloValuesAt(async_update, /*index=*/{2}),
-      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {2})));
 
   EXPECT_FALSE(analysis.ValueIsDefinedAt(async_done, /*index=*/{}));
   EXPECT_THAT(HloValuesAt(async_done, /*index=*/{}),
               UnorderedElementsAre(
                   &analysis.GetValueDefinedAt(async_wrapped_instruction, {})));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateChainParameters) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  %async_computation {
+    %async_param0 = f32[2,3] parameter(0)
+    %async_param1 = f32[2,3] parameter(1)
+    ROOT %custom = f32[2,3] add(%async_param0, %async_param1)
+  }
+
+  ENTRY entry {
+    %p0 = f32[2,3] parameter(0)
+    %p1 = f32[2,3] parameter(1)
+    %start = ((f32[2,3]), f32[2,3], u32[]) call-start(%p0), to_apply=%async_computation
+    %update = ((f32[2,3], f32[2,3]), f32[2,3], u32[]) call-update(%start, %p1)
+    ROOT %done = f32[2,3] call-done(%update)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* p0 = FindInstruction(module_.get(), "p0");
+  const HloInstruction* p1 = FindInstruction(module_.get(), "p1");
+  const HloInstruction* async_param0 =
+      FindInstruction(module_.get(), "async_param0");
+  const HloInstruction* async_param1 =
+      FindInstruction(module_.get(), "async_param1");
+
+  EXPECT_THAT(HloValuesAt(async_param0, {}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(p0, {})));
+  EXPECT_THAT(HloValuesAt(async_param1, {}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(p1, {})));
 }
 
 TEST_P(HloDataflowAnalysisTest, AsyncOpsWithTokenOutput) {
@@ -1181,9 +1340,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
               UnorderedElementsAre(&analysis.GetValueDefinedAt(a)));
   EXPECT_THAT(HloValuesAt(async_update, {0, 1}),
               UnorderedElementsAre(&analysis.GetValueDefinedAt(b)));
-  EXPECT_THAT(
-      HloValuesAt(async_update, {2}),
-      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {2})));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, {2}));
 }
 
 TEST_P(HloDataflowAnalysisTest, AsyncCallExcludedThread) {
@@ -1349,9 +1506,7 @@ TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
 
   EXPECT_THAT(HloValuesAt(async_update, {0, 0}),
               UnorderedElementsAre(&analysis.GetValueDefinedAt(p0)));
-  EXPECT_THAT(
-      HloValuesAt(async_update, {2}),
-      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {2})));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, {2}));
 }
 
 TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
@@ -2469,6 +2624,257 @@ TEST_F(HloDataflowAnalysisTest, OptimizePhiInNonSingletonValueSets) {
   EXPECT_THAT(param_set.values(), UnorderedElementsAre(&val1, &val2));
 }
 
+// Values flow through a while loop whose state tuple is wider than the operand
+// table threshold of the use precomputation and whose while instruction has
+// more users than the shared list threshold, so the values nested in the
+// while share one list of its users while the copy, the init tuple and the
+// pair, with one user each, are scanned directly; the wide body root is
+// indexed instead of scanned once per value. Checks that every value gets the
+// uses of the one at a time computation and pins the exact uses through
+// get-tuple-element, copy and tuple users, computation roots, a narrow user
+// with duplicate operands and a wide user with duplicate operands.
+TEST_P(HloDataflowAnalysisTest, PrecomputedUsesOfValuesInWideWhileTuple) {
+  constexpr int kWidth = 64;
+  // Leaves 0 to kWidth - 3 are read by the body, leaf kWidth - 2 is only
+  // written, leaf kWidth - 1 is a nested tuple.
+  constexpr int kNumGtes = kWidth - 2;
+  // Leaves read from the while in the entry computation, so that the while
+  // has many users; the custom call consumes them after the while and the
+  // copy.
+  constexpr int kNumEntryGtes = 24;
+  std::vector<std::string> leaf_shapes(kWidth - 1, "f32[]");
+  leaf_shapes.push_back("(f32[], f32[])");
+  const std::string state_shape =
+      absl::StrCat("(", absl::StrJoin(leaf_shapes, ", "), ")");
+
+  std::string hlo_str = absl::StrCat(R"(
+HloModule WideWhileTuple
+
+body {
+  body_param = )",
+                                     state_shape, " parameter(0)\n");
+  for (int i = 0; i < kNumGtes; ++i) {
+    absl::StrAppend(&hlo_str, "  gte", i,
+                    " = f32[] get-tuple-element(body_param), index=", i, "\n");
+  }
+  std::vector<std::string> root_operands;
+  for (int i = 0; i < kNumGtes; ++i) {
+    root_operands.push_back(i == 1 ? "add" : absl::StrCat("gte", i));
+  }
+  root_operands.push_back("add");
+  root_operands.push_back("pair");
+  absl::StrAppend(&hlo_str, R"(  add = f32[] add(gte1, gte1)
+  pair = (f32[], f32[]) tuple(gte4, gte5)
+  ROOT body_root = )",
+                  state_shape, " tuple(", absl::StrJoin(root_operands, ", "),
+                  R"()
+}
+
+condition {
+  cond_param = )",
+                  state_shape, R"( parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
+
+ENTRY main {
+)");
+  std::vector<std::string> init_operands;
+  for (int i = 0; i < kWidth - 1; ++i) {
+    absl::StrAppend(&hlo_str, "  c", i, " = f32[] constant(", i, ")\n");
+    init_operands.push_back(absl::StrCat("c", i));
+  }
+  init_operands.push_back("init_pair");
+  absl::StrAppend(&hlo_str, R"(  ca = f32[] constant(-1)
+  cb = f32[] constant(-2)
+  init_pair = (f32[], f32[]) tuple(ca, cb)
+  init = )",
+                  state_shape, " tuple(", absl::StrJoin(init_operands, ", "),
+                  R"()
+  while_op = )",
+                  state_shape, R"( while(init), condition=condition, body=body
+  copy = )",
+                  state_shape, " copy(while_op)\n");
+  std::vector<std::string> cc_operands = {"while_op", "copy"};
+  for (int i = 0; i < kNumEntryGtes; ++i) {
+    absl::StrAppend(&hlo_str, "  entry_gte", i,
+                    " = f32[] get-tuple-element(while_op), index=", i, "\n");
+    cc_operands.push_back(absl::StrCat("entry_gte", i));
+  }
+  absl::StrAppend(
+      &hlo_str, "  cc = f32[] custom-call(", absl::StrJoin(cc_operands, ", "),
+      R"(), custom_call_target="Consume", custom_call_has_side_effect=true
+  ROOT out = f32[] get-tuple-element(while_op), index=2
+}
+)");
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  HloInstruction* body_param = FindInstruction(module_.get(), "body_param");
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* body_root = FindInstruction(module_.get(), "body_root");
+  HloInstruction* init = FindInstruction(module_.get(), "init");
+  HloInstruction* while_op = FindInstruction(module_.get(), "while_op");
+  HloInstruction* copy = FindInstruction(module_.get(), "copy");
+  HloInstruction* cc = FindInstruction(module_.get(), "cc");
+  HloInstruction* out = FindInstruction(module_.get(), "out");
+  std::vector<HloInstruction*> gtes;
+  for (int i = 0; i < kNumGtes; ++i) {
+    gtes.push_back(FindInstruction(module_.get(), absl::StrCat("gte", i)));
+  }
+  std::vector<HloInstruction*> entry_gtes;
+  for (int i = 0; i < kNumEntryGtes; ++i) {
+    entry_gtes.push_back(
+        FindInstruction(module_.get(), absl::StrCat("entry_gte", i)));
+  }
+  auto constant = [&](int i) {
+    return FindInstruction(module_.get(), absl::StrCat("c", i));
+  };
+  auto uses_at = [](const HloValue& value, const HloInstruction* user) {
+    std::vector<HloUse> uses;
+    for (const HloUse& use : value.GetUses()) {
+      if (use.instruction == user) {
+        uses.push_back(use);
+      }
+    }
+    return uses;
+  };
+  // The custom call reads the while at operand 0, the copy at operand 1 and
+  // entry_gte<i> at operand 2 + i.
+  auto cc_leaf_operand = [](int i) { return 2 + i; };
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& lazy_analysis = RunAnalysis(ssa_form);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> analysis_ptr,
+      HloDataflowAnalysis::Run(
+          *module_, ssa_form, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/[](const HloValue&) { return true; }));
+  const HloDataflowAnalysis& analysis = *analysis_ptr;
+
+  // Both analyses ran on the same module, so their values match by id. Run
+  // populated every value, so ToString prints the uses without computing them.
+  ASSERT_EQ(analysis.values().size(), lazy_analysis.values().size());
+  for (const HloValue* value : analysis.values()) {
+    SCOPED_TRACE(value->ToString());
+    EXPECT_THAT(value->ToString(), HasSubstr(" uses:\n"));
+    EXPECT_THAT(
+        value->GetUses(),
+        ElementsAreArray(lazy_analysis.GetValue(value->id()).GetUses()));
+  }
+
+  // Leaf 0 passes through the loop untouched. Its nested positions in the
+  // init tuple, the while, the parameters and the copy see only the while and
+  // the custom call; the body root is a use because it is a root; the entry
+  // get-tuple-element hands it to the custom call at the top level.
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant(0)).GetUses(),
+              UnorderedElementsAre(HloUse{while_op, 0, {0}}, HloUse{cc, 0, {0}},
+                                   HloUse{cc, 1, {0}},
+                                   HloUse{cc, cc_leaf_operand(0), {}},
+                                   HloUse{body_root, 0, {}}));
+  // Leaf 2 additionally reaches the entry root, so the root get-tuple-element
+  // of the while is a use of it but of no other leaf.
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant(2)).GetUses(),
+              UnorderedElementsAre(
+                  HloUse{while_op, 0, {2}}, HloUse{cc, 0, {2}},
+                  HloUse{cc, 1, {2}}, HloUse{cc, cc_leaf_operand(2), {}},
+                  HloUse{body_root, 2, {}}, HloUse{out, 0, {2}}));
+  // Leaf 4 is also nested in the pair, whose only user is the body root.
+  std::vector<HloUse> leaf4_uses = {
+      HloUse{while_op, 0, {4}}, HloUse{cc, 0, {4}},
+      HloUse{cc, 1, {4}},       HloUse{cc, cc_leaf_operand(4), {}},
+      HloUse{body_root, 4, {}}, HloUse{body_root, kWidth - 1, {0}}};
+  if (!ssa_form) {
+    // Without phis leaf 4 also flows around the loop inside the pair.
+    leaf4_uses.push_back(HloUse{cc, 0, {kWidth - 1, 0}});
+    leaf4_uses.push_back(HloUse{cc, 1, {kWidth - 1, 0}});
+  }
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant(4)).GetUses(),
+              UnorderedElementsAreArray(leaf4_uses));
+
+  // The add appears twice among the many operands of the body root, in
+  // ascending operand order.
+  const HloValue& add_value = analysis.GetValueDefinedAt(add);
+  EXPECT_THAT(
+      uses_at(add_value, body_root),
+      ElementsAre(HloUse{body_root, 1, {}}, HloUse{body_root, kWidth - 2, {}}));
+  if (ssa_form) {
+    EXPECT_THAT(add_value.GetUses(),
+                ElementsAre(HloUse{body_root, 1, {}},
+                            HloUse{body_root, kWidth - 2, {}}));
+    // The phi at leaf 1 is used twice by the add, in ascending operand order.
+    EXPECT_THAT(analysis.GetUniqueValueAt(gtes[1]).GetUses(),
+                ElementsAre(HloUse{add, 0, {}}, HloUse{add, 1, {}}));
+  } else {
+    EXPECT_THAT(
+        add_value.GetUses(),
+        UnorderedElementsAre(
+            HloUse{body_root, 1, {}}, HloUse{body_root, kWidth - 2, {}},
+            HloUse{cc, 0, {1}}, HloUse{cc, 0, {kWidth - 2}}, HloUse{cc, 1, {1}},
+            HloUse{cc, 1, {kWidth - 2}}, HloUse{cc, cc_leaf_operand(1), {}},
+            HloUse{add, 0, {}}, HloUse{add, 1, {}}));
+  }
+
+  // The top level tuple values are used by every get-tuple-element, in users
+  // order, by the copy and by the custom call; without phis the init tuple
+  // value also reaches the while.
+  std::vector<HloUse> gte_uses;
+  for (HloInstruction* gte : gtes) {
+    gte_uses.push_back(HloUse{gte, 0, {}});
+  }
+  std::vector<HloUse> while_uses = {HloUse{copy, 0, {}}};
+  for (HloInstruction* entry_gte : entry_gtes) {
+    while_uses.push_back(HloUse{entry_gte, 0, {}});
+  }
+  while_uses.push_back(HloUse{cc, 0, {}});
+  while_uses.push_back(HloUse{out, 0, {}});
+  if (ssa_form) {
+    EXPECT_THAT(analysis.GetValueDefinedAt(body_param).GetUses(),
+                ElementsAreArray(gte_uses));
+    EXPECT_THAT(analysis.GetValueDefinedAt(while_op).GetUses(),
+                ElementsAreArray(while_uses));
+  } else {
+    std::vector<HloUse> init_uses = {HloUse{while_op, 0, {}}};
+    init_uses.insert(init_uses.end(), while_uses.begin(), while_uses.end());
+    init_uses.insert(init_uses.end(), gte_uses.begin(), gte_uses.end());
+    EXPECT_THAT(analysis.GetValueDefinedAt(init).GetUses(),
+                UnorderedElementsAreArray(init_uses));
+  }
+  EXPECT_THAT(analysis.GetValueDefinedAt(copy).GetUses(),
+              ElementsAre(HloUse{cc, 1, {}}));
+}
+
+// Run precomputes the uses of the values its predicate accepts and leaves the
+// others to the lazy computation, which still yields their uses.
+TEST_P(HloDataflowAnalysisTest, PrecomputesUsesOfAcceptedValuesOnly) {
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(R"(
+HloModule AcceptedValuesOnly
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT pair = (f32[], s32[]) tuple(p0, p1)
+}
+)"));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> analysis,
+      HloDataflowAnalysis::Run(
+          *module_, GetParam(), /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/[](const HloValue& value) {
+            return value.shape().element_type() == F32;
+          }));
+  HloInstruction* pair = FindInstruction(module_.get(), "pair");
+  const HloValue& p0_value =
+      analysis->GetValueDefinedAt(FindInstruction(module_.get(), "p0"));
+  const HloValue& p1_value =
+      analysis->GetValueDefinedAt(FindInstruction(module_.get(), "p1"));
+  EXPECT_THAT(p0_value.ToString(), HasSubstr(" uses:\n"));
+  EXPECT_THAT(p1_value.ToString(), HasSubstr("uses are not initialized yet"));
+  EXPECT_THAT(p0_value.GetUses(), ElementsAre(HloUse{pair, 0, {}}));
+  EXPECT_THAT(p1_value.GetUses(), ElementsAre(HloUse{pair, 1, {}}));
+  EXPECT_THAT(p1_value.ToString(), HasSubstr(" uses:\n"));
+}
+
 INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
                          HloDataflowAnalysisTest,
                          ::testing::Values(false, true));
@@ -3385,6 +3791,717 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
     defining_instructions.push_back(value->defining_instruction());
   }
   EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateDropsContext) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{2}));
+  EXPECT_FALSE(ShapeUtil::IndexIsValid(async_update->shape(), {2}));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateAddsContext) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+
+  EXPECT_FALSE(ShapeUtil::IndexIsValid(async_start->shape(), {2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateChangesContext) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], f32[4]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundOperandDataflow) {
+  // HLO program with two parameters bound incrementally using async-update.
+  std::string hlo_text = R"hlo(
+HloModule LateBoundOperandDataflow, is_scheduled=true
+
+%Subcomputation (param0: f32[], param1: f32[]) -> f32[] {
+  %param0 = f32[] parameter(0)
+  %param1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%param0, %param1)
+}
+
+ENTRY %entry () -> f32[] {
+  %constant.1 = f32[] constant(1)
+  %constant.2 = f32[] constant(2)
+  // Initially, no parameters are bound.
+  %async-start = ((), f32[], s32[]{:S(2)}) async-start(),
+      calls=%Subcomputation, async_execution_thread="sparsecore"
+  // Bind the first parameter (param0).
+  %async-update.0 = ((f32[]), f32[], s32[]{:S(2)}) async-update(%async-start, %constant.1)
+  // Bind the second parameter (param1) incrementally.
+  %async-update.1 = ((f32[], f32[]), f32[], s32[]{:S(2)}) async-update(%async-update.0, %constant.2)
+  ROOT %async-done = f32[] async-done(%async-update.1)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloComputation* subcomputation =
+      FindComputation(module_.get(), "Subcomputation");
+  const HloInstruction* subparam0 = subcomputation->parameter_instruction(0);
+  const HloInstruction* subparam1 = subcomputation->parameter_instruction(1);
+
+  const HloInstruction* constant1 =
+      FindInstruction(module_.get(), "constant.1");
+  const HloInstruction* constant2 =
+      FindInstruction(module_.get(), "constant.2");
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update_0 =
+      FindInstruction(module_.get(), "async-update.0");
+  const HloInstruction* async_update_1 =
+      FindInstruction(module_.get(), "async-update.1");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  const HloInstruction* sub_add = FindInstruction(module_.get(), "add");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(constant1, {}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(constant2, {}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, {}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update_0, {}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update_1, {}));
+
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_done, {}));
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(sub_add, {}));
+
+  // Verify that constant1 correctly reaches param0 via the first async-update.
+  EXPECT_EQ(analysis.GetUniqueValueAt(subparam0),
+            analysis.GetValueDefinedAt(constant1));
+
+  // Verify that constant2 correctly reaches param1 via the second async-update.
+  EXPECT_EQ(analysis.GetUniqueValueAt(subparam1),
+            analysis.GetValueDefinedAt(constant2));
+
+  EXPECT_THAT(analysis.GetValueSet(async_done).values(),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(sub_add)));
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundOutputDataflow) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT custom-call = f32[10] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY main {
+  p = f32[10] parameter(0)
+  async-start = ((f32[10]), (), s32[]) async-start(p), calls=async_computation
+  async-update = ((f32[10]), f32[10], s32[]) async-update(async-start)
+  ROOT async-done = f32[10] async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* custom_call =
+      FindInstruction(module_.get(), "custom-call");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  const HloValueSet& async_done_values = analysis.GetValueSet(async_done);
+  const HloValue& cc_value = analysis.GetValueDefinedAt(custom_call);
+
+  EXPECT_TRUE(absl::c_linear_search(async_done_values.values(), &cc_value));
+}
+
+TEST_P(HloDataflowAnalysisTest, AliasInfoPropagation) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+Subcomputation (param0: f32[]) -> f32[] {
+  ROOT p0 = f32[] parameter(0)
+}
+
+ENTRY main {
+  constant = f32[] constant(1)
+  async-start = ((f32[]), (), s32[]) async-start(constant), calls=Subcomputation
+  async-update = ((f32[]), f32[], s32[]) async-update(async-start)
+  ROOT async-done = f32[] async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  HloInstruction* async_start = FindInstruction(module_.get(), "async-start");
+  HloInstruction* constant = FindInstruction(module_.get(), "constant");
+
+  // Programmatically set output-to-operand aliasing on AsyncStart.
+  auto* async_start_concrete = Cast<HloAsyncStartInstruction>(async_start);
+
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasing;
+  aliasing.push_back({ShapeIndex({0, 0}), {0, ShapeIndex({})}});
+  async_start_concrete->set_output_to_operand_aliasing(aliasing);
+
+  // Run HloAliasAnalysis
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
+
+  // Verify that constant and async-start at {0, 0} are in the same buffer!
+  const HloBuffer& constant_buffer =
+      alias_analysis->GetUniqueBufferAt(constant);
+  const HloBuffer& async_start_buffer =
+      alias_analysis->GetUniqueBufferAt(async_start, {0, 0});
+  EXPECT_EQ(constant_buffer.id(), async_start_buffer.id());
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncStartValueSet) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+Subcomputation (param0: f32[]) -> f32[] {
+  ROOT p0 = f32[] parameter(0)
+}
+
+ENTRY main {
+  constant = f32[] constant(1)
+  async-start = ((f32[]), (), s32[]) async-start(constant), calls=Subcomputation
+  async-update = ((f32[]), f32[], s32[]) async-update(async-start)
+  ROOT async-done = f32[] async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  // Programmatically set output-to-operand aliasing on AsyncStart.
+  HloInstruction* async_start_non_const =
+      FindInstruction(module_.get(), "async-start");
+  auto* async_start_concrete =
+      Cast<HloAsyncStartInstruction>(async_start_non_const);
+
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasing;
+  aliasing.push_back({ShapeIndex({0, 0}), {0, ShapeIndex({})}});
+  async_start_concrete->set_output_to_operand_aliasing(aliasing);
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+
+  const HloValueSet& value_set = analysis.GetValueSet(async_start, {0, 0});
+
+  EXPECT_EQ(value_set.values().size(), 1);
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundOutputBufferDataflow) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT custom-call = f32[10] custom-call(p0), custom_call_target="foo"
+}
+
+ENTRY main {
+  p = f32[10] parameter(0)
+  async-start = ((f32[10]), (), s32[]) async-start(p), calls=async_computation
+  async-update = ((f32[10]), f32[10], s32[]) async-update(async-start)
+  ROOT async-done = f32[10] async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  const HloValueSet& async_done_values = analysis.GetValueSet(async_done);
+
+  EXPECT_FALSE(async_done_values.values().empty());
+}
+
+TEST_P(HloDataflowAnalysisTest, LateBoundNestedTupleOutputDataflow) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT tuple = (f32[10], f32[10]) tuple(p0, p0)
+}
+
+ENTRY main {
+  p = f32[10] parameter(0)
+  async-start = ((f32[10]), (), s32[]) async-start(p), calls=async_computation
+  // The output shape starts empty {}, and gets bound later.
+  async-update = ((f32[10]), (f32[10], f32[10]), s32[]) async-update(async-start)
+  ROOT async-done = (f32[10], f32[10]) async-done(async-update)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  const HloValueSet& async_done_values_0 =
+      analysis.GetValueSet(async_done, {0});
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  LOG(ERROR) << "async_start shape: " << async_start->shape().ToString();
+
+  LOG(ERROR) << "async_done_values_0: " << async_done_values_0.ToString();
+  EXPECT_FALSE(async_done_values_0.values().empty());
+}
+TEST_P(HloDataflowAnalysisTest, DUSAndAsyncInLoop) {
+  std::string hlo_text = R"hlo(
+HloModule Module, is_scheduled=true
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT bitcast = f32[10] bitcast(p0)
+}
+
+body {
+  state = (s32[], f32[10]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  val = f32[10] get-tuple-element(state), index=1
+
+  one = s32[] constant(1)
+  next_iter = s32[] add(iter, one)
+
+  async-start = ((f32[10]), (), s32[]) async-start(val), calls=async_computation
+  async-update = ((f32[10]), f32[10], s32[]) async-update(async-start)
+  async-done = f32[10] async-done(async-update)
+
+  updates = f32[2] constant({1, 2})
+  start_index = s32[] constant(0)
+  dus = f32[10] dynamic-update-slice(async-done, updates, start_index)
+
+  ROOT next_state = (s32[], f32[10]) tuple(next_iter, dus)
+}
+
+condition {
+  state = (s32[], f32[10]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(10)
+  ROOT cond = pred[] compare(iter, limit), direction=LT
+}
+
+ENTRY main {
+  iter_init = s32[] constant(0)
+  val_init = f32[10] parameter(0)
+  state_init = (s32[], f32[10]) tuple(iter_init, val_init)
+  ROOT while = (s32[], f32[10]) while(state_init), condition=condition, body=body
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+
+  // Run Alias Analysis to trigger the crash.
+  auto alias_analysis_or = HloAliasAnalysis::Run(module_.get(), &alias_info_);
+  EXPECT_OK(alias_analysis_or.status());
+}
+
+TEST_F(HloDataflowAnalysisTest, DisableCallPropagationCrashesOnMixedCallers) {
+  const char* hlo_text = R"(
+HloModule module
+
+subcomp {
+  param = f32[] parameter(0)
+  ROOT add = f32[] add(param, param)
+}
+
+while_cond {
+  param = f32[] parameter(0)
+  limit = f32[] constant(10.0)
+  ROOT cond = pred[] compare(param, limit), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  call = f32[] call(p0), to_apply=subcomp
+  ROOT while = f32[] while(call), condition=while_cond, body=subcomp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  EXPECT_DEATH(
+      (void)HloDataflowAnalysis::Run(*module_, /*ssa_form=*/true,
+                                     /*bitcast_defines_value=*/false,
+                                     /*execution_threads=*/{},
+                                     /*propagate_through_calls=*/false),
+      "is_regular_call_computation");
+}
+
+TEST_F(HloDataflowAnalysisTest, DataflowCallArgumentToParameter) {
+  const char* hlo_text = R"(
+HloModule module
+
+subcomp {
+  param = f32[] parameter(0)
+  ROOT add = f32[] add(param, param)
+}
+
+ENTRY main {
+  const0 = f32[] constant(1.0)
+  ROOT call = f32[] call(const0), to_apply=subcomp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* const0 = FindInstruction(module_.get(), "const0");
+  HloInstruction* param = FindInstruction(module_.get(), "param");
+
+  {
+    ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(
+                                            *module_, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/false));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(param));
+    const HloValueSet& param_value_set = analysis->GetValueSet(param);
+    EXPECT_THAT(param_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(param)));
+    EXPECT_THAT(param_value_set.values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(
+                                            *module_, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/true));
+    EXPECT_FALSE(analysis->ValueIsDefinedAt(param));
+    const HloValueSet& param_value_set = analysis->GetValueSet(param);
+    EXPECT_THAT(param_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const0)));
+  }
+}
+
+TEST_F(HloDataflowAnalysisTest, DataflowCalledComputationRootToCallResult) {
+  const char* hlo_text = R"(
+HloModule module
+
+subcomp {
+  param = f32[] parameter(0)
+  ROOT add = f32[] add(param, param)
+}
+
+ENTRY main {
+  const0 = f32[] constant(1.0)
+  ROOT call = f32[] call(const0), to_apply=subcomp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* call = FindInstruction(module_.get(), "call");
+  {
+    ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(
+                                            *module_, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/false));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(call));
+    const HloValueSet& call_value_set = analysis->GetValueSet(call);
+    EXPECT_THAT(call_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(call)));
+    EXPECT_THAT(
+        call_value_set.values(),
+        ::testing::Not(::testing::Contains(&analysis->GetValueDefinedAt(add))));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(
+                                            *module_, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/true));
+    EXPECT_FALSE(analysis->ValueIsDefinedAt(call));
+    const HloValueSet& call_value_set = analysis->GetValueSet(call);
+    EXPECT_THAT(call_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(add)));
+  }
+}
+
+TEST_F(HloDataflowAnalysisTest, DataflowCallArgumentToCallResult) {
+  const char* hlo_text = R"(
+HloModule module
+
+subcomp {
+  ROOT param = f32[] parameter(0)
+}
+
+ENTRY main {
+  const0 = f32[] constant(42.0)
+  ROOT call = f32[] call(const0), to_apply=subcomp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* const0 = FindInstruction(module_.get(), "const0");
+  HloInstruction* call = FindInstruction(module_.get(), "call");
+
+  {
+    ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(
+                                            *module_, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/false));
+    const HloValueSet& call_value_set = analysis->GetValueSet(call);
+    EXPECT_THAT(call_value_set.values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(
+                                            *module_, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/true));
+    const HloValueSet& call_value_set = analysis->GetValueSet(call);
+    EXPECT_THAT(call_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const0)));
+  }
+}
+
+TEST_F(HloDataflowAnalysisTest,
+       DataflowCallArgumentToCallResultSameFunctionCalledTwice) {
+  const char* hlo_text = R"(
+HloModule module
+
+subcomp {
+  ROOT param = f32[] parameter(0)
+}
+
+ENTRY main {
+  const0 = f32[] constant(42.0)
+  const1 = f32[] constant(43.0)
+  call.0 = f32[] call(const0), to_apply=subcomp
+  call.1 = f32[] call(const1), to_apply=subcomp
+  ROOT add = f32[] add(call.0, call.1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* const0 = FindInstruction(module_.get(), "const0");
+  HloInstruction* const1 = FindInstruction(module_.get(), "const1");
+  HloInstruction* call0 = FindInstruction(module_.get(), "call.0");
+  HloInstruction* call1 = FindInstruction(module_.get(), "call.1");
+
+  {
+    ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(
+                                            *module_, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/false));
+    const HloValueSet& call0_value_set = analysis->GetValueSet(call0);
+    const HloValueSet& call1_value_set = analysis->GetValueSet(call1);
+    EXPECT_THAT(call0_value_set.values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+    EXPECT_THAT(call0_value_set.values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const1))));
+    EXPECT_THAT(call1_value_set.values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+    EXPECT_THAT(call1_value_set.values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const1))));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(
+                                            *module_, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/true));
+    const HloValueSet& call0_value_set = analysis->GetValueSet(call0);
+    const HloValueSet& call1_value_set = analysis->GetValueSet(call1);
+    EXPECT_THAT(call0_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const0)));
+    EXPECT_THAT(call0_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const1)));
+    EXPECT_THAT(call1_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const0)));
+    EXPECT_THAT(call1_value_set.values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const1)));
+  }
+}
+
+TEST_F(HloDataflowAnalysisTest, DisablePropagateThroughControlFlow) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+callee {
+  ROOT call_param = f32[] parameter(0)
+}
+
+while_cond {
+  param = f32[] parameter(0)
+  ROOT cond = pred[] constant(false)
+}
+
+while_body {
+  param = f32[] parameter(0)
+  ROOT add = f32[] add(param, param)
+}
+
+ENTRY main {
+  const0 = f32[] constant(1.0)
+  call_inst = f32[] call(const0), to_apply=callee
+  ROOT while_inst = f32[] while(call_inst), condition=while_cond, body=while_body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* const0 = FindInstruction(module_.get(), "const0");
+  HloInstruction* call_inst = FindInstruction(module_.get(), "call_inst");
+  HloInstruction* call_param =
+      module_->GetComputationWithName("callee")->parameter_instruction(0);
+  HloInstruction* while_inst = FindInstruction(module_.get(), "while_inst");
+  HloInstruction* body_param =
+      module_->GetComputationWithName("while_body")->parameter_instruction(0);
+
+  {
+    ASSERT_OK_AND_ASSIGN(
+        auto analysis,
+        HloDataflowAnalysis::Run(
+            *module_, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+            /*execution_threads=*/{}, /*propagate_through_calls=*/false,
+            /*precompute_uses=*/std::nullopt,
+            /*propagate_through_control_flow=*/false));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(call_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(call_param));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(while_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(body_param));
+    EXPECT_THAT(analysis->GetValueSet(body_param).values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(
+        auto analysis,
+        HloDataflowAnalysis::Run(
+            *module_, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+            /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+            /*precompute_uses=*/std::nullopt,
+            /*propagate_through_control_flow=*/false));
+    EXPECT_FALSE(analysis->ValueIsDefinedAt(call_inst));
+    EXPECT_FALSE(analysis->ValueIsDefinedAt(call_param));
+    EXPECT_THAT(analysis->GetValueSet(call_inst).values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const0)));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(while_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(body_param));
+    EXPECT_THAT(analysis->GetValueSet(body_param).values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+  }
+}
+
+TEST_F(HloDataflowAnalysisTest, CallMarkerCustomCalls) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  before = (f32[4], f32[4]) custom-call(p0, p1), custom_call_target="__xla_internal_call_marker_before"
+  gte0 = f32[4] get-tuple-element(before), index=0
+  gte1 = f32[4] get-tuple-element(before), index=1
+  add = f32[4] add(gte0, gte1)
+  ROOT after = f32[4] custom-call(add), custom_call_target="__xla_internal_call_marker_after"
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* p0 = FindInstruction(module_.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module_.get(), "p1");
+  HloInstruction* before = FindInstruction(module_.get(), "before");
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* after = FindInstruction(module_.get(), "after");
+
+  ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(*module_));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(before, {}));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(before, {0}));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(before, {0}),
+            &analysis->GetValueDefinedAt(p0));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(before, {1}),
+            &analysis->GetValueDefinedAt(p1));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(after));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(after),
+            &analysis->GetValueDefinedAt(add));
 }
 
 }  // namespace

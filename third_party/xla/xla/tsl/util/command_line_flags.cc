@@ -231,6 +231,12 @@ Flag::Flag(const char* name, std::function<bool(std::string)> string_hook,
       string_default_for_display_(std::move(default_value_for_display)),
       usage_text_(usage_text) {}
 
+Flag::Flag(const Flag&) = default;
+Flag::Flag(Flag&&) noexcept = default;
+Flag& Flag::operator=(const Flag&) = default;
+Flag& Flag::operator=(Flag&&) noexcept = default;
+Flag::~Flag() = default;
+
 bool Flag::Parse(absl::string_view arg, bool* value_parsing_ok) const {
   bool result = false;
   if (type_ == TYPE_INT32) {

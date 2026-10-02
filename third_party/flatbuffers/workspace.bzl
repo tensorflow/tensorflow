@@ -14,7 +14,7 @@ def repo():
         sha256 = _FLATBUFFERS_SHA256,
         urls = tf_mirror_urls("https://github.com/google/flatbuffers/archive/v%s.tar.gz" % _FLATBUFFERS_VERSION),
         build_file = "//third_party/flatbuffers:flatbuffers.BUILD",
-        system_build_file = "//third_party/flatbuffers:BUILD.system",
+        system_build_file = "//third_party/systemlibs:flatbuffers.BUILD",
         link_files = {
             "//third_party/flatbuffers:build_defs.bzl": "build_defs.bzl",
         },

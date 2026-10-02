@@ -37,7 +37,7 @@ struct GatherNdSlice {
   // Performs a slice gather op on (Tparams, Tindices), writing to Tout.
   // Returns an index to Tindices if the value at that index is out of range.
   // Returns -1 if all values of Tindices are in range.
-  Index operator()(const Device& d, const Index slice_size,
+  Index operator()(const Device& d, Index slice_size,
                    typename TTypes<int32_t>::Scalar Tscratch,
                    typename TTypes<T, IXDIM + 1>::ConstTensor Tparams,
                    typename TTypes<Index>::ConstMatrix Tindices,
@@ -156,7 +156,7 @@ absl::Status DoGatherNd(
     using CPUDevice = Eigen::ThreadPoolDevice;
 
     const bool check_bad_indices =
-        ((std::is_same<Device, CPUDevice>::value &&
+        ((std::is_same_v<Device, CPUDevice> &&
           bad_indices_policy == BadIndicesPolicy::kDefault) ||
          bad_indices_policy == BadIndicesPolicy::kError);
     if (check_bad_indices && bad_i >= 0) {

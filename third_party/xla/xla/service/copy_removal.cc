@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -624,10 +625,12 @@ Relation::RuntimeOrder ComputeRelativeLocation::ComputeRuntimeOrdering(
 CopyRemover::CopyRemover(
     const HloModule& module, const HloAliasAnalysis& alias_analysis,
     const AliasInfo* alias_info, HloOrdering* ordering,
-    const absl::flat_hash_set<absl::string_view>& execution_threads)
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    std::optional<int64_t> view_color)
     : dataflow_(alias_analysis.dataflow_analysis()),
       alias_info_(alias_info),
-      ordering_(ordering) {
+      ordering_(ordering),
+      view_color_(view_color) {
   // Instruction indices based on post order traversal of computations and
   // instructions. Used as an enhancement for getting strict weak ordering
   // used for sorting below.
@@ -792,6 +795,9 @@ void CopyRemover::AddValueList(
     for (const HloUse& use : value->GetUses()) {
       new_node->uses.push_back(&use);
     }
+    if (view_color_.has_value()) {
+      AddViewUses(value, new_node);
+    }
 
     // Connect the new node into the linked list.
     if (tail == nullptr) {
@@ -807,6 +813,63 @@ void CopyRemover::AddValueList(
   tail->next = head;
   head->prev = tail;
   value_lists_.insert(head);
+}
+
+void CopyRemover::AddViewUses(const HloValue* value, ValueNode* node) {
+  auto is_view = [this](const HloInstruction* instruction) {
+    return instruction->shape().IsArray() &&
+           instruction->shape().has_layout() &&
+           instruction->shape().layout().memory_space() == *view_color_;
+  };
+  // A view's own readers are its dataflow uses already; seeding from its view
+  // colored bitcasts would list every reader a second time.
+  if (is_view(value->defining_instruction())) {
+    return;
+  }
+  // A view colored bitcast, or a view colored copy (an address copy until
+  // copy insertion elides it), forwards the address to its own users. Any
+  // other view colored user is recorded as a reader at its own position, on
+  // purpose: nothing here orders it against the other readers of the viewed
+  // value, so the pass that creates views must never let a reader write
+  // through one. An in place writer through a view is sound only when its
+  // write is also a dataflow use of the viewed buffer (for example the
+  // dynamic-update-slice it feeds), which orders it.
+  auto forwards_view = [&](const HloInstruction* instruction) {
+    return is_view(instruction) &&
+           (instruction->opcode() == HloOpcode::kBitcast ||
+            instruction->opcode() == HloOpcode::kCopy);
+  };
+  // Only the viewed value itself (operand 0 of the view) is read through the
+  // view; a view's other operands (start indices) are consumed at the view's
+  // own position.
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::vector<const HloInstruction*> worklist;
+  for (const HloUse& use : value->GetUses()) {
+    if (use.operand_number == 0 && is_view(use.instruction) &&
+        visited.insert(use.instruction).second) {
+      worklist.push_back(use.instruction);
+    }
+  }
+  while (!worklist.empty()) {
+    const HloInstruction* view = worklist.back();
+    worklist.pop_back();
+    for (HloInstruction* user : view->users()) {
+      if (forwards_view(user)) {
+        if (visited.insert(user).second) {
+          worklist.push_back(user);
+        }
+        continue;
+      }
+      for (int64_t i = 0; i < user->operand_count(); ++i) {
+        if (user->operand(i) != view) {
+          continue;
+        }
+        const HloUse& use = view_uses_.emplace_back(user, i, ShapeIndex{});
+        view_uses_by_pointer_.insert(&use);
+        node->uses.push_back(&use);
+      }
+    }
+  }
 }
 
 // This method also fills in copy_map_ which indicates which nodes
@@ -859,8 +922,10 @@ absl::Status CopyRemover::Verify() const {
         TF_RET_CHECK(copy_map_.at(def).dest == p);
       }
       for (const HloUse* use : p->uses) {
+        // A copy reading a view of p's value is a view use of p, but its copy
+        // source is the view's value.
         if (use->instruction->opcode() == HloOpcode::kCopy &&
-            ContainsKey(copy_map_, use->instruction)) {
+            ContainsKey(copy_map_, use->instruction) && !IsViewUse(use)) {
           TF_RET_CHECK(copy_map_.at(use->instruction).src == p);
         }
       }
@@ -1229,10 +1294,44 @@ bool CopyRemover::TryElideCopy(
     // Splice source buffer values list right after 'prev_dest'.
     SpliceAfter(copy_node.src->next, Prev(*copy_node.dest));
   } else {
-    VLOG(2) << copy->name()
-            << " copies value in middle of source buffer to value in middle "
-               "of destination buffer";
-    return false;
+    // Check whether src and dest are already in the same list, i.e. the copy
+    // connects two values that already share a buffer, but non-adjacently
+    // (values defined in other conditional branches may be ordered between
+    // them). Removing such a copy does not merge buffers; it only transfers
+    // the uses of dest to src. This is safe if those uses are live-range
+    // before every value defined between src and dest.
+    bool same_list = false;
+    for (ValueNode* n = copy_node.src->next; n != copy_node.src; n = n->next) {
+      if (n == copy_node.dest) {
+        same_list = true;
+        break;
+      }
+    }
+    if (!same_list) {
+      VLOG(2) << copy->name()
+              << " copies value in middle of source buffer to value in middle "
+                 "of destination buffer";
+      return false;
+    }
+    ValueNode merged(copy_node.src->value);
+    merged.uses = copy_node.dest->uses;
+    for (ValueNode* n = copy_node.src->next; n != copy_node.dest; n = n->next) {
+      if (!LiveRangeBefore(merged, *n)) {
+        VLOG(2) << copy->name()
+                << " connects values in the same buffer, but the uses of its "
+                   "destination are not live-range before the intervening "
+                   "value "
+                << n->value->ToShortString();
+        return false;
+      }
+    }
+    VLOG(2) << "TryElideCopy - copy (" << copy->name()
+            << ") connects two values in the same buffer; transferring uses.";
+    RemoveCopyValue(copy_node.dest, copy_node.src);
+    XLA_VLOG_LINES(4, ToString());
+    DCHECK_OK(Verify());
+    VLOG(3) << "TryElideCopy succeeded for: " << copy->name();
+    return true;
   }
 
   RemoveCopyValue(copy_node.dest);
@@ -1245,36 +1344,45 @@ bool CopyRemover::TryElideCopy(
 
 // Delete the given ValueNode associated with a elided kCopy
 // instruction. This should be called after splicing the value lists of the
-// source and destination buffers together.
-void CopyRemover::RemoveCopyValue(ValueNode* copy_value_node) {
+// source and destination buffers together. 'operand_node' is the node whose
+// value the elided copy read; it receives the uses of 'copy_value_node'. If
+// nullptr, the node preceding 'copy_value_node' in its list is used.
+void CopyRemover::RemoveCopyValue(ValueNode* copy_value_node,
+                                  ValueNode* operand_node) {
   CHECK_EQ(copy_value_node->value->defining_instruction()->opcode(),
            HloOpcode::kCopy);
-  ValueNode* operand_node = copy_value_node->prev;
+  if (operand_node == nullptr) {
+    operand_node = copy_value_node->prev;
+  }
   CHECK(operand_node != copy_value_node);
 
   VLOG(2) << "Removing copy " << operand_node->value->ToShortString() << " => "
           << copy_value_node->value->ToShortString();
 
-  // Splice out the copy value node.
-  operand_node->next = copy_value_node->next;
-  copy_value_node->next->prev = operand_node;
+  // Splice out the copy value node. The operand node is not necessarily
+  // adjacent to the copy value node in the list.
+  copy_value_node->prev->next = copy_value_node->next;
+  copy_value_node->next->prev = copy_value_node->prev;
 
-  // Patch up uses. Remove use of copy from operand_node uses.
-  auto it =
-      absl::c_find_if(operand_node->uses, [copy_value_node](const HloUse* use) {
-        return use->instruction ==
-               copy_value_node->value->defining_instruction();
-      });
+  // Patch up uses. Remove use of copy from operand_node uses. A view use at
+  // the same copy (the copy reads a view of the operand) stays: the copy still
+  // reads the operand's buffer there.
+  auto it = absl::c_find_if(operand_node->uses, [this, copy_value_node](
+                                                    const HloUse* use) {
+    return use->instruction == copy_value_node->value->defining_instruction() &&
+           !IsViewUse(use);
+  });
   CHECK(it != operand_node->uses.end());
   operand_node->uses.erase(it);
 
   // If the elided copy has any uses which are themselves kCopy instructions
   // then patch up the copy info to reflect the that this kCopy instruction
-  // has a different operand (the operand of the elided copy).
+  // has a different operand (the operand of the elided copy). A view use at
+  // a copy keeps its own source, the view's value.
   for (const HloUse* copy_use : copy_value_node->uses) {
     operand_node->uses.push_back(copy_use);
     if (copy_use->instruction->opcode() == HloOpcode::kCopy &&
-        ContainsKey(copy_map_, copy_use->instruction)) {
+        ContainsKey(copy_map_, copy_use->instruction) && !IsViewUse(copy_use)) {
       copy_map_.at(copy_use->instruction).src = operand_node;
     }
   }

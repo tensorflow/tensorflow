@@ -19,6 +19,7 @@ import operator
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -53,6 +54,23 @@ class MatMulMixedType(test_lib.TestCase):
     c = math_ops.batch_mat_mul_v3(a, b, adj_y=True, Tout=np_bf16)
     self.assertAllEqual((2, 2), c.shape)
     self.assertAllEqual([[5, 11], [11, 25]], c)
+
+
+@test_util.with_eager_op_as_function
+class MatMulAddFusionTest(test_lib.TestCase):
+  """Test broadcasting behavior when MatMul and Add are fused in graph execution."""
+
+  def testMatMulAddBroadcastInTfFunction(self):
+    @def_function.function
+    def f(x):
+      return math_ops.add(
+          math_ops.matmul(x, x, transpose_a=True),
+          math_ops.matmul(array_ops.ones([1, 1], dtype=x.dtype), x),
+      )
+
+    x = constant_op.constant(np.ones([1, 7], dtype=np.float32))
+    res = f(x)
+    self.assertEqual(tuple(res.shape), (7, 7))
 
 
 @test_util.with_eager_op_as_function
@@ -255,7 +273,7 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
       )
       self.assertIn("rank 1", msg, "Error message should mention 'rank 1'")
 
-    # The message should suggest tf.expand_dims or tf.reshape for `a`.
+    # The message should suggest tf.expand_dims and tf.reshape for `a`.
     try:
       math_ops.matmul(
           ops.convert_to_tensor([1.0, 2.0]),
@@ -282,7 +300,8 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
           ops.convert_to_tensor([5.0, 6.0]),
       )
 
-    # The message for `b` should also suggest tf.expand_dims and tf.reshape.
+    # The message for `b` should also suggest tf.expand_dims, tf.reshape, and
+    # tf.linalg.matvec.
     try:
       math_ops.matmul(
           ops.convert_to_tensor([[1.0, 2.0], [3.0, 4.0]]),
@@ -295,6 +314,11 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
       )
       self.assertIn(
           "tf.reshape", msg, "Error for `b` should suggest tf.reshape"
+      )
+      self.assertIn(
+          "tf.linalg.matvec",
+          msg,
+          "Error for `b` should suggest tf.linalg.matvec",
       )
 
   def testMismatchedDimensions(self):

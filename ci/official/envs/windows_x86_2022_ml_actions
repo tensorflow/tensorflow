@@ -17,7 +17,7 @@ if [[ "$TFCI_GITHUB_ACTIONS" == "true" ]]; then
   TFCI_DOCKER_ENABLE=0
 fi
 TFCI_DOCKER_PULL_ENABLE=1
-TFCI_DOCKER_IMAGE="us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-windows@sha256:023fa901fda70be8890b05689d0a667287692c1f59d0abe4add7208ec5a12707"
+TFCI_DOCKER_IMAGE="us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-windows@sha256:d9849afa6a7b074be0f3663969020d53099fa082d92e4796828e1bcbdee5bd25"
 TFCI_BAZEL_BAZELRC_ARGS="--output_user_root=C:/x"
 TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --repo_env=USE_PYWRAP_RULES=True --config=windows_x86_cpu_2022"
 

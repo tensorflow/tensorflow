@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -137,7 +138,7 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
   llvm::Value* indvar_inc = b->CreateAdd(indvar, step, "invar.inc",
                                          /*HasNUW=*/true, /*HasNSW=*/true);
   b->CreateStore(indvar_inc, indvar_address);
-  llvm::BranchInst* back_branch = b->CreateBr(header_bb_);
+  llvm::UncondBrInst* back_branch = b->CreateBr(header_bb_);
 
   std::vector<llvm::Metadata*> loop_metadata = GetLoopMetadata(b);
   if (!loop_metadata.empty()) {
@@ -156,7 +157,7 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
 std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
   const char* const kLlvmLoopUnrollDisableMDName = "llvm.loop.unroll.disable";
   const char* const kLlvmLoopUnrollFullMDName = "llvm.loop.unroll.full";
-  const char* const kLlvmLoopVectorizeMDName = "llvm.loop.vectorize.enable";
+  const char* const kLlvmLoopVectorizeMDName = "llvm.loop.vectorize.disable";
   llvm::LLVMContext* ctx = &start_index_->getContext();
 
   std::vector<llvm::Metadata*> result;
@@ -167,8 +168,7 @@ std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
 
   if (prevent_vectorization_) {
     result.push_back(llvm::MDNode::get(
-        *ctx, {llvm::MDString::get(*ctx, kLlvmLoopVectorizeMDName),
-               llvm::ConstantAsMetadata::get(b->getFalse())}));
+        *ctx, {llvm::MDString::get(*ctx, kLlvmLoopVectorizeMDName)}));
   }
 
   if (unroll_mode_ == xla::llvm_ir::UnrollMode::kFullyUnroll) {
@@ -289,15 +289,15 @@ std::vector<llvm::Value*> ForLoopNest::EmitOperandArrayLoopNest(
       AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
   // Verify every dimension except the 'dimension_to_skip' dimension was set in
   // the index.
-#ifndef NDEBUG
-  for (size_t dimension = 0; dimension < multi_index.size(); ++dimension) {
-    if (dimension == dimension_to_skip) {
-      DCHECK_EQ(nullptr, multi_index[dimension]);
-    } else {
-      DCHECK_NE(nullptr, multi_index[dimension]);
+  if constexpr (tsl::kIsDebugBuild) {
+    for (size_t dimension = 0; dimension < multi_index.size(); ++dimension) {
+      if (dimension == dimension_to_skip) {
+        DCHECK_EQ(nullptr, multi_index[dimension]);
+      } else {
+        DCHECK_NE(nullptr, multi_index[dimension]);
+      }
     }
   }
-#endif  // NDEBUG
   return multi_index;
 }
 

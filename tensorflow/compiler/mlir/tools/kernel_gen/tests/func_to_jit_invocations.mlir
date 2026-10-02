@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: kernel-gen-opt %s --split-input-file \
 // RUN:   --func-to-jit-invocation="tile-sizes=1,2,3 unroll-factors=3,2,1 \
 // RUN:       enable-ftz=false cpu-codegen=false" | \
@@ -27,12 +41,12 @@ func.func @unary_tanh(%arg : tensor<?xf32>) -> tensor<?xf32> {
 // CHECK-SAME:        }
 // CHECK-SAME:      }
 // CHECK-SAME:      "
-// CHECK-SAME:      {
-// CHECK-SAME:        cpuCodegen = false
-// CHECK-SAME:        enableFtz = false
+// CHECK-SAME:      <
 // CHECK-SAME:        tileSizes = [1, 2, 3]
 // CHECK-SAME:        unrollFactors = [3, 2, 1]
-// CHECK-SAME:      }
+// CHECK-SAME:        enableFtz = false
+// CHECK-SAME:        cpuCodegen = false
+// CHECK-SAME:      >
 // CHECK:       %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG]])
 // CHECK:       return %[[RES]]
 
@@ -45,11 +59,11 @@ func.func @unary_tanh(%arg : tensor<?xf32>) -> tensor<?xf32> {
 // CHECK-JFLT:       %[[IF:.*]] = scf.if %[[CMPI]]
 // CHECK-JFLT:         %[[JIT:.*]] = tf_framework.jit_compile_from_str
 // CHECK-JFLT-SAME:        "module
-// CHECK-JFLT-SAME:        cpuCodegen = false
-// CHECK-JFLT-SAME:        enableFtz = false
-// CHECK-JFLT-SAME:        index64Bit = true
 // CHECK-JFLT-SAME:        tileSizes = [1, 2, 3]
 // CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
+// CHECK-JFLT-SAME:        enableFtz = false
+// CHECK-JFLT-SAME:        index64Bit = true
+// CHECK-JFLT-SAME:        cpuCodegen = false
 // CHECK-JFLT:         %[[JIT_0:.*]] = tf_framework.jit_execute %[[JIT]](%[[ARG0]])
 // CHECK-JFLT:         scf.yield %[[JIT_0]]
 // CHECK-JFLT:       else
@@ -77,12 +91,12 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-SAME:        }
 // CHECK-SAME:      }
 // CHECK-SAME:      "
-// CHECK-SAME:      {
-// CHECK-SAME:        cpuCodegen = false
-// CHECK-SAME:        enableFtz = false
+// CHECK-SAME:      <
 // CHECK-SAME:        tileSizes = [1, 2, 3]
 // CHECK-SAME:        unrollFactors = [3, 2, 1]
-// CHECK-SAME:      }
+// CHECK-SAME:        enableFtz = false
+// CHECK-SAME:        cpuCodegen = false
+// CHECK-SAME:      >
 // CHECK:       %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG0]], %[[ARG1]])
 // CHECK:       return %[[RES]]
 
@@ -108,12 +122,12 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-JFLT-SAME:        }
 // CHECK-JFLT-SAME:      }
 // CHECK-JFLT-SAME:      "
-// CHECK-JFLT-SAME:      {
-// CHECK-JFLT-SAME:        cpuCodegen = false
-// CHECK-JFLT-SAME:        enableFtz = false
+// CHECK-JFLT-SAME:      <
 // CHECK-JFLT-SAME:        tileSizes = [1, 2, 3]
 // CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
-// CHECK-JFLT-SAME:      }
+// CHECK-JFLT-SAME:        enableFtz = false
+// CHECK-JFLT-SAME:        cpuCodegen = false
+// CHECK-JFLT-SAME:      >
 // CHECK-JFLT:       %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG0]], %[[ARG1]])
 // CHECK-JFLT:       scf.yield %[[RES]] : tensor<*xf32>
 // CHECK-JFLT:     } else {
@@ -141,13 +155,13 @@ func.func @reciprocal(%arg0: tensor<*xf32>)
 // CHECK=SAME:       return %[[RES_JIT]] : tensor<*xf32>
 // CHECK-SAME:     }
 // CHECK-SAME:   }
-// CHECK-SAME:   {
-// CHECK-SAME:     cpuCodegen = false,
+// CHECK-SAME:   <
+// CHECK-SAME:     tileSizes = [1, 2, 3],
+// CHECK-SAME:     unrollFactors = [3, 2, 1],
 // CHECK-SAME:     enableFtz = false,
 // CHECK-SAME:     index64Bit = false,
-// CHECK-SAME:     tileSizes = [1, 2, 3],
-// CHECK-SAME:     unrollFactors = [3, 2, 1]
-// CHECK-SAME:   }
+// CHECK-SAME:     cpuCodegen = false
+// CHECK-SAME:   >
 // CHECK:      %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG]]) : tensor<*xf32> -> tensor<*xf32>
 // CHECK:      return %[[RES]] : tensor<*xf32>
 
@@ -160,11 +174,11 @@ func.func @reciprocal(%arg0: tensor<*xf32>)
 // CHECK-JFLT:       %[[IF:.*]] = scf.if %[[CMPI]]
 // CHECK-JFLT:         %[[JIT:.*]] = tf_framework.jit_compile_from_str
 // CHECK-JFLT-SAME:        "module
-// CHECK-JFLT-SAME:        cpuCodegen = false
-// CHECK-JFLT-SAME:        enableFtz = false
-// CHECK-JFLT-SAME:        index64Bit = true
 // CHECK-JFLT-SAME:        tileSizes = [1, 2, 3]
 // CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
+// CHECK-JFLT-SAME:        enableFtz = false
+// CHECK-JFLT-SAME:        index64Bit = true
+// CHECK-JFLT-SAME:        cpuCodegen = false
 // CHECK-JFLT:         %[[JIT_0:.*]] = tf_framework.jit_execute %[[JIT]](%[[ARG0]])
 // CHECK-JFLT:         scf.yield %[[JIT_0]]
 // CHECK-JFLT:       else

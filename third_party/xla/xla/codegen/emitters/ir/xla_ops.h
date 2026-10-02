@@ -28,6 +28,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
+#include "mlir/IR/PatternMatch.h"  // IWYU pragma: keep
+#include "mlir/IR/ValueRange.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
@@ -77,6 +79,13 @@ std::optional<Interval> GetIVRange(mlir::Value iv);
 std::optional<xla::BackendKind> GetBackendKind(mlir::func::FuncOp fn);
 void SetBackendKind(mlir::MLIRContext* context, mlir::func::FuncOp fn,
                     xla::BackendKind backend_kind);
+
+// Replaces `indexing_op` with a new `ApplyIndexingOp` with the given operands
+// and indexing map, preserving the `xla.range` attribute if present.
+void ReplaceApplyIndexingOp(mlir::PatternRewriter& rewriter,
+                            ApplyIndexingOp indexing_op,
+                            mlir::ValueRange operands,
+                            const IndexingMap& indexing_map);
 
 }  // namespace xla
 

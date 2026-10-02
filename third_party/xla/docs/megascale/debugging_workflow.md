@@ -203,11 +203,68 @@ full digest below.
 This error means that there was an issue that prevented the program from
 properly executing and could not be recovered automatically. This error was
 unable to be specifically categorized and there is no further error information
-available.
+available. If RapidEye cannot identify the culprit, follow the [Manual Diagnosis
+](#manual-diagnosis) instructions below.
+
+### Manual Diagnosis
+
+Always inspect the [RapidEye diagnosis](#diagnosis) first when investigating a
+hang. Only use the manual diagnostic flags below as a fallback when RapidEye
+cannot identify the culprit—such as unknown MXLA hangs, single-slice hangs, or
+exceptionally slow step times.
+
+#### Diagnostic Flags Reference
+
+When diagnosing stalls, timeouts, or program stragglers that RapidEye cannot
+automatically classify, the following flags enable detailed low-level execution
+logs and prevent premature job crashes:
+
+```bash
+# Enable low-level logging for TensorCore and SparseCore execution states
+--xla_tpu_enable_log_recorder=true
+--xla_tpu_enable_sc_log_recorder=true
+
+# Extend synchronization wait timeouts to prevent false-positive stall
+# detections
+--xla_tpu_debug_sflag_wait_timeout_ms=150000
+--xla_tpu_debug_sc_sflag_wait_timeout_ms=150000
+
+# Prevent immediate hard crash upon timeout detection so logs can be gathered
+--xla_tpu_debug_sflag_wait_shalt_on_detection=false
+
+# Enable hierarchical tracking of HLO progress
+--xla_tpu_enable_progress_tracker=16
+
+# Prevent the coordinator from aborting all workers prematurely on hang
+--megascale_error_reporter_abort_on_hang=false
+```
+
+#### Purpose and Usage
+
+- **Preventing Premature Aborts**: By default, when a hang is detected, the
+  coordinator immediately aborts all workers
+  (`megascale_error_reporter_abort_on_hang=true`). Setting this flag to `false`
+  keeps workers alive long enough to flush thread stack traces and detailed TPU
+  states to Cloud Logging.
+- **Investigating Slow Steps vs. Real Hangs**: For exceptionally large models or
+  initialization steps that take longer than the default timeout (typically 60
+  seconds), increasing `--xla_tpu_debug_sflag_wait_timeout_ms=150000` (150s)
+  rules out false positives.
+- **Inspecting Timeout Logs**: In Cloud Logging, search for:
+  ```text
+  Wait timeout on sflag
+  ```
+  Group matching logs by HLO opcode to isolate the first worker or core that
+  failed to make progress, distinguishing the culprit from bystander workers
+  waiting on dependencies.
 
 <!-- linter style on -->
 
 ## Performance
+
+For an in-depth reference on configuring and tuning Megascale flags (such as
+collective buffer sizing and zero-copy memory premapping), see the
+[Megascale Performance Tuning Flags guide](performance_tuning.md).
 
 ### Get an XProf session
 
@@ -232,7 +289,9 @@ calls](./images/map_dma_buffer_example_trace.png)
 
 If the issue is observed then try to increase the size of the premapped memory
 region by increasing the value of `--megascale_grpc_premap_memory_bytes`,
-restarting the job, then checking again.
+restarting the job, then checking again. Please also check the checkpoint size:
+the general guidance is that the premap buffer should be at least twice the
+checkpoint size.
 
 ### Check for memory copies during network transfers
 
@@ -246,11 +305,13 @@ receive](./images/memory_copy_example_trace.png)
 
 If the issue is observed then try to increase the size of the premapped memory
 region by increasing the value of `--megascale_grpc_premap_memory_bytes`,
-restarting the job, then checking again.
+restarting the job, then checking again. Please also check the checkpoint size:
+the general guidance is that the premap buffer should be at least twice the
+checkpoint size.
 
 ### Network Analysis
 
-MegaScale also provides a Colab
+Megascale also provides a Colab
 [notebook](https://github.com/openxla/xla/blob/main/xla/megascale/tools/network_analysis_oss.ipynb)
 to help analyze network performance using an XProf trace.
 
@@ -334,3 +395,46 @@ in order to share them with the XLA or Megascale team.
 **Note on Future Tooling:** Google is actively working on open-sourcing versions
 of diagnostic dashboards to provide a more streamlined experience for Cloud TPU
 customers to identify and diagnose stragglers. These will be available soon.
+
+Stragglers often manifest as outliers in key Megascale metrics. These key
+metrics include:
+
+- **kubernetes.io/container/multislice/network/dcn_transfer_latencies**:
+  Measures the round trip time for a transfer. Measured at the sender.
+- **kubernetes.io/container/multislice/network/dcn_inbound_transfer_latencies**:
+  Measures the one-way latency for a transfer.
+- **kubernetes.io/container/multislice/accelerator/compute_latencies**:
+  Measures the time it takes to compute a reduction. Outliers are correlated
+  with CPU and memory issues.
+
+These metrics are most useful when grouped by hosts as shown in the [dashboard
+examples](#using-the-dashboards) below. Once a host is identified, it can be
+diagnosed further for software or hardware issues.
+
+### Using the Dashboards
+
+#### DCN (Data Center Network) Transfer Latencies
+
+The figure shows an example of an outlier in the network transfer latency
+metric.
+
+![this](./images/outlier_dcn_transfer_latencies.png)
+
+In this example, `test5-slice-job-1-0` is an outlier.
+
+#### DCN (Data Center Network) Inbound Transfer Latencies
+
+This figure shows an example of an outlier in the inbound transfer latency
+metric.
+
+![this](./images/outlier_dcn_inbound_transfer_latencies.png)
+
+In this example, `test2-slice-job-1-0` is the outlier.
+
+#### Host Compute Latencies
+
+The figure shows an example of an outlier in the compute latency metric.
+
+![this](./images/outlier_host_compute_latencies.png)
+
+In this example, `slice-job-1-0` is the outlier.

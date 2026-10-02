@@ -49,6 +49,8 @@ absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     CASE(DType::kU32, xla::PrimitiveType::U32);
     CASE(DType::kU64, xla::PrimitiveType::U64);
     CASE(DType::kF4E2M1FN, xla::PrimitiveType::F4E2M1FN);
+    CASE(DType::kF6E2M3FN, xla::PrimitiveType::F6E2M3FN);
+    CASE(DType::kF6E3M2FN, xla::PrimitiveType::F6E3M2FN);
     CASE(DType::kF8E3M4, xla::PrimitiveType::F8E3M4);
     CASE(DType::kF8E4M3, xla::PrimitiveType::F8E4M3);
     CASE(DType::kF8E4M3FN, xla::PrimitiveType::F8E4M3FN);
@@ -94,6 +96,8 @@ absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
     case xla::PrimitiveType::U32:
     case xla::PrimitiveType::U64:
     case xla::PrimitiveType::F4E2M1FN:
+    case xla::PrimitiveType::F6E2M3FN:
+    case xla::PrimitiveType::F6E3M2FN:
     case xla::PrimitiveType::F8E3M4:
     case xla::PrimitiveType::F8E4M3:
     case xla::PrimitiveType::F8E4M3FN:

@@ -23,18 +23,23 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/event_pool.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -43,6 +48,10 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
+
+//===----------------------------------------------------------------------===//
+// Executing Thunks.
+//===----------------------------------------------------------------------===//
 
 // A lightweight wrapper around the while loop nest span that defers string
 // formatting until AbslStringify is called (i.e., when VLOG is enabled).
@@ -63,21 +72,22 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunks)
 
 absl::Status ThunkExecutor::Prepare(const Thunk::PrepareParams& params) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->Prepare(params));
+    ABSL_RETURN_IF_ERROR(thunk->Prepare(params));
   }
   return absl::OkStatus();
 }
 
 absl::Status ThunkExecutor::Initialize(const Thunk::InitializeParams& params) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->Initialize(params));
+    ABSL_RETURN_IF_ERROR(thunk->Initialize(params));
   }
   return absl::OkStatus();
 }
 
 absl::Status ThunkExecutor::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
-  auto* tracker = ScopedProgressTracker::installed_progress_tracker;
+  auto* progress_tracker = ScopedProgressTracker::installed;
+  auto* definition_tracker = ScopedDefinitionTracker::installed;
   int32_t device_ordinal = params.stream->parent()->device_ordinal();
 
   for (size_t i = 0; i < thunks_.size(); ++i) {
@@ -89,8 +99,8 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 
     // If progress tracker is installed for current thread, verify that a
     // thunk indexing record exists for the given `thunk`.
-    if (tracker) {
-      if (!tracker->indexing.contains(thunk.get())) {
+    if (progress_tracker) {
+      if (!progress_tracker->indexing_.contains(thunk.get())) {
         return Internal(
             "[thunk=%d/%d] Progress tracker is missing a record for thunk `%s`",
             i, thunks_.size(), thunk->profile_annotation());
@@ -111,17 +121,29 @@ absl::Status ThunkExecutor::ExecuteOnStream(
         thunks_.size(), thunk->profile_annotation(), thunk->kind(), loop_nest);
 
     // Execute thunk and launch "work" on the GPU stream.
-    RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+    ABSL_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+
+    // Maybe notify the caller that all work touching buffer allocations has
+    // been scheduled. Nested executors observe the same thread-local tracker,
+    // and use their own ExecuteParams::stream when invoking the callback.
+    if (definition_tracker) {
+      auto it = definition_tracker->plan.find(thunk.get());
+      if (it != definition_tracker->plan.end()) {
+        ABSL_RETURN_IF_ERROR(
+            definition_tracker->callback(params.stream, it->second));
+      }
+    }
 
     // Maybe track thunk execution to report the progress.
-    if (tracker) {
+    if (progress_tracker) {
       // Borrow an event from the pool and record it on the execution stream.
-      ASSIGN_OR_RETURN(auto event, tracker->event_pool->GetOrCreateEvent());
-      RETURN_IF_ERROR(params.stream->RecordEvent(event->get()));
+      ABSL_ASSIGN_OR_RETURN(auto event,
+                       progress_tracker->event_pool_->GetOrCreateEvent());
+      ABSL_RETURN_IF_ERROR(params.stream->RecordEvent(event->get()));
 
-      absl::MutexLock lock(tracker->mu);
-      tracker->events.emplace_back(thunk.get(), std::move(event),
-                                   loop_nest.nest);
+      absl::MutexLock lock(progress_tracker->mu_);
+      progress_tracker->events_.emplace_back(thunk.get(), std::move(event),
+                                             loop_nest.nest);
     }
 
     XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
@@ -132,15 +154,103 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 }
 
 //===----------------------------------------------------------------------===//
+// Tracking buffer definitions.
+//===----------------------------------------------------------------------===//
+
+// Thunks nested under these wrappers do not necessarily schedule the last
+// device work touching their buffer allocations. Use the wrapper as the
+// definition boundary.
+static bool IsDefinitionBarrier(Thunk::Kind kind) {
+  return kind == Thunk::kWhile || kind == Thunk::kCommandBuffer ||
+         kind == Thunk::kGroup;
+}
+
+// Definition events are not reported for allocations touched by host execution
+// thunks. This is conservative and should be revisited once host execution can
+// be sequenced precisely.
+static bool IsHostExecutionThunk(Thunk::Kind kind) {
+  return kind == Thunk::kHostExecuteDone || kind == Thunk::kHostExecuteStart ||
+         kind == Thunk::kHostRecv || kind == Thunk::kHostRecvDone ||
+         kind == Thunk::kHostSend || kind == Thunk::kHostSendDone;
+}
+
+ThunkExecutor::DefinitionPlan ThunkExecutor::BuildDefinitionPlan(
+    const ThunkExecutor& executor) {
+  absl::flat_hash_map<BufferAllocation::Index, const Thunk*> last_use;
+  absl::flat_hash_set<BufferAllocation::Index> host_touched_allocations;
+  const Thunk* definition_barrier = nullptr;
+
+  auto pre_order = [&](const Thunk* thunk) {
+    // Buffer definitions are attributed to the outermost enclosing barrier,
+    // because thunks nested inside it may not schedule the final device work
+    // that touches an allocation.
+    if (!definition_barrier && IsDefinitionBarrier(thunk->kind())) {
+      definition_barrier = thunk;
+    }
+    const Thunk* definition_thunk =
+        definition_barrier ? definition_barrier : thunk;
+
+    for (const BufferUse& use : thunk->buffer_uses()) {
+      BufferAllocation::Index index = use.slice().index();
+      if (IsHostExecutionThunk(thunk->kind())) {
+        host_touched_allocations.insert(index);
+        last_use.erase(index);
+      } else if (!host_touched_allocations.contains(index)) {
+        last_use[index] = definition_thunk;
+      }
+    }
+  };
+
+  auto post_order = [&](const Thunk* thunk) {
+    if (thunk == definition_barrier) {
+      definition_barrier = nullptr;
+    }
+  };
+
+  for (const std::unique_ptr<Thunk>& thunk : executor.thunks()) {
+    thunk->Walk(pre_order, post_order);
+  }
+
+  ThunkExecutor::DefinitionPlan plan;
+  for (const auto& [index, thunk] : last_use) {
+    plan[thunk].push_back(index);
+  }
+  return plan;
+}
+
+thread_local ThunkExecutor::ScopedDefinitionTracker::DefinitionTracker*
+    ThunkExecutor::ScopedDefinitionTracker::installed = nullptr;
+
+ThunkExecutor::ScopedDefinitionTracker::ScopedDefinitionTracker(
+    const DefinitionPlan& plan, DefinitionCallback callback)
+    : tracker_(std::make_unique<DefinitionTracker>(plan, callback)) {
+  CHECK_EQ(installed, nullptr);
+  installed = tracker_.get();
+}
+
+ThunkExecutor::ScopedDefinitionTracker::~ScopedDefinitionTracker() {
+  if (tracker_) {
+    CHECK_EQ(installed, tracker_.get());
+    installed = nullptr;
+  }
+}
+
+absl::StatusOr<ThunkExecutor::ScopedDefinitionTracker> InstallDefinitionTracker(
+    const ThunkExecutor::DefinitionPlan& plan,
+    ThunkExecutor::DefinitionCallback callback) {
+  return ThunkExecutor::ScopedDefinitionTracker(plan, callback);
+}
+
+//===----------------------------------------------------------------------===//
 // Tracking Thunk execution progress.
 //===----------------------------------------------------------------------===//
 
-using ThunkExecution = ThunkExecutor::ScopedProgressTracker::ThunkExecution;
+using ThunkExecution = ThunkExecutor::ProgressTracker::ThunkExecution;
 
-thread_local ThunkExecutor::ScopedProgressTracker::ProgressTracker*
-    ThunkExecutor::ScopedProgressTracker::installed_progress_tracker = nullptr;
+thread_local ThunkExecutor::ProgressTracker*
+    ThunkExecutor::ScopedProgressTracker::installed = nullptr;
 
-ThunkExecutor::ScopedProgressTracker::ThunkExecutionEvent::ThunkExecutionEvent(
+ThunkExecutor::ProgressTracker::ThunkExecutionEvent::ThunkExecutionEvent(
     const Thunk* thunk, EventPool::Event event,
     absl::Span<const WhileLoopState> loop_nest)
     : thunk(thunk),
@@ -151,45 +261,42 @@ ThunkExecutor::ScopedProgressTracker::ThunkExecutionEvent::ThunkExecutionEvent(
 ThunkExecutor::ScopedProgressTracker::ScopedProgressTracker(
     EventPool* event_pool, ThunkIndexing indexing)
     : tracker_(
-          std::make_unique<ProgressTracker>(std::move(indexing), event_pool)) {
-  CHECK_EQ(installed_progress_tracker, nullptr)  // Crash OK
+          std::make_shared<ProgressTracker>(std::move(indexing), event_pool)) {
+  CHECK_EQ(installed, nullptr)  // Crash OK
       << "Tried to install multiple progress trackers";
-  installed_progress_tracker = tracker_.get();
+  installed = tracker_.get();
 }
 
 ThunkExecutor::ScopedProgressTracker::~ScopedProgressTracker() {
   if (tracker_) {  // Skip moved-from ScopedProgressTracker
-    CHECK_EQ(installed_progress_tracker, tracker_.get())  // Crash OK
+    CHECK_EQ(installed, tracker_.get())  // Crash OK
         << "Tried to destroy progress tracker on a different thread";
-    installed_progress_tracker = nullptr;
+    installed = nullptr;
   }
 }
 
-size_t ThunkExecutor::ScopedProgressTracker::num_executions() const {
-  absl::MutexLock lock(tracker_->mu);
-  return tracker_->events.size();
+size_t ThunkExecutor::ProgressTracker::num_executions() const {
+  absl::MutexLock lock(mu_);
+  return events_.size();
 }
 
-size_t ThunkExecutor::ScopedProgressTracker::NumPendingThunks() {
-  absl::MutexLock lock(tracker_->mu);
-  return absl::c_count_if(tracker_->events, [](const auto& event) {
+size_t ThunkExecutor::ProgressTracker::NumPendingThunks() {
+  absl::MutexLock lock(mu_);
+  return absl::c_count_if(events_, [](const auto& event) {
     return event.event->get()->PollForStatus() == se::Event::Status::kPending;
   });
 }
 
-size_t ThunkExecutor::ScopedProgressTracker::NumCompletedThunks() {
-  absl::MutexLock lock(tracker_->mu);
-  return absl::c_count_if(tracker_->events, [](const auto& event) {
+size_t ThunkExecutor::ProgressTracker::NumCompletedThunks() {
+  absl::MutexLock lock(mu_);
+  return absl::c_count_if(events_, [](const auto& event) {
     return event.event->get()->PollForStatus() == se::Event::Status::kComplete;
   });
 }
 
-std::vector<ThunkExecution> ThunkExecutor::ScopedProgressTracker::CollectThunks(
+std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::CollectThunks(
     se::Event::Status status, bool most_recent_first, size_t n) {
-  absl::MutexLock lock(tracker_->mu);
-
-  ThunkIndexing& indexing = tracker_->indexing;
-  absl::Span<const ThunkExecutionEvent> events = tracker_->events;
+  absl::MutexLock lock(mu_);
 
   // Events are naturally in chronological order (oldest first). Iterate forward
   // for oldest-first or backward for most-recent-first.
@@ -197,45 +304,45 @@ std::vector<ThunkExecution> ThunkExecutor::ScopedProgressTracker::CollectThunks(
 
   auto collect = [&](size_t exec_idx, const ThunkExecutionEvent& event) {
     if (event.event->get()->PollForStatus() == status) {
-      result.push_back({exec_idx, indexing.at(event.thunk), event.executed,
+      result.push_back({exec_idx, indexing_.at(event.thunk), event.executed,
                         event.thunk->kind(), event.thunk->profile_annotation(),
                         event.loop_nest});
     }
   };
 
   if (most_recent_first) {
-    for (size_t i = events.size(); i > 0; --i) {
+    for (size_t i = events_.size(); i > 0; --i) {
       if (result.size() >= n) {
         break;
       }
-      collect(i - 1, events[i - 1]);
+      collect(i - 1, events_[i - 1]);
     }
   } else {
-    for (size_t i = 0; i < events.size(); ++i) {
+    for (size_t i = 0; i < events_.size(); ++i) {
       if (result.size() >= n) {
         break;
       }
-      collect(i, events[i]);
+      collect(i, events_[i]);
     }
   }
 
   return result;
 }
 
-std::vector<ThunkExecution>
-ThunkExecutor::ScopedProgressTracker::LastCompletedThunks(size_t n) {
+std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::LastCompletedThunks(
+    size_t n) {
   return CollectThunks(se::Event::Status::kComplete, /*most_recent_first=*/true,
                        n);
 }
 
-std::vector<ThunkExecution>
-ThunkExecutor::ScopedProgressTracker::FirstPendingThunks(size_t n) {
+std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::FirstPendingThunks(
+    size_t n) {
   return CollectThunks(se::Event::Status::kPending,
                        /*most_recent_first=*/false, n);
 }
 
-std::vector<ThunkExecution>
-ThunkExecutor::ScopedProgressTracker::LastPendingThunks(size_t n) {
+std::vector<ThunkExecution> ThunkExecutor::ProgressTracker::LastPendingThunks(
+    size_t n) {
   return CollectThunks(se::Event::Status::kPending, /*most_recent_first=*/true,
                        n);
 }
@@ -245,7 +352,7 @@ absl::StatusOr<ThunkExecutor::ScopedProgressTracker> InstallProgressTracker(
   tsl::profiler::TraceMe trace("InstallProgressTracker");
 
   ThunkExecutor::ScopedProgressTracker::ThunkIndexing indexing;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       executor.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
         size_t index = indexing.size();
         indexing[thunk] = index;

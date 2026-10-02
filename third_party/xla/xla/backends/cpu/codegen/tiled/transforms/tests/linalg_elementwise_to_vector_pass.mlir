@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: fusion_compiler_opt %s -split-input-file \
 // RUN: -xtile-cpu-linalg-elementwise-to-vector -fold-memref-alias-ops \
 // RUN: | FileCheck %s
@@ -22,7 +36,7 @@ func.func @elementwise_add_to_vector(
   // CHECK-SAME:  {in_bounds = [true]} : vector<8xf32>, memref<8x1024xf32>
   // CHECK:   }
   // CHECK: }
-  linalg.elementwise kind=#linalg.elementwise_kind<add>
+  linalg.elementwise <add>
     ins(%arg0, %arg1 : memref<8x1024xf32>, memref<8x1024xf32>)
     outs(%arg2 : memref<8x1024xf32>)
   return
@@ -57,7 +71,7 @@ func.func @elementwise_add_to_vector_non_multiple_of_8(
   // CHECK: vector.transfer_write %[[UNROLL_OUT]], %arg2[%[[IV0]], %[[C96]]]
   // CHECK-SAME: {in_bounds = [true]} : vector<4xf32>, memref<8x100xf32>
   // CHECK: }
-  linalg.elementwise kind=#linalg.elementwise_kind<add>
+  linalg.elementwise <add>
     ins(%arg0, %arg1 : memref<8x100xf32>, memref<8x100xf32>)
     outs(%arg2 : memref<8x100xf32>)
   return
@@ -94,7 +108,7 @@ func.func @elementwise_add_to_vector_small_minor(
     %arg0 : memref<8x3xf32>,
     %arg1 : memref<8x3xf32>,
     %arg2 : memref<8x3xf32>) {
-  linalg.elementwise kind=#linalg.elementwise_kind<add>
+  linalg.elementwise <add>
     ins(%arg0, %arg1 : memref<8x3xf32>, memref<8x3xf32>)
     outs(%arg2 : memref<8x3xf32>)
   return

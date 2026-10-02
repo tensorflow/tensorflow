@@ -136,7 +136,19 @@ class ScopedTFBuffer(object):
     self.buffer = c_api.TF_NewBufferFromString(compat.as_bytes(buf_string))
 
   def __del__(self):
-    c_api.TF_DeleteBuffer(self.buffer)
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    # Also guard against __init__ having failed before `self.buffer` was
+    # ever assigned (e.g. compat.as_bytes raising on bad input): __del__
+    # still runs on a partially-constructed object, and accessing
+    # self.buffer directly would raise a second, masking AttributeError.
+    buffer = getattr(self, "buffer", None)
+    if (
+        buffer is not None
+        and c_api is not None
+        and c_api.TF_DeleteBuffer is not None
+    ):
+      c_api.TF_DeleteBuffer(buffer)
 
 
 class ApiDefMap(object):
@@ -173,6 +185,8 @@ class ApiDefMap(object):
   def get_api_def(self, op_name):
     api_def_proto = api_def_pb2.ApiDef()
     buf = c_api.TF_ApiDefMapGet(self._api_def_map, op_name, len(op_name))
+    if buf is None:
+      raise ValueError(f"No api_def found for op name {op_name}.")
     try:
       api_def_proto.ParseFromString(c_api.TF_GetBuffer(buf))
     finally:

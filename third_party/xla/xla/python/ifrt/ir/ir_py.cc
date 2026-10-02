@@ -17,9 +17,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir-c/IR.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"  // IWYU pragma: keep; Needed to allow MlirModule -> ModuleOp.
 #include "mlir/CAPI/IR.h"
@@ -50,7 +50,7 @@ absl::StatusOr<nb::bytes> SerializeVersionedProgram(
     absl::string_view atom_program_version,
     absl::string_view atom_program_sdy_version, bool version_in_place) {
   auto program = std::make_unique<IfrtIRProgram>(unwrap(module));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Serialized serialized,
       Serialize(
           *program,
@@ -66,10 +66,10 @@ absl::StatusOr<nb::bytes> SerializeVersionedProgram(
     absl::string_view atom_program_version,
     absl::string_view atom_program_sdy_version, bool version_in_place) {
   mlir::MLIRContext context;
-  ASSIGN_OR_RETURN(auto module,
+  ABSL_ASSIGN_OR_RETURN(auto module,
                    support::ParseMlirModuleString(module_str, context));
   auto program = std::make_unique<IfrtIRProgram>(module.release());
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto serialized,
       Serialize(
           *program,
@@ -91,7 +91,7 @@ absl::StatusOr<std::string> DeserializeVersionedProgram(
     return absl::InvalidArgumentError(
         "Failed to parse serialized IFRT IR program.");
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto program,
       Deserialize<IfrtIRProgram>(
           serialized,

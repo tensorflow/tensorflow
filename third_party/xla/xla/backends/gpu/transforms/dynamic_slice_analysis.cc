@@ -15,21 +15,24 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/dynamic_slice_analysis.h"
 
+#include <algorithm>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <queue>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -79,6 +82,13 @@ static bool IsZeroOffset(const HloInstruction* slice, int32_t dim) {
   return GetSliceSize(slice, dim) == slice->operand(0)->shape().dimensions(dim);
 }
 
+static int64_t ClampDimensionOffset(const HloInstruction* slice, int32_t dim,
+                                    int64_t offset) {
+  int64_t max_offset =
+      slice->operand(0)->shape().dimensions(dim) - GetSliceSize(slice, dim);
+  return std::clamp(offset, int64_t{0}, max_offset);
+}
+
 int32_t GetFirstOffsetOperandIndex(const HloInstruction* slice) {
   CHECK(slice->opcode() == HloOpcode::kDynamicSlice ||
         slice->opcode() == HloOpcode::kDynamicUpdateSlice);
@@ -93,22 +103,102 @@ int64_t GetSliceSize(const HloInstruction* slice, int32_t dim) {
   return slice->operand(1)->shape().dimensions(dim);
 }
 
+using FunctionalDependencies =
+    absl::flat_hash_map<const HloInstruction*,
+                        InductionVariableFunctionalDependency>;
+
+// Evaluates an offset that is a function of an induction variable across one
+// or more call-like computation boundaries. At each boundary, evaluate every
+// required caller operand and substitute the resulting literals for the
+// corresponding callee parameters.
+static absl::StatusOr<Literal> EvaluateFunctionalOffset(
+    const HloInstruction* offset,
+    const InductionVariableFunctionalDependency& dependency,
+    const LiteralBase* induction_var_value, HloEvaluator* evaluator) {
+  const HloComputation* current_computation = offset->parent();
+  const HloComputation* while_body = dependency.induction_var->parent();
+
+  absl::InlinedVector<const HloInstruction*, 4> call_stack;
+  while (current_computation != while_body) {
+    auto callers = current_computation->caller_instructions();
+    if (callers.size() != 1) {
+      return Internal("Expected a unique caller for computation %s.",
+                      current_computation->name());
+    }
+    call_stack.push_back(callers.front());
+    current_computation = callers.front()->parent();
+  }
+
+  absl::flat_hash_map<const HloInstruction*, const LiteralBase*> substitutions =
+      {{dependency.induction_var, induction_var_value}};
+  std::vector<std::pair<const HloInstruction*, Literal>> parameter_values;
+
+  for (auto it = call_stack.rbegin(); it != call_stack.rend(); ++it) {
+    const HloInstruction* caller = *it;
+    if (caller->called_computations().size() != 1) {
+      return Internal("Expected caller %s to have one called computation.",
+                      caller->name());
+    }
+    const HloComputation* callee = caller->called_computations().front();
+    auto required_it = dependency.required_parameters.find(callee);
+    if (required_it == dependency.required_parameters.end()) {
+      return Internal("Missing required parameters for computation %s.",
+                      callee->name());
+    }
+
+    const auto& required_parameters = required_it->second;
+    std::vector<std::pair<const HloInstruction*, Literal>>
+        next_parameter_values;
+    next_parameter_values.reserve(absl::c_count(required_parameters, true));
+    for (int64_t i = 0; i < static_cast<int64_t>(required_parameters.size());
+         ++i) {
+      if (!required_parameters[i]) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(
+          Literal value,
+          evaluator->Evaluate(caller->operand(i), {}, true, substitutions));
+      next_parameter_values.emplace_back(callee->parameter_instruction(i),
+                                         std::move(value));
+    }
+
+    parameter_values = std::move(next_parameter_values);
+    substitutions.clear();
+    for (auto& [parameter, value] : parameter_values) {
+      substitutions[parameter] = &value;
+    }
+  }
+
+  return evaluator->Evaluate(offset, {}, true, substitutions);
+}
+
+namespace {
+struct EvaluatedByteOffsets {
+  int64_t unclamped;
+  int64_t clamped;
+};
+}  // namespace
+
 // Evaluates the total byte offset for a DS/DUS at a given induction variable
-// value by substituting into HloEvaluator.
-static absl::StatusOr<int64_t> EvaluateByteOffsetAtIteration(
+// value by substituting into HloEvaluator. Constant offset operands are always
+// clamped per-dimension; for dynamic operands, both the unclamped linear offset
+// and the per-dimension clamped HLO offset are returned.
+static absl::StatusOr<EvaluatedByteOffsets> EvaluateByteOffsetAtIteration(
     const HloInstruction* instr, absl::Span<const int64_t> byte_strides,
-    const HloInstruction* induction_var, int64_t ivar_value) {
+    const HloInstruction* induction_var,
+    const FunctionalDependencies& functional_dependencies, int64_t ivar_value) {
   int32_t first_offset_index = GetFirstOffsetOperandIndex(instr);
   int32_t rank = instr->operand(0)->shape().dimensions().size();
 
-  ASSIGN_OR_RETURN(Literal ivar_literal, Literal::Make(induction_var->shape()));
-  RETURN_IF_ERROR(ivar_literal.SetIntegralAsS64({}, ivar_value));
+  ABSL_ASSIGN_OR_RETURN(Literal ivar_literal, Literal::Make(induction_var->shape()));
+  ABSL_RETURN_IF_ERROR(ivar_literal.SetIntegralAsS64({}, ivar_value));
 
   absl::flat_hash_map<const HloInstruction*, const LiteralBase*> substitutions;
   substitutions[induction_var] = &ivar_literal;
 
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
-  int64_t total_byte_offset = 0;
+  int64_t unclamped_byte_offset = 0;
+  int64_t clamped_byte_offset = 0;
 
   // Iterate over each dimension's offset operand of the DS/DUS.
   for (int32_t i = 0; i < rank; ++i) {
@@ -127,22 +217,35 @@ static absl::StatusOr<int64_t> EvaluateByteOffsetAtIteration(
       if (!value) {
         return Internal("Failed to read constant offset.");
       }
-      total_byte_offset += *value * byte_strides[i];
+      int64_t dim_byte_offset =
+          ClampDimensionOffset(instr, i, *value) * byte_strides[i];
+      unclamped_byte_offset += dim_byte_offset;
+      clamped_byte_offset += dim_byte_offset;
       continue;
     }
 
-    ASSIGN_OR_RETURN(Literal offset_literal,
-                     evaluator.Evaluate(operand, {}, true, substitutions));
+    Literal offset_literal;
+    if (auto it = functional_dependencies.find(operand);
+        it != functional_dependencies.end()) {
+      ABSL_ASSIGN_OR_RETURN(offset_literal,
+                       EvaluateFunctionalOffset(operand, it->second,
+                                                &ivar_literal, &evaluator));
+    } else {
+      ABSL_ASSIGN_OR_RETURN(offset_literal,
+                       evaluator.Evaluate(operand, {}, true, substitutions));
+    }
 
     auto offset_value = LiteralUtil::LiteralAsScalarInt64(offset_literal);
     if (!offset_value) {
       return Internal("Failed to evaluate dynamic offset.");
     }
 
-    total_byte_offset += *offset_value * byte_strides[i];
+    unclamped_byte_offset += *offset_value * byte_strides[i];
+    clamped_byte_offset +=
+        ClampDimensionOffset(instr, i, *offset_value) * byte_strides[i];
   }
 
-  return total_byte_offset;
+  return EvaluatedByteOffsets{unclamped_byte_offset, clamped_byte_offset};
 }
 
 // Attempts to identify a staggered induction variable created by loop
@@ -276,7 +379,7 @@ static std::optional<StaggeredVariable> TryResolveStaggeredVariable(
 }
 
 absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
-    const HloInstruction* instr) {
+    const HloInstruction* instr, bool enable_table_offsets) {
   // Step 1: Only analyze dynamic-slice and dynamic-update-slice instructions.
   if (instr->opcode() != HloOpcode::kDynamicSlice &&
       instr->opcode() != HloOpcode::kDynamicUpdateSlice) {
@@ -317,6 +420,7 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
   };
 
   std::vector<ResolvedOffset> resolved_offsets;
+  FunctionalDependencies functional_dependencies;
 
   // Iterate over each dimension's offset operand of the DS/DUS.
   for (int32_t i = 0; i < rank; ++i) {
@@ -333,26 +437,13 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
     auto functional_dependency =
         ResolveFunctionalDependencyOnInductionVariable(operand);
     if (functional_dependency) {
-      // Use the induction variable from the while body by default. If the
-      // DUS is inside a called computation (async/fusion/call), find the
-      // local parameter that corresponds to the induction variable so that
-      // HloEvaluator can substitute it without crossing computation
-      // boundaries.
-      const HloInstruction* local_ivar = functional_dependency->induction_var;
-      const HloComputation* instr_comp = instr->parent();
-      auto it = functional_dependency->required_parameters.find(instr_comp);
-      if (it != functional_dependency->required_parameters.end()) {
-        auto param_it = absl::c_find(it->second, true);
-        if (param_it != it->second.end()) {
-          local_ivar =
-              instr_comp->parameter_instruction(param_it - it->second.begin());
-        }
-      }
-
-      resolved_offsets.push_back({functional_dependency->loop, local_ivar,
+      resolved_offsets.push_back({functional_dependency->loop,
+                                  functional_dependency->induction_var,
                                   functional_dependency->induction_var,
                                   /*is_staggered=*/false,
                                   /*staggered_init=*/0, /*loop_index=*/0});
+      functional_dependencies.emplace(operand,
+                                      std::move(*functional_dependency));
       continue;
     }
 
@@ -381,14 +472,20 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
       if (IsZeroOffset(instr, i)) {
         continue;
       }
+      if ((*strides)[i] < 0) {
+        return std::nullopt;
+      }
       const HloInstruction* operand = instr->operand(i + first_offset_index);
       auto value = LiteralUtil::LiteralAsScalarInt64(operand->literal());
       if (!value.has_value()) {
         return std::nullopt;
       }
-      byte_offset += *value * (*strides)[i];
+      byte_offset += ClampDimensionOffset(instr, i, *value) * (*strides)[i];
     }
-    return DynamicSliceDescriptor{std::nullopt, std::nullopt, byte_offset, 0};
+
+    return DynamicSliceDescriptor{
+        std::nullopt, std::nullopt,
+        DynamicSliceDescriptor::Linear{byte_offset, 0}};
   }
 
   // Step 5: All resolved offsets must be consistent — same while loop, same
@@ -412,7 +509,7 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
 
   // Step 6: Read the loop's init/step/trip_count from WhileLoopBackendConfig
   // (set by WhileLoopTripCountAnnotator).
-  ASSIGN_OR_RETURN(auto loop_config,
+  ABSL_ASSIGN_OR_RETURN(auto loop_config,
                    while_loop->backend_config<WhileLoopBackendConfig>());
   if (!loop_config.has_known_init_step() ||
       !loop_config.has_known_trip_count()) {
@@ -436,36 +533,94 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
 
   // Step 8: Evaluate the byte offset for every iteration by substituting the
   // induction variable value into HloEvaluator.
-  std::vector<int64_t> offsets(trip_count);
+  std::vector<EvaluatedByteOffsets> offsets(trip_count);
   for (int64_t iter = 0; iter < trip_count; ++iter) {
     int64_t ivar = effective_init + iter * init_step.step;
-    ASSIGN_OR_RETURN(offsets[iter], EvaluateByteOffsetAtIteration(
-                                        instr, *strides, induction_var, ivar));
+    ABSL_ASSIGN_OR_RETURN(offsets[iter], EvaluateByteOffsetAtIteration(
+                                        instr, *strides, induction_var,
+                                        functional_dependencies, ivar));
     VLOG(3) << instr->name() << ": iteration " << iter << " (ivar=" << ivar
-            << ") -> byte_offset=" << offsets[iter];
+            << ") -> unclamped_byte_offset=" << offsets[iter].unclamped
+            << ", clamped_byte_offset=" << offsets[iter].clamped;
   }
 
-  // Step 9: Verify linearity — all consecutive differences must be equal.
-  // This confirms the offset is an affine function of the iteration count:
-  //   byte_address = base + byte_offset + byte_stride * iteration
-  int64_t byte_offset = offsets[0];
-  int64_t byte_stride = (trip_count > 1) ? (offsets[1] - offsets[0]) : 0;
+  // Step 9: Use a compact linear representation whenever possible.
+  const Shape& slice_shape = (instr->opcode() == HloOpcode::kDynamicSlice)
+                                 ? instr->shape()
+                                 : instr->operand(1)->shape();
+  int64_t buffer_size = ShapeUtil::ByteSizeOf(slice_input_shape);
+  int64_t slice_size = ShapeUtil::ByteSizeOf(slice_shape);
+  int64_t max_buffer_offset = std::max<int64_t>(0, buffer_size - slice_size);
 
-  for (int64_t iter = 2; iter < trip_count; ++iter) {
-    int64_t actual_stride = offsets[iter] - offsets[iter - 1];
-    if (actual_stride != byte_stride) {
-      VLOG(3) << instr->name() << ": non-linear offset pattern at iteration "
-              << iter << ": stride " << actual_stride << " != " << byte_stride;
-      return std::nullopt;
+  auto get_linear_stride = [&](auto get_offset) -> std::optional<int64_t> {
+    if (trip_count <= 1) {
+      return 0;
     }
+    int64_t stride = get_offset(offsets[1]) - get_offset(offsets[0]);
+    for (int64_t iter = 2; iter < trip_count; ++iter) {
+      if (get_offset(offsets[iter]) - get_offset(offsets[iter - 1]) != stride) {
+        return std::nullopt;
+      }
+    }
+    return stride;
+  };
+
+  // A zero stride means that the offset is loop-invariant, and the descriptor
+  // must not reference the while loop (see `loop_index` in DynamicSliceConfig).
+  auto make_linear = [&](int64_t byte_offset, int64_t byte_stride) {
+    if (byte_stride == 0) {
+      return DynamicSliceDescriptor{
+          std::nullopt, std::nullopt,
+          DynamicSliceDescriptor::Linear{byte_offset, byte_stride}};
+    }
+    return DynamicSliceDescriptor{
+        while_loop, front.loop_index,
+        DynamicSliceDescriptor::Linear{byte_offset, byte_stride}};
+  };
+
+  // Prefer a linear progression of the per-dimension clamped offsets.
+  if (auto stride = get_linear_stride(
+          [](const EvaluatedByteOffsets& o) { return o.clamped; })) {
+    return make_linear(offsets[0].clamped, *stride);
   }
 
-  VLOG(2) << instr->name() << ": linear pattern confirmed over " << trip_count
-          << " iterations: offset=" << byte_offset
-          << ", stride=" << byte_stride;
+  // Otherwise, use the unclamped progression if runtime buffer clamping
+  // reproduces the per-dimension clamped offsets on every iteration.
+  if (auto stride = get_linear_stride(
+          [](const EvaluatedByteOffsets& o) { return o.unclamped; });
+      stride.has_value() &&
+      absl::c_all_of(offsets, [&](const EvaluatedByteOffsets& o) {
+        return std::clamp<int64_t>(o.unclamped, 0, max_buffer_offset) ==
+               o.clamped;
+      })) {
+    return make_linear(offsets[0].unclamped, *stride);
+  }
 
-  return DynamicSliceDescriptor{while_loop, front.loop_index, byte_offset,
-                                byte_stride};
+  // Otherwise, store one clamped offset per iteration.
+  if (!enable_table_offsets) {
+    VLOG(3) << instr->name()
+            << ": neither unclamped nor clamped offsets form a valid linear "
+               "progression over "
+            << trip_count << " iterations, and table offsets are disabled";
+    return std::nullopt;
+  }
+
+  if (trip_count > DynamicSliceDescriptor::kMaxTableOffsets) {
+    VLOG(3) << instr->name() << ": offset table with " << trip_count
+            << " entries exceeds the limit of "
+            << DynamicSliceDescriptor::kMaxTableOffsets;
+    return std::nullopt;
+  }
+
+  std::vector<int64_t> byte_offsets;
+  byte_offsets.reserve(trip_count);
+  for (const auto& offset : offsets) {
+    byte_offsets.push_back(offset.clamped);
+  }
+
+  return DynamicSliceDescriptor{
+      while_loop, front.loop_index,
+      DynamicSliceDescriptor::Table{std::move(byte_offsets)}};
 }
 
 //===-----------------------------------------------------------------------===/
@@ -571,12 +726,14 @@ std::optional<bool> IsNonOverlapping(const DynamicSliceChain& chain) {
 
   auto analyze_instr = [](const HloInstruction* instr)
       -> std::optional<std::pair<DynamicSliceDescriptor, int64_t>> {
-    auto result = AnalyzeDynamicSlice(instr);
+    // Descriptors are only used to check for overlaps and never serialized, so
+    // it is safe to analyze offsets that require a table.
+    auto result = AnalyzeDynamicSlice(instr, /*enable_table_offsets=*/true);
     if (!result.ok() || !result->has_value()) {
       return std::nullopt;
     }
     int64_t slice_byte_size = ShapeUtil::ByteSizeOf(instr->operand(1)->shape());
-    return std::make_pair(**result, slice_byte_size);
+    return std::make_pair(std::move(**result), slice_byte_size);
   };
 
   // Only check DUS-vs-DUS overlap. DS reads and DUS writes to the same slice
@@ -595,28 +752,38 @@ std::optional<bool> IsNonOverlapping(const DynamicSliceChain& chain) {
     return true;
   }
 
-  auto front_loop = dus_descriptors.front().first.while_loop;
-  if (!front_loop.has_value()) {
-    return std::nullopt;
-  }
-  const HloInstruction* while_loop = *front_loop;
+  // Loop-invariant updates have no while loop and write to the same byte range
+  // on every iteration. All loop-dependent updates must share the same loop.
+  std::optional<const HloInstruction*> while_loop;
   for (const auto& [desc, _] : dus_descriptors) {
-    if (desc.while_loop != front_loop) {
+    if (!desc.while_loop.has_value()) {
+      continue;
+    }
+    if (!while_loop.has_value()) {
+      while_loop = desc.while_loop;
+    } else if (desc.while_loop != while_loop) {
       return std::nullopt;
     }
   }
 
-  auto loop_config = while_loop->backend_config<WhileLoopBackendConfig>();
-  if (!loop_config.ok() || !loop_config->has_known_trip_count()) {
-    return std::nullopt;
+  int64_t trip_count = 1;
+  if (while_loop.has_value()) {
+    auto loop_config = (*while_loop)->backend_config<WhileLoopBackendConfig>();
+    if (!loop_config.ok() || !loop_config->has_known_trip_count()) {
+      return std::nullopt;
+    }
+    trip_count = loop_config->known_trip_count().n();
   }
-  int64_t trip_count = loop_config->known_trip_count().n();
+  int64_t buffer_byte_size =
+      ShapeUtil::ByteSizeOf(chain.updates.front()->operand(0)->shape());
 
   for (int64_t iter = 0; iter < trip_count; ++iter) {
     std::vector<SliceRange> ranges;
     ranges.reserve(dus_descriptors.size());
     for (const auto& [desc, byte_size] : dus_descriptors) {
-      int64_t offset = desc.byte_offset + desc.byte_stride * iter;
+      int64_t max_offset = std::max<int64_t>(0, buffer_byte_size - byte_size);
+      int64_t offset =
+          std::clamp<int64_t>(desc.ByteOffset(iter), 0, max_offset);
       ranges.push_back({offset, byte_size});
     }
 
@@ -634,6 +801,241 @@ std::optional<bool> IsNonOverlapping(const DynamicSliceChain& chain) {
   }
 
   return true;
+}
+
+//===-----------------------------------------------------------------------===/
+// InductionVariableFunctionalDependency
+//===-----------------------------------------------------------------------===/
+
+namespace {
+
+// Whether the instruction is semantically a call.
+bool IsCallLike(const HloInstruction* caller) {
+  return caller->opcode() == HloOpcode::kFusion ||
+         caller->opcode() == HloOpcode::kAsyncStart ||
+         caller->opcode() == HloOpcode::kCall;
+}
+
+const HloInstruction* GetUniqueCallerOrNull(const HloComputation* callee) {
+  auto callers = callee->caller_instructions();
+  return callers.size() == 1 ? callers.front() : nullptr;
+}
+
+struct Dependencies {
+  absl::InlinedVector<const HloInstruction*, 2> parameters;
+  absl::InlinedVector<const HloInstruction*, 1> get_tuple_elements;
+};
+
+// Returns the leaf dependencies of `root`, in each frame of the call stack.
+// Here, leaves are parameters and GTEs. Returns nullopt if any dependencies
+// have side effects.
+std::optional<Dependencies> GetLeafDependencies(const HloInstruction* root) {
+  absl::flat_hash_set<const HloInstruction*> seen{root};
+  std::queue<const HloInstruction*> queue;
+  queue.push(root);
+
+  auto enqueue = [&](const HloInstruction* instr) {
+    if (seen.insert(instr).second) {
+      queue.push(instr);
+    }
+  };
+
+  Dependencies results;
+  while (!queue.empty()) {
+    const auto* instruction = queue.front();
+    VLOG(5) << "Visiting " << instruction->name() << ".";
+    queue.pop();
+
+    if (instruction->opcode() == HloOpcode::kCustomCall ||
+        instruction->opcode() == HloOpcode::kPartitionId ||
+        instruction->opcode() == HloOpcode::kReplicaId ||
+        instruction->HasSideEffect()) {
+      VLOG(5) << "Found an unsafe operation.";
+      return std::nullopt;
+    }
+
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      results.parameters.push_back(instruction);
+      const HloInstruction* caller =
+          GetUniqueCallerOrNull(instruction->parent());
+      if (!caller) {
+        VLOG(5) << "Failed to determine unique caller, aborting traversal.";
+        return std::nullopt;
+      }
+
+      // If this is semantically a call, continue the traversal at the call
+      // site.
+      if (IsCallLike(caller)) {
+        int64_t index = instruction->parameter_number();
+        enqueue(caller->operand(index));
+      }
+    }
+
+    if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+      results.get_tuple_elements.push_back(instruction);
+    }
+
+    for (auto* operand : instruction->operands()) {
+      enqueue(operand);
+    }
+  }
+  return results;
+}
+
+struct VerifiedLoop {
+  const HloInstruction* loop;
+  const HloInstruction* parameter;
+  int64_t induction_variable_index;
+};
+
+// Checks that `loop` is a while loop from which we can derive functional
+// dependencies.
+std::optional<VerifiedLoop> VerifyFunctionalDependencyLoop(
+    const HloInstruction* loop) {
+  if (!loop) {
+    VLOG(5) << "No loop found";
+    return std::nullopt;
+  }
+  auto config = loop->backend_config<xla::WhileLoopBackendConfig>();
+  if (!config.ok() || !config->has_known_induction_variable()) {
+    VLOG(5) << "The loop has no known induction variable.";
+    return std::nullopt;
+  }
+  return VerifiedLoop{loop, loop->while_body()->parameter_instruction(0),
+                      config->known_induction_variable().tuple_index()};
+}
+
+// Returns true if `hlo` is a GTE for a loop carried variable of `loop`.
+bool IsLoopCarriedVariable(const HloInstruction* hlo,
+                           const VerifiedLoop& loop) {
+  return hlo->opcode() == HloOpcode::kGetTupleElement &&
+         hlo->operand(0) == loop.parameter;
+}
+
+// Returns true if `maybe_variable` is `loop`'s induction variable.
+bool IsInductionVariable(const HloInstruction* maybe_variable,
+                         const VerifiedLoop& loop) {
+  return IsLoopCarriedVariable(maybe_variable, loop) &&
+         maybe_variable->tuple_index() == loop.induction_variable_index;
+}
+
+// Returns true if `variable` is marked as a dynamic variable.
+bool IsDynamicVariable(const HloInstruction* variable,
+                       const VerifiedLoop& loop) {
+  auto config = loop.loop->backend_config<xla::WhileLoopBackendConfig>();
+  if (!config.ok()) {
+    return false;
+  }
+
+  int64_t tuple_idx = variable->tuple_index();
+  for (const auto& dv : config->dynamic_variables()) {
+    if (dv.tuple_index() == tuple_idx) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Attempts to find the induction variable of `loop` in `dependencies`. If there
+// are any dependencies on non-induction variable loop-carried variables,
+// returns nullopt.
+std::optional<const HloInstruction*> VerifyInductionVariable(
+    const Dependencies& dependencies, const VerifiedLoop& loop) {
+  const HloInstruction* induction_var = nullptr;
+  for (const HloInstruction* gte : dependencies.get_tuple_elements) {
+    if (IsLoopCarriedVariable(gte, loop)) {
+      if (IsInductionVariable(gte, loop)) {
+        if (induction_var) {
+          // This should never happen.
+          VLOG(5) << "Found non-unique GTEs for the induction variable. Did "
+                     "HloCSE run?";
+          return std::nullopt;
+        }
+        induction_var = gte;
+      } else if (IsDynamicVariable(gte, loop)) {
+        // Dynamic variables are also acceptable because they represent tuple
+        // indices used in DS/DUS copy fusions that can be emitted as
+        // specialized D2D copy thunk sequences.
+        if (induction_var) {
+          // This should never happen.
+          VLOG(5) << "Found non-unique GTEs for the dynamic variable. Did "
+                     "HloCSE run?";
+          return std::nullopt;
+        }
+        induction_var = gte;
+      } else {
+        // Other dependencies on loop-carried variables are not allowed.
+        VLOG(5) << "Found illegal dependency on loop-carried variable.";
+        return std::nullopt;
+      }
+    }
+    // Other GTEs are OK, as long as their tuples are ultimately just derived
+    // from the loop's induction variable. We already verified that there are no
+    // side-effecting dependencies in GetLeafDependencies.
+  }
+  if (!induction_var) {
+    VLOG(5) << "Did not find an induction variable or dynamic variable.";
+    return std::nullopt;
+  }
+  return induction_var;
+}
+
+}  // namespace
+
+std::optional<InductionVariableFunctionalDependency>
+ResolveFunctionalDependencyOnInductionVariable(const HloInstruction* instr) {
+  VLOG(5) << "Looking for defining while loop of " << instr->name();
+
+  auto dependencies = GetLeafDependencies(instr);
+  // If there is a side effect in the dependencies, the result will be nullopt.
+  if (!dependencies) {
+    return std::nullopt;
+  }
+
+  // In the dependencies, there should be exactly one parameter of a while loop,
+  // and exactly one GTE for that parameter. We already verified that there are
+  // no side-effecting dependencies.
+  InductionVariableFunctionalDependency result{};
+  for (const HloInstruction* param : dependencies->parameters) {
+    const HloComputation* callee = param->parent();
+    const HloInstruction* caller = GetUniqueCallerOrNull(callee);
+    if (caller && IsCallLike(caller)) {
+      // Register the parameter as a required intermediate value.
+      auto& required = result.required_parameters[callee];
+      if (required.empty()) {
+        required.resize(callee->num_parameters());
+      }
+      required[param->parameter_number()] = true;
+    } else if (caller && caller->opcode() == HloOpcode::kWhile) {
+      if (result.loop) {
+        LOG(WARNING) << "While loop not unique. This should never happen.";
+        return std::nullopt;
+      }
+      result.loop = caller;
+    } else {
+      // We arrived at an unexpected parameter. This likely means we're not in
+      // a while loop, or there's an unsupported instruction between the while
+      // loop and `instr`.
+      VLOG(5) << "Unsupported parameter: " << param->name() << ".";
+      return std::nullopt;
+    }
+  }
+
+  auto verified_loop = VerifyFunctionalDependencyLoop(result.loop);
+  if (!verified_loop) {
+    return std::nullopt;
+  }
+
+  auto induction_var = VerifyInductionVariable(*dependencies, *verified_loop);
+  if (induction_var) {
+    result.induction_var = *induction_var;
+  } else {
+    return std::nullopt;
+  }
+
+  VLOG(5) << "While loop for " << instr->name() << ": "
+          << verified_loop->loop->name();
+  return result;
 }
 
 }  // namespace xla::gpu

@@ -99,11 +99,12 @@ typedef PJRT_Error* PJRT_MultiSlice_Config_Serialize(
 
 typedef struct PJRT_MultiSlice_Extension {
   PJRT_Extension_Base base;
-  PJRT_MultiSlice_Config_Destroy* config_destroy;
-  PJRT_MultiSlice_Config_NumSlices* config_num_slices;
-  PJRT_MultiSlice_Config_SliceId* config_slice_id;
-  PJRT_MultiSlice_Config_NumDevicesPerSlice* config_num_devices_per_slice;
-  PJRT_MultiSlice_Config_Serialize* config_serialize;
+  PJRT_NO_DISCARD PJRT_MultiSlice_Config_Destroy* config_destroy;
+  PJRT_NO_DISCARD PJRT_MultiSlice_Config_NumSlices* config_num_slices;
+  PJRT_NO_DISCARD PJRT_MultiSlice_Config_SliceId* config_slice_id;
+  PJRT_NO_DISCARD PJRT_MultiSlice_Config_NumDevicesPerSlice*
+      config_num_devices_per_slice;
+  PJRT_NO_DISCARD PJRT_MultiSlice_Config_Serialize* config_serialize;
 } PJRT_MultiSlice_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_MultiSlice_Extension, config_serialize);
 

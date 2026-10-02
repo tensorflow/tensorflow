@@ -61,11 +61,14 @@ class SingleDebugEventFileWriter {
   const std::string FileName();
 
  private:
+  absl::Status InitLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(writer_mu_);
+  absl::Status FlushLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(writer_mu_);
+
   Env* env_;
   const std::string file_path_;
   std::atomic_int_fast32_t num_outstanding_events_;
 
-  std::unique_ptr<WritableFile> writable_file_;
+  std::unique_ptr<WritableFile> writable_file_ TF_GUARDED_BY(writer_mu_);
   std::unique_ptr<io::RecordWriter> record_writer_ TF_PT_GUARDED_BY(writer_mu_);
   mutex writer_mu_;
 };
@@ -231,21 +234,29 @@ class DebugEventsWriter {
   std::string FileName(DebugEventFileType type);
 
   // Initialize the TFRecord writer for non-metadata file type.
-  absl::Status InitNonMetadataFile(DebugEventFileType type);
+  absl::Status InitNonMetadataFile(DebugEventFileType type)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(initialization_mu_);
 
   absl::Status SerializeAndWriteDebugEvent(DebugEvent* debug_event,
                                            DebugEventFileType type);
 
+  absl::Status FlushNonExecutionFilesLocked()
+      TF_SHARED_LOCKS_REQUIRED(writers_mu_);
+  absl::Status FlushExecutionFilesLocked()
+      TF_SHARED_LOCKS_REQUIRED(writers_mu_);
+
   void SelectWriter(DebugEventFileType type,
-                    std::unique_ptr<SingleDebugEventFileWriter>** writer);
+                    std::unique_ptr<SingleDebugEventFileWriter>** writer)
+      TF_SHARED_LOCKS_REQUIRED(writers_mu_);
   const std::string GetSuffix(DebugEventFileType type);
-  std::string GetFileNameInternal(DebugEventFileType type);
+  std::string GetFileNameInternal(DebugEventFileType type)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(initialization_mu_);
 
   Env* env_;
   const std::string dump_root_;
   const std::string tfdbg_run_id_;
 
-  std::string file_prefix_;
+  std::string file_prefix_ TF_GUARDED_BY(initialization_mu_);
   bool is_initialized_ TF_GUARDED_BY(initialization_mu_);
   mutex initialization_mu_;
 
@@ -260,12 +271,19 @@ class DebugEventsWriter {
       TF_GUARDED_BY(device_mu_);
   mutex device_mu_;
 
-  std::unique_ptr<SingleDebugEventFileWriter> metadata_writer_;
-  std::unique_ptr<SingleDebugEventFileWriter> source_files_writer_;
-  std::unique_ptr<SingleDebugEventFileWriter> stack_frames_writer_;
-  std::unique_ptr<SingleDebugEventFileWriter> graphs_writer_;
-  std::unique_ptr<SingleDebugEventFileWriter> execution_writer_;
-  std::unique_ptr<SingleDebugEventFileWriter> graph_execution_traces_writer_;
+  mutex writers_mu_;
+  std::unique_ptr<SingleDebugEventFileWriter> metadata_writer_
+      TF_GUARDED_BY(writers_mu_);
+  std::unique_ptr<SingleDebugEventFileWriter> source_files_writer_
+      TF_GUARDED_BY(writers_mu_);
+  std::unique_ptr<SingleDebugEventFileWriter> stack_frames_writer_
+      TF_GUARDED_BY(writers_mu_);
+  std::unique_ptr<SingleDebugEventFileWriter> graphs_writer_
+      TF_GUARDED_BY(writers_mu_);
+  std::unique_ptr<SingleDebugEventFileWriter> execution_writer_
+      TF_GUARDED_BY(writers_mu_);
+  std::unique_ptr<SingleDebugEventFileWriter> graph_execution_traces_writer_
+      TF_GUARDED_BY(writers_mu_);
 
   DebugEventsWriter(const DebugEventsWriter&) = delete;
   void operator=(const DebugEventsWriter&) = delete;

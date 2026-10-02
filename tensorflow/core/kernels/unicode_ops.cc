@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "unicode/schriter.h"  // from @icu
 #include "unicode/uchar.h"  // from @icu
@@ -370,7 +372,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
   }
 
   void Decode(OpKernelContext* ctx, std::vector<UChar32>* char_values,
-              std::vector<SPLITS_TYPE>* offset_values, int* current_offset,
+              std::vector<int64_t>* offset_values, int64_t* current_offset,
               SPLITS_TYPE* next_row_split, UChar32 char_value, int char_length,
               bool found_any_format_error) {
     if (error_options_.error_on_malformatting && found_any_format_error) {
@@ -414,7 +416,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
                     input_encoding_));
 
     std::vector<UChar32> char_values;
-    std::vector<SPLITS_TYPE> offset_values;
+    std::vector<int64_t> offset_values;
 
     Tensor* output_row_splits;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("row_splits",
@@ -422,16 +424,16 @@ class UnicodeDecodeBaseOp : public OpKernel {
                                              &output_row_splits));
     auto out_row_splits = output_row_splits->vec<SPLITS_TYPE>();
 
-    int row_split_index = 0;
+    int64_t row_split_index = 0;
     SPLITS_TYPE next_row_split = 0;
-    for (int i = 0; i < input_vec.size(); ++i) {
+    for (int64_t i = 0; i < input_vec.size(); ++i) {
       const std::string& input = input_vec(i);
       // Convert input strings into unicode values. Output to a list of
       // char_values, record row splits and char_to_byte_starts, which are all
       // the fields needed to construct a RaggedTensor.
       out_row_splits(row_split_index) = next_row_split;
       row_split_index++;
-      int current_offset = 0;
+      int64_t current_offset = 0;
       IterateUnicodeString(
           input, input_encoder.converter_,
           std::bind(&UnicodeDecodeBaseOp::Decode, this, ctx, &char_values,
@@ -441,28 +443,43 @@ class UnicodeDecodeBaseOp : public OpKernel {
     }
     out_row_splits(row_split_index) = next_row_split;
 
+    OP_REQUIRES(
+        ctx,
+        FastBoundsCheck(char_values.size(),
+                        std::numeric_limits<SPLITS_TYPE>::max()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "char_values size exceeds maximum capacity of SPLITS_TYPE: ",
+            char_values.size())));
+
     Tensor* output_char_values;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_output(
-                 "char_values", {static_cast<SPLITS_TYPE>(char_values.size())},
-                 &output_char_values));
+        ctx, ctx->allocate_output("char_values",
+                                  {static_cast<int64_t>(char_values.size())},
+                                  &output_char_values));
     auto out_char_values = output_char_values->vec<int32_t>();
     if (generate_offsets_) {
       DCHECK(offset_values.size() == char_values.size());
+      OP_REQUIRES(
+          ctx,
+          FastBoundsCheck(offset_values.size(),
+                          std::numeric_limits<SPLITS_TYPE>::max()),
+          absl::InvalidArgumentError(absl::StrCat(
+              "offset_values size exceeds maximum capacity of SPLITS_TYPE: ",
+              offset_values.size())));
       Tensor* output_offset_values;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(
                               "char_to_byte_starts",
-                              {static_cast<SPLITS_TYPE>(offset_values.size())},
+                              {static_cast<int64_t>(offset_values.size())},
                               &output_offset_values));
-      auto out_offset_values = output_offset_values->vec<SPLITS_TYPE>();
+      auto out_offset_values = output_offset_values->vec<int64_t>();
 
       // Load output tensors from intermediate value arrays.
-      for (int i = 0; i < char_values.size(); ++i) {
+      for (size_t i = 0; i < char_values.size(); ++i) {
         out_char_values(i) = static_cast<int32_t>(char_values[i]);
         out_offset_values(i) = offset_values[i];
       }
     } else {
-      for (int i = 0; i < char_values.size(); ++i) {
+      for (size_t i = 0; i < char_values.size(); ++i) {
         out_char_values(i) = static_cast<int32_t>(char_values[i]);
       }
     }
@@ -559,9 +576,9 @@ class UnicodeEncodeOp : public OpKernel {
     auto output_tensor_flat = output_tensor->flat<tstring>();
 
     // Use a single index over the flattened input values tensor.
-    int idx = 0;
+    int64_t idx = 0;
     // Loop through our split dimension to create a new string at each split.
-    for (int i = 1; i < input_splits_flat.size(); ++i) {
+    for (int64_t i = 1; i < input_splits_flat.size(); ++i) {
       icu::UnicodeString unicode_string;
       OP_REQUIRES(
           context, input_splits_flat(i - 1) <= input_splits_flat(i),

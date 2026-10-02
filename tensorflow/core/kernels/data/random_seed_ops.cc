@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/dataset.h"

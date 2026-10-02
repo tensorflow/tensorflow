@@ -46,6 +46,9 @@ LoadAddI32Ptrs3TestKernel(StreamExecutor* executor);
 absl::StatusOr<internal::CopyKernel::KernelType> LoadCopyTestKernel(
     StreamExecutor* executor);
 
+absl::StatusOr<internal::DynShmemKernel::KernelType> LoadDynShmemTestKernel(
+    StreamExecutor* executor);
+
 absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
     Platform::Id platform_id);
 
@@ -65,6 +68,9 @@ KernelLoaderSpec GetAddI32PtxKernelSpec();
 
 // Returns TMA test kernel loaded from PTX.
 KernelLoaderSpec GetTmaPtxKernelSpec();
+
+// Returns a minimal cluster kernel loaded from PTX.
+KernelLoaderSpec GetMinimalClusterKernelSpec();
 
 }  // namespace stream_executor::gpu
 

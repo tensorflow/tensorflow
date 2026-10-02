@@ -27,7 +27,7 @@ namespace xla {
 namespace {
 
 using Atan2Test =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(Atan2Test, atan2) {
   XlaBuilder builder("atan2 with special and non-special float values");

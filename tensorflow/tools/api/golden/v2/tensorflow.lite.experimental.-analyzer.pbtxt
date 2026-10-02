@@ -8,5 +8,6 @@ tf_class {
   member_method {
     name: "analyze"
     argspec: "args=[\'model_path\', \'model_content\', \'gpu_compatibility\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'False\'], "
+    method_kind: STATIC
   }
 }

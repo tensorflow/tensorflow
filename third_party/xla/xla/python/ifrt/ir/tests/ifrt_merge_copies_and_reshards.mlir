@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: ifrt-opt %s -ifrt-merge-copies-and-reshards | FileCheck %s
 
 #sharding = #ifrt.sharding_param<2 to [0] on 2>
@@ -5,7 +19,7 @@
 !array1 = !ifrt.array<tensor<2xi32>, #sharding, [2,3]>
 !array2 = !ifrt.array<tensor<2xi32>, #sharding, [4,5]>
 !array3 = !ifrt.array<tensor<2xi32>, #sharding, [6,7]>
-!array_default_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "(default)">
+!array_default_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "device">
 !array_pinned_host_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "pinned_host">
 !array_minor_to_major = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{0,1}">
 !array_major_to_minor = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{1,0}">
@@ -86,13 +100,13 @@ func.func @merge_reshards_for_same_devices_only(
 func.func @merge_copies_for_same_donated_only(
     %arg0: !array0, %arg1: !array0, %arg2: !array0, %arg3: !array0)
   -> (!array1, !array1, !array1, !array1) attributes {ifrt.function} {
-// CHECK-NEXT: %[[MERGED1:.*]]:2, %{{.*}} = ifrt.CopyArrays(%arg0, %arg1) {donated = true} :
+// CHECK-NEXT: %[[MERGED1:.*]]:2, %{{.*}} = ifrt.CopyArrays(%arg0, %arg1) <donated = true> :
 // CHECK-NEXT: %[[MERGED2:.*]]:2, %{{.*}} = ifrt.CopyArrays(%arg2, %arg3)
-// CHECK-NOT:      {donated = true}
+// CHECK-NOT:      <donated = true>
 // CHECK-NEXT: return %[[MERGED1]]#0, %[[MERGED1]]#1, %[[MERGED2]]#0, %[[MERGED2]]#1
-  %1, %ctrl_1 = ifrt.CopyArrays(%arg0) {donated = true} : (!array0) -> !array1
-  %2, %ctrl_2 = ifrt.CopyArrays(%arg1) {donated = true} : (!array0) -> !array1
-  %3, %ctrl_3 = ifrt.CopyArrays(%arg2) {donated = false} : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.CopyArrays(%arg0) <donated = true> : (!array0) -> !array1
+  %2, %ctrl_2 = ifrt.CopyArrays(%arg1) <donated = true> : (!array0) -> !array1
+  %3, %ctrl_3 = ifrt.CopyArrays(%arg2) <donated = false> : (!array0) -> !array1
   %4, %ctrl_4 = ifrt.CopyArrays(%arg3) : (!array0) -> !array1
   return %1, %2, %3, %4 : !array1, !array1, !array1, !array1
 }
@@ -101,13 +115,13 @@ func.func @merge_copies_for_same_donated_only(
 func.func @merge_reshards_for_same_donated_only(
     %arg0: !array0, %arg1: !array0, %arg2: !array0, %arg3: !array0)
   -> (!array1, !array1, !array1, !array1) attributes {ifrt.function} {
-// CHECK-NEXT: %[[MERGED1:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %arg1) {donated = true} :
+// CHECK-NEXT: %[[MERGED1:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %arg1) <donated = true> :
 // CHECK-NEXT: %[[MERGED2:.*]]:2, %{{.*}} = ifrt.Reshard(%arg2, %arg3)
-// CHECK-NOT:      {donated = true}
+// CHECK-NOT:      <donated = true>
 // CHECK-NEXT: return %[[MERGED1]]#0, %[[MERGED1]]#1, %[[MERGED2]]#0, %[[MERGED2]]#1
-  %1, %ctrl_1 = ifrt.Reshard(%arg0) {donated = true} : (!array0) -> !array1
-  %2, %ctrl_2 = ifrt.Reshard(%arg1) {donated = true} : (!array0) -> !array1
-  %3, %ctrl_3 = ifrt.Reshard(%arg2) {donated = false} : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.Reshard(%arg0) <donated = true> : (!array0) -> !array1
+  %2, %ctrl_2 = ifrt.Reshard(%arg1) <donated = true> : (!array0) -> !array1
+  %3, %ctrl_3 = ifrt.Reshard(%arg2) <donated = false> : (!array0) -> !array1
   %4, %ctrl_4 = ifrt.Reshard(%arg3) : (!array0) -> !array1
   return %1, %2, %3, %4 : !array1, !array1, !array1, !array1
 }

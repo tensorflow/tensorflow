@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -173,18 +174,19 @@ HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64_t num_partitions,
                                     SpmdBuilder* b) {
   /* n = size_per_replica
      m = num_partitions
-  factor = tf.exp(-2.0j * np.pi * tf.cast(position_index, tf.complex64) *
-                    * tf.cast(tf.range(n), dtype=tf.complex64) /
+  factor = tf.exp(-2.0j * np.pi * tf.cast(position_index, dtype) *
+                    * tf.cast(tf.range(n), dtype=dtype) /
                     (n * m))
+  where dtype matches the FFT element type.
 
   */
   auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
     return b->AddInstruction(std::move(to_add));
   };
   int64_t per_replica_size = hlo->shape().dimensions().back();
-  auto constant_factor =
-      add_hlo(HloInstruction::CreateConstant(LiteralUtil::CreateR0(
-          complex64(0, -2.0 * M_PI / (num_partitions * per_replica_size)))));
+  auto constant_factor = CreateR0WithType(
+      hlo->shape().element_type(),
+      complex128(0, -2.0 * M_PI / (num_partitions * per_replica_size)), b);
   constant_factor = add_hlo(HloInstruction::CreateBroadcast(
       hlo->shape(), constant_factor, /*broadcast_dimensions=*/{}));
   auto converted_partition_id = add_hlo(HloInstruction::CreateConvert(
@@ -256,12 +258,14 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
       HloInstruction::CreateGetTupleElement(iteration->shape(), param, 4));
   /*
     factor = tf.exp(-2.0j * np.pi  *
-                      tf.cast(dest_partiton_id, tf.complex64) *
-                      tf.cast(source_partition_id, tf.complex64) /
+                      tf.cast(dest_partition_id, dtype) *
+                      tf.cast(source_partition_id, dtype) /
     num_partitions) dest_transform += factor * source_transform
+    where dtype matches the FFT element type.
   */
-  auto constant_factor = body_b.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR0(complex64(0, -2.0 * M_PI / num_partitions))));
+  auto constant_factor =
+      CreateR0WithType(hlo->shape().element_type(),
+                       complex128(0, -2.0 * M_PI / num_partitions), &body_b);
 
   constant_factor = body_b.AddInstruction(HloInstruction::CreateBinary(
       constant_factor->shape(), HloOpcode::kMultiply, constant_factor,
@@ -350,22 +354,62 @@ HloInstruction* SliceValidData(HloInstruction* hlo, const Shape& target_shape,
 
 // Distributed FFT using the algorithm described in go/tpu-spmd-fft.
 absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
-  if (hlo->operand(0)->shape().dimensions().size() < 3 ||
-      hlo->fft_type() != FftType::FFT) {
+  const int64_t rank = hlo->operand(0)->shape().dimensions().size();
+  const int64_t first_fft_dim =
+      rank - static_cast<int64_t>(hlo->fft_length().size());
+
+  auto fallback_to_replicated = [&](const char* reason) {
+    if (hlo->has_sharding() && hlo->sharding().IsTiled()) {
+      LOG_FIRST_N(WARNING, 5)
+          << "[SPMD] Falling back to replicated execution for tiled FFT "
+             "operation "
+          << hlo->name() << ": " << reason
+          << ". This may introduce all-gather communication and duplicate FFT "
+             "computation. Operation: "
+          << hlo->ToString();
+    }
     return DefaultAction(hlo);
+  };
+
+  if (hlo->has_sharding() && hlo->sharding().IsTiled()) {
+    bool fft_dims_unsharded = true;
+    for (int64_t dim = first_fft_dim; dim < rank; ++dim) {
+      fft_dims_unsharded &= hlo->sharding().dimension(dim) == 1;
+    }
+    if (fft_dims_unsharded) {
+      // FFTs are independent across non-transformed dimensions, so they can
+      // use the same local partitioning as elementwise operations.
+      return HandleElementwise(hlo);
+    }
+  }
+
+  if (rank < 3) {
+    return fallback_to_replicated("the operand rank is less than 3");
+  }
+  if (hlo->fft_type() != FftType::FFT) {
+    return fallback_to_replicated(
+        "partitioning along transformed dimensions is only supported for FFT");
   }
 
   // Only support input_length equals fft_length's case.
   int64_t input_length = hlo->operand(0)->shape().dimensions().back();
   int64_t fft_length = hlo->fft_length().back();
-  if (input_length != fft_length || input_length % num_partitions_ != 0) {
-    return DefaultAction(hlo);
+  if (input_length != fft_length) {
+    return fallback_to_replicated(
+        "the input length does not match the FFT length");
+  }
+  if (input_length % num_partitions_ != 0) {
+    return fallback_to_replicated(
+        "the input length is not divisible by the partition count");
   }
 
   // Support partition at the last dimension only.
-  if (!hlo->has_sharding() ||
+  if (!hlo->has_sharding() || hlo->sharding().IsReplicated() ||
+      hlo->sharding().dimensions().empty() ||
       hlo->sharding().dimensions().back() != num_partitions_) {
-    return DefaultAction(hlo);
+    return fallback_to_replicated(
+        "distributed FFT requires the last FFT dimension to be sharded across "
+        "all partitions without replication");
   }
 
   auto partitioned_input =
@@ -387,9 +431,16 @@ absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
       partitioned_input.state().next_channel_id,
       partitioned_input.state().partition_id, partitioned_input.state().b);
 
-  if (padded_hlo.has_value()) {
-    result = padded_hlo.value();
+  if (!padded_hlo.has_value()) {
+    // Halo exchange is what establishes the divisibility that
+    // ShuffleWithinEachPartitionUsingOneHot requires (its CHECK_EQ). If it was
+    // not possible for this sharding (e.g. a halo larger than the per-shard
+    // size), fall back to the default partitioning instead of proceeding with
+    // an un-padded operand and hitting that CHECK.
+    return fallback_to_replicated(
+        "halo exchange cannot support the per-partition FFT size");
   }
+  result = padded_hlo.value();
 
   // 1.b Shuffle data within each partition using one hot and matmul.
   // If partition 0 has {0, 1, 2, 3} and num partitions is 2, after shuffling,

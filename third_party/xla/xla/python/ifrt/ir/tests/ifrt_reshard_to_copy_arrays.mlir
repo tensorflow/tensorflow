@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: ifrt-opt %s -ifrt-reshard-to-copy-arrays -verify-diagnostics -split-input-file | FileCheck %s
 
 !array0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
@@ -42,9 +56,9 @@ module @reshard_not_converted {
 module @extract_copy_from_reshard {
   func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
       attributes {ifrt.function} {
-    // CHECK: %[[RESHARDED:.+]], %{{.+}} = ifrt.Reshard(%arg1) {donated = true}
-    // CHECK: %[[COPIED:.+]], %{{.+}} = ifrt.CopyArrays(%arg0) {donated = true}
-    %0, %1, %ctrl_0 = ifrt.Reshard(%arg0, %arg1) {donated = true}
+    // CHECK: %[[RESHARDED:.+]], %{{.+}} = ifrt.Reshard(%arg1) <donated = true>
+    // CHECK: %[[COPIED:.+]], %{{.+}} = ifrt.CopyArrays(%arg0) <donated = true>
+    %0, %1, %ctrl_0 = ifrt.Reshard(%arg0, %arg1) <donated = true>
         : (!array0, !array1) -> (!array1, !array2)
     // CHECK: return %[[COPIED]], %[[RESHARDED]]
     return %0, %1: !array1, !array2

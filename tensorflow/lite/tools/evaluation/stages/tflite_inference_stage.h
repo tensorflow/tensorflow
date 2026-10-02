@@ -57,6 +57,17 @@ class TfliteInferenceStage : public EvaluationStage {
   // This class does not take ownership of raw_input_ptrs.
   void SetInputs(const std::vector<void*>& raw_input_ptrs) {
     inputs_ = &raw_input_ptrs;
+    input_buffer_sizes_.reset();
+  }
+
+  // Call before Run().
+  // This class does not take ownership of raw_input_ptrs. It stores a copy of
+  // input_buffer_sizes.
+  void SetInputs(const std::vector<void*>& raw_input_ptrs,
+                 const std::vector<size_t>& input_buffer_sizes) {
+    inputs_ = &raw_input_ptrs;
+    input_buffer_sizes_ =
+        std::make_unique<std::vector<size_t>>(input_buffer_sizes);
   }
 
   // Resize input tensors with given shapes.
@@ -85,6 +96,7 @@ class TfliteInferenceStage : public EvaluationStage {
 
   TfLiteModelInfo model_info_;
   const std::vector<void*>* inputs_ = nullptr;
+  std::unique_ptr<std::vector<size_t>> input_buffer_sizes_;
   mutable std::vector<void*> outputs_;
 
   tsl::Stat<int64_t> latency_stats_;

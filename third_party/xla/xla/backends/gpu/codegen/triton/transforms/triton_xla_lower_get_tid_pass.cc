@@ -17,7 +17,6 @@ limitations under the License.
 // This implementation uses tt.extern_elementwise to call a custom function
 // that will be implemented in platform-specific passes in the Triton pipeline.
 
-#include <memory>
 #include <string>
 #include <utility>
 

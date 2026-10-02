@@ -1,3 +1,18 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
 // COM: This file is there to check that the `tfl-legalize-hlo` pass exists in `odml-to-stablehlo-opt`.
 
 // RUN: odml-to-stablehlo-opt %s -tfl-legalize-hlo -split-input-file | FileCheck %s --dump-input=fail
@@ -2436,6 +2451,34 @@ func.func @iota_1d() -> tensor<123xf32> {
 
 // -----
 
+// tfl.range has no bf16 support, so the range is built in f32 and cast back.
+// CHECK-LABEL: iota_1d_bf16
+func.func @iota_1d_bf16() -> tensor<123xbf16> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xbf16>
+  func.return %0 : tensor<123xbf16>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<1.230000e+02> : tensor<f32>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK:     %[[RANGE:.*]] = "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<123xf32>
+// CHECK:     "tfl.cast"(%[[RANGE]]) : (tensor<123xf32>) -> tensor<123xbf16>
+
+// -----
+
+// CHECK-LABEL: iota_2d_bf16
+func.func @iota_2d_bf16() -> tensor<4x123xbf16> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 1 : i64 }> : () -> tensor<4x123xbf16>
+  func.return %0 : tensor<4x123xbf16>
+}
+
+// CHECK:     %[[RANGE:.*]] = "tfl.range"({{.*}}) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<123xf32>
+// CHECK:     %[[RESHAPE:.*]] = "tfl.reshape"(%[[RANGE]], {{.*}}) : (tensor<123xf32>, tensor<2xi32>) -> tensor<1x123xf32>
+// CHECK:     %[[BCAST:.*]] = "tfl.broadcast_to"(%[[RESHAPE]], {{.*}}) : (tensor<1x123xf32>, tensor<2xi64>) -> tensor<4x123xf32>
+// CHECK:     "tfl.cast"(%[[BCAST]]) : (tensor<4x123xf32>) -> tensor<4x123xbf16>
+
+// -----
+
 // CHECK-LABEL: iota_i64
 func.func @iota_i64() -> tensor<123xi64> {
   %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xi64>
@@ -2506,6 +2549,23 @@ func.func @dynamic_iota_f32_1d(%arg0: tensor<1xi32>) -> tensor<?xf32> {
 // CHECK:     %[[CST_1:.*]] = arith.constant dense<> : tensor<0xi32>
 // CHECK:     %1 = "tfl.reshape"(%0, %[[CST_1]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
 // CHECK:     %2 = "tfl.range"(%[[CST]], %1, %[[CST_0]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+
+// -----
+
+// tfl.range has no bf16 support, so the range is built in f32 and cast back.
+// CHECK-LABEL: dynamic_iota_bf16_1d
+func.func @dynamic_iota_bf16_1d(%arg0: tensor<1xi32>) -> tensor<?xbf16> {
+  %0 = "mhlo.dynamic_iota"(%arg0) <{iota_dimension = 0 : i64}> : (tensor<1xi32>) -> tensor<?xbf16>
+  func.return %0 : tensor<?xbf16>
+}
+
+// CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK:     %0 = "tfl.cast"(%arg0) : (tensor<1xi32>) -> tensor<1xf32>
+// CHECK:     %[[CST_1:.*]] = arith.constant dense<> : tensor<0xi32>
+// CHECK:     %1 = "tfl.reshape"(%0, %[[CST_1]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
+// CHECK:     %2 = "tfl.range"(%[[CST]], %1, %[[CST_0]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+// CHECK:     "tfl.cast"(%2) : (tensor<?xf32>) -> tensor<?xbf16>
 
 // -----
 
@@ -3055,6 +3115,18 @@ func.func @log1p_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<f32>
 // CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
 // CHECK: %1 = "tfl.log"(%0) : (tensor<?xf32>) -> tensor<?xf32>
+
+// -----
+
+// CHECK-LABEL: log1p_bf16
+func.func @log1p_bf16(%arg0: tensor<2xbf16>) -> tensor<2xbf16> {
+  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<2xbf16>) -> tensor<2xbf16>
+  func.return %0 : tensor<2xbf16>
+}
+
+// CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<bf16>
+// CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2xbf16>, tensor<bf16>) -> tensor<2xbf16>
+// CHECK: %1 = "tfl.log"(%0) : (tensor<2xbf16>) -> tensor<2xbf16>
 
 // -----
 

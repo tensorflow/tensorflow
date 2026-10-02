@@ -15,19 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_OPERATION_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_OPERATION_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
-#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 
 struct TFE_Op;
@@ -66,6 +67,9 @@ class ImmediateExecutionOperation : public AbstractOperation {
   virtual const tensorflow::AbstractOpAttrs* GetOpAttrs() const = 0;
   virtual void AddAttrs(const AbstractOpAttrs* op_attrs) = 0;
 
+  virtual absl::Status SetAttrValue(const char* attr_name,
+                                    const AttrValue& value) = 0;
+
   virtual void SetCancellationManager(
       CancellationManager* cancellation_manager) = 0;
 
@@ -82,7 +86,7 @@ class ImmediateExecutionOperation : public AbstractOperation {
  protected:
   explicit ImmediateExecutionOperation(AbstractOperationKind kind)
       : AbstractOperation(kind) {}
-  ~ImmediateExecutionOperation() override {}
+  ~ImmediateExecutionOperation() override = default;
 };
 
 namespace internal {

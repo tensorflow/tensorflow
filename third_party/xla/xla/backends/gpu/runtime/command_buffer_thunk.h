@@ -38,18 +38,14 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
 class CommandBufferThunk : public Thunk {
  public:
-  CommandBufferThunk(
-      CommandExecutor commands, ThunkInfo thunk_info,
-      std::unique_ptr<SequentialThunk> thunks = nullptr,
-      bool enable_command_buffers_during_profiling = false,
-      DebugOptions::CommandBufferUpdateMode command_buffer_update_mode =
-          DebugOptions::ALWAYS_UPDATE);
+  CommandBufferThunk(CommandExecutor commands, ThunkInfo thunk_info,
+                     std::unique_ptr<SequentialThunk> thunks = nullptr,
+                     bool enable_command_buffers_during_profiling = false);
 
   const std::unique_ptr<SequentialThunk>& thunks() const { return thunks_; }
 
@@ -76,7 +72,7 @@ class CommandBufferThunk : public Thunk {
 
   BufferUses buffer_uses() const override { return {}; }
 
-  absl::Status WalkNested(Walker callback) override;
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
 
   std::string ToString(int indent) const override;
 
@@ -99,9 +95,17 @@ class CommandBufferThunk : public Thunk {
     // Updates recorded buffer allocation for the given `commands` using the
     // buffer allocations passed in `params`. Returns buffer allocations that
     // changed since the last update. Returned buffer allocations are sorted by
-    // the buffer allocation index.
+    // the buffer allocation index. `persistent_alloc_indices` must be sorted.
     std::vector<BufferAllocation::Index> UpdateBufferAllocations(
-        const CommandExecutor& commands, const Thunk::ExecuteParams& params)
+        const CommandExecutor& commands, const Thunk::ExecuteParams& params,
+        absl::Span<const BufferAllocation::Index> persistent_alloc_indices)
+        ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
+
+    // Returns true if `commands` references any allocation whose address is not
+    // persistent under the current allocation address policy.
+    bool HasDynamicAllocations(
+        const CommandExecutor& commands,
+        absl::Span<const BufferAllocation::Index> persistent_alloc_indices)
         ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
 
     // se::CommandBuffer is not thread safe, and we guard it with a mutex to
@@ -172,15 +176,15 @@ class CommandBufferThunk : public Thunk {
 
   // Thunk sequence that executes the same commands as in `commands_` but using
   // thunk mechanism. We use it as a fallback mechanism to work around CUPTI
-  // bugs that lead to memory corruption when CUPTI traces CUDA graph execution.
+  // bugs that lead to memory corruption when CUPTI traces CUDA graph execution,
+  // and to execute the thunk while `persistent_alloc_indices` is not yet
+  // available (e.g. during the VA remapping profiling window), in which case
+  // command buffer lowering is disabled for the step.
   std::unique_ptr<SequentialThunk> thunks_;
 
   // When true, allows command buffers to be used while profiling active.
   // TODO(b/355487968): Remove this option when validation complete.
   bool enable_command_buffers_during_profiling_;
-
-  // The update mode controlling VA remapping strategy for this command buffer.
-  DebugOptions::CommandBufferUpdateMode command_buffer_update_mode_;
 
   // Command buffer thunk state allocated in heap to allow global (per-process)
   // management of instantiated command buffers.

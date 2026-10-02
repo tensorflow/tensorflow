@@ -203,7 +203,7 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
   auto compile_options_key =
       module_op->getAttrOfType<mlir::StringAttr>(kIfrtCompileOptionsKey);
   absl::StatusOr<std::optional<xla::CompileOptions>>
-      compile_options_override_or = GetModuleXlaCompileOverrides(
+      compile_options_override_or = GetModuleCompileOverrides(
           compile_options_key, compile_options->compile_options_overrides);
 
   if (!compile_options_override_or.ok()) {

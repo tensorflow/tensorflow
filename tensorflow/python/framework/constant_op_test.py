@@ -138,6 +138,13 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose([1., 2.], f_using_eagerconst())
 
+  def test_eager_tensor_numpy_array_protocol_scalar(self):
+    t = constant_op.constant(42.0)
+    arr = t.__array__()
+    self.assertIsInstance(arr, np.ndarray)
+    self.assertEqual(arr.shape, ())
+    self.assertEqual(arr.item(), 42.0)
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

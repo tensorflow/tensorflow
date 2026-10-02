@@ -261,7 +261,7 @@ class PyRecordWriter {
   void operator=(const PyRecordWriter&) = delete;
 };
 
-PYBIND11_MODULE(_pywrap_record_io, m) {
+PYBIND11_MODULE(_pywrap_record_io, m, pybind11::mod_gil_not_used()) {
   py::class_<PyRecordReader>(m, "RecordIterator")
       .def(py::init(
           [](const std::string& filename, const std::string& compression_type) {

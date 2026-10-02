@@ -1,8 +1,24 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_cuda_or_rocm",
+    "if_not_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -69,6 +85,7 @@ exports_files([
     "decode_image_op.cc",
     "encode_jpeg_op.cc",
     "encode_png_op.cc",
+    "encode_jxl_op.cc",
 ])
 
 # Private support libraries ---------------------------------------------------
@@ -106,6 +123,7 @@ cc_library(
         ":decode_image_op",
         ":draw_bounding_box_op",
         ":encode_jpeg_op",
+        ":encode_jxl_op",
         ":encode_png_op",
         ":extract_image_patches_op",
         ":extract_jpeg_shape_op",
@@ -244,6 +262,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "encode_jxl_op",
+    prefix = "encode_jxl_op",
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:mutex",
+    ],
+)
+
+tf_kernel_library(
     name = "encode_png_op",
     prefix = "encode_png_op",
     deps = IMAGE_DEPS + [
@@ -264,8 +293,7 @@ tf_kernel_library(
     prefix = "extract_image_patches_op",
     deps = [
         "//tensorflow/core/kernels:ops_util",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/util:overflow",
     ] + IMAGE_DEPS,
 )
 
@@ -277,6 +305,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/util:overflow",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -284,8 +313,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-    deps = ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = [
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+    ] + if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
     ]),
 )
@@ -293,6 +326,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "non_max_suppression_op",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "non_max_suppression_op",
     deps = IMAGE_DEPS + [
         "//tensorflow/core/framework:types_proto_cc",
@@ -519,7 +553,6 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:traceme",
@@ -547,6 +580,7 @@ filegroup(
             "*_test_*",
             "decode_image_op.*",
             "encode_png_op.*",
+            "encode_jxl_op.*",
             "encode_jpeg_op.*",
             "extract_jpeg_shape_op.*",
             "decode_jpeg_op.*",

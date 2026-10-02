@@ -19,13 +19,15 @@ limitations under the License.
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
+#include "tensorflow/lite/delegates/ynnpack/ynnpack_delegate.h"
 
 namespace tflite {
 namespace ynnpack {
 
 // Unary operations
 TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
-                                const TfLiteNode* node, TfLiteContext* context);
+                                const TfLiteNode* node, TfLiteContext* context,
+                                const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus DefineUnaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                              TensorToValueIdMap& tensor_to_value_id,
@@ -49,6 +51,22 @@ TfLiteStatus DefineStablehloClampNode(TfLiteContext* context,
                                       ynn_subgraph_t subgraph,
                                       TensorToValueIdMap& tensor_to_value_id,
                                       const NodeInfo& node);
+
+// Quantize/Dequantize operations
+TfLiteStatus IsQuantizeSupported(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context);
+TfLiteStatus DefineQuantizeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
+                                TensorToValueIdMap& tensor_to_value_id,
+                                const NodeInfo& node);
+
+TfLiteStatus IsDequantizeSupported(const TfLiteRegistration* registration,
+                                   const TfLiteNode* node,
+                                   TfLiteContext* context);
+TfLiteStatus DefineDequantizeNode(TfLiteContext* context,
+                                  ynn_subgraph_t subgraph,
+                                  TensorToValueIdMap& tensor_to_value_id,
+                                  const NodeInfo& node);
 
 }  // namespace ynnpack
 }  // namespace tflite

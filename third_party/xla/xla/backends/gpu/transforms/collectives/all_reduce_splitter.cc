@@ -27,11 +27,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -93,7 +92,12 @@ struct ReplicaGroups {
 
   template <typename H>
   friend H AbslHashValue(H h, const ReplicaGroups& rg) {
-    return H::combine(std::move(h), rg.replica_groups.size());
+    for (const ReplicaGroup& group : rg.replica_groups) {
+      h = H::combine(std::move(h), group.replica_ids_size());
+      h = H::combine_contiguous(std::move(h), group.replica_ids().data(),
+                                group.replica_ids_size());
+    }
+    return h;
   }
 
   friend bool operator==(const ReplicaGroups& item,
@@ -104,6 +108,10 @@ struct ReplicaGroups {
     for (int i = 0; i < item.replica_groups.size(); i++) {
       const ReplicaGroup& item_replica_group = item.replica_groups[i];
       const ReplicaGroup& other_replica_group = other.replica_groups[i];
+      if (item_replica_group.replica_ids_size() !=
+          other_replica_group.replica_ids_size()) {
+        return false;
+      }
       for (int i = 0; i < item_replica_group.replica_ids_size(); i++) {
         if (item_replica_group.replica_ids(i) !=
             other_replica_group.replica_ids(i)) {
@@ -197,6 +205,46 @@ static ARReplicaGroups GetNewReplicaGroups(int group_size, int num_partitions) {
   };
 }
 
+// Splits an all-reduce's replica groups using the dynamic-slice shard map.
+// Works for both a single full-mesh group and uniform subgroup ARs (e.g. one
+// DP x FSDP plane per TSP rank). Returns nullopt if the offset pattern cannot
+// be resolved or does not imply a follow-on same-shard AR.
+static std::optional<ARReplicaGroups> TryBuildSplitReplicaGroups(
+    const HloAllReduceInstruction& ar, const HloDynamicSliceInstruction& ds,
+    int split_dim, int ds_factor, int64_t num_partitions,
+    int64_t num_replicas) {
+  auto split = BuildDSSplitReplicaGroups(
+      &ar, &ds, split_dim, ds_factor, ar.replica_groups(), num_partitions,
+      num_replicas, /*is_cross_module=*/true, ar.use_global_device_ids());
+  if (!split.has_value()) {
+    return std::nullopt;
+  }
+  // Empty inner groups means each shard appears once per input group: the AR
+  // is already a pure logical reduce-scatter, so there is nothing to split.
+  if (split->second.empty()) {
+    return std::nullopt;
+  }
+  return ARReplicaGroups{
+      /*first_ar_replica_groups=*/std::move(split->first),
+      /*second_ar_replica_groups=*/std::move(split->second),
+  };
+}
+
+// Returns true if every replica group has the same non-zero size.
+static bool HasUniformReplicaGroupSizes(const std::vector<ReplicaGroup>& rgs,
+                                        int64_t* group_size) {
+  if (rgs.empty() || rgs.front().replica_ids_size() == 0) {
+    return false;
+  }
+  *group_size = rgs.front().replica_ids_size();
+  for (const ReplicaGroup& group : rgs) {
+    if (group.replica_ids_size() != *group_size) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Returns true if `spec` can be transformed into a logical reduce scatter.
 // False otherwise.
 static bool IsLogicalReduceScatter(const HloModule& module,
@@ -248,7 +296,8 @@ static bool IsProfitableToSplit(const ARReplicaGroupMap& replica_map,
 static RewriteDecision CanRewrite(const HloModule& module,
                                   const ARReplicaGroupMap& replica_map,
                                   HloComputation& computation,
-                                  HloInstruction& instruction) {
+                                  HloInstruction& instruction,
+                                  bool ignore_profitability_check) {
   // We rely on SPMD partitioning enabled, thus asserting `replica_count` = 1.
   const HloModuleConfig& config = module.config();
   if (config.use_auto_spmd_partitioning() || !config.use_spmd_partitioning() ||
@@ -293,13 +342,12 @@ static RewriteDecision CanRewrite(const HloModule& module,
   }
 
   int num_partitions = config.num_partitions();
-
   std::vector<ReplicaGroup> rgs = ar->replica_groups();
-  if (rgs.size() != 1 || rgs.front().replica_ids_size() != num_partitions) {
+  int64_t input_group_size = 0;
+  if (!HasUniformReplicaGroupSizes(rgs, &input_group_size)) {
     return RewriteInfeasibleReason{
         &instruction,
-        absl::StrCat("Cannot determine a valid split with num_partitions: ",
-                     num_partitions),
+        "All-reduce replica groups must be non-empty and uniform in size.",
     };
   }
 
@@ -311,34 +359,51 @@ static RewriteDecision CanRewrite(const HloModule& module,
     };
   }
 
-  std::optional<int> group_size = GetProcessGroupSize(*ar, *ds);
-  if (!group_size.has_value()) {
+  std::optional<int> ds_factor = GetProcessGroupSize(*ar, *ds);
+  if (!ds_factor.has_value()) {
     return RewriteInfeasibleReason{
         &instruction,
         "Cannot determine a group size.",
     };
   }
 
-  if (num_partitions == group_size) {
+  if (input_group_size == *ds_factor) {
     return RewriteInfeasibleReason{
         &instruction,
         "Nothing to rewrite",
     };
   }
 
-  if (num_partitions % *group_size != 0) {
+  if (input_group_size % *ds_factor != 0) {
     return RewriteInfeasibleReason{
         &instruction,
-        "Group size does not evenly divide the number of partitions",
+        "DS factor does not evenly divide the replica group size",
     };
+  }
+
+  const bool is_full_mesh_ar =
+      rgs.size() == 1 && input_group_size == num_partitions;
+
+  std::optional<ARReplicaGroups> new_rgs = TryBuildSplitReplicaGroups(
+      *ar, *ds, *split_dim, *ds_factor, num_partitions, config.replica_count());
+  if (!new_rgs.has_value()) {
+    // Fall back to the legacy layout-based split only for a single full-mesh
+    // all-reduce. Subgroup ARs require a resolved DS shard map.
+    if (!is_full_mesh_ar) {
+      return RewriteInfeasibleReason{
+          &instruction,
+          "Cannot resolve dynamic-slice shard map for subgroup all-reduce.",
+      };
+    }
+    new_rgs = GetNewReplicaGroups(*ds_factor, num_partitions);
   }
 
   auto spec = AllReduceRewriteSpec{
       /*split_dim=*/*split_dim,
-      /*group_size=*/*group_size,
+      /*group_size=*/*ds_factor,
       /*all_reduce=*/ar,
       /*dynamic_slice=*/ds,
-      /*replica_groups=*/GetNewReplicaGroups(*group_size, num_partitions),
+      /*replica_groups=*/*new_rgs,
   };
 
   if (!IsLogicalReduceScatter(module, spec, computation)) {
@@ -348,7 +413,10 @@ static RewriteDecision CanRewrite(const HloModule& module,
     };
   }
 
-  if (!IsProfitableToSplit(replica_map, spec)) {
+  VLOG(1) << "Ignore AR splitting profitability check: "
+          << ignore_profitability_check;
+
+  if (!ignore_profitability_check && !IsProfitableToSplit(replica_map, spec)) {
     return RewriteInfeasibleReason{
         &instruction,
         "Splitting is not profitable.",
@@ -358,30 +426,27 @@ static RewriteDecision CanRewrite(const HloModule& module,
   return spec;
 }
 
-static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
-                                           AllReduceRewriteSpec spec,
+static absl::StatusOr<bool> SplitAllReduce(AllReduceRewriteSpec spec,
                                            HloComputation& computation) {
   int64_t next_channel_id =
       hlo_query::NextChannelId(*spec.all_reduce->GetModule());
   VLOG(1) << "AR splitting spec: " << spec.ToString();
-  // Create first AR.
-  int num_partitions = config.num_partitions();
-  // # of shards within a replica
-  int group_size = spec.group_size;
-
-  CHECK_EQ(num_partitions % group_size, 0);
 
   HloAllReduceInstruction& ar = *spec.all_reduce;
   HloDynamicSliceInstruction& ds = *spec.dynamic_slice;
 
   const auto& [first_ar_replica_groups, second_ar_replica_groups] =
       spec.replica_groups;
+  CHECK(!first_ar_replica_groups.empty());
+  CHECK(!second_ar_replica_groups.empty());
+
   int channel_id = next_channel_id++;
   HloInstruction* first_ar =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           ar.shape(), ar.operands(), ar.to_apply(),
           std::make_shared<CollectiveDeviceList>(first_ar_replica_groups),
           ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
+  ar.SetupDerivedInstruction(first_ar);
 
   // Create second AR.
   channel_id = next_channel_id++;
@@ -392,11 +457,11 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
           ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
 
   // Rewire.
-  RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
+  ABSL_RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
   if (ds.IsRoot()) {
     computation.set_root_instruction(second_ar);
   }
-  RETURN_IF_ERROR(ds.ReplaceAllUsesWith(second_ar));
+  ABSL_RETURN_IF_ERROR(ds.ReplaceAllUsesWith(second_ar));
   return true;  // changed
 }
 
@@ -405,16 +470,17 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
 static absl::StatusOr<bool> SplitAllReduce(const HloModule& module,
                                            const ARReplicaGroupMap& replica_map,
                                            HloComputation& computation,
-                                           HloInstruction& instruction) {
-  RewriteDecision spec =
-      CanRewrite(module, replica_map, computation, instruction);
+                                           HloInstruction& instruction,
+                                           bool ignore_profitability_check) {
+  RewriteDecision spec = CanRewrite(module, replica_map, computation,
+                                    instruction, ignore_profitability_check);
   if (std::holds_alternative<RewriteInfeasibleReason>(spec)) {
     auto reason = std::get<RewriteInfeasibleReason>(spec);
     VLOG(1) << "Cannot process {" << reason.ar->ToString()
             << "} due to : " << reason.message;
     return false;  // changed
   }
-  return SplitAllReduce(module.config(), std::get<AllReduceRewriteSpec>(spec),
+  return SplitAllReduce(std::get<AllReduceRewriteSpec>(spec),
                         computation);  // changed
 }
 
@@ -426,8 +492,9 @@ absl::StatusOr<bool> AllReduceSplitter::RunImpl(
   for (auto* computation : module->computations(execution_threads)) {
     ARReplicaGroupMap replica_map = GetReplicaGroupsMap(*computation);
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(*module, replica_map,
-                                                      *computation, *instr));
+      ABSL_ASSIGN_OR_RETURN(bool rewritten,
+                       SplitAllReduce(*module, replica_map, *computation,
+                                      *instr, ignore_profitability_check_));
       changed |= rewritten;
     }
   }

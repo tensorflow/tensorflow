@@ -156,7 +156,8 @@ class StochasticCastOpToIntTest : public OpsTestBase {
     const InType value = InType(0.625);
     AddInput<InType>(TensorShape({kDim, 1}), [&value](int i) { return value; });
     AddInput<uint64_t>(TensorShape({1}), [](int i) { return kRngKey; });
-    AddInput<uint64_t>(TensorShape({1}), [](int i) { return kRngCounter; });
+    AddInput<uint64_t>(TensorShape({2}),
+                       [](int i) { return i == 0 ? kRngCounter : 0; });
     AddInput<int>(TensorShape({}), [](int i) { return kAlgorithm; });
 
     TF_ASSERT_OK(RunOpKernel());
@@ -202,7 +203,8 @@ class StochasticCastOpToIntTest : public OpsTestBase {
     TensorShape shape({static_cast<int64_t>(dim)});
     Tensor* input = AddInput(in_type, shape);
     AddInput<uint64_t>(TensorShape({1}), [](int i) { return kRngKey; });
-    AddInput<uint64_t>(TensorShape({1}), [](int i) { return kRngCounter; });
+    AddInput<uint64_t>(TensorShape({2}),
+                       [](int i) { return i == 0 ? kRngCounter : 0; });
     AddInput<int>(TensorShape({}), [](int i) { return kAlgorithm; });
 
     auto in = input->flat<InType>();

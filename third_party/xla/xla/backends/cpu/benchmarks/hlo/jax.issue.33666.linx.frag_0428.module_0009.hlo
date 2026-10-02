@@ -1,0 +1,244 @@
+HloModule jit__normal, entry_computation_layout={(u32[2]{0})->f32[16]{0}}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true}
+
+region_0.3 {
+  arg_tuple.4 = (s32[], s32[], u32[8]{0}, u32[8]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  get-tuple-element.5 = s32[] get-tuple-element(arg_tuple.4), index=0
+  constant.15 = s32[] constant(1)
+  add.65 = s32[] add(get-tuple-element.5, constant.15), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.6 = s32[] get-tuple-element(arg_tuple.4), index=1
+  add.16 = s32[] add(get-tuple-element.6, constant.15), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.7 = u32[8]{0} get-tuple-element(arg_tuple.4), index=2
+  get-tuple-element.8 = u32[8]{0} get-tuple-element(arg_tuple.4), index=3
+  add.19 = u32[8]{0} add(get-tuple-element.7, get-tuple-element.8), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.12 = u32[4]{0} get-tuple-element(arg_tuple.4), index=7
+  slice.17 = u32[1]{0} slice(get-tuple-element.12), slice={[0:1]}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/slice[start_indices=(0,) limit_indices=(1,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.18 = u32[] reshape(slice.17), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.20 = u32[8]{0} broadcast(reshape.18), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  shift-left.21 = u32[8]{0} shift-left(get-tuple-element.8, broadcast.20), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.14 = u32[] constant(32)
+  subtract.22 = u32[] subtract(constant.14, reshape.18), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.23 = u32[8]{0} broadcast(subtract.22), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  shift-right-logical.24 = u32[8]{0} shift-right-logical(get-tuple-element.8, broadcast.23), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  or.25 = u32[8]{0} or(shift-left.21, shift-right-logical.24), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  xor.26 = u32[8]{0} xor(add.19, or.25), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.29 = u32[8]{0} add(add.19, xor.26), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  slice.27 = u32[1]{0} slice(get-tuple-element.12), slice={[1:2]}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/slice[start_indices=(1,) limit_indices=(2,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.28 = u32[] reshape(slice.27), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.30 = u32[8]{0} broadcast(reshape.28), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  shift-left.31 = u32[8]{0} shift-left(xor.26, broadcast.30), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  subtract.32 = u32[] subtract(constant.14, reshape.28), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.33 = u32[8]{0} broadcast(subtract.32), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  shift-right-logical.34 = u32[8]{0} shift-right-logical(xor.26, broadcast.33), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  or.35 = u32[8]{0} or(shift-left.31, shift-right-logical.34), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  xor.36 = u32[8]{0} xor(add.29, or.35), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.39 = u32[8]{0} add(add.29, xor.36), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  slice.37 = u32[1]{0} slice(get-tuple-element.12), slice={[2:3]}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/slice[start_indices=(2,) limit_indices=(3,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.38 = u32[] reshape(slice.37), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.40 = u32[8]{0} broadcast(reshape.38), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  shift-left.41 = u32[8]{0} shift-left(xor.36, broadcast.40), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  subtract.42 = u32[] subtract(constant.14, reshape.38), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.43 = u32[8]{0} broadcast(subtract.42), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  shift-right-logical.44 = u32[8]{0} shift-right-logical(xor.36, broadcast.43), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  or.45 = u32[8]{0} or(shift-left.41, shift-right-logical.44), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  xor.46 = u32[8]{0} xor(add.39, or.45), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.49 = u32[8]{0} add(add.39, xor.46), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.9 = u32[] get-tuple-element(arg_tuple.4), index=4
+  broadcast.57 = u32[8]{0} broadcast(get-tuple-element.9), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.58 = u32[8]{0} add(add.49, broadcast.57), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  slice.47 = u32[1]{0} slice(get-tuple-element.12), slice={[3:4]}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/slice[start_indices=(3,) limit_indices=(4,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.48 = u32[] reshape(slice.47), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.50 = u32[8]{0} broadcast(reshape.48), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  shift-left.51 = u32[8]{0} shift-left(xor.46, broadcast.50), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  subtract.52 = u32[] subtract(constant.14, reshape.48), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.53 = u32[8]{0} broadcast(subtract.52), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  shift-right-logical.54 = u32[8]{0} shift-right-logical(xor.46, broadcast.53), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  or.55 = u32[8]{0} or(shift-left.51, shift-right-logical.54), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  xor.56 = u32[8]{0} xor(add.49, or.55), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.10 = u32[] get-tuple-element(arg_tuple.4), index=5
+  broadcast.59 = u32[8]{0} broadcast(get-tuple-element.10), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.60 = u32[8]{0} add(xor.56, broadcast.59), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.61 = s32[] add(get-tuple-element.6, constant.15), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  convert.62 = u32[] convert(add.61), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/convert_element_type[new_dtype=uint32 weak_type=False]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.63 = u32[8]{0} broadcast(convert.62), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.64 = u32[8]{0} add(add.60, broadcast.63), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.11 = u32[] get-tuple-element(arg_tuple.4), index=6
+  get-tuple-element.13 = u32[4]{0} get-tuple-element(arg_tuple.4), index=8
+  ROOT tuple.66 = (s32[], s32[], u32[8]{0}, u32[8]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(add.65, add.16, add.58, add.64, get-tuple-element.10, /*index=5*/get-tuple-element.11, get-tuple-element.9, get-tuple-element.13, get-tuple-element.12)
+} // region_0.3
+
+region_1.67 {
+  arg_tuple.68 = (s32[], s32[], u32[8]{0}, u32[8]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  get-tuple-element.70 = s32[] get-tuple-element(arg_tuple.68), index=1
+  get-tuple-element.71 = u32[8]{0} get-tuple-element(arg_tuple.68), index=2
+  get-tuple-element.72 = u32[8]{0} get-tuple-element(arg_tuple.68), index=3
+  get-tuple-element.73 = u32[] get-tuple-element(arg_tuple.68), index=4
+  get-tuple-element.74 = u32[] get-tuple-element(arg_tuple.68), index=5
+  get-tuple-element.75 = u32[] get-tuple-element(arg_tuple.68), index=6
+  get-tuple-element.76 = u32[4]{0} get-tuple-element(arg_tuple.68), index=7
+  get-tuple-element.77 = u32[4]{0} get-tuple-element(arg_tuple.68), index=8
+  get-tuple-element.69 = s32[] get-tuple-element(arg_tuple.68), index=0
+  constant.78 = s32[] constant(5)
+  ROOT compare.79 = pred[] compare(get-tuple-element.69, constant.78), direction=LT, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while/cond/lt" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+} // region_1.67
+
+_uniform.80 {
+  constant.90 = s32[] constant(0)
+  iota.96 = u32[16]{0} iota(), iota_dimension=0, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/iota[dtype=uint32 shape=(16,) dimension=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  slice.101 = u32[8]{0} slice(iota.96), slice={[0:8]}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/slice[start_indices=(np.int64(0),) limit_indices=(np.int64(8),) strides=None]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  Arg_0.81 = u32[2]{0} parameter(0)
+  slice.97 = u32[1]{0} slice(Arg_0.81), slice={[0:1]}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/slice[start_indices=(0,) limit_indices=(1,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.98 = u32[] reshape(slice.97), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.105 = u32[8]{0} broadcast(reshape.98), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.106 = u32[8]{0} add(slice.101, broadcast.105), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  slice.102 = u32[8]{0} slice(iota.96), slice={[8:16]}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/slice[start_indices=(np.int64(8),) limit_indices=(np.int64(16),) strides=None]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  slice.99 = u32[1]{0} slice(Arg_0.81), slice={[1:2]}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/slice[start_indices=(1,) limit_indices=(2,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.100 = u32[] reshape(slice.99), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.107 = u32[8]{0} broadcast(reshape.100), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.108 = u32[8]{0} add(slice.102, broadcast.107), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  xor.103 = u32[] xor(reshape.98, reshape.100), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.91 = u32[] constant(466688986)
+  xor.104 = u32[] xor(xor.103, constant.91), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.93 = u32[4]{0} constant({13, 15, 26, 6})
+  constant.92 = u32[4]{0} constant({17, 29, 16, 24})
+  tuple.109 = (s32[], s32[], u32[8]{0}, u32[8]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(constant.90, constant.90, add.106, add.108, reshape.100, /*index=5*/xor.104, reshape.98, constant.93, constant.92), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  while.110 = (s32[], s32[], u32[8]{0}, u32[8]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) while(tuple.109), condition=region_1.67, body=region_0.3, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.111 = s32[] get-tuple-element(while.110), index=0, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.112 = s32[] get-tuple-element(while.110), index=1, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.115 = u32[] get-tuple-element(while.110), index=4, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.116 = u32[] get-tuple-element(while.110), index=5, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.117 = u32[] get-tuple-element(while.110), index=6, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.118 = u32[4]{0} get-tuple-element(while.110), index=7, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.119 = u32[4]{0} get-tuple-element(while.110), index=8, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  Arg_1.82 = f32[] parameter(1)
+  reshape.94 = f32[1]{0} reshape(Arg_1.82), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/broadcast_in_dim[shape=(1,) broadcast_dimensions=()]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.134 = f32[1]{0} broadcast(reshape.94), dimensions={0}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/max" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.135 = f32[] reshape(broadcast.134), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/max" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.136 = f32[16]{0} broadcast(reshape.135), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/max" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.113 = u32[8]{0} get-tuple-element(while.110), index=2, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  get-tuple-element.114 = u32[8]{0} get-tuple-element(while.110), index=3, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  concatenate.120 = u32[16]{0} concatenate(get-tuple-element.113, get-tuple-element.114), dimensions={0}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/concatenate[dimension=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.88 = u32[] constant(9)
+  broadcast.89 = u32[16]{0} broadcast(constant.88), dimensions={}
+  shift-right-logical.121 = u32[16]{0} shift-right-logical(concatenate.120, broadcast.89), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.86 = u32[] constant(1065353216)
+  broadcast.87 = u32[16]{0} broadcast(constant.86), dimensions={}
+  or.122 = u32[16]{0} or(shift-right-logical.121, broadcast.87), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  bitcast-convert.123 = f32[16]{0} bitcast-convert(or.122), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/bitcast_convert_type[new_dtype=float32]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.84 = f32[] constant(1)
+  broadcast.85 = f32[16]{0} broadcast(constant.84), dimensions={}
+  subtract.124 = f32[16]{0} subtract(bitcast-convert.123, broadcast.85), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  Arg_2.83 = f32[] parameter(2)
+  reshape.95 = f32[1]{0} reshape(Arg_2.83), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/broadcast_in_dim[shape=(1,) broadcast_dimensions=()]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  subtract.125 = f32[1]{0} subtract(reshape.95, reshape.94), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.126 = f32[1]{0} broadcast(subtract.125), dimensions={0}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/mul" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.127 = f32[] reshape(broadcast.126), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/mul" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.128 = f32[16]{0} broadcast(reshape.127), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/mul" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.129 = f32[16]{0} multiply(subtract.124, broadcast.128), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/mul" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.130 = f32[1]{0} broadcast(reshape.94), dimensions={0}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  reshape.131 = f32[] reshape(broadcast.130), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  broadcast.132 = f32[16]{0} broadcast(reshape.131), dimensions={}, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.133 = f32[16]{0} add(multiply.129, broadcast.132), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  ROOT maximum.137 = f32[16]{0} maximum(broadcast.136, add.133), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/jit(_uniform)/max" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+} // _uniform.80
+
+_normal_real.138 {
+  Arg_0.139 = u32[2]{0} parameter(0)
+  constant.188 = f32[] constant(-0.99999994)
+  constant.189 = f32[] constant(1)
+  call.190 = f32[16]{0} call(Arg_0.139, constant.188, constant.189), to_apply=_uniform.80
+  abs.226 = f32[16]{0} abs(call.190), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.144 = f32[] constant(1)
+  broadcast.145 = f32[16]{0} broadcast(constant.144), dimensions={}
+  compare.227 = pred[16]{0} compare(abs.226, broadcast.145), direction=EQ, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.142 = f32[] constant(inf)
+  broadcast.143 = f32[16]{0} broadcast(constant.142), dimensions={}
+  multiply.228 = f32[16]{0} multiply(call.190, broadcast.143), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  negate.191 = f32[16]{0} negate(call.190), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.192 = f32[16]{0} multiply(call.190, negate.191), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  log-plus-one.193 = f32[16]{0} log-plus-one(multiply.192), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  negate.194 = f32[16]{0} negate(log-plus-one.193), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.186 = f32[] constant(5)
+  broadcast.187 = f32[16]{0} broadcast(constant.186), dimensions={}
+  compare.195 = pred[16]{0} compare(negate.194, broadcast.187), direction=LT, metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.148 = f32[] constant(1.50140941)
+  broadcast.149 = f32[16]{0} broadcast(constant.148), dimensions={}
+  constant.146 = f32[] constant(2.83297682)
+  broadcast.147 = f32[16]{0} broadcast(constant.146), dimensions={}
+  select.222 = f32[16]{0} select(compare.195, broadcast.149, broadcast.147), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.152 = f32[] constant(0.246640727)
+  broadcast.153 = f32[16]{0} broadcast(constant.152), dimensions={}
+  constant.150 = f32[] constant(1.00167406)
+  broadcast.151 = f32[16]{0} broadcast(constant.150), dimensions={}
+  select.219 = f32[16]{0} select(compare.195, broadcast.153, broadcast.151), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.156 = f32[] constant(-0.00417768164)
+  broadcast.157 = f32[16]{0} broadcast(constant.156), dimensions={}
+  constant.154 = f32[] constant(0.00943887047)
+  broadcast.155 = f32[16]{0} broadcast(constant.154), dimensions={}
+  select.216 = f32[16]{0} select(compare.195, broadcast.157, broadcast.155), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.160 = f32[] constant(-0.00125372503)
+  broadcast.161 = f32[16]{0} broadcast(constant.160), dimensions={}
+  constant.158 = f32[] constant(-0.0076224613)
+  broadcast.159 = f32[16]{0} broadcast(constant.158), dimensions={}
+  select.213 = f32[16]{0} select(compare.195, broadcast.161, broadcast.159), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.164 = f32[] constant(0.00021858087)
+  broadcast.165 = f32[16]{0} broadcast(constant.164), dimensions={}
+  constant.162 = f32[] constant(0.00573950773)
+  broadcast.163 = f32[16]{0} broadcast(constant.162), dimensions={}
+  select.210 = f32[16]{0} select(compare.195, broadcast.165, broadcast.163), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.168 = f32[] constant(-4.39150654e-06)
+  broadcast.169 = f32[16]{0} broadcast(constant.168), dimensions={}
+  constant.166 = f32[] constant(-0.00367342844)
+  broadcast.167 = f32[16]{0} broadcast(constant.166), dimensions={}
+  select.207 = f32[16]{0} select(compare.195, broadcast.169, broadcast.167), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.172 = f32[] constant(-3.5233877e-06)
+  broadcast.173 = f32[16]{0} broadcast(constant.172), dimensions={}
+  constant.170 = f32[] constant(0.00134934322)
+  broadcast.171 = f32[16]{0} broadcast(constant.170), dimensions={}
+  select.204 = f32[16]{0} select(compare.195, broadcast.173, broadcast.171), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.176 = f32[] constant(3.43273939e-07)
+  broadcast.177 = f32[16]{0} broadcast(constant.176), dimensions={}
+  constant.174 = f32[] constant(0.000100950558)
+  broadcast.175 = f32[16]{0} broadcast(constant.174), dimensions={}
+  select.201 = f32[16]{0} select(compare.195, broadcast.177, broadcast.175), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.180 = f32[] constant(2.81022636e-08)
+  broadcast.181 = f32[16]{0} broadcast(constant.180), dimensions={}
+  constant.178 = f32[] constant(-0.000200214257)
+  broadcast.179 = f32[16]{0} broadcast(constant.178), dimensions={}
+  select.200 = f32[16]{0} select(compare.195, broadcast.181, broadcast.179), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.184 = f32[] constant(2.5)
+  broadcast.185 = f32[16]{0} broadcast(constant.184), dimensions={}
+  subtract.196 = f32[16]{0} subtract(negate.194, broadcast.185), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  sqrt.197 = f32[16]{0} sqrt(negate.194), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.182 = f32[] constant(3)
+  broadcast.183 = f32[16]{0} broadcast(constant.182), dimensions={}
+  subtract.198 = f32[16]{0} subtract(sqrt.197, broadcast.183), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  select.199 = f32[16]{0} select(compare.195, subtract.196, subtract.198), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.202 = f32[16]{0} multiply(select.200, select.199), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.203 = f32[16]{0} add(select.201, multiply.202), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.205 = f32[16]{0} multiply(add.203, select.199), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.206 = f32[16]{0} add(select.204, multiply.205), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.208 = f32[16]{0} multiply(add.206, select.199), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.209 = f32[16]{0} add(select.207, multiply.208), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.211 = f32[16]{0} multiply(add.209, select.199), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.212 = f32[16]{0} add(select.210, multiply.211), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.214 = f32[16]{0} multiply(add.212, select.199), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.215 = f32[16]{0} add(select.213, multiply.214), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.217 = f32[16]{0} multiply(add.215, select.199), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.218 = f32[16]{0} add(select.216, multiply.217), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.220 = f32[16]{0} multiply(add.218, select.199), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.221 = f32[16]{0} add(select.219, multiply.220), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.223 = f32[16]{0} multiply(add.221, select.199), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  add.224 = f32[16]{0} add(select.222, multiply.223), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  multiply.225 = f32[16]{0} multiply(add.224, call.190), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  select.229 = f32[16]{0} select(compare.227, multiply.228, multiply.225), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/erf_inv" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+  constant.140 = f32[] constant(1.41421354)
+  broadcast.141 = f32[16]{0} broadcast(constant.140), dimensions={}
+  ROOT multiply.230 = f32[16]{0} multiply(select.229, broadcast.141), metadata={op_name="jit(_normal)/jit(main)/jit(_normal_real)/mul" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=10}
+} // _normal_real.138
+
+ENTRY main.232 {
+  Arg_0.1 = u32[2]{0} parameter(0)
+  custom-call.2 = u32[2]{0} custom-call(Arg_0.1), custom_call_target="Sharding", sharding={replicated}
+  ROOT call.231 = f32[16]{0} call(custom-call.2), to_apply=_normal_real.138
+}
+

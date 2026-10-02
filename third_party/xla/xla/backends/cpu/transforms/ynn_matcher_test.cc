@@ -13,7 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
 
@@ -27,6 +32,7 @@ class YnnE2eTest : public HloTestBase {
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
     debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(false);
     return debug_options;
   }
 };
@@ -56,6 +62,7 @@ class YnnReduceTest : public HloTestBase {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(false);
     return debug_options;
   }
 };
@@ -195,28 +202,73 @@ TEST_F(YnnReduceTest, ConvertReduce) {
   )");
 }
 
-class YnnDotTest : public HloTestBase {
+TEST_F(YnnReduceTest, CopyDegenerateLayout) {
+  const char* hlo_text = R"(
+  HloModule copy_degenerate_layout
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[128,64,1]{1,0,2} parameter(0)
+    copied = f32[128,64,1]{2,1,0} copy(input)
+    init = f32[] constant(0)
+    ROOT result = f32[128] reduce(copied, init), dimensions={1,2}, to_apply=add
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: copy
+    CHECK: reduce
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
+struct DotTestConfig {
+  absl::string_view lhs_dtype;
+  absl::string_view rhs_dtype;
+  absl::string_view out_dtype;
+};
+
+class YnnDotTest : public HloTestBase,
+                   public ::testing::WithParamInterface<DotTestConfig> {
+ public:
+  static std::string Name(const ::testing::TestParamInfo<DotTestConfig>& info) {
+    return absl::StrCat(info.param.lhs_dtype, "_", info.param.rhs_dtype, "_",
+                        info.param.out_dtype);
+  }
+
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(false);
     return debug_options;
   }
 };
 
-TEST_F(YnnDotTest, SingleDot) {
-  const char* hlo_text = R"(
+TEST_P(YnnDotTest, SingleDot) {
+  const char* hlo_template = R"(
   HloModule single_dot
 
   ENTRY main {
-    %lhs = f32[256,128] parameter(0)
-    %rhs = f32[128,512] parameter(1)
-    ROOT %out = f32[256,512] dot(%lhs, %rhs), lhs_contracting_dims={1},
-                                              rhs_contracting_dims={0}
+    %lhs = $lhs_dtype[256,128] parameter(0)
+    %rhs = $rhs_dtype[128,512] parameter(1)
+    ROOT %out = $out_dtype[256,512] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                                     rhs_contracting_dims={0}
   }
   )";
-
+  DotTestConfig config = GetParam();
+  std::string hlo_text =
+      absl::StrReplaceAll(hlo_template, {{"$lhs_dtype", config.lhs_dtype},
+                                         {"$rhs_dtype", config.rhs_dtype},
+                                         {"$out_dtype", config.out_dtype}});
   MatchOptimizedHlo(hlo_text, R"(
     CHECK: dot
     CHECK: ENTRY
@@ -258,6 +310,7 @@ class YnnReduceEltwiseTest : public HloTestBase {
         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE);
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(false);
     return debug_options;
   }
 };
@@ -409,6 +462,13 @@ TEST_F(YnnReduceEltwiseTest, FuseRmsNorm) {
     CHECK: "kind":"__ynn_fusion"
   )");
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    YnnDotTestSuite, YnnDotTest,
+    ::testing::ValuesIn({DotTestConfig{"f32", "f32", "f32"},
+                         DotTestConfig{"bf16", "bf16", "bf16"},
+                         DotTestConfig{"bf16", "bf16", "f32"}}),
+    YnnDotTest::Name);
 
 }  // namespace
 }  // namespace xla::cpu

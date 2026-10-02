@@ -29,17 +29,43 @@ fi
 local_test_jobs=$((no_of_gpus * 8))
 
 if [[ ${local_test_jobs} -gt 64 ]]; then
-  local_test_jobs = 64
+  local_test_jobs=64
   echo "local_test_jobs ${local_test_jobs} too high, using 64"
 fi
 
-TEST_TARGETS="${TEST_TARGETS:-//xla/stream_executor/...}"
+TEST_TARGETS="${TEST_TARGETS:-\
+  //xla/stream_executor/... \
+  //xla/backends/gpu/codegen/emitters/tests/... \
+  //xla/codegen/emitters/tests/...\
+}"
+
+# On Ubuntu 22.04 and earlier the SPIR-V consumer rejects the SPV_KHR_bfloat16
+# extension ("Invalid SPIR-V module: input SPIR-V module uses unknown extension
+# 'SPV_KHR_bfloat16'"), so every test whose codegen emits a bf16 SPIR-V module
+# fails there. Skip those; run everything as-is on newer versions.
+EXTRA_TEST_FLAGS=""
+os_id="$(. /etc/os-release && echo "${ID:-}")"
+os_version="$(. /etc/os-release && echo "${VERSION_ID:-}")"
+if [[ "${os_id}" == "ubuntu" && "${os_version%%.*}" -le 22 ]]; then
+  echo "Detected Ubuntu ${os_version}: excluding tests that need higher version."
+  EXTRA_TEST_FLAGS="--test_filter=-GemmSyclTest.MatmulWithBias"
+  TEST_TARGETS+="\
+    -//xla/backends/gpu/codegen/emitters/tests:transpose/multiple_roots_mixed_rank.hlo.test \
+    -//xla/backends/gpu/codegen/emitters/tests:transpose/multiple_roots_one_shmem_transpose.hlo.test \
+    -//xla/backends/gpu/codegen/emitters/tests:transpose/packed_transpose_bf16.hlo.test \
+    -//xla/backends/gpu/codegen/emitters/tests:transpose/packed_transpose_two_heroes.hlo.test \
+    -//xla/codegen/emitters/tests:loop/broadcast_constant.hlo.test"
+else
+  echo "Detected ${os_id} ${os_version}: no bf16 tests excluded"
+fi
 
 echo "TEST_TARGETS=${TEST_TARGETS}"
 
 bazel test \
   --config=sycl_hermetic --verbose_failures -c opt \
-  --test_timeout=60,300,900,3600 --flaky_test_attempts=2 --keep_going --test_keep_going \
+  --test_timeout=900 --flaky_test_attempts=2 --keep_going --test_keep_going \
+  --local_test_jobs="${local_test_jobs}" \
+  ${EXTRA_TEST_FLAGS} \
   --build_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
   --test_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
   -- \

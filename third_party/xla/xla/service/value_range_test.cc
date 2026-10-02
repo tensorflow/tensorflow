@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -29,8 +30,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -149,8 +148,8 @@ TEST_F(ValueRangeTest, MultiplyValuePassedToLoop) {
   )";
   auto module =
       ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   const HloInstruction* p0 =
       module->entry_computation()->parameter_instruction(0);
   absl::flat_hash_map<const HloInstruction*, Range> fs;
@@ -223,8 +222,8 @@ TEST_F(ValueRangeTest, ConstantValueWithConditional) {
   )";
   auto module =
       ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   HloComputation* region1 = module->GetComputationWithName("region1");
   HloComputation* region2 = module->GetComputationWithName("region2");
   HloInstruction* add = region1->GetInstructionWithName("add");
@@ -290,8 +289,8 @@ TEST_F(ValueRangeTest, SelectValueWithCompareInConditional) {
   )";
   auto module =
       ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   HloComputation* region1 = module->GetComputationWithName("region1");
   HloComputation* region2 = module->GetComputationWithName("region2");
   HloInstruction* select1 = region1->GetInstructionWithName("select1");
@@ -571,8 +570,8 @@ ENTRY main {
       call_computation->GetInstructionWithName("add.call");
 
   absl::flat_hash_map<const HloInstruction*, Range> fs;
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   auto c0_range = RecursivelyIdentifyRange(c0, fs);
   auto c1_range = RecursivelyIdentifyRange(c1, fs);
@@ -598,8 +597,8 @@ TEST_F(ValueRangeTest, ParameterInsideFusion) {
     ROOT fusion = s32[] fusion(p0), kind=kLoop, calls=fused_computation
   }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
-                                           hlo_string, HloModuleConfig{}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_string, HloModuleConfig{}));
   const HloInstruction* p0 =
       module->entry_computation()->parameter_instruction(0);
   HloComputation* fused_computation =
@@ -617,6 +616,65 @@ TEST_F(ValueRangeTest, ParameterInsideFusion) {
                           ConstantValue::GetSigned(10, 32),
                           ConstantValue::GetOne(32, /*is_signed=*/false),
                           /*is_linear=*/true}));
+}
+
+TEST_F(ValueRangeTest, EmptyRangeProperties) {
+  Range empty_range;
+  EXPECT_TRUE(empty_range.IsEmpty());
+  EXPECT_FALSE(empty_range.IsBounded());
+  EXPECT_FALSE(empty_range.IsStepKnown());
+  EXPECT_FALSE(empty_range.IsSingleValue());
+  EXPECT_EQ(empty_range, Range());
+}
+
+TEST_F(ValueRangeTest, CompareWithUnknownOperandsReturnsEmptyRange) {
+  constexpr absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    p0 = s32[] parameter(0)
+    c5 = s32[] constant(5)
+    c0 = s32[] constant(0)
+    cn5 = s32[] constant(-5)
+    cmp_lt_pos = pred[] compare(p0, c5), direction=LT
+    cmp_lt_zero = pred[] compare(p0, c0), direction=LT
+    cmp_neg_lt = pred[] compare(cn5, p0), direction=LT
+    ROOT out = (pred[], pred[], pred[]) tuple(cmp_lt_pos, cmp_lt_zero, cmp_neg_lt)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_string, HloModuleConfig{}));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  for (const HloInstruction* cmp : root->operands()) {
+    absl::flat_hash_map<const HloInstruction*, Range> known_ranges;
+    Range range = RecursivelyIdentifyRange(cmp, known_ranges);
+    EXPECT_TRUE(range.IsEmpty()) << cmp->ToString();
+    EXPECT_FALSE(range.IsBounded()) << cmp->ToString();
+    EXPECT_FALSE(range.IsSingleValue()) << cmp->ToString();
+  }
+}
+
+TEST_F(ValueRangeTest, SelectWithUnknownConditionReturnsEmptyRange) {
+  constexpr absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    p0 = s32[] parameter(0)
+    c5 = s32[] constant(5)
+    lt = pred[] compare(p0, c5), direction=LT
+    c0 = s32[] constant(0)
+    c4 = s32[] constant(4)
+    ROOT slct = s32[] select(lt, c0, c4)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_string, HloModuleConfig{}));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  absl::flat_hash_map<const HloInstruction*, Range> known_ranges;
+  Range range = RecursivelyIdentifyRange(root, known_ranges);
+  EXPECT_TRUE(range.IsEmpty());
+  EXPECT_FALSE(range.IsBounded());
+  EXPECT_FALSE(range.IsSingleValue());
 }
 
 }  // namespace

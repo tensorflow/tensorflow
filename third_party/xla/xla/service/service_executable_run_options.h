@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/stream_pool.h"
 #include "xla/stream_executor/platform.h"
@@ -72,7 +72,7 @@ class ServiceExecutableRunOptions {
                           "No stream borrower");
     }
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::vector<StreamPool::Ptr> streams,
         stream_borrower_(device_ordinal, /*num_streams=*/1, priority));
     StreamPool::Ptr stream = std::move(streams.back());

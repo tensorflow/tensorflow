@@ -5,4 +5,8 @@ tf_class {
   member_method {
     name: "__init__"
   }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
 }

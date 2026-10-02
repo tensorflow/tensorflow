@@ -14,19 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/profiler/cpu/host_tracer.h"
 
+#include <any>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/types.h"
+#include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
@@ -226,6 +230,158 @@ TEST(HostTracerTest, CollectEventsFromThreadPool) {
   EXPECT_EQ(record_region_id, start_region_id);
 
   EXPECT_TRUE(region_timespan.Includes(traceme_timespan));
+}
+
+TEST(HostTracerTest, ConsumeSucceedsWhileRecording) {
+  auto tracer = CreateHostTracer({});
+  ASSERT_OK(tracer->Start());
+
+  {
+    TraceMe traceme("streaming_event_1");
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto consume_result_1, tracer->Consume());
+  auto* data_vector_1 =
+      std::any_cast<std::vector<std::any>>(&consume_result_1.data);
+  ASSERT_NE(data_vector_1, nullptr);
+  ASSERT_GE(data_vector_1->size(), 1);
+  auto* chunk_1 = std::any_cast<HostTracerChunk>(&(*data_vector_1)[0]);
+  ASSERT_NE(chunk_1, nullptr);
+  auto* events_1 = &chunk_1->events;
+  ASSERT_NE(events_1, nullptr);
+  EXPECT_FALSE(events_1->empty());
+
+  {
+    TraceMe traceme("streaming_event_2");
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto consume_result_2, tracer->Consume());
+  auto* data_vector_2 =
+      std::any_cast<std::vector<std::any>>(&consume_result_2.data);
+  ASSERT_NE(data_vector_2, nullptr);
+  ASSERT_GE(data_vector_2->size(), 1);
+  auto* chunk_2 = std::any_cast<HostTracerChunk>(&(*data_vector_2)[0]);
+  ASSERT_NE(chunk_2, nullptr);
+  auto* events_2 = &chunk_2->events;
+  ASSERT_NE(events_2, nullptr);
+  EXPECT_FALSE(events_2->empty());
+
+  ASSERT_OK(tracer->Stop());
+
+  // Verify the trailing remainder
+  ASSERT_OK_AND_ASSIGN(auto consume_result_3, tracer->Consume());
+
+  tensorflow::profiler::XSpace space1;
+  ASSERT_OK(tracer->Serialize(std::move(consume_result_1.data), &space1));
+  tensorflow::profiler::XSpace space2;
+  ASSERT_OK(tracer->Serialize(std::move(consume_result_2.data), &space2));
+
+  ASSERT_EQ(space1.planes_size(), 1);
+  ASSERT_EQ(space2.planes_size(), 1);
+
+  bool trace1_found = false;
+  XPlaneVisitor xplane1(&space1.planes(0));
+  xplane1.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == "streaming_event_1") {
+        trace1_found = true;
+      }
+    });
+  });
+  EXPECT_TRUE(trace1_found);
+  ASSERT_EQ(space1.planes(0).name(), ::tsl::profiler::kHostThreadsPlaneName);
+
+  bool trace2_found = false;
+  XPlaneVisitor xplane2(&space2.planes(0));
+  xplane2.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == "streaming_event_2") {
+        trace2_found = true;
+      }
+    });
+  });
+  EXPECT_TRUE(trace2_found);
+  ASSERT_EQ(space2.planes(0).name(), ::tsl::profiler::kHostThreadsPlaneName);
+}
+
+TEST(HostTracerTest, SerializeFailsWithNullSpace) {
+  auto tracer = CreateHostTracer({});
+  HostTracerChunk chunk;
+  chunk.start_timestamp_ns = 0;
+  chunk.events = tsl::profiler::TraceMeRecorder::Events();
+
+  std::vector<std::any> data_vector;
+  data_vector.push_back(std::move(chunk));
+  data_vector.push_back(std::any());
+  std::any data = std::move(data_vector);
+
+  absl::Status status = tracer->Serialize(std::move(data), nullptr);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(HostTracerTest, SerializeFailsWithInvalidDataType) {
+  auto tracer = CreateHostTracer({});
+  tensorflow::profiler::XSpace space;
+  std::any invalid_data = 42;  // Int instead of HostTracerChunk
+
+  absl::Status status = tracer->Serialize(std::move(invalid_data), &space);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(HostTracerTest, SerializeOkWithEmptyEvents) {
+  auto tracer = CreateHostTracer({});
+  HostTracerChunk chunk;
+  chunk.start_timestamp_ns = 0;
+  chunk.events = tsl::profiler::TraceMeRecorder::Events();  // Empty events
+
+  std::vector<std::any> data_vector;
+  data_vector.push_back(std::move(chunk));
+  data_vector.push_back(std::any());
+
+  tensorflow::profiler::XSpace space;
+  ASSERT_OK(tracer->Serialize(std::move(data_vector), &space));
+  EXPECT_EQ(space.planes_size(),
+            0);  // Should not create planes for empty events
+}
+
+TEST(HostTracerTest, ConsumeAndSerializeHappyPath) {
+  auto tracer = CreateHostTracer({});
+  ASSERT_OK(tracer->Start());
+  {
+    TraceMe traceme("consume_and_serialize_test");
+  }
+  ASSERT_OK(tracer->Stop());
+
+  ASSERT_OK_AND_ASSIGN(auto consume_result, tracer->Consume());
+  auto* data_vector =
+      std::any_cast<std::vector<std::any>>(&consume_result.data);
+  ASSERT_NE(data_vector, nullptr);
+  ASSERT_GE(data_vector->size(), 1);
+  auto* chunk = std::any_cast<HostTracerChunk>(&(*data_vector)[0]);
+  ASSERT_NE(chunk, nullptr);
+  auto* events = &chunk->events;
+  ASSERT_NE(events, nullptr);
+  EXPECT_FALSE(events->empty());
+
+  tensorflow::profiler::XSpace space;
+  ASSERT_OK(tracer->Serialize(std::move(consume_result.data), &space));
+
+  ASSERT_EQ(space.planes_size(), 1);
+  const auto& plane = space.planes(0);
+  XPlaneVisitor xplane(&plane);
+  ASSERT_EQ(plane.name(), ::tsl::profiler::kHostThreadsPlaneName);
+
+  bool trace_found = false;
+  xplane.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == "consume_and_serialize_test") {
+        trace_found = true;
+      }
+    });
+  });
+  EXPECT_TRUE(trace_found);
 }
 
 }  // namespace

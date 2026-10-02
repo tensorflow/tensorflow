@@ -1,0 +1,9 @@
+HloModule jit_depthwise_conv_3x3, entry_computation_layout={(bf16[1,256,56,56]{3,2,1,0})->bf16[1,256,56,56]{3,2,1,0}}
+
+ENTRY main.1 {
+  x.1 = bf16[1,256,56,56]{3,2,1,0} parameter(0)
+  constant.1 = bf16[] constant(0.01001)
+  convert_element_type.1 = bf16[256,1,3,3]{3,2,1,0} broadcast(constant.1), dimensions={}
+  ROOT conv_general_dilated.1 = bf16[1,256,56,56]{3,2,1,0} convolution(x.1, convert_element_type.1), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, feature_group_count=256
+}
+

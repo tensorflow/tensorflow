@@ -142,6 +142,14 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
       self.assertAllClose(batch2, join2, rtol=1e-4, atol=1e-4)
       self.assertAllClose(batch2, inp, rtol=1e-4, atol=1e-4)
 
+  def testRejectsScalar(self):
+    # A scalar has no channel dimension to convert. Without a check this fails
+    # with an IndexError from inside tensordot.
+    err_msg = "must be at least one-dimensional"
+    for fn in [image_ops.rgb_to_yiq, image_ops.yiq_to_rgb]:
+      with self.assertRaisesRegex(ValueError, err_msg):
+        fn(constant_op.constant(2.0))
+
 
 class RGBToYUVTest(test_util.TensorFlowTestCase):
 
@@ -173,6 +181,12 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
       self.assertAllClose(batch1, join1, rtol=1e-4, atol=1e-4)
       self.assertAllClose(batch2, join2, rtol=1e-4, atol=1e-4)
       self.assertAllClose(batch2, inp, rtol=1e-4, atol=1e-4)
+
+  def testRejectsScalar(self):
+    err_msg = "must be at least one-dimensional"
+    for fn in [image_ops.rgb_to_yuv, image_ops.yuv_to_rgb]:
+      with self.assertRaisesRegex(ValueError, err_msg):
+        fn(constant_op.constant(2.0))
 
 
 class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
@@ -268,6 +282,11 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       err_msg = "must be at least two-dimensional"
       with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
+
+  def testRGBToGrayscaleRejectsScalar(self):
+    err_msg = "must be at least one-dimensional"
+    with self.assertRaisesRegex(ValueError, err_msg):
+      image_ops.rgb_to_grayscale(constant_op.constant(2.0))
 
   def testShapeInference(self):
     # Shape function requires placeholders and a graph.
@@ -4823,6 +4842,26 @@ class PngTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual(png_stack.shape, (0, 4))
 
+  def testZeroDimensionImage(self):
+    # Encoding an image with a zero-sized dimension should raise a ValueError
+    # instead of crashing with SIGABRT. See GitHub issue #108916.
+    for shape in [(2, 0, 3), (0, 2, 3), (2, 3, 0)]:
+      with self.assertRaisesRegex(ValueError, "must be > 0"):
+        image = constant_op.constant(np.zeros(shape, dtype=np.uint8))
+        image_ops.encode_png(image)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRawOpsEmptyImage(self):
+    # Verifies that gen_image_ops.encode_png (tf.raw_ops.EncodePng) raises
+    # InvalidArgumentError on zero spatial dimensions rather than aborting with
+    # SIGABRT from CHECK_NOTNULL(image). See GitHub issue #113068.
+    for shape in [(0, 0, 1), (2, 0, 3), (0, 2, 3), (5, 0, 10, 3)]:
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError), "must be > 0"
+      ):
+        image = constant_op.constant(np.zeros(shape, dtype=np.uint8))
+        self.evaluate(gen_image_ops.encode_png(image))
+
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():
@@ -4996,6 +5035,11 @@ class WebpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 class JxlTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    if test_util.is_xla_enabled():
+      self.skipTest("JXL ops do not have XLA JIT kernels")
+
   def _path(self, name):
     base = "tensorflow/core/lib/jxl/testdata/"
     return os.path.join(base, name)
@@ -5060,12 +5104,204 @@ class JxlTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testUnsupportedDtypeArgument(self, dtype):
     with self.cached_session():
       jxl_file = io_ops.read_file(self._path("random_128x96_rbga_q50.jxl"))
-      message = "JXL only supports uint8 for dtype"
-      with self.assertRaisesRegex(
-          (errors.InvalidArgumentError, ValueError), message
+      with self.assertRaises(
+          (errors.InvalidArgumentError, TypeError, ValueError)
       ):
-        # decode_jxl statically does not support anything other than uint8.
-        self.evaluate(image_ops.decode_image(jxl_file, dtype=dtype))
+        self.evaluate(image_ops.decode_jxl(jxl_file, dtype=dtype))
+
+  def testDecodeUint16(self):
+    with self.cached_session():
+      jxl_file = io_ops.read_file(self._path("random_128x96_rbg_q100.jxl"))
+      jxl_image_u16 = self.evaluate(
+          image_ops.decode_image(jxl_file, dtype=dtypes.uint16)
+      )
+      self.assertEqual(jxl_image_u16.dtype, np.uint16)
+      self.assertEqual(jxl_image_u16.shape, (96, 128, 3))
+
+      jxl_op_u16 = self.evaluate(
+          image_ops.decode_jxl(jxl_file, dtype=dtypes.uint16)
+      )
+      self.assertEqual(jxl_op_u16.dtype, np.uint16)
+      self.assertAllEqual(jxl_image_u16, jxl_op_u16)
+
+  def testEncodeDecodeLosslessRoundtripUint8(self):
+    np.random.seed(42)
+    img_np = np.random.randint(0, 256, size=(32, 48, 3), dtype=np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded = image_ops.decode_jxl(encoded, dtype=dtypes.uint8)
+      self.assertAllEqual(self.evaluate(decoded), img_np)
+
+  @parameterized.named_parameters([
+      ("_rgb", 3),
+      ("_rgba", 4),
+      ("_gray", 1),
+  ])
+  def testEncodeDecodeLosslessRoundtripUint16(self, channels):
+    np.random.seed(42)
+    img_np = np.random.randint(
+        0, 65536, size=(16, 24, channels), dtype=np.uint16
+    )
+    # Set explicit edge-case values to verify no 8-bit truncation or clamping:
+    edge_values = [0, 1, 255, 256, 1000, 32768, 65534, 65535]
+    for idx, val in enumerate(edge_values):
+      r, c = divmod(idx, 24)
+      img_np[r, c, :] = val
+
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_jxl = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.uint16)
+      )
+      self.assertEqual(decoded_jxl.dtype, np.uint16)
+      self.assertAllEqual(decoded_jxl, img_np)
+
+      decoded_image = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.uint16)
+      )
+      self.assertEqual(decoded_image.dtype, np.uint16)
+      self.assertAllEqual(decoded_image, img_np)
+
+      # Requesting the channel count explicitly must work too.
+      decoded_explicit = self.evaluate(
+          image_ops.decode_jxl(encoded, channels=channels, dtype=dtypes.uint16)
+      )
+      self.assertAllEqual(decoded_explicit, img_np)
+      decoded_image_explicit = self.evaluate(
+          image_ops.decode_image(
+              encoded, channels=channels, dtype=dtypes.uint16
+          )
+      )
+      self.assertAllEqual(decoded_image_explicit, img_np)
+
+  def testDecodeChannelsMismatch(self):
+    np.random.seed(42)
+    img_np = np.random.randint(0, 256, size=(8, 8, 3), dtype=np.uint8)
+    with self.cached_session():
+      encoded = self.evaluate(image_ops.encode_jxl(img_np))
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "does not match input"
+      ):
+        self.evaluate(image_ops.decode_jxl(encoded, channels=1))
+
+  def testDecodeUint8ToFloat(self):
+    img_np = np.array([[[0, 128, 255]]], dtype=np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_float = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.float32)
+      )
+      self.assertEqual(decoded_float.dtype, np.float32)
+      expected = np.array([[[0.0, 128.0 / 255.0, 1.0]]], dtype=np.float32)
+      self.assertAllClose(decoded_float, expected, atol=1e-2)
+
+  def testDecodeUint16ToFloat(self):
+    img_np = np.array([[[0, 32767, 65535]]], dtype=np.uint16)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_float = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.float32)
+      )
+      self.assertEqual(decoded_float.dtype, np.float32)
+      expected = np.array([[[0.0, 32767.0 / 65535.0, 1.0]]], dtype=np.float32)
+      self.assertAllClose(decoded_float, expected, atol=1e-4)
+
+  def testEncodeLossy(self):
+    x = np.linspace(10, 240, 48, dtype=np.uint8)
+    y = np.linspace(10, 240, 32, dtype=np.uint8)
+    xx, yy = np.meshgrid(x, y)
+    img_np = np.stack([xx, yy, (xx // 2 + yy // 2)], axis=-1).astype(np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=90.0)
+      decoded = image_ops.decode_jxl(encoded, dtype=dtypes.uint8)
+      decoded_val = self.evaluate(decoded)
+      self.assertEqual(decoded_val.shape, img_np.shape)
+      self.assertLess(
+          np.mean(np.abs(decoded_val.astype(float) - img_np.astype(float))), 2.0
+      )
+
+  def testEncodeDefaultQualityIsLossy(self):
+    x = np.linspace(10, 240, 48, dtype=np.uint8)
+    y = np.linspace(10, 240, 32, dtype=np.uint8)
+    xx, yy = np.meshgrid(x, y)
+    img_np = np.stack([xx, yy, (xx // 2 + yy // 2)], axis=-1).astype(np.uint8)
+    with self.cached_session():
+      # The default `quality` of 95.0 selects high-quality lossy compression,
+      # matching the default in `encode_jpeg`.
+      encoded_default = image_ops.encode_jxl(img_np)
+      decoded_default = image_ops.decode_jxl(
+          encoded_default, dtype=dtypes.uint8
+      )
+      decoded_default_val = self.evaluate(decoded_default)
+      self.assertEqual(decoded_default_val.shape, img_np.shape)
+      diff = np.abs(decoded_default_val.astype(float) - img_np.astype(float))
+      self.assertLess(np.mean(diff), 2.0)
+
+      # Explicit quality=95.0 produces the same output as default quality.
+      encoded_95 = image_ops.encode_jxl(img_np, quality=95.0)
+      self.assertEqual(
+          self.evaluate(encoded_default), self.evaluate(encoded_95)
+      )
+
+      # Explicit quality=100.0 selects lossless compression.
+      encoded_100 = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_100 = image_ops.decode_jxl(encoded_100, dtype=dtypes.uint8)
+      self.assertAllEqual(self.evaluate(decoded_100), img_np)
+
+  def testEncodeQualityControlsSize(self):
+    # Noise is used rather than a smooth gradient: gradients compress better in
+    # lossless modular mode than in lossy VarDCT mode, which inverts the
+    # expected size ordering.
+    np.random.seed(42)
+    img_np = np.random.randint(0, 256, size=(64, 64, 3), dtype=np.uint8)
+    with self.cached_session():
+      sizes = [
+          len(self.evaluate(image_ops.encode_jxl(img_np, quality=quality)))
+          for quality in (100.0, 90.0, 50.0)
+      ]
+    # Lower quality means a larger butteraugli distance, hence a smaller file.
+    self.assertGreater(sizes[0], sizes[1])
+    self.assertGreater(sizes[1], sizes[2])
+
+  def testEncodeQualityOutOfRange(self):
+    img_np = np.zeros((8, 8, 3), dtype=np.uint8)
+    with self.cached_session():
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "quality should be in .0.0, 100.0."
+      ):
+        self.evaluate(image_ops.encode_jxl(img_np, quality=101.0))
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "quality should be in .0.0, 100.0."
+      ):
+        self.evaluate(image_ops.encode_jxl(img_np, quality=-1.0))
+
+  def testEncodeBatched(self):
+    np.random.seed(42)
+    img_np = np.random.randint(0, 256, size=(2, 32, 48, 3), dtype=np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      encoded_val = self.evaluate(encoded)
+      self.assertEqual(encoded_val.shape, (2,))
+      decoded0 = self.evaluate(image_ops.decode_jxl(encoded_val[0]))
+      decoded1 = self.evaluate(image_ops.decode_jxl(encoded_val[1]))
+      self.assertAllEqual(decoded0, img_np[0])
+      self.assertAllEqual(decoded1, img_np[1])
+
+  def testEncodeBatchedUint16(self):
+    np.random.seed(42)
+    img_np = np.random.randint(0, 65536, size=(2, 16, 24, 3), dtype=np.uint16)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      encoded_val = self.evaluate(encoded)
+      self.assertEqual(encoded_val.shape, (2,))
+      decoded0 = self.evaluate(
+          image_ops.decode_jxl(encoded_val[0], dtype=dtypes.uint16)
+      )
+      decoded1 = self.evaluate(
+          image_ops.decode_jxl(encoded_val[1], dtype=dtypes.uint16)
+      )
+      self.assertAllEqual(decoded0, img_np[0])
+      self.assertAllEqual(decoded1, img_np[1])
 
 
 class ConvertImageTest(test_util.TensorFlowTestCase):
@@ -6390,6 +6626,26 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (2525, 1, 1),  # future behavior
   ]
 
+  def _top_down_bmp(self):
+    width = 1
+    height = -1
+    bits_per_pixel = 24
+    row_size = 4
+    header_size = 54
+    file_size = header_size + row_size
+    bmp = bytearray(file_size)
+    bmp[0:2] = b"BM"
+    bmp[2:6] = file_size.to_bytes(4, "little")
+    bmp[10:14] = header_size.to_bytes(4, "little")
+    bmp[14:18] = (40).to_bytes(4, "little")
+    bmp[18:22] = width.to_bytes(4, "little", signed=True)
+    bmp[22:26] = height.to_bytes(4, "little", signed=True)
+    bmp[26:28] = (1).to_bytes(2, "little")
+    bmp[28:30] = bits_per_pixel.to_bytes(2, "little")
+    bmp[34:38] = row_size.to_bytes(4, "little")
+    bmp[54:58] = bytes([10, 20, 30, 0])
+    return bytes(bmp)
+
   def testBmpChannels(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
@@ -6546,6 +6802,23 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                                  dtypes.float32)
           image0, image1 = self.evaluate([image0, image1])
           self.assertAllEqual(image0, image1)
+
+  @parameterized.named_parameters(
+      ("_uint16", dtypes.uint16),
+      ("_float32", dtypes.float32),
+  )
+  def testBmpTopDownNonUint8(self, dtype):
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session():
+          bmp = constant_op.constant(self._top_down_bmp())
+          image0 = image_ops.decode_image(bmp, dtype=dtype)
+          image1 = image_ops.convert_image_dtype(
+              image_ops.decode_bmp(bmp), dtype
+          )
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
+          self.assertAllEqual(list(image0.shape), [1, 1, 3])
 
   def testExpandAnimations(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:

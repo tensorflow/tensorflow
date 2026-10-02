@@ -203,7 +203,7 @@ class DeserializeSparseOp : public OpKernel {
       target_shape.vec<int64_t>()(i) = serialized_sparse.shape().dim_size(i);
     }
     for (int i = 0; i < output.dims() - 1; ++i) {
-      target_shape.vec<int64_t>()(i + ndims - 1) = output.shape().data()[i + 1];
+      target_shape.vec<int64_t>()(i + ndims - 1) = output.shape()[i + 1];
     }
 
     ReshapeSparseTensor<CPUDevice>(context, output.indices(), input_shape,

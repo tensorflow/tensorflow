@@ -27,21 +27,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -56,7 +59,37 @@ namespace xla::gpu {
 namespace {
 // A context for tracking thunks to commands conversion details.
 struct ConversionContext {
+  ConversionContext() = default;
+  // Not copyable: `current_frontier` may point to `main_stream_frontier`.
+  ConversionContext(const ConversionContext&) = delete;
+  ConversionContext& operator=(const ConversionContext&) = delete;
+
   std::vector<Command::ResourceUses> extra_resources;
+
+  // State for kLHS synchronization mode (fork/join dependencies). A stream's
+  // frontier is the set of commands the next command on that stream depends
+  // on. The main stream is not an `ExecutionStreamId` (see
+  // execution_stream_id.h), so it has a dedicated frontier instead of a key in
+  // `async_stream_frontiers`.
+  Command::ResourceUses main_stream_frontier;
+  // Uses node_hash_map for pointer stability: `current_frontier` may point into
+  // it while nested async starts insert new streams.
+  absl::node_hash_map<ExecutionStreamId, Command::ResourceUses>
+      async_stream_frontiers;
+  // Frontier of the stream that commands are currently emitted on.
+  Command::ResourceUses* current_frontier = &main_stream_frontier;
+  absl::flat_hash_map<const AsyncExecution*, Command::ResourceUses>
+      async_completions;
+
+  void Append(CommandSequence& commands, Command* command,
+              const ConvertToCommandsOptions& options) {
+    if (options.synchronization_mode ==
+        CommandExecutor::SynchronizationMode::kLHS) {
+      extra_resources.push_back(*current_frontier);
+      *current_frontier = {ResourceUse::Read(command->token())};
+    }
+    commands.Append(command);
+  }
 };
 
 // A thunk with its concurrent region id in the case where inherited
@@ -120,10 +153,10 @@ static absl::Status AppendCommands(ConversionContext& ctx,
 static absl::Status SetOrUpdateCommandBufferExecutors(
     WhileThunk& thunk, const ConvertToCommandsOptions& options) {
   VLOG(1) << "WhileThunk: " << thunk.profile_annotation();
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CommandExecutor cond_cmds,
       ConvertToCommands(thunk.condition_executor().thunks(), options));
-  ASSIGN_OR_RETURN(CommandExecutor body_cmds,
+  ABSL_ASSIGN_OR_RETURN(CommandExecutor body_cmds,
                    ConvertToCommands(thunk.body_executor().thunks(), options));
 
   return thunk.SetOrUpdateCommandBufferExecutors(
@@ -138,15 +171,15 @@ static absl::Status SetOrUpdateCommandBufferBranchExecutors(
     // For boolean predicates, we need to convert the branches in reverse order
     // because the first branch is the "false" branch and the second is "true"
     CHECK_EQ(thunk.branch_executors().size(), 2);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         branch_cmds.emplace_back(),
         ConvertToCommands(thunk.branch_executors()[1].thunks(), options));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         branch_cmds.emplace_back(),
         ConvertToCommands(thunk.branch_executors()[0].thunks(), options));
   } else {
     for (const ThunkExecutor& branch_thunk : thunk.branch_executors()) {
-      ASSIGN_OR_RETURN(CommandExecutor cmds,
+      ABSL_ASSIGN_OR_RETURN(CommandExecutor cmds,
                        ConvertToCommands(branch_thunk.thunks(), options));
       branch_cmds.emplace_back(std::move(cmds));
     }
@@ -160,30 +193,40 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   switch (thunk.kind()) {
     case Thunk::Kind::kConditional: {
       auto& conditional_thunk = static_cast<ConditionalThunk&>(thunk);
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           SetOrUpdateCommandBufferBranchExecutors(conditional_thunk, options));
-      cmd_sequence.Append(&conditional_thunk);
+      ctx.Append(cmd_sequence, &conditional_thunk, options);
       return absl::OkStatus();
     }
-    case Thunk::Kind::kAsyncDone:
-      // Async done thunks are no-ops in command buffers.
+    case Thunk::Kind::kAsyncDone: {
+      if (options.synchronization_mode ==
+          CommandExecutor::SynchronizationMode::kLHS) {
+        auto& done = static_cast<const AsyncDoneThunk&>(thunk);
+        if (auto it = ctx.async_completions.find(done.async_execution().get());
+            it != ctx.async_completions.end()) {
+          Command::ResourceUses& frontier = *ctx.current_frontier;
+          frontier.insert(frontier.end(), it->second.begin(), it->second.end());
+          ctx.async_completions.erase(it);
+        }
+      }
       return absl::OkStatus();
+    }
     case Thunk::Kind::kWhile: {
       auto& while_thunk = static_cast<WhileThunk&>(thunk);
-      RETURN_IF_ERROR(SetOrUpdateCommandBufferExecutors(while_thunk, options));
-      cmd_sequence.Append(&while_thunk);
+      ABSL_RETURN_IF_ERROR(SetOrUpdateCommandBufferExecutors(while_thunk, options));
+      ctx.Append(cmd_sequence, &while_thunk, options);
       return absl::OkStatus();
     }
     case Thunk::Kind::kDynamicSliceFusion: {
       auto& dynamic_slice_fusion_thunk =
           static_cast<DynamicSliceFusionV2Thunk&>(thunk);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           CommandExecutor cmds,
           ConvertToCommands(dynamic_slice_fusion_thunk.thunks(), options));
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           dynamic_slice_fusion_thunk.SetOrUpdateCommandBufferExecutor(
               std::move(cmds)));
-      cmd_sequence.Append(&dynamic_slice_fusion_thunk);
+      ctx.Append(cmd_sequence, &dynamic_slice_fusion_thunk, options);
       return absl::OkStatus();
     }
     // Sequential thunk does not have any special semantics and we simply inline
@@ -197,7 +240,26 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     // buffer. Command buffers rely on DAG structure for dependencies.
     case Thunk::Kind::kAsyncStart: {
       auto& start = static_cast<const AsyncStartThunk&>(thunk);
-      return AppendCommands(ctx, cmd_sequence, start.thunks(), options);
+      if (options.synchronization_mode !=
+          CommandExecutor::SynchronizationMode::kLHS) {
+        return AppendCommands(ctx, cmd_sequence, start.thunks(), options);
+      }
+      // Fork: the async body starts from the parent stream's frontier. The
+      // parent frontier is left untouched, so later commands on the parent
+      // stream do not wait for the async body.
+      Command::ResourceUses* parent_frontier = ctx.current_frontier;
+      Command::ResourceUses& frontier =
+          ctx.async_stream_frontiers[start.execution_stream_id()];
+      if (&frontier != parent_frontier) {
+        frontier.insert(frontier.end(), parent_frontier->begin(),
+                        parent_frontier->end());
+      }
+      ctx.current_frontier = &frontier;
+      ABSL_RETURN_IF_ERROR(
+          AppendCommands(ctx, cmd_sequence, start.thunks(), options));
+      ctx.async_completions[start.async_execution().get()] = frontier;
+      ctx.current_frontier = parent_frontier;
+      return absl::OkStatus();
     }
 
     case Thunk::Kind::kCommandBuffer:
@@ -213,7 +275,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   if (auto* command = dynamic_cast<Command*>(&thunk)) {
     // Command/thunk hybrids are owned by the input ThunkSequence and outlive
     // the returned CommandSequence, so command sequences borrow them directly.
-    cmd_sequence.Append(command);
+    ctx.Append(cmd_sequence, command, options);
     return absl::OkStatus();
   }
 
@@ -473,7 +535,7 @@ absl::Status AppendScheduledConcurrentRegionCommands(
         concurrent_region_schedules.emplace_back(absl::MakeSpan(region.thunks));
     for (Thunk* thunk : scheduler.scheduled_thunks()) {
       const int64_t command_index = cmd_sequence.size();
-      RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
+      ABSL_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
       TF_RET_CHECK(cmd_sequence.size() == command_index + 1)
           << "Concurrent region thunk must append exactly one command: "
           << Thunk::KindToString(thunk->kind()) << " ("
@@ -526,12 +588,12 @@ absl::Status AppendCommandsInConcurrentRegions(
     ConversionContext& ctx, CommandSequence& cmd_sequence,
     const ThunkSequence& sequence, const ConvertToCommandsOptions& options,
     std::optional<uint64_t> inherited_region_id) {
-  ASSIGN_OR_RETURN(std::vector<ConcurrentRegion> concurrent_regions,
+  ABSL_ASSIGN_OR_RETURN(std::vector<ConcurrentRegion> concurrent_regions,
                    CollectConcurrentRegions(sequence, inherited_region_id));
 
   std::vector<ConcurrentRegionScheduler> concurrent_region_schedules;
   absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
-  RETURN_IF_ERROR(AppendScheduledConcurrentRegionCommands(
+  ABSL_RETURN_IF_ERROR(AppendScheduledConcurrentRegionCommands(
       ctx, cmd_sequence, concurrent_regions, options,
       concurrent_region_schedules, thunk_to_index));
 
@@ -558,7 +620,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
                                              options, std::nullopt);
   }
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
-    RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
+    ABSL_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
   }
 
   return absl::OkStatus();
@@ -571,7 +633,7 @@ absl::StatusOr<CommandExecutor> ConvertToCommands(
       options.synchronization_mode);
   ConversionContext ctx;
   CommandSequence cmd_sequence;
-  RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, sequence, options));
+  ABSL_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, sequence, options));
   return CommandExecutor::Create(std::move(cmd_sequence),
                                  options.synchronization_mode,
                                  std::move(ctx.extra_resources));

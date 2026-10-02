@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"

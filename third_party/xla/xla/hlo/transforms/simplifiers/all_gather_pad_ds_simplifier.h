@@ -19,14 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -97,13 +96,13 @@ std::optional<OffsetToIdMap::const_iterator> GetPartitionIdForOffset(
 //
 // Parameters:
 //  computation: The HloComputation to which the new instructions will be added.
-//  select_list: A vector of integers (0 or 1) indicating selection for each
+//  select_list: A span of integers (0 or 1) indicating selection for each
 //               partition.
 //
 // Returns:
 //   A pointer to the newly created HloInstruction (the predicate).
 HloInstruction* AddPredInstrBasedOnPartitionIdAndList(
-    HloComputation* computation, std::vector<int64_t> select_list);
+    HloComputation* computation, absl::Span<const int64_t> select_list);
 
 // A visitor that simplifies all-gather -> dynamic-slice patterns where the
 // slices are padded.

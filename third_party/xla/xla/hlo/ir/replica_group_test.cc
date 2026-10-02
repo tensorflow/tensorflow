@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/array.h"
 #include "xla/array2d.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/service/hlo.pb.h"
@@ -335,6 +336,53 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
             "mesh['ooo'=10], device_ids=(8,3,7,5,4,2,6,0,1,9) {'ooo':(5)2}");
 }
 
+TEST(MeshAxesReplicaGroupListTest, CanonicalizeWithoutSubaxes) {
+  Mesh mesh({21, 10}, {"X", "Y"});
+  // {X:(3)7, Y:(1)5}
+  MeshAxesReplicaGroupList replica_group(
+      mesh, {AxisRef(0, {3, 7}), AxisRef(1, {1, 5})});
+  EXPECT_EQ(replica_group.ToString(),
+            "mesh['X'=21,'Y'=10] {'X':(3)7,'Y':(1)5}");
+
+  // Verify option behavior
+  HloPrintOptions options_without_subaxes;
+  options_without_subaxes.set_print_replica_groups_without_subaxes(true);
+  EXPECT_EQ(replica_group.ToString(options_without_subaxes),
+            "mesh['X_0'=3,'X_1'=7,'X_2'=1,'Y_0'=1,'Y_1'=5,'Y_2'=2] "
+            "{'X_1','Y_1'}");
+}
+
+TEST(MeshAxesReplicaGroupListTest, CanonicalizeWithoutSubaxesMixed) {
+  Mesh mesh({40, 6, 210}, {"U", "Q", "V"});
+  // {U, V:(1)21, Q:(2)3, V:(21)10}
+  MeshAxesReplicaGroupList replica_group(
+      mesh, {AxisRef(0), AxisRef(2, {1, 21}), AxisRef(1, {2, 3}),
+             AxisRef(2, {21, 10})});
+  EXPECT_EQ(replica_group.ToString(),
+            "mesh['U'=40,'Q'=6,'V'=210] {'U','V':(1)21,'Q':(2)3,'V':(21)10}");
+
+  HloPrintOptions options_without_subaxes;
+  options_without_subaxes.set_print_replica_groups_without_subaxes(true);
+  EXPECT_EQ(replica_group.ToString(options_without_subaxes),
+            "mesh['U'=40,'Q_0'=2,'Q_1'=3,'Q_2'=1,'V_0'=21,'V_1'=10] "
+            "{'U','V_0','Q_1','V_1'}");
+}
+
+TEST(MeshAxesReplicaGroupListTest, CanonicalizeWithConflict) {
+  Mesh mesh({21, 10}, {"X", "X_1"});
+  // {X:(3)7}
+  MeshAxesReplicaGroupList replica_group(mesh, {AxisRef(0, {3, 7})});
+  HloPrintOptions options_without_subaxes;
+  options_without_subaxes.set_print_replica_groups_without_subaxes(true);
+
+  // X splits into X_0, X_1, X_2.
+  // The original "X_1" will conflict with the second split, so both get
+  // letter suffixes ("X_1a" and "X_1b").
+  EXPECT_EQ(replica_group.ToString(options_without_subaxes),
+            "mesh['X_0'=3,'X_1a'=7,'X_2'=1,'X_1b'=10] "
+            "{'X_1a'}");
+}
+
 TEST(MeshAxesReplicaGroupListTest, ValidatesIncompatibleAxes) {
   Mesh mesh({10}, {"u"});
   EXPECT_DEATH(
@@ -460,15 +508,21 @@ TEST(MeshAxesReplicaGroupListTest, ToCollectiveDeviceList) {
 TEST(MeshAxesReplicaGroupListTest, ToStringWithFullReplicaGroupList) {
   Mesh mesh({2, 2}, {"x", "y"});
   MeshAxesReplicaGroupList replica_group_x(mesh, {AxisRef(0)});
-  EXPECT_EQ(replica_group_x.ToString(true), "{{0,2},{1,3}}");
+  HloPrintOptions options;
+  options.set_print_full_replica_group_list(true);
+  EXPECT_EQ(replica_group_x.ToString(options), "{{0,2},{1,3}}");
 
   MeshAxesReplicaGroupList replica_group_y(mesh, {AxisRef(1)});
-  EXPECT_EQ(replica_group_y.ToString(true), "{{0,1},{2,3}}");
+  EXPECT_EQ(replica_group_y.ToString(options), "{{0,1},{2,3}}");
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToString) {
-  EXPECT_EQ(CollectiveDeviceList().ToString(true), "{}");
-  EXPECT_EQ(CollectiveDeviceList().ToString(false), "{}");
+  HloPrintOptions options_full;
+  options_full.set_print_full_replica_group_list(true);
+  HloPrintOptions options_short;
+  options_short.set_print_full_replica_group_list(false);
+  EXPECT_EQ(CollectiveDeviceList().ToString(options_full), "{}");
+  EXPECT_EQ(CollectiveDeviceList().ToString(options_short), "{}");
 
   ReplicaGroup empty_group;
   std::vector<ReplicaGroup> empty_groups;
@@ -573,7 +627,9 @@ TEST(IotaReplicaGroupListTest, ReshapeTransposeToString) {
 
 TEST(IotaReplicaGroupListTest, ToStringWithFullReplicaGroupList) {
   IotaReplicaGroupList list(2, 2);
-  EXPECT_EQ(list.ToString(true), "{{0,1},{2,3}}");
+  HloPrintOptions options;
+  options.set_print_full_replica_group_list(true);
+  EXPECT_EQ(list.ToString(options), "{{0,1},{2,3}}");
 }
 
 }  // namespace xla

@@ -1041,11 +1041,26 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         });
     c_tensor.attr("_shape_val") = property(
         [](py::handle handle) {
-          auto py_tensor = AsPyTfObject<PyTensor>(handle);
-          return py_tensor->data->shape_val;
+          auto data = AsPyTfObjectData<PyTensor>(handle);
+#ifdef Py_GIL_DISABLED
+          py::object res;
+          Py_BEGIN_CRITICAL_SECTION(handle.ptr());
+          res = data->shape_val;
+          Py_END_CRITICAL_SECTION();
+          return res;
+#else
+          return data->shape_val;
+#endif
         },
         [](py::handle handle, py::object shape) {
-          AsPyTfObjectData<PyTensor>(handle)->shape_val = shape;
+          auto data = AsPyTfObjectData<PyTensor>(handle);
+#ifdef Py_GIL_DISABLED
+          Py_BEGIN_CRITICAL_SECTION(handle.ptr());
+          data->shape_val = shape;
+          Py_END_CRITICAL_SECTION();
+#else
+          data->shape_val = shape;
+#endif
         });
     c_tensor.attr("_id") = property(
         [](py::handle handle) {
@@ -1620,6 +1635,10 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // file.
   m.def("TF_NewBuffer", TF_NewBuffer, py::return_value_policy::reference);
   m.def("TF_GetBuffer", [](TF_Buffer* buf) {
+    if (buf == nullptr) {
+      PyErr_SetString(PyExc_ValueError, "TF_Buffer is null.");
+      throw py::error_already_set();
+    }
     TF_Buffer buffer = TF_GetBuffer(buf);
     return tensorflow::PyoOrThrow(PyBytes_FromStringAndSize(
         reinterpret_cast<const char*>(buffer.data), buffer.length));

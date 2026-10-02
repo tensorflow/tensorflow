@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -46,6 +46,15 @@ namespace xla {
 bool HloInputOutputAliasConfig::OutputHasAlias(
     const ShapeIndex& output_index) const {
   return alias_.element(output_index).has_value();
+}
+
+bool HloInputOutputAliasConfig::OutputHasAnyAlias() const {
+  for (const auto& [index, alias] : alias_) {
+    if (alias.has_value()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 absl::Status HloInputOutputAliasConfig::SetUpAlias(
@@ -108,7 +117,7 @@ HloInputOutputAliasConfig::CreateFromProto(
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
     AliasKind kind = entry.kind() == Kind::MAY_ALIAS ? kMayAlias : kMustAlias;
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         result.SetUpAlias(output_index, param_number, param_index, kind));
   }
   return result;
@@ -193,7 +202,7 @@ absl::Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
           std::optional<Alias> aliased) -> absl::Status {
         if (aliased) {
-          RETURN_IF_ERROR(fn(output_index, *aliased));
+          ABSL_RETURN_IF_ERROR(fn(output_index, *aliased));
         }
         return absl::OkStatus();
       });
@@ -293,7 +302,7 @@ absl::StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
     int64_t param_number = entry.parameter_number();
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
-    RETURN_IF_ERROR(result.AddBufferDonor(param_number, param_index));
+    ABSL_RETURN_IF_ERROR(result.AddBufferDonor(param_number, param_index));
   }
   return result;
 }

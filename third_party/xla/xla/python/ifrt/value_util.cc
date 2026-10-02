@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -32,8 +32,8 @@ std::vector<ArrayRef> ToArrays(absl::Span<const ValueRef> values) {
   std::vector<ArrayRef> arrays;
   arrays.reserve(values.size());
   for (const ValueRef& value : values) {
-    CHECK(llvm::isa_and_nonnull<Array>(value.get()));
-    arrays.push_back(tsl::FormRef(llvm::cast<Array>(value.get())));
+    CHECK(isa_and_nonnull<Array>(value.get()));
+    arrays.push_back(tsl::FormRef(cast<Array>(value.get())));
   }
   return arrays;
 }
@@ -42,8 +42,8 @@ std::vector<ArrayRef> ToArrays(absl::Span<ValueRef> values) {
   std::vector<ArrayRef> arrays;
   arrays.reserve(values.size());
   for (ValueRef& value : values) {
-    CHECK(llvm::isa_and_nonnull<Array>(value.get()));
-    arrays.push_back(tsl::TakeRef(llvm::cast<Array>(value.release())));
+    CHECK(isa_and_nonnull<Array>(value.get()));
+    arrays.push_back(tsl::TakeRef(cast<Array>(value.release())));
   }
   return arrays;
 }

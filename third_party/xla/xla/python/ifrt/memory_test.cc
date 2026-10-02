@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 
@@ -79,6 +80,36 @@ TEST(MemoryKindTest, EqualityForUnspecifiedAndNullopt) {
   MemoryKind memory_kind1;
   MemoryKind memory_kind2(std::nullopt);
   EXPECT_EQ(memory_kind1, memory_kind2);
+}
+
+TEST(MemoryKindTest, DefaultMemoryKindIsDevice) {
+  MemoryKind default_memory_kind;
+  MemoryKind device_memory_kind("device");
+  MemoryKind nullopt_memory_kind(std::nullopt);
+
+  EXPECT_TRUE(default_memory_kind.is_default());
+  EXPECT_TRUE(device_memory_kind.is_default());
+  EXPECT_TRUE(nullopt_memory_kind.is_default());
+
+  EXPECT_EQ(default_memory_kind, device_memory_kind);
+  EXPECT_EQ(nullopt_memory_kind, device_memory_kind);
+
+  EXPECT_EQ(default_memory_kind.memory_kind(), "device");
+  EXPECT_EQ(absl::StrCat(default_memory_kind), "device");
+  EXPECT_EQ(absl::Hash<MemoryKind>()(default_memory_kind),
+            absl::Hash<MemoryKind>()(device_memory_kind));
+}
+
+TEST(MemoryKindTest, EmptyStringIsNotDefault) {
+  MemoryKind empty_memory_kind("");
+  MemoryKind default_memory_kind;
+  EXPECT_FALSE(empty_memory_kind.is_default());
+  EXPECT_NE(empty_memory_kind, default_memory_kind);
+}
+
+TEST(MemoryKindTest, MemoryKindValue) {
+  MemoryKind memory_kind("abc");
+  EXPECT_EQ(memory_kind.value(), "abc");
 }
 
 }  // namespace

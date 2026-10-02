@@ -51,9 +51,9 @@ class BufferDebugLogTest : public ::testing::Test {
   void SetUp() override {
     auto name = absl::AsciiStrToUpper(
         xla::PlatformUtil::CanonicalPlatformName("gpu").value());
-    TF_ASSERT_OK_AND_ASSIGN(platform_, PlatformManager::PlatformWithName(name));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(platform_, PlatformManager::PlatformWithName(name));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<StreamExecutorAddressAllocator>(stream_->parent());
   }
@@ -67,10 +67,10 @@ class BufferDebugLogTest : public ::testing::Test {
 TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_InitializesEmptyLog) {
   DeviceAddress<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
-                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
-                              *stream_, log_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto device_log,
+                       BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
+                           *stream_, log_buffer));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
 
   EXPECT_EQ(host_log.size(), 0);
 }
@@ -84,9 +84,9 @@ TEST_F(BufferDebugLogTest,
   DeviceAddress<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
       kExpectedHeaderSize + kExpectedEntriesSize);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
-                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
-                              *stream_, log_buffer));
+  ASSERT_OK_AND_ASSIGN(auto device_log,
+                       BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
+                           *stream_, log_buffer));
 
   EXPECT_EQ(device_log.GetDeviceHeader().size(), kExpectedHeaderSize);
   EXPECT_EQ(device_log.GetDeviceEntries().size(), kExpectedEntriesSize);
@@ -97,11 +97,11 @@ TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_InitializesHeader) {
   DeviceAddress<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
       BufferDebugLog<BufferDebugLogEntry>::RequiredSizeForEntries(kMaxEntries));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
-                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
-                              *stream_, log_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLogHeader header,
-                          device_log.ReadHeaderFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto device_log,
+                       BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
+                           *stream_, log_buffer));
+  ASSERT_OK_AND_ASSIGN(BufferDebugLogHeader header,
+                       device_log.ReadHeaderFromDevice(*stream_));
 
   EXPECT_EQ(header.write_idx, 0);
   EXPECT_EQ(header.capacity, kMaxEntries);

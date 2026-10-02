@@ -205,6 +205,17 @@ class HistogramFixedWidthTest(test.TestCase):
     )
     self.assertAllEqual(hist, [1, 1])
 
+  def test_invalid_step_precision_loss(self):
+    values = [2**60, 2**60 + 1]
+    value_range = [2**60, 2**60 + 1]
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "Step size in histogram computation must be positive",
+    ):
+      self.evaluate(
+          histogram_ops.histogram_fixed_width(values, value_range, nbins=2)
+      )
+
 
 if __name__ == '__main__':
   test.main()

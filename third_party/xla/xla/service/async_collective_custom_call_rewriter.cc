@@ -1,0 +1,650 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/service/async_collective_custom_call_rewriter.h"
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+
+namespace xla {
+
+namespace {
+
+std::string GetConfigString(HloInstruction* instr) {
+  if (instr->has_frontend_attributes()) {
+    const auto& map = instr->frontend_attributes().map();
+    auto it = map.find("async_collective_config");
+    if (it != map.end()) {
+      return it->second;
+    }
+  }
+  return instr->raw_backend_config_string();
+}
+
+bool IsCollectiveCustomCall(const HloInstruction* instr,
+                            absl::string_view suffix) {
+  if (instr->opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  static constexpr absl::string_view kCollectiveBases[] = {
+      "all-gather", "all-reduce", "reduce-scatter", "all-to-all",
+      "collective-permute"};
+  absl::string_view target = instr->custom_call_target();
+  if (!absl::ConsumeSuffix(&target, suffix)) {
+    return false;
+  }
+  return absl::c_linear_search(kCollectiveBases, target);
+}
+
+bool IsComputeOnCustomCall(const HloInstruction* instr,
+                           absl::string_view suffix) {
+  if (instr->opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  absl::string_view target = instr->custom_call_target();
+  if (!absl::ConsumeSuffix(&target, suffix)) {
+    return false;
+  }
+  return target == "compute-on";
+}
+
+std::optional<std::string> MatchingStartTarget(absl::string_view done_target) {
+  absl::string_view base = done_target;
+  if (!absl::ConsumeSuffix(&base, "-done")) {
+    return std::nullopt;
+  }
+  return absl::StrCat(base, "-start");
+}
+
+absl::Status FinishRewrite(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call, HloInstruction* async_start,
+    HloInstruction* async_done,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    HloInstruction* final_result) {
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * done_operand,
+                   hlo_instruction_utils::async::PropagateDataflow(
+                       forward_path, async_start));
+  if (done_operand != async_done->operand(0)) {
+    ABSL_RETURN_IF_ERROR(
+        async_done->ReplaceOperandWithDifferentShape(0, done_operand));
+  }
+
+  async_start->set_metadata(start_call->metadata());
+  async_done->set_metadata(done_call->metadata());
+  if (final_result != async_done) {
+    final_result->set_metadata(done_call->metadata());
+  }
+
+  for (HloInstruction* pred : start_call->control_predecessors()) {
+    ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_start));
+  }
+  for (HloInstruction* succ : start_call->control_successors()) {
+    ABSL_RETURN_IF_ERROR(async_start->AddControlDependencyTo(succ));
+  }
+  for (HloInstruction* pred : done_call->control_predecessors()) {
+    ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_done));
+  }
+  for (HloInstruction* succ : done_call->control_successors()) {
+    ABSL_RETURN_IF_ERROR(final_result->AddControlDependencyTo(succ));
+  }
+
+  ABSL_RETURN_IF_ERROR(done_call->ReplaceAllUsesWith(final_result));
+  ABSL_RETURN_IF_ERROR(done_call->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(done_call));
+
+  if (start_call->user_count() == 0 && !start_call->IsRoot()) {
+    ABSL_RETURN_IF_ERROR(start_call->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(start_call));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<bool> ProcessAllGather(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
+  std::string config_str = GetConfigString(start_call);
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+                   ParseAsyncCollectiveConfig(config_str));
+
+  TF_RET_CHECK(config.all_gather_dimension.has_value());
+  int64_t all_gather_dim = *config.all_gather_dimension;
+
+  Shape shape = done_call->shape();
+  auto device_list =
+      std::make_shared<CollectiveDeviceList>(config.replica_groups);
+
+  HloInstruction* async_start = nullptr;
+  HloInstruction* async_done = nullptr;
+
+  if (use_legacy_collectives) {
+    std::vector<const Shape*> operand_shapes;
+    operand_shapes.reserve(start_call->operand_count());
+    for (const HloInstruction* op : start_call->operands()) {
+      operand_shapes.push_back(&op->shape());
+    }
+    Shape start_shape = ShapeUtil::MakeTupleShape(
+        {start_call->operand_count() > 1
+             ? ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes)
+             : *operand_shapes[0],
+         shape});
+    async_start =
+        computation->AddInstruction(HloInstruction::CreateAllGatherStart(
+            start_shape, start_call->operands(), all_gather_dim, device_list,
+            /*constrain_layout=*/false, config.channel_id,
+            config.use_global_device_ids));
+    async_done = computation->AddInstruction(HloInstruction::CreateUnary(
+        shape, HloOpcode::kAllGatherDone, async_start));
+  } else {
+    std::unique_ptr<HloInstruction> sync_all_gather =
+        HloInstruction::CreateAllGather(
+            shape, start_call->operands(), all_gather_dim, device_list,
+            /*constrain_layout=*/false, config.channel_id,
+            config.use_global_device_ids);
+
+    ABSL_ASSIGN_OR_RETURN(async_done,
+                     computation->CreateAsyncInstructions(
+                         sync_all_gather.get(), /*context_shapes=*/{},
+                         computation->execution_thread(), /*replace=*/false));
+    async_start = async_done->mutable_operand(0);
+  }
+
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path,
+                                /*final_result=*/async_done));
+  return true;
+}
+
+absl::StatusOr<bool> ProcessAllReduce(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
+  std::string config_str = GetConfigString(start_call);
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+                   ParseAsyncCollectiveConfig(config_str));
+
+  TF_RET_CHECK(start_call->called_computations().size() == 1)
+      << "Expected 1 called computation for AllReduce, got "
+      << start_call->called_computations().size();
+  HloComputation* reduce_computation = start_call->called_computations()[0];
+
+  Shape shape = done_call->shape();
+  auto device_list =
+      std::make_shared<CollectiveDeviceList>(config.replica_groups);
+
+  HloInstruction* async_start = nullptr;
+  HloInstruction* async_done = nullptr;
+
+  if (use_legacy_collectives) {
+    async_start =
+        computation->AddInstruction(HloInstruction::CreateAllReduceStart(
+            shape, start_call->operands(), reduce_computation, device_list,
+            /*constrain_layout=*/false, config.channel_id,
+            config.use_global_device_ids));
+    async_done = computation->AddInstruction(HloInstruction::CreateUnary(
+        shape, HloOpcode::kAllReduceDone, async_start));
+  } else {
+    std::unique_ptr<HloInstruction> sync_all_reduce =
+        HloInstruction::CreateAllReduce(
+            shape, start_call->operands(), reduce_computation, device_list,
+            /*constrain_layout=*/false, config.channel_id,
+            config.use_global_device_ids);
+
+    ABSL_ASSIGN_OR_RETURN(async_done,
+                     computation->CreateAsyncInstructions(
+                         sync_all_reduce.get(), /*context_shapes=*/{},
+                         computation->execution_thread(), /*replace=*/false));
+    async_start = async_done->mutable_operand(0);
+  }
+
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path,
+                                /*final_result=*/async_done));
+  return true;
+}
+
+absl::StatusOr<bool> ProcessReduceScatter(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep>
+        forward_path) {
+  std::string config_str = GetConfigString(start_call);
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+                   ParseAsyncCollectiveConfig(config_str));
+
+  TF_RET_CHECK(config.scatter_dimension.has_value());
+  int64_t scatter_dimension = *config.scatter_dimension;
+  TF_RET_CHECK(config.tiled.has_value());
+  bool tiled = *config.tiled;
+
+  TF_RET_CHECK(start_call->called_computations().size() == 1)
+      << "Expected 1 called computation for ReduceScatter, got "
+      << start_call->called_computations().size();
+  HloComputation* reduce_computation = start_call->called_computations()[0];
+
+  Shape rs_shape = done_call->shape();
+  int64_t axis_size = config.replica_groups.empty()
+                          ? 1
+                          : config.replica_groups[0].replica_ids_size();
+  TF_RET_CHECK(axis_size > 0)
+      << "ReduceScatter axis size must be positive, got " << axis_size;
+
+  Shape input_shape = start_call->operand(0)->shape();
+  if (!tiled) {
+    TF_RET_CHECK(input_shape.dimensions(scatter_dimension) % axis_size == 0)
+        << "ReduceScatter input shape dimension " << scatter_dimension << " ("
+        << input_shape.dimensions(scatter_dimension)
+        << ") must be divisible by axis size " << axis_size;
+    std::vector<int64_t> rs_dims(input_shape.dimensions().begin(),
+                                 input_shape.dimensions().end());
+    rs_dims[scatter_dimension] /= axis_size;
+    rs_shape = ShapeUtil::MakeShape(input_shape.element_type(), rs_dims);
+  }
+
+  auto device_list =
+      std::make_shared<CollectiveDeviceList>(config.replica_groups);
+
+  std::unique_ptr<HloInstruction> sync_reduce_scatter =
+      HloInstruction::CreateReduceScatter(
+          rs_shape, start_call->operands(), reduce_computation, device_list,
+          /*constrain_layout=*/false, config.channel_id,
+          config.use_global_device_ids, scatter_dimension);
+
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * async_done,
+                   computation->CreateAsyncInstructions(
+                       sync_reduce_scatter.get(), /*context_shapes=*/{},
+                       computation->execution_thread(), /*replace=*/false));
+  HloInstruction* async_start = async_done->mutable_operand(0);
+
+  HloInstruction* final_result = async_done;
+  if (!tiled) {
+    final_result = computation->AddInstruction(
+        HloInstruction::CreateReshape(done_call->shape(), async_done));
+  }
+
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path, final_result));
+  return true;
+}
+
+absl::StatusOr<bool> ProcessAllToAll(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep>
+        forward_path) {
+  std::string config_str = GetConfigString(start_call);
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+                   ParseAsyncCollectiveConfig(config_str));
+
+  TF_RET_CHECK(config.split_dimension.has_value());
+  int64_t split_dimension = *config.split_dimension;
+  TF_RET_CHECK(config.concat_dimension.has_value());
+  int64_t concat_dimension = *config.concat_dimension;
+  TF_RET_CHECK(config.split_count.has_value());
+  int64_t split_count = *config.split_count;
+  TF_RET_CHECK(split_count > 0)
+      << "AllToAll split count must be positive, got " << split_count;
+
+  Shape input_shape = start_call->operand(0)->shape();
+  TF_RET_CHECK(!input_shape.is_dynamic())
+      << "Dynamic shape AllToAll decomposition not supported yet";
+
+  auto device_list =
+      std::make_shared<CollectiveDeviceList>(config.replica_groups);
+  HloInstruction* final_result = nullptr;
+  HloInstruction* async_done = nullptr;
+
+  if (split_dimension == concat_dimension) {
+    Shape shape = done_call->shape();
+    std::unique_ptr<HloInstruction> sync_all_to_all =
+        HloInstruction::CreateAllToAll(
+            shape, start_call->operands(), device_list,
+            /*constrain_layout=*/false, config.channel_id, split_dimension);
+
+    ABSL_ASSIGN_OR_RETURN(async_done,
+                     computation->CreateAsyncInstructions(
+                         sync_all_to_all.get(), /*context_shapes=*/{},
+                         computation->execution_thread(), /*replace=*/false));
+    final_result = async_done;
+  } else {
+    std::unique_ptr<HloInstruction> sync_all_to_all =
+        HloInstruction::CreateAllToAll(
+            input_shape, start_call->operands(), device_list,
+            /*constrain_layout=*/false, config.channel_id, split_dimension);
+
+    ABSL_ASSIGN_OR_RETURN(async_done,
+                     computation->CreateAsyncInstructions(
+                         sync_all_to_all.get(), /*context_shapes=*/{},
+                         computation->execution_thread(), /*replace=*/false));
+
+    std::vector<int64_t> reshape_sizes;
+    for (int64_t i = 0; i < input_shape.dimensions().size(); ++i) {
+      if (i != split_dimension) {
+        reshape_sizes.push_back(input_shape.dimensions(i));
+      } else {
+        TF_RET_CHECK(input_shape.dimensions(i) % split_count == 0)
+            << "AllToAll input dimension " << i << " ("
+            << input_shape.dimensions(i)
+            << ") must be divisible by split count " << split_count;
+        reshape_sizes.push_back(split_count);
+        reshape_sizes.push_back(input_shape.dimensions(i) / split_count);
+      }
+    }
+    Shape reshape_shape =
+        ShapeUtil::MakeShape(input_shape.element_type(), reshape_sizes);
+    HloInstruction* reshape1 = computation->AddInstruction(
+        HloInstruction::CreateReshape(reshape_shape, async_done));
+
+    std::vector<int64_t> permutation;
+    const auto rank = input_shape.dimensions().size();
+    permutation.reserve(rank + 1);
+    for (int64_t i = 0; i < rank; ++i) {
+      int64_t dim_after_reshape = i >= split_dimension ? i + 1 : i;
+      if (i == concat_dimension) {
+        permutation.push_back(split_dimension);
+      }
+      permutation.push_back(dim_after_reshape);
+    }
+
+    std::vector<int64_t> transpose_sizes;
+    for (int64_t axis : permutation) {
+      transpose_sizes.push_back(reshape_sizes[axis]);
+    }
+    Shape transpose_shape =
+        ShapeUtil::MakeShape(input_shape.element_type(), transpose_sizes);
+    HloInstruction* transpose =
+        computation->AddInstruction(HloInstruction::CreateTranspose(
+            transpose_shape, reshape1, permutation));
+
+    final_result = computation->AddInstruction(
+        HloInstruction::CreateReshape(done_call->shape(), transpose));
+  }
+
+  HloInstruction* async_start = async_done->mutable_operand(0);
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path, final_result));
+  return true;
+}
+
+absl::StatusOr<bool> ProcessCollectivePermute(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
+  std::string config_str = GetConfigString(start_call);
+  ABSL_ASSIGN_OR_RETURN(AsyncCollectiveConfig config,
+                   ParseAsyncCollectiveConfig(config_str));
+
+  HloInstruction* async_start = nullptr;
+  HloInstruction* async_done = nullptr;
+
+  if (use_legacy_collectives) {
+    Shape start_shape = ShapeUtil::MakeTupleShape(
+        {start_call->operand(0)->shape(), done_call->shape()});
+    async_start = computation->AddInstruction(
+        HloInstruction::CreateCollectivePermuteStart(
+            start_shape, start_call->operands(), config.permutation,
+            config.channel_id));
+    async_done = computation->AddInstruction(HloInstruction::CreateUnary(
+        done_call->shape(), HloOpcode::kCollectivePermuteDone, async_start));
+  } else {
+    std::unique_ptr<HloInstruction> sync_collective_permute =
+        HloInstruction::CreateCollectivePermute(
+            done_call->shape(), start_call->operands(), config.permutation,
+            config.channel_id);
+
+    ABSL_ASSIGN_OR_RETURN(async_done,
+                     computation->CreateAsyncInstructions(
+                         sync_collective_permute.get(), /*context_shapes=*/{},
+                         computation->execution_thread(), /*replace=*/false));
+    async_start = async_done->mutable_operand(0);
+  }
+
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path,
+                                /*final_result=*/async_done));
+  return true;
+}
+
+// Validates that `called_comp` is a compute-on computation that this pass knows
+// how to rewrite, i.e. it consists only of parameter instructions and exactly
+// one all-gather, which must have a single operand.
+// Returns that all-gather on success.
+absl::StatusOr<HloAllGatherInstruction*> FindComputeOnAllGather(
+    HloComputation* called_comp) {
+  HloAllGatherInstruction* all_gather = nullptr;
+  for (HloInstruction* inst : called_comp->instructions()) {
+    if (inst->opcode() == HloOpcode::kAllGather) {
+      if (all_gather != nullptr) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Rewriting compute-on is only supported when the called "
+            "computation contains a single all-gather, but ",
+            called_comp->name(), " contains at least two: ", all_gather->name(),
+            " and ", inst->name()));
+      }
+      all_gather = DynCast<HloAllGatherInstruction>(inst);
+      continue;
+    }
+    if (inst->opcode() != HloOpcode::kParameter) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Rewriting compute-on is only supported when the called computation "
+          "consists of all-gather and parameter instructions, but ",
+          called_comp->name(), " contains a ", HloOpcodeString(inst->opcode()),
+          " instruction: ", inst->name()));
+    }
+  }
+  if (all_gather == nullptr) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Rewriting compute-on is only supported when the called computation "
+        "contains an all-gather, but none was found in ",
+        called_comp->name()));
+  }
+  if (all_gather->operand_count() != 1) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Rewriting compute-on is only supported when the all-gather in the "
+        "called computation has a single operand, but ",
+        all_gather->name(), " in ", called_comp->name(), " has ",
+        all_gather->operand_count(), " operands"));
+  }
+  return all_gather;
+}
+
+absl::StatusOr<bool> SimplifyEmptyComputeOn(
+    HloComputation* computation, HloComputation* called_comp,
+    HloInstruction* start_call, HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep>
+        forward_path) {
+  if (absl::c_any_of(called_comp->instructions(),
+                     [](const HloInstruction* inst) {
+                       return inst->opcode() != HloOpcode::kParameter;
+                     })) {
+    return false;
+  }
+  HloInstruction* call_inst =
+      computation->AddInstruction(HloInstruction::CreateCall(
+          done_call->shape(), done_call->operands(), called_comp));
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call,
+                                /*async_start=*/start_call->mutable_operand(0),
+                                /*async_done=*/call_inst, forward_path,
+                                /*final_result=*/call_inst));
+  return true;
+}
+
+}  // namespace
+
+absl::StatusOr<bool> AsyncCollectiveCustomCallRewriter::ProcessComputeOn(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
+  CHECK_EQ(start_call->called_computations().size(), 1);
+  absl::string_view called_comp_name =
+      start_call->called_computations().front()->name();
+  HloComputation* called_comp =
+      start_call->GetModule()->GetComputationWithName(called_comp_name);
+
+  ABSL_ASSIGN_OR_RETURN(bool simplified,
+                   SimplifyEmptyComputeOn(computation, called_comp, start_call,
+                                          done_call, forward_path));
+  if (simplified) {
+    return true;
+  }
+  ABSL_ASSIGN_OR_RETURN(HloAllGatherInstruction * all_gather,
+                   FindComputeOnAllGather(called_comp));
+  HloInstruction* async_start;
+  HloInstruction* async_done;
+  if (use_legacy_collectives) {
+    Shape shape = start_call->shape();
+    Shape start_shape =
+        ShapeUtil::MakeTupleShape({start_call->operand(0)->shape(), shape});
+    async_start =
+        computation->AddInstruction(HloInstruction::CreateAllGatherStart(
+            start_shape, start_call->operands(),
+            all_gather->all_gather_dimension(), all_gather->device_list(),
+            /*constrain_layout=*/false, all_gather->channel_id(),
+            all_gather->use_global_device_ids()));
+    async_done = computation->AddInstruction(HloInstruction::CreateUnary(
+        shape, HloOpcode::kAllGatherDone, async_start));
+    async_start->set_frontend_attributes(start_call->frontend_attributes());
+  } else {
+    HloInstruction* call_inst =
+        computation->AddInstruction(HloInstruction::CreateCall(
+            done_call->shape(), start_call->operands(), called_comp));
+    ABSL_ASSIGN_OR_RETURN(async_done,
+                     computation->CreateAsyncInstructions(
+                         call_inst, /*context_shapes=*/{},
+                         computation->execution_thread(), /*replace=*/false,
+                         /*override_names=*/false));
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(call_inst));
+    async_start = async_done->mutable_operand(0);
+  }
+
+  ABSL_RETURN_IF_ERROR(FinishRewrite(computation, start_call, done_call, async_start,
+                                async_done, forward_path,
+                                /*final_result=*/async_done));
+
+  if (compute_on_helper_ != nullptr) {
+    ABSL_RETURN_IF_ERROR(
+        compute_on_helper_->AddBackendSpecializations(start_call, async_start));
+  }
+  return true;
+}
+
+absl::StatusOr<bool> AsyncCollectiveCustomCallRewriter::ProcessPair(
+    HloComputation* computation, HloInstruction* start_call,
+    HloInstruction* done_call,
+    absl::Span<const hlo_instruction_utils::async::AsyncTraceStep> forward_path,
+    bool use_legacy_collectives) {
+  absl::string_view target = start_call->custom_call_target();
+
+  if (absl::StartsWith(target, "all-gather")) {
+    return ProcessAllGather(computation, start_call, done_call, forward_path,
+                            use_legacy_collectives);
+  }
+  if (absl::StartsWith(target, "all-reduce")) {
+    return ProcessAllReduce(computation, start_call, done_call, forward_path,
+                            use_legacy_collectives);
+  }
+  if (absl::StartsWith(target, "reduce-scatter")) {
+    return ProcessReduceScatter(computation, start_call, done_call,
+                                forward_path);
+  }
+  if (absl::StartsWith(target, "all-to-all")) {
+    return ProcessAllToAll(computation, start_call, done_call, forward_path);
+  }
+  if (absl::StartsWith(target, "collective-permute")) {
+    return ProcessCollectivePermute(computation, start_call, done_call,
+                                    forward_path, use_legacy_collectives);
+  }
+  if (absl::StartsWith(target, "compute-on")) {
+    return ProcessComputeOn(computation, start_call, done_call, forward_path,
+                            use_legacy_collectives);
+  }
+  return false;
+}
+
+absl::StatusOr<bool> AsyncCollectiveCustomCallRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    std::vector<HloInstruction*> done_calls;
+    for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
+      if (IsCollectiveCustomCall(instr, "-done") ||
+          IsComputeOnCustomCall(instr, "-done")) {
+        VLOG(1) << "Candidate done: " << instr->name();
+        done_calls.push_back(instr);
+      }
+    }
+
+    for (HloInstruction* done_call : done_calls) {
+      auto expected_start =
+          MatchingStartTarget(done_call->custom_call_target());
+      if (!expected_start.has_value()) {
+        VLOG(1) << "No matching start for " << done_call->name();
+        continue;
+      }
+      auto trace = hlo_instruction_utils::async::TraceDataflowPath(
+          done_call, [&](const HloInstruction* instr) {
+            return instr->parent() == computation &&
+                   instr->IsCustomCall(*expected_start);
+          });
+      if (!trace.has_value()) {
+        VLOG(1) << "No trace found for " << done_call->name();
+        continue;
+      }
+      auto [start_call, forward_path] = *std::move(trace);
+      ABSL_ASSIGN_OR_RETURN(bool pair_changed,
+                       ProcessPair(computation, start_call, done_call,
+                                   forward_path, use_legacy_collectives_));
+      changed |= pair_changed;
+    }
+  }
+  return changed;
+}
+
+}  // namespace xla

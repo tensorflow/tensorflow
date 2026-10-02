@@ -34,13 +34,13 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"
@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/numbers.h"
+#include "tsl/platform/platform.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -195,7 +196,7 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
     ThunkSequence thunk_sequence, const ThunkExecutor::Options& options) {
   // Construct an execution graph for the given thunk sequence.
-  ASSIGN_OR_RETURN(ExecutionGraph execution_graph,
+  ABSL_ASSIGN_OR_RETURN(ExecutionGraph execution_graph,
                    ExecutionGraph::Create<ThunkOperation>(
                        CreateThunkOperations(thunk_sequence)));
 
@@ -272,12 +273,12 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   // In debug builds we verify that all pending nodes are completed before
   // execute_event is marked available. We skip this check in non-debug builds
   // to avoid performance penalty of adding a waiter to the async value.
-#ifndef NDEBUG
-  execute_event.AndThen([state] {
-    auto cnt = state->pending_nodes.load(std::memory_order_acquire);
-    DCHECK_EQ(cnt, 0) << "All pending nodes must be completed";
-  });
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    execute_event.AndThen([state] {
+      auto cnt = state->pending_nodes.load(std::memory_order_acquire);
+      DCHECK_EQ(cnt, 0) << "All pending nodes must be completed";
+    });
+  }
 
   // When we kick-off execution we don't have to grab the session lock, as the
   // main thread is not counted towards the number of concurrent workers limit.

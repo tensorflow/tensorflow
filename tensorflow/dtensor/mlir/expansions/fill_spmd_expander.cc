@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project

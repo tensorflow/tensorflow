@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_DIV_H_
 
 #include <algorithm>
+#include <limits>
+#include <type_traits>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
@@ -202,10 +204,18 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
   auto op = [output_activation_min, output_activation_max](T a, T b) {
-    return ActivationFunctionWithMinMax(a / b, output_activation_min,
+    T div_result;
+    // Guard against signed integer overflow: INT_MIN / -1 is undefined
+    // behavior in C++. Saturate to T::max() instead.
+    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+        b == static_cast<T>(-1) && a == std::numeric_limits<T>::min()) {
+      div_result = std::numeric_limits<T>::max();
+    } else {
+      div_result = a / b;
+    }
+    return ActivationFunctionWithMinMax(div_result, output_activation_min,
                                         output_activation_max);
   };
-
   BroadcastBinaryOpSimple(unextended_input1_shape, input1_data,
                           unextended_input2_shape, input2_data,
                           unextended_output_shape, output_data, op);
@@ -223,9 +233,18 @@ inline void Div(const ArithmeticParams& params,
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
+    T div_result;
+    // Guard against signed integer overflow: INT_MIN / -1 is undefined
+    // behavior in C++. Saturate to T::max() instead.
+    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+        input2_data[i] == static_cast<T>(-1) &&
+        input1_data[i] == std::numeric_limits<T>::min()) {
+      div_result = std::numeric_limits<T>::max();
+    } else {
+      div_result = input1_data[i] / input2_data[i];
+    }
     output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] / input2_data[i], output_activation_min,
-        output_activation_max);
+        div_result, output_activation_min, output_activation_max);
   }
 }
 

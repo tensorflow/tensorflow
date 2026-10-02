@@ -50,7 +50,7 @@ def Ifrt_ReshardOp
     Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `(` $inputs `)` oilist(`after` $control_inputs) prop-dict attr-dict
     `:` functional-type($inputs, $outputs)
   }];
 
@@ -80,7 +80,7 @@ def Ifrt_CopyArraysOp
     Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `(` $inputs `)` oilist(`after` $control_inputs) prop-dict attr-dict
     `:` functional-type($inputs, $outputs)
   }];
 
@@ -166,7 +166,7 @@ def Ifrt_RemapArraysOp
 
   let assemblyFormat = [{
     `(` $inputs `)` `mappings` `=` $mappings oilist(`after` $control_inputs)
-    attr-dict `:` functional-type($inputs, $outputs)
+    prop-dict attr-dict `:` functional-type($inputs, $outputs)
   }];
 
   let hasVerifier = 1;
@@ -193,7 +193,7 @@ def Ifrt_BitcastArraysOp
     Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `(` $inputs `)` oilist(`after` $control_inputs) prop-dict attr-dict
     `:` functional-type($inputs, $outputs)
   }];
 
@@ -244,7 +244,7 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
 
   let assemblyFormat = [{
     $callee `(` $inputs `)` oilist(`after` $control_inputs)
-    `on` `devices` $devices attr-dict `:` functional-type($inputs, $outputs)
+    `on` `devices` $devices prop-dict attr-dict `:` functional-type($inputs, $outputs)
   }];
   let hasVerifier = 1;
 }
@@ -285,14 +285,14 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
     Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    $callee `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    $callee `(` $inputs `)` oilist(`after` $control_inputs) prop-dict attr-dict
     `:` functional-type($inputs, $outputs)
   }];
   let hasVerifier = 1;
 }
 
 def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
-    [DeclareOpInterfaceMethods<Symbol>]> {
+    [SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declare a loaded executable";
   let description = [{
     The inputs/outputs of `function_type` should be IFRT arrays. They should be
@@ -300,13 +300,14 @@ def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
   }];
 
   let arguments = (ins
-    SymbolNameAttr: $sym_name,
-    TypeAttrOf<FunctionType>: $function_type,
+    SymbolNameAttr:$sym_name,
+    OptionalAttr<StrAttr>:$sym_visibility,
+    TypeAttrOf<FunctionType>:$function_type,
     Ifrt_DevicesAttr:$devices
   );
 
   let assemblyFormat = [{
-    $sym_name `on` `devices` $devices attr-dict `:` $function_type
+    ($sym_visibility^)? $sym_name `on` `devices` $devices attr-dict `:` $function_type
   }];
   let hasVerifier = 1;
 }

@@ -20,6 +20,14 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'type\', \'value\', \'traceback\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'tpu\', \'zone\', \'project\', \'job_name\', \'coordinator_name\', \'coordinator_address\', \'credentials\', \'service\', \'discovery_url\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'worker\', \'None\', \'None\', \'default\', \'None\', \'None\'], "
   }
@@ -30,6 +38,7 @@ tf_class {
   member_method {
     name: "connect"
     argspec: "args=[\'tpu\', \'zone\', \'project\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "get_coordination_service_leader"

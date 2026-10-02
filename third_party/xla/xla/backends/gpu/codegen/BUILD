@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -30,8 +45,8 @@ cc_library(
         "//xla/service:shaped_slice",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emitter_context",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )
 
@@ -49,9 +64,9 @@ cc_library(
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emitter_context",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -79,24 +94,65 @@ xla_test(
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:cudnn_support_utils",
         "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
+    name = "cudnn_scaled_dot_test",
+    srcs = ["cudnn_scaled_dot_test.cc"],
+    backends = ["b200"],
+    tags = ["cuda-only"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/backends/gpu/transforms:composite_rewriter",
+        "//xla/backends/gpu/transforms:cudnn_custom_call_compiler",
+        "//xla/backends/gpu/transforms:cudnn_fusion_compiler",
+        "//xla/backends/gpu/transforms:scaled_dot_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:test_utils",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random:distributions",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -137,10 +193,10 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -202,7 +258,7 @@ cc_library(
         "//xla/service:shaped_slice",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emitter_context",
-        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -219,10 +275,10 @@ cc_library(
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:kernel_arguments",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:object_pool",
         "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings:string_view",
@@ -240,6 +296,7 @@ cc_library(
     deps = [
         ":kernel_compiler",
         "//xla:future",
+        "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
@@ -251,18 +308,20 @@ cc_library(
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:kernel_arguments",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:TargetParser",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -280,6 +339,7 @@ xla_cc_test(
         "//xla/backends/gpu/runtime:thunk",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen/emitters:kernel_arguments",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -288,9 +348,7 @@ xla_cc_test(
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_constants",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:parse_text_proto",
         "@com_google_absl//absl/status:status_matchers",

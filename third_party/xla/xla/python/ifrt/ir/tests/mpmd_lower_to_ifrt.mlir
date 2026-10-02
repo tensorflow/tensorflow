@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: ifrt-opt %s -mpmd-lower-to-ifrt -verify-diagnostics -split-input-file 2>&1 | FileCheck %s
 
 // Check that the MeshTensors are correctly converted to IFRT Arrays.
@@ -90,9 +104,9 @@ module @aliasing_output_to_io_aliases {
       attributes {topology = #mpmd.topology<<"mesh1" : <["x"=2]>>>} {
     // CHECK: %[[OUT:.+]], %{{.+}} = ifrt.Call @add_args(%arg0, %arg0)
     // CHECK-SAME: on devices [0, 1]
+    // CHECK-SAME: <io_aliases = [array<i32: 1, 0>]>
     // CHECK-SAME: {
     // CHECK-DAG:    ifrt.mesh_name = "mesh1"
-    // CHECK-DAG:    io_aliases = [array<i32: 1, 0>]
     // CHECK-SAME: }
     %0 = mpmd.fragment_call<mesh="mesh1", origin=[]> @add_args(%arg0, %arg0) : (!tensor, !tensor) -> (!tensor)
     return %0 : !tensor

@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
@@ -31,11 +37,15 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu::experimental {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::mlir::MLIRContext;
+using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 
 MATCHER_P(MatchString, tiling_space_string, "") {
   return ExplainMatchResult(
@@ -154,6 +164,40 @@ TEST_F(TilingSpaceTest, SingleOutputReductionDim) {
       0 root tile:
            offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [150, 10]
+  )"));
+}
+
+TEST_F(TilingSpaceTest, SingleOutputScanDim) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add = f32[] add(p0, p1)
+      ROOT tuple = (f32[], f32[]) tuple(add, add)
+    }
+    fused_computation {
+      p0 = f32[150] parameter(0)
+      p1 = f32[] constant(0.0)
+      scan = (f32[150], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+      ROOT get-tuple-element = f32[150] get-tuple-element(scan), index=0
+    }
+    ENTRY e {
+      p0 = f32[150] parameter(0)
+      ROOT fusion = f32[150] fusion(p0), kind=kLoop, calls=fused_computation
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+      0 type: sequential size: 150 dim ID:0
+        hlo: %scan = (f32[150]{0}, f32[]) scan(%p0.1, %p1.1), dimensions={0}, num_carries=1, is_associative=false, to_apply=%add
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0] sizes [ts_0]
+           strides [1] upper bounds [150]
   )"));
 }
 
@@ -283,12 +327,124 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
            offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [10, 8]
       1 root tile:
-           offsets [tid_0 * ts_2, tid_1 * ts_3] sizes [ts_2, ts_3]
+           offsets [tid_2 * ts_2, tid_3 * ts_3] sizes [ts_2, ts_3]
            strides [1, 1] upper bounds [11, 9]
   )"));
 }
 
-class TilingSpaceSimplifyExpressionTest : public TilingSpaceTest {
+TEST_F(TilingSpaceTest, TwoOutputsEqualShapesParallelDims) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[10,8] parameter(0)
+      p1 = f32[10,8] parameter(1)
+      p2 = f32[10,8] parameter(2)
+      p3 = f32[10,8] parameter(3)
+      add = f32[10,8] add(p0, p1)
+      mul = f32[10,8] multiply(p2, p3)
+      ROOT t = (f32[10,8], f32[10,8]) tuple(add, mul)
+    }
+
+    ENTRY e {
+      p0 = f32[10,8] parameter(0)
+      p1 = f32[10,8] parameter(1)
+      p2 = f32[10,8] parameter(2)
+      p3 = f32[10,8] parameter(3)
+      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0, p1, p2, p3),
+        kind=kLoop, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  EXPECT_THAT(
+      TilingSpace::Create(*fusion_adaptor, &mlir_context_),
+      StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("multiple roots")));
+}
+
+class TilingSpaceSameShapeMultiOutputTest : public TilingSpaceTest {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TilingSpaceTest::GetDebugOptionsForTest();
+    debug_options
+        .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TilingSpaceSameShapeMultiOutputTest,
+       TwoOutputsEqualShapesDuplicateRoots) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[10,8] parameter(0)
+      ROOT t = (f32[10,8], f32[10,8]) tuple(p0, p0)
+    }
+
+    ENTRY e {
+      p0 = f32[10,8] parameter(0)
+      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0), kind=kLoop, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+        0 type: parallel size: 10 dim ID:0
+          hlo: %p0 = f32[10,8]{1,0} parameter(0)
+        1 type: parallel size: 8 dim ID:1
+          hlo: %p0 = f32[10,8]{1,0} parameter(0)
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+      1 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+  )"));
+}
+
+TEST_F(TilingSpaceSameShapeMultiOutputTest, TwoOutputsEqualShapesParallelDims) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[10,8] parameter(0)
+      p1 = f32[10,8] parameter(1)
+      p2 = f32[10,8] parameter(2)
+      p3 = f32[10,8] parameter(3)
+      add = f32[10,8] add(p0, p1)
+      mul = f32[10,8] multiply(p2, p3)
+      ROOT t = (f32[10,8], f32[10,8]) tuple(add, mul)
+    }
+
+    ENTRY e {
+      p0 = f32[10,8] parameter(0)
+      p1 = f32[10,8] parameter(1)
+      p2 = f32[10,8] parameter(2)
+      p3 = f32[10,8] parameter(3)
+      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0, p1, p2, p3),
+        kind=kLoop, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+        0 type: parallel size: 10 dim ID:0
+          hlo: %add = f32[10,8]{1,0} add(%p0, %p1)
+        1 type: parallel size: 8 dim ID:1
+          hlo: %add = f32[10,8]{1,0} add(%p0, %p1)
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+      1 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+  )"));
+}
+
+class TilingSpaceSimplifyExpressionsTest : public TilingSpaceTest {
  public:
   void SetUp() override {
     TilingSpaceTest::SetUp();
@@ -310,41 +466,220 @@ class TilingSpaceSimplifyExpressionTest : public TilingSpaceTest {
     CHECK_OK(tiling_space_->AssignTileSizes({16, 2}));
   }
 
+  SymbolicExpr ParseExpr(absl::string_view expr_str) {
+    return ParseSymbolicExpr(expr_str, &mlir_context_, /*num_dims=*/2);
+  }
+
   std::unique_ptr<TilingSpace> tiling_space_;
 };
 
-TEST_F(TilingSpaceSimplifyExpressionTest, ModRemovedIfLessThanDivisor) {
-  SymbolicExpr tid_0 = CreateDimExpr(0, &mlir_context_);
-  EXPECT_EQ(tiling_space_->SimplifyExpression((tid_0 * 8) % 96), tid_0 * 8);
+TEST_F(TilingSpaceSimplifyExpressionsTest, ModRemovedIfLessThanDivisor) {
+  EXPECT_THAT(
+      tiling_space_->SimplifyExpressions({ParseExpr("(d0 * 8) mod 96")}),
+      ElementsAre(ParseExpr("d0 * 8")));
 }
 
-TEST_F(TilingSpaceSimplifyExpressionTest, FloorDivFactorsDivisor) {
-  SymbolicExpr tid_1 = CreateDimExpr(1, &mlir_context_);
-  EXPECT_EQ(tiling_space_->SimplifyExpression((tid_1 * 2).floorDiv(10)),
-            tid_1.floorDiv(5));
+TEST_F(TilingSpaceSimplifyExpressionsTest, MultipleExpressionsSimplified) {
+  EXPECT_THAT(tiling_space_->SimplifyExpressions({ParseExpr("(d0 * 8) mod 96"),
+                                                  ParseExpr("(d1 * 2) / 10"),
+                                                  ParseExpr("d0 * 16 + 500")}),
+              ElementsAre(ParseExpr("d0 * 8"), ParseExpr("d1 / 5"),
+                          ParseExpr("d0 * 16 + 500")));
 }
 
-TEST_F(TilingSpaceSimplifyExpressionTest,
-       ExpressionUnchangedIfNotAlgebraicallyFolds) {
-  SymbolicExpr tid_0 = CreateDimExpr(0, &mlir_context_);
-  EXPECT_EQ(tiling_space_->SimplifyExpression(tid_0 * 16 + 500),
-            tid_0 * 16 + 500);
+TEST_F(TilingSpaceSimplifyExpressionsTest, DimTileSimplify) {
+  DimTile dt{ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+             ParseExpr("d0 * 16 + 500"),
+             ParseExpr("(d0 * 16 + d1 * 2) mod 200")};
+  dt.Simplify(*tiling_space_);
+  EXPECT_EQ(dt.offset, ParseExpr("d0 * 8"));
+  EXPECT_EQ(dt.size, ParseExpr("d1 / 5"));
+  EXPECT_EQ(dt.stride, ParseExpr("d0 * 16 + 500"));
+  EXPECT_EQ(dt.upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
 }
 
-TEST_F(TilingSpaceSimplifyExpressionTest, NestedFloorDivFactorsDivisor) {
-  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) / 200", &mlir_context_,
-                                /*num_dims=*/2);
-  EXPECT_EQ(tiling_space_->SimplifyExpression(expr),
-            ParseSymbolicExpr("(d0 * 8 + d1) / 100", &mlir_context_,
-                              /*num_dims=*/2));
+TEST_F(TilingSpaceSimplifyExpressionsTest, SimplifyDimTiles) {
+  llvm::SmallVector<DimTile> dim_tiles = {
+      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+       ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")},
+      {ParseExpr("(d1 * 2) / 10"), ParseExpr("(d0 * 8) mod 96"),
+       ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
+  SimplifyDimTiles(dim_tiles, *tiling_space_);
+  EXPECT_EQ(dim_tiles[0].offset, ParseExpr("d0 * 8"));
+  EXPECT_EQ(dim_tiles[0].size, ParseExpr("d1 / 5"));
+  EXPECT_EQ(dim_tiles[0].stride, ParseExpr("d0 * 16 + 500"));
+  EXPECT_EQ(dim_tiles[0].upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
+  EXPECT_EQ(dim_tiles[1].offset, ParseExpr("d1 / 5"));
+  EXPECT_EQ(dim_tiles[1].size, ParseExpr("d0 * 8"));
+  EXPECT_EQ(dim_tiles[1].stride, ParseExpr("d0 * 16 + 500"));
+  EXPECT_EQ(dim_tiles[1].upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
+
+  llvm::SmallVector<DimTile> empty_dim_tiles;
+  SimplifyDimTiles(empty_dim_tiles, *tiling_space_);
+  EXPECT_TRUE(empty_dim_tiles.empty());
 }
 
-TEST_F(TilingSpaceSimplifyExpressionTest, NestedModRemovedIfLessThanDivisor) {
-  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) mod 200", &mlir_context_,
-                                /*num_dims=*/2);
-  EXPECT_EQ(
-      tiling_space_->SimplifyExpression(expr),
-      ParseSymbolicExpr("d0 * 16 + d1 * 2", &mlir_context_, /*num_dims=*/2));
+TEST_F(TilingSpaceSimplifyExpressionsTest, SimplifyDimTilesGroups) {
+  llvm::SmallVector<DimTile> group1 = {
+      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+       ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
+  llvm::SmallVector<DimTile> group2 = {
+      {ParseExpr("(d1 * 2) / 10"), ParseExpr("(d0 * 8) mod 96"),
+       ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
+  SimplifyDimTiles({group1, group2}, *tiling_space_);
+  EXPECT_EQ(group1[0].offset, ParseExpr("d0 * 8"));
+  EXPECT_EQ(group1[0].size, ParseExpr("d1 / 5"));
+  EXPECT_EQ(group2[0].offset, ParseExpr("d1 / 5"));
+  EXPECT_EQ(group2[0].size, ParseExpr("d0 * 8"));
 }
+
+TEST_F(TilingSpaceTest, ClonePerformsDeepCopies) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      src = s32[2,2,258] parameter(0)
+      of1 = s32[] parameter(1)
+      of2 = s32[] parameter(2)
+      of3 = s32[] parameter(3)
+      ROOT ds = s32[1,2,32] dynamic-slice(s32[2,2,258] src,
+        s32[] of1, s32[] of2, s32[] of3),
+        dynamic_slice_sizes={1, 2, 32}
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  std::unique_ptr<TilingSpace> cloned_space = original_space->Clone();
+  ASSERT_NE(cloned_space, nullptr);
+
+  EXPECT_EQ(cloned_space->num_dimensions(), original_space->num_dimensions());
+  EXPECT_EQ(cloned_space->num_parallel_dimensions(),
+            original_space->num_parallel_dimensions());
+  EXPECT_EQ(cloned_space->num_rt_vars(), original_space->num_rt_vars());
+  EXPECT_EQ(cloned_space->mlir_context(), original_space->mlir_context());
+  EXPECT_EQ(cloned_space->IsSymbolic(), original_space->IsSymbolic());
+
+  // Dimensions deep copied.
+  auto orig_dims = original_space->dimensions();
+  auto cloned_dims = cloned_space->dimensions();
+  ASSERT_EQ(orig_dims.size(), cloned_dims.size());
+  for (size_t i = 0; i < orig_dims.size(); ++i) {
+    EXPECT_EQ(orig_dims[i].id, cloned_dims[i].id);
+    EXPECT_EQ(orig_dims[i].dimension_size, cloned_dims[i].dimension_size);
+    EXPECT_EQ(orig_dims[i].type, cloned_dims[i].type);
+    EXPECT_EQ(orig_dims[i].hlo, cloned_dims[i].hlo);
+    EXPECT_EQ(orig_dims[i].dim_position, cloned_dims[i].dim_position);
+
+    const auto& cloned_dim_ref = cloned_space->GetDimensionInfo(
+        *cloned_dims[i].hlo, cloned_dims[i].dim_position);
+    const auto& orig_dim_ref = original_space->GetDimensionInfo(
+        *orig_dims[i].hlo, orig_dims[i].dim_position);
+
+    EXPECT_NE(&cloned_dim_ref, &orig_dim_ref);
+  }
+
+  // RTVars deep copied.
+  ASSERT_EQ(cloned_space->num_rt_vars(), 3);
+  for (int64_t operand_id = 1; operand_id <= 3; ++operand_id) {
+    auto orig_rt = original_space->GetRTVarInfo(*root, operand_id);
+    auto cloned_rt = cloned_space->GetRTVarInfo(*root, operand_id);
+    ASSERT_TRUE(orig_rt.has_value());
+    ASSERT_TRUE(cloned_rt.has_value());
+    EXPECT_EQ((*orig_rt)->id, (*cloned_rt)->id);
+    EXPECT_EQ((*orig_rt)->bounds, (*cloned_rt)->bounds);
+    EXPECT_EQ((*orig_rt)->hlo, (*cloned_rt)->hlo);
+    EXPECT_NE(*orig_rt, *cloned_rt);
+  }
+
+  // Root tiles reference cloned space, not original space.
+  ASSERT_EQ(cloned_space->tiled_roots().size(),
+            original_space->tiled_roots().size());
+  for (size_t i = 0; i < cloned_space->tiled_roots().size(); ++i) {
+    EXPECT_EQ(&cloned_space->tiled_roots()[i].tiling_space(),
+              cloned_space.get());
+    EXPECT_NE(&cloned_space->tiled_roots()[i].tiling_space(),
+              original_space.get());
+  }
+}
+
+TEST_F(TilingSpaceTest, CloneAssignsIndependentTileSizes) {
+  auto root = ParseAndGetRoot(R"(
+      HloModule m
+      ENTRY e {
+        p0 = f32[1000, 10] parameter(0)
+        ROOT a0 = f32[1000, 10] exponential(p0)
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  std::unique_ptr<TilingSpace> cloned_space = original_space->Clone();
+  ASSERT_NE(cloned_space, nullptr);
+
+  EXPECT_TRUE(original_space->IsSymbolic());
+  EXPECT_TRUE(cloned_space->IsSymbolic());
+
+  // Assign tile sizes to cloned_space.
+  EXPECT_OK(cloned_space->AssignTileSizes({16, 2}));
+  EXPECT_FALSE(cloned_space->IsSymbolic());
+  EXPECT_TRUE(original_space->IsSymbolic());
+
+  auto cloned_dims = cloned_space->dimensions();
+  EXPECT_EQ(cloned_dims[0].tile_size, 16);
+  EXPECT_EQ(cloned_dims[1].tile_size, 2);
+
+  auto orig_dims = original_space->dimensions();
+  EXPECT_FALSE(orig_dims[0].tile_size.has_value());
+  EXPECT_FALSE(orig_dims[1].tile_size.has_value());
+
+  // Assign different tile sizes to original_space.
+  EXPECT_OK(original_space->AssignTileSizes({32, 4}));
+  EXPECT_FALSE(original_space->IsSymbolic());
+  EXPECT_EQ(original_space->dimensions()[0].tile_size, 32);
+  EXPECT_EQ(original_space->dimensions()[1].tile_size, 4);
+
+  // Cloned space remains unaffected.
+  EXPECT_EQ(cloned_space->dimensions()[0].tile_size, 16);
+  EXPECT_EQ(cloned_space->dimensions()[1].tile_size, 2);
+}
+
+TEST_F(TilingSpaceTest, CloneIntoAnotherContextRebindsRootTiles) {
+  auto root = ParseAndGetRoot(R"(
+      HloModule m
+      ENTRY e {
+        p0 = f32[1000, 10] parameter(0)
+        ROOT a0 = f32[1000, 10] exponential(p0)
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  mlir::MLIRContext target_context;
+  std::unique_ptr<TilingSpace> cloned_space =
+      original_space->Clone(&target_context);
+  ASSERT_NE(cloned_space, nullptr);
+  EXPECT_EQ(cloned_space->mlir_context(), &target_context);
+  EXPECT_EQ(cloned_space->num_dimensions(), original_space->num_dimensions());
+
+  for (const auto& root_tile : cloned_space->tiled_roots()) {
+    for (const auto& dim_tile : root_tile.dim_tiles()) {
+      EXPECT_EQ(dim_tile.size.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.offset.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.stride.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.upper_bound.GetContext(), &target_context);
+    }
+  }
+
+  EXPECT_TRUE(cloned_space->IsSymbolic());
+  EXPECT_OK(cloned_space->AssignTileSizes({64, 2}));
+  EXPECT_FALSE(cloned_space->IsSymbolic());
+  EXPECT_EQ(cloned_space->dimensions()[0].tile_size, 64);
+  EXPECT_EQ(cloned_space->dimensions()[1].tile_size, 2);
+  EXPECT_TRUE(original_space->IsSymbolic());
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental

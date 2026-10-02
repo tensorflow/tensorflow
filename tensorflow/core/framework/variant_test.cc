@@ -689,4 +689,73 @@ TEST(BoolVariantTest, DecodeNonBool) {
   EXPECT_TRUE(parsed.flat<Variant>()(0).get<bool>());
 }
 
+struct FallibleType {
+  bool fail_encode = false;
+  std::string value = "success";
+
+  explicit FallibleType(bool fail = false) : fail_encode(fail) {}
+
+  bool Encode(VariantTensorData* data) const {
+    if (fail_encode) return false;
+    data->set_metadata(value);
+    return true;
+  }
+
+  bool Decode(VariantTensorData data) { return true; }
+
+  std::string TypeName() const { return "FallibleType"; }
+};
+
+struct InfallibleVoidType {
+  std::string value = "void_success";
+
+  void Encode(VariantTensorData* data) const { data->set_metadata(value); }
+
+  bool Decode(VariantTensorData data) { return true; }
+
+  std::string TypeName() const { return "InfallibleVoidType"; }
+};
+
+TEST(VariantTest, BoolEncodeSuccessAndFailure) {
+  Variant v_ok = FallibleType{/*fail_encode=*/false};
+  VariantTensorData data;
+  EXPECT_TRUE(v_ok.Encode(&data));
+  std::string buf;
+  EXPECT_TRUE(v_ok.Encode(&buf));
+
+  Variant v_fail = FallibleType{/*fail_encode=*/true};
+  EXPECT_FALSE(v_fail.Encode(&data));
+  EXPECT_FALSE(v_fail.Encode(&buf));
+}
+
+TEST(VariantTest, VoidEncodeTreatedAsTrue) {
+  Variant v = InfallibleVoidType{};
+  VariantTensorData data;
+  EXPECT_TRUE(v.Encode(&data));
+  std::string buf;
+  EXPECT_TRUE(v.Encode(&buf));
+}
+
+TEST(VariantTest, ErrorPropagationToAsProtoFieldAndTensorContent) {
+  Tensor t_ok(DT_VARIANT, TensorShape({2}));
+  t_ok.flat<Variant>()(0) = FallibleType{/*fail_encode=*/false};
+  t_ok.flat<Variant>()(1) = InfallibleVoidType{};
+
+  TensorProto proto_field_ok;
+  EXPECT_TRUE(t_ok.AsProtoField(&proto_field_ok));
+
+  TensorProto proto_content_ok;
+  EXPECT_TRUE(t_ok.AsProtoTensorContent(&proto_content_ok));
+
+  Tensor t_fail(DT_VARIANT, TensorShape({2}));
+  t_fail.flat<Variant>()(0) = FallibleType{/*fail_encode=*/false};
+  t_fail.flat<Variant>()(1) = FallibleType{/*fail_encode=*/true};
+
+  TensorProto proto_field_fail;
+  EXPECT_FALSE(t_fail.AsProtoField(&proto_field_fail));
+
+  TensorProto proto_content_fail;
+  EXPECT_FALSE(t_fail.AsProtoTensorContent(&proto_content_fail));
+}
+
 }  // end namespace tensorflow

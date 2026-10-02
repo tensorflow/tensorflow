@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/mpmd_executable.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -52,13 +53,12 @@ namespace ifrt {
 namespace proxy {
 
 class MpmdLoadedExecutable final
-    : public llvm::RTTIExtends<MpmdLoadedExecutable,
-                               xla::ifrt::MpmdLoadedExecutable> {
+    : public RTTIExtends<MpmdLoadedExecutable,
+                         xla::ifrt::MpmdLoadedExecutable> {
  public:
   MpmdLoadedExecutable(
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-      uint64_t handle, std::string name, int num_devices,
-      std::optional<DeviceListRef> devices,
+      uint64_t handle, std::string name, std::optional<DeviceListRef> devices,
       std::vector<xla::ifrt::Device*> addressable_devices,
       absl::StatusOr<
           absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>>
@@ -91,7 +91,6 @@ class MpmdLoadedExecutable final
     return loaded_executable_->user_context();
   }
 
-  int num_devices() const override { return loaded_executable_->num_devices(); }
   int64_t SizeOfGeneratedCodeInBytes() const override {
     return loaded_executable_->SizeOfGeneratedCodeInBytes();
   }
@@ -146,9 +145,6 @@ class MpmdLoadedExecutable final
   std::optional<DeviceListRef> devices() const override {
     return loaded_executable_->devices();
   };
-  absl::Span<xla::ifrt::Device* const> addressable_devices() const override {
-    return loaded_executable_->addressable_devices();
-  }
 
   absl::StatusOr<
       absl::flat_hash_map<std::string, absl::Span<xla::ifrt::Device* const>>>

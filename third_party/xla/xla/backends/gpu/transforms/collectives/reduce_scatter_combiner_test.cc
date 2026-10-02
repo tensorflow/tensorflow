@@ -21,16 +21,17 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -120,8 +121,7 @@ ENTRY entry {
   // Combine at most 4 pipelined collectives.
   int suggested_threshold_bytes = 4 * collective_size;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), default_threshold_bytes,
@@ -208,8 +208,7 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
               absl_testing::IsOkAndHolds(true));
 
@@ -299,8 +298,7 @@ ENTRY entry {
   int collective_size = 2 * 6 * 8 * 128;
   int threshold_bytes = 2 * collective_size;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(RunCombiner(module.get(), threshold_bytes),
               absl_testing::IsOkAndHolds(true));
 
@@ -350,7 +348,7 @@ TEST_F(GpuReduceScatterCombinerTest,
       ROOT result = tuple(rs0, rs1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
@@ -387,12 +385,64 @@ TEST_F(GpuReduceScatterCombinerTest,
       ROOT result = tuple(rs0, rs1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
               absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(GpuReduceScatterCombinerTest, CollectiveGroupKeyConstrainsCombining) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  p2 = f32[128] parameter(2)
+  p3 = f32[128] parameter(3)
+  p4 = f32[128] parameter(4)
+  rs0 = f32[32] reduce-scatter(p0), dimensions={0}, to_apply=add,
+    replica_groups={}, frontend_attributes={collective_group_key="g0"}
+  rs1 = f32[32] reduce-scatter(p1), dimensions={0}, to_apply=add,
+    replica_groups={}, frontend_attributes={collective_group_key="g0"}
+  rs2 = f32[32] reduce-scatter(p2), dimensions={0}, to_apply=add,
+    replica_groups={}, frontend_attributes={collective_group_key="g1"}
+  rs3 = f32[32] reduce-scatter(p3), dimensions={0}, to_apply=add,
+    replica_groups={}
+  rs4 = f32[32] reduce-scatter(p4), dimensions={0}, to_apply=add,
+    replica_groups={}, frontend_attributes={collective_group_key="g0"}
+  ROOT tuple = tuple(rs0, rs1, rs2, rs3, rs4)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(
+      RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
+      absl_testing::IsOkAndHolds(true));
+
+  int reduce_scatter_count = 0;
+  const HloInstruction* combined = nullptr;
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (HloPredicateIsNotOp<HloOpcode::kReduceScatter>(instruction)) {
+      continue;
+    }
+    ++reduce_scatter_count;
+    if (instruction->operand_count() == 3) {
+      combined = instruction;
+    }
+  }
+  EXPECT_EQ(reduce_scatter_count, 3);
+  ASSERT_NE(combined, nullptr);
+  EXPECT_EQ(combined->get_frontend_attribute("collective_group_key"), "g0");
 }
 
 TEST_F(GpuReduceScatterCombinerTest, CombinedPipelinedRetainsBackendConfig) {
@@ -418,8 +468,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(
       RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
       absl_testing::IsOkAndHolds(true));
@@ -427,8 +476,8 @@ ENTRY entry {
   const HloInstruction* combined =
       module->entry_computation()->GetInstructionWithName("reduce-scatter");
   ASSERT_NE(combined, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          combined->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       combined->backend_config<GpuBackendConfig>());
   EXPECT_TRUE(config.collective_backend_config().is_pipelined());
 }
 

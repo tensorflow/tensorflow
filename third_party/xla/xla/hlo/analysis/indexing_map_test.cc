@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/MapVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -401,6 +402,44 @@ TEST_F(IndexingMapTest,
   EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
 }
 
+TEST_F(IndexingMapTest, MapVectorConstructorUnsatisfiableConstraints) {
+  llvm::MapVector<SymbolicExpr, Interval> constraints;
+  // Add unsatisfiable constraint.
+  constraints.insert(
+      {CreateSymbolicConstant(-1, &mlir_context_), Interval{0, 1}});
+  IndexingMap indexing_map(ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
+                           /*dimensions=*/{IndexingMap::Variable{0, 0}},
+                           /*range_vars=*/{}, /*rt_vars=*/{}, constraints);
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+}
+
+TEST_F(IndexingMapTest, MapVectorConstructorOneOfConstraintsIsUnsatisfiable) {
+  llvm::MapVector<SymbolicExpr, Interval> constraints;
+  constraints.insert(
+      {CreateSymbolicConstant(-1, &mlir_context_), Interval{0, 1}});
+  constraints.insert({CreateDimExpr(0, &mlir_context_), Interval{0, 5}});
+  IndexingMap indexing_map(ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
+                           /*dimensions=*/{IndexingMap::Variable{0, 10}},
+                           /*range_vars=*/{}, /*rt_vars=*/{}, constraints);
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_TRUE(indexing_map.GetSymbolicConstraints().empty());
+}
+
+TEST_F(IndexingMapTest, MapVectorConstructorConstraintAffectsSimplification) {
+  llvm::MapVector<SymbolicExpr, Interval> constraints;
+  constraints.insert({CreateDimExpr(0, &mlir_context_), Interval{0, 7}});
+  IndexingMap indexing_map(
+      ParseSymbolicMap("(d0) -> (d0 mod 16)", &mlir_context_),
+      /*dimensions=*/{IndexingMap::Variable{0, 31}},
+      /*range_vars=*/{}, /*rt_vars=*/{}, constraints);
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0) -> (d0),
+                              domain:
+                              d0 in [0, 7]
+                            )"));
+}
+
 TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintUsesDim) {
   // This constraint cannot be removed, because it contains a dimension.
   auto indexing_map = Parse(R"(
@@ -616,17 +655,26 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
     (d0) -> (d0),
     domain:
     d0 in [0, 99],
-    d0 mod 8 + 5 in [50, 54]
+    d0 mod 8 + 5 in [6, 10]
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  // TODO: b/459357586 - This should be infeasible, since d0 mod 8 should be in
-  // [0, 7].
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0) -> (d0),
                           domain:
                           d0 in [0, 99],
-                          d0 mod 8 in [45, 49]
+                          d0 mod 8 in [1, 5]
                         )"));
+}
+
+TEST_F(IndexingMapTest, ConstraintIntervalSimplification_SumInfeasible) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+    d0 in [0, 99],
+    d0 mod 8 + 5 in [50, 54]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
 }
 
 TEST_F(IndexingMapTest, Simplifier_Mod1) {
@@ -1250,6 +1298,22 @@ TEST_F(IndexingMapTest, SymbolicMapSimplification_DivSumDiv) {
   EXPECT_FALSE(indexing_map.Simplify());
 }
 
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SumDivToNegativeOne) {
+  auto indexing_map = Parse(R"(
+    ()[s0] -> ((s0 * 16 - 497) / 512),
+    domain:
+    s0 in [0, 4]
+  )");
+  // s0 * 16 is in [0, 64], thus (s0 * 16 - 497) is in [-497, -448],
+  // making the floordiv result in [-1, -1].
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      ()[s0] -> (-1),
+      domain:
+      s0 in [0, 4]
+    )"));
+}
+
 TEST_F(IndexingMapTest, SymbolicMapSimplification_NegativeDiv) {
   // (s0 floordiv 2) floordiv -7 is not s0 floordiv -14:
   // 15 // 2 // -7 = -1
@@ -1761,6 +1825,94 @@ TEST_F(IndexingMapTest, GetUsedParameters) {
   EXPECT_THAT(used_params.symbol_ids, ElementsAre(0));
 }
 
+TEST_F(IndexingMapTest, SimplifyMin_Adjacent) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (min(d0, d0 + 1)),
+    domain:
+    d0 in [0, 10]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 10]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMin_Constant) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (min(10, d0)),
+    domain:
+    d0 in [0, 5]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 5]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMax_Adjacent) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (max(d0, d0 - 1)),
+    domain:
+    d0 in [0, 10]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 10]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMax_Constant) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (max(10, d0)),
+    domain:
+    d0 in [0, 5]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (10),
+      domain:
+      d0 in [0, 5]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMin_Complex) {
+  auto indexing_map = Parse(R"(
+    (d0, d1) -> (min(128, d0 * 32 + d1 / 64 + 1)),
+    domain:
+    d0 in [0, 3],
+    d1 in [0, 2047]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0, d1) -> (d0 * 32 + d1 / 64 + 1),
+      domain:
+      d0 in [0, 3],
+      d1 in [0, 2047]
+  )"));
+}
+
+TEST_F(IndexingMapTest, SimplifyMax_Complex) {
+  auto indexing_map = Parse(R"(
+    (d0, d1) -> (max(128, d0 * 32 + d1 / 64 + 1)),
+    domain:
+    d0 in [0, 3],
+    d1 in [0, 2047]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0, d1) -> (128),
+      domain:
+      d0 in [0, 3],
+      d1 in [0, 2047]
+  )"));
+}
+
 TEST_F(IndexingMapTest, IsUndefined) {
   IndexingMap undefined_map = IndexingMap::GetUndefined();
   EXPECT_TRUE(undefined_map.IsUndefined());
@@ -1769,6 +1921,22 @@ TEST_F(IndexingMapTest, IsUndefined) {
       ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
       /*dim_upper_bounds=*/{10}, /*symbol_upper_bounds=*/{});
   EXPECT_FALSE(defined_map.IsUndefined());
+}
+
+TEST_F(IndexingMapTest, ComputeResultRanges) {
+  IndexingMap indexing_map = Parse(R"(
+    (d0, d1) -> ((d0 * 86 + d1) floordiv 64, (d0 * 86 + d1) mod 64),
+    domain:
+    d0 in [0, 11],
+    d1 in [0, 85],
+    d0 * 86 + d1 in [0, 1023]
+  )");
+  EXPECT_THAT(indexing_map.ComputeResultRanges(),
+              ElementsAre(Interval{0, 15}, Interval{0, 63}));
+
+  indexing_map.ClearConstraints();
+  EXPECT_THAT(indexing_map.ComputeResultRanges(),
+              ElementsAre(Interval{0, 16}, Interval{0, 63}));
 }
 
 }  // namespace

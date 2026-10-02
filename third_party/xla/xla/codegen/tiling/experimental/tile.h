@@ -19,10 +19,12 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <ostream>
 #include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
@@ -33,6 +35,40 @@ limitations under the License.
 #include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla::gpu::experimental {
+
+// Tiled dimension ID within tiling space. Separate type for safety to not
+// confuse dimension ID in the tiling space with e.g. position of dimension
+// in HLO op etc.
+class TiledDimId {
+ public:
+  constexpr explicit TiledDimId(int64_t value) : value_(value) {}
+  constexpr int64_t value() const { return value_; }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const TiledDimId& i) {
+    return H::combine(std::move(h), i.value_);
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const TiledDimId& id) {
+    absl::Format(&sink, "%v", id.value());
+  }
+
+  friend constexpr bool operator==(TiledDimId lhs, TiledDimId rhs) {
+    return lhs.value() == rhs.value();
+  }
+
+  friend constexpr bool operator!=(TiledDimId lhs, TiledDimId rhs) {
+    return lhs.value() != rhs.value();
+  }
+
+ private:
+  int64_t value_;
+};
+
+inline std::ostream& operator<<(std::ostream& os, TiledDimId id) {
+  return os << id.value();
+}
 
 class TilingSpace;
 
@@ -91,6 +127,13 @@ struct DimTile {
   // Simplify expressions inside the DimTile using the actual dimension and
   // symbol bounds.
   void Simplify(const TilingSpace& space);
+
+  std::string ToString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DimTile& dim_tile) {
+    sink.Append(dim_tile.ToString());
+  }
 };
 
 template <typename H>
@@ -99,6 +142,17 @@ H AbslHashValue(H h, const DimTile& dim_tile) {
       dim_tile.offset, dim_tile.size, dim_tile.stride, dim_tile.upper_bound);
   return H::combine(std::move(h), static_cast<size_t>(dim_tile_hash));
 }
+
+// Simplifies groups of DimTiles using the dimension and symbol bounds of the
+// given tiling space.
+void SimplifyDimTiles(
+    llvm::ArrayRef<llvm::MutableArrayRef<DimTile>> dim_tile_groups,
+    const TilingSpace& space);
+
+// Simplifies a list of DimTiles using the dimension and symbol bounds of the
+// given tiling space.
+void SimplifyDimTiles(llvm::MutableArrayRef<DimTile> dim_tiles,
+                      const TilingSpace& space);
 
 // Tile is a collection of tilings for every dimension of output tensor
 // of an HLO instruction. TiledHloInstruction associates a Tile
@@ -152,6 +206,9 @@ class Tile {
   // the original tile.
   Tile CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const;
 
+  // Creates a copy of the tile associated with a new tiling space.
+  Tile CloneWithNewTilingSpace(const TilingSpace& new_space) const;
+
   bool operator==(const Tile& other) const;
 
   // This allows GUnit to print the tile.
@@ -188,7 +245,8 @@ DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
 // Returns a DimTile that covers the entire dimension, i.e.
 //  offset = SymbolicDimExpr(id) * SymbolicSymbolExpr(id),
 //  size = SymbolicVariable(id), stride 1, upper_bound = dim_size.
-DimTile GetDefaultDimTile(int64_t id, SymbolicExpr tile_size, int64_t dim_size);
+DimTile GetDefaultDimTile(TiledDimId id, SymbolicExpr tile_size,
+                          int64_t dim_size);
 
 }  // namespace xla::gpu::experimental
 

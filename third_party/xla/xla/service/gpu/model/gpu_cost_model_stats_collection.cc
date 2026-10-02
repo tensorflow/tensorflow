@@ -20,9 +20,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
@@ -45,6 +45,8 @@ namespace gpu {
 
 namespace {
 
+using ::xla::xtile::BlockLevelParameters;
+
 absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
     const se::DeviceDescription& device_info,
     const HloInstruction& instruction) {
@@ -55,7 +57,7 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
     return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  ASSIGN_OR_RETURN(GpuBackendConfig config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig config,
                    fusion->backend_config<GpuBackendConfig>());
   if (config.fusion_backend_config().kind() != kTritonNestedGemmFusionKind) {
     return absl::FailedPreconditionError("Not a Triton GeMM fusion.");
@@ -94,7 +96,7 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
 // with non-trivial operations on dot operands might not be fully accounted for.
 absl::Status RecordGemmCostModelEstimateIfApplicable(
     const se::DeviceDescription& device_info, HloInstruction& instruction) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       EstimateRunTimeData runtime,
       MaybeGetGemmCostModelForGemmTritonFusion(device_info, instruction));
 
@@ -104,7 +106,7 @@ absl::Status RecordGemmCostModelEstimateIfApplicable(
 
   VLOG(1) << "Adding GeMM fusion cost model estimate: " << cost.DebugString();
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instruction.backend_config<GpuBackendConfig>());
   *gpu_config.add_reification_cost() = cost;
   return instruction.set_backend_config(gpu_config);
@@ -120,16 +122,23 @@ absl::StatusOr<EstimateRunTimeData> MaybeGetIndexingCostModelForFusion(
     return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  ASSIGN_OR_RETURN(EstimateRunTimeData runtime,
-                   perf_model.EstimateRunTimeForTriton(&instruction));
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig config,
+                   fusion->backend_config<GpuBackendConfig>());
 
-  return runtime;
+  if (config.fusion_backend_config().has_block_level_fusion_config()) {
+    const BlockLevelParameters block_params =
+        BlockLevelParameters::FromBlockLevelFusionConfig(
+            config.fusion_backend_config().block_level_fusion_config());
+    return perf_model.EstimateRunTimeForTriton(&instruction, &block_params);
+  }
+
+  return perf_model.EstimateRunTimeForTriton(&instruction);
 }
 
 absl::Status RecordIndexingPerformanceModelEstimateIfApplicable(
     GpuPerformanceModelWithIndexingAnalysis& perf_model,
     const se::DeviceDescription& device_info, HloInstruction& instruction) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       EstimateRunTimeData runtime,
       MaybeGetIndexingCostModelForFusion(perf_model, device_info, instruction));
 
@@ -140,7 +149,7 @@ absl::Status RecordIndexingPerformanceModelEstimateIfApplicable(
   VLOG(1) << "Adding indexing performance model estimate: "
           << cost.DebugString();
 
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instruction.backend_config<GpuBackendConfig>());
   *gpu_config.add_reification_cost() = cost;
   return instruction.set_backend_config(gpu_config);

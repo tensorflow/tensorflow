@@ -15,7 +15,46 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REDUCE_COMMON_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REDUCE_COMMON_H_
 
+#include <stddef.h>
+
+#include <type_traits>
+
+#include "absl/types/span.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/util.h"
+
 namespace tflite {
+namespace reduce_utils {
+
+inline bool CheckedElementCount(absl::Span<const int> dims, size_t& count) {
+  return ::tflite::CheckedNumElements(dims, count) == kTfLiteOk;
+}
+
+template <typename Count>
+inline bool CheckedReducedElementCount(absl::Span<const int> dims,
+                                       absl::Span<const int> axis,
+                                       Count& count) {
+  static_assert(std::is_integral_v<Count>);
+  ::tflite::CheckedInt<Count> product(1);
+  for (const int axis_idx : axis) {
+    if (axis_idx < 0 ||
+        static_cast<size_t>(axis_idx) >= static_cast<size_t>(dims.size())) {
+      return false;
+    }
+    const int dim = dims[axis_idx];
+    if (dim < 0) {
+      return false;
+    }
+    product *= dim;
+  }
+  if (product.Overflow()) {
+    return false;
+  }
+  count = product.Value();
+  return true;
+}
+
+}  // namespace reduce_utils
 namespace ops {
 namespace builtin {
 namespace reduce {

@@ -15,6 +15,8 @@ limitations under the License.
 #if defined(INTEL_MKL)
 #define EIGEN_USE_THREADS
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -257,6 +259,41 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
       QuantizedTensorToFloat<quint8>(output, output_min, output_max);
 
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
+}
+TEST_F(QuantizedPoolingTest, KsizeLargerThanInputDimReturnsInvalidArgument) {
+  // ksize deliberately larger than the input's height/width dimensions.
+  const int ksize = 10;
+  const int stride = 2;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_max_pool_op", "_MklQuantizedMaxPool")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("ksize", {1, ksize, ksize, 1})
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "VALID")
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  const float input_min = 0.0f;
+  const float input_max = 255.0f;
+  const int input_height = 4;
+  const int input_width = 4;
+  const int input_channels = 2;
+  Tensor input_float(DT_FLOAT, {1, input_height, input_width, input_channels});
+  test::FillValues<float>(
+      &input_float,
+      {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16,
+       17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
+  Tensor input_quantized =
+      FloatTensorToQuantized<quint8>(input_float, input_min, input_max);
+  AddInputFromArray<quint8>(input_quantized.shape(),
+                            input_quantized.flat<quint8>());
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
+  Status status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_TRUE(absl::StrContains(status.message(), "ksize dimension"));
 }
 
 }  // namespace tensorflow

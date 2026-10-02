@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
-    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+#if defined(__FLT16_MANT_DIG__) && defined(__has_attribute) &&    \
+    __has_attribute(ext_vector_type) && defined(__has_builtin) && \
+    __has_builtin(__builtin_vectorelements)
 
 #include "xla/codegen/intrinsic/cpp/eigen_unary.h"
 
@@ -61,6 +62,7 @@ Vec16f tanh_v16f32(Vec16f x) { return VectorTanh(x); }
 double tanh_f64(double x) {
   return Eigen::internal::ptanh_double(x);  // NOLINT(misc-include-cleaner)
 }
+Vec2d tanh_v2f64(Vec2d x) { return VectorTanh(x); }
 Vec4d tanh_v4f64(Vec4d x) { return VectorTanh(x); }
 Vec8d tanh_v8f64(Vec8d x) { return VectorTanh(x); }
 
@@ -158,6 +160,7 @@ double atan_f64(double x_in) {
   double result = large_x ? (kPiOverTwo - r) : r;
   return std::copysign(result, x_in);
 }
+Vec2d atan_v2f64(Vec2d x) { return VectorAtan(x); }
 Vec4d atan_v4f64(Vec4d x) { return VectorAtan(x); }
 Vec8d atan_v8f64(Vec8d x) { return VectorAtan(x); }
 

@@ -19,32 +19,37 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
 using TritonEmitterDevicelessTest = HloHardwareIndependentTestBase;
+using ::xla::xtile::BlockLevelParameters;
 
 class WarpSpecializationTritonEmitterTest : public TritonEmitterDevicelessTest {
  public:
@@ -64,6 +69,40 @@ class ExperimentalTilingTritonEmitterTest : public TritonEmitterDevicelessTest {
         TritonEmitterDevicelessTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
     return debug_options;
+  }
+
+ protected:
+  // Emits and compiles the Triton fusion that is the root of `hlo_text` and
+  // returns the Triton IR before the conversion to the TritonGPU dialect.
+  absl::StatusOr<std::string> EmitAndCompileTritonFusion(
+      absl::string_view hlo_text) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                     ParseAndReturnVerifiedModule(hlo_text));
+    const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
+        hlo_module->entry_computation()->root_instruction());
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig backend_config,
+                     fusion.backend_config<GpuBackendConfig>());
+    BlockLevelParameters block_level_parameters =
+        BlockLevelParameters::FromBlockLevelFusionConfig(
+            backend_config.fusion_backend_config().block_level_fusion_config());
+    const se::DeviceDescription dev_info =
+        TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    mlir::MLIRContext mlir_context;
+    RegisterSymbolicExprStorage(&mlir_context);
+
+    ABSL_ASSIGN_OR_RETURN(TritonKernelSource triton_source,
+                     CreateTritonModule("test_fn", fusion, dev_info,
+                                        block_level_parameters, mlir_context));
+    absl::Status status =
+        TritonWrapper("test_fn", fusion, dev_info.gpu_compute_capability(),
+                      dev_info, block_level_parameters,
+                      llvm::Triple(nvptx::TargetTriple()), nvptx::DataLayout(),
+                      mlir_context)
+            .status();
+    if (!status.ok()) {
+      return status;
+    }
+    return triton_source.ToString();
   }
 };
 
@@ -160,6 +199,47 @@ ENTRY entry {
                          mlir_context));
 }
 
+TEST_F(TritonEmitterDevicelessTest, RejectsGenericFp4FusionOutput) {
+  constexpr absl::string_view kHloText = R"(
+fusion {
+  p0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  ROOT copy = f4e2m1fn[128,256]{1,0:E(4)} copy(p0)
+}
+
+ENTRY entry {
+  p0 = f4e2m1fn[128,256]{1,0:E(4)} parameter(0)
+  ROOT triton_fusion = f4e2m1fn[128,256]{1,0:E(4)} fusion(p0),
+    kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1",
+        "output_tiles":[{"sizes":["1","1"]}],
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  const se::DeviceDescription dev_info = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  EXPECT_THAT(
+      CreateTritonModule("test_fn", *triton_fusion, dev_info,
+                         BlockLevelParameters::FromBlockLevelFusionConfig(
+                             triton_fusion->backend_config<GpuBackendConfig>()
+                                 ->fusion_backend_config()
+                                 .block_level_fusion_config()),
+                         mlir_context),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr(
+              "f4e2m1fn storage value must feed scaled-dot operand 0 or 1")));
+}
+
 TEST_F(WarpSpecializationTritonEmitterTest,
        ExtraWarpsAreRequestedForWarpSpecialization) {
   const std::string hlo_text = R"(
@@ -223,7 +303,7 @@ ENTRY entry {
 }
 
 TEST_F(ExperimentalTilingTritonEmitterTest, ScanEmitOk) {
-  const std::string kHloText = R"(
+  constexpr absl::string_view kHloText = R"(
 scan_computation {
   p_carry = f32[] parameter(0)
   p_input = f32[] parameter(1)
@@ -245,7 +325,7 @@ ENTRY main {
     "fusion_backend_config": {
       "kind": "__triton_nested_gemm_fusion",
       "block_level_fusion_config": {
-        "output_tiles": [{"sizes": ["1024"]}],
+        "output_tiles": [{"sizes": []}],
         "num_warps": 4,
         "num_ctas": 1,
         "num_stages": 1
@@ -254,6 +334,304 @@ ENTRY main {
   }
 }
 )";
+
+  ASSERT_OK_AND_ASSIGN(std::string triton_ir,
+                       EmitAndCompileTritonFusion(kHloText));
+
+  // The scan fits into a single tile, so there is no loop and no carry. The
+  // unit-dimension init is broadcast to the tile shape, which folds into the
+  // splat of the scalar init value.
+  constexpr absl::string_view kPattern = R"(
+// CHECK-LABEL: @test_fn
+// CHECK:         %[[INPUT:.*]] = xtile.extract %arg0[%c0] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
+// CHECK:         %[[INIT:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
+// CHECK:         %[[INIT_SCALAR:.*]] = tensor.extract %[[INIT]][] : tensor<f32>
+// CHECK:         %[[SCAN:.*]] = "tt.scan"(%[[INPUT]]) <{axis = 0 : i32, reverse = false}> ({
+// CHECK:         ^bb0(%[[LHS:.*]]: f32, %[[RHS:.*]]: f32):
+// CHECK:           %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : f32
+// CHECK:           tt.scan.return %[[ADD]] : f32
+// CHECK:         }) : (tensor<1024xf32>) -> tensor<1024xf32>
+// CHECK:         %[[BCAST_INIT:.*]] = tt.splat %[[INIT_SCALAR]] : f32 -> tensor<1024xf32>
+// CHECK:         %[[OUTPUT:.*]] = arith.addf %[[BCAST_INIT]], %[[SCAN]] : tensor<1024xf32>
+// CHECK-NOT:     tt.reshape
+// CHECK:         xtile.insert %[[OUTPUT]] into %arg2[%c0] [1024] [1] : tensor<1024xf32> -> memref<1024xf32>
+)";
+
+  EXPECT_THAT(RunFileCheck(triton_ir, kPattern),
+              absl_testing::IsOkAndHolds(true))
+      << triton_ir;
+}
+
+TEST_F(ExperimentalTilingTritonEmitterTest, Scan1DTiledEmitOk) {
+  constexpr absl::string_view kHloText = R"(
+scan_computation {
+  p_carry = f32[] parameter(0)
+  p_input = f32[] parameter(1)
+  add = f32[] add(p_carry, p_input)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+fusion_computation {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024]{0}, f32[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=true, to_apply=scan_computation, backend_config={"sizes": [256]}
+  ROOT gte = f32[1024]{0} get-tuple-element(scan), index=0
+}
+
+ENTRY main {
+  param0 = f32[1024]{0} parameter(0)
+  param1 = f32[] parameter(1)
+  ROOT triton_fusion = f32[1024]{0} fusion(param0, param1), kind=kCustom, calls=fusion_computation, backend_config={
+    "fusion_backend_config": {
+      "kind": "__triton_nested_gemm_fusion",
+      "block_level_fusion_config": {
+        "output_tiles": [{"sizes": []}],
+        "num_warps": 4,
+        "num_ctas": 1,
+        "num_stages": 1
+      }
+    }
+  }
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::string triton_ir,
+                       EmitAndCompileTritonFusion(kHloText));
+
+  // The carry of a tiled 1D scan is a rank-1 tensor, not a rank-zero tensor,
+  // which TritonGPU does not support. It is the last element of the scan
+  // output, selected with a masked reduction.
+  constexpr absl::string_view kPattern = R"(
+// CHECK-LABEL: @test_fn
+// CHECK:         %[[LOOP:.*]] = scf.for {{.*}} iter_args(%[[CARRY:.*]] = %{{.*}}) -> (tensor<1xf32>)
+// CHECK:           %[[BCAST_CARRY:.*]] = tt.broadcast %[[CARRY]] : tensor<1xf32> -> tensor<256xf32>
+// CHECK:           %[[OUTPUT:.*]] = arith.addf %[[BCAST_CARRY]], %{{.*}} : tensor<256xf32>
+// CHECK:           %[[MASKED:.*]] = arith.select %{{.*}}, %{{.*}}, %{{.*}} : tensor<256xi1>, tensor<256xi32>
+// CHECK:           %[[REDUCE:.*]] = "tt.reduce"(%[[MASKED]]) <{axis = 0 : i32}> ({
+// CHECK:             arith.ori
+// CHECK:           }) : (tensor<256xi32>) -> i32
+// CHECK:           %[[SPLAT:.*]] = tt.splat %[[REDUCE]] : i32 -> tensor<1xi32>
+// CHECK:           %[[NEXT_CARRY:.*]] = tt.bitcast %[[SPLAT]] : tensor<1xi32> -> tensor<1xf32>
+// CHECK-NOT:       tt.gather
+// CHECK:           scf.yield %[[NEXT_CARRY]] : tensor<1xf32>
+)";
+
+  EXPECT_THAT(RunFileCheck(triton_ir, kPattern),
+              absl_testing::IsOkAndHolds(true))
+      << triton_ir;
+}
+
+TEST_F(ExperimentalTilingTritonEmitterTest, Scan1DReverseTiledEmitOk) {
+  constexpr absl::string_view kHloText = R"(
+scan_computation {
+  p_carry = f32[] parameter(0)
+  p_input = f32[] parameter(1)
+  add = f32[] add(p_carry, p_input)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+fusion_computation {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024]{0}, f32[]) scan(p0, p1), dimensions={0}, is_reverse=true, num_carries=1, is_associative=true, to_apply=scan_computation, backend_config={"sizes": [256]}
+  ROOT gte = f32[1024]{0} get-tuple-element(scan), index=0
+}
+
+ENTRY main {
+  param0 = f32[1024]{0} parameter(0)
+  param1 = f32[] parameter(1)
+  ROOT triton_fusion = f32[1024]{0} fusion(param0, param1), kind=kCustom, calls=fusion_computation, backend_config={
+    "fusion_backend_config": {
+      "kind": "__triton_nested_gemm_fusion",
+      "block_level_fusion_config": {
+        "output_tiles": [{"sizes": []}],
+        "num_warps": 4,
+        "num_ctas": 1,
+        "num_stages": 1
+      }
+    }
+  }
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::string triton_ir,
+                       EmitAndCompileTritonFusion(kHloText));
+
+  // In a reverse tiled scan, the carry is element 0 of the scan output.
+  constexpr absl::string_view kPattern = R"(
+// CHECK-LABEL: @test_fn
+// CHECK:         %[[LOOP:.*]] = scf.for {{.*}} iter_args(%[[CARRY:.*]] = %{{.*}}) -> (tensor<1xf32>)
+// CHECK:           %[[BCAST_CARRY:.*]] = tt.broadcast %[[CARRY]] : tensor<1xf32> -> tensor<256xf32>
+// CHECK:           %[[OUTPUT:.*]] = arith.addf %[[BCAST_CARRY]], %{{.*}} : tensor<256xf32>
+// CHECK:           %[[MASKED:.*]] = arith.select %{{.*}}, %{{.*}}, %{{.*}} : tensor<256xi1>, tensor<256xi32>
+// CHECK:           %[[REDUCE:.*]] = "tt.reduce"(%[[MASKED]]) <{axis = 0 : i32}> ({
+// CHECK:             arith.ori
+// CHECK:           }) : (tensor<256xi32>) -> i32
+// CHECK:           %[[SPLAT:.*]] = tt.splat %[[REDUCE]] : i32 -> tensor<1xi32>
+// CHECK:           %[[NEXT_CARRY:.*]] = tt.bitcast %[[SPLAT]] : tensor<1xi32> -> tensor<1xf32>
+// CHECK-NOT:       tt.gather
+// CHECK:           scf.yield %[[NEXT_CARRY]] : tensor<1xf32>
+)";
+
+  EXPECT_THAT(RunFileCheck(triton_ir, kPattern),
+              absl_testing::IsOkAndHolds(true))
+      << triton_ir;
+}
+
+// The carry is extracted by bitcasting the scan output to an integer of the
+// same width, which is i16 for bf16. Compiling the fusion covers lowering the
+// `or` reduction over i16, which cannot use the 32-bit `redux.sync` fast path.
+TEST_F(ExperimentalTilingTritonEmitterTest, ScanBf16TiledEmitOk) {
+  constexpr absl::string_view kHloText = R"(
+scan_computation {
+  p_carry = bf16[] parameter(0)
+  p_input = bf16[] parameter(1)
+  add = bf16[] add(p_carry, p_input)
+  ROOT tuple = (bf16[], bf16[]) tuple(add, add)
+}
+
+fusion_computation {
+  p0 = bf16[1024]{0} parameter(0)
+  p1 = bf16[] parameter(1)
+  scan = (bf16[1024]{0}, bf16[]) scan(p0, p1), dimensions={0}, num_carries=1, is_associative=true, to_apply=scan_computation, backend_config={"sizes": [256]}
+  ROOT gte = bf16[1024]{0} get-tuple-element(scan), index=0
+}
+
+ENTRY main {
+  param0 = bf16[1024]{0} parameter(0)
+  param1 = bf16[] parameter(1)
+  ROOT triton_fusion = bf16[1024]{0} fusion(param0, param1), kind=kCustom, calls=fusion_computation, backend_config={
+    "fusion_backend_config": {
+      "kind": "__triton_nested_gemm_fusion",
+      "block_level_fusion_config": {
+        "output_tiles": [{"sizes": []}],
+        "num_warps": 4,
+        "num_ctas": 1,
+        "num_stages": 1
+      }
+    }
+  }
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::string triton_ir,
+                       EmitAndCompileTritonFusion(kHloText));
+
+  constexpr absl::string_view kPattern = R"(
+// CHECK-LABEL: @test_fn
+// CHECK:         %[[LOOP:.*]] = scf.for {{.*}} iter_args(%[[CARRY:.*]] = %{{.*}}) -> (tensor<1xbf16>)
+// CHECK:           %[[MASKED:.*]] = arith.select %{{.*}}, %{{.*}}, %{{.*}} : tensor<256xi1>, tensor<256xi16>
+// CHECK:           %[[REDUCE:.*]] = "tt.reduce"(%[[MASKED]]) <{axis = 0 : i32}> ({
+// CHECK:             arith.ori
+// CHECK:           }) : (tensor<256xi16>) -> i16
+// CHECK:           %[[SPLAT:.*]] = tt.splat %[[REDUCE]] : i16 -> tensor<1xi16>
+// CHECK:           %[[NEXT_CARRY:.*]] = tt.bitcast %[[SPLAT]] : tensor<1xi16> -> tensor<1xbf16>
+// CHECK-NOT:       tt.gather
+// CHECK:           scf.yield %[[NEXT_CARRY]] : tensor<1xbf16>
+)";
+
+  EXPECT_THAT(RunFileCheck(triton_ir, kPattern),
+              absl_testing::IsOkAndHolds(true))
+      << triton_ir;
+}
+
+TEST_F(ExperimentalTilingTritonEmitterTest, Scan2DTiledEmitOk) {
+  constexpr absl::string_view kHloText = R"(
+scan_computation {
+  p_carry = f32[16]{0} parameter(0)
+  p_input = f32[16]{0} parameter(1)
+  add = f32[16]{0} add(p_carry, p_input)
+  ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(add, add)
+}
+
+fusion_computation {
+  p0 = f32[16,1024]{1,0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  scan = (f32[16,1024]{1,0}, f32[16]{0}) scan(p0, p1), dimensions={1}, num_carries=1, is_associative=true, to_apply=scan_computation, backend_config={"sizes": [256]}
+  ROOT gte = f32[16,1024]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY main {
+  param0 = f32[16,1024]{1,0} parameter(0)
+  param1 = f32[16]{0} parameter(1)
+  ROOT triton_fusion = f32[16,1024]{1,0} fusion(param0, param1), kind=kCustom, calls=fusion_computation, backend_config={
+    "fusion_backend_config": {
+      "kind": "__triton_nested_gemm_fusion",
+      "block_level_fusion_config": {
+        "output_tiles": [{"sizes": [16]}],
+        "num_warps": 4,
+        "num_ctas": 1,
+        "num_stages": 1
+      }
+    }
+  }
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::string triton_ir,
+                       EmitAndCompileTritonFusion(kHloText));
+
+  constexpr absl::string_view kPattern = R"(
+// CHECK-LABEL: @test_fn
+// CHECK:         %[[LOOP:.*]] = scf.for {{.*}} iter_args(%[[CARRY:.*]] = %{{.*}}) -> (tensor<16x1xf32>)
+// CHECK:           %[[BCAST_CARRY:.*]] = tt.broadcast %[[CARRY]] : tensor<16x1xf32> -> tensor<16x256xf32>
+// CHECK:           %[[OUTPUT:.*]] = arith.addf %[[BCAST_CARRY]], %{{.*}} : tensor<16x256xf32>
+// CHECK:           %[[MASKED:.*]] = arith.select %{{.*}}, %{{.*}}, %{{.*}} : tensor<16x256xi1>, tensor<16x256xi32>
+// CHECK:           %[[REDUCE:.*]] = "tt.reduce"(%[[MASKED]]) <{axis = 1 : i32}> ({
+// CHECK:             arith.ori
+// CHECK:           }) : (tensor<16x256xi32>) -> tensor<16xi32>
+// CHECK:           %[[EXPAND:.*]] = tt.expand_dims %[[REDUCE]] {axis = 1 : i32} : tensor<16xi32> -> tensor<16x1xi32>
+// CHECK:           %[[NEXT_CARRY:.*]] = tt.bitcast %[[EXPAND]] : tensor<16x1xi32> -> tensor<16x1xf32>
+// CHECK-NOT:       tt.gather
+// CHECK:           scf.yield %[[NEXT_CARRY]] : tensor<16x1xf32>
+)";
+
+  EXPECT_THAT(RunFileCheck(triton_ir, kPattern),
+              absl_testing::IsOkAndHolds(true))
+      << triton_ir;
+}
+
+class UnsignedIntegerOpsTest
+    : public TritonEmitterDevicelessTest,
+      public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(UnsignedIntegerOpsTest, UnsignedIntegerOpsEmittedCorrectly) {
+  const PrimitiveType data_type = GetParam();
+  const std::string type_str =
+      primitive_util::LowercasePrimitiveTypeName(data_type);
+
+  const std::string kHloText = absl::Substitute(R"(
+fusion_computation {
+  p0 = $0[1024]{0} parameter(0)
+  p1 = $0[1024]{0} parameter(1)
+  add = $0[1024]{0} add(p0, p1)
+  mul = $0[1024]{0} multiply(add, p1)
+  div = $0[1024]{0} divide(mul, p0)
+  rem = $0[1024]{0} remainder(div, p1)
+  max = $0[1024]{0} maximum(rem, p0)
+  min = $0[1024]{0} minimum(max, p1)
+  and = $0[1024]{0} and(min, p0)
+  or  = $0[1024]{0} or(and, p1)
+  ROOT xor = $0[1024]{0} xor(or, p0)
+}
+
+ENTRY main {
+  p0 = $0[1024]{0} parameter(0)
+  p1 = $0[1024]{0} parameter(1)
+  ROOT triton_fusion = $0[1024]{0} fusion(p0, p1), kind=kCustom, calls=fusion_computation, backend_config={
+    "fusion_backend_config": {
+      "kind": "__triton_nested_gemm_fusion",
+      "block_level_fusion_config": {
+        "output_tiles": [{"sizes": ["1024"]}],
+        "num_warps": 4,
+        "num_ctas": 1,
+        "num_stages": 1
+      }
+    }
+  }
+}
+)",
+                                                type_str);
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kHloText));
@@ -278,23 +656,124 @@ ENTRY main {
 
   constexpr absl::string_view kPattern = R"(
 // CHECK-LABEL: @test_fn
-// CHECK:         %[[INPUT:.*]] = xtile.extract %arg0[%c0] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
-// CHECK:         %[[INIT:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
-// CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[INPUT]]) inits(%[[INIT]])
-// CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<1024xf32>) {
-// CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
-// CHECK-DAG:       %[[LHS:.*]] = tensor.extract %[[INPUT]][] : tensor<f32>
-// CHECK-DAG:       %[[RHS:.*]] = tensor.extract %[[CARRY]][] : tensor<f32>
-// CHECK:           %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : f32
-// CHECK:           %[[RESULT:.*]] = tensor.from_elements %[[ADD]] : tensor<f32>
-// CHECK:           stablehlo.return %[[RESULT]], %[[RESULT]] : tensor<f32>, tensor<f32>
-// CHECK:         xtile.insert %[[OUTPUT]] into %arg2[%c0] [1024] [1] : tensor<1024xf32> -> memref<1024xf32>
+// CHECK: arith.addi
+// CHECK: arith.muli
+// CHECK: arith.divui
+// CHECK: arith.remui
+// CHECK: arith.maxui
+// CHECK: arith.minui
+// CHECK: arith.andi
+// CHECK: arith.ori
+// CHECK: arith.xori
 )";
 
   EXPECT_THAT(RunFileCheck(triton_mlir, kPattern),
               absl_testing::IsOkAndHolds(true))
       << triton_mlir;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    UnsignedIntegerOpsTests, UnsignedIntegerOpsTest,
+    ::testing::Values(U8, U16, U32, U64),
+    [](const ::testing::TestParamInfo<PrimitiveType>& info) {
+      return std::string(
+          primitive_util::LowercasePrimitiveTypeName(info.param));
+    });
+
+// Regression test for b/545031850: verifies that multi-stage pipelined fusions
+// with unaligned broadcast operands compile cleanly on Blackwell without
+// crashing in Triton's loop pipeliner.
+TEST_F(TritonEmitterDevicelessTest,
+       Sub128ByteTileBroadcastCompilesWithoutPipelinerCrash) {
+  constexpr absl::string_view kHloText = R"(
+gemm_fusion_dot_computation {
+  parameter_0 = f16[4,512]{1,0} parameter(0)
+  broadcast_0 = f16[546,4,512]{2,1,0} broadcast(parameter_0), dimensions={1,2}
+  parameter_1 = f16[4,512,512]{2,1,0} parameter(1)
+  ROOT dot = f32[4,546,512]{2,1,0} dot(broadcast_0, parameter_1),
+    lhs_batch_dims={1}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1},
+    backend_config={"sizes":["32"]}
+}
+
+ENTRY entry {
+  p0 = f16[4,512]{1,0} parameter(0)
+  p1 = f16[4,512,512]{2,1,0} parameter(1)
+  ROOT fusion = f32[4,546,512]{2,1,0} fusion(p0, p1), kind=kCustom,
+    calls=gemm_fusion_dot_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"4","output_tiles":[{"sizes":["1","64","32"]}],"num_ctas":1,"num_stages":2,"is_tma_allowed":true,"is_warp_specialization_allowed":false,"waves_per_eu":0,"num_tiles_per_pid":0}}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  ASSERT_NE(fusion, nullptr);
+  const se::DeviceDescription dev_info = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  const llvm::Triple triple(nvptx::TargetTriple());
+  const std::string data_layout = nvptx::DataLayout();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+  ASSERT_OK_AND_ASSIGN(const auto gpu_backend_config,
+                       fusion->backend_config<GpuBackendConfig>());
+  EXPECT_OK(TritonWrapper("test_fn", *fusion,
+                          se::CudaComputeCapability::Blackwell(), dev_info,
+                          BlockLevelParameters::FromBlockLevelFusionConfig(
+                              gpu_backend_config.fusion_backend_config()
+                                  .block_level_fusion_config()),
+                          triple, data_layout, mlir_context));
+}
+
+TEST_F(TritonEmitterDevicelessTest,
+       AllGatherFusionUsesTiledHloComputationWhenTilingPropagationDisabled) {
+  constexpr absl::string_view kHloText = R"(
+f {
+  param0 = f32[128,128]{1,0} parameter(0)
+  ROOT result = f32[256,128]{1,0} all-gather(param0),
+    replica_groups={{0,1}}, dimensions={0}
+}
+
+ENTRY entry {
+  p0 = f32[128,128]{1,0} parameter(0)
+  ROOT fusion = f32[256,128]{1,0} fusion(p0),
+    kind=kCustom, calls=f,
+    backend_config={
+      "fusion_backend_config": {
+        "kind": "__triton_collective",
+        "block_level_fusion_config": {
+          "num_warps": "4",
+          "output_tiles": [{sizes: [16,16]}],
+          "num_ctas": 1,
+          "num_stages": 1,
+          "is_tma_allowed": false,
+          "is_warp_specialization_allowed": false
+        }
+      }
+    }
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  // Explicitly ensure xla_gpu_experimental_enable_tiling_propagation is false.
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_tiling_propagation(false);
+
+  const auto* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  ASSERT_NE(fusion, nullptr);
+
+  const se::DeviceDescription dev_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  ASSERT_OK_AND_ASSIGN(const auto gpu_backend_config,
+                       fusion->backend_config<GpuBackendConfig>());
+  EXPECT_OK(CreateTritonModule("test_fn", *fusion, dev_info,
+                               BlockLevelParameters::FromBlockLevelFusionConfig(
+                                   gpu_backend_config.fusion_backend_config()
+                                       .block_level_fusion_config()),
+                               mlir_context));
 }
 
 }  // namespace

@@ -52,11 +52,13 @@ bool IsAlreadyOutlined(WhileOp while_op) {
   return just_call(while_op.getBody()) && just_call(while_op.getCond());
 }
 
+// LINT.IfChange
 bool IsCompatibleTypeWithTFLCastOp(Type type) {
   auto elemType = getElementTypeOrSelf(type);
-  // F16, F32, F64, BF16 types are allowed.
+  // F16, F32, F64, BF16, F8E4M3FN, F8E5M2 types are allowed.
   if (elemType.isBF16() || elemType.isF16() || elemType.isF32() ||
-      elemType.isF64())
+      elemType.isF64() || mlir::isa<mlir::Float8E4M3FNType>(elemType) ||
+      mlir::isa<mlir::Float8E5M2Type>(elemType))
     return true;
 
   // I1, I2, I4, I8, I16, I32, I64 types are allowed.
@@ -79,6 +81,7 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
 
   return false;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_ops.td)
 
 func::FuncOp CreateOutlineFunc(StringRef name, Region& region,
                                bool passthru_extra_args, int num_loop_carried,

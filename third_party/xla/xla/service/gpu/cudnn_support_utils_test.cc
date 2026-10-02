@@ -89,8 +89,8 @@ TEST_F(CudnnSupportUtilsTest,
                     .value();
 
   HloCustomCallInstruction* conv;
-  TF_ASSERT_OK_AND_ASSIGN(conv,
-                          GetCustomCall(module.get(), "__cudnn$convForward"));
+  ASSERT_OK_AND_ASSIGN(conv,
+                       GetCustomCall(module.get(), "__cudnn$convForward"));
 
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               absl_testing::IsOkAndHolds(true));
@@ -118,8 +118,8 @@ TEST_F(CudnnSupportUtilsTest,
                     .value();
 
   HloCustomCallInstruction* conv;
-  TF_ASSERT_OK_AND_ASSIGN(conv,
-                          GetCustomCall(module.get(), "__cudnn$convForward"));
+  ASSERT_OK_AND_ASSIGN(conv,
+                       GetCustomCall(module.get(), "__cudnn$convForward"));
 
   // cc6.1 allows for int8x4
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({6, 0}, *conv, 4),
@@ -149,8 +149,8 @@ TEST_F(CudnnSupportUtilsTest,
                        .value();
 
   HloCustomCallInstruction* conv;
-  TF_ASSERT_OK_AND_ASSIGN(
-      conv, GetCustomCall(moduleFwd.get(), "__cudnn$convForward"));
+  ASSERT_OK_AND_ASSIGN(conv,
+                       GetCustomCall(moduleFwd.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
               absl_testing::IsOkAndHolds(true));
 
@@ -167,7 +167,7 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                              .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleBwdFilter.get(), "__cudnn$convBackwardFilter"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
               absl_testing::IsOkAndHolds(false));
@@ -185,7 +185,7 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                             .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleBwdInput.get(), "__cudnn$convBackwardInput"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
               absl_testing::IsOkAndHolds(false));
@@ -205,7 +205,7 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                            .value();
   HloCustomCallInstruction* conv;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleS8InOut.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               absl_testing::IsOkAndHolds(true));
@@ -223,7 +223,7 @@ TEST_F(CudnnSupportUtilsTest,
                   custom_call_target="__cudnn$convForward"
   })")
                               .value();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleS8InF32Out.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               absl_testing::IsOkAndHolds(true));
@@ -242,7 +242,7 @@ TEST_F(CudnnSupportUtilsTest,
                   custom_call_target="__cudnn$convForward"
   })")
                                .value();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleF32InF32Out.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               absl_testing::IsOkAndHolds(false));
@@ -265,8 +265,8 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                     .value();
   HloCustomCallInstruction* conv;
-  TF_ASSERT_OK_AND_ASSIGN(conv,
-                          GetCustomCall(module.get(), "__cudnn$convForward"));
+  ASSERT_OK_AND_ASSIGN(conv,
+                       GetCustomCall(module.get(), "__cudnn$convForward"));
 
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               absl_testing::IsOkAndHolds(false));
@@ -288,8 +288,8 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                     .value();
   HloCustomCallInstruction* conv;
-  TF_ASSERT_OK_AND_ASSIGN(conv,
-                          GetCustomCall(module.get(), "__cudnn$convForward"));
+  ASSERT_OK_AND_ASSIGN(conv,
+                       GetCustomCall(module.get(), "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               absl_testing::IsOkAndHolds(false));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
@@ -310,8 +310,8 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                                      .value();
   HloCustomCallInstruction* conv;
-  TF_ASSERT_OK_AND_ASSIGN(conv, GetCustomCall(moduleFilterCoversInput.get(),
-                                              "__cudnn$convForward"));
+  ASSERT_OK_AND_ASSIGN(conv, GetCustomCall(moduleFilterCoversInput.get(),
+                                           "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
@@ -328,9 +328,8 @@ TEST_F(CudnnSupportUtilsTest,
                   custom_call_target="__cudnn$convForward"
   })")
                                            .value();
-  TF_ASSERT_OK_AND_ASSIGN(conv,
-                          GetCustomCall(moduleFilterAlmostCoversInput.get(),
-                                        "__cudnn$convForward"));
+  ASSERT_OK_AND_ASSIGN(conv, GetCustomCall(moduleFilterAlmostCoversInput.get(),
+                                           "__cudnn$convForward"));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
@@ -367,8 +366,8 @@ TEST_P(ReorderFilterRank4Test, InferTransposeRank4) {
   auto filter = HloInstruction::CreateParameter(1, shape, "filter");
 
   // Infer transpose from convolution filter.
-  TF_ASSERT_OK_AND_ASSIGN(CudnnReorderTransposeConfig inferred_config,
-                          CudnnInferTransposeForFilterReordering(shape, dnums));
+  ASSERT_OK_AND_ASSIGN(CudnnReorderTransposeConfig inferred_config,
+                       CudnnInferTransposeForFilterReordering(shape, dnums));
 
   // Result shape: [O, I/32, H, W, 32]
   EXPECT_THAT(inferred_config.result_shape.dimensions(),
@@ -429,8 +428,8 @@ TEST_P(ReorderFilterRank5Test, InferTransposeRank5) {
   auto filter = HloInstruction::CreateParameter(1, shape, "filter");
 
   // Infer transpose from convolution filter.
-  TF_ASSERT_OK_AND_ASSIGN(CudnnReorderTransposeConfig inferred_config,
-                          CudnnInferTransposeForFilterReordering(shape, dnums));
+  ASSERT_OK_AND_ASSIGN(CudnnReorderTransposeConfig inferred_config,
+                       CudnnInferTransposeForFilterReordering(shape, dnums));
 
   // Result shape: [O, I/32, H, W, 32]
   EXPECT_THAT(inferred_config.result_shape.dimensions(),
@@ -464,8 +463,8 @@ TEST_F(ReorderBiasTest, InferTranspose) {
   auto filter = HloInstruction::CreateParameter(1, unused, "filter");
 
   // Infer transpose from convolution filter.
-  TF_ASSERT_OK_AND_ASSIGN(CudnnReorderTransposeConfig inferred_config,
-                          CudnnInferTransposeForBiasReordering(shape));
+  ASSERT_OK_AND_ASSIGN(CudnnReorderTransposeConfig inferred_config,
+                       CudnnInferTransposeForBiasReordering(shape));
 
   // Transpose shape after the permutation: [O/32, 2, 4, 4]
   Shape reshaped = ShapeUtil::PermuteDimensions(

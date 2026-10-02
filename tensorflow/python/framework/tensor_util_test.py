@@ -375,6 +375,25 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
         t,
     )
 
+  def testFloat8e8m0fnu(self):
+    test_type = dtypes.float8_e8m0fnu.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(np.array([1.0, 2.0], dtype=test_type))
+    # 1.0: 0x7F = 127 = 2^(127 - 127)
+    # 2.0: 0x80 = 128 = 2^(128 - 127)
+    expected_bytes = r"\x7f\x80"
+    self.assertProtoEquals(
+        f"""
+      dtype: DT_FLOAT8_E8M0FNU
+      tensor_shape {{
+        dim {{
+          size: 2
+        }}
+      }}
+      tensor_content: "{expected_bytes}"
+      """,
+        t,
+    )
+
   def testFloat8e4m3fnuzScalarRoundTrip(self):
     test_type = dtypes.float8_e4m3fnuz.as_numpy_dtype
     # A scalar stores the value in float8_val (a multi-element array would use
@@ -401,6 +420,15 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     a = tensor_util.MakeNdarray(t)
     self.assertEqual(test_type, a.dtype)
     self.assertAllClose(np.array(10.0, dtype=test_type), a)
+
+  def testFloat8e8m0fnuScalarRoundTrip(self):
+    test_type = dtypes.float8_e8m0fnu.as_numpy_dtype
+    # A scalar stores the value in float8_val (a multi-element array would use
+    # tensor_content and hide the decode gap).
+    t = tensor_util.make_tensor_proto(np.array(2.0, dtype=test_type))
+    a = tensor_util.MakeNdarray(t)
+    self.assertEqual(test_type, a.dtype)
+    self.assertAllClose(np.array(2.0, dtype=test_type), a)
 
   def testFloat4e2m1fn(self):
     test_type = dtypes.float4_e2m1fn.as_numpy_dtype
@@ -1069,6 +1097,18 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(tensor_util.ShapeEquals(t, [2]))
     self.assertFalse(tensor_util.ShapeEquals(t, []))
     self.assertFalse(tensor_util.ShapeEquals(t, [2, 2, 1]))
+
+  def testNonNativeByteOrder(self):
+    for dtype in [np.int32, np.float32, np.int64]:
+      arr = np.array([1, 2, 3], dtype=dtype)
+      arr_swapped = arr.astype(arr.dtype.newbyteorder("S"))
+      self.assertFalse(arr_swapped.dtype.isnative)
+
+      t = tensor_util.make_tensor_proto(arr_swapped)
+      a = tensor_util.MakeNdarray(t)
+      self.assertTrue(a.dtype.isnative)
+      self.assertEqual(arr.dtype.type, a.dtype.type)
+      self.assertAllClose(arr, a)
 
 
 @test_util.run_all_in_graph_and_eager_modes

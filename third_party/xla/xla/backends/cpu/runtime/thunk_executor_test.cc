@@ -30,9 +30,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/platform.h"
 
 #define EIGEN_USE_THREADS
 
@@ -163,10 +164,10 @@ AddI32Thunk::AddI32Thunk(std::string name,
 absl::Status AddI32Thunk::Execute(const BufferAllocations* allocations,
                                   BufferAllocation::Slice src_slice,
                                   BufferAllocation::Slice dst_slice) {
-  ASSIGN_OR_RETURN(se::DeviceAddressBase src,
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase src,
                    allocations->GetDeviceAddress(src_slice));
 
-  ASSIGN_OR_RETURN(se::DeviceAddressBase dst,
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase dst,
                    allocations->GetDeviceAddress(dst_slice));
 
   CHECK_EQ(src.size() % sizeof(int32_t), 0);
@@ -192,7 +193,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> AddI32Thunk::Execute(
   auto execute = [&]() -> absl::Status {
     CHECK_EQ(srcs_.size(), dsts_.size());
     for (int i = 0; i < srcs_.size(); ++i) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           Execute(params.buffer_allocations, srcs_.at(i), dsts_.at(i)));
     }
     return absl::OkStatus();
@@ -238,7 +239,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> AddI32Thunk::Execute(
     return tsl::MakeErrorAsyncValueRef(absl::InternalError("Injected error"));
   }
 
-  RETURN_IF_ERROR(execute());
+  ABSL_RETURN_IF_ERROR(execute());
   return Thunk::OkExecuteEvent();
 }
 
@@ -663,7 +664,7 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks,
     // Pre-compute expected result while building the thunk sequence.
     BufferAllocations allocations =
         CreateBufferAllocations(absl::MakeSpan(g->expected_literals));
-    RETURN_IF_ERROR(AddI32Thunk::Execute(&allocations, src, dst));
+    ABSL_RETURN_IF_ERROR(AddI32Thunk::Execute(&allocations, src, dst));
 
     auto use_resource = [&]() -> std::optional<Resource::Kind> {
       switch (shared_resource_use.kind) {
@@ -776,11 +777,11 @@ TEST_P(ThunkExecutorStressTest, Execute) {
 // too long to run the tests. In optimized builds we can afford to run longer
 // thunk sequences to get more coverage.
 auto NumTestThunks() {
-#ifdef NDEBUG
-  return testing::ValuesIn({10, 50, 100});
-#else
-  return testing::ValuesIn({10, 100, 500});
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    return testing::ValuesIn({10, 100, 500});
+  } else {
+    return testing::ValuesIn({10, 50, 100});
+  }
 }
 
 // Create aliases for all possible combinations of shared resource use.

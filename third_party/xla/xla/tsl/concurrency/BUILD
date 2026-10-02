@@ -50,6 +50,7 @@ cc_library(
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
@@ -57,6 +58,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:context",
     ],
 )
@@ -150,15 +152,19 @@ cc_library(
         ":executor",
         ":ref_count",
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_builder",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:context",
     ],
 )
 
@@ -169,12 +175,12 @@ tsl_cc_test(
         ":executor",
         ":future",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -212,7 +218,10 @@ cc_library(
     name = "ref_count",
     hdrs = ["ref_count.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@com_google_absl//absl/base:nullability"],
+    deps = [
+        "@com_google_absl//absl/base:nullability",
+        "@tsl//tsl/platform",
+    ],
 )
 
 tsl_cc_test(

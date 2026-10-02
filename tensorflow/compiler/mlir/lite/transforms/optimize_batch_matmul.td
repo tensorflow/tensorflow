@@ -23,7 +23,16 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
-def NotFromFoldableChain : Constraint<CPred<"NotFromFoldableChain($0)">>;
+// Mirrors `IsRhsFoldableIntoFullyConnected` in optimize_batch_matmul_pass.cc,
+// which is the single gate shared with
+// `ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs`. That pattern turns
+// a batch_matmul over such a value into a fully_connected, so a pattern going
+// the other way has to refuse the same values or the two rewrite each other
+// forever.
+def IsRhsFoldableIntoFullyConnectedPred
+    : CPred<"IsRhsFoldableIntoFullyConnected($0)">;
+def NotFoldableIntoFullyConnected
+    : Constraint<Neg<IsRhsFoldableIntoFullyConnectedPred>>;
 
 def IsResultRankEqualTo : Constraint<CPred<
   "llvm::cast<ShapedType>($0.getType().front()).getRank() == "
@@ -72,4 +81,4 @@ def FuseTransposeFCRhsToBatchMatmul : Pat<
    //coverage. This pattern will now work for all the transpose->fc patterns
    //where the fc has not done imlicit reshape of the output
    (IsResultRankEqualTo $output, $lhs),
-   (NotFromFoldableChain $rhs)]>;
+   (NotFoldableIntoFullyConnected $rhs)]>;

@@ -32,12 +32,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -82,8 +81,8 @@ ENTRY %comp {
   p0 = f32[4,4] parameter(0)
   ROOT crs = f32[4,4] all-reduce(p0), to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
@@ -127,8 +126,8 @@ ENTRY %comp {
   p0 = f32[4,4] parameter(0)
   ROOT crs = f32[4,4] all-reduce(p0), to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   SetModuleConfig(*module, /*replica_count=*/16);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
@@ -178,8 +177,8 @@ ENTRY %comp {
   p1 = f32[4,4,2] parameter(1)
   ROOT crs = (f32[4,4], f32[4,4,2]) all-reduce(p0, p1), to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
@@ -244,9 +243,9 @@ ENTRY %comp {
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
   CHECK:       %p0 = f32[8,8]{1,0} parameter(0)
   CHECK-NEXT:  [[bitcast:%[^ ]+]] = f32[64]{0} bitcast(%p0)
-  CHECK-NEXT:  [[reduce_scatter:%[^ ]+]] = f32[16]{0} reduce-scatter([[bitcast]]), channel_id=2, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
+  CHECK-NEXT:  [[reduce_scatter:%[^ ]+]] = f32[16]{0} reduce-scatter([[bitcast]]), channel_id=1, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
   CHECK-NEXT:  [[all_reduce:%[^ ]+]] = f32[16]{0} all-reduce([[reduce_scatter]]), channel_id=1, replica_groups={{..0,4.,.1,5.,.2,6.,.3,7..}}, use_global_device_ids=true, to_apply=%add
-  CHECK-NEXT:  [[all_gather:%[^ ]+]] = f32[64]{0} all-gather([[all_reduce]]), channel_id=3, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, dimensions={0}, use_global_device_ids=true
+  CHECK-NEXT:  [[all_gather:%[^ ]+]] = f32[64]{0} all-gather([[all_reduce]]), channel_id=1, replica_groups={{..0,1,2,3.,.4,5,6,7..}}, dimensions={0}, use_global_device_ids=true
   CHECK-NEXT:  ROOT [[output:%[^ ]+]] = f32[8,8]{1,0} bitcast([[all_gather]])
 }
 )",
@@ -268,8 +267,8 @@ ENTRY %comp {
   ROOT crs = f32[4,4] all-reduce(p0),
     replica_groups={{0,1,2,7},{3,4,5,6}}, to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
@@ -291,8 +290,8 @@ ENTRY %comp {
   ROOT crs = f32[4,4] all-reduce(p0),
     replica_groups={{0,1,4,5},{2,3,6,7},{8,9,10,11},{12,13,14,15}}, to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   SetModuleConfig(*module, /*replica_count=*/16);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
@@ -314,8 +313,8 @@ ENTRY %comp {
   p1 = f32[9] parameter(1)
   ROOT crs = (f32[4,4], f32[9]) all-reduce(p0, p1), to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
@@ -339,8 +338,8 @@ ENTRY %comp {
   crs = f32[4,4] all-reduce(p0), to_apply=add, control-predecessors={add}
   ROOT add1 = f32[4,4] add(crs, add), control-predecessors={crs}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   SetModuleConfig(*module, /*replica_count=*/8);
 
   // Remember all-reduce's control succ and preds.
@@ -402,8 +401,8 @@ ENTRY %comp {
   p0 = f32[8,4] parameter(0)
   ROOT crs = f32[1,4] reduce-scatter(p0), dimensions={0}, to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);

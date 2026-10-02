@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -82,8 +83,8 @@ class RaggedTensorToSparseOp : public OpKernel {
     // Each iteration through the loop, we increment pos[-1], and add indices
     // for all the values corresponding to
     // rt_nested_splits[-1][pos[-1]:pos[-1]+1].
-    int next_index = 0;
-    int max_final_pos = rt_nested_splits.back().size() - 1;
+    int64_t next_index = 0;
+    int64_t max_final_pos = rt_nested_splits.back().size() - 1;
     for (; final_pos < max_final_pos; ++final_pos) {
       // Update `pos` to skip over completed elements (i.e., elements where
       // we have already generated indices for all contained values).
@@ -95,7 +96,7 @@ class RaggedTensorToSparseOp : public OpKernel {
 
       // Update index_prefix.
       for (int dim = 0; dim < index_prefix.size(); ++dim) {
-        int start = dim > 0 ? rt_nested_splits[dim - 1](pos[dim - 1]) : 0;
+        int64_t start = dim > 0 ? rt_nested_splits[dim - 1](pos[dim - 1]) : 0;
         index_prefix[dim] = pos[dim] - start;
       }
 

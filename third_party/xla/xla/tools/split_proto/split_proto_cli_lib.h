@@ -67,7 +67,7 @@ absl::Status Unpack(std::unique_ptr<riegeli::Reader> reader,
                     std::unique_ptr<riegeli::Writer> writer,
                     const UnpackOptions& options);
 
-// Reads a standard serialized `DeserializedSplitExecutableAndOptions` protobuf
+// Reads a standard serialized `HumanReadableAotExecutable` protobuf
 // from `reader`, and writes it as a Split Proto `ExecutableAndOptionsProto` to
 // `writer`, i.e it converts it to the standard AOT binary format.
 absl::Status PackAot(std::unique_ptr<riegeli::Reader> reader,
@@ -76,7 +76,7 @@ absl::Status PackAot(std::unique_ptr<riegeli::Reader> reader,
 
 // Reads a split `ExecutableAndOptionsProto` from `reader` (which is the
 // standard AOT binary format), and writes a standard serialized
-// `DeserializedSplitExecutableAndOptions` protobuf to `writer` in the format
+// `HumanReadableAotExecutable` protobuf to `writer` in the format
 // specified by `options.output_format`.
 absl::Status UnpackAot(std::unique_ptr<riegeli::Reader> reader,
                        std::unique_ptr<riegeli::Writer> writer,

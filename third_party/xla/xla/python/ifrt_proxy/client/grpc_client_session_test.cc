@@ -31,13 +31,13 @@
 #include "absl/log/log.h"
 #include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "grpc/support/time.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
@@ -63,6 +63,7 @@ namespace proxy {
 
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::Not;
 
 // Sufficient time for all processing (that are not explicitly waiting for
@@ -238,7 +239,7 @@ class ClientAndServer {
     Queue* q = owned_queues_.back().get();
 
     auto req = std::make_unique<IfrtRequest>();
-    RETURN_IF_ERROR(client_session_->Enqueue(
+    ABSL_RETURN_IF_ERROR(client_session_->Enqueue(
         std::move(req), [q](absl::StatusOr<GrpcClientSession::Response> resp) {
           q->Push(resp.status());
         }));
@@ -281,7 +282,9 @@ TEST(GrpcClientSessionTest, HappyCaseTwoRequestsWithClientFinish) {
   EXPECT_EQ(cs.client_finished_q()->PopOrTimeout(), std::nullopt);
 
   cs.client_session()->Finish(TestError());
-  EXPECT_THAT(cs.client_finished_q()->Pop(), Not(absl_testing::IsOk()));
+  EXPECT_THAT(cs.client_finished_q()->Pop(),
+              absl_testing::StatusIs(TestError().code(),
+                                     HasSubstr(TestError().message())));
 }
 
 TEST(GrpcClientSessionTest, ServerFinishesDuringFirstRead) {
@@ -323,12 +326,16 @@ TEST(GrpcClientSessionTest, ClientFinishesAfterServerConsumesFirstRequest) {
   session_ptr.store(cs.client_session());
 
   TF_ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
-  EXPECT_THAT(response_q_1->Pop(), Not(absl_testing::IsOk()));
+  EXPECT_THAT(response_q_1->Pop(),
+              absl_testing::StatusIs(TestError().code(),
+                                     HasSubstr(TestError().message())));
 
   absl::StatusOr<Queue*> response_q_2 = cs.SendSimpleRequest();
   EXPECT_THAT(response_q_2.status(), Not(absl_testing::IsOk()));
 
-  EXPECT_THAT(cs.client_finished_q()->Pop(), Not(absl_testing::IsOk()));
+  EXPECT_THAT(cs.client_finished_q()->Pop(),
+              absl_testing::StatusIs(TestError().code(),
+                                     HasSubstr(TestError().message())));
 }
 
 TEST(GrpcClientSessionTest, ClientFinishesAfterServerWritesFirstResponse) {
@@ -355,10 +362,14 @@ TEST(GrpcClientSessionTest, ClientFinishesAfterServerWritesFirstResponse) {
   // enqueued. If it could be enqueued, the client will die without the server
   // sending the corresponding response.
   if (response_q_2.ok()) {
-    EXPECT_THAT(response_q_2.value()->Pop(), Not(absl_testing::IsOk()));
+    EXPECT_THAT(response_q_2.value()->Pop(),
+                absl_testing::StatusIs(TestError().code(),
+                                       HasSubstr(TestError().message())));
   }
 
-  EXPECT_THAT(cs.client_finished_q()->Pop(), Not(absl_testing::IsOk()));
+  EXPECT_THAT(cs.client_finished_q()->Pop(),
+              absl_testing::StatusIs(TestError().code(),
+                                     HasSubstr(TestError().message())));
 }
 
 TEST(GrpcClientSessionTest, ClientFinishesDuringServerConstruction) {
@@ -386,7 +397,9 @@ TEST(GrpcClientSessionTest, ClientFinishesDuringServerConstruction) {
 
   ExpectHeadAndTail({response_q_1, response_q_2});
 
-  EXPECT_THAT(cs.client_finished_q()->Pop(), Not(absl_testing::IsOk()));
+  EXPECT_THAT(cs.client_finished_q()->Pop(),
+              absl_testing::StatusIs(TestError().code(),
+                                     HasSubstr(TestError().message())));
 }
 
 TEST(GrpcClientSessionTest, MethodsAfterFinishReturnError) {

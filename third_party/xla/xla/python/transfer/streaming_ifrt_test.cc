@@ -28,14 +28,15 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
@@ -56,17 +57,17 @@ namespace {
 
 xla::ifrt::PjRtDevice* GetOtherDevice(xla::ifrt::ArrayRef arr) {
   auto* ifrt_client =
-      llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
-  return llvm::dyn_cast<xla::ifrt::PjRtDevice>(ifrt_client->devices()[1]);
+      xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
+  return xla::ifrt::dyn_cast<xla::ifrt::PjRtDevice>(ifrt_client->devices()[1]);
 }
 
 xla::ifrt::PjRtClient* GetIfrtClient(xla::ifrt::ArrayRef arr) {
-  return llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
+  return xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
 }
 
 xla::Shape ShapeFromIfrt(xla::ifrt::ArrayRef arr) {
   auto* pjrt_arr =
-      llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(arr.get());
+      xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(arr.get());
   auto buffer = pjrt_arr->pjrt_buffers()[0].get();
   return buffer->on_device_shape();
 }
@@ -82,9 +83,9 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
     xla::ifrt::PjRtClient* ifrt_client, size_t xfer_size) {
   auto* pjrt_client = ifrt_client->pjrt_client();
   // CHECK_EQ(pjrt_client->platform_id(), xla::TpuId());
-  ASSIGN_OR_RETURN(auto* pjrt_memory_space,
+  ABSL_ASSIGN_OR_RETURN(auto* pjrt_memory_space,
                    device->pjrt_device()->default_memory_space());
-  ASSIGN_OR_RETURN(auto atm_owned,
+  ABSL_ASSIGN_OR_RETURN(auto atm_owned,
                    pjrt_client->CreateBuffersForAsyncHostToDevice(
                        {shape}, pjrt_memory_space));
   auto atm = std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager>(
@@ -94,7 +95,7 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
   // `CreateBuffersForAsyncHostToDevice` uses a default layout.
-  ASSIGN_OR_RETURN(auto arr,
+  ABSL_ASSIGN_OR_RETURN(auto arr,
                    ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0),
                                                 /*has_custom_layout=*/false));
   results.arrays.push_back(std::move(arr));
@@ -151,7 +152,7 @@ absl::StatusOr<std::vector<int32_t>> FetchResult(
     tsl::RCReference<xla::ifrt::Array> arr, size_t result_size) {
   std::vector<int32_t> result;
   result.resize(result_size);
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       arr->CopyToHostBuffer(result.data(), std::nullopt,
                             xla::ifrt::ArrayCopySemantics::kReuseInput)
           .Await());

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"

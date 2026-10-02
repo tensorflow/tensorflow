@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.pb.h"
 
@@ -30,7 +29,7 @@ limitations under the License.
 // HLO means the HLO given to XLA, while optimized HLO refers to HLO that has
 // been successfully compiled. Errors in upload should not block compilation.
 
-namespace xla {
+namespace xla::gpu {
 
 // Uploads HLO to a repository. The only non-dummy implementation is
 // Google-internal as of 2023-10.
@@ -46,7 +45,7 @@ class SymbolUploader {
       const stream_executor::GpuTargetConfigProto& gpu_target_config) = 0;
 
   virtual std::optional<std::string> MaybeUploadOptimizedHloModule(
-      HloModule* module, const AutotuneResults& autotune_results) = 0;
+      HloModule* module) = 0;
 
   virtual void MaybeUploadSymbolMapping(
       absl::string_view unoptimized_fingerprint,
@@ -89,10 +88,10 @@ inline std::optional<std::string> MaybeUploadUnoptimizedGpuSymbols(
 }
 
 inline std::optional<std::string> MaybeUploadOptimizedGpuSymbols(
-    HloModule* module, const AutotuneResults& autotune_results) {
+    HloModule* module) {
   if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
       uploader != nullptr) {
-    return uploader->MaybeUploadOptimizedHloModule(module, autotune_results);
+    return uploader->MaybeUploadOptimizedHloModule(module);
   }
 
   return std::nullopt;
@@ -115,6 +114,6 @@ inline void MaybeWaitForUploads() {
   }
 }
 
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_EXPORT_HLO_H_

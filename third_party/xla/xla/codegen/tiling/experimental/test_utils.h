@@ -18,18 +18,22 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/shape.h"
+#include "xla/util.h"
 
 namespace xla::gpu::experimental {
 
-MATCHER_P(MatchString, tile_string, "") {
-  const absl::string_view expected_string = tile_string;
+MATCHER_P(MatchString, expected, "") {
+  const absl::string_view expected_string = expected;
   const std::string actual_string = arg.ToString();
   const auto [expected_index, actual_index] =
       FindApproximateMismatch(expected_string, actual_string);
@@ -37,13 +41,37 @@ MATCHER_P(MatchString, tile_string, "") {
                        actual_index == actual_string.size();
   if (!matches) {
     *result_listener << GetMismatchReport(expected_index, actual_index,
-                                          tile_string, arg.ToString());
+                                          expected_string, actual_string);
+  }
+  return matches;
+}
+
+MATCHER_P(MatchToString, expected, "") {
+  absl::string_view expected_string = expected;
+  std::string actual_string = ToString(arg);
+  const auto [expected_index, actual_index] =
+      FindApproximateMismatch(expected_string, actual_string);
+  const bool matches = expected_index == expected_string.size() &&
+                       actual_index == actual_string.size();
+  if (!matches) {
+    *result_listener << GetMismatchReport(expected_index, actual_index,
+                                          expected_string, actual_string);
   }
   return matches;
 }
 
 Tile GetTestTile(const TilingSpace& tiling_space,
                  absl::Span<const int64_t> shape);
+
+bool BumpCoordinates(absl::Span<const int64_t> limits,
+                     absl::Span<int64_t> coordinates);
+
+absl::StatusOr<std::vector<int64_t>> EvaluateAccessedIndexesForTile(
+    DimensionVector dim_values, const Tile& tile, const Shape& shape);
+
+absl::Status VerifyTileEquivalence(const Tile& tile_a, const Shape& shape_a,
+                                   const Tile& tile_b, const Shape& shape_b,
+                                   TilingSpace* tiling_space);
 
 }  // namespace xla::gpu::experimental
 

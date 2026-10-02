@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
+#include "absl/status/status_macros.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -39,6 +39,8 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -48,11 +50,14 @@ CombinedGpuPerformanceModel::CombinedGpuPerformanceModel(
     const se::DeviceDescription& device_info,
     HloFusionAnalysisCache& fusion_analysis_cache,
     mlir::MLIRContext& mlir_context,
-    HloCostAnalysis::ShapeSizeFunction shape_size, bool use_experimental_tiling)
+    HloCostAnalysis::ShapeSizeFunction shape_size, bool use_experimental_tiling,
+    bool enable_same_shape_multi_output_fusion,
+    MlirContextPool* mlir_context_pool)
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
       indexing_model_(&device_info, &fusion_analysis_cache, shape_size,
-                      &mlir_context, use_experimental_tiling),
+                      &mlir_context, use_experimental_tiling,
+                      enable_same_shape_multi_output_fusion, mlir_context_pool),
       model_(device_info, fusion_analysis_cache, cache_) {}
 
 absl::StatusOr<EstimateRunTimeData>
@@ -91,7 +96,7 @@ absl::StatusOr<CombinedGpuPerformanceModel::RunTimes>
 CombinedGpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
     absl::Span<const HloInstruction* const> fused_consumers) {
-  ASSIGN_OR_RETURN(EstimateRunTimeData producer_runtime,
+  ABSL_ASSIGN_OR_RETURN(EstimateRunTimeData producer_runtime,
                    EstimateRunTimeForInstruction(producer, cost_analysis));
 
   absl::Duration time_unfused =
@@ -101,7 +106,7 @@ CombinedGpuPerformanceModel::EstimateRunTimes(
   absl::Duration time_fused = kKernelLaunchOverhead * fused_consumers.size();
 
   for (auto fused_consumer : fused_consumers) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         EstimateRunTimeData consumer_runtime,
         EstimateRunTimeForInstruction(fused_consumer, cost_analysis));
 
@@ -232,9 +237,9 @@ absl::StatusOr<CombinedGpuPerformanceModel::RunTimes>
 CombinedGpuPerformanceModel::EstimateRunTimesForMultiOutput(
     const HloInstruction* producer, const HloInstruction* consumer,
     const GpuHloCostAnalysis* cost_analysis) {
-  ASSIGN_OR_RETURN(EstimateRunTimeData producer_runtime,
+  ABSL_ASSIGN_OR_RETURN(EstimateRunTimeData producer_runtime,
                    EstimateRunTimeForInstruction(producer, cost_analysis));
-  ASSIGN_OR_RETURN(EstimateRunTimeData consumer_runtime,
+  ABSL_ASSIGN_OR_RETURN(EstimateRunTimeData consumer_runtime,
                    EstimateRunTimeForInstruction(consumer, cost_analysis));
 
   absl::Duration time_unfused = 2 * kKernelLaunchOverhead +
@@ -260,10 +265,19 @@ void CombinedGpuPerformanceModel::Invalidate(
   cache_.Invalidate(instruction);
 }
 
-absl::StatusOr<TiledRunTimeDataOrError>
-CombinedGpuPerformanceModel::TryFindBestTilingForFusion(
-    const HloFusionAdaptor& fusion_adaptor) {
-  return indexing_model_.TryFindBestTilingForFusion(fusion_adaptor);
+tsl::Future<TiledRunTimeDataOrError>
+CombinedGpuPerformanceModel::TryFindBestTilingForFusionAsync(
+    const HloFusionAdaptor& fusion_adaptor, tsl::Executor* executor) {
+  return indexing_model_.TryFindBestTilingForFusionAsync(fusion_adaptor,
+                                                         executor);
+}
+
+tsl::Future<TopKTiledRunTimeDataOrError>
+CombinedGpuPerformanceModel::TryFindTopKBestTilingsForFusionAsync(
+    const HloFusionAdaptor& fusion_adaptor, int top_k,
+    tsl::Executor* executor) {
+  return indexing_model_.TryFindTopKBestTilingsForFusionAsync(fusion_adaptor,
+                                                              top_k, executor);
 }
 
 }  // namespace gpu

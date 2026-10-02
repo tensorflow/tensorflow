@@ -101,6 +101,9 @@ class TraceMeRecorder {
   // Events passed to Record after Stop has started will be dropped.
   static Events Stop();
 
+  // Flushes events recorded since Start() or the last Flush() without stopping.
+  static Events Flush();
+
   // Returns whether we're currently recording. Racy, but cheap!
   static bool Active(int level = 1) {
     return internal::g_trace_level.load(std::memory_order_acquire) >= level;
@@ -130,7 +133,7 @@ class TraceMeRecorder {
   static void Clear();
 
   // Gathers events from all active threads, and clears their buffers.
-  static TF_MUST_USE_RESULT Events Consume();
+  TF_MUST_USE_RESULT static Events Consume();
 };
 
 }  // namespace profiler

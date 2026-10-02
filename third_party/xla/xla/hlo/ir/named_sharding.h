@@ -32,6 +32,12 @@ limitations under the License.
 
 namespace xla {
 
+enum class ReductionOp {
+  kSum = 0,
+  kMax = 1,
+  kMin = 2,
+};
+
 // C++ representation for corresponding `OpSharding::NamedSharding` proto so
 // same documentation applies.
 class NamedSharding {
@@ -100,6 +106,7 @@ class NamedSharding {
     return mesh_.DeviceAssignmentEquals(other.mesh_) &&
            dim_shardings_ == other.dim_shardings_ &&
            unreduced_axes_ == other.unreduced_axes_ &&
+           reduction_op_ == other.reduction_op_ &&
            manual_axes_ == other.manual_axes_;
     // We don't compare `replicated_axes`. This refers to explicitly
     // replicated axes. Whether an axis is replicated explicitly or
@@ -122,7 +129,8 @@ class NamedSharding {
                          absl::Span<const AxisRef> replicated_axes = {},
                          absl::Span<const AxisRef> unreduced_axes = {},
                          absl::Span<const AxisRef> manual_axes = {},
-                         absl::Span<const OpMetadata> metadata = {});
+                         absl::Span<const OpMetadata> metadata = {},
+                         ReductionOp reduction_op = ReductionOp::kSum);
 
   const Mesh& mesh() const { return mesh_; }
   absl::Span<const DimensionSharding> dim_shardings() const {
@@ -133,6 +141,8 @@ class NamedSharding {
   }
   absl::Span<const AxisRef> replicated_axes() const { return replicated_axes_; }
   absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
+  ReductionOp reduction_op() const { return reduction_op_; }
+  void set_reduction_op(ReductionOp op) { reduction_op_ = op; }
   absl::Span<const AxisRef> manual_axes() const { return manual_axes_; }
   absl::Span<const OpMetadata> metadata() const { return metadata_; }
   std::vector<OpMetadata>& mutable_metadata() { return metadata_; }
@@ -265,6 +275,7 @@ class NamedSharding {
   std::vector<DimensionSharding> dim_shardings_;
   std::vector<AxisRef> replicated_axes_;
   std::vector<AxisRef> unreduced_axes_;
+  ReductionOp reduction_op_ = ReductionOp::kSum;
   std::vector<AxisRef> manual_axes_;
   std::vector<OpMetadata> metadata_;
 

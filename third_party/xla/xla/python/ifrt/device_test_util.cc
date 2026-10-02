@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -47,7 +48,7 @@ struct DeviceTestClientState {
   Client* client;
 
   // Shared MemoryKind objects.
-  MemoryKind host_memory_kind;
+  MemoryKind default_memory_kind;
 
   // Mapping from a memory ID to the mock memory object.
   absl::flat_hash_map<MemoryId, std::unique_ptr<Memory>> memory_map;
@@ -60,19 +61,27 @@ struct DeviceTestClientState {
   std::vector<Device*> devices;
   std::vector<Device*> addressable_devices;
   std::vector<absl::Span<Memory* const>> device_memories;
+  std::vector<AttributeMap> device_attributes;
 };
 
 // Creates a mock client for device tests. The client will have a specified
 // number of fake addressable and non-addressable devices. Client implements
 // `devices()` and `LookupDevice()`. Device implements `id()`, with an
-// arbitrary deterministic device ids assigned. Each device has "host" memory
+// arbitrary deterministic device ids assigned. Each device has "device" memory
 // (which is also its default memory), and each memory has a single device.
-std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
-                                                 int num_addressable_devices) {
+std::shared_ptr<MockClient> MakeDeviceTestClient(const DeviceTestParam& param) {
+  const int num_devices = param.num_devices;
+  const int num_addressable_devices = param.num_addressable_devices;
   CHECK_GE(num_devices, num_addressable_devices);
+  if (!param.device_ids.empty()) {
+    CHECK_EQ(param.device_ids.size(), num_devices);
+  }
+  if (!param.device_attributes.empty()) {
+    CHECK_EQ(param.device_attributes.size(), num_devices);
+  }
   auto state = std::make_shared<DeviceTestClientState>();
 
-  state->host_memory_kind = MemoryKind("host");
+  state->default_memory_kind = MemoryKind();
 
   state->memory_map.reserve(num_devices);
   state->memories.reserve(num_devices);
@@ -83,31 +92,46 @@ std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
   state->addressable_devices.reserve(num_addressable_devices);
   state->device_memories.resize(num_devices);
 
+  if (param.device_attributes.empty()) {
+    state->device_attributes.resize(num_devices,
+                                    AttributeMap(AttributeMap::Map{}));
+  } else {
+    state->device_attributes.reserve(num_devices);
+    for (int i = 0; i < num_devices; ++i) {
+      state->device_attributes.push_back(
+          AttributeMap(param.device_attributes[i]));
+    }
+  }
+
   for (int i = 0; i < num_devices; ++i) {
     const bool addressable = i < num_addressable_devices;
     auto memory = std::make_unique<MockMemory>();
     ON_CALL(*memory, Id).WillByDefault(Return(MemoryId(i + 10)));
-    ON_CALL(*memory, Kind).WillByDefault(ReturnRef(state->host_memory_kind));
+    ON_CALL(*memory, Kind).WillByDefault(ReturnRef(state->default_memory_kind));
     // memory_devices will be filled in at the end of the loop.
     ON_CALL(*memory, Devices)
         .WillByDefault(ReturnPointee(&state->memory_devices[i]));
     state->memories.push_back(memory.get());
     state->memory_map.insert({MemoryId(i + 10), std::move(memory)});
 
+    DeviceId device_id =
+        param.device_ids.empty() ? DeviceId(i + 10) : param.device_ids[i];
     auto device = std::make_unique<MockDevice>();
     // client will be filled in at the end of the loop.
     ON_CALL(*device, client).WillByDefault(ReturnPointee(&state->client));
-    ON_CALL(*device, Id).WillByDefault(Return(DeviceId(i + 10)));
+    ON_CALL(*device, Id).WillByDefault(Return(device_id));
     ON_CALL(*device, IsAddressable).WillByDefault(Return(addressable));
     ON_CALL(*device, DefaultMemory).WillByDefault(Return(state->memories[i]));
     // device_memories will be filled in at the end of the loop.
     ON_CALL(*device, Memories)
         .WillByDefault(ReturnPointee(&state->device_memories[i]));
+    ON_CALL(*device, Attributes)
+        .WillByDefault(ReturnRef(state->device_attributes[i]));
     state->devices.push_back(device.get());
     if (addressable) {
       state->addressable_devices.push_back(device.get());
     }
-    state->device_map.insert({DeviceId(i + 10), std::move(device)});
+    CHECK(state->device_map.insert({device_id, std::move(device)}).second);
 
     state->device_memories[i] = absl::MakeConstSpan(&state->memories[i], 1);
     state->memory_devices[i] = absl::MakeConstSpan(&state->devices[i], 1);
@@ -142,8 +166,7 @@ std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
 }  // namespace
 
 DeviceTestFixture::DeviceTestFixture(const DeviceTestParam& param) {
-  const auto& [num_devices, num_addressable_devices] = param;
-  client_ = MakeDeviceTestClient(num_devices, num_addressable_devices);
+  client_ = MakeDeviceTestClient(param);
 }
 
 DeviceListRef DeviceTestFixture::GetDevices(

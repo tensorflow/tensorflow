@@ -18,12 +18,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace {
@@ -46,6 +43,10 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   OP_REQUIRES(ctx, values_shape.dims() == 2,
               absl::FailedPreconditionError("values must be 2D"));
 
+  bool is_fp = tensorflow::DataTypeIsFloating(ctx->InputType("sorted_inputs"));
+
+  xla::XlaBuilder* builder = ctx->builder();
+
   // Add a new inner dimension to values, to allow broadcasting along the inner
   // dimension of sorted_sequence.
   auto new_values_shape = values_shape;
@@ -59,27 +60,36 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   auto sorted_inputs_reshaped =
       xla::Reshape(sorted_inputs, new_sorted_inputs_shape.dim_sizes());
 
-  // We are relying on broadcasting to compare each value against each entry in
-  // the associated sorted_inputs row.
-  // The reshapes above leave the tensors with equal rank of 3, so broadcast
-  // dimensions are not explicitly specified.
-  auto comparison = xla::Compare(values_reshaped, sorted_inputs_reshaped, {},
-                                 comparison_direction);
-
   const DataType accumulation_type = XlaHelpers::SumAccumulationType(out_dtype);
+  xla::XlaOp zero = XlaHelpers::Zero(builder, accumulation_type);
 
-  // Convert boolean comparison results to integers so we can sum them.
-  auto comparison_int =
-      XlaHelpers::ConvertElementType(comparison, accumulation_type);
+  xla::XlaOp cmp;
+  if (is_fp) {
+    xla::XlaOp is_val_nan = xla::IsNan(values_reshaped);
+    xla::XlaOp is_seq_nan = xla::IsNan(sorted_inputs_reshaped);
 
-  // Sum the comparison results over the inner dimension to find the index for
-  // each value.
-  xla::XlaBuilder* builder = ctx->builder();
-  auto reduced =
-      xla::Reduce(comparison_int, XlaHelpers::Zero(builder, accumulation_type),
-                  *ctx->GetOrCreateAdd(accumulation_type), {2});
+    if (comparison_direction == xla::ComparisonDirection::kGt) {
+      // NanAwareGt(a, b) = (!is_b_nan && (is_a_nan || (a > b)))
+      xla::XlaOp standard_gt = xla::Gt(values_reshaped, sorted_inputs_reshaped);
+      cmp = xla::And(xla::Not(is_seq_nan), xla::Or(is_val_nan, standard_gt));
+    } else {
+      // NanAwareGe(a, b) = is_a_nan || (!is_b_nan && (a >= b))
+      xla::XlaOp standard_ge = xla::Ge(values_reshaped, sorted_inputs_reshaped);
+      cmp = xla::Or(is_val_nan, xla::And(xla::Not(is_seq_nan), standard_ge));
+    }
+  } else {
+    if (comparison_direction == xla::ComparisonDirection::kGt) {
+      cmp = xla::Gt(values_reshaped, sorted_inputs_reshaped);
+    } else {
+      cmp = xla::Ge(values_reshaped, sorted_inputs_reshaped);
+    }
+  }
 
-  ctx->SetOutput(0, reduced);
+  xla::XlaOp cmp_int = XlaHelpers::ConvertElementType(cmp, accumulation_type);
+  xla::XlaOp result_count =
+      xla::Reduce(cmp_int, zero, *ctx->GetOrCreateAdd(accumulation_type), {2});
+
+  ctx->SetOutput(0, result_count);
 }
 
 class LowerBoundOp : public XlaOpKernel {

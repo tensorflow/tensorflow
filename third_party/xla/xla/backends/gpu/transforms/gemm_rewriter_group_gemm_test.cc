@@ -16,13 +16,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/error_spec.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -220,8 +219,8 @@ ENTRY AddRaggedDotsFunc {
   debug_options_with_autotune.set_xla_gpu_autotune_level(4);
   HloModuleConfig config;
   config.set_debug_options(debug_options_with_autotune);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-4, 1e-5}));
 }
 
@@ -301,8 +300,8 @@ ENTRY AddRaggedDotsFunc {
   debug_options_with_autotune.set_xla_gpu_autotune_level(4);
   HloModuleConfig config;
   config.set_debug_options(debug_options_with_autotune);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-4, 1e-5}));
 }
 
@@ -477,8 +476,8 @@ ENTRY AddRaggedDotsFunc {
   debug_options_with_autotune.set_xla_gpu_autotune_level(4);
   HloModuleConfig config;
   config.set_debug_options(debug_options_with_autotune);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-4, 1e-5}));
 }
 
@@ -1151,12 +1150,8 @@ ENTRY test {
 
 // Test epilogue fusion for grouped GEMM: Swish/SILU Activation
 TEST_F(GroupedGemmRewriteTest, GroupedGemmSwishActivation) {
-  auto runtime_version = GetToolkitVersion();
-  bool rocm_swish_available =
-      IsRocm() &&
-      (runtime_version >= stream_executor::SemanticVersion(7, 0, 0));
-  if (!rocm_swish_available) {
-    GTEST_SKIP() << "Swish/SILU activation fusion only available on ROCm 7.0+";
+  if (!IsRocm()) {
+    GTEST_SKIP() << "Swish/SILU epilogue fusion is ROCm-only";
   }
 
   const char* hlo_text = R"(
@@ -1232,12 +1227,8 @@ ENTRY test {
 // Test that Swish activation is NOT fused for grouped GEMM when aux output is
 // required (i.e., when there are users before the activation)
 TEST_F(GroupedGemmRewriteTest, GroupedGemmSwishActivationWithAuxNoFusion) {
-  auto runtime_version = GetToolkitVersion();
-  bool rocm_swish_available =
-      IsRocm() &&
-      (runtime_version >= stream_executor::SemanticVersion(7, 0, 0));
-  if (!rocm_swish_available) {
-    GTEST_SKIP() << "Swish/SILU activation fusion only available on ROCm 7.0+";
+  if (!IsRocm()) {
+    GTEST_SKIP() << "Swish/SILU epilogue fusion is ROCm-only";
   }
 
   const char* hlo_text = R"(
@@ -1457,7 +1448,7 @@ ENTRY test {
 // Tests verifying that grouped GEMM rewriting is skipped when
 // xla_gpu_enable_cublaslt is disabled.
 class GroupedGemmRewriteDisabledCublasLtTest
-    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+    : public HloInterpreterReferenceMixin<GemmRewriteTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
@@ -1501,7 +1492,7 @@ ENTRY AddRaggedDotsFunc {
 // Tests verifying that grouped GEMM rewriting is skipped when
 // xla_gpu_experimental_use_ragged_dot_grouped_gemm is disabled.
 class GroupedGemmRewriteDisabledFlagTest
-    : public HloPjRtInterpreterReferenceMixin<GemmRewriteTestBase> {
+    : public HloInterpreterReferenceMixin<GemmRewriteTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();

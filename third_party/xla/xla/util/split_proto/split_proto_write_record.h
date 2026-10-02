@@ -18,23 +18,29 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "google/protobuf/message_lite.h"
 #include "riegeli/messages/serialize_message.h"
 #include "riegeli/records/record_writer.h"
+#include "xla/util/split_proto/proto_field_size_utils.h"
 
 namespace xla {
 
 template <typename Src>
 absl::Status WriteRecord(riegeli::RecordWriter<Src>& record_writer,
-                         const google::protobuf::MessageLite& record) {
+                         const tsl::protobuf::MessageLite& record) {
   // Proto serialization isn't deterministic by default (e.g. proto maps).
   // Setting this flag can make things a bit slower, but its important so that
   // if we compile the same model twice we get the same bit-identical binary.
   if (!record_writer.WriteRecord(
           record, riegeli::SerializeMessageOptions().set_deterministic(true))) {
-    return record_writer.status().ok()
-               ? absl::InternalError("Failed to write proto record")
-               : record_writer.status();
+    absl::Status status = record_writer.status();
+    if (status.ok()) {
+      return absl::InternalError("Failed to write proto record");
+    }
+    constexpr int kTopKLargestFields = 10;
+    if (absl::IsResourceExhausted(status)) {
+      return AnnotateResourceExhaustedError(status, record, kTopKLargestFields);
+    }
+    return status;
   }
   return absl::OkStatus();
 }

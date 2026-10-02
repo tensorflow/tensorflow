@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
 
 // CHECK-LABEL: HloModule dot_algorithm_f8_f8_f32
@@ -283,5 +297,53 @@ module @dot_algorithm_f64_f64_f64 {
         allow_imprecise_accumulation = false
       >
     }> : (tensor<2x2x2xf64>, tensor<2x2x2xf64>) -> tensor<2x2x2xf64>  return %0 : tensor<2x2x2xf64>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: HloModule dot_algorithm_bf16_bf16_fp8x3
+module @dot_algorithm_bf16_bf16_fp8x3 {
+  func.func @main(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xf32> {
+    // CHECK: %[[ARG0:.+]] = bf16[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = bf16[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_bf16_bf16_fp8x3
+    %0 = "mhlo.dot_general"(%arg0, %arg1) <{
+      dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+      precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+      algorithm = #mhlo.dot_algorithm<
+        lhs_precision_type = f8E4M3FN,
+        rhs_precision_type = f8E4M3FN,
+        accumulation_type = f32,
+        lhs_component_count = 1,
+        rhs_component_count = 1,
+        num_primitive_operations = 3,
+        allow_imprecise_accumulation = false
+      >
+    }> : (tensor<2x2x2xbf16>, tensor<2x2x2xbf16>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: HloModule dot_algorithm_bf16_bf16_fp8x4
+module @dot_algorithm_bf16_bf16_fp8x4 {
+  func.func @main(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xf32> {
+    // CHECK: %[[ARG0:.+]] = bf16[2,2,2] parameter(0)
+    // CHECK: %[[ARG1:.+]] = bf16[2,2,2] parameter(1)
+    // CHECK: f32[2,2,2] dot(%[[ARG0]], %[[ARG1]]), {{.*}}, algorithm=dot_bf16_bf16_fp8x4
+    %0 = "mhlo.dot_general"(%arg0, %arg1) <{
+      dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+      precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+      algorithm = #mhlo.dot_algorithm<
+        lhs_precision_type = f8E4M3FN,
+        rhs_precision_type = f8E4M3FN,
+        accumulation_type = f32,
+        lhs_component_count = 1,
+        rhs_component_count = 1,
+        num_primitive_operations = 4,
+        allow_imprecise_accumulation = false
+      >
+    }> : (tensor<2x2x2xbf16>, tensor<2x2x2xbf16>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
   }
 }

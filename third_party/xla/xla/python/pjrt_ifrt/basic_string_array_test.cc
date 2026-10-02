@@ -28,20 +28,20 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/future.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -114,7 +114,7 @@ CreateNonReadyTestArray(
   Shape shape({1});
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-  ASSIGN_OR_RETURN(auto array,
+  ABSL_ASSIGN_OR_RETURN(auto array,
                    BasicStringArray::Create(client, shape, sharding,
                                             std::move(buffers_future),
                                             std::move(on_done_with_buffer)));
@@ -201,7 +201,7 @@ TEST(BasicStringArrayTest, InvalidBuffersAreHandledCorrectly) {
                                         std::move(on_done_with_buffer)));
   auto& array = ret.first;
   auto& promise = ret.second;
-  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(array.get());
+  auto basic_string_array = dyn_cast<BasicStringArray>(array.get());
 
   // Buffers with two shards and a single-device array are inconsistent.
   tsl::Env::Default()->SchedClosure([&]() { promise.Set(buffers); });
@@ -423,14 +423,14 @@ absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
         "Test client has too few devices. Need 4, got:", devices.size()));
   }
 
-  ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
+  ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
   ShardingRef sharding = ConcreteEvenSharding::Create(
       std::move(device_list), MemoryKind(), Shape({2, 1}), Shape({1}),
       is_fully_replicated);
 
   std::vector<ArrayRef> arrays;
   for (int i = 0; i < 2; ++i) {
-    ASSIGN_OR_RETURN(auto array, MakeSingleDeviceStringTestArray(
+    ABSL_ASSIGN_OR_RETURN(auto array, MakeSingleDeviceStringTestArray(
                                      {data[i]}, client, devices[i]));
     arrays.push_back(std::move(array));
   }
@@ -450,7 +450,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, MakeShardedStringTestArray(client.get(), per_shard_contents,
                                              /*is_fully_replicated=*/false));
-  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(array.get());
+  auto basic_string_array = dyn_cast<BasicStringArray>(array.get());
   ASSERT_NE(basic_string_array, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(auto buffers, basic_string_array->buffers().Await());
   EXPECT_EQ(buffers.size(), 2);
@@ -555,7 +555,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
     promises[1].Set(buffers1);
   }));
 
-  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(array.get());
+  auto basic_string_array = dyn_cast<BasicStringArray>(array.get());
   ASSERT_NE(basic_string_array, nullptr);
 
   auto buffers_future = basic_string_array->buffers();
@@ -608,7 +608,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
     done_readying_single_device_arrays.Notify();
   }));
 
-  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(array.get());
+  auto basic_string_array = dyn_cast<BasicStringArray>(array.get());
   ASSERT_NE(basic_string_array, nullptr);
 
   auto buffers_future = basic_string_array->buffers();
@@ -641,7 +641,7 @@ TEST(DisassembleArrayIntoSingleDeviceArrays,
 
   ASSERT_EQ(disassembled_arrays.size(), 1);
   auto basic_string_array =
-      llvm::dyn_cast<BasicStringArray>(disassembled_arrays[0].get());
+      dyn_cast<BasicStringArray>(disassembled_arrays[0].get());
 
   TF_ASSERT_OK_AND_ASSIGN(auto new_buffers,
                           basic_string_array->buffers().Await());
@@ -667,7 +667,7 @@ TEST(DisassembleArrayIntoSingleDeviceArrays, ShardedArrayDisassembleSuccess) {
   for (int i = 0; i < disassembled_arrays.size(); ++i) {
     SCOPED_TRACE(absl::StrCat("dissembled array: ", i));
     auto basic_string_array =
-        llvm::dyn_cast<BasicStringArray>(disassembled_arrays[i].get());
+        dyn_cast<BasicStringArray>(disassembled_arrays[i].get());
     TF_ASSERT_OK_AND_ASSIGN(auto buffer, basic_string_array->buffers().Await());
     ASSERT_EQ(buffer.size(), 1);
     EXPECT_THAT(buffer[0], ElementsAre(per_shard_contents[i]));
@@ -715,8 +715,7 @@ TEST(CopyTest, SuccessSingleDeviceShardedArray) {
       client->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                          MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
-  auto new_basic_string_array =
-      llvm::dyn_cast<BasicStringArray>(new_arrays[0].get());
+  auto new_basic_string_array = dyn_cast<BasicStringArray>(new_arrays[0].get());
   TF_ASSERT_OK_AND_ASSIGN(auto new_buffers,
                           new_basic_string_array->buffers().Await());
   ASSERT_EQ(new_buffers.size(), 1);
@@ -754,8 +753,7 @@ TEST(CopyTest, SuccessMultiDeviceShardedArray) {
       client->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                          MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
-  auto new_basic_string_array =
-      llvm::dyn_cast<BasicStringArray>(new_arrays[0].get());
+  auto new_basic_string_array = dyn_cast<BasicStringArray>(new_arrays[0].get());
   TF_ASSERT_OK_AND_ASSIGN(auto new_buffers,
                           new_basic_string_array->buffers().Await());
   ASSERT_EQ(new_buffers.size(), 2);
@@ -832,7 +830,7 @@ TEST(CopyTest, NonReadySourceArraySuccessfullyBecomesReadyAfterCopy) {
     done_readying_single_device_arrays.Notify();
   }));
 
-  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(arrays[0].get());
+  auto basic_string_array = dyn_cast<BasicStringArray>(arrays[0].get());
   ASSERT_NE(basic_string_array, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(auto new_buffers,
@@ -872,7 +870,7 @@ TEST(CopyTest, NonReadySourceArrayFailsToBecomeReadyAfterCopy) {
     done_readying_single_device_arrays.Notify();
   }));
 
-  auto basic_string_array = llvm::dyn_cast<BasicStringArray>(arrays[0].get());
+  auto basic_string_array = dyn_cast<BasicStringArray>(arrays[0].get());
   ASSERT_NE(basic_string_array, nullptr);
 
   auto buffers_future = basic_string_array->buffers();
@@ -903,7 +901,7 @@ TEST(FullyReplicatedShardTest, SuccessSingleDeviceShardedArray) {
       array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy));
 
   auto replicated_basic_string_array =
-      llvm::dyn_cast<BasicStringArray>(relicated_shard.get());
+      dyn_cast<BasicStringArray>(relicated_shard.get());
   TF_ASSERT_OK_AND_ASSIGN(auto replicated_buffers,
                           replicated_basic_string_array->buffers().Await());
   ASSERT_EQ(replicated_buffers.size(), 1);
@@ -925,7 +923,7 @@ TEST(FullyReplicatedShardTest, SuccessMultiDeviceShardedArray) {
       array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy));
 
   auto replicated_basic_string_array =
-      llvm::dyn_cast<BasicStringArray>(replicated_shard.get());
+      dyn_cast<BasicStringArray>(replicated_shard.get());
   TF_ASSERT_OK_AND_ASSIGN(auto replicated_buffers,
                           replicated_basic_string_array->buffers().Await());
   ASSERT_EQ(replicated_buffers.size(), 1);

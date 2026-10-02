@@ -25,21 +25,22 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space_utils.h"
+#include "xla/codegen/tiling/tiling_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -51,6 +52,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
@@ -61,6 +65,24 @@ std::string HloPtrToString(const HloInstruction* hlo) {
 }
 
 }  // namespace
+
+llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
+    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes) {
+  CHECK_EQ(tile_sizes.size(), tiling_space.dimensions().size());
+  mlir::MLIRContext* ctx = tiling_space.mlir_context();
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map;
+  for (const auto& [index, dim] : llvm::enumerate(tiling_space.dimensions())) {
+    replacement_map[CreateSymbolExpr(dim.id.value(), tile_sizes.size(), ctx)] =
+        CreateSymbolicConstant(tile_sizes[index], ctx);
+    // If the tile size is greater than or equal to the dimension size, then
+    // the dimension is trivial and can be replaced with 0.
+    if (dim.dimension_size <= tile_sizes[index]) {
+      replacement_map[CreateDimExpr(dim.id.value(), ctx)] =
+          CreateSymbolicConstant(0, ctx);
+    }
+  }
+  return replacement_map;
+}
 
 std::string TilingSpace::DimensionInfo::ToString() const {
   std::stringstream ss;
@@ -102,8 +124,17 @@ void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
     case HloOpcode::kReduce:
       ProcessReduce(hlo);
       break;
+    case HloOpcode::kScan:
+      ProcessScan(hlo);
+      break;
     case HloOpcode::kDynamicSlice:
       ProcessDynamicSlice(hlo);
+      break;
+    case HloOpcode::kGetTupleElement:
+      ProcessGetTupleElement(hlo);
+      break;
+    case HloOpcode::kRaggedDot:
+      ProcessRaggedDot(hlo);
       break;
     default:
       // TODO(goncharov): should have a explicit list of supported instructions?
@@ -136,6 +167,135 @@ void TilingSpace::ProcessReduce(const HloInstruction& hlo) {
   }
 }
 
+// Register sequential dimensions and RTVars for a kRaggedDot instruction.
+//
+// --- kRaggedNonContracting ---
+//   Shape: LHS (M_total, K) × RHS (G, K, N) × group_sizes (G,) → (M_total, N)
+//   G is NOT in the output → registered as kSequential outer loop.
+//   K (contracting) → kSequential.
+//   M, N are already kParallel from root processing.
+//
+//   RTVar (ragged_dot, 2): group_size[g]
+//     Array RTVar indexed by the G sequential dim's loop IV.
+//     Used to build the runtime M-dimension upper-bound mask.
+//   last_m (= sum of group_sizes[0..g-1]):
+//     NOT an RTVar.  The emitter maintains it as a loop-carried iter_arg
+//     of the G scf::ForOp and adds it directly to M pointer arithmetic.
+//
+// --- kRaggedContracting ---
+//   Shape: LHS (M_total, K) × RHS (K, N) × group_sizes (G,) → (G, K, N)
+//   G IS in the output (dim 0) → kParallel (from root processing).
+//   Programs are assigned to (g, k_tile, n_tile) output tiles.
+//   G is a tile-ownership dimension, never a scan loop.
+//   M (ragged contracting) → kSequential (inner accumulation per tile).
+//
+//   RTVar (ragged_dot, 2):  group_size[g]
+//     Bounds the M sequential loop for each group.
+//   RTVar (ragged_dot, -1): start_m[g]   (absolute M offset / prefix sum)
+//     Provides the absolute M offset.  G is kParallel so no loop-carried
+//     last_m.  How each of these RTVars is materialized at emit time (a
+//     per-iteration load vs. an explicit prefix-sum loop) is decided by the
+//     emitter based on the ragged-dot variant; see EmitRaggedDot.
+void TilingSpace::ProcessRaggedDot(const HloInstruction& hlo) {
+  const auto* ragged_dot = Cast<HloRaggedDotInstruction>(&hlo);
+  const RaggedDotDimensionNumbers& ragged_dims =
+      ragged_dot->ragged_dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dims = ragged_dims.dot_dimension_numbers();
+
+  const int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+  const Shape& lhs_shape = hlo.operand(0)->shape();
+  const HloInstruction* group_sizes_hlo = hlo.operand(2);
+  const int64_t M_total = lhs_shape.dimensions(lhs_ragged_dim);
+
+  // Determine the ragged mode by checking where the ragged dim appears.
+  const bool is_batch =
+      absl::c_count(dot_dims.lhs_batch_dimensions(), lhs_ragged_dim) > 0;
+  const bool is_contracting =
+      absl::c_count(dot_dims.lhs_contracting_dimensions(), lhs_ragged_dim) > 0;
+
+  const int64_t output_rank =
+      static_cast<int64_t>(hlo.shape().dimensions().size());
+
+  if (is_batch) {
+    // kRaggedBatch: output [B_total, M, N] — all kParallel (from root).
+    // K contracting → kSequential.  Identical to ProcessDotLike.
+    for (auto [index, lhs_k_dim] :
+         llvm::enumerate(dot_dims.lhs_contracting_dimensions())) {
+      AppendDimension(
+          &hlo,
+          /*dim_position=*/output_rank + static_cast<int64_t>(index),
+          lhs_shape.dimensions(lhs_k_dim), DimensionSemantics::kSequential);
+    }
+    return;  // No RTVar needed — computation = regular batched dot.
+  }
+
+  if (!is_contracting) {
+    // kRaggedNonContracting — G is not in the output; it runs as a sequential
+    // outer loop. Register G as kSequential outer loop (dim_position =
+    // output_rank + 0). G = RHS size along the group dimension (works for both
+    // non-batched [G] and batched [B, G] group_sizes tensors).
+    const int64_t G =
+        hlo.operand(1)->shape().dimensions(ragged_dims.rhs_group_dimensions(0));
+    AppendDimension(&hlo, /*dim_position=*/output_rank, G,
+                    DimensionSemantics::kSequential);
+
+    // Register K contracting dimension(s) as kSequential (dim_position =
+    // output_rank + 1 + i).
+    for (auto [index, lhs_k_dim] :
+         llvm::enumerate(dot_dims.lhs_contracting_dimensions())) {
+      AppendDimension(
+          &hlo,
+          /*dim_position=*/output_rank + 1 + static_cast<int64_t>(index),
+          lhs_shape.dimensions(lhs_k_dim), DimensionSemantics::kSequential);
+    }
+
+    // group_size[g]: array RTVar — at emit time load group_sizes[g_loop_iv].
+    // The emitter uses this to mask the M dimension: offs_m < group_size_g.
+    // last_m is NOT registered here; it is a loop-carried iter_arg maintained
+    // by the emitter (see EmitRaggedDot, kRaggedNonContracting).
+    AppendRTVar(&hlo, /*operand_id=*/2, group_sizes_hlo,
+                /*upper_bound=*/M_total);
+    return;
+  }
+
+  // kRaggedContracting: G is kParallel (output dim 0, from grid).
+  // Grid = G × K × N.
+  // M sequential (inner accumulation); start_m computed as prefix sum.
+  AppendDimension(&hlo, /*dim_position=*/output_rank, M_total,
+                  DimensionSemantics::kSequential);
+
+  // group_size[g]: RTVar bounding the M sequential loop per group.
+  // Keyed at operand_id=2.  Materialized by the emitter as a load of
+  // group_sizes[g] (see EmitRaggedDot, kRaggedContracting).
+  AppendRTVar(&hlo, /*operand_id=*/2, group_sizes_hlo,
+              /*upper_bound=*/M_total);
+
+  // start_m[g]: absolute M offset for the group.  Keyed at the sentinel
+  // operand_id=-1 to distinguish it from the group_size RTVar above (both
+  // reference the same group_sizes hlo).  Materialized by the emitter as an
+  // explicit prefix sum over group_sizes[0..g-1] (see EmitRaggedDot,
+  // kRaggedContracting), since G is kParallel and there is no loop-carried
+  // last_m to accumulate it.
+  AppendRTVar(&hlo, /*operand_id=*/-1, group_sizes_hlo,
+              /*upper_bound=*/M_total);
+}
+
+// Ensure scan dimensions are sequential within the thread block.
+void TilingSpace::ProcessScan(const HloInstruction& hlo) {
+  auto scan = Cast<HloScanInstruction>(&hlo);
+  int64_t scan_dim_idx = scan->scan_dimension();
+
+  auto it = hlo_to_dimension_.find(std::make_pair(&hlo, scan_dim_idx));
+  if (it == hlo_to_dimension_.end()) {
+    // Without indexing maps, we cannot express constraints for intermediate
+    // scan operations in TilingSpace.
+    return;
+  }
+
+  dimensions_[it->second->id.value()].type = DimensionSemantics::kSequential;
+  dimensions_[it->second->id.value()].hlo = &hlo;
+}
+
 // Add offsets of dynamic slice.
 void TilingSpace::ProcessDynamicSlice(const HloInstruction& hlo) {
   auto ds = Cast<HloDynamicSliceInstruction>(&hlo);
@@ -154,6 +314,16 @@ const Shape& GetFirstShape(const HloInstruction* instr, int64_t index) {
   return instr->shape().IsTuple()
              ? ShapeUtil::GetSubshape(instr->shape(), {index})
              : instr->shape();
+}
+
+// Propagate dimensions from get-tuple-element to its operand.
+void TilingSpace::ProcessGetTupleElement(const HloInstruction& hlo) {
+  for (int64_t i = 0; i < hlo.shape().dimensions().size(); ++i) {
+    auto it = hlo_to_dimension_.find(std::make_pair(&hlo, i));
+    if (it != hlo_to_dimension_.end()) {
+      hlo_to_dimension_[std::make_pair(hlo.operand(0), i)] = it->second;
+    }
+  }
 }
 
 std::string TilingSpace::ToString() const {
@@ -214,20 +384,12 @@ absl::Status TilingSpace::AssignTileSizes(
   CHECK_EQ(tile_sizes.size(), dimensions_.size());
   is_symbolic_ = false;
 
-  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map;
-  for (const auto& [index, dim] : llvm::enumerate(dimensions_)) {
-    dim.tile_size = tile_sizes[index];
-    replacement_map[CreateSymbolExpr(dim.id.value(), dimensions_.size(),
-                                     mlir_context_)] =
-        CreateSymbolicConstant(tile_sizes[index], mlir_context_);
-
-    // If the tile size is greater than or equal to the dimension size, then
-    // the dimension is trivial and can be replaced with 0.
-    if (dim.dimension_size <= tile_sizes[index]) {
-      replacement_map[CreateDimExpr(dim.id.value(), mlir_context_)] =
-          CreateSymbolicConstant(0, mlir_context_);
-    }
+  for (const auto& [index, size] : llvm::enumerate(tile_sizes)) {
+    dimensions_[index].tile_size = size;
   }
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
+      GetTileSizeReplacementMap(*this, tile_sizes);
 
   if (!constraint_.IsSatisfiedBy(tile_sizes)) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -262,46 +424,101 @@ absl::Status TilingSpace::AssignTileSizes(
   return absl::OkStatus();
 }
 
+absl::Status TilingSpace::InitializeDimensions(
+    absl::Span<const HloInstructionAdaptor> roots) {
+  TF_RET_CHECK(dimensions_.empty()) << "Already initialized.";
+
+  for (const auto& root : roots) {
+    const Shape& root_shape = root.shape();
+    if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce &&
+        root.opcode() != HloOpcode::kScan) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported root shape ", root_shape.ToString(),
+                       " for root ", root.instruction().ToString()));
+    }
+
+    const Shape& shape = GetFirstShape(&root.instruction());
+    for (auto [index, dim] : llvm::enumerate(shape.dimensions())) {
+      DimensionSemantics dim_type = DimensionSemantics::kParallel;
+      if (root.opcode() == HloOpcode::kScan) {
+        auto scan = Cast<HloScanInstruction>(&root.instruction());
+        if (index == scan->scan_dimension()) {
+          dim_type = DimensionSemantics::kSequential;
+        }
+      }
+      AppendDimension(&root.instruction(), index, dim, dim_type);
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status TilingSpace::InitializeDimensionsForSameShapeMultiOutputFusion(
+    absl::Span<const HloInstructionAdaptor> roots) {
+  TF_RET_CHECK(dimensions_.empty()) << "Already initialized.";
+  TF_RET_CHECK(!roots.empty()) << "Roots cannot be empty.";
+  TF_RET_CHECK(
+      IsSameShapeMultiOutputFusion(roots, Shape::Equal().IgnoreElementType()))
+      << "Roots have different shapes.";
+
+  // This handles the specific case where all roots of a multi-output fusion
+  // share the same shape (ignoring element type). We assume we can reuse the
+  // same tiling for every root. This lets us significantly reduce the search
+  // space.
+
+  const HloInstructionAdaptor& first_root = roots[0];
+  absl::Span<const HloInstructionAdaptor> rest_roots = roots.subspan(1);
+
+  ABSL_RETURN_IF_ERROR(InitializeDimensions({first_root}));
+
+  // Propagate the dimensions from the first root to the rest of the roots.
+  // We can reuse first roots' `dims` because all roots have the same shape.
+  absl::Span<const int64_t> dims =
+      GetFirstShape(&first_root.instruction()).dimensions();
+
+  for (auto [index, dim] : llvm::enumerate(dims)) {
+    const DimensionInfo& dim_info =
+        GetDimensionInfo(first_root.instruction(), index);
+
+    for (const HloInstructionAdaptor& root : rest_roots) {
+      hlo_to_dimension_[std::make_pair(&root.instruction(), index)] = &dim_info;
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
     const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx) {
   RegisterSymbolicExprStorage(ctx);
   auto tiling_space = std::make_unique<TilingSpace>();
   tiling_space->mlir_context_ = ctx;
   auto roots = fusion.GetRoots();
-  CHECK(!roots.empty()) << "Fusion has no roots";
+  TF_RET_CHECK(!roots.empty()) << "Fusion has no roots";
 
-  // TODO: b/502910372 - Support multi-output fusions. The option name is
-  // misleading as it is not GPU specific.
-  if (roots.size() > 1 &&
-      !roots.back()
-           .instruction()
-           .GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    return absl::InvalidArgumentError(
-        "TilingSpace does not support fusions with multiple roots");
-  }
+  // Append dimensions. This is necessary because symbols are created using the
+  // total number of dimensions, which needs to be known before any symbols are
+  // generated.
+  const HloModule* module = fusion.GetRoots().back().instruction().GetModule();
+  TF_RET_CHECK(module) << "Fusion has no module";
+  const DebugOptions& debug_options = module->config().debug_options();
 
-  // First pass: Append all dimensions. This is necessary because symbols
-  // are created using the total number of dimensions, which needs to be known
-  // before any symbols are generated.
-  for (const HloInstructionAdaptor& root : roots) {
-    const Shape& root_shape = root.shape();
-    if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported root shape ", root_shape.ToString(),
-                       " for root ", root.instruction().ToString()));
-    }
-    // TODO(goncharov): why do we only care about the first shape of a tuple?
-    absl::Span<const int64_t> dims =
-        GetFirstShape(&root.instruction()).dimensions();
-    for (auto [index, dim] : llvm::enumerate(dims)) {
-      // Dimensions must be appended first so that the total count is known
-      // when creating Symbols.
-      tiling_space->AppendDimension(&root.instruction(), index, dim,
-                                    DimensionSemantics::kParallel);
-    }
+  if (roots.size() == 1) {
+    ABSL_RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
+  } else if (
+      IsSameShapeMultiOutputFusion(roots, Shape::Equal().IgnoreElementType()) &&
+      debug_options
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion()) {
+    ABSL_RETURN_IF_ERROR(
+        tiling_space->InitializeDimensionsForSameShapeMultiOutputFusion(roots));
+  } else if (debug_options
+                 .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
+    // xla_gpu_unsupported_enable_triton_multi_output_fusion flag name is
+    // misleading, it is not GPU specific.
+    ABSL_RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
+  } else {
+    // TODO(b/502910372): Support arbitrary multi-output fusions.
+    return absl::UnimplementedError(
+        "TilingSpace does not support fusions with multiple roots.");
   }
 
   // Iterator in reversed post-order (use-before-def).
@@ -321,10 +538,8 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
     for (auto [index, dim] : llvm::enumerate(dims)) {
       int64_t global_dim_id =
           tiling_space->GetDimensionInfo(root.instruction(), index).id.value();
-      dim_tiles.push_back(GetDefaultDimTile(
-          index,
-          CreateSymbolExpr(global_dim_id, tiling_space->num_dimensions(), ctx),
-          dim));
+      dim_tiles.push_back(
+          tiling_space->GetDefaultRootDimTile(TiledDimId(global_dim_id), dim));
     }
     Tile tile{*tiling_space, std::move(dim_tiles)};
     if (root_shape.IsTuple()) {
@@ -339,6 +554,76 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   return tiling_space;
 }
 
+std::unique_ptr<TilingSpace> TilingSpace::Clone(
+    mlir::MLIRContext* target_context) const {
+  const bool rebind =
+      target_context != nullptr && target_context != mlir_context_;
+  if (rebind) {
+    // Only the default root tiles of a symbolic space can be rebuilt in another
+    // context. Constraints hold expressions of this space's context, so they
+    // must be trivial.
+    CHECK(is_symbolic_) << "Cloning into another MLIRContext is only "
+                           "supported for a symbolic TilingSpace.";
+    CHECK(divisibility_constraints_.empty() && constraint_.IsAlwaysSatisfied())
+        << "Cloning a TilingSpace with constraints into another MLIRContext is "
+           "not supported.";
+    RegisterSymbolicExprStorage(target_context);
+  }
+
+  auto cloned = std::make_unique<TilingSpace>();
+  cloned->mlir_context_ = rebind ? target_context : mlir_context_;
+  cloned->is_symbolic_ = is_symbolic_;
+  cloned->constraint_ = constraint_;
+  cloned->divisibility_constraints_ = divisibility_constraints_;
+
+  cloned->dimensions_ = dimensions_;
+  cloned->hlo_to_dimension_.reserve(cloned->dimensions_.size());
+  for (const auto& dim : cloned->dimensions_) {
+    cloned->hlo_to_dimension_[std::make_pair(dim.hlo, dim.dim_position)] = &dim;
+  }
+
+  cloned->rt_vars_ = rt_vars_;
+  cloned->hlo_to_rt_var_.reserve(hlo_to_rt_var_.size());
+  // Populating an unordered map from another unordered map is order-independent
+  // since keys are unique and elements are only accessed via direct lookups.
+  // NOLINTNEXTLINE
+  for (const auto& [key, rt_var_ptr] : hlo_to_rt_var_) {
+    cloned->hlo_to_rt_var_[key] = &cloned->rt_vars_[rt_var_ptr->id];
+  }
+
+  cloned->tiled_roots_.reserve(tiled_roots_.size());
+  for (const auto& root_tile : tiled_roots_) {
+    if (!rebind) {
+      cloned->tiled_roots_.push_back(
+          root_tile.CloneWithNewTilingSpace(*cloned));
+      continue;
+    }
+    // A symbolic root tile is the default one built by Create, whose size is
+    // the symbol of its dimension.
+    llvm::SmallVector<DimTile> dim_tiles;
+    dim_tiles.reserve(root_tile.dim_tiles().size());
+    for (const DimTile& dim_tile : root_tile.dim_tiles()) {
+      dim_tiles.push_back(cloned->GetDefaultRootDimTile(
+          TiledDimId(dim_tile.size.GetValue() - num_dimensions()),
+          dim_tile.upper_bound.GetValue()));
+    }
+    cloned->tiled_roots_.push_back(Tile{*cloned, std::move(dim_tiles)});
+  }
+
+  cloned->dim_vars_indexing_ = dim_vars_indexing_;
+  cloned->range_vars_indexing_ = range_vars_indexing_;
+  cloned->rt_vars_indexing_ = rt_vars_indexing_;
+
+  return cloned;
+}
+
+DimTile TilingSpace::GetDefaultRootDimTile(TiledDimId id,
+                                           int64_t dim_size) const {
+  return GetDefaultDimTile(
+      id, CreateSymbolExpr(id.value(), num_dimensions(), mlir_context_),
+      dim_size);
+}
+
 int64_t TilingSpace::num_parallel_dimensions() const {
   return absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
     return dim.type == DimensionSemantics::kParallel;
@@ -348,37 +633,50 @@ int64_t TilingSpace::num_parallel_dimensions() const {
 void TilingSpace::InitSimplificationIndexing() {
   CHECK(!is_symbolic_) << "Tile sizes must be assigned before initializing "
                           "cached indexing map variables.";
+  CHECK(dim_vars_indexing_.empty())
+      << "InitSimplificationIndexing must be called once";
+  CHECK(range_vars_indexing_.empty());
+  CHECK(rt_vars_indexing_.empty());
 
-  dim_vars_indexing_.clear();
   dim_vars_indexing_.reserve(dimensions_.size());
-  for (const auto& dim_info : dimensions_) {
-    CHECK_GT(dim_info.tile_size.value(), 0);
-    int64_t upper_bound =
-        llvm::divideCeil(dim_info.dimension_size, dim_info.tile_size.value());
+  range_vars_indexing_.reserve(dimensions_.size());
+  for (const DimensionInfo& dim_info : dimensions_) {
+    int64_t tile_size = dim_info.tile_size.value();
+    CHECK_GT(tile_size, 0);
+    int64_t upper_bound = llvm::divideCeil(dim_info.dimension_size, tile_size);
     dim_vars_indexing_.push_back(IndexingMap::Variable{0, upper_bound - 1});
+    // Even though ts_X must already be replaced with constants right now, we
+    // initialize their bounds to [tile_size, tile_size] for completeness.
+    range_vars_indexing_.push_back(IndexingMap::Variable{tile_size, tile_size});
   }
-
-  range_vars_indexing_.assign(dimensions_.size(), IndexingMap::Variable{0, 0});
-
-  rt_vars_indexing_.clear();
   rt_vars_indexing_.reserve(rt_vars_.size());
   for (const auto& rt_var : rt_vars_) {
     rt_vars_indexing_.push_back(IndexingMap::Variable{rt_var.bounds});
   }
 }
 
-SymbolicExpr TilingSpace::SimplifyExpression(const SymbolicExpr& expr) const {
+llvm::SmallVector<SymbolicExpr> TilingSpace::SimplifyExpressions(
+    const llvm::SmallVector<SymbolicExpr>& expressions) const {
   if (is_symbolic_) {
-    return expr.Canonicalize();
+    llvm::SmallVector<SymbolicExpr> simplified_expressions;
+    simplified_expressions.reserve(expressions.size());
+    for (const auto& expr : expressions) {
+      simplified_expressions.push_back(expr.Canonicalize());
+    }
+    return simplified_expressions;
   }
-
-  SymbolicMap map = SymbolicMap::Get(mlir_context(), dimensions_.size(),
-                                     rt_vars_.size(), {expr});
-
+  CHECK_EQ(dimensions_.size(), dim_vars_indexing_.size());
+  CHECK_EQ(dimensions_.size(), range_vars_indexing_.size());
+  CHECK_EQ(rt_vars_indexing_.size(), rt_vars_.size());
+  // TODO(b/565301234): add constraints from tiling space? They don't seem to
+  // be used in the current implementation.
+  SymbolicMap map =
+      SymbolicMap::Get(mlir_context(), dimensions_.size(),
+                       dimensions_.size() + rt_vars_.size(), expressions);
   IndexingMap indexing_map(map, dim_vars_indexing_, range_vars_indexing_,
                            rt_vars_indexing_);
   indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
-  return indexing_map.GetSymbolicMap().GetResults()[0];
+  return std::move(indexing_map).GetSymbolicMap().GetResults();
 }
 
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>
@@ -399,7 +697,7 @@ TilingSpace::GetValidTilings() {
     }
   }
 
-  ASSIGN_OR_RETURN(auto flat_tilings, GetFlatTilingsForInputSpace(input_space));
+  ABSL_ASSIGN_OR_RETURN(auto flat_tilings, GetFlatTilingsForInputSpace(input_space));
 
   for (auto& flat_tiling : flat_tilings) {
     for (const auto& [idx, dim] : llvm::enumerate(dimensions_)) {

@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: mlir-hlo-opt %s -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 ////////
@@ -1047,7 +1061,7 @@ func.func @fold_negate_float() -> tensor<4xf32> {
 ////////
 // NotOp
 
-// CHECK-LABEL func @fold_not()
+// CHECK-LABEL: func @fold_not()
 func.func @fold_not() -> tensor<2x2xi1> {
   %0 = mhlo.constant dense<[[true, false], [true, false]]> : tensor<2x2xi1>
   // CHECK{LITERAL}: mhlo.constant dense<[[false, true], [false, true]]> : tensor<2x2xi1>
@@ -1055,7 +1069,7 @@ func.func @fold_not() -> tensor<2x2xi1> {
   func.return %1 : tensor<2x2xi1>
 }
 
-// CHECK-LABEL func @fold_not_i32()
+// CHECK-LABEL: func @fold_not_i32()
 func.func @fold_not_i32() -> tensor<2x2xi32> {
   %0 = mhlo.constant dense<[[42, -12], [1, 0]]> : tensor<2x2xi32>
   // CHECK{LITERAL}: mhlo.constant dense<[[-43, 11], [-2, -1]]> : tensor<2x2xi32>

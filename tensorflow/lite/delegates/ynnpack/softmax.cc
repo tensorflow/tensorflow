@@ -35,15 +35,10 @@ TfLiteStatus IsSoftmaxSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   return kTfLiteOk;
 }
@@ -51,12 +46,8 @@ TfLiteStatus IsSoftmaxSupported(const TfLiteRegistration* registration,
 TfLiteStatus DefineSoftmaxNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                                TensorToValueIdMap& tensor_to_value_id,
                                const NodeInfo& node) {
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteSoftmaxParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteSoftmaxParams*>(node.builtin_data);
   float beta = params ? params->beta : 1.0f;
 
   return DefineDecomposedUnaryNode(

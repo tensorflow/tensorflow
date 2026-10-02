@@ -52,7 +52,7 @@ namespace xla {
 namespace {
 
 class ConvolutionTest : public ClientLibraryTestRunnerMixin<
-                            HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                            HloInterpreterReferenceMixin<HloTestBase>> {
  public:
   // Returns true if the test is running on ROCm.
   bool IsRocm() {
@@ -1851,8 +1851,7 @@ TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   ComputeAndCompare(&builder, {&input_data_literal}, ErrorSpecForPlatform());
 }
 
-class ConvolutionHloTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class ConvolutionHloTest : public HloInterpreterReferenceMixin<HloTestBase> {
  public:
   // Returns true if the test is running on ROCm.
   bool IsRocm() {

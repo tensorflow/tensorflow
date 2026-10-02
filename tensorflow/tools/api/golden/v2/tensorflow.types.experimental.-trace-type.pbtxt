@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<class \'object\'>"
   member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
   }
   member_method {

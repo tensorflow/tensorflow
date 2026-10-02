@@ -198,6 +198,67 @@ class OpsSet(enum.Enum):
     return [str(option) for option in list(OpsSet)]
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL, SubComponent.UNSPECIFIED)
+def flatbuffer_to_mlir(
+    model_content,
+    input_is_filepath=False,
+    bytecode=False,
+    cl_options=None,
+):
+  """Converts a TFLite FlatBuffer model to MLIR string or bytecode.
+
+  Args:
+    model_content: A TFLite FlatBuffer as bytes, or a path to a TFLite file if
+      input_is_filepath is True.
+    input_is_filepath: If True, model_content is treated as a file path.
+    bytecode: If True, returns MLIR bytecode (.mlirc / .mlirbc) as bytes.
+      Otherwise returns textual MLIR as a string.
+    cl_options: Sequence of MLIR command-line printing options to forward.
+
+  Returns:
+    str if bytecode=False, bytes if bytecode=True.
+  """
+  return wrap_converter.wrapped_flat_buffer_file_to_mlir(
+      model_content,
+      input_is_filepath=input_is_filepath,
+      bytecode=bytecode,
+      cl_options=cl_options,
+  )
+
+
+@convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.UNSPECIFIED)
+def mlir_to_flatbuffer(
+    mlir_content,
+    input_is_filepath=False,
+    emit_builtin_tflite_ops=True,
+    emit_select_tf_ops=False,
+    emit_custom_ops=True,
+    emit_stablehlo_ops=False,
+):
+  """Converts an MLIR source (textual or bytecode) to a TFLite FlatBuffer.
+
+  Args:
+    mlir_content: MLIR source as a string (textual IR) or bytes (bytecode), or a
+      file path if input_is_filepath is True.
+    input_is_filepath: If True, mlir_content is treated as a file path.
+    emit_builtin_tflite_ops: Whether to emit builtin TFLite operations.
+    emit_select_tf_ops: Whether to emit Select TF operations (Flex ops).
+    emit_custom_ops: Whether to allow custom operations.
+    emit_stablehlo_ops: Whether to serialize StableHLO operations.
+
+  Returns:
+    TFLite FlatBuffer as bytes.
+  """
+  return wrap_converter.wrapped_mlir_to_flat_buffer(
+      mlir_content,
+      input_is_filepath=input_is_filepath,
+      emit_builtin_tflite_ops=emit_builtin_tflite_ops,
+      emit_select_tf_ops=emit_select_tf_ops,
+      emit_custom_ops=emit_custom_ops,
+      emit_stablehlo_ops=emit_stablehlo_ops,
+  )
+
+
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.QUANTIZE)
 def mlir_quantize(
     input_data_str,
@@ -348,6 +409,38 @@ def convert(
     raise converter_error
 
 
+def convert_mlir_bytecode(
+    conversion_flags: _conversion_flags_pb2.ConverterFlags,
+    model_dir: str,
+    output_file_path: str,
+):
+  """Converts `model_dir` to a TFLite model file directly.
+
+  Args:
+    conversion_flags: Proto describing conversion properties, see
+      `compiler/mlir/lite/converter_flags.proto`.
+    model_dir: Directory containing the MLIR bytecode and weights.
+    output_file_path: Path where the TFLite model should be saved.
+
+  Returns:
+    Status or result of the conversion.
+
+  Raises:
+    ConverterError: When conversion fails.
+  """
+  try:
+    return wrap_converter.wrapped_convert_mlir_bytecode(
+        conversion_flags.SerializeToString(),
+        model_dir,
+        output_file_path,
+    )
+  except Exception as e:
+    converter_error = ConverterError(str(e))
+    for error_data in _metrics_wrapper.retrieve_collected_errors():
+      converter_error.append_error(error_data)
+    raise converter_error from e
+
+
 def build_model_flags(
     change_concat_input_ranges=False,
     allow_nonexistent_arrays=False,
@@ -419,6 +512,7 @@ def build_conversion_flags(
     accumulation_type=None,
     allow_bfloat16=False,
     unfold_large_splat_constant=False,
+    fold_fp16_resource_casts=True,
     supported_backends=None,
     disable_per_channel_quantization=False,
     enable_mlir_dynamic_range_quantizer=False,
@@ -449,6 +543,8 @@ def build_conversion_flags(
     serialize_debug_metadata=False,
     unsafe_fuse_dynamic_shaped_broadcast=False,
     unsafe_single_batch_rank_reduction=False,
+    enable_debug=False,
+    debug_dir=None,
     **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -519,6 +615,8 @@ def build_conversion_flags(
       inference with the bfloat16 type.
     unfold_large_splat_constant: Whether to unfold large splat constant tensors
       in the flatbuffer model to reduce size.
+    fold_fp16_resource_casts: Whether to fold 16-bit float (fp16/bf16) resource
+      casts.
     supported_backends: List of TFLite backends which needs to check
       compatibility.
     disable_per_channel_quantization: Disable per-channel quantized weights for
@@ -589,6 +687,9 @@ def build_conversion_flags(
       the source model.
     unsafe_single_batch_rank_reduction: When set to true, enable the unsafe
       single batch rank reduction.
+    enable_debug: When set to true, enable debug mode.
+    debug_dir: Directory to save debug output.
+    **_: Additional unused keyword arguments.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -653,6 +754,8 @@ def build_conversion_flags(
     )
   conversion_flags.allow_bfloat16 = allow_bfloat16
   conversion_flags.unfold_large_splat_constant = unfold_large_splat_constant
+  if hasattr(conversion_flags, "fold_fp16_resource_casts"):
+    conversion_flags.fold_fp16_resource_casts = fold_fp16_resource_casts
   if supported_backends:
     conversion_flags.supported_backends.extend(supported_backends)
   conversion_flags.disable_per_channel_quantization = (
@@ -695,6 +798,11 @@ def build_conversion_flags(
     conversion_flags.debug_options.elide_elementsattrs_if_larger = (
         elide_elementsattrs_if_larger
     )
+
+  if hasattr(conversion_flags, "enable_debug"):
+    conversion_flags.enable_debug = enable_debug
+  if debug_dir is not None and hasattr(conversion_flags, "debug_dir"):
+    conversion_flags.debug_dir = debug_dir
 
   if use_buffer_offset is not None:
     conversion_flags.use_buffer_offset = use_buffer_offset

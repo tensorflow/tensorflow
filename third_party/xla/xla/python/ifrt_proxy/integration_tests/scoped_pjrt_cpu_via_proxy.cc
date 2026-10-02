@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
@@ -49,7 +49,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateIfrtBackendClient(
   xla::CpuClientOptions options;
   options.asynchronous = true;
   options.cpu_device_count = 4;
-  ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> pjrt_cpu_client,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> pjrt_cpu_client,
                    xla::GetXlaPjrtCpuClient(options));
   return xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client));
 }

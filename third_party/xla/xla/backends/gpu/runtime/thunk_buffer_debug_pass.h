@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_BUFFER_DEBUG_PASS_H_
 
 #include <cstddef>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/base/nullability.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -42,9 +44,9 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
     kBufferSaver,
   };
 
-  explicit ThunkBufferDebugPass(
-      Mode mode, const BufferAssignment* buffer_assignment = nullptr)
-      : mode_(mode), buffer_assignment_(buffer_assignment) {}
+  // Returns an error if any of the provided module_output_slices is a tuple.
+  static absl::StatusOr<std::unique_ptr<ThunkBufferDebugPass>> Create(
+      Mode mode, std::vector<ShapedSlice> module_output_slices);
 
   absl::string_view name() const override { return "thunk-buffer-debug"; }
 
@@ -55,16 +57,17 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
                            ThunkPassBufferAllocator& allocator) override;
 
  private:
+  explicit ThunkBufferDebugPass(Mode mode,
+                                std::vector<ShapedSlice> module_output_slices)
+      : mode_(mode), module_output_slices_(std::move(module_output_slices)) {}
+
   Mode mode_;
-  const BufferAssignment* buffer_assignment_;
+  // Outputs of the entire HLO module graph.
+  std::vector<ShapedSlice> module_output_slices_;
 };
 
-absl::StatusOr<absl::flat_hash_map<size_t, ShapedSlice>> GetOutputShapedBuffers(
+absl::StatusOr<std::vector<ShapedSlice>> GetOutputShapedBuffers(
     const HloModule* hlo_module, const BufferAssignment* buffer_assignment);
-
-absl::StatusOr<absl::flat_hash_map<size_t, BufferAllocation::Slice>>
-GetOutputBuffers(const HloModule* hlo_module,
-                 const BufferAssignment* buffer_assignment);
 
 }  // namespace gpu
 }  // namespace xla

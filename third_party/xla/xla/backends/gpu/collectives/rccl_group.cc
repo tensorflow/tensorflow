@@ -19,18 +19,12 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "rocm/rocm_config.h"
+#include "rocm/include/rccl/rccl.h"
 #include "xla/backends/gpu/collectives/rccl_errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
-
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 namespace {
@@ -69,7 +63,7 @@ absl::StatusOr<bool> RcclGroupEnd() {
 bool IsInsideRcclGroupLaunch() { return rccl_group_nesting > 0; }
 
 absl::StatusOr<bool> RcclGroupLaunch(absl::FunctionRef<absl::Status()> group) {
-  RETURN_IF_ERROR(RcclGroupStart());
+  ABSL_RETURN_IF_ERROR(RcclGroupStart());
   absl::Status group_status = group();
   absl::StatusOr<bool> launched = RcclGroupEnd();
   if (!group_status.ok()) {

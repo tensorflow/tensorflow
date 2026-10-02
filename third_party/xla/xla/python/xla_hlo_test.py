@@ -281,6 +281,25 @@ ENTRY %main {
             logging.info("Operand of %s: %s", inst.name, operand.name)
 
     @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    def testHloInstructionControlPredecessors(self):
+      module = _hlo.hlo_module_from_text(R"""
+HloModule control_predecessors
+
+ENTRY %main {
+  %p0 = f32[] parameter(0)
+  %first = f32[] negate(%p0)
+  ROOT %second = f32[] abs(%p0), control-predecessors={%first}
+}
+""")
+      instructions = {
+          inst.name: inst for inst in module.computations()[0].instructions()
+      }
+      self.assertEmpty(instructions["first"].control_predecessors())
+      predecessors = instructions["second"].control_predecessors()
+      self.assertLen(predecessors, 1)
+      self.assertEqual(predecessors[0].name, "first")
+
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testHloInstructionName(self):
       module = self.ExampleComputation()
       computations = module.computations()
@@ -324,6 +343,50 @@ ENTRY %main {
             self.assertLen(operands, 2)
             self.assertEqual(operands[0], operands[1])
             self.assertNotEqual(operands[0], add_op)
+
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    def testFrontendAttributes(self):
+      hlo_string = R"""
+HloModule frontend_attributes_module
+
+ENTRY %main {
+  %p0 = f32[4]{0} parameter(0), frontend_attributes={key1="value1", key2="value2"}
+  ROOT %add = f32[4]{0} add(%p0, %p0)
+}
+"""
+      module = _hlo.hlo_module_from_text(hlo_string)
+      comp = module.computations()[0]
+      instructions = comp.instructions()
+      p0 = [i for i in instructions if i.opcode == _hlo.HloOpcode.kParameter][0]
+      add = [i for i in instructions if i.opcode == _hlo.HloOpcode.kAdd][0]
+
+      self.assertEqual(p0.get_frontend_attribute("key1"), "value1")
+      self.assertEqual(p0.get_frontend_attribute("key2"), "value2")
+      self.assertIsNone(p0.get_frontend_attribute("key3"))
+      self.assertIsNone(add.get_frontend_attribute("key1"))
+
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    def testSetFrontendAttributes(self):
+      hlo_string = R"""
+HloModule frontend_attributes_module
+
+ENTRY %main {
+  %p0 = f32[4]{0} parameter(0)
+  ROOT %add = f32[4]{0} add(%p0, %p0)
+}
+"""
+      module = _hlo.hlo_module_from_text(hlo_string)
+      comp = module.computations()[0]
+      instructions = comp.instructions()
+      p0 = [i for i in instructions if i.opcode == _hlo.HloOpcode.kParameter][0]
+
+      self.assertIsNone(p0.get_frontend_attribute("key1"))
+
+      p0.set_frontend_attribute("key1", "value1")
+      p0.set_frontend_attribute("key2", "value2")
+
+      self.assertEqual(p0.get_frontend_attribute("key1"), "value1")
+      self.assertEqual(p0.get_frontend_attribute("key2"), "value2")
 
     @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testAsyncWrappedRootOnAsyncDone(self):

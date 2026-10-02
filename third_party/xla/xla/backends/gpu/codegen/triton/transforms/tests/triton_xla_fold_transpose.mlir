@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-opt %s --triton-xla-fold-transpose | FileCheck %s
 
 // CHECK-LABEL: func @push_transpose_of_extract_tile_to_memref
@@ -78,4 +92,60 @@ func.func @push_transpose_up_through_mask(%arg0: tensor<4x8xf32>, %arg1: f32) ->
   %0 = xtile.mask %arg0 bounds [3, 7], %arg1 : tensor<4x8xf32>
   %1 = tt.trans %0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
   return %1 : tensor<8x4xf32>
+}
+
+// CHECK-LABEL: func @push_transpose_up_through_diamond_dag
+func.func @push_transpose_up_through_diamond_dag(
+  %input: memref<4x8xf32, #xtile.layout<[1, 0]>>,
+  %offset0: index, %offset1: index) -> tensor<8x4xf32> {
+  // CHECK: %[[TRANSPOSE:.*]] = memref.transpose %arg0 (d0, d1) -> (d1, d0)
+  // CHECK-NEXT: %[[EXTRACT:.*]] = xtile.extract %[[TRANSPOSE]][%arg2, %arg1] [8, 4] [1, 1]
+  // CHECK-NEXT: %[[SQ:.*]] = arith.mulf %[[EXTRACT]], %[[EXTRACT]] : tensor<8x4xf32>
+  // CHECK-NEXT: %[[ADD:.*]] = arith.addf %[[EXTRACT]], %[[SQ]] : tensor<8x4xf32>
+  // CHECK-NEXT: %[[MUL:.*]] = arith.mulf %[[SQ]], %[[ADD]] : tensor<8x4xf32>
+  // CHECK-NOT: tt.trans
+  // CHECK-NEXT: return %[[MUL]] : tensor<8x4xf32>
+  %tile = xtile.extract %input[%offset0, %offset1][4, 8][1, 1]
+    : memref<4x8xf32, #xtile.layout<[1, 0]>> -> tensor<4x8xf32>
+  %sq = arith.mulf %tile, %tile : tensor<4x8xf32>
+  %add = arith.addf %tile, %sq : tensor<4x8xf32>
+  %mul = arith.mulf %sq, %add : tensor<4x8xf32>
+  %res = tt.trans %mul {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  return %res : tensor<8x4xf32>
+}
+
+// CHECK-LABEL: func @push_transpose_up_through_if_multiple_uses
+func.func @push_transpose_up_through_if_multiple_uses(
+  %arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>, %cond: i1) -> tensor<8x4xf32> {
+  // CHECK-DAG: %[[TRANS0:.*]] = tt.trans %arg0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  // CHECK-DAG: %[[TRANS1:.*]] = tt.trans %arg1 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  // CHECK: %[[IF:.*]] = scf.if %arg2 -> (tensor<8x4xf32>) {
+  // CHECK:   scf.yield %[[TRANS0]] : tensor<8x4xf32>
+  // CHECK: } else {
+  // CHECK:   scf.yield %[[TRANS1]] : tensor<8x4xf32>
+  // CHECK: }
+  // CHECK-NEXT: %[[SQ:.*]] = arith.mulf %[[IF]], %[[IF]] : tensor<8x4xf32>
+  // CHECK-NEXT: %[[ADD:.*]] = arith.addf %[[IF]], %[[SQ]] : tensor<8x4xf32>
+  // CHECK-NOT: tt.trans
+  // CHECK-NEXT: return %[[ADD]] : tensor<8x4xf32>
+  %0 = scf.if %cond -> tensor<4x8xf32> {
+    scf.yield %arg0 : tensor<4x8xf32>
+  } else {
+    scf.yield %arg1 : tensor<4x8xf32>
+  }
+  %sq = arith.mulf %0, %0 : tensor<4x8xf32>
+  %add = arith.addf %0, %sq : tensor<4x8xf32>
+  %res = tt.trans %add {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  return %res : tensor<8x4xf32>
+}
+
+// CHECK-LABEL: func @do_not_push_transpose_when_producer_has_non_transpose_user
+func.func @do_not_push_transpose_when_producer_has_non_transpose_user(
+  %arg0: tensor<4x8xf32>) -> (tensor<4x8xf32>, tensor<8x4xf32>) {
+  // CHECK-NEXT: %[[NEG:.*]] = arith.negf %arg0 : tensor<4x8xf32>
+  // CHECK-NEXT: %[[TRANS:.*]] = tt.trans %[[NEG]] {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  // CHECK-NEXT: return %[[NEG]], %[[TRANS]] : tensor<4x8xf32>, tensor<8x4xf32>
+  %0 = arith.negf %arg0 : tensor<4x8xf32>
+  %1 = tt.trans %0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  return %0, %1 : tensor<4x8xf32>, tensor<8x4xf32>
 }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -26,9 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
@@ -41,11 +40,11 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
   absl::flat_hash_map<std::string, GpuDeviceInfoProto> gpu_specs;
   for (const std::string file_name :
        {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "b200",
-        "bmg_g21", "h100_pcie", "h100_sxm", "p100", "v100", "mi200",
-        "rtx6000pro", "gb200", "gb300"}) {
+        "b200_mig", "bmg_g21", "h100_pcie", "h100_sxm", "h100_sxm_mig", "p100",
+        "v100", "mi200", "rtx6000pro", "gb200", "gb300"}) {
     GpuTargetConfigProto proto;
     std::string spec_string;
-    TF_ASSERT_OK(tsl::ReadFileToString(
+    ASSERT_OK(tsl::ReadFileToString(
         tsl::Env::Default(),
         tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                           "backends/gpu/target_config/specs",
@@ -57,12 +56,14 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
   }
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName(name));
-  bool all_skipped = false;
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName(name));
+  ASSERT_GT(platform->VisibleDeviceCount(), 0)
+      << "No visible GPU devices found (cuInit may have failed).";
+  bool all_skipped = true;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(i));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(i));
     const DeviceDescription& physical_device_description =
         executor->GetDeviceDescription();
 

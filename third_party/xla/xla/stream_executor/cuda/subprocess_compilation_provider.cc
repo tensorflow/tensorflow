@@ -23,12 +23,17 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -68,6 +73,26 @@ absl::StatusOr<Assembly> CompileHelper(absl::string_view ptxas_path,
                                  options.dump_compilation_log);
 }
 
+absl::StatusOr<int> GetLatestPtxIsaVersionImpl(
+    const std::string& path_to_ptxas) {
+  std::vector<std::string> ptxas_args = {path_to_ptxas, "--input-as-string",
+                                         ".version 99.99"};
+  tsl::SubProcess ptxas_info_dumper;
+  ptxas_info_dumper.SetProgram(path_to_ptxas, ptxas_args);
+  ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
+  if (!ptxas_info_dumper.Start()) {
+    return absl::InternalError("Failed to launch ptxas");
+  }
+  std::string stderr_output;
+  int exit_status = ptxas_info_dumper.Communicate(
+      /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
+  if (exit_status == 0) {
+    return absl::InternalError("ptxas succeeded where it was expected to fail");
+  }
+
+  return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(stderr_output);
+}
+
 }  // namespace
 
 absl::StatusOr<Assembly> SubprocessCompilationProvider::Compile(
@@ -81,7 +106,7 @@ absl::StatusOr<RelocatableModule>
 SubprocessCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  ASSIGN_OR_RETURN(auto assembly,
+  ABSL_ASSIGN_OR_RETURN(auto assembly,
                    CompileHelper(path_to_ptxas_, cc, ptx, options,
                                  /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(assembly.cubin),
@@ -92,41 +117,43 @@ absl::StatusOr<Assembly> SubprocessCompilationProvider::CompileAndLink(
     const CudaComputeCapability& cc,
     absl::Span<const RelocatableModuleOrPtx> inputs,
     const CompilationOptions& options) const {
+  if (path_to_nvlink_.empty()) {
+    return absl::FailedPreconditionError(
+        "Can't link PTX because no nvlink binary was found.");
+  }
+
   std::vector<std::vector<uint8_t>> images;
   for (const auto& input : inputs) {
     if (std::holds_alternative<RelocatableModule>(input)) {
       images.push_back(std::get<RelocatableModule>(input).cubin);
     } else {
       // If we have a PTX string, we need to compile it to CUBIN first.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           RelocatableModule module,
           CompileToRelocatableModule(cc, std::get<Ptx>(input).ptx, options));
       images.push_back(std::move(module.cubin));
     }
   }
 
-  ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
+  ABSL_ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
   return Assembly{std::move(cubin)};
 }
 
 absl::StatusOr<int> SubprocessCompilationProvider::GetLatestPtxIsaVersion()
     const {
-  std::vector<std::string> ptxas_args = {path_to_ptxas_, "--input-as-string",
-                                         ".version 99.99"};
-  tsl::SubProcess ptxas_info_dumper;
-  ptxas_info_dumper.SetProgram(path_to_ptxas_, ptxas_args);
-  ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
-  if (!ptxas_info_dumper.Start()) {
-    return absl::InternalError("Failed to launch ptxas");
-  }
-  std::string stderr_output;
-  int exit_status = ptxas_info_dumper.Communicate(
-      /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
-  if (exit_status == 0) {
-    return absl::InternalError("ptxas succeeded where it was expected to fail");
-  }
+  static absl::Mutex mutex(absl::kConstInit);
+  static absl::NoDestructor<
+      absl::flat_hash_map<std::string, absl::StatusOr<int>>>
+      cache ABSL_GUARDED_BY(mutex);
 
-  return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(stderr_output);
+  absl::MutexLock lock(mutex);
+  auto it = cache->find(path_to_ptxas_);
+  if (it != cache->end()) {
+    return it->second;
+  }
+  return cache
+      ->try_emplace(path_to_ptxas_, GetLatestPtxIsaVersionImpl(path_to_ptxas_))
+      .first->second;
 }
 
 std::string SubprocessCompilationProvider::name() const {

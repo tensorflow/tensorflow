@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/platform/ctstring.h"
 #include "tsl/platform/ctstring_internal.h"

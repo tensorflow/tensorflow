@@ -15,6 +15,13 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <array>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
@@ -174,6 +181,17 @@ absl::Status Conv2DBackpropComputeInputShape(
     const Tensor& input_sizes, const TensorShape& filter_shape,
     const TensorShape& out_backprop_shape, const TensorFormat& data_format,
     TensorShape* input_shape) {
+  if (filter_shape.dims() != 4) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Conv2DBackpropInput: filter must be 4-dimensional, not ",
+                     filter_shape.dims()));
+  }
+  if (out_backprop_shape.dims() != 4) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Conv2DBackpropInput: out_backprop must be 4-dimensional, not ",
+        out_backprop_shape.dims()));
+  }
+
   if (!TensorShapeUtils::IsVector(input_sizes.shape())) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",

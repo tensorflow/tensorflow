@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -57,9 +56,12 @@ class CombinedGpuPerformanceModelTest
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuHloCostAnalysis analysis_;
   CombinedGpuPerformanceModel model_{
-      device_info_, fusion_analysis_cache_, mlir_context_,
+      device_info_,
+      fusion_analysis_cache_,
+      mlir_context_,
       [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
-      use_experimental_tiling()};
+      use_experimental_tiling(),
+      /*enable_same_shape_multi_output_fusion=*/false};
 };
 
 TEST_P(CombinedGpuPerformanceModelTest,

@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
@@ -36,6 +37,10 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/xla.pb.h"
+
+namespace tsl::thread {
+class ThreadPool;
+}  // namespace tsl::thread
 
 namespace xla {
 namespace gpu {
@@ -51,7 +56,9 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
       const DebugOptions* absl_nonnull debug_options,
       Compiler* absl_nonnull compiler,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      const Compiler::GpuTargetConfig* target_config)
+      const Compiler::GpuTargetConfig* target_config,
+      tsl::thread::ThreadPool* absl_nullable thread_pool = nullptr,
+      MlirContextPool* absl_nullable mlir_context_pool = nullptr)
       : GpuCodegenBackend(autotuner::Backend::BLOCK_LEVEL_EMITTER,
                           debug_options, compiler, target_config),
         shape_size_fn_(std::move(shape_size_fn)),
@@ -59,9 +66,13 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
         indexing_performance_model_(
             &target_config->device_description, &fusion_analysis_cache_,
             shape_size_fn_, &mlir_context_,
-            debug_options->xla_gpu_experimental_enable_tiling_propagation()),
+            debug_options->xla_gpu_experimental_enable_tiling_propagation(),
+            debug_options
+                ->xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
+            mlir_context_pool),
         xla_gpu_experimental_all_fusions_with_triton_(
-            debug_options->xla_gpu_experimental_all_fusions_with_triton()) {
+            debug_options->xla_gpu_experimental_all_fusions_with_triton()),
+        thread_pool_(thread_pool) {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
@@ -84,11 +95,10 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   // We don't want to use the Triton emitter as a reference because it can
   // produce wrong results.
   bool CanProduceWrongResults() const override { return true; }
-  // TODO(b/514330710): use valid version
-  std::string version() const override { return "unknown"; }
+  std::string version() const override;
 
  private:
-  absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(
+  absl::StatusOr<xtile::BlockLevelFusionConfig> GetCostModelConfig(
       const HloInstruction& instr);
   // A function which returns the size in bytes of the top-level buffer of a
   // shape.
@@ -98,6 +108,7 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model_;
   // If true, autotune all possible fusions with Triton.
   bool xla_gpu_experimental_all_fusions_with_triton_ = false;
+  tsl::thread::ThreadPool* absl_nullable thread_pool_ = nullptr;
 };
 
 }  // namespace gpu

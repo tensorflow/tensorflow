@@ -33,6 +33,11 @@ class ApiDefMapTest(test_util.TensorFlowTestCase):
     api_def = api_def_map.get_api_def("Add")
     self.assertEqual(api_def.graph_op_name, "Add")
 
+  def testApiDefMapGetInvalidOp(self):
+    api_def_map = c_api_util.ApiDefMap()
+    with self.assertRaises(ValueError):
+      api_def_map.get_api_def("InvalidOperationName")
+
   def testApiDefMapPutThenGet(self):
     api_def_map = c_api_util.ApiDefMap()
     api_def_text = """

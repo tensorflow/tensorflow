@@ -65,8 +65,9 @@ class CommandExecutor {
     // that have buffer of resource conflicts, and building a DAG of commands.
     kConcurrent,
 
-    // Uses the same latency hidden scheduling results used in the thunk
-    // scheduling.
+    // Preserves the thunk schedule produced by the latency hiding scheduler.
+    // The emitter expresses command order as token resources in
+    // `extra_resources`; the execution graph is built like kConcurrent.
     kLHS,
 
     // Hybrid of kSerialize and kConcurrent. Builds a DAG for concurrent
@@ -155,11 +156,7 @@ class CommandExecutor {
   size_t size() const { return commands_.size(); }
 
   bool requires_update_on_initialize() const {
-    bool requires_update_on_initialize = false;
-    commands_.Walk([&](const Command* command) {
-      requires_update_on_initialize |= command->requires_update_on_initialize();
-    });
-    return requires_update_on_initialize;
+    return requires_update_on_initialize_;
   }
 
   bool requires_warmup() const {
@@ -171,11 +168,7 @@ class CommandExecutor {
   }
 
   bool requires_update_on_execute() const {
-    bool requires_update_on_execute = false;
-    commands_.Walk([&](const Command* command) {
-      requires_update_on_execute |= command->requires_update_on_execute();
-    });
-    return requires_update_on_execute;
+    return requires_update_on_execute_;
   }
 
   bool support_loop_unroll() const {
@@ -260,6 +253,14 @@ class CommandExecutor {
   // Unique buffer allocations indices referenced by all commands in this
   // sequence (sorted by the buffer allocation index).
   std::vector<BufferAllocation::Index> allocs_indices_;
+
+  // Whether any command in this sequence requires an update during
+  // initialization.
+  bool requires_update_on_initialize_ = false;
+
+  // Whether any command in this sequence requires an update on every
+  // execution.
+  bool requires_update_on_execute_ = false;
 
   // A mapping from command id to unique buffer allocations indices referenced
   // by the command (sorted by the buffer allocation index).

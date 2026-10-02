@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -47,7 +48,8 @@ namespace gpu {
 
 class ConvFusionRewriter : public HloModulePass {
  public:
-  explicit ConvFusionRewriter() = default;
+  explicit ConvFusionRewriter(const se::DeviceDescription& device_info)
+      : device_info_(device_info) {}
 
   absl::string_view name() const override { return "conv-fusion-rewriter"; }
 
@@ -55,6 +57,9 @@ class ConvFusionRewriter : public HloModulePass {
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  const se::DeviceDescription& device_info_;
 };
 
 }  // namespace gpu

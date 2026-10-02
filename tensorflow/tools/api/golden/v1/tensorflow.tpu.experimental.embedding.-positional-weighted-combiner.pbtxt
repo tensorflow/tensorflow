@@ -1,0 +1,18 @@
+path: "tensorflow.tpu.experimental.embedding.PositionalWeightedCombiner"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.PositionalWeightedCombiner\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils._WithSlotVariables\'>"
+  is_instance: "<class \'object\'>"
+  member {
+    name: "hyperparameters"
+    mtype: "<class \'property\'>"
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'max_valency\', \'initializer\', \'custom_optimizer\'], varargs=None, keywords=None, defaults=None"
+  }
+}

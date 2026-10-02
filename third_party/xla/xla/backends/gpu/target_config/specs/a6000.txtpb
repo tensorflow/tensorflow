@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# proto-file: third_party/tensorflow/compiler/xla/stream_executor/device_description.proto
+# proto-message: stream_executor.GpuTargetConfigProto
+
 gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
@@ -35,15 +38,11 @@ gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  dnn_version: "8.9.4"
   thread_dim_limit_x: 1024
   thread_dim_limit_y: 1024
   thread_dim_limit_z: 64
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 8
-  minor: 9
-  patch: 4
-}
 device_description_str: "NVIDIA RTX A6000"
 

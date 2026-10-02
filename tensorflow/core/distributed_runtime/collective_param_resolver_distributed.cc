@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 
+#include <memory>
+
 #include "absl/strings/escaping.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -41,7 +43,7 @@ class CompleteGroupCall : public CancellableCall {
     req_.set_device_type(group.device_type.type_string());
     *req_.mutable_device_attributes() = device;
   }
-  ~CompleteGroupCall() override {}
+  ~CompleteGroupCall() override = default;
 
   void IssueCall(const StatusCallback& done) override {
     wi_->CompleteGroupAsync(&opts_, &req_, &resp_, done);
@@ -77,7 +79,7 @@ class CompleteInstanceCall : public CancellableCall {
     req_.set_is_source(is_source);
   }
 
-  ~CompleteInstanceCall() override {}
+  ~CompleteInstanceCall() override = default;
 
   void IssueCall(const StatusCallback& done) override {
     wi_->CompleteInstanceAsync(&opts_, &req_, &resp_, done);
@@ -219,7 +221,7 @@ CollectiveParamResolverDistributed::GetCachedGroup(int32_t group_key) {
 absl::Status CollectiveParamResolverDistributed::UpdateGroupCache(
     const CompleteGroupResponse& resp) {
   // Build a new record from resp.
-  std::unique_ptr<GroupRec> gr(new GroupRec);
+  std::unique_ptr<GroupRec> gr = std::make_unique<GroupRec>();
   {
     mutex_lock grl(gr->mu);
     gr->group.device_type = DeviceType(resp.device_type());

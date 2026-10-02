@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -47,10 +47,15 @@ limitations under the License.
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/platform.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
 }  // namespace Eigen
+
+namespace xla {
+class CustomOptions;
+}  // namespace xla
 
 namespace xla::cpu {
 
@@ -284,6 +289,9 @@ class Thunk {
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
                                             ExecuteSession::kSplitThreshold);
     uint64_t rng_seed = 0;
+
+    // Per-execution custom options.
+    const CustomOptions* custom_options = nullptr;
   };
 
   // An execute event that becomes ready when all tasks are completed.
@@ -340,11 +348,11 @@ class Thunk {
   // buffer slices are valid, as overhead of buffer slices checks adds up and
   // become measurable on a hot path of executing tiny thunks.
   static constexpr bool ShouldCheckBufferSlices() {
-#ifdef NDEBUG
-    return false;
-#else
-    return true;
-#endif  // NDEBUG
+    if constexpr (tsl::kIsDebugBuild) {
+      return true;
+    } else {
+      return false;
+    }
   }
 
  private:
@@ -380,7 +388,7 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
   static absl::StatusOr<ThunkSequence> Of(Args&&... args) {
     static_assert(std::is_base_of_v<Thunk, T>,
                   "ThunkSequence::Of() requires `T` to be a `Thunk` subclass.");
-    ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
+    ABSL_ASSIGN_OR_RETURN(auto thunk, T::Create(std::forward<Args>(args)...));
     return ThunkSequence(std::move(thunk));
   }
 

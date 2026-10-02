@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -90,6 +89,50 @@ TEST(TargetUtil, ObtainDeviceFunctionNameLog) {
   EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kLog,
                                      /*output_type=*/F16, triple),
             "__nv_fast_logf");
+}
+
+TEST(TargetUtil, ObtainDeviceFunctionNameAtan) {
+  llvm::Triple nvptx_triple("nvptx64-unknown-unknown");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F32, nvptx_triple),
+            "__nv_atanf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F16, nvptx_triple),
+            "__nv_atanf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/BF16, nvptx_triple),
+            "__nv_atanf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F64, nvptx_triple),
+            "__nv_atan");
+
+  llvm::Triple amdgpu_triple("amdgcn-amd-amdhsa");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F32, amdgpu_triple),
+            "__ocml_atan_f32");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F16, amdgpu_triple),
+            "__ocml_atan_f16");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/BF16, amdgpu_triple),
+            "__ocml_atan_f32");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F64, amdgpu_triple),
+            "__ocml_atan_f64");
+
+  llvm::Triple spir_triple("spir64-unknown-unknown");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F32, spir_triple),
+            "_Z16__spirv_ocl_atanf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F16, spir_triple),
+            "_Z16__spirv_ocl_atanf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/BF16, spir_triple),
+            "_Z16__spirv_ocl_atanf");
+  EXPECT_EQ(ObtainDeviceFunctionName(TargetDeviceFunctionID::kAtan,
+                                     /*output_type=*/F64, spir_triple),
+            "_Z16__spirv_ocl_atand");
 }
 
 }  // namespace

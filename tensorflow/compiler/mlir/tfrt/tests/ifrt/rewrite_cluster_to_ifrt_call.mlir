@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-tfrt-opt -split-input-file -rewrite-cluster-to-ifrt-call %s | FileCheck %s
 // TODO(b/316226111): the printer may not guarantee the same order of fields. Rewrite the checks to be less sensitive to proto serialization formats.
 // -----
@@ -38,7 +52,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>) -> (tensor<1x3xf32>) {
 // CHECK-SAME:       (tensor<1x3xf32>) -> ()
 // CHECK:    return
 //
-// CHECK:  func.func @_ifrt_program__func(%arg0: tensor<1x3xf32>)
+// CHECK:  func.func @_ifrt_program__func(%arg0: tensor<1x3xf32> {mhlo.sharding = "{devices=[2,1]0,1}"})
 // CHECK-SAME: __tpu_compile_metadata_text = "args { dtype: DT_FLOAT shape { dim { size: 1 } dim { size: 3 } } kind: PARAMETER sharding { type: OTHER tile_assignment_dimensions: 2 tile_assignment_dimensions: 1 tile_assignment_devices: 0 tile_assignment_devices: 1 } is_bounded_dynamic_dim: false } num_replicas: 1 num_cores_per_replica: 2 use_spmd_for_xla_partitioning: true "
 // CHECK-SAME: device_assignment = [0, 0, 0, 0, 0, 0, 0, 1]
 // CHECK-SAME: tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64
@@ -52,7 +66,7 @@ func.func @serving_default(%arg0: tensor<1x3xf32>) -> () {
 }
 
 // CHECK-LABEL: @_func
-func.func private @_func(%arg0: tensor<1x3xf32>) -> () {
+func.func private @_func(%arg0: tensor<1x3xf32> {mhlo.sharding = "{devices=[2,1]0,1}"}) -> () {
   return
 }
 }

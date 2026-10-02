@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
@@ -66,8 +67,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -148,13 +147,11 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
       HloModule* module, int64_t alignment = 1,
       BufferAssigner::Colorer colorer = BufferAssigner::DefaultColorer(),
-      const BufferAssigner::PrivateStacks& private_stacks = {},
       std::optional<BufferAssignment::BufferIsolationOptions>
           isolation_options = std::nullopt) {
     BufferAssigner::Options opts;
     opts.allocate_buffers_for_constants = true;
     opts.colorer = colorer;
-    opts.private_stacks = &private_stacks;
     opts.isolation_options = isolation_options;
     return BufferAssigner::Run(
                module,
@@ -210,17 +207,79 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
         .value();
   }
 
+  // Runs buffer assignment after coloring the value defined by
+  // `view_instruction_name` with `view_color` (and everything else color 0).
+  // When `dus_view_color` is set, buffers of that color are skipped (given no
+  // allocation). Used to exercise Options::dus_view_color without depending on
+  // any backend that supplies the real view color.
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithDusViewColor(
+      HloModule* module, absl::string_view view_instruction_name,
+      BufferValue::Color view_color,
+      std::optional<BufferValue::Color> dus_view_color) {
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.dus_view_color = dus_view_color;
+    opts.colorer = [name = std::string(view_instruction_name), view_color](
+                       HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+      for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
+        value->set_color(value->instruction()->name() == name
+                             ? view_color
+                             : BufferValue::Color(0));
+      }
+      return absl::OkStatus();
+    };
+    absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+        BufferAssigner::Run(
+            module, std::make_unique<DependencyHloOrdering>(module),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts));
+    CHECK_OK(assignment.status());
+    return std::move(assignment).value();
+  }
+
+  // Like RunBufferAssignmentWithDusViewColor, but with the module's own
+  // sequential schedule, so temp buffers are packed by the heap simulator
+  // (which is where view base live range extension matters).
+  std::unique_ptr<BufferAssignment>
+  RunSequentialBufferAssignmentWithDusViewColor(
+      HloModule* module, absl::string_view view_instruction_name,
+      BufferValue::Color view_color,
+      std::optional<BufferValue::Color> dus_view_color) {
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.dus_view_color = dus_view_color;
+    opts.colorer = [name = std::string(view_instruction_name), view_color](
+                       HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+      for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
+        value->set_color(value->instruction()->name() == name
+                             ? view_color
+                             : BufferValue::Color(0));
+      }
+      return absl::OkStatus();
+    };
+    absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+        BufferAssigner::Run(
+            module, std::make_unique<SequentialHloOrdering>(module->schedule()),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts));
+    CHECK_OK(assignment.status());
+    return std::move(assignment).value();
+  }
+
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
       HloModule* module, absl::Span<HloInstruction* const> instruction_sequence,
       int64_t alignment = 1,
       BufferAssigner::CanUseAllocation can_use_allocation =
-          BufferAssigner::DefaultCanUseAllocation()) {
+          BufferAssigner::DefaultCanUseAllocation(),
+      buffer_assignment::BufferAssignmentAlgorithmProto::Value algorithm =
+          buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT) {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
     CHECK_OK(schedule.Update());
     BufferAssigner::Options opts;
     opts.allocate_buffers_for_constants = true;
     opts.can_use_allocation = std::move(can_use_allocation);
+    opts.buffer_assignment_algorithm = algorithm;
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
                &BufferSizeBytes, &alias_info_,
@@ -575,6 +634,142 @@ TEST_F(BufferAssignmentTest, Basic) {
   GetAssignedOutputAllocation(*buffers, sub);
 }
 
+TEST_F(BufferAssignmentTest, TakeAllocations) {
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p1"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p2"));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kAdd, param0, param1));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  // Verify that we have some allocations and they have assigned buffers and
+  // peak memory logical buffers.
+  ASSERT_FALSE(buffers->Allocations().empty());
+  bool has_assigned_buffers = false;
+  bool has_peak_buffers = false;
+  for (const auto& allocation : buffers->Allocations()) {
+    if (!allocation.assigned_buffers().empty()) {
+      has_assigned_buffers = true;
+    }
+    if (!allocation.PeakMemoryLogicalBuffers().empty()) {
+      has_peak_buffers = true;
+    }
+  }
+  EXPECT_TRUE(has_assigned_buffers);
+  EXPECT_TRUE(has_peak_buffers);
+
+  // Consume the buffer assignment.
+  std::vector<BufferAllocation> allocations =
+      std::move(*buffers).TakeAllocations();
+
+  // Verify that the moved allocations have their buffer collections cleared.
+  for (const auto& allocation : allocations) {
+    EXPECT_TRUE(allocation.assigned_buffers().empty());
+    EXPECT_TRUE(allocation.PeakMemoryLogicalBuffers().empty());
+    EXPECT_TRUE(allocation.CrossColorBuffers().empty());
+  }
+}
+
+// Verifies the fallback mechanism for FAST_MERGE on potential OOM.
+// Constructs a graph with sequentially growing buffers.
+// FAST_MERGE allocates sequentially by time, resulting in more fragmentation.
+// DEFAULT (fallback) allocates largest-first, packing smaller buffers tighter.
+// We trigger an OOM to verify the fallback uses DEFAULT packing.
+TEST_F(BufferAssignmentTest, OOMFallbackToDefault) {
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1"));
+
+  Shape s10 = ShapeUtil::MakeShape(F32, {10});  // 40 bytes
+  Shape s20 = ShapeUtil::MakeShape(F32, {20});  // 80 bytes
+  Shape s30 = ShapeUtil::MakeShape(F32, {30});  // 120 bytes
+  Shape s40 = ShapeUtil::MakeShape(F32, {40});  // 160 bytes
+  Shape s1 = ShapeUtil::MakeShape(F32, {1});    // 4 bytes
+
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s10, {param}, "dummy"));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s20, {a}, "dummy"));
+  auto c = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s30, {b}, "dummy"));
+  auto d = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s40, {c}, "dummy"));
+  auto root = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s1, {d}, "dummy"));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(), {param, a, b, c, d, root});
+  CHECK_OK(module->set_schedule(schedule));
+
+  // Options enforcing FAST_MERGE_WITH_FALLBACK.
+  BufferAssigner::Options opts;
+  opts.assignment_algorithm_for_computations_without_ordering =
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+  opts.buffer_assignment_algorithm = buffer_assignment::
+      BufferAssignmentAlgorithmProto::FAST_MERGE_WITH_FALLBACK;
+  opts.fallback_algorithm =
+      buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+  // Run 1: Severely constrained memory -> triggers fallback to DEFAULT.
+  int limit_calls_fallback = 0;
+  constexpr int64_t kSafetyMargin = int64_t{5} << 29;
+  opts.color_memory_limit = [&](LogicalBuffer::Color color) {
+    limit_calls_fallback++;
+    return kSafetyMargin + 10;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment_fallback,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+
+  // Run 2: Unconstrained memory -> runs optimally on FAST_MERGE.
+  BufferAssigner::Options opts_fast;
+  opts_fast.assignment_algorithm_for_computations_without_ordering =
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+  opts_fast.enable_fallback = true;
+  opts_fast.buffer_assignment_algorithm =
+      buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE;
+  opts_fast.fallback_algorithm =
+      buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+  int limit_calls_fast = 0;
+  opts_fast.color_memory_limit = [&](LogicalBuffer::Color color) {
+    limit_calls_fast++;
+    return kSafetyMargin + 10000000;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment_fast,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts_fast)));
+
+  // Verify both assignments succeeded and independently queried their limits.
+  EXPECT_NE(assignment_fallback, nullptr);
+  EXPECT_NE(assignment_fast, nullptr);
+  EXPECT_GT(limit_calls_fallback, 0);
+  EXPECT_GT(limit_calls_fast, 0);
+
+  // Validate that the DEFAULT fallback achieves a tighter layout
+  // (288 bytes) compared to FAST_MERGE (408 bytes).
+  EXPECT_EQ(assignment_fallback->GetStats().total_allocation_bytes, 288);
+  EXPECT_EQ(assignment_fast->GetStats().total_allocation_bytes, 408);
+}
+
 MATCHER(IdEq, "") {
   auto* actual = std::get<0>(arg);
   auto* expected = std::get<1>(arg);
@@ -699,6 +894,57 @@ ENTRY main {
   EXPECT_EQ(neg_2_buffer.index(), neg_1_buffer.index());
 }
 
+TEST_F(BufferAssignmentTest,
+       IntermediateValueWithMultiplePositionsCanBeReused) {
+  // Verifies that an intermediate value with multiple positions (e.g. passed
+  // into a while loop via a tuple as well as a subsequent elementwise
+  // instruction) can share its buffer with the subsequent instruction even when
+  // its end_position recorded in HloLiveRange points to a secondary position
+  // inside the loop.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+while_cond {
+  param = (s32[], f32[100]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  five = s32[] constant(5)
+  ROOT cmp = pred[] compare(i, five), direction=LT
+}
+
+while_body {
+  param = (s32[], f32[100]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  val = f32[100] get-tuple-element(param), index=1
+  one = s32[] constant(1)
+  i_next = s32[] add(i, one)
+  ROOT tuple = (s32[], f32[100]) tuple(i_next, val)
+}
+
+ENTRY main {
+  p0 = f32[100]{0} parameter(0)
+  x_intermediate = f32[100]{0} negate(p0)
+  zero = s32[] constant(0)
+  init_tuple = (s32[], f32[100]) tuple(zero, x_intermediate)
+  loop = (s32[], f32[100]) while(init_tuple), condition=while_cond, body=while_body
+  s = f32[100] get-tuple-element(loop), index=1
+  abs = f32[100] abs(s)
+  x_final = f32[100] add(x_intermediate, abs)
+  ROOT res = (f32[100], f32[100]) tuple(x_final, abs)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* x_intermediate =
+      FindInstruction(module.get(), "x_intermediate");
+  HloInstruction* x_final = FindInstruction(module.get(), "x_final");
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+  BufferAllocation x_inter_buffer = GetAllocation(*buffers, x_intermediate, {});
+  BufferAllocation x_final_buffer = GetAllocation(*buffers, x_final, {});
+
+  EXPECT_EQ(x_inter_buffer.index(), x_final_buffer.index());
+}
+
 TEST_F(BufferAssignmentTest, CanUseAllocationDoesNotMixInputOutputColors) {
   // Even when a backend allows S(0) temps to be assigned to S(1) temp
   // allocations, input/output allocations must match raw colors. They are
@@ -811,6 +1057,98 @@ ENTRY main {
               ::testing::Contains(&neg1_value));
   EXPECT_THAT(neg0_allocation.CrossColorBuffers(),
               ::testing::Not(::testing::Contains(&neg0_value)));
+}
+
+TEST_F(BufferAssignmentTest, CrossColorReuseDoesNotPartiallyOverlapOperand) {
+  // Operand/user buffer sharing is only safe when the user is assigned the
+  // operand's exact chunk. Cross-color best-fit placement cannot use that
+  // exception because it may choose a different offset.
+  const char* const hlo_text = R"(
+HloModule test
+
+add_s {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p_d = f32[2048]{0} parameter(0)
+  p_a = f32[1024]{0} parameter(1)
+  p_k = f32[256]{0} parameter(2)
+  d = f32[2048]{0:S(1)} negate(p_d)
+  zero = f32[] constant(0)
+  d_sum = f32[] reduce(d, zero), dimensions={0}, to_apply=add_s
+  a = f32[1024]{0} negate(p_a)
+  b = f32[1024]{0} abs(a)
+  k = f32[256]{0:S(1)} negate(p_k)
+  k_sum = f32[] reduce(k, zero), dimensions={0}, to_apply=add_s
+  b_sum = f32[] reduce(b, zero), dimensions={0}, to_apply=add_s
+  partial = f32[] add(d_sum, k_sum)
+  ROOT out = f32[] add(partial, b_sum)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  HloInstruction* p_d = FindInstruction(module.get(), "p_d");
+  HloInstruction* p_a = FindInstruction(module.get(), "p_a");
+  HloInstruction* p_k = FindInstruction(module.get(), "p_k");
+  HloInstruction* d = FindInstruction(module.get(), "d");
+  HloInstruction* zero = FindInstruction(module.get(), "zero");
+  HloInstruction* d_sum = FindInstruction(module.get(), "d_sum");
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  HloInstruction* b = FindInstruction(module.get(), "b");
+  HloInstruction* k = FindInstruction(module.get(), "k");
+  HloInstruction* k_sum = FindInstruction(module.get(), "k_sum");
+  HloInstruction* b_sum = FindInstruction(module.get(), "b_sum");
+  HloInstruction* partial = FindInstruction(module.get(), "partial");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  std::vector<HloInstruction*> sequence = {
+      p_d, p_a, p_k, d, zero, d_sum, a, b, k, k_sum, b_sum, partial, out};
+  auto assignment = RunBufferAssignmentWithInstructionSequence(
+      module.get(), sequence, /*alignment=*/1,
+      BufferAssigner::AllowCrossColorReuse(0, 1),
+      buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL);
+
+  const HloValue& d_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(d, {});
+  const HloValue& k_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(k, {});
+  const HloValue& a_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(a, {});
+  const HloValue& b_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(b, {});
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice d_slice,
+                       assignment->GetUniqueSlice(d, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice k_slice,
+                       assignment->GetUniqueSlice(k, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice a_slice,
+                       assignment->GetUniqueSlice(a, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice b_slice,
+                       assignment->GetUniqueSlice(b, {}));
+
+  EXPECT_EQ(d_value.shape().layout().memory_space(), 1);
+  EXPECT_EQ(k_value.shape().layout().memory_space(), 1);
+  EXPECT_EQ(a_value.shape().layout().memory_space(), 0);
+  EXPECT_EQ(b_value.shape().layout().memory_space(), 0);
+  EXPECT_EQ(d_slice.index(), k_slice.index());
+  EXPECT_EQ(d_slice.index(), a_slice.index());
+  EXPECT_EQ(d_slice.index(), b_slice.index());
+  EXPECT_EQ(d_slice.allocation()->color(), 1);
+  EXPECT_EQ(d_slice.allocation()->size(), 8192);
+  EXPECT_EQ(d_slice.offset(), 0);
+  EXPECT_EQ(k_slice.offset(), 0);
+  EXPECT_EQ(a_slice.offset(), 0);
+  EXPECT_EQ(b_slice.offset(), 4096);
+  EXPECT_EQ(a_slice.size(), 4096);
+  EXPECT_EQ(b_slice.size(), 4096);
+  EXPECT_FALSE(a_slice.OverlapsWith(b_slice));
+  EXPECT_THAT(d_slice.allocation()->CrossColorBuffers(),
+              ::testing::Contains(&a_value));
+  EXPECT_THAT(d_slice.allocation()->CrossColorBuffers(),
+              ::testing::Contains(&b_value));
 }
 
 TEST_F(BufferAssignmentTest,
@@ -2659,6 +2997,107 @@ ENTRY main {
   }
 }
 
+// Positive: when Options::dus_view_color is set, a buffer colored with that
+// color is a pointer stand-in and gets no allocation of its own, while other
+// buffers (e.g. the consumer) are still allocated normally.
+TEST_F(BufferAssignmentTest, DusViewColoredBufferAllocationSkipped) {
+  const char* const kHlo = R"(
+HloModule DusViewSkip
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  view = f32[100,10]{1,0} custom-call(p0), custom_call_target="view"
+  ROOT out = f32[100,10]{1,0} add(view, view)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* view = FindInstruction(module.get(), "view");
+  const HloInstruction* out = FindInstruction(module.get(), "out");
+
+  constexpr BufferValue::Color kViewColor = 7;
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusViewColor(module.get(), "view", kViewColor,
+                                          /*dus_view_color=*/kViewColor);
+
+  // The view buffer was skipped: no allocation of its own.
+  EXPECT_FALSE(assignment->HasTopLevelAllocation(view));
+  // The consumer is still allocated normally.
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(out));
+}
+
+// Negative: when Options::dus_view_color is unset (the shipped default), the
+// same colored buffer is allocated normally; the color carries no special
+// meaning on its own.
+TEST_F(BufferAssignmentTest, DusViewColorUnsetAllocatesBuffer) {
+  const char* const kHlo = R"(
+HloModule DusViewDisabled
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  view = f32[100,10]{1,0} custom-call(p0), custom_call_target="view"
+  ROOT out = f32[100,10]{1,0} add(view, view)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* view = FindInstruction(module.get(), "view");
+
+  constexpr BufferValue::Color kViewColor = 7;
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusViewColor(module.get(), "view", kViewColor,
+                                          /*dus_view_color=*/std::nullopt);
+
+  // No skip color set, so the buffer is allocated like any other.
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(view));
+}
+
+// A view is an address into its base's buffer, so consumers of the view read
+// the BASE's storage at their own (later) schedule times. The heap simulator
+// must keep the base buffer reserved until the view's last transitive reader;
+// without that extension the base's slot is recycled for an unrelated temp
+// defined between the view and the reader, and the reader loads the temp's
+// bytes.
+TEST_F(BufferAssignmentTest, DusViewBaseLiveRangeExtendsToViewReaders) {
+  const char* const kHlo = R"(
+HloModule DusViewBaseLiveRange, is_scheduled=true
+
+ENTRY e {
+  p0 = f32[64]{0} parameter(0)
+  base = f32[64]{0} negate(p0)
+  view = f32[64]{0:S(7)} custom-call(base), custom_call_target="view"
+  filler = f32[64]{0} exponential(p0)
+  ROOT out = f32[64]{0} add(view, filler)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* base = FindInstruction(module.get(), "base");
+  const HloInstruction* filler = FindInstruction(module.get(), "filler");
+
+  constexpr BufferValue::Color kViewColor = 7;
+  std::unique_ptr<BufferAssignment> assignment =
+      RunSequentialBufferAssignmentWithDusViewColor(module.get(), "view",
+                                                    kViewColor, kViewColor);
+
+  // `base` is only directly used by the view, while `out` reads base's
+  // storage through the view two schedule steps later. `filler`, live in
+  // between, must not be packed on top of base's bytes.
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice base_slice,
+                       assignment->GetUniqueTopLevelSlice(base));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice filler_slice,
+                       assignment->GetUniqueTopLevelSlice(filler));
+  const bool same_allocation =
+      base_slice.allocation() == filler_slice.allocation();
+  const bool bytes_overlap =
+      same_allocation &&
+      base_slice.offset() < filler_slice.offset() + filler_slice.size() &&
+      filler_slice.offset() < base_slice.offset() + base_slice.size();
+  EXPECT_FALSE(bytes_overlap)
+      << "view base was recycled while still read through the view: base "
+      << base_slice.ToString() << " vs filler " << filler_slice.ToString();
+}
+
 class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
@@ -3021,7 +3460,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   schedule.set_sequence(
       module->entry_computation(),
       {token, infeed, infeed_data, while0, while1, zero, add, while2, tuple});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -3242,226 +3681,6 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
     EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_7", {}));
     EXPECT_NE(get_slice(hlo_name, {}), get_slice("add_0", {}));
   }
-}
-
-TEST_F(BufferAssignmentTest, AsyncCallPrivateStack) {
-  const char* hlo_text = R"(
-HloModule AsyncCall, is_scheduled=true
-
-%called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
-  %param_0 = f32[4096]{0} parameter(0)
-  %param_1 = f32[4096]{0} parameter(1)
-  %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
-  %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
-  %negate_2 = f32[4096]{0} negate(f32[4096]{0} %negate_1)
-  %negate_3 = f32[4096]{0} negate(f32[4096]{0} %negate_2)
-  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_3)
-}, execution_thread="foobar"
-
-ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
-  %a = f32[4096]{0} parameter(0)
-  %b = f32[4096]{0} parameter(1)
-  %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), async_execution_thread="foobar", to_apply=%called_computation
-  %negate_4 = f32[4096]{0} negate(f32[4096]{0} %a)
-  %negate_5 = f32[4096]{0} negate(f32[4096]{0} %b)
-  %negate_6 = f32[4096]{0} negate(f32[4096]{0} %negate_5)
-  %negate_7 = f32[4096]{0} negate(f32[4096]{0} %negate_6)
-  %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_4, f32[4096]{0} %negate_7)
-  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
-  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
-
-  auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-    for (const HloBuffer& buffer : alias_analysis->buffers()) {
-      int color = 1;
-      for (const HloValue* value : buffer.values()) {
-        if (absl::c_any_of(
-                value->positions(),
-                [](const HloPosition& position) {
-                  return position.instruction->parent()->execution_thread() !=
-                         "foobar";
-                }) ||
-            absl::c_any_of(value->GetUses(), [](const HloUse& use) {
-              return use.instruction->parent()->execution_thread() != "foobar";
-            })) {
-          color = 0;
-        }
-      }
-      for (const HloValue* value : buffer.values()) {
-        const HloPosition& defining_position = value->defining_position();
-        if (defining_position.shape().has_layout()) {
-          const int memory_space =
-              defining_position.shape().layout().memory_space();
-          if (memory_space != 0) {
-            color = memory_space;
-          }
-        }
-        alias_analysis->dataflow_analysis()
-            .GetValue(value->id())
-            .set_color(BufferValue::Color(color));
-      }
-    }
-    return absl::OkStatus();
-  };
-
-  BufferAssigner::PrivateStacks private_stacks;
-  private_stacks[1] = {FindComputation(m.get(), "called_computation")};
-  auto buffers = RunBufferAssignmentWithSequentialOrdering(
-      m.get(), /*alignment=*/1, colorer, private_stacks);
-
-  LOG(INFO) << buffers->ToString();
-
-  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
-    return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
-        .value();
-  };
-
-  // Make sure the parameters and root of the async called computation has the
-  // same slice as the async call operands/output.
-  EXPECT_EQ(get_slice("param_0", {}), get_slice("a", {}));
-  EXPECT_EQ(get_slice("param_1", {}), get_slice("b", {}));
-  EXPECT_EQ(get_slice("result.1", {}), get_slice("async-done", {}));
-
-  // Make sure the intermediate values in the async called computation have
-  // different allocated slices than the values that overlap it.
-  for (const auto& hlo_name :
-       {"negate_0", "negate_1", "negate_2", "negate_3"}) {
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_4", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_5", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_6", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_7", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("add_0", {}));
-  }
-
-  // Make sure the private stack allocations negate_1-3 are allocated at the
-  // same offset.
-  EXPECT_NE(get_slice("negate_0", {}), get_slice("negate_1", {}));
-  EXPECT_EQ(get_slice("negate_1", {}), get_slice("negate_2", {}));
-  EXPECT_EQ(get_slice("negate_1", {}), get_slice("negate_3", {}));
-}
-
-TEST_F(BufferAssignmentTest, MultipleAsyncCallPrivateStack) {
-  const char* hlo_text = R"(
-HloModule AsyncCall, is_scheduled=true
-
-%called_computation1 {
-  %param_0 = f32[4096]{0} parameter(0)
-  %param_1 = f32[4096]{0} parameter(1)
-  %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
-  %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
-  %negate_2 = f32[4096]{0} negate(f32[4096]{0} %negate_1)
-  %negate_3 = f32[4096]{0} negate(f32[4096]{0} %negate_2)
-  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_3)
-}, execution_thread="foobar"
-
-%called_computation2 {
-  %param_2 = f32[4096]{0} parameter(0)
-  %param_3 = f32[4096]{0} parameter(1)
-  %negate_4 = f32[4096]{0} negate(f32[4096]{0} %param_2)
-  %negate_5 = f32[4096]{0} negate(f32[4096]{0} %param_3)
-  ROOT %result.2 = f32[4096]{0} add(f32[4096]{0} %negate_4, f32[4096]{0} %negate_5)
-}, execution_thread="foobar"
-
-ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
-  %a = f32[4096]{0} parameter(0)
-  %b = f32[4096]{0} parameter(1)
-  %async-start.1 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), async_execution_thread="foobar", to_apply=%called_computation1
-  %async-start.2 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %b, f32[4096]{0} %a), async_execution_thread="foobar", to_apply=%called_computation2
-  %negate_6 = f32[4096]{0} negate(f32[4096]{0} %a)
-  %negate_7 = f32[4096]{0} negate(f32[4096]{0} %b)
-  %negate_8 = f32[4096]{0} negate(f32[4096]{0} %negate_7)
-  %negate_9 = f32[4096]{0} negate(f32[4096]{0} %negate_8)
-  %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_6, f32[4096]{0} %negate_9)
-  %async-done.1 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.1)
-  %async-done.2 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.2)
-  %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done.1)
-  ROOT %add_2 = f32[4096]{0} add(f32[4096]{0} %add_1, f32[4096]{0} %async-done.2)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
-
-  auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-    for (const HloBuffer& buffer : alias_analysis->buffers()) {
-      int color = 1;
-      for (const HloValue* value : buffer.values()) {
-        if (absl::c_any_of(
-                value->positions(),
-                [](const HloPosition& position) {
-                  return position.instruction->parent()->execution_thread() !=
-                         "foobar";
-                }) ||
-            absl::c_any_of(value->GetUses(), [](const HloUse& use) {
-              return use.instruction->parent()->execution_thread() != "foobar";
-            })) {
-          color = 0;
-        }
-      }
-      for (const HloValue* value : buffer.values()) {
-        const HloPosition& defining_position = value->defining_position();
-        if (defining_position.shape().has_layout()) {
-          const int memory_space =
-              defining_position.shape().layout().memory_space();
-          if (memory_space != 0) {
-            color = memory_space;
-          }
-        }
-        alias_analysis->dataflow_analysis()
-            .GetValue(value->id())
-            .set_color(BufferValue::Color(color));
-      }
-    }
-    return absl::OkStatus();
-  };
-
-  BufferAssigner::PrivateStacks private_stacks;
-  private_stacks[1] = {FindComputation(m.get(), "called_computation1"),
-                       FindComputation(m.get(), "called_computation2")};
-  auto buffers = RunBufferAssignmentWithSequentialOrdering(
-      m.get(), /*alignment=*/1, colorer, private_stacks);
-
-  LOG(INFO) << buffers->ToString();
-
-  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
-    return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
-        .value();
-  };
-
-  // Make sure the parameters and root of the async called computation has the
-  // same slice as the async call operands/output.
-  EXPECT_EQ(get_slice("param_0", {}), get_slice("a", {}));
-  EXPECT_EQ(get_slice("param_3", {}), get_slice("a", {}));
-  EXPECT_EQ(get_slice("param_1", {}), get_slice("b", {}));
-  EXPECT_EQ(get_slice("param_2", {}), get_slice("b", {}));
-  EXPECT_EQ(get_slice("result.1", {}), get_slice("async-done.1", {}));
-  EXPECT_EQ(get_slice("result.2", {}), get_slice("async-done.2", {}));
-
-  // Make sure the intermediate values in the async called computation have
-  // different allocated slices than the values that overlap it.
-  for (const auto& hlo_name : {"negate_0", "negate_1", "negate_2", "negate_3",
-                               "negate_4", "negate_5"}) {
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_6", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_7", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_8", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_9", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("add_0", {}));
-  }
-
-  // Make sure the private stack allocations negate_1-3 are allocated at the
-  // same offset.
-  EXPECT_NE(get_slice("negate_0", {}), get_slice("negate_1", {}));
-  EXPECT_EQ(get_slice("negate_1", {}), get_slice("negate_2", {}));
-  EXPECT_EQ(get_slice("negate_1", {}), get_slice("negate_3", {}));
-
-  // Make sure the private stacks for called_computation1 and
-  // called_computation2 are able to reuse the same offsets.
-  EXPECT_TRUE(get_slice("negate_4", {}) == get_slice("negate_0", {}) ||
-              get_slice("negate_4", {}) == get_slice("negate_1", {}));
-  EXPECT_TRUE(get_slice("negate_5", {}) == get_slice("negate_0", {}) ||
-              get_slice("negate_5", {}) == get_slice("negate_1", {}));
 }
 
 TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
@@ -3755,7 +3974,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   // If this ASSERT fails, we constructed a bogus sequence above and this test
   // itself is buggy.
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -3953,6 +4172,57 @@ TEST(BufferAllocationSliceProtoTest, FromProtoErrorAllocationNotFound) {
               absl_testing::StatusIs(
                   absl::StatusCode::kOutOfRange,
                   HasSubstr("Buffer allocation index 2 is out of range.")));
+}
+
+TEST(BufferAllocationSliceProtoTest, FromProtoErrorNegativeOffsetOrSize) {
+  std::vector<BufferAllocation> allocations;
+  allocations.push_back(
+      BufferAllocation(/*index=*/0, /*size=*/200, /*color=*/0));
+
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
+  proto.set_buffer_allocation_index(0);
+  proto.set_offset(-1);
+  proto.set_size(60);
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice has negative offset/size")));
+
+  proto.set_offset(50);
+  proto.set_size(-1);
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice has negative offset/size")));
+}
+
+TEST(BufferAllocationSliceProtoTest, FromProtoErrorSliceOutOfRange) {
+  std::vector<BufferAllocation> allocations;
+  allocations.push_back(
+      BufferAllocation(/*index=*/0, /*size=*/200, /*color=*/0));
+
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
+  proto.set_buffer_allocation_index(0);
+  proto.set_offset(150);
+  proto.set_size(60);
+
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer slice [offset=150, size=60] is out of "
+                            "range for allocation #0 of size 200")));
+}
+
+TEST(BufferAllocationSliceTest, Empty) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/100, /*color=*/0);
+  BufferAllocation::Slice default_slice;
+  EXPECT_TRUE(default_slice.empty());
+
+  BufferAllocation::Slice empty_slice(&alloc, /*offset=*/0, /*size=*/0);
+  EXPECT_TRUE(empty_slice.empty());
+
+  BufferAllocation::Slice non_empty_slice(&alloc, /*offset=*/0, /*size=*/10);
+  EXPECT_FALSE(non_empty_slice.empty());
 }
 
 TEST(BufferAllocationTest, ToProto) {
@@ -4979,7 +5249,7 @@ TEST_F(BufferAssignmentTest, LiveRangeStartOrder) {
     opts.assignment_algorithm_for_computations_without_ordering =
         buffer_assignment::
             AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto assignment,
         BufferAssigner::Run(
             module.get(), std::make_unique<SequentialHloOrdering>(schedule),
@@ -5331,7 +5601,7 @@ void BM_FastMergeManagerStress(::testing::benchmark::State& state) {
   for (auto s : state) {
     // 3. Benchmark Loop: Measure the exact sweep-line pooling and reuse
     // performance.
-    base_assignment->ResetAllocationsForTest();
+    base_assignment->ClearAllocations();
     auto manager = BufferAssigner::CreateFastMergeManagerForTest(
         base_assignment.get(), &assigner);
 
@@ -5356,6 +5626,121 @@ void BM_FastMergeManagerStress(::testing::benchmark::State& state) {
 }
 
 BENCHMARK(BM_FastMergeManagerStress)->Range(1'000, 10'000'000);
+
+// Tests that BufferAssignment::FromProto rejects a malformed proto containing
+// an assigned buffer with a negative offset or size.
+//
+// Without the fix, such values bypass the CHECK_LE guards in AddAssignment
+// (e.g. CHECK_LE(-1, 1024) is true for any real allocation size) and get
+// stored in assigned_buffers_. They are later used in LLVM IR pointer
+// arithmetic:
+//   tempbuf_address_base + b()->getInt64(slice.offset())
+// producing an out-of-bounds address.
+//
+// The fix mirrors the check added to Slice::FromProto in PR #44653, applied
+// to the Assigned buffer path in BufferAssignment::FromProto that PR missed.
+TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeOffset) {
+  const char* const hlo_text = R"(
+    HloModule test
+    ENTRY e {
+      p0 = f32[4]{0} parameter(0)
+      ROOT neg = f32[4]{0} negate(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  // Get a valid proto via normal round-trip, then corrupt one offset field.
+  // This simulates a malformed serialized AOT executable supplied by an
+  // attacker to CpuAotLoader::LoadAotCompilationResult().
+  auto buffers = RunBufferAssignment(module.get());
+  auto proto = buffers->ToProto();
+
+  bool mutated = false;
+  for (auto& alloc : *proto.mutable_buffer_allocations()) {
+    if (alloc.assigned_size() > 0) {
+      alloc.mutable_assigned(0)->set_offset(-1);
+      mutated = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(mutated) << "Test setup: expected at least one assigned buffer";
+
+  // Must return an error — not crash via CHECK_LE, not silently store -1.
+  auto result = BufferAssignment::FromProto(proto, module.get(),
+                                            &BufferSizeBytes, &alias_info_);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
+}
+
+TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeSize) {
+  const char* const hlo_text = R"(
+    HloModule test
+    ENTRY e {
+      p0 = f32[4]{0} parameter(0)
+      ROOT neg = f32[4]{0} negate(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  auto buffers = RunBufferAssignment(module.get());
+  auto proto = buffers->ToProto();
+
+  bool mutated = false;
+  for (auto& alloc : *proto.mutable_buffer_allocations()) {
+    if (alloc.assigned_size() > 0) {
+      alloc.mutable_assigned(0)->set_size(-1);
+      mutated = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(mutated) << "Test setup: expected at least one assigned buffer";
+
+  auto result = BufferAssignment::FromProto(proto, module.get(),
+                                            &BufferSizeBytes, &alias_info_);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
+}
+
+TEST_F(BufferAssignmentTest,
+       ToProtoSortsAssignedBuffersAndPopulatesNestedTupleAliases) {
+  const char* const hlo_text = R"(
+    HloModule test
+    cond {
+      p = (f32[4]{0}, f32[8]{0}) parameter(0)
+      ROOT cond_res = pred[] constant(true)
+    }
+    body {
+      p = (f32[4]{0}, f32[8]{0}) parameter(0)
+      gte0 = f32[4]{0} get-tuple-element(p), index=0
+      gte1 = f32[8]{0} get-tuple-element(p), index=1
+      neg0 = f32[4]{0} negate(gte0)
+      ROOT out = (f32[4]{0}, f32[8]{0}) tuple(neg0, gte1)
+    }
+    ENTRY e {
+      p0 = (f32[4]{0}, f32[8]{0}) parameter(0)
+      ROOT loop = (f32[4]{0}, f32[8]{0}) while(p0), condition=cond, body=body
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  std::unique_ptr<BufferAssignment> buffers = RunBufferAssignment(module.get());
+  BufferAssignmentProto proto = buffers->ToProto();
+
+  EXPECT_FALSE(proto.logical_buffers().empty());
+  EXPECT_FALSE(proto.buffer_aliases().empty());
+  for (const BufferAllocationProto& alloc : proto.buffer_allocations()) {
+    for (int i = 1; i < alloc.assigned_size(); ++i) {
+      EXPECT_LT(alloc.assigned(i - 1).logical_buffer_id(),
+                alloc.assigned(i).logical_buffer_id());
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> roundtrip,
+      BufferAssignment::FromProto(proto, module.get(), &BufferSizeBytes,
+                                  &alias_info_));
+  EXPECT_EQ(roundtrip->Allocations().size(), buffers->Allocations().size());
+}
 
 }  // namespace
 }  // namespace xla

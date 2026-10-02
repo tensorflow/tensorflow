@@ -27,11 +27,11 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "grpc/grpc.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
@@ -44,8 +44,8 @@
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/platform/unbounded_work_queue.h"
@@ -155,7 +155,7 @@ absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
         "GrpcClientSession: writes no longer allowed.");
   }
 
-  RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
+  ABSL_RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
 
   CHECK_EQ(req->mutable_request_metadata()->op_id(), 0);
   req->mutable_request_metadata()->set_op_id(op_id);
@@ -222,8 +222,23 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
       return server_status;
     };
 
-    absl::Status combined_status = finish_stream_and_get_server_status();
-    combined_status.Update(client_status);
+    // Prioritize `client_status` if non-OK because `context_->TryCancel()`
+    // above causes `stream_->Finish()` to return `CANCELLED` even when the
+    // stream was healthy before client-initiated termination. If both
+    // `client_status` and `server_status` are non-OK, include both in the
+    // combined error message so neither error is lost.
+    absl::Status server_status = finish_stream_and_get_server_status();
+    absl::Status combined_status;
+    if (!client_status.ok() && !server_status.ok()) {
+      combined_status = tsl::errors::CreateWithUpdatedMessage(
+          client_status,
+          absl::StrCat("Client error: ", client_status.ToString(),
+                       "; Server error: ", server_status.ToString()));
+    } else if (!client_status.ok()) {
+      combined_status = client_status;
+    } else {
+      combined_status = server_status;
+    }
 
     auto all_callbacks = response_callbacks_->PopAll();
     for (auto& [_, cb] : all_callbacks) {

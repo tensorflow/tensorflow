@@ -15,6 +15,7 @@ limitations under the License.
 
 // Utility for launching some HLO text that supports multiple hosts/devices.
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -24,17 +25,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
@@ -44,6 +47,8 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/tsl/util/fixed_option_set_flag.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
@@ -81,6 +86,9 @@ Tip: If the input generation takes too long or uses too much host memory,
 consider using --hlo_argument_mode=uninitialized.
 )";
 
+// Statistic over the per-repeat execution times reported in the profile CSV.
+enum class AggregationType { kMean, kMedian };
+
 struct HloRunnerConfig {
   std::string input_format_str = "text";
   xla::InputFormat input_format;
@@ -113,11 +121,14 @@ struct HloRunnerConfig {
   bool use_layouts_from_hlo_module = false;
   bool force_auto_layout = false;
   int32_t num_repeats = 1;
+  int32_t num_repeats_with_profiler = 1;
+  bool recreate_profiler_session_between_repeats = false;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
   bool profile_execution = false;
   std::string append_profile_to_csv_file = "";
+  std::string profile_csv_statistic = "mean";
   std::string xla_gpu_dump_xspace_to = "";
 };
 
@@ -157,6 +168,13 @@ ArgumentModeFromString(absl::string_view text) {
                    text));
 }
 
+static const FixedOptionSetFlagParser<AggregationType>&
+GetAggregationTypeParser() {
+  static const auto& parser = GetFixedOptionSetFlagParser<AggregationType>(
+      {{"mean", AggregationType::kMean}, {"median", AggregationType::kMedian}});
+  return parser;
+}
+
 static absl::StatusOr<FunctionalHloRunner::PreprocessingOptions>
 PreprocessingOptionsFromFlags(const HloRunnerConfig& opts) {
   FunctionalHloRunner::PreprocessingOptions out;
@@ -176,7 +194,7 @@ PreprocessingOptionsFromFlags(const HloRunnerConfig& opts) {
 static absl::StatusOr<FunctionalHloRunner::RunningOptions>
 RunningOptionsFromFlags(const HloRunnerConfig& opts) {
   FunctionalHloRunner::RunningOptions out;
-  ASSIGN_OR_RETURN(out.module_argument_mode,
+  ABSL_ASSIGN_OR_RETURN(out.module_argument_mode,
                    ArgumentModeFromString(opts.hlo_argument_mode));
   std::string error;
   if (!FunctionalHloRunner::AbslParseFlag(opts.output_mode_str,
@@ -186,7 +204,22 @@ RunningOptionsFromFlags(const HloRunnerConfig& opts) {
                      " Got: ", opts.output_mode_str));
   }
 
+  if (opts.num_repeats < 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "--num_repeats must be at least 1, got: ", opts.num_repeats));
+  }
+  if (opts.num_repeats_with_profiler < 0 ||
+      opts.num_repeats_with_profiler > opts.num_repeats) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "--num_repeats_with_profiler must be between 0 and --num_repeats (",
+        opts.num_repeats, "), got: ", opts.num_repeats_with_profiler));
+  }
+
   out.num_repeats = static_cast<size_t>(opts.num_repeats);
+  out.num_repeats_with_profiler =
+      static_cast<size_t>(opts.num_repeats_with_profiler);
+  out.recreate_profiler_session_between_repeats =
+      opts.recreate_profiler_session_between_repeats;
   out.log_input_output_mode =
       opts.log_output ? FunctionalHloRunner::LogOutputMode::kLogOutput
                       : FunctionalHloRunner::LogOutputMode::kNotLogOutput;
@@ -210,7 +243,7 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts,
                  : FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning)
           : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
   if (!opts.execution_options_path.empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
@@ -233,8 +266,8 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts,
 struct CSVProfileTimeWriter {
   constexpr static const char kCSVSep = ',';
 
-  explicit CSVProfileTimeWriter(const HloRunnerConfig& opts)
-      : csv_file_path_(opts.append_profile_to_csv_file) {
+  CSVProfileTimeWriter(const HloRunnerConfig& opts, AggregationType statistic)
+      : csv_file_path_(opts.append_profile_to_csv_file), statistic_(statistic) {
     // Use different CSV file for each node since they can use shared file
     // system.
     if (opts.num_nodes > 1) {
@@ -248,18 +281,18 @@ struct CSVProfileTimeWriter {
 
   void append_row(absl::string_view hlo_file,
                   const std::vector<ExecutionProfile>& exec_profiles) {
-    double total_ns = 0.0;
     size_t num_repeats = exec_profiles.size();
-    for (size_t i = 0; i < num_repeats; ++i) {
-      total_ns += exec_profiles[i].compute_time_ns();
+    if (num_repeats == 0) {
+      exec_time_ms_[hlo_file] = 0.0;
+      return;
     }
-    // If there are multiple repeats, we average the execution time over them
-    // skipping the first one which is a warmup run.
+    // Drop the first repeat, which is a warmup run. A lone repeat is all we
+    // have, so report it as is.
+    absl::Span<const ExecutionProfile> profiles = exec_profiles;
     if (num_repeats > 1) {
-      total_ns -= exec_profiles[0].compute_time_ns();
-      total_ns /= (num_repeats - 1);
+      profiles.remove_prefix(1);
     }
-    exec_time_ms_[hlo_file] = total_ns / 1e6;
+    exec_time_ms_[hlo_file] = ComputeStatistic(profiles) / 1e6;
   }
 
   ~CSVProfileTimeWriter() {
@@ -295,8 +328,40 @@ struct CSVProfileTimeWriter {
   }
 
  private:
+  // Computes statistic_ over the compute times in ns of a non-empty set of
+  // profiles. An even-sized median averages the two middle times.
+  double ComputeStatistic(absl::Span<const ExecutionProfile> profiles) const {
+    size_t n = profiles.size();
+    switch (statistic_) {
+      case AggregationType::kMean: {
+        double total_ns = absl::c_accumulate(
+            profiles, 0.0, [](double sum, const ExecutionProfile& profile) {
+              return sum + profile.compute_time_ns();
+            });
+        return total_ns / n;
+      }
+      case AggregationType::kMedian: {
+        std::vector<double> times_ns;
+        times_ns.reserve(n);
+        for (const ExecutionProfile& profile : profiles) {
+          times_ns.push_back(profile.compute_time_ns());
+        }
+        // Partitioning around the upper middle leaves the lower middle as the
+        // largest time before it.
+        auto mid = times_ns.begin() + n / 2;
+        absl::c_nth_element(times_ns, mid);
+        if (n % 2 != 0) {
+          return *mid;
+        }
+        return 0.5 * (*std::max_element(times_ns.begin(), mid) + *mid);
+      }
+    }
+    LOG(FATAL) << "Unknown AggregationType " << static_cast<int>(statistic_);
+  }
+
   std::string csv_file_path_, run_time_;
   bool new_file_;
+  AggregationType statistic_;
   // Use a btree map to sort the HLO files by name.
   absl::btree_map<std::string, double> exec_time_ms_;
 };  // struct CSVProfileTimeWriter
@@ -307,6 +372,12 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
       !AbslParseFlag(opts.input_format_str, &opts.input_format, &error)) {
     return absl::InvalidArgumentError(error);
   }
+  AggregationType profile_csv_statistic;
+  if (std::string error; !GetAggregationTypeParser().Parse(
+          opts.profile_csv_statistic, &profile_csv_statistic, &error)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("--profile_csv_statistic: ", error));
+  }
 
   PreprocessFlags(opts);
 
@@ -315,7 +386,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     opts.task_id = opts.run_single_shard_id;
 
     std::string hlo_file = (argc > 1) ? argv[1] : "";
-    ASSIGN_OR_RETURN(auto resolve_result,
+    ABSL_ASSIGN_OR_RETURN(auto resolve_result,
                      FunctionalHloRunner::ResolveTopology(
                          opts.num_replicas, opts.num_partitions, hlo_file,
                          opts.input_format));
@@ -330,14 +401,14 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     debug_options.set_xla_gpu_shard_autotuning(false);
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
   preproc_options.annotate_while_loop_trip_count = true;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
       RawCompileOptionsFromFlags(opts, debug_options));
-  ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
+  ABSL_ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
                    RunningOptionsFromFlags(opts));
 
   // tsl::Flags::Parse() leaves unknown flags in argv, we assume that those are
@@ -362,22 +433,22 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
     gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
     // Create a GPURunnerProfiler to profile GPU executions to save xspace data
     // to disk.
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      ASSIGN_OR_RETURN(hlo_runner_profiler,
+      ABSL_ASSIGN_OR_RETURN(hlo_runner_profiler,
                        HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                  /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
     }
   } else if (opts.device_type_str == "host") {
-    ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+    ABSL_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      ASSIGN_OR_RETURN(hlo_runner_profiler,
+      ABSL_ASSIGN_OR_RETURN(hlo_runner_profiler,
                        HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
                                                  /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
@@ -395,7 +466,8 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   if (opts.profile_execution) {
     running_options.execution_profiles = &execution_profiles;
     if (!opts.append_profile_to_csv_file.empty()) {
-      csv_writer = std::make_unique<CSVProfileTimeWriter>(opts);
+      csv_writer =
+          std::make_unique<CSVProfileTimeWriter>(opts, profile_csv_statistic);
     }
   }
 
@@ -404,13 +476,13 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     execution_profiles.clear();
     if (opts.should_run && !opts.compile_only) {
       std::cout << "\n** Running " << hlo_file << " **\n";
-      RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
+      ABSL_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, preproc_options, raw_compile_options, running_options,
           hlo_file, opts.input_format, opts.dump_output_literal_to,
           opts.task_id, opts.num_nodes, env.kv_store, engine.get()));
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
-      RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+      ABSL_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
                           *env.client, preproc_options, raw_compile_options,
                           argv[c], opts.input_format, opts.task_id)
                           .status());
@@ -559,6 +631,13 @@ int main(int argc, char** argv) {
                 "If set, force auto layout."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
+      tsl::Flag("num_repeats_with_profiler", &opts.num_repeats_with_profiler,
+                "The last `num_repeats_with_profiler` repeats out of "
+                "`num_repeats` will be profiled."),
+      tsl::Flag("recreate_profiler_session_between_repeats",
+                &opts.recreate_profiler_session_between_repeats,
+                "Whether to recreate the profiler session between repeats when "
+                "profiling more than one repeat."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,
                 "A path to a protobuf text file which stores the "
                 "ExecutionOptions message for this HLO module."),
@@ -579,6 +658,11 @@ int main(int argc, char** argv) {
           "--profile_execution is set. If the file does not exist, it "
           "will be created with a header row listing all input hlo files. "
           "Otherwise, new results will be appended to the existing file."),
+      tsl::Flag(
+          "profile_csv_statistic", &opts.profile_csv_statistic,
+          "The statistic --append_profile_to_csv_file reports over the "
+          "per-repeat execution times, excluding the warmup repeat. One of: "
+          "mean (default), median."),
       tsl::Flag("xla_gpu_dump_xspace_to", &opts.xla_gpu_dump_xspace_to,
                 "A directory to dump xspace data for GPU profiling."),
       // This option is not used during parsing, but it is added here for

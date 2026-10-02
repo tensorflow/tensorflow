@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -43,6 +43,12 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
   // Do not swap operands for convolutions with sparsity.
   if (convolution->sparsity_config().has_lhs() ||
       convolution->sparsity_config().has_rhs()) {
+    return false;
+  }
+
+  // Do not swap operands for convolutions with block scaling.
+  if (convolution->block_scaling_config().has_lhs() ||
+      convolution->block_scaling_config().has_rhs()) {
     return false;
   }
 
@@ -140,21 +146,22 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
       convolution->precision_config().operand_precision(0));
 
   if (!reverse_dimensions.empty()) {
-    ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
+    ABSL_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * new_convolution,
       MakeConvolveHlo(
           kernel, input, /*feature_group_count=*/1,
           /*batch_group_count=*/1, swapped_window, swapped_dnums,
           precision_config,
           /*preferred_element_type=*/convolution->shape().element_type(),
-          /*sparsity_config=*/convolution->sparsity_config()));
+          /*sparsity_config=*/convolution->sparsity_config(),
+          /*block_scaling_config=*/convolution->block_scaling_config()));
 
   if (conv_is_lowerable_callback &&
       !conv_is_lowerable_callback(new_convolution)) {
-    RETURN_IF_ERROR(kernel->parent()->RemoveInstruction(new_convolution));
+    ABSL_RETURN_IF_ERROR(kernel->parent()->RemoveInstruction(new_convolution));
     return false;
   }
 
@@ -172,7 +179,7 @@ absl::StatusOr<bool> ConvOperandSwapper::RunImpl(
   for (auto comp : module->computations(execution_threads)) {
     for (HloInstruction* hlo : comp->MakeInstructionPostOrder()) {
       if (auto* convolution = DynCast<HloConvolutionInstruction>(hlo)) {
-        ASSIGN_OR_RETURN(bool convolution_changed,
+        ABSL_ASSIGN_OR_RETURN(bool convolution_changed,
                          SwapConvolutionOperandsIfBeneficial(
                              convolution, conv_is_lowerable_callback_));
         changed |= convolution_changed;

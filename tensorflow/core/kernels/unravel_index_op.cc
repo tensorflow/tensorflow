@@ -16,6 +16,8 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS
@@ -95,8 +97,9 @@ class UnravelIndexOp : public OpKernel {
     Tidx dims_prod = dims_prod_eigen();
     const Tidx* indices = indices_tensor.flat<Tidx>().data();
     int64_t size = indices_tensor.NumElements();
-    bool check = std::all_of(indices, indices + size,
-                             [&](Tidx index) { return index < dims_prod; });
+    bool check = std::all_of(indices, indices + size, [&](Tidx index) {
+      return index >= 0 && index < dims_prod;
+    });
     OP_REQUIRES(
         ctx, check,
         absl::InvalidArgumentError("index is out of bound as with dims"));

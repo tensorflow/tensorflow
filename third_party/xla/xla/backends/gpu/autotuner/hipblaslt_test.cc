@@ -36,8 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -129,9 +127,8 @@ TEST_F(HipblasLtBackendTest, CanCreateHipblasLtBackend) {
 }
 
 TEST_F(HipblasLtBackendTest, GetSupportedConfigs) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> hlo_module,
-      ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
@@ -140,10 +137,23 @@ TEST_F(HipblasLtBackendTest, GetSupportedConfigs) {
               absl_testing::IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
+TEST_F(HipblasLtBackendTest, GetSupportedConfigsReturnsErrorForDeviceless) {
+  HipblasLtBackend backend_without_stream_executor(
+      /*stream_executor=*/nullptr, &debug_options_, &compiler_,
+      &target_config_);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_without_stream_executor.GetSupportedConfigs(
+          *hlo_module->entry_computation()->root_instruction()->operand(0));
+  EXPECT_THAT(configs,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_F(HipblasLtBackendTest,
        GetSupportedConfigsReturnsEmptyVectorForNonHipblasLtCustomCall) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kUnsupportedHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kUnsupportedHlo));
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
@@ -152,14 +162,16 @@ TEST_F(HipblasLtBackendTest,
 }
 
 TEST_F(HipblasLtBackendTest, GetDefaultConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()->operand(0)));
-  EXPECT_THAT(config, absl_testing::IsOk());
+  ASSERT_THAT(config, absl_testing::IsOk());
+  ASSERT_TRUE((*config)->has_gemm());
+  EXPECT_THAT((*config)->gemm().algorithm(), 0);
+  EXPECT_NE((*config)->gemm().autotune_workspace_size(), 0);
 }
 
 TEST_F(HipblasLtBackendTest, GetDefaultConfigFailsWithoutAHipblasLtCustomCall) {
@@ -173,8 +185,8 @@ TEST_F(HipblasLtBackendTest, GetDefaultConfigFailsWithoutAHipblasLtCustomCall) {
           lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
@@ -183,19 +195,18 @@ TEST_F(HipblasLtBackendTest, GetDefaultConfigFailsWithoutAHipblasLtCustomCall) {
 }
 
 TEST_F(HipblasLtBackendTest, ApplyConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> hlo_module,
-      ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
   HipblasLtBackendConfig config;
   config.set_algorithm(2);
   config.set_autotune_workspace_size(42);
   BackendConfig backend_config;
   *backend_config.mutable_gemm() = config;
-  TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
-                                         ->root_instruction()
-                                         ->mutable_operands()
-                                         .at(0),
-                                    backend_config));
+  EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
+                                      ->root_instruction()
+                                      ->mutable_operands()
+                                      .at(0),
+                                 backend_config));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
                               CHECK: "selected_algorithm":"2")"),
@@ -203,10 +214,9 @@ TEST_F(HipblasLtBackendTest, ApplyConfig) {
 }
 
 TEST_F(HipblasLtBackendTest, Compile) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHipblasLtCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction()->operand(0))));
@@ -270,7 +280,7 @@ class HipblasLtScaledDotTest : public HipblasLtBackendTest {
 
 TEST_F(HipblasLtScaledDotTest, GetSupportedConfigs) {
   for (const char* hlo : kScaledDotHlos) {
-    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
     HloInstruction* fusion = module->entry_computation()->root_instruction();
     auto configs = backend_.GetSupportedConfigs(*fusion);
     EXPECT_THAT(configs,
@@ -280,11 +290,11 @@ TEST_F(HipblasLtScaledDotTest, GetSupportedConfigs) {
 
 TEST_F(HipblasLtScaledDotTest, ApplyConfig) {
   for (const char* hlo : kScaledDotHlos) {
-    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
     HloInstruction* fusion = module->entry_computation()->root_instruction();
-    TF_ASSERT_OK_AND_ASSIGN(auto config, backend_.GetDefaultConfig(*fusion));
+    ASSERT_OK_AND_ASSIGN(auto config, backend_.GetDefaultConfig(*fusion));
 
-    TF_EXPECT_OK(backend_.ApplyConfig(*fusion, *config));
+    EXPECT_OK(backend_.ApplyConfig(*fusion, *config));
 
     EXPECT_THAT(RunFileCheck(module->ToString(),
                              R"(CHECK: custom-call
@@ -296,9 +306,9 @@ TEST_F(HipblasLtScaledDotTest, ApplyConfig) {
 
 TEST_F(HipblasLtScaledDotTest, Compile) {
   for (const char* hlo : kScaledDotHlos) {
-    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
     HloInstruction* fusion = module->entry_computation()->root_instruction();
-    TF_ASSERT_OK_AND_ASSIGN(auto config, backend_.GetDefaultConfig(*fusion));
+    ASSERT_OK_AND_ASSIGN(auto config, backend_.GetDefaultConfig(*fusion));
 
     auto executable = backend_.Compile(*fusion, *config);
     EXPECT_THAT(executable, absl_testing::IsOk());

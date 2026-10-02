@@ -19,14 +19,16 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/strings/ascii.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -47,8 +50,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -102,17 +103,20 @@ class FakeThunk : public Thunk {
 class BuffersDebugChecksumThunkTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    std::string name = absl::AsciiStrToUpper(
+        xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+    ASSERT_OK_AND_ASSIGN(platform_,
+                         se::PlatformManager::PlatformWithName(name));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             stream_->parent());
 
-    if (!executor_->GetDeviceDescription()
-             .cuda_compute_capability()
-             .IsAtLeastPascal()) {
+    if (const auto* cc = executor_->GetDeviceDescription()
+                             .gpu_compute_capability()
+                             .cuda_compute_capability();
+        cc != nullptr && !cc->IsAtLeastPascal()) {
       GTEST_SKIP()
           << "buffer checksumming is not supported on CUDA architectures "
              "older than Pascal due to missing atomic fetch_add with "
@@ -150,15 +154,15 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   se::DeviceAddressBase inputs0_mem = allocations.GetDeviceAddress(inputs[0]);
   se::DeviceAddressBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
   // Initialize the log in device memory
-  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
-                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
-                              *stream_, se::DeviceAddress<uint8_t>(log_mem)));
+  ASSERT_OK_AND_ASSIGN(auto device_log,
+                       BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
+                           *stream_, se::DeviceAddress<uint8_t>(log_mem)));
   // Fill inputs with some data
   std::vector<uint32_t> zeros(1024, 0);
   zeros[123] = 12341234;  // expected checksum for inputs_mem[0]
-  TF_ASSERT_OK(stream_->Memcpy(&inputs0_mem, zeros.data(), zeros.size()));
+  ASSERT_OK(stream_->Memcpy(&inputs0_mem, zeros.data(), zeros.size()));
   zeros[123] = 56785678;  // expected checksum for inputs_mem[1]
-  TF_ASSERT_OK(stream_->Memcpy(&inputs1_mem, zeros.data(), zeros.size()));
+  ASSERT_OK(stream_->Memcpy(&inputs1_mem, zeros.data(), zeros.size()));
 
   // Setup parameters for Initialize/Prepare/ExecuteOnStream
   Thunk::InitializeParams init_params;
@@ -189,11 +193,11 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
       /*checked_thunk_id=*/ThunkId(123),
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
       /*runs_before_checked_thunk=*/true, metadata_store);
-  TF_ASSERT_OK(thunk.Initialize(init_params));
-  TF_ASSERT_OK(thunk.Prepare(prepare_params));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
-                          device_log.ReadFromDevice(*stream_));
+  ASSERT_OK(thunk.Initialize(init_params));
+  ASSERT_OK(thunk.Prepare(prepare_params));
+  ASSERT_OK(thunk.ExecuteOnStream(execute_params));
+  ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
+                       device_log.ReadFromDevice(*stream_));
 
   // BuffersDebugChecksumThunk launches a kernel for each input buffer, they may
   // complete in any order.
@@ -241,9 +245,9 @@ TEST_F(BuffersDebugChecksumThunkTest,
     BufferAllocations allocations;
   };
   auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
-    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+    ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                      platform_->ExecutorForDevice(device_ordinal));
-    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                      executor->CreateStream());
     auto allocator =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
@@ -255,8 +259,8 @@ TEST_F(BuffersDebugChecksumThunkTest,
     return TestDevice{std::move(executor), std::move(stream),
                       std::move(allocator), std::move(allocations)};
   };
-  TF_ASSERT_OK_AND_ASSIGN(TestDevice device0, setup_device(0));
-  TF_ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
+  ASSERT_OK_AND_ASSIGN(TestDevice device0, setup_device(0));
+  ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
   BufferAllocation allocation(0, kLogSizeBytes + kInputSizeBytes, 0);
   BufferAllocation::Slice log_slice(&allocation, 0, kLogSizeBytes);
   BufferAllocation::Slice input_slice(&allocation, kLogSizeBytes,
@@ -271,23 +275,23 @@ TEST_F(BuffersDebugChecksumThunkTest,
   // a kernel on the wrong device will fail with CUDA_ERROR_INVALID_HANDLE. The
   // error may be reported from the next operation on the stream, so assert on
   // BlockHostUntilDone as well.
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/device0.executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
+  ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), device0.allocations, device0.stream.get(),
       /*command_buffer_trace_stream=*/device0.stream.get(),
       /*collective_params=*/nullptr,
       /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr)));
-  TF_ASSERT_OK(device0.stream->BlockHostUntilDone());
+  ASSERT_OK(device0.stream->BlockHostUntilDone());
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/device1.executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
+  ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), device1.allocations, device1.stream.get(),
       /*command_buffer_trace_stream=*/device1.stream.get(),
       /*collective_params=*/nullptr,
       /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr)));
-  TF_ASSERT_OK(device1.stream->BlockHostUntilDone());
+  ASSERT_OK(device1.stream->BlockHostUntilDone());
 }
 
 }  // namespace

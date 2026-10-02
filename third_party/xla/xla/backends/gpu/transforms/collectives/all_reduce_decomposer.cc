@@ -23,10 +23,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,8 +38,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -99,7 +98,7 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
     return false;
   }
 
-  ASSIGN_OR_RETURN(auto replica_group_count_and_size,
+  ABSL_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
                    GetReplicaGroupCountAndSize(all_reduce));
 
   if (!replica_group_count_and_size.has_value()) {
@@ -113,7 +112,7 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
   // all-gather and reduction dimension.
   HloInstruction* reshape = PrependSize1MajorDimension(input, computation);
 
-  ASSIGN_OR_RETURN(Shape all_gather_shape,
+  ABSL_ASSIGN_OR_RETURN(Shape all_gather_shape,
                    ShapeInference::InferAllGatherShape(
                        {&reshape->shape()}, /*all_gather_dimension=*/0,
                        num_participating_devices));
@@ -123,6 +122,7 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
           all_gather_shape, {reshape}, /*all_gather_dimension=*/0,
           all_reduce->device_list(), all_reduce->constrain_layout(),
           all_reduce->channel_id(), all_reduce->use_global_device_ids()));
+  all_gather->set_frontend_attributes(all_reduce->frontend_attributes());
 
   HloInstruction* init = computation->AddInstruction(
       HloInstruction::CreateConstant(*std::move(reduction_init_literal)));
@@ -132,8 +132,8 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
           input->shape(), all_gather, init,
           /*dimensions_to_reduce=*/{0}, all_reduce->to_apply()));
 
-  RETURN_IF_ERROR(all_reduce->ReplaceAllUsesWith(reduce));
-  RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(all_reduce));
+  ABSL_RETURN_IF_ERROR(all_reduce->ReplaceAllUsesWith(reduce));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(all_reduce));
 
   return true;
 }
@@ -148,7 +148,7 @@ absl::StatusOr<bool> AllReduceDecomposer::RunImpl(
       if (!IsSmallAllReduce(hlo)) {
         continue;
       }
-      ASSIGN_OR_RETURN(bool decomposed,
+      ABSL_ASSIGN_OR_RETURN(bool decomposed,
                        DecomposeAllReduce(hlo, computation, module));
       changed |= decomposed;
     }

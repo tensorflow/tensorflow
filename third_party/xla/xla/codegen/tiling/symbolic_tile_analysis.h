@@ -129,7 +129,7 @@ class SymbolicTileAnalysis {
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
   static SymbolicTileAnalysisOrError AnalyzeFusion(
-      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx,
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* mlir_context,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
 

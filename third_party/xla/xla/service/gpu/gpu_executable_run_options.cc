@@ -67,4 +67,15 @@ GpuExecutableRunOptions::incarnations() const {
   return incarnations_;
 }
 
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_execution_timeout_handler(
+    ExecutionTimeoutHandler handler) {
+  execution_timeout_handler_ = std::move(handler);
+  return *this;
+}
+
+const ExecutionTimeoutHandler&
+GpuExecutableRunOptions::execution_timeout_handler() const {
+  return execution_timeout_handler_;
+}
+
 }  // namespace xla::gpu

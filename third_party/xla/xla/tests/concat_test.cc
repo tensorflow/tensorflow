@@ -39,8 +39,8 @@ namespace xla {
 namespace {
 
 using ConcatTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
-using ConcatTestHlo = HloPjRtInterpreterReferenceMixin<HloTestBase>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
+using ConcatTestHlo = HloInterpreterReferenceMixin<HloTestBase>;
 using ::testing::HasSubstr;
 
 // Concatenate expects at least one argument.

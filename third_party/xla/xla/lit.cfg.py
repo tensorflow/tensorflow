@@ -41,6 +41,7 @@ config.test_format = lit.formats.ShTest()
 for env in [
     # Passthrough XLA_FLAGS.
     "XLA_FLAGS",
+    "CUDA_VISIBLE_DEVICES",
     # Propagate environment variables used by 'bazel coverage'.
     # These are exported by tools/coverage/collect_coverage.sh
     "BULK_COVERAGE_RUN",

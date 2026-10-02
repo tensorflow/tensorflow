@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -52,6 +53,12 @@ class GpuCollectives : public Collectives {
  public:
   // Returns the default collectives implementation for the given platform.
   static GpuCollectives* Default(absl::string_view platform_name);
+
+  // Returns the collectives implementation for the given platform  and
+  // implementation name or the default implementation if not specified.
+  static GpuCollectives* Resolve(
+      absl::string_view platform_name,
+      std::optional<std::string> impl = std::nullopt);
 
   // A callback to get a unique clique ids.
   using CliqueIdCallback =  // NOLINT
@@ -126,6 +133,9 @@ class GpuCollectives : public Collectives {
     // utilization (i.e SM) during runtime. This is mainly used for overlapping
     // with compute to avoid taking up compute resources.
     bool use_minimal_resource = false;
+
+    // Whether GXL communicators should be attached to this clique.
+    bool use_gxl = false;
   };
 
   // A cancelable version of Collectives::CreateCommunicators.
@@ -150,6 +160,13 @@ class GpuCollectives : public Collectives {
     return SplitCommunicators(comms, color, keys, config, ranks);
   }
 
+  // Attaches GXL communicators to the given communicators if supported.
+  virtual absl::Status MaybeAttachGxlCommunicators(
+      const CliqueKey& clique_key, absl::Span<const DeviceRank> ranks,
+      absl::Span<Communicator* const> comms) {
+    return absl::OkStatus();
+  }
+
   // Returns true if GPU collectives are implemented.
   virtual bool IsImplemented() const = 0;
 
@@ -160,9 +177,6 @@ class GpuCollectives : public Collectives {
       absl::FunctionRef<absl::Status()> group) {
     return group();
   }
-
-  // Returns minimum alignment requirement for symmetric memory.
-  virtual size_t SymmetricMemoryAlignment() const { return 1; }
 
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.

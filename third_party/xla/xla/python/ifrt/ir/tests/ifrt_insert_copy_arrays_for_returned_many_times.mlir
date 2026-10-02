@@ -1,3 +1,18 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+
 // RUN: ifrt-opt %s -ifrt-insert-copy-arrays-for-returned-many-times -split-input-file | FileCheck %s
 
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
@@ -16,7 +31,7 @@ func.func @non_donated_return(%arg0: !array) -> !array attributes {ifrt.function
 
 // CHECK-LABEL: func.func @donated_return(
 // CHECK-SAME:   %[[ARG0:.*]]: !ifrt.array<
-// CHECK:        %[[COPY:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) {donated = true}
+// CHECK:        %[[COPY:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) <donated = true>
 // CHECK:        return %[[COPY]] : !ifrt.array<
 func.func @donated_return(%arg0: !array {ifrt.donated}) -> !array attributes {ifrt.function} {
   return %arg0: !array
@@ -43,7 +58,7 @@ func.func @duplicate_non_donated_return(%arg0: !array) -> (!array, !array) attri
 // CHECK-SAME:   %[[ARG0:.*]]: !ifrt.array<
 // CHECK-DAG:    %[[COPY0:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) :
 // CHECK-DAG:    %[[COPY1:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) :
-// CHECK-DAG:    %[[COPY2:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) {donated = true}
+// CHECK-DAG:    %[[COPY2:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) <donated = true>
 // CHECK:        return %[[COPY0]], %[[COPY1]], %[[COPY2]] : !ifrt.array<
 func.func @donated_triplicate_return(%arg0: !array {ifrt.donated}) -> (!array, !array, !array) attributes {ifrt.function} {
   return %arg0, %arg0, %arg0: !array, !array, !array
@@ -100,7 +115,7 @@ func.func @returned_op_output_multiple_times(%arg0: !array) -> (!array, !array) 
 // CHECK-LABEL: func.func @donated_duplicate_return(
 // CHECK-SAME:   %[[ARG0:.*]]: !ifrt.array<
 // CHECK-DAG:    %[[COPY0:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) :
-// CHECK-DAG:    %[[COPY1:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) {donated = true}
+// CHECK-DAG:    %[[COPY1:.*]], %{{.*}} = ifrt.CopyArrays(%[[ARG0]]) <donated = true>
 // CHECK:        return %[[COPY0]], %[[COPY1]] : !ifrt.array<
 func.func @donated_duplicate_return(%arg0: !array {ifrt.donated}) -> (!array, !array) attributes {ifrt.function} {
   return %arg0, %arg0: !array, !array

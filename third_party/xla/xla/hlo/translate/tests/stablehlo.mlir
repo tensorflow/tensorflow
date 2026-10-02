@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: xla-translate --stablehlo-to-hlo-text -split-input-file %s | FileCheck %s
 // RUN: mlir-hlo-opt --stablehlo-legalize-to-hlo=convert-xla-supported-stablehlo=false -split-input-file %s | FileCheck %s --check-prefix CHECK-DIRECT
 
@@ -1171,7 +1185,7 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> t
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
 // CHECK-NEXT:  ROOT %[[collective_broadcast_2:[^ ]+]] = f32[128,32] collective-broadcast(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{LITERAL}: replica_groups={{0,1},{2,3}}, metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,1},{2,3}}, has_dynamic_root=false, metadata=
 
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   %0 = "stablehlo.collective_broadcast"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>}> : (tensor<128x32xf32>) -> tensor<128x32xf32>
@@ -1287,7 +1301,7 @@ module {
 // CHECK-NEXT:  %[[Arg_3_4:[^ ]+]] = bf16[] parameter(3)
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = bf16[16,256] parameter(0)
 // CHECK-NEXT:  %[[Arg_2_3:[^ ]+]] = s32[16,256] parameter(2)
-// CHECK-NEXT:  %[[sort_11:[^ ]+]] = (bf16[16,256], s32[16,256]) sort(%[[Arg_0_1]], %[[Arg_2_3]]), dimensions={1}, to_apply=%[[$top_k_gt_comparator_5]], metadata=
+// CHECK-NEXT:  %[[sort_11:[^ ]+]] = (bf16[16,256], s32[16,256]) sort(%[[Arg_0_1]], %[[Arg_2_3]]), dimensions={1}, is_stable=true, to_apply=%[[$top_k_gt_comparator_5]], metadata=
 // CHECK-NEXT:  %[[get_tuple_element_12:[^ ]+]] = bf16[16,256] get-tuple-element(%[[sort_11]]), index=0, metadata=
 // CHECK-NEXT:  %[[slice_13:[^ ]+]] = bf16[16,4] slice(%[[get_tuple_element_12]]), slice={[0:16], [0:4]}, metadata=
 // CHECK-NEXT:  %[[get_tuple_element_14:[^ ]+]] = s32[16,256] get-tuple-element(%[[sort_11]]), index=1, metadata=
@@ -1883,7 +1897,7 @@ module {
 // CHECK:       %[[$region_0_4:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_5:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  %[[Arg_1_6:[^ ]+]] = f32[] parameter(1)
-// CHECK-NEXT:  ROOT %[[compare_7:[^ ]+]] = pred[] compare(%[[Arg_0_5]], %[[Arg_1_6]]), direction=GE, type=TOTALORDER, metadata=
+// CHECK-NEXT:  ROOT %[[compare_7:[^ ]+]] = pred[] compare(%[[Arg_0_5]], %[[Arg_1_6]]), direction=GE, order=TOTAL, metadata=
 
 // CHECK:       %[[$region_1_8:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_9:[^ ]+]] = f32[] parameter(0)
@@ -2214,4 +2228,22 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
   %0 = "stablehlo.custom_call"(%arg0, %arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", xla_shape = "(f32[8,6]{0,1}, f32[8,6]{0,1})"} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tuple<tensor<8x6xf32>, tensor<8x6xf32>>
   %1 = stablehlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>, tensor<8x6xf32>>) -> tensor<8x6xf32>
   func.return %1: tensor<8x6xf32>
+}
+
+// -----
+
+// Test stablehlo.collective_broadcast with has_dynamic_root exports has_dynamic_root=true.
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[4]{0}, s32[1]{0})->f32[4]{0}}
+// CHECK: ENTRY
+// CHECK-NEXT: %[[DATA:.*]] = f32[4] parameter(0)
+// CHECK-NEXT: %[[SOURCE:.*]] = s32[1] parameter(1)
+// CHECK-NEXT: ROOT %[[RESULT:.*]] = f32[4] collective-broadcast(%[[DATA]], %[[SOURCE]]), channel_id=1,
+// CHECK-SAME{LITERAL}: replica_groups={{0,1}}, has_dynamic_root=true
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<1xi32>) -> tensor<4xf32> {
+  %0 = "stablehlo.collective_broadcast"(%arg0, %arg1) <{
+    channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
+    has_dynamic_root,
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  }> : (tensor<4xf32>, tensor<1xi32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }

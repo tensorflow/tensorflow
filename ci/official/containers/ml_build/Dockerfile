@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 ################################################################################
 ARG BASE_IMAGE=ubuntu:22.04@sha256:445586e41c1de7dfda82d2637f5ff688deea9eb5f5812f8c145afacc35b9f0db
 FROM $BASE_IMAGE AS devel
@@ -21,6 +36,8 @@ RUN /setup.python.sh python3.13 /builder.requirements.txt
 RUN /setup.python.sh python3.13-nogil /builder.requirements.txt
 RUN /setup.python.sh python3.14 /builder.requirements.txt
 RUN /setup.python.sh python3.14-nogil /builder.requirements.txt
+RUN /setup.python.sh python3.15 /builder.requirements.txt
+RUN /setup.python.sh python3.15-nogil /builder.requirements.txt
 
 # Since we are using python3.12 as the default python version, we need to
 # install python3.12 last for now.
@@ -28,7 +45,7 @@ RUN /setup.python.sh python3.14-nogil /builder.requirements.txt
 RUN /setup.python.sh python3.12 /builder.requirements.txt
 
 ARG INSTALL_NVIDIA_PACKAGES=false
-ARG NVIDIA_PACKAGES_FILE=cuda12.1_cudnn9.1.packages.txt
+ARG NVIDIA_PACKAGES_FILE=cuda12.1_cudnn9.8.packages.txt
 COPY ${NVIDIA_PACKAGES_FILE} /nvidia.packages.txt
 COPY setup.sources.cudnn.sh /setup.sources.cudnn.sh
 

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
-#include <memory>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -47,10 +46,29 @@ mlir::LogicalResult ExpandIntegerPower(mlir::math::IPowIOp op,
                                        mlir::PatternRewriter& rewriter) {
   llvm::SmallVector<mlir::Type> result_types(op->getResultTypes());
   llvm::SmallVector<mlir::Type> arg_types(op->getOperandTypes());
+  // When xla.is_unsigned is set, specify unsigned element types in arg_types so
+  // mapMhloOpToStdScalarOp detects unsigned semantics and omits the negative
+  // exponent check. result_types and operand values remain signless because
+  // the generated standard arith ops (muli, shrui, etc.) and the original
+  // math.ipowi operate on signless integer types.
+  if (op->hasAttr("xla.is_unsigned")) {
+    for (mlir::Type& type : arg_types) {
+      mlir::Type elem_type = mlir::getElementTypeOrSelf(type);
+      auto unsigned_elem_type = mlir::IntegerType::get(
+          op.getContext(), elem_type.getIntOrFloatBitWidth(),
+          mlir::IntegerType::Unsigned);
+      if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(type)) {
+        type = shaped_type.clone(unsigned_elem_type);
+      } else {
+        type = unsigned_elem_type;
+      }
+    }
+  }
   mlir::Value result =
       mlir::mhlo::impl::mapMhloOpToStdScalarOp<mlir::mhlo::PowOp>(
-          op.getLoc(), result_types, arg_types, {op->getOperands()},
-          op->getAttrs(), &rewriter);
+          op.getLoc(), result_types, arg_types,
+          mlir::mhlo::PowOp::Adaptor(op->getOperands()), op->getAttrs(),
+          &rewriter);
 
   rewriter.replaceOp(op, result);
   return mlir::success();

@@ -306,6 +306,31 @@ class BinaryOpTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
+  @test_util.run_deprecated_v1
+  def testIgammaDomainEdgeCases(self):
+    # P(a, x) is undefined for a <= 0; x == 0 short-circuits before the domain
+    # check in Eigen, so the kernel must return NaN for those inputs explicitly.
+    for dtype in [np.float32, np.float64]:
+      a_vals = np.array([-0.1, -1.0, 0.0, np.nan], dtype=dtype)
+      x_vals = np.array([0.0, 0.0, 0.0, 0.0], dtype=dtype)
+      with self.cached_session():
+        result = math_ops.igamma(
+            constant_op.constant(a_vals), constant_op.constant(x_vals)
+        )
+        result_np = self.evaluate(result)
+        self.assertTrue(
+            np.all(np.isnan(result_np)),
+            "Expected NaN for out-of-domain (a<=0, x==0), got %s" % result_np,
+        )
+      # P(a, 0) == 0 for a > 0; the fix must not disturb this identity.
+      a_pos = np.array([0.5, 1.0, 2.0], dtype=dtype)
+      x_zero = np.array([0.0, 0.0, 0.0], dtype=dtype)
+      with self.cached_session():
+        result_pos = math_ops.igamma(
+            constant_op.constant(a_pos), constant_op.constant(x_zero)
+        )
+        self.assertAllEqual(self.evaluate(result_pos), np.zeros(3, dtype=dtype))
+
   def testBfloat16Basic(self):
     bf16_np = dtypes_lib.bfloat16.as_numpy_dtype
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(bf16_np)  # pylint: disable=too-many-function-args
@@ -831,6 +856,82 @@ class BinaryOpTest(test.TestCase):
           error = gradient_checker.compute_gradient_error(y, [], z, [])
           self.assertLess(error, 2e-4)
 
+  def testComplexPowWithZeroExponent(self):
+    for dtype in (np.complex64, np.complex128):
+      bases = np.array(
+          [
+              complex(0.0, 0.0),
+              complex(-0.0, 0.0),
+              complex(0.0, -0.0),
+              complex(-0.0, -0.0),
+              1 + 2j,
+              np.nan,
+              complex(np.inf, 0.0),
+              complex(0.0, np.inf),
+          ],
+          dtype=dtype,
+      )
+      exponents = np.zeros_like(bases)
+      result = self.evaluate(math_ops.pow(bases, exponents))
+      self.assertAllEqual(result, np.ones_like(bases))
+
+      broadcast_result = self.evaluate(
+          math_ops.pow(bases, np.array(0, dtype=dtype))
+      )
+      self.assertAllEqual(broadcast_result, np.ones_like(bases))
+
+      empty = np.array([], dtype=dtype)
+      empty_result = self.evaluate(math_ops.pow(empty, empty))
+      self.assertAllEqual(empty_result, empty)
+
+      signed_zero_exponents = np.array(
+          [
+              complex(0.0, 0.0),
+              complex(-0.0, 0.0),
+              complex(0.0, -0.0),
+              complex(-0.0, -0.0),
+          ],
+          dtype=dtype,
+      )
+      signed_zero_result = self.evaluate(
+          math_ops.pow(
+              np.zeros_like(signed_zero_exponents), signed_zero_exponents
+          )
+      )
+      self.assertAllEqual(
+          signed_zero_result, np.ones_like(signed_zero_exponents)
+      )
+
+      imaginary_exponent_result = self.evaluate(
+          math_ops.pow(
+              np.array(2 + 0j, dtype=dtype), np.array(0 + 1j, dtype=dtype)
+          )
+      )
+      self.assertAllClose(imaginary_exponent_result, np.exp(1j * np.log(2.0)))
+      self.assertNotEqual(imaginary_exponent_result, 1 + 0j)
+
+      mixed_bases = np.array([0j, 2 + 0j, 1 + 1j], dtype=dtype)
+      mixed_exponents = np.array([0j, 2 + 0j, 0j], dtype=dtype)
+      mixed_result = self.evaluate(math_ops.pow(mixed_bases, mixed_exponents))
+      self.assertAllClose(
+          mixed_result, np.array([1 + 0j, 4 + 0j, 1 + 0j], dtype=dtype)
+      )
+
+      scalar_result = self.evaluate(
+          math_ops.pow(
+              constant_op.constant(0j, dtype=dtype),
+              constant_op.constant(0j, dtype=dtype),
+          )
+      )
+      self.assertEqual(scalar_result, 1 + 0j)
+
+      batched_bases = bases.reshape(2, 4)
+      batched_exponents = np.zeros((1, 4), dtype=dtype)
+      batched_result = self.evaluate(
+          math_ops.pow(batched_bases, batched_exponents)
+      )
+      self.assertAllEqual(batched_result, np.ones_like(batched_bases))
+
   def testAtan2SpecialValues(self):
     x1l, x2l = zip((+0.0, +0.0), (+0.0, -0.0), (-0.0, +0.0), (-0.0, -0.0),
                    (1.0, 0.0), (-1.0, 0.0), (1.0, -0.0), (-1.0, -0.0),
@@ -848,7 +949,7 @@ class BinaryOpTest(test.TestCase):
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
 
   def testPowNegativeExponentCpu(self):
-    for dtype in [np.int32, np.int64]:
+    for dtype in [np.int8, np.int16, np.int32, np.int64]:
       with test_util.force_cpu():
         with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
@@ -873,15 +974,77 @@ class BinaryOpTest(test.TestCase):
           y = -3
           self.evaluate(math_ops.pow(x, y))
 
+      # A scalar -1 exponent must not be rewritten to Reciprocal by Grappler.
+      with test_util.force_cpu():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed",
+        ):
+          x = np.array([-1, 1]).astype(dtype)
+          y = np.array(-1).astype(dtype)
+          self.evaluate(math_ops.pow(x, y))
+
+      # A uniform vector -1 exponent must not be rewritten either.
+      with test_util.force_cpu():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed",
+        ):
+          x = np.array([-1, 1]).astype(dtype)
+          y = np.array([-1, -1]).astype(dtype)
+          self.evaluate(math_ops.pow(x, y))
+
   def testPowNegativeExponentGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("Requires GPU")
-    # Negative integer powers return zero on GPUs for abs(LHS) > 1. Negative
-    # integer powers for 1 and -1 will return the correct result.
-    x = np.array([2, 3, 1, -1, -1]).astype(np.int64)
-    y = np.array([-1, 0, -2, -2, -3]).astype(np.int64)
-    z = math_ops.pow(x, y)
-    self.assertAllEqual(self.evaluate(z), [0, 1, 1, 1, -1])
+    for dtype in [np.int8, np.int16, np.int64]:
+      x = np.array([2, 3, 1, -1, -1], dtype=dtype)
+      y = np.array([-1, 0, -2, -2, -3], dtype=dtype)
+      with test_util.force_gpu():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed",
+        ):
+          self.evaluate(math_ops.pow(x, y))
+
+        # Check both scalar and broadcasted exponents, including -1 bases.
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed",
+        ):
+          self.evaluate(
+              math_ops.pow(
+                  np.array([-1, 1], dtype=dtype), np.array(-1, dtype=dtype)
+              )
+          )
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed",
+        ):
+          self.evaluate(
+              math_ops.pow(
+                  np.array([[2], [3]], dtype=dtype),
+                  np.array([[1, -1]], dtype=dtype),
+              )
+          )
+        self.assertAllEqual(
+            self.evaluate(
+                math_ops.pow(
+                    np.array([[2], [3]], dtype=dtype),
+                    np.array([[0, 2]], dtype=dtype),
+                )
+            ),
+            [[1, 4], [1, 9]],
+        )
+        self.assertAllEqual(
+            self.evaluate(
+                math_ops.pow(
+                    np.empty((0, 1), dtype=dtype),
+                    np.array([[1, -1]], dtype=dtype),
+                )
+            ),
+            np.empty((0, 2), dtype=dtype),
+        )
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails"

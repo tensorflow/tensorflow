@@ -52,8 +52,11 @@ def _update_forward_compatibility_date_number(date_to_override=None):
       date += datetime.timedelta(days=int(delta_days))
 
   if date < _FORWARD_COMPATIBILITY_HORIZON:
-    logging.warning("Trying to set the forward compatibility date to the past"
-                    " date %s. This will be ignored by TensorFlow." % (date))
+    logging.warning(
+        "Trying to set the forward compatibility date to the past"
+        " date %s. This will be ignored by TensorFlow.",
+        date,
+    )
     return
   _FORWARD_COMPATIBILITY_DATE_NUMBER = _date_to_date_number(
       date.year, date.month, date.day)
@@ -134,7 +137,7 @@ def forward_compatibility_horizon(year, month, day):
   with older binaries, new features can be gated with:
 
   ```python
-  if compat.forward_compatible(year=2018, month=08, day=01):
+  if compat.forward_compatible(year=2018, month=8, day=1):
     generate_graph_with_new_features()
   else:
     generate_graph_so_older_binaries_can_consume_it()
@@ -148,7 +151,7 @@ def forward_compatibility_horizon(year, month, day):
   from tensorflow.python.compat import compat
 
   def testMyNewFeature(self):
-    with compat.forward_compatibility_horizon(2018, 08, 02):
+    with compat.forward_compatibility_horizon(2018, 8, 2):
        # Test that generate_graph_with_new_features() has an effect
   ```
 

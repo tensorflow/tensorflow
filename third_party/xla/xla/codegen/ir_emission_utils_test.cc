@@ -58,8 +58,8 @@ ENTRY main {
   ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -97,8 +97,8 @@ ENTRY main {
   ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -137,8 +137,8 @@ ENTRY main {
   ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -182,8 +182,8 @@ ENTRY main {
   ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -226,8 +226,8 @@ ENTRY main {
   ROOT fusion_root_multiple = (bf16[10,11,12], bf16[8,11,12]) fusion(p0, p1, p2, p3, p4), kind=kLoop, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -269,8 +269,8 @@ ENTRY main {
   ROOT fusion_root_multiple = (bf16[10,11,12], bf16[10,11,12]) fusion(p0, p1, p2, p3), kind=kLoop, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -315,8 +315,8 @@ ENTRY main {
   ROOT fusion_root_multiple_transpose_bitcast = (bf16[11,10,12], bf16[8,11,12]) fusion(p0, p1, p2, p3, p4), kind=kLoop, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -357,8 +357,8 @@ ENTRY main {
   ROOT fusion_root_transpose_bitcast = bf16[11,10,12] fusion(p0, p1, p2, p3), kind=kLoop, calls=single_inplace_dus_with_transpose_bitcast
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -399,8 +399,8 @@ ENTRY main {
   ROOT fusion_root_reshape_bitcast = bf16[10,11,6,2] fusion(p0, p1, p2, p3), kind=kLoop, calls=single_inplace_dus_with_reshape_bitcast
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -444,8 +444,8 @@ ENTRY main {
     kind=kLoop, calls=single_inplace_dus_with_bitcast_to_the_root_and_from_the_parameter
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   auto fusion = module->entry_computation()->root_instruction();
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, 0, 10);
@@ -457,6 +457,69 @@ ENTRY main {
                   },
                   fusion),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(IrEmissionUtilsTest, CanEmitFusedDynamicUpdateSlice_ValidDusFusion) {
+  const char* hlo = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,1]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,1}
+  one = s32[] constant(1)
+  bitcasted_one = s32[1,1]{1,0} bitcast(one)
+  add = s32[1,1] add(dynamic-slice, bitcasted_one)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, zero)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  auto fusion = module->entry_computation()->root_instruction();
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
+  EXPECT_THAT(CanEmitFusedDynamicUpdateSlice(*adaptor),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       CanEmitFusedDynamicUpdateSlice_ElementwiseOnPathToParameter) {
+  const char* hlo = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[2,3]{1,0} parameter(0)
+  bitcast = s32[2,3]{1,0} negate(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,1]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,1}
+  one = s32[] constant(1)
+  bitcasted_one = s32[1,1]{1,0} bitcast(one)
+  add = s32[1,1] add(dynamic-slice, bitcasted_one)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, zero)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[2,3]{1,0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  auto fusion = module->entry_computation()->root_instruction();
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
+  EXPECT_THAT(CanEmitFusedDynamicUpdateSlice(*adaptor),
+              absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

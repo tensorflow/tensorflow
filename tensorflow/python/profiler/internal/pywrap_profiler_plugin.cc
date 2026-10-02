@@ -76,7 +76,7 @@ ToolOptions ToolOptionsFromPythonDict(const py::dict& dictionary) {
 
 }  // namespace
 
-PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
+PYBIND11_MODULE(_pywrap_profiler_plugin, m, pybind11::mod_gil_not_used()) {
   m.def(
       "trace", [](const char* service_addr, const char* logdir,
                   const char* worker_list, bool include_dataset_ops,

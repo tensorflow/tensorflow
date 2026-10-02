@@ -1,0 +1,74 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+edition = "2023";
+
+package xla.numerics.comparison;
+
+// Options for the comparison tool. This is passed as command line flags to the
+// client and server.
+message ComparisonOptions {
+  // Enum to distinguish between the two variants being compared (e.g., two
+  // different systems, compiler versions, etc.).
+  enum ComparisonVariant {
+    // Represents an unspecified comparison variant. The current implementation
+    // will default to baseline.
+    COMPARISON_VARIANT_UNSPECIFIED = 0;
+    // Represents the reference or baseline run.
+    COMPARISON_VARIANT_BASELINE = 1;
+    // Represents the run being compared against the baseline.
+    COMPARISON_VARIANT_TARGET = 2;
+  }
+
+  message ClientOptions {
+    // A string representing the server address. This can be a host:port, a BNS
+    // address, or a blade target.
+    //
+    // Note that in the case of a blade target, the target should be specified
+    // without the "blade:" prefix.
+    string server_address = 1;
+    // The deadline for the RPC call.
+    int32 rpc_deadline_secs = 2;
+    // The maximum number of retries for the RPC call.
+    int32 max_retries = 3;
+    // The delay between retries.
+    int32 retry_delay_secs = 4;
+  }
+
+  // If not set, the comparison mode will not be enabled.
+  ClientOptions client_options = 1;
+
+  // The minimum number of samples to use for the comparison. Tensors whose size
+  // is less than this will be compared fully.
+  // Note that this number is only a suggestion to the sampling algorithm. The
+  // actual number of samples may still be smaller than this number.
+  int64 min_sample_count = 2;
+  // The maximum number of samples to use for the comparison. If a tensor is
+  // too large and the resulted number of samples exceeds this number with the
+  // given sample ratio, the number of samples will be capped to this value.
+  // Note that this number is only a suggestion to the sampling algorithm. The
+  // actual number of samples may still be larger than this number.
+  int64 max_sample_count = 3;
+  // The seed used to generate the samples.
+  int64 sample_seed = 4;
+  // The ratio of the number of samples to use for the comparison.
+  float sample_ratio = 5;
+  // Regex to filter the HLO module name to be compared. If empty, nothing is
+  // compared.
+  string hlo_module_name_regex = 6;
+  // The variant of the comparison. If not set, the comparison mode will default
+  // to baseline.
+  ComparisonVariant comparison_variant = 7;
+}

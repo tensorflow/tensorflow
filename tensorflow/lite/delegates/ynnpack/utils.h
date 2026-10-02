@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
 #include "absl/container/flat_hash_map.h"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 
@@ -33,16 +34,44 @@ namespace ynnpack {
 
 using TensorToValueIdMap = absl::flat_hash_map<int, uint32_t>;
 
+enum class CompositeOpType {
+  kNone = 0,
+  kRuntimeBmm,
+  kSdpa,
+  kMoe,
+};
+
 struct NodeInfo {
   int node_index;
   int builtin_code;
   std::vector<int> inputs;
   std::vector<int> outputs;
   TfLiteFusedActivation activation;
+  CompositeOpType composite_op_type = CompositeOpType::kNone;
+  // Op parameters captured from the TfLiteNode/TfLiteRegistration when the
+  // delegate kernel is initialized. `TfLiteContext::GetNodeAndRegistration` is
+  // only available while the delegate is being applied, but the YNNPACK
+  // subgraph may need to be rebuilt later from `Prepare` (e.g. after an input
+  // tensor is resized), so everything needed to define nodes is cached here.
+  // These point at memory owned by the TfLite node (or model), which outlives
+  // the delegate kernel.
+  const void* builtin_data = nullptr;
+  const char* custom_name = nullptr;
+  const void* custom_initial_data = nullptr;
+  int custom_initial_data_size = 0;
+};
+
+struct DummyInputInfo {
+  int param_tensor_index;
+  uint32_t dummy_val_id;
+  int seq_axis;
+  size_t full_dims[YNN_MAX_TENSOR_RANK];
+  size_t rank;
 };
 
 // Generic helpers
 ynn_type GetYnnType(TfLiteType type);
+size_t YnnTypeElementCount(ynn_type type);
 ynn_unary_operator GetYnnUnaryOperator(int builtin_code);
 ynn_binary_operator GetYnnBinaryOperator(int builtin_code);
 ynn_reduce_operator GetYnnReduceOperator(int builtin_code);
@@ -50,14 +79,33 @@ bool IsUnaryOp(int builtin_code);
 bool IsBinaryOp(int builtin_code);
 bool IsStablehloOp(int builtin_code);
 bool IsQuantized(const TfLiteTensor& tensor);
+// Check if a tensor is constant, or if `allow_prepare` is true, that a tensor
+// is constant between `Prepare` calls.
+bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare = false);
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
                              bool allow_per_channel = false);
+bool IsTensorSupported(const TfLiteTensor& tensor,
+                       bool allow_per_channel = false);
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
                              const TfLiteTensor& tensor2);
 bool IsActivationSupported(TfLiteFusedActivation activation,
                            TfLiteType output_type);
 TfLiteFusedActivation GetFusedActivation(const TfLiteRegistration* registration,
                                          const TfLiteNode* node);
+
+// Returns the custom/composite op attributes of `node` as a flexbuffer map, or
+// an empty map if there are none.
+flexbuffers::Map GetFlexBufferMap(const NodeInfo& node);
+
+// Find a dummy input we can use for a particular runtime_bmm op. Often, many
+// runtime_bmm ops use the same params tensor, which can share a dummy input.
+TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
+                                   ynn_subgraph_t subgraph,
+                                   uint32_t& next_external_id,
+                                   std::vector<DummyInputInfo>& dummy_inputs,
+                                   int param_tensor_index, int seq_axis,
+                                   size_t rank, const size_t* full_dims,
+                                   ynn_type type, uint32_t* dummy_val_id_out);
 
 TfLiteStatus GetTfLiteTensorValueAsDouble(TfLiteContext* context,
                                           const TfLiteTensor& tensor, int index,
@@ -86,6 +134,11 @@ TfLiteStatus ApplyActivation(TfLiteContext* context, ynn_subgraph_t subgraph,
                              TfLiteFusedActivation activation,
                              uint32_t input_id, uint32_t& output_id,
                              int output_tensor_index, ynn_type internal_type);
+
+TfLiteStatus ApplyClamp(TfLiteContext* context, ynn_subgraph_t subgraph,
+                        double min_val, double max_val, uint32_t input_id,
+                        uint32_t& output_id, int output_tensor_index,
+                        ynn_type internal_type);
 
 TfLiteStatus DequantizeIfNeeded(TfLiteContext* context, ynn_subgraph_t subgraph,
                                 TensorToValueIdMap& tensor_to_value_id,
@@ -134,7 +187,9 @@ TfLiteStatus DefineDecomposedUnaryNode(TfLiteContext* context,
       context, subgraph, tensor_to_value_id, input_tensor_index, input_val_id,
       &float_input_val_id));
 
-  ynn_type internal_type = ynn_type_fp32;
+  ynn_type internal_type = IsQuantized(output_tensor)
+                               ? ynn_type_fp32
+                               : GetYnnType(output_tensor.type);
   uint32_t float_output_val_id = YNN_INVALID_VALUE_ID;
 
   if (!is_output_quantized && activation == kTfLiteActNone) {

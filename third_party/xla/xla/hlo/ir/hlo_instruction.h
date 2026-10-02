@@ -45,10 +45,10 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -85,6 +85,9 @@ class HloPayloadDeduplicator;
 struct HloProtoOptions {
   bool deduplicate_backend_config = false;
   bool deduplicate_metadata = true;
+  // Minimum backend_config size (in bytes) to be eligible for deduplication.
+  // Configs smaller than this threshold are kept inline.
+  int64_t min_backend_config_size = 0;
   HloPayloadDeduplicator* payload_deduplicator = nullptr;
 };
 
@@ -304,6 +307,7 @@ class HloInstruction {
 
   inline static constexpr char kMainExecutionThread[] = "main";
   inline static constexpr char kHostThread[] = "host";
+  inline static constexpr char kParallelExecutionThread[] = "parallel";
   // Iota based id unique inside parent computation.
   using LocalId = int32_t;
 
@@ -428,14 +432,16 @@ class HloInstruction {
       HloComputation* map_computation);
 
   // Creates a convolution op, where rhs is the convolutional filter
-  // and window describes how the filter is applied to lhs.
+  // and window describes how the filter is applied to lhs. Additionally,
+  // it supports structured sparsity and block scaling.
   static std::unique_ptr<HloInstruction> CreateConvolve(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
-      const SparsityConfig& sparsity_config = {},
+      const SparsityConfig& sparsity_config = SparsityConfig(),
+      const BlockScalingConfig& block_scaling_config = BlockScalingConfig(),
       ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Creates an FFT op, of the type indicated by fft_type.
@@ -449,12 +455,18 @@ class HloInstruction {
       HloComputation* async_computation,
       absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
   // Creates a variadic async-update op.
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
-      const Shape& shape, absl::Span<HloInstruction* const> operands);
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape, HloInstruction* operand,
+      std::optional<HloOpcode> async_wrapped_opcode = std::nullopt,
+      HloComputation* async_computation = nullptr);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -466,7 +478,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       Comparison::Direction direction,
-      std::optional<Comparison::Type> type = std::nullopt);
+      std::optional<ComparisonOrder> order = std::nullopt);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
@@ -481,6 +493,13 @@ class HloInstruction {
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
+
+  static std::unique_ptr<HloInstruction> CreateDot(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config = {},
+      const BlockScalingConfig& block_scaling_config = {});
 
   // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes', with
   // contracting, batch, ragged, and group dimensions specified in
@@ -771,13 +790,23 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
       std::shared_ptr<CollectiveDeviceListBase> device_list,
-      bool constrain_layout, const std::optional<int64_t>& channel_id);
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool has_dynamic_root = false);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      const std::optional<int64_t>& channel_id, bool has_dynamic_root = false);
+
+  // Creates a collective reduce operation which reduces data from ranks in
+  // replica groups and stores the result only on the root rank.
+  static std::unique_ptr<HloInstruction> CreateCollectiveReduce(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids, bool has_dynamic_root = false);
 
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
@@ -853,7 +882,7 @@ class HloInstruction {
   // is a tuple containing the infeed_shape and the TOKEN.
   static std::unique_ptr<HloInstruction> CreateInfeed(
       const Shape& infeed_shape, HloInstruction* token_operand,
-      const std::string& config);
+      absl::string_view config);
 
   // Creates an outfeed instruction, which outputs data. outfeed_shape is the
   // shape of the data being outfed *not* the shape of the outfeed instruction
@@ -1191,6 +1220,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReverse(
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64_t> dimensions);
+
+  // Creates a shuffle instruction, which shuffles the elements of `operand`
+  // along the given dimensions following the pattern selected by `mode`.
+  static std::unique_ptr<HloInstruction> CreateShuffle(
+      const Shape& shape, HloInstruction* operand,
+      absl::Span<const int64_t> dimensions, const ShuffleMode& mode);
 
   // Creates a Afterall instruction used for joining or creating new values of
   // token type which thread through side-effecting operations. Operands must
@@ -1714,6 +1749,15 @@ class HloInstruction {
   bool IsCustomCall(absl::string_view target) const;
   bool IsCustomCall(absl::Span<const absl::string_view> targets) const;
 
+  // Returns true if this instruction is an allowed async intermediary custom
+  // call (e.g. Sharding, LocalToGlobalShape, GlobalToLocalShape, xla.sdy.*).
+  bool IsAllowedAsyncIntermediaryCustomCall() const;
+
+  // Returns true if this instruction is an allowed async intermediary (e.g.
+  // tuple, get-tuple-element, optimization barrier, copy, or allowed async
+  // intermediary custom-call).
+  bool IsAllowedAsyncIntermediary() const;
+
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
   const HloSharding& sharding() const {
@@ -1780,12 +1824,12 @@ class HloInstruction {
   // the instruction to form the name of the cloned instruction.
   // Ignores the control predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> Clone(
-      const std::string& suffix = "clone",
+      absl::string_view suffix = "clone",
       HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape.
   std::unique_ptr<HloInstruction> CloneWithNewShape(
-      const Shape& shape, const std::string& suffix = "clone",
+      const Shape& shape, absl::string_view suffix = "clone",
       HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape and operands.
@@ -1796,7 +1840,7 @@ class HloInstruction {
   // Clones the HLO instruction with new shape, operands and suffix.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-      const std::string& suffix, HloCloneContext* context = nullptr) const;
+      absl::string_view suffix, HloCloneContext* context = nullptr) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   // CloneWithNewOperands forwards to this method for some of the intstruction
@@ -1974,10 +2018,9 @@ class HloInstruction {
 
   // Adds a single attribute only if it not already present in the
   // HloInstruction. Returns false if the attribute was already present.
-  bool add_frontend_attribute(const std::string& key,
-                              const std::string& value) {
-    auto it =
-        mutable_rare()->frontend_attributes.mutable_map()->insert({key, value});
+  bool add_frontend_attribute(absl::string_view key, absl::string_view value) {
+    auto it = mutable_rare()->frontend_attributes.mutable_map()->insert(
+        {std::string(key), std::string(value)});
     return it.second;
   }
 
@@ -2085,7 +2128,7 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
     return proto;
   }
 
@@ -2385,13 +2428,13 @@ class HloInstruction {
   std::string infeed_config() const;
 
   // Delegates to HloInfeedInstruction::set_infeed_config.
-  void set_infeed_config(const std::string& config);
+  void set_infeed_config(absl::string_view config);
 
   // Returns the config for the Outfeed instruction.
   const std::string& outfeed_config() const;
 
   // Delegates to HloOutfeedInstruction::set_outfeed_config.
-  void set_outfeed_config(const std::string& config);
+  void set_outfeed_config(absl::string_view config);
 
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
@@ -2505,23 +2548,30 @@ class HloInstruction {
   const SparsityConfig& sparsity_config() const;
   void set_sparsity_config(const SparsityConfig& config);
 
+  // Delegates to HloConvolutionInstruction::block_scaling_config.
+  const BlockScalingConfig& block_scaling_config() const;
+  void set_block_scaling_config(const BlockScalingConfig& config);
+
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
   bool IsAsynchronous() const { return HloOpcodeIsAsync(opcode_); }
 
-  // Delagates to HloAsyncInstruction::async_chain_start().
+  // Delegates to HloAsyncInstruction::async_chain_start().
   HloInstruction* async_chain_start() const;
 
-  // Delagates to HloAsyncInstruction::async_done().
+  // Delegates to HloAsyncInstruction::async_chain_done().
   HloInstruction* async_chain_done() const;
 
-  // Returns the computation that will executed asynchronously.
+  // Delegates to HloAsyncInstruction::async_chain_next().
+  HloInstruction* async_chain_next() const;
+
+  // Returns the computation that will be executed asynchronously.
   HloComputation* async_wrapped_computation() const;
 
-  // Delagates to HloAsyncInstruction::async_wrapped_instruction().
+  // Delegates to HloAsyncInstruction::async_wrapped_instruction().
   HloInstruction* async_wrapped_instruction() const;
 
-  // Delagates to HloAsyncInstruction::async_wrapped_opcode().
+  // Delegates to HloAsyncInstruction::async_wrapped_opcode().
   HloOpcode async_wrapped_opcode() const;
 
   // Delegates to HloAsyncInstruction::async_execution_thread().
@@ -2529,6 +2579,28 @@ class HloInstruction {
 
   // Delegates to HloAsyncInstruction::set_async_execution_thread().
   void set_async_execution_thread(absl::string_view async_execution_thread);
+
+  // Returns true if this instruction is an asynchronous producer
+  // (AsyncStart, AsyncUpdate, AllGatherStart, AllReduceStart,
+  // CollectivePermuteStart) - representing any op that produces an async
+  // context.
+  bool IsAsyncProducer() const;
+
+  // Returns true if this instruction is a root asynchronous start
+  // (AsyncStart, AllGatherStart, AllReduceStart, CollectivePermuteStart) -
+  // representing root async start ops.
+  bool IsAsyncStart() const;
+
+  // Returns true if this instruction is a terminal asynchronous done op
+  // (AsyncDone, AllGatherDone, AllReduceDone, CollectivePermuteDone) -
+  // representing terminal async done ops.
+  bool IsAsyncDone() const;
+
+  // Returns true if this instruction is an asynchronous consumer
+  // (AsyncUpdate, AsyncDone, AllGatherDone, AllReduceDone,
+  // CollectivePermuteDone) - representing any op that consumes an async
+  // context.
+  bool IsAsyncConsumer() const;
 
   // Delegates to
   // HloCallableInstruction::RecursivelySetComputationsThreadName().
@@ -2578,12 +2650,19 @@ class HloInstruction {
   void CopyOriginalValue(const HloInstruction* instruction, bool clone = false,
                          bool issue_warning = false);
 
+  // TODO(phui): reimplement this method
+  void DetachFromOperands() {
+    for (HloInstruction* operand : unique_operands()) {
+      operand->RemoveUser(this);
+    }
+    RemoveAllOperands();
+  }
+  void RemoveAllOperands() { operands_.clear(); }
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be
   // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
-
-  void RemoveAllOperands() { operands_.clear(); }
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);
@@ -2678,6 +2757,16 @@ class HloInstruction {
   // Has this instruction been marked as dead? Accessed by friend class
   // HloInstruction.
   bool IsMarkedAsDead() const { return marked_as_dead_; }
+
+  // Implementation of DetachFromOperandsAndUsers that leaves the edges to
+  // instructions of the given computation (the parent, or null for none) in
+  // place and still marks this instruction cleaned up, so ~HloInstruction does
+  // not unlink them either. ~HloComputation uses it because unlinking an
+  // instruction scans every operand slot of each of its users, and the edges
+  // among instructions that die together are never read again.
+  // REQUIRES: every instruction of the given computation is deleted before any
+  // of those edges is read again.
+  void DetachFromOperandsAndUsersOutside(const HloComputation* computation);
 
   // Set the unique id for this instruction to "id". Should only be called by
   // the instruction's parent computation to set an internal unique id that fits
@@ -2888,6 +2977,7 @@ std::string ResultAccuracyToleranceToString(
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);
+std::string ShuffleModeToString(ShuffleMode::ModeCase shuffle_mode);
 std::string ResultAccuracyToString(ResultAccuracy::Mode accuracy_mode);
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
@@ -2897,14 +2987,18 @@ std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
 
-absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
-    const std::string& name);
+std::string BlockScalingConfigToString(
+    const BlockScalingConfig& block_scaling_config);
+
+absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(absl::string_view name);
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
-    const std::string& name);
+    absl::string_view name);
+absl::StatusOr<ShuffleMode::ModeCase> StringToShuffleMode(
+    absl::string_view mode);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
     absl::string_view name);
 absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
@@ -2981,6 +3075,7 @@ bool HloPredicateIsNotOp(const HloInstruction* instruction) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCall:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceScatter:

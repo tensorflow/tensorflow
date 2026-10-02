@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s --split-input-file \
 // RUN:   --xla-gpu-test-to-llvm="gpu_device_info='oneapi_compute_capability { architecture: \"bmg\"}'" \
 // RUN: | FileCheck %s
@@ -12,6 +26,21 @@ module {
     // CHECK: return %{{.*}} : f32
     %0 = math.log1p %arg0 : f32
     return %0 : f32
+  }
+}
+
+// -----
+
+module {
+  // CHECK-LABEL: func @test_exp
+  func.func @test_exp(%arg0: f16) -> f16 {
+    // CHECK-NOT: llvm.intr.exp
+    // CHECK: %[[EXT:.*]] = llvm.fpext %arg0
+    // CHECK: llvm.call spir_funccc @_Z{{.*}}__spirv_ocl_expf(%[[EXT]])
+    // CHECK: %{{.*}} = llvm.fptrunc %{{.*}}
+    // CHECK: return %{{.*}} : f16
+    %0 = math.exp %arg0 : f16
+    return %0 : f16
   }
 }
 

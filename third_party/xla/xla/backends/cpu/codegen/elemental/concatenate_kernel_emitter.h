@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_CONCATENATE_KERNEL_EMITTER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_CONCATENATE_KERNEL_EMITTER_H_
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -25,6 +26,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
+
+absl::Status CanDoFastConcatenate(const HloInstruction& instruction);
 
 class ConcatenateKernelEmitter final : public KernelEmitter<LlvmKernelSource> {
  public:

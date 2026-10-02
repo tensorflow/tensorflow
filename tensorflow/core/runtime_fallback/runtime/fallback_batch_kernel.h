@@ -57,6 +57,10 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   // and the last one must equal 'max_batch_size_'.
   absl::Status ValidateAllowedBatchSizes() const;
 
+  // Validates 'per_criticality_batch_timeout_micros_'. The entries must be
+  // either empty or of size equal to the number of criticalities.
+  absl::Status ValidatePerCriticalityBatchTimeoutMicros() const;
+
   // Initialize vars by reading from op-kernel-construction.
   // Vars
   // - enable_adaptive_batch_threads_
@@ -93,6 +97,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   bool enable_priority_aware_batch_scheduler_resplit_ = false;
   bool enable_batching_task_lazy_cancellation_ = false;
   int32_t num_warmup_batch_threads_ = 0;
+  std::vector<int64_t> per_criticality_batch_timeout_micros_ = {};
 
   // Parameters for adaptive batch scheduler only.
   // Note 'num_batch_threads_' above is shared by two implementations of batch
@@ -241,6 +246,8 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           enable_batching_task_lazy_cancellation_;
       batch_resource_options.num_warmup_batch_threads =
           num_warmup_batch_threads_;
+      batch_resource_options.per_criticality_batch_timeout_micros =
+          per_criticality_batch_timeout_micros_;
 
       serving::ModelBatchStats& model_batch_stats =
           serving::GlobalBatchStatsRegistry().model(

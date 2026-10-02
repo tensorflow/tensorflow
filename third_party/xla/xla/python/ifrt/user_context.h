@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
@@ -39,7 +39,7 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(UserContextId, uint64_t);
 // Python frameworks (e.g.: JAX), or on a "request_id" in case of request
 // serving applications.
 class UserContext : public tsl::ReferenceCounted<UserContext>,
-                    public llvm::RTTIExtends<UserContext, llvm::RTTIRoot> {
+                    public RTTIExtends<UserContext, RTTIRoot> {
  public:
   ~UserContext() override = default;
 
@@ -95,7 +95,7 @@ class BasicUserContext final : public UserContext {
 // annotation. If an error ends up happening later, this annotation will provide
 // an extra context to the user.
 class AnnotatedUserContext
-    : public llvm::RTTIExtends<AnnotatedUserContext, UserContext> {
+    : public RTTIExtends<AnnotatedUserContext, UserContext> {
  public:
   // `DebugString()` will contain `msg` appended to `user_context`'s
   // debug string (with no delimiter in between).
@@ -144,8 +144,7 @@ class AnnotatedUserContext
 // operation that is the original source of the error, and
 // `user_contexts.back()` indicates the context of the latest operation that is
 // finally surfacing the error to the user.
-class ChainedUserContext
-    : public llvm::RTTIExtends<ChainedUserContext, UserContext> {
+class ChainedUserContext : public RTTIExtends<ChainedUserContext, UserContext> {
  public:
   static absl_nonnull UserContextRef
   Create(absl::Span<const UserContextRef> user_contexts);
@@ -182,8 +181,7 @@ class ChainedUserContext
 // Then, the runtime can use this user context to indicate that the error can
 // come from any of the batched operations. The ordering of user contexts in a
 // fused user context is insignificant.
-class FusedUserContext
-    : public llvm::RTTIExtends<FusedUserContext, UserContext> {
+class FusedUserContext : public RTTIExtends<FusedUserContext, UserContext> {
  public:
   static absl_nonnull UserContextRef
   Create(absl::Span<const UserContextRef> user_contexts);

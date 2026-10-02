@@ -98,7 +98,7 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
 
     OP_REQUIRES(
         context, num_targets * num_classes < std::numeric_limits<int>::max(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "Number of targets * number of classes must be less than INT_MAX"));
 
     if (num_targets == 0 || num_classes == 0) {
@@ -174,8 +174,8 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
 #define DEFINE_GPU_KERNELS(T, TARGET_T) \
   template struct functor::InTopKFunctor<GPUDevice, T, TARGET_T>;
 
-DEFINE_GPU_KERNELS(float, int32);
-DEFINE_GPU_KERNELS(float, int64);
+DEFINE_GPU_KERNELS(float, int32_t);
+DEFINE_GPU_KERNELS(float, int64_t);
 
 #undef DEFINE_GPU_KERNELS
 

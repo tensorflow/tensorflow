@@ -54,6 +54,10 @@ struct StablehloExportPipelineOptions
       llvm::cl::desc("Whether to simplify replicated shardings during export "
                      "to make final sharding strings shorter."),
       llvm::cl::init(false)};
+  Option<bool> clearReverseOpSharding{
+      *this, "clear-reverse-op-sharding",
+      llvm::cl::desc("Whether to clear reverse op result sharding on export."),
+      llvm::cl::init(false)};
 };
 
 // Register the xla-sdy-stablehlo-export-pipeline.

@@ -375,6 +375,13 @@ TEST(RuntimeShapeTest, TestCheckedFlatSizeSkipDimRejectsOverflow) {
   EXPECT_FALSE(shape.CheckedFlatSizeSkipDim(/*skip_dim=*/0, flat_size));
 }
 
+TEST(RuntimeShapeTest, HasZeroDimension) {
+  EXPECT_FALSE(RuntimeShape().HasZeroDimension());
+  EXPECT_FALSE(RuntimeShape({1, 2, 3}).HasZeroDimension());
+  EXPECT_TRUE(RuntimeShape({1, 0, 3}).HasZeroDimension());
+  EXPECT_TRUE(RuntimeShape({0}).HasZeroDimension());
+}
+
 #ifndef NDEBUG
 TEST(RuntimeShapeTest, NegativeDimensionsCountInConstructor) {
   EXPECT_DEATH(RuntimeShape shape(-1), "");

@@ -260,6 +260,39 @@ class RoundTest(test_util.TensorFlowTestCase):
         y_np = np.round(x_np)
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
 
+  def testComplexDtypeValidation(self):
+    """Test that complex dtypes raise TypeError with helpful message."""
+    # Test complex64
+    x_complex64 = constant_op.constant(
+        [1.4 + 2.6j, 3.2 + 4.8j], dtype=dtypes.complex64
+    )
+    with self.assertRaisesRegex(
+        TypeError,
+        r"tf\.math\.round does not support complex dtypes.*complex64.*"
+        r"apply tf\.math\.round separately",
+    ):
+      math_ops.round(x_complex64)
+
+    # Test complex128
+    x_complex128 = constant_op.constant(
+        [1.4 + 2.6j, 3.2 + 4.8j], dtype=dtypes.complex128
+    )
+    with self.assertRaisesRegex(
+        TypeError,
+        r"tf\.math\.round does not support complex dtypes.*complex128.*"
+        r"apply tf\.math\.round separately",
+    ):
+      math_ops.round(x_complex128)
+
+  def testBFloat16Support(self):
+    """Test that bfloat16 dtype works correctly with tf.math.round."""
+    x = constant_op.constant([0.9, 2.5, 2.3, 1.5, -4.5], dtype=dtypes.bfloat16)
+    result = math_ops.round(x)
+    expected = constant_op.constant(
+        [1.0, 2.0, 2.0, 2.0, -4.0], dtype=dtypes.bfloat16
+    )
+    self.assertAllClose(self.evaluate(result), self.evaluate(expected))
+
 
 @test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
@@ -1072,6 +1105,51 @@ class MultiplyNoNanTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class XopsGpuKernelTest(test_util.TensorFlowTestCase):
+  """The zero branch of the MLIR-generated GPU kernels for xlogy and friends.
+
+  On CPU these ops run the Eigen functors in cwise_ops.h instead.
+  """
+
+  @test_util.run_gpu_only
+  def testNegativeZeroGivesPositiveZero(self):
+    for op, y in (
+        (math_ops.xlogy, 2.0),
+        (math_ops.xlog1py, 1.0),
+        (math_ops.xdivy, 3.0),
+    ):
+      for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+        x = constant_op.constant(np.full((16,), -0.0), dtype=dtype)
+        y_t = constant_op.constant(np.full((16,), y), dtype=dtype)
+        with test_util.force_gpu():
+          result = self.evaluate(op(x, y_t))
+        self.assertAllEqual(result, np.zeros(16))
+        self.assertFalse(np.signbit(result).any())
+
+  @test_util.run_gpu_only
+  def testSubnormalIsNotReturned(self):
+    # The GPU kernels flush denormals, so a subnormal x compares equal to zero
+    # and the result is 0; without flushing, x / x is 1. It must never be x.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      tiny = np.finfo(dtype.as_numpy_dtype).tiny / 4
+      x = constant_op.constant(np.full((16,), tiny), dtype=dtype)
+      with test_util.force_gpu():
+        result = self.evaluate(math_ops.xdivy(x, x))
+      self.assertTrue(np.isin(result, [0.0, 1.0]).all(), result)
+
+  @test_util.run_gpu_only
+  def testComplexXlog1pyComparesXAgainstZero(self):
+    # The complex kernel compared x against 1 rather than 0, so xlog1py(1, y)
+    # returned 1 and xlog1py(0, -1) returned nan.
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([1.0, 0.0], dtype=dtype)
+      y = constant_op.constant([1.0, -1.0], dtype=dtype)
+      with test_util.force_gpu():
+        result = self.evaluate(math_ops.xlog1py(x, y))
+      self.assertAllClose(result, [np.log(2.0), 0.0])
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class XlogyTest(test_util.TensorFlowTestCase):
 
   def testXlogyNoZero(self):
@@ -1102,6 +1180,19 @@ class XlogyTest(test_util.TensorFlowTestCase):
         xtimes_logy = self.evaluate(math_ops.log(y[1]))
         self.assertAllClose(zeros_np, xlogy_tf_np[0])
         self.assertAllClose(xtimes_logy, xlogy_tf_np[1])
+
+  def testXlogyWithNegativeZero(self):
+    # A zero x gives +0 at every size. Tensors of at least one SIMD packet used
+    # to return x itself, which kept the sign of -0. This covers the Eigen CPU
+    # kernels; the GPU kernels are generated from MLIR separately.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for size in [1, 3, 4, 16, 1024]:
+        x = constant_op.constant(np.full((size,), -0.0), dtype=dtype)
+        y = constant_op.constant(np.full((size,), 2.0), dtype=dtype)
+        with test_util.force_cpu():
+          xlogy = self.evaluate(math_ops.xlogy(x, y))
+          self.assertAllEqual(xlogy, np.zeros(size))
+          self.assertFalse(np.signbit(xlogy).any())
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1137,6 +1228,17 @@ class Xlog1pyTest(test_util.TensorFlowTestCase):
         self.assertAllClose(zeros_np, xlog1py_tf_np[0])
         self.assertAllClose(xtimes_log1py, xlog1py_tf_np[1])
 
+  def testXlog1pyWithNegativeZero(self):
+    # See XlogyTest.testXlogyWithNegativeZero.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for size in [1, 3, 4, 16, 1024]:
+        x = constant_op.constant(np.full((size,), -0.0), dtype=dtype)
+        y = constant_op.constant(np.full((size,), 1.0), dtype=dtype)
+        with test_util.force_cpu():
+          xlog1py = self.evaluate(math_ops.xlog1py(x, y))
+          self.assertAllEqual(xlog1py, np.zeros(size))
+          self.assertFalse(np.signbit(xlog1py).any())
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class XdivyTest(test_util.TensorFlowTestCase):
@@ -1169,6 +1271,17 @@ class XdivyTest(test_util.TensorFlowTestCase):
         x_over_y = self.evaluate(1 / y[1])
         self.assertAllClose(zeros_np, xdivy_tf_np[0])
         self.assertAllClose(x_over_y, xdivy_tf_np[1])
+
+  def testXdivyWithNegativeZero(self):
+    # See XlogyTest.testXlogyWithNegativeZero.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for size in [1, 3, 4, 16, 1024]:
+        x = constant_op.constant(np.full((size,), -0.0), dtype=dtype)
+        y = constant_op.constant(np.full((size,), 3.0), dtype=dtype)
+        with test_util.force_cpu():
+          xdivy = self.evaluate(math_ops.xdivy(x, y))
+          self.assertAllEqual(xdivy, np.zeros(size))
+          self.assertFalse(np.signbit(xdivy).any())
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1276,6 +1389,32 @@ class SignTest(test_util.TensorFlowTestCase):
         y = math_ops.sign(x)
       self.assertAllClose(
           t.gradient(y, x), math_ops.complex(0.353553, -0.353553))
+
+  def test_complex_sign_tiny_no_underflow(self):
+    # Regression test for tf#116945: tf.math.sign returned 0 for small complex64
+    # inputs because complex_abs computed |z|^2 in float32, which underflows to
+    # 0 for |z| < ~1.08e-19. With the fix, the entire computation is promoted
+    # to complex128 and the result is cast back to the input dtype.
+    with context.eager_mode():
+      # |z| = sqrt(2) * 1e-20 ~= 1.41e-20, well below float32 underflow.
+      tiny = 1e-20
+      for dtype, expected_dtype in [
+          (np.complex64, np.complex64),
+          (np.complex128, np.complex128),
+      ]:
+        x = constant_op.constant(tiny + tiny * 1j, dtype=dtype)
+        y = math_ops.sign(x)
+        # Result should be x/|x| = (1+1j)/sqrt(2), not 0.
+        # Use builtin complex() instead of np.complex (deprecated in NumPy 1.20+).
+        expected = np.array(
+            complex(tiny, tiny) / abs(complex(tiny, tiny)), dtype=expected_dtype
+        )
+        self.assertAllClose(y.numpy(), expected, atol=1e-6)
+        self.assertEqual(y.dtype.base_dtype, expected_dtype)
+
+      # Also verify zero still returns zero (no division by zero crash).
+      z = constant_op.constant(0 + 0j, dtype=np.complex64)
+      self.assertAllEqual(math_ops.sign(z).numpy(), np.complex64(0))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1499,6 +1638,63 @@ class CastTest(test_util.TensorFlowTestCase):
       return ta.stack()
 
     self.assertAllEqual(self.evaluate(test_fn()), [1])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ScalarCoercionTest(test_util.TensorFlowTestCase):
+
+  def testSubtractScalarCoercion(self):
+    x = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+
+    def subtract_fn(t):
+      return math_ops.subtract(5, t)
+
+    def subtract_reverse_fn(t):
+      return math_ops.subtract(t, 5)
+
+    for fn, expected in (
+        (subtract_fn, [4.0, 3.0, 2.0]),
+        (subtract_reverse_fn, [-4.0, -3.0, -2.0]),
+    ):
+      self.assertAllClose(fn(x), expected)
+      self.assertAllClose(def_function.function(fn)(x), expected)
+      if test_util.is_xla_enabled():
+        self.assertAllClose(
+            def_function.function(fn, jit_compile=True)(x), expected
+        )
+
+  def testMultiplyAndPowScalarCoercion(self):
+    x1 = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
+    x2 = constant_op.constant([4.0, 5.0, 6.0, 7.0], dtype=dtypes.bfloat16)
+
+    def mul_fn(x):
+      return math_ops.multiply(5, x)
+
+    def pow_fn(x):
+      return math_ops.pow(1, x)
+
+    def mul_reverse_fn(x):
+      return math_ops.multiply(x, 5)
+
+    def pow_reverse_fn(x):
+      return math_ops.pow(x, 2)
+
+    self.assertAllClose(mul_fn(x1), [5.0, 10.0, 15.0, 20.0])
+    self.assertAllClose(pow_fn(x2), [1.0, 1.0, 1.0, 1.0])
+    self.assertAllClose(mul_reverse_fn(x1), [5.0, 10.0, 15.0, 20.0])
+    self.assertAllClose(pow_reverse_fn(x2), [16.0, 25.0, 36.0, 49.0])
+
+    if test_util.is_xla_enabled():
+      mul_xla = def_function.function(mul_fn, jit_compile=True)
+      pow_xla = def_function.function(pow_fn, jit_compile=True)
+      mul_rev_xla = def_function.function(mul_reverse_fn, jit_compile=True)
+      pow_rev_xla = def_function.function(pow_reverse_fn, jit_compile=True)
+
+      self.assertAllClose(mul_xla(x1), [5.0, 10.0, 15.0, 20.0])
+      self.assertAllClose(pow_xla(x2), [1.0, 1.0, 1.0, 1.0])
+      self.assertAllClose(mul_rev_xla(x1), [5.0, 10.0, 15.0, 20.0])
+      self.assertAllClose(pow_rev_xla(x2), [16.0, 25.0, 36.0, 49.0])
+
 
 if __name__ == "__main__":
   googletest.main()

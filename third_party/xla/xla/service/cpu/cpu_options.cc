@@ -38,6 +38,20 @@ bool OptimizeForSizeRequested(const HloModuleConfig& config) {
   return extra_options_map.count(kXlaOptimizeForSizeCpuOption) > 0;
 }
 
+bool IsMsanEnabled(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  auto it = extra_options_map.find(kXlaCpuEnableMsan);
+  if (it != extra_options_map.end()) {
+    return it->second == "true";
+  }
+#ifdef MEMORY_SANITIZER
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool VectorizedReduceDisabled(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
@@ -141,12 +155,6 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
                                                tile_size_n_in_vector_width);
 }
 
-bool UseExperimentalLoopFusion(const HloModuleConfig& config) {
-  const auto& extra_options_map =
-      config.debug_options().xla_backend_extra_options();
-  return extra_options_map.count(kDisableNewFusionEmitters) == 0;
-}
-
 bool FlattenAfterFusion(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
@@ -154,9 +162,6 @@ bool FlattenAfterFusion(const HloModuleConfig& config) {
 }
 
 bool UseMultiOutputFusion(const HloModuleConfig& config) {
-  if (!options::UseExperimentalLoopFusion(config)) {
-    return false;
-  }
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   return extra_options_map.count(kUseMultiOutputFusion) > 0;

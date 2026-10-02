@@ -20,8 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -41,7 +43,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -49,9 +50,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TypeSupportTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
-      public ::testing::WithParamInterface<PrimitiveType> {};
+class TypeSupportTest : public HloInterpreterReferenceMixin<HloTestBase>,
+                        public ::testing::WithParamInterface<PrimitiveType> {};
 
 TEST_P(TypeSupportTest, SortSupportsType) {
   constexpr char kHloTemplate[] = R"(
@@ -96,7 +96,7 @@ INSTANTIATE_TEST_SUITE_P(
       return primitive_util::LowercasePrimitiveTypeName(info.param);
     });
 
-class SortingTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class SortingTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   SortingTest() {}
 };
@@ -233,8 +233,8 @@ ENTRY TestComputation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   HloInstruction* values =
       module->entry_computation()->GetInstructionWithName("values");
@@ -285,7 +285,7 @@ std::string GetTypeName(PrimitiveType type) {
 }
 
 // Test cub::DeviceRadixSort::SortKeys in XLA
-class CubSortKeysTest : public HloPjRtTestBase,
+class CubSortKeysTest : public HloTestBase,
                         public ::testing::WithParamInterface<
                             std::tuple<std::shared_ptr<Literal>, bool>> {};
 
@@ -311,9 +311,9 @@ ENTRY %main {
       kRadixSortTestSize * 10,  // added scratch buffer size
       ascending ? "false" : "true");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   std::vector<Literal*> literals = {std::get<0>(GetParam()).get()};
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), literals));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), literals));
 
   bool has_diff = false;
   for (int i = 1; i < kRadixSortTestSize; ++i) {
@@ -324,7 +324,7 @@ ENTRY %main {
 
 // Test cub::DeviceRadixSort::SortPairs in XLA
 class CubSortPairsTest
-    : public HloPjRtTestBase,
+    : public HloTestBase,
       public ::testing::WithParamInterface<
           std::tuple<std::shared_ptr<Literal>, PrimitiveType, bool>> {};
 
@@ -350,10 +350,10 @@ ENTRY %main {
       kRadixSortTestSize * 20,  // added scratch buffer size
       ascending ? "false" : "true");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   std::vector<Literal*> literals = {std::get<0>(GetParam()).get()};
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_tuple,
-                          Execute(std::move(module), literals));
+  ASSERT_OK_AND_ASSIGN(Literal result_tuple,
+                       Execute(std::move(module), literals));
   std::vector<Literal> result = std::move(result_tuple).DecomposeTuple();
 
   bool has_diff = false;

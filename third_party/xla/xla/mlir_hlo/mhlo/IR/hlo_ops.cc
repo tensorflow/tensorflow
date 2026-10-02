@@ -384,10 +384,12 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DivOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DomainOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Exp2Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Expm1Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Log1pOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Log2Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogisticOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MaxOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MinOp)
@@ -1307,6 +1309,19 @@ LogicalResult ExpOp::verify() {
 }
 
 // ===---------------------------------------------------------------------===//
+// Exp2Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Exp2Op::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
 // Expm1Op
 //===----------------------------------------------------------------------===//
 
@@ -1337,6 +1352,19 @@ LogicalResult LogOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult Log1pOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    return ResultAccuracyAttr::verify([&] { return emitError(); },
+                                      attr.getAtol(), attr.getRtol(),
+                                      attr.getUlps(), attr.getMode());
+  }
+  return success();
+}
+
+// ===---------------------------------------------------------------------===//
+// Log2Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult Log2Op::verify() {
   if (auto attr = getResultAccuracyAttr()) {
     return ResultAccuracyAttr::verify([&] { return emitError(); },
                                       attr.getAtol(), attr.getRtol(),
@@ -1949,7 +1977,9 @@ void CollectiveBroadcastOp::build(OpBuilder& odsBuilder,
 }
 
 LogicalResult CollectiveBroadcastOp::verify() {
-  return hlo::verifyCollectiveBroadcastOp(getLoc(), getReplicaGroups());
+  return hlo::verifyCollectiveBroadcastOp(getLoc(), (*this)->getOperands(),
+                                          getReplicaGroups(),
+                                          /*hasDynamicRoot=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2541,6 +2571,58 @@ LogicalResult AllReduceOp::inferReturnTypeComponents(
   // Populate inferred return shapes
   return hlo::inferAllReduceOp(location, adaptor.getOperands(),
                                adaptor.getComputation(), inferredReturnShapes);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CollectiveReduceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CollectiveReduceOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, mlir::PropertyRef properties,
+    RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  CollectiveReduceOp::Adaptor adaptor(operands, attributes, properties,
+                                      regions);
+  auto operandValues = adaptor.getOperands();
+  if (operandValues.empty())
+    return emitOptionalError(location,
+                             "CollectiveReduce must have at least one operand");
+
+  // The data operands (all but the trailing dynamic-root operand, if present)
+  // each produce one result; the root operand is not reduced.
+  int64_t numResults = operandValues.size();
+  if (adaptor.getHasDynamicRoot()) {
+    if (operandValues.size() < 2)
+      return emitOptionalError(
+          location,
+          "CollectiveReduce with has_dynamic_root must have at least one data "
+          "operand followed by a root operand");
+    numResults = operandValues.size() - 1;
+    auto rootType = mlir::dyn_cast<RankedTensorType>(
+        operandValues[operandValues.size() - 1].getType());
+    if (!rootType || rootType.getRank() != 1 ||
+        !rootType.getElementType().isSignlessInteger(32) ||
+        rootType.getDimSize(0) != numResults)
+      return emitOptionalError(
+          location,
+          "CollectiveReduce dynamic-root operand must be a 1-D i32 tensor with "
+          "one element per data operand");
+  }
+
+  for (int64_t i = 0; i < numResults; ++i) {
+    auto operandType = mlir::dyn_cast<ShapedType>(operandValues[i].getType());
+    if (!operandType)
+      return emitOptionalError(location,
+                               "CollectiveReduce operand must be a tensor");
+    if (auto rankedType = mlir::dyn_cast<RankedTensorType>(operandType))
+      inferredReturnShapes.emplace_back(rankedType.getShape(),
+                                        rankedType.getElementType(),
+                                        rankedType.getEncoding());
+    else
+      inferredReturnShapes.emplace_back(operandType.getElementType());
+  }
   return success();
 }
 
@@ -6472,8 +6554,8 @@ static llvm::SmallVector<Attribute, 4> evaluateMhloRegion(
     llvm::SmallVector<OpFoldResult, 4> results;
     if (failed(op.fold(inputs, results))) return {};
     for (auto it : llvm::zip(op.getResults(), results)) {
-      if (!std::get<1>(it).is<Attribute>()) return {};
-      values.insert({std::get<0>(it), std::get<1>(it).get<Attribute>()});
+      if (!isa<Attribute>(std::get<1>(it))) return {};
+      values.insert({std::get<0>(it), cast<Attribute>(std::get<1>(it))});
     }
   }
   return {};

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -39,10 +40,88 @@ limitations under the License.
 #include "xla/tpu/status_helper.h"
 #include "xla/tpu/tpu_api.h"
 #include "xla/tpu/tpu_ops_c_api.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+
+absl::Status SetSparseCoreFrontendAttributes(
+    xla::FrontendAttributes* attributes, int64_t max_ids_per_partition,
+    int64_t max_unique_ids_per_partition, int64_t num_sparsecores_per_device,
+    int64_t vocab_size, int64_t feature_width, int64_t input_size,
+    absl::string_view table_name, std::optional<int64_t> max_valency,
+    std::optional<float> quantization_config_low,
+    std::optional<float> quantization_config_high,
+    std::optional<int> quantization_config_num_buckets) {
+  // Insert always-present attributes.
+  attributes->mutable_map()->insert({"_xla_compute_type", "sparse"});
+  attributes->mutable_map()->insert({"_xla_sharding_strategy", "mod"});
+  attributes->mutable_map()->insert(
+      {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
+  attributes->mutable_map()->insert(
+      {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
+  attributes->mutable_map()->insert(
+      {"_xla_max_unique_ids_per_partition",
+       absl::StrCat(max_unique_ids_per_partition)});
+  attributes->mutable_map()->insert(
+      {"_xla_table_name", std::string(table_name)});
+
+  const int64_t sharded_vocab_size = vocab_size / num_sparsecores_per_device;
+  const int64_t sharded_sample_count = input_size / num_sparsecores_per_device;
+  attributes->mutable_map()->insert(
+      {"_xla_vocab_size", absl::StrCat(sharded_vocab_size)});
+  attributes->mutable_map()->insert(
+      {"_xla_feature_width", absl::StrCat(feature_width)});
+  attributes->mutable_map()->insert(
+      {"_xla_sample_count", absl::StrCat(sharded_sample_count)});
+
+  // Max valency currently is only used by the custom combiner path.
+  if (max_valency.has_value()) {
+    attributes->mutable_map()->insert(
+        {"_xla_max_valency", absl::StrCat(*max_valency)});
+  }
+
+  // Check that all quantization config values are set or none are set.
+  bool has_quantization_config = absl::c_any_of(
+      std::vector<std::optional<float>>{quantization_config_low,
+                                        quantization_config_high,
+                                        quantization_config_num_buckets},
+      [](const std::optional<float>& config) { return config.has_value(); });
+  if (has_quantization_config) {
+    if (!quantization_config_low.has_value()) {
+      return absl::InvalidArgumentError(
+          "quantization_config_low must be set if any quantization config is "
+          "set.");
+    }
+    if (!quantization_config_high.has_value()) {
+      return absl::InvalidArgumentError(
+          "quantization_config_high must be set if any quantization config is "
+          "set.");
+    }
+    if (!quantization_config_num_buckets.has_value()) {
+      return absl::InvalidArgumentError(
+          "quantization_config_num_buckets must be set if any quantization "
+          "config is set.");
+    }
+  }
+
+  // Insert quantization config values if present.
+  if (has_quantization_config) {
+    attributes->mutable_map()->insert(
+        {"_xla_quantization_high_value",
+         absl::StrCat(*quantization_config_high)});
+    attributes->mutable_map()->insert({"_xla_quantization_low_value",
+                                       absl::StrCat(*quantization_config_low)});
+    attributes->mutable_map()->insert(
+        {"_xla_quantization_num_buckets_value",
+         absl::StrCat(*quantization_config_num_buckets)});
+  }
+
+  // Currently we still rely on host-side CSR sort.
+  attributes->mutable_map()->insert({"_xla_enable_full_hbm_sort", "false"});
+
+  return absl::OkStatus();
+}
 
 std::vector<int> ConvertBinarySplitsToBucketSplits(int64_t split,
                                                    int max_division_level) {
@@ -78,11 +157,12 @@ int64_t ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
 
 absl::Status ValidateInputCombiner(const std::string& combiner) {
   if (combiner != "sum" && combiner != "mean" && combiner != "sqrtn" &&
-      !absl::StartsWith(combiner, "custom")) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Invalid combiner: only \"sum\", \"mean\", \"sqrtn\", and "
-                     "\"custom\" are supported, but got ",
-                     combiner));
+      !absl::StartsWith(combiner, "custom") &&
+      combiner != "positional_weighted") {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid combiner: only \"sum\", \"mean\", \"sqrtn\", "
+        "\"custom\", and \"positional_weighted\" are supported, but got ",
+        combiner));
   }
   return absl::OkStatus();
 }
@@ -108,6 +188,34 @@ std::function<float(float)> GetCombinerScaleTransformFunction(
     return
         [](float x) -> float { return x == 0.0f ? 0.0f : 1.0 / std::sqrt(x); };
   }
+}
+
+bool ParseQuantizationConfigs(
+    OpKernelConstruction* ctx,
+    std::optional<int>& quantization_config_num_buckets,
+    std::optional<float>& quantization_config_low,
+    std::optional<float>& quantization_config_high) {
+  // Get and save quantization config params, if they were configured.
+  // num_buckets == 0 indicate no quantization configs were provided.
+  int check_num_buckets;
+  absl::Status status =
+      ctx->GetAttr("quantization_config_num_buckets", &check_num_buckets);
+  if (status.ok() && check_num_buckets > 0) {
+    quantization_config_num_buckets = check_num_buckets;
+    float quant_clipping_float;
+    status = ctx->GetAttr("quantization_config_low", &quant_clipping_float);
+    if (status.ok()) {
+      quantization_config_low = quant_clipping_float;
+    }
+    status = ctx->GetAttr("quantization_config_high", &quant_clipping_float);
+    if (status.ok()) {
+      quantization_config_high = quant_clipping_float;
+    }
+  }
+  return quantization_config_low.has_value() ==
+             quantization_config_high.has_value() &&
+         quantization_config_low.has_value() ==
+             quantization_config_num_buckets.has_value();
 }
 
 absl::Status GetMaxIdsAndUniquesExternal(
@@ -227,6 +335,23 @@ ABSL_ATTRIBUTE_WEAK int64_t GetXlaSparseCoreStackingMemLimit() {
 ABSL_ATTRIBUTE_WEAK int64_t GetXlaSparseCoreStackingTableShardLimit() {
   XlaSparseCoreFlags* sparse_core_flags = GetXlaSparseCoreFlags();
   return sparse_core_flags->tf_xla_sparse_core_stacking_table_shard_limit_bytes;
+}
+
+int64_t GetPerSparseCorePreservedBufferSize(
+    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+    int32_t num_logical_devices, int32_t num_sparse_cores_per_logical_device) {
+  // TODO(peitianpan): Derive this value from the TPU target?
+  constexpr int64_t kMaxTileSpmemSizeBytes = 512 * 1024;  // 512 KiB
+  const int64_t num_physical_sparse_cores =
+      num_logical_devices * num_sparse_cores_per_logical_device;
+  const int64_t total_id_count =
+      max_ids_per_partition * num_physical_sparse_cores;
+  const int64_t max_map_factor =
+      kMaxTileSpmemSizeBytes / (sizeof(int32_t) * num_physical_sparse_cores);
+  const int64_t max_total_unique_id_count =
+      (max_unique_ids_per_partition + max_map_factor) *
+      num_physical_sparse_cores;
+  return std::min(total_id_count, max_total_unique_id_count);
 }
 
 xla::XlaOp ApplyWeightClippingToTable(xla::XlaBuilder* builder,

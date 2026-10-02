@@ -209,6 +209,22 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         array_ops.transpose(dense_of_sparse))
     self.assertAllEqual(expected, result)
 
+  def testSparseTensorDenseMatMulNegativeShapeValueError(self):
+    sp = sparse_tensor.SparseTensor(
+        indices=[[0, 0]], values=[1.0], dense_shape=[-1, 4]
+    )
+    b = constant_op.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+    with self.assertRaisesRegex(
+        ValueError, 'dense_shape must not contain negative values'
+    ):
+      self.evaluate(sparse_ops.sparse_tensor_dense_matmul(sp, b))
+
+    a = constant_op.constant([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]])
+    with self.assertRaisesRegex(
+        ValueError, 'dense_shape must not contain negative values'
+    ):
+      self.evaluate(sparse_ops.sparse_tensor_dense_matmul(a, sp))
+
   def testMapValues(self):
     # supplying no sparse tensor should result in ValueError
     with self.assertRaises(ValueError):

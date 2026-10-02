@@ -12,6 +12,14 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'exception_type\', \'exception_value\', \'traceback\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'hooks\', \'scaffold\', \'master\', \'config\', \'checkpoint_dir\', \'stop_grace_period_secs\', \'checkpoint_filename_with_path\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\', \'None\', \'None\', \'120\', \'None\'], "
   }

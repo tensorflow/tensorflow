@@ -39,12 +39,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
@@ -68,6 +70,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"
@@ -202,6 +205,12 @@ HloComputation::~HloComputation() {
   if (FusionInstruction() != nullptr) {
     CHECK(FusionInstruction()->fused_instructions_computation() == this);
     FusionInstruction()->ClearCalledComputations();
+  }
+  // Every live instruction dies below, so only the edges that leave the
+  // computation are unlinked; the call also makes ~HloInstruction skip the
+  // rest. Instructions in to_be_deleted_ were detached at removal.
+  for (HloInstruction* instruction : instructions()) {
+    instruction->DetachFromOperandsAndUsersOutside(this);
   }
   Cleanup();
   ClearCalledComputations();
@@ -501,7 +510,7 @@ absl::Status HloComputation::RemoveParameter(int64_t param_no) {
   auto param_instruction_iterator = param_instructions_.begin() + param_no;
   param_instructions_.erase(param_instruction_iterator);
   // Throw removed fused parameter instruction away.
-  RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
+  ABSL_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
@@ -509,9 +518,9 @@ absl::Status HloComputation::RemoveParameter(int64_t param_no) {
         AddInstructionInternal(HloInstruction::CreateParameter(
             param_no, param_instruction->shape(), StrCat("param_", param_no)));
     param_instruction->SetupDerivedInstruction(new_instr);
-    RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
+    ABSL_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
     param_instructions_[param_no] = new_instr;
-    RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
+    ABSL_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
     param_no++;
   }
 
@@ -550,7 +559,7 @@ absl::Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   for (int64_t i = 0; i < param_instructions_.size(); ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
     if (param_instruction->IsDead()) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           RemoveInstructionImpl(param_instruction, allow_non_fusion));
       ++removed;
       continue;
@@ -561,9 +570,9 @@ absl::Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
       HloInstruction* new_instr = AddInstructionInternal(
           HloInstruction::CreateParameter(param_no, param_instruction->shape(),
                                           StrCat("param_", param_no)));
-      RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
+      ABSL_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
       param_instructions_[param_no] = new_instr;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           RemoveInstructionImpl(param_instruction, allow_non_fusion));
     }
   }
@@ -712,7 +721,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       continue;
     }
     if (ignore_control_dependencies) {
-      RETURN_IF_ERROR(item->SafelyDropAllControlDependencies());
+      ABSL_RETURN_IF_ERROR(item->SafelyDropAllControlDependencies());
     } else if (item->HasControlDependencies()) {
       continue;
     }
@@ -730,7 +739,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       // pointers in the worklist.
       parameters_to_be_removed.push_back(item);
     } else {
-      RETURN_IF_ERROR(RemoveInstruction(item));
+      ABSL_RETURN_IF_ERROR(RemoveInstruction(item));
     }
     removed.insert(item);
   }
@@ -761,7 +770,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
   }
   for (HloInstruction* param : parameters_to_be_removed) {
     int64_t parameter_number = param->parameter_number();
-    RETURN_IF_ERROR(RemoveParameter(parameter_number));
+    ABSL_RETURN_IF_ERROR(RemoveParameter(parameter_number));
     for (HloInstruction* caller : callers) {
       // The caller could have been eagerly removed.
       if (caller->IsDead()) {
@@ -769,7 +778,10 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       }
       auto operand = caller->mutable_operand(parameter_number);
       caller->RemoveOperandAt(parameter_number);
-      caller->DetachFrom(operand);
+      // Another parameter of the caller may still read the operand.
+      if (!absl::c_linear_search(caller->operands(), operand)) {
+        caller->DetachFrom(operand);
+      }
       // Cleanup operand shape embedded into the async-start shape.
       if (caller->opcode() == HloOpcode::kAsyncStart) {
         std::vector<Shape>* operand_shapes = caller->mutable_shape()
@@ -780,7 +792,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       if (operand->IsDead() &&
           operand->parent()->IsSafelyRemovable(
               operand, ignore_control_dependencies, computation_callers)) {
-        RETURN_IF_ERROR(operand->parent()->RemoveInstructionAndUnusedOperands(
+        ABSL_RETURN_IF_ERROR(operand->parent()->RemoveInstructionAndUnusedOperands(
             operand, cleanup, ignore_control_dependencies,
             computation_callers));
       }
@@ -918,7 +930,23 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
   if (parent() && parent()->has_entry_computation() &&
       parent()->entry_computation() == this) {
     if (!Shape::Equal().IgnoreLayout()(new_root_instruction->shape(),
-                                       root_instruction_->shape())) {
+                                       root_instruction_->shape()) &&
+        !Shape::Equal().IgnoreLayout()(
+            new_root_instruction->shape(),
+            parent()->input_output_alias_config().shape()) &&
+        !Shape::Equal().IgnoreLayout()(
+            new_root_instruction->shape(),
+            parent()->entry_computation_layout().result_shape())) {
+      // Do not remove this CHECK. Hitting it means a pass or caller is about
+      // to silently drop configured input/output aliases by changing the entry
+      // root shape. Fix the caller to update or clear the alias configuration
+      // explicitly instead of removing this check.
+      CHECK(!parent()->input_output_alias_config().OutputHasAnyAlias())
+          << "Cannot overwrite non-empty input_output_alias_config ("
+          << parent()->input_output_alias_config().ToShortString()
+          << ") when changing entry computation root from "
+          << root_instruction_->ToString() << " to "
+          << new_root_instruction->ToString();
       // Rebuild input output alias config now that we have a new output shape.
       parent()->input_output_alias_config() =
           HloInputOutputAliasConfig(new_root_instruction->shape());
@@ -1247,6 +1275,22 @@ void HloComputation::Print(
     printer->Append(execution_thread());
     printer->Append("\"");
   }
+  if (options.print_backend_config() && has_backend_config()) {
+    absl::string_view config = raw_backend_config_string();
+    std::string sorted_config;
+    if (options.sort_backend_config()) {
+      sorted_config = SortJson(config).value_or(std::string(config));
+      config = sorted_config;
+    }
+    printer->Append(", backend_config=");
+    if (printer->is_hasher() || LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(absl::CEscape(config));
+      printer->Append("\"");
+    }
+  }
   if (options.print_name_after_closing_brace() && instruction_count() > 5) {
     printer->Append(" // ");
     printer->Append(name());
@@ -1292,6 +1336,9 @@ void HloComputation::ToProto(HloComputationProto* proto,
   proto->set_is_fusion_computation(IsFusionComputation());
   proto->set_execution_thread(IsMainThread() ? ""
                                              : std::string(execution_thread()));
+  if (has_backend_config()) {
+    proto->set_backend_config(raw_backend_config_string());
+  }
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<HloComputation>>
@@ -1328,7 +1375,7 @@ HloComputation::CreateFromProto(
   int64_t parameter_count = 0;
 
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
                      HloInstruction::CreateFromProto(
                          instruction_proto, instruction_map, computation_map,
                          prohibit_empty_literal, backend_configs));
@@ -1402,7 +1449,7 @@ HloComputation::CreateFromProto(
         << " has duplicate internal unique id " << instruction->local_id_;
     instruction_local_ids.insert(instruction->local_id_);
   }
-  RETURN_IF_ERROR([&]() -> absl::Status {
+  ABSL_RETURN_IF_ERROR([&]() -> absl::Status {
     std::vector<bool> parameters_seen(parameter_count);
     int parameters_seen_count = 0;
     for (auto& instruction : instructions) {
@@ -1437,6 +1484,9 @@ HloComputation::CreateFromProto(
   computation->SetUniqueIdHelper(proto.id());
   if (!proto.execution_thread().empty()) {
     computation->SetExecutionThread(proto.execution_thread());
+  }
+  if (!proto.backend_config().empty()) {
+    computation->set_raw_backend_config_string(proto.backend_config());
   }
   return computation;
 }
@@ -1561,15 +1611,15 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
   for (HloInstruction* control_pred : instruction->control_predecessors()) {
-    RETURN_IF_ERROR(control_pred->AddControlDependencyTo(async_start));
+    ABSL_RETURN_IF_ERROR(control_pred->AddControlDependencyTo(async_start));
   }
   for (HloInstruction* control_successor : instruction->control_successors()) {
-    RETURN_IF_ERROR(async_done->AddControlDependencyTo(control_successor));
+    ABSL_RETURN_IF_ERROR(async_done->AddControlDependencyTo(control_successor));
   }
 
   if (replace) {
-    RETURN_IF_ERROR(instruction->DropAllControlDeps());
-    RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+    ABSL_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
   }
   return async_done;
 }
@@ -1590,7 +1640,7 @@ absl::StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
               instruction, i));
 
       index->push_back(i);
-      ASSIGN_OR_RETURN(HloInstruction * element,
+      ABSL_ASSIGN_OR_RETURN(HloInstruction * element,
                        DeepCopyHelper(gte, index, copy_leaf));
       elements.push_back(element);
       index->pop_back();
@@ -1743,9 +1793,19 @@ bool HloComputation::EqualInternal(
 
 absl::Status HloComputation::ReplaceWithNewInstruction(
     HloInstruction* old_instruction,
-    std::unique_ptr<HloInstruction> new_instruction) {
-  return ReplaceInstruction(old_instruction,
-                            AddInstruction(std::move(new_instruction)));
+    std::unique_ptr<HloInstruction> new_instruction, bool preserve_sharding,
+    bool relay_control_dependency, bool remove_unused_operands,
+    bool preserve_frontend_attributes) {
+  ABSL_ASSIGN_OR_RETURN(
+      bool changed,
+      ReplaceInstruction(
+          old_instruction, AddInstruction(std::move(new_instruction)),
+          /*preserve_sharding=*/preserve_sharding,
+          /*relay_control_dependency=*/relay_control_dependency,
+          /*remove_unused_operands=*/remove_unused_operands,
+          /*preserve_frontend_attributes=*/preserve_frontend_attributes));
+  DCHECK(changed);
+  return absl::OkStatus();
 }
 
 absl::Status HloComputation::ReplaceWithNewEntryComputationParameter(
@@ -1774,7 +1834,7 @@ absl::StatusOr<bool> HloComputation::ReplaceInstruction(
 
 absl::Status HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction) {
-  ASSIGN_OR_RETURN(bool changed,
+  ABSL_ASSIGN_OR_RETURN(bool changed,
                    ReplaceInstruction(old_instruction, new_instruction,
                                       /*preserve_sharding=*/false));
   DCHECK(changed);
@@ -1792,8 +1852,8 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     return false;
   }
   if (relay_control_dependency) {
-    RETURN_IF_ERROR(new_instruction->CopyAllControlDepsFrom(old_instruction));
-    RETURN_IF_ERROR(old_instruction->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(new_instruction->CopyAllControlDepsFrom(old_instruction));
+    ABSL_RETURN_IF_ERROR(old_instruction->DropAllControlDeps());
   } else if (old_instruction->HasControlDependencies()) {
     VLOG(10) << "Skipping replacement because old instruction has "
                 "control dependencies";
@@ -1831,7 +1891,7 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->copy_sharding(old_instruction);
   }
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
 
   // Preserve the old instruction's name if the new and old instruction have the
@@ -1844,18 +1904,18 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->SetAndSanitizeName(old_instruction->name());
   }
   if (remove_unused_operands) {
-    RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
+    ABSL_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
         old_instruction, /*cleanup=*/std::nullopt,
         /*ignore_control_dependencies=*/relay_control_dependency));
   } else {
-    RETURN_IF_ERROR(RemoveInstruction(old_instruction));
+    ABSL_RETURN_IF_ERROR(RemoveInstruction(old_instruction));
   }
   return true;
 }
 
 absl::Status HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction) {
-  ASSIGN_OR_RETURN(bool changed, ReplaceInstructionWithDifferentShape(
+  ABSL_ASSIGN_OR_RETURN(bool changed, ReplaceInstructionWithDifferentShape(
                                      old_instruction, new_instruction,
                                      /*preserve_sharding=*/false));
   DCHECK(changed);
@@ -1884,7 +1944,7 @@ absl::Status HloComputation::AcceptWithOperandOrder(
   // visited root, which would invalidate iterators if the unreachable roots
   // weren't computed ahead of time.
   for (HloInstruction* root : CollectUnreachableRoots()) {
-    RETURN_IF_ERROR(root->AcceptWithOperandOrder(visitor, operand_order,
+    ABSL_RETURN_IF_ERROR(root->AcceptWithOperandOrder(visitor, operand_order,
                                                  /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
@@ -2230,6 +2290,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
 
   context.MapComputation(this, result.get());
   result->SetExecutionThread(execution_thread());
+  result->backend_config_ = backend_config_;
   return result;
 }
 
@@ -2298,6 +2359,15 @@ void HloComputation::SetUniqueIdHelper(int64_t id) {
   for (auto& [computation, count] : callee_computations_) {
     computation->caller_computations_[this] = count;
   }
+}
+
+bool HloComputation::IsEntryInstUnboundedDynamic() const {
+  for (HloInstruction* instruction : parameter_instructions()) {
+    if (instruction->shape().is_unbounded_dynamic()) {
+      return true;
+    }
+  }
+  return root_instruction()->shape().is_unbounded_dynamic();
 }
 
 }  // namespace xla

@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/runtime.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
+#include <map>
 #include <memory>
 #include <utility>
 #include <variant>
@@ -25,6 +28,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"

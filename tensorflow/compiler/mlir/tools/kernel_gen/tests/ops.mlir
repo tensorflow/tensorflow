@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: kernel-gen-opt %s | FileCheck %s
 // Verify the printed output can be parsed.
 // RUN: kernel-gen-opt %s | kernel-gen-opt | FileCheck %s
@@ -15,10 +29,10 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK-LABEL: func @forwarding_alloc
 func.func @forwarding_alloc(%ctx: !tf_framework.op_kernel_context,
                        %size_0 : index , %size_2 : index) {
-  %buf = tf_framework.alloc(%ctx, %size_0, %size_2) {
+  %buf = tf_framework.alloc(%ctx, %size_0, %size_2) <
     input_indices = [0 : i32, 1 : i32],
-    output_index = 0 : i32
-  } : memref<?x10x?xi8>
+    output_index = 0
+  > : memref<?x10x?xi8>
   func.return
 }
 
@@ -80,20 +94,20 @@ func.func @jit_compile(%ctx : !tf_framework.op_kernel_context)
 
 // CHECK-LABEL: func @jit_compile_from_str_wo_ctx
 func.func @jit_compile_from_str_wo_ctx() -> !tf_framework.jit_callable {
-  %callable = tf_framework.jit_compile_from_str "placeholder" {
-      architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
-      unrollFactors = [4], enableFtz = false,
-      index64Bit = false, cpuCodegen = false }
+  %callable = tf_framework.jit_compile_from_str "placeholder" <
+      tileSizes = [1, 2, 3], unrollFactors = [4], enableFtz = false,
+      index64Bit = false, cpuCodegen = false> {
+      architectures = ["sm_123", "sm_456"] }
   func.return %callable : !tf_framework.jit_callable
 }
 
 // CHECK-LABEL: func @jit_compile_from_str
 func.func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable {
-  %callable = tf_framework.jit_compile_from_str %ctx , "placeholder" {
-      architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
-      unrollFactors = [4], enableFtz = false,
-      index64Bit = false, cpuCodegen = false }
+  %callable = tf_framework.jit_compile_from_str %ctx , "placeholder" <
+      tileSizes = [1, 2, 3], unrollFactors = [4], enableFtz = false,
+      index64Bit = false, cpuCodegen = false> {
+      architectures = ["sm_123", "sm_456"] }
   func.return %callable : !tf_framework.jit_callable
 }
 

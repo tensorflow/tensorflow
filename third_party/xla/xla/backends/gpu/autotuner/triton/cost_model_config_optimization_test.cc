@@ -25,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/map.h"
@@ -39,14 +40,17 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::ElementsAre;
+using ::testing::Gt;
+using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
+
 namespace detail = cost_model_config_optimization_detail;
 
 class CostModelConfigOptimizationHloTest
@@ -103,8 +107,8 @@ TEST(CostModelConfigOptimizationTest,
   options["mixin_max_same_mnk"] = "1";
   options["mixin_only_faster"] = "1";
 
-  TF_ASSERT_OK_AND_ASSIGN(detail::CostModelGemmTilingOptions parsed,
-                          detail::ParseCostModelGemmTilingOptions(options));
+  ASSERT_OK_AND_ASSIGN(detail::CostModelGemmTilingOptions parsed,
+                       detail::ParseCostModelGemmTilingOptions(options));
 
   EXPECT_EQ(parsed.top, 3);
   EXPECT_EQ(parsed.top_from_default, true);
@@ -300,15 +304,15 @@ TEST_F(CostModelConfigOptimizationHloTest,
       TritonGemmConfig(128, 128, 128, 1, 4, 1, false),
   };
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = module->config().debug_options();
   (*debug_options
         .mutable_xla_gpu_experimental_cost_model_gemm_tiling_options())["top"] =
       "2";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<TritonGemmConfig> optimized,
-                          OptimizeConfigsWithCostModel(
-                              dot, all_configs, all_configs, h100_device_info,
-                              debug_options, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::vector<TritonGemmConfig> optimized,
+                       OptimizeConfigsWithCostModel(
+                           dot, all_configs, all_configs, h100_device_info,
+                           debug_options, &mlir_context_));
 
   EXPECT_THAT(optimized,
               ElementsAre(TritonGemmConfig(128, 128, 128, 1, 4, 1, false),
@@ -328,14 +332,14 @@ TEST_F(CostModelConfigOptimizationHloTest, MixinKeepsInvalidConfigs) {
   std::vector<TritonGemmConfig> optimized_configs = {valid_config,
                                                      invalid_config};
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = module->config().debug_options();
   (*debug_options.mutable_xla_gpu_experimental_cost_model_gemm_tiling_options())
       ["mixin"] = "1";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<TritonGemmConfig> optimized,
-                          OptimizeConfigsWithCostModel(
-                              dot, all_configs, optimized_configs,
-                              h100_device_info, debug_options, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::vector<TritonGemmConfig> optimized,
+                       OptimizeConfigsWithCostModel(
+                           dot, all_configs, optimized_configs,
+                           h100_device_info, debug_options, &mlir_context_));
 
   EXPECT_THAT(optimized, UnorderedElementsAre(valid_config, invalid_config));
 }
@@ -353,16 +357,62 @@ TEST_F(CostModelConfigOptimizationHloTest, FilterRemovesInvalidConfigs) {
   std::vector<TritonGemmConfig> optimized_configs = {valid_config,
                                                      invalid_config};
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = module->config().debug_options();
   (*debug_options.mutable_xla_gpu_experimental_cost_model_gemm_tiling_options())
       ["filter"] = "1.0";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<TritonGemmConfig> optimized,
-                          OptimizeConfigsWithCostModel(
-                              dot, all_configs, optimized_configs,
-                              h100_device_info, debug_options, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::vector<TritonGemmConfig> optimized,
+                       OptimizeConfigsWithCostModel(
+                           dot, all_configs, optimized_configs,
+                           h100_device_info, debug_options, &mlir_context_));
 
   EXPECT_THAT(optimized, UnorderedElementsAre(valid_config));
+}
+
+TEST_F(CostModelConfigOptimizationHloTest,
+       EstimateConfigsWithCostModelReturnsEstimates) {
+  const se::DeviceDescription h100_device_info =
+      TestGpuDeviceInfo::H100SXMDeviceInfo();
+
+  auto [module, dot] = GetHloModuleAndDot_F32_1024_1024_1024();
+
+  const TritonGemmConfig config_32(32, 32, 32, 1, 4, 1, false);
+  const TritonGemmConfig config_64(64, 64, 64, 1, 4, 1, false);
+  const TritonGemmConfig config_128(128, 128, 128, 1, 4, 1, false);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto estimates_map,
+      EstimateConfigsWithCostModel(
+          dot, {config_32, config_64, config_128}, h100_device_info,
+          module->config().debug_options(), &mlir_context_));
+
+  ASSERT_THAT(estimates_map,
+              UnorderedElementsAre(Pair(config_32, Gt(absl::ZeroDuration())),
+                                   Pair(config_64, Gt(absl::ZeroDuration())),
+                                   Pair(config_128, Gt(absl::ZeroDuration()))));
+  // Larger tiles are known to be more optimal for this module.
+  EXPECT_LT(estimates_map.at(config_128), estimates_map.at(config_64));
+  EXPECT_LT(estimates_map.at(config_64), estimates_map.at(config_32));
+}
+
+TEST_F(CostModelConfigOptimizationHloTest,
+       EstimateConfigsWithCostModelOmitsInvalidConfigs) {
+  const se::DeviceDescription h100_device_info =
+      TestGpuDeviceInfo::H100SXMDeviceInfo();
+
+  auto [module, dot] = GetHloModuleAndDot_F32_1024_1024_1024();
+
+  TritonGemmConfig valid_config(32, 32, 32, 1, 4, 1, false);
+  TritonGemmConfig invalid_config(33, 33, 33, 1, 4, 1, false);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto estimates_map,
+      EstimateConfigsWithCostModel(
+          dot, {valid_config, invalid_config}, h100_device_info,
+          module->config().debug_options(), &mlir_context_));
+
+  EXPECT_THAT(estimates_map, UnorderedElementsAre(
+                                 Pair(valid_config, Gt(absl::ZeroDuration()))));
 }
 
 }  // namespace

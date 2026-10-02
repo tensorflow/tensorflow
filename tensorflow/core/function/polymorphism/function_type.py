@@ -703,7 +703,7 @@ def from_structured_signature(
   )
 
   return FunctionType(
-      parameters, capture_types or {}, return_annotation=return_type
+      parameters, capture_types or {}, return_annotation=return_type  # pyrefly: ignore[bad-argument-type]
   )
 
 

@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
@@ -161,7 +161,7 @@ absl::Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
   *result = 0;
   for (int index = 0; index < max_bytes; index++) {
     int shift = 7 * index;
-    RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
+    ABSL_RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
     *result |= (static_cast<T>(scratch) & 127) << shift;
     if (!(scratch & 128)) return absl::OkStatus();
   }

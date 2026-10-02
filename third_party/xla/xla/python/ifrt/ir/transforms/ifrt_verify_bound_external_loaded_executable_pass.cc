@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "mlir/Support/WalkResult.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
@@ -92,10 +93,10 @@ absl::Status IfrtVerifyBoundExternalLoadedExecutablePass::VerifyShardingsEqual(
     absl::string_view sharding_type) {
   for (const auto& it : llvm::enumerate(llvm::zip(types, shardings))) {
     const auto& [param_type, sharding] = it.value();
-    ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
+    ABSL_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
     IfrtArrayType array_type = GetArrayType(param_type);
     IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         const xla::HloSharding hlo_type_sharding,
         xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
     if (hlo_sharding != hlo_type_sharding) {
@@ -117,13 +118,19 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
     const auto exec_it =
         bound_executable_map_->find(loaded_exec_op.getSymName());
     if (exec_it != bound_executable_map_->end()) {
-      if (loaded_exec_op.getDevices().size() !=
-          exec_it->second->num_devices()) {
+      std::optional<DeviceListRef> exec_devices = exec_it->second->devices();
+      if (!exec_devices.has_value()) {
+        loaded_exec_op.emitOpError()
+            << "cannot be bound to a portable executable; IFRT IR does not "
+               "support portable executables yet";
+        return mlir::WalkResult::interrupt();
+      }
+      if (loaded_exec_op.getDevices().size() != (*exec_devices)->size()) {
         loaded_exec_op.emitOpError()
             << "expects an executable with "
             << loaded_exec_op.getDevices().size()
             << " devices, but was bound to an executable with "
-            << exec_it->second->num_devices() << " devices";
+            << (*exec_devices)->size() << " devices";
         return mlir::WalkResult::interrupt();
       }
 

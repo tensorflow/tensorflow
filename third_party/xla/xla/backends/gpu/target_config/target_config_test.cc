@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "google/protobuf/text_format.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/path.h"
@@ -66,10 +66,12 @@ INSTANTIATE_TEST_SUITE_P(
         {"A100_SXM_80", GpuModel::A100_SXM_80, true},
         {"A6000", GpuModel::A6000, true},
         {"B200", GpuModel::B200, true},
+        {"B200_MIG", GpuModel::B200_MIG, true},
         {"B300", GpuModel::B300, true},
         {"BMG_G21", GpuModel::BMG_G21, true},
         {"H100_PCIE", GpuModel::H100_PCIE, true},
         {"H100_SXM", GpuModel::H100_SXM, true},
+        {"H100_SXM_MIG", GpuModel::H100_SXM_MIG, true},
         {"H200", GpuModel::H200, true},
         {"MI200", GpuModel::MI200, true},
         {"P100", GpuModel::P100, true},
@@ -87,7 +89,6 @@ TEST(TargetConfigTest, CompareEqualFromSameProto) {
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         platform_name: "platform"
-        dnn_version_info { major: 2 }
         runtime_version { major: 12 }
         gpu_device_info { threads_per_block_limit: 5 }
         device_description_str: "foo"
@@ -106,7 +107,7 @@ TEST(TargetConfigTest, GetTargetConfigFromFile) {
     platform_name: "platform"
     gpu_device_info { threads_per_block_limit: 5 }
   )pb";
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::WriteStringToFile(tsl::Env::Default(), filename, proto_content));
 
   ASSERT_OK_AND_ASSIGN(GpuTargetConfig config,

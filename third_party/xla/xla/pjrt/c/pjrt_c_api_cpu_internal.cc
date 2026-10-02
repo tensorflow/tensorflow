@@ -62,6 +62,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
         absl::flat_hash_map<std::string, PJRT_NamedValue_Type>({
             {"cpu_device_count", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
             {"asynchronous", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+            {"process_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
         });
     PJRT_RETURN_IF_ERROR(
         ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
@@ -79,6 +80,12 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       options.asynchronous = asynchronous_option;
       LOG(INFO) << "asynchronous set via create_options: "
                 << asynchronous_option;
+    }
+    if (auto it = create_options.find("process_id");
+        it != create_options.end()) {
+      int64_t process_id_option = std::get<int64_t>(it->second);
+      options.process_id = process_id_option;
+      LOG(INFO) << "process_id set via create_options: " << process_id_option;
     }
   }
 

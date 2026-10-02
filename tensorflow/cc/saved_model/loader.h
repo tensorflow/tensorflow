@@ -39,7 +39,8 @@ class SavedModelBundleInterface {
 
   /// Returns a map from signature name to SignatureDef for all signatures in
   /// in the SavedModel.
-  virtual const protobuf::Map<string, SignatureDef>& GetSignatures() const = 0;
+  virtual const protobuf::Map<std::string, SignatureDef>& GetSignatures()
+      const = 0;
 };
 
 /// SavedModel representation once the SavedModel is loaded from storage.
@@ -58,7 +59,8 @@ struct SavedModelBundle : public SavedModelBundleInterface {
   SavedModelBundle() = default;
 
   Session* GetSession() const override { return session.get(); }
-  const protobuf::Map<string, SignatureDef>& GetSignatures() const override {
+  const protobuf::Map<std::string, SignatureDef>& GetSignatures()
+      const override {
     return meta_graph_def.signature_def();
   }
 
@@ -76,7 +78,7 @@ class SavedModelBundleLite : public SavedModelBundleInterface {
   SavedModelBundleLite& operator=(SavedModelBundleLite&& other) = default;
 
   SavedModelBundleLite(std::unique_ptr<Session> session,
-                       protobuf::Map<string, SignatureDef> signatures)
+                       protobuf::Map<std::string, SignatureDef> signatures)
       : session_(std::move(session)), signatures_(std::move(signatures)) {}
 
   /// A TensorFlow Session does not Close itself on destruction. To avoid
@@ -88,13 +90,14 @@ class SavedModelBundleLite : public SavedModelBundleInterface {
   }
 
   Session* GetSession() const override { return session_.get(); }
-  const protobuf::Map<string, SignatureDef>& GetSignatures() const override {
+  const protobuf::Map<std::string, SignatureDef>& GetSignatures()
+      const override {
     return signatures_;
   }
 
  private:
   std::unique_ptr<Session> session_;
-  protobuf::Map<string, SignatureDef> signatures_;
+  protobuf::Map<std::string, SignatureDef> signatures_;
 };
 
 // Restore variable and resources in the SavedModel export dir for the
@@ -103,7 +106,7 @@ class SavedModelBundleLite : public SavedModelBundleInterface {
 // which provides an already initialized Metagraph, Session, and DebugInfo.
 absl::Status RestoreSession(const RunOptions& run_options,
                             const MetaGraphDef& meta_graph,
-                            const string& export_dir,
+                            const std::string& export_dir,
                             std::unique_ptr<Session>* session);
 
 // Initialize a session which wraps this metagraph.
@@ -121,8 +124,8 @@ absl::Status LoadMetagraphIntoSession(const SessionOptions& session_options,
 /// NOTE: Prefer the overload that takes a SavedModelBundleLite* in new code.
 absl::Status LoadSavedModel(const SessionOptions& session_options,
                             const RunOptions& run_options,
-                            const string& export_dir,
-                            const std::unordered_set<string>& tags,
+                            const std::string& export_dir,
+                            const std::unordered_set<std::string>& tags,
                             SavedModelBundle* bundle);
 
 /// Loads a SavedModel from the specified export directory. The MetaGraphDef
@@ -134,8 +137,8 @@ absl::Status LoadSavedModel(const SessionOptions& session_options,
 /// an equivalent SavedModelBundle.
 absl::Status LoadSavedModel(const SessionOptions& session_options,
                             const RunOptions& run_options,
-                            const string& export_dir,
-                            const std::unordered_set<string>& tags,
+                            const std::string& export_dir,
+                            const std::unordered_set<std::string>& tags,
                             SavedModelBundleLite* bundle);
 
 /// Checks whether the provided directory could contain a SavedModel. Note that

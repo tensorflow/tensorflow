@@ -14,15 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 // A simple logging device to test custom device registration.
+#include <cstddef>
 #include <memory>
 
 #include "absl/strings/match.h"
-#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/custom_device_testutil.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -46,6 +48,10 @@ TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   ASSERT_TRUE(arrived);
   ASSERT_FALSE(executed);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+  size_t size = TFE_TensorHandleDeviceMemorySize(hdevice, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(4 * sizeof(float), size);
   std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> matmul(
       MatMulOp(context, hcpu, hdevice), TFE_DeleteOp);
   TFE_OpSetDevice(matmul.get(), name, status.get());

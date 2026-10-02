@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
 
 #include <array>
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -36,8 +37,10 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -48,22 +51,21 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -89,10 +91,8 @@ class CudnnFusedConvRewriterHloTest : public HloPjRtGpuTestBase {
     return device_description().cuda_compute_capability();
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
-    se::SemanticVersion version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major_version(),
-                                             version.minor_version(),
-                                             version.patch_version());
+    return stream_executor::dnn::VersionInfo(
+        gpu_target_config().device_description.dnn_version());
   }
 
   se::SemanticVersion GetToolkitVersion() const {
@@ -106,6 +106,13 @@ class CudnnFusedConvRewriterHloTest : public HloPjRtGpuTestBase {
   CudnnFusedConvRewriter GetCudnnFusedConvRewriter() const {
     return CudnnFusedConvRewriter(GetCudaComputeCapability(), GetDnnVersion(),
                                   GetToolkitVersion());
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_use_runtime_fusion(true);
+    debug_options.set_xla_gpu_experimental_enable_conv_fusion(false);
+    return debug_options;
   }
 
   CudnnFusedConvRewriterHloTest() = default;
@@ -124,14 +131,20 @@ class CudnnFusedConvRewriterTest
     return device_description().cuda_compute_capability();
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
-    se::SemanticVersion version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major_version(),
-                                             version.minor_version(),
-                                             version.patch_version());
+    return stream_executor::dnn::VersionInfo(
+        gpu_target_config().device_description.dnn_version());
   }
 
   stream_executor::SemanticVersion GetToolkitVersion() const {
     return device_description().runtime_version();
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
+        GpuPjRtCodegenTest>::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_use_runtime_fusion(true);
+    debug_options.set_xla_gpu_experimental_enable_conv_fusion(false);
+    return debug_options;
   }
 
  protected:
@@ -144,7 +157,6 @@ class CudnnFusedConvRewriterTest
     HloModuleConfig config = GetModuleConfigForTest();
     DebugOptions debug_opts = config.debug_options();
     debug_opts.add_xla_disable_hlo_passes("cudnn_vectorize_convolutions");
-    debug_opts.set_xla_gpu_use_runtime_fusion(true);
     config.set_debug_options(debug_opts);
 
     auto result = GetOptimizedModule(hlo_string, config);
@@ -172,24 +184,21 @@ class CudnnFusedConvRewriterTest
 
       ASSERT_OK_AND_ASSIGN(auto module,
                            ParseAndReturnVerifiedModule(hlo_with_new_type));
-      DebugOptions debug_opts = module->config().debug_options();
-      debug_opts.set_xla_gpu_use_runtime_fusion(true);
-      module->mutable_config().set_debug_options(debug_opts);
       EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}))
           << optimized_hlo_string;
     }
   }
 
   void TestClamp(absl::string_view pre_hlo_string,
-                 absl::string_view post_hlo_string) {
-    std::string alpha_conv_scalar, alpha_side_input_scalar;
-    std::string elementwise_type;
-
+                 absl::string_view post_hlo_string,
+                 bool allow_integer_rounding = false) {
     std::string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
     EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("Convert")));
     EXPECT_THAT(optimized_hlo_string, HasSubstr("__cudnn$conv"));
-    EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.01}))
-        << pre_hlo_string;
+
+    ErrorSpec error_spec{0.01};
+    error_spec.allow_integer_rounding_difference = allow_integer_rounding;
+    EXPECT_TRUE(RunAndCompare(pre_hlo_string, error_spec)) << pre_hlo_string;
 
     absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_hlo_string, post_hlo_string);
@@ -897,6 +906,84 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvF8) {
       R"(
 // CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f8e4m3fn]conv();"
       )");
+}
+
+// The pass used to stop after the first computation in which an FP8
+// convolution was rewritten, leaving the FP8 convolutions of the remaining
+// computations of the module unrewritten.
+TEST_F(CudnnFusedConvRewriterTest, TestConvF8InMultipleComputations) {
+  MAYBE_SKIP_TEST("F8");
+  const std::string kHloString = R"(
+    HloModule Test
+
+    branch_a {
+      p = (f8e4m3fn[1,128,6,6], f8e4m3fn[3,3,128,16]) parameter(0)
+      input_a = f8e4m3fn[1,128,6,6] get-tuple-element(p), index=0
+      filter_a = f8e4m3fn[3,3,128,16] get-tuple-element(p), index=1
+      ROOT conv_a = f8e4m3fn[1,16,6,6] convolution(input_a, filter_a), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    }
+
+    branch_b {
+      p = (f8e4m3fn[1,128,6,6], f8e4m3fn[3,3,128,16]) parameter(0)
+      input_b = f8e4m3fn[1,128,6,6] get-tuple-element(p), index=0
+      filter_b = f8e4m3fn[3,3,128,16] get-tuple-element(p), index=1
+      ROOT conv_b = f8e4m3fn[1,16,6,6] convolution(input_b, filter_b), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    }
+
+    ENTRY Test {
+      predicate = pred[] parameter(0)
+      input = f8e4m3fn[1,128,6,6] parameter(1)
+      filter_a = f8e4m3fn[3,3,128,16] parameter(2)
+      filter_b = f8e4m3fn[3,3,128,16] parameter(3)
+      operands_a = (f8e4m3fn[1,128,6,6], f8e4m3fn[3,3,128,16]) tuple(input, filter_a)
+      operands_b = (f8e4m3fn[1,128,6,6], f8e4m3fn[3,3,128,16]) tuple(input, filter_b)
+      ROOT result = f8e4m3fn[1,16,6,6] conditional(predicate, operands_a, operands_b), true_computation=branch_a, false_computation=branch_b
+    })";
+
+  // Both branch computations must get a ForwardGraph Custom Call.
+  const se::CudaComputeCapability hopper{se::CudaComputeCapability::kHopper, 0};
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloPass(ConvRewriter(hopper), module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_OK_AND_ASSIGN(
+      changed, RunHloPass(CudnnFusedConvRewriter(hopper, GetDnnVersion(),
+                                                 GetToolkitVersion()),
+                          module.get()));
+  EXPECT_TRUE(changed);
+  for (absl::string_view name : {"branch_a", "branch_b"}) {
+    HloComputation* branch = module->GetComputationWithName(name);
+    ASSERT_THAT(branch, NotNull()) << name;
+    const HloInstruction* conv = nullptr;
+    for (const HloInstruction* instr : branch->instructions()) {
+      if (instr->opcode() == HloOpcode::kCustomCall) {
+        conv = instr;
+      }
+    }
+    ASSERT_THAT(conv, NotNull()) << name;
+    EXPECT_EQ(conv->custom_call_target(), kCudnnConvForwardGraphCallTarget)
+        << name;
+  }
+
+  bool fp8_supported = GetDnnVersion() >= se::dnn::VersionInfo{9, 8, 0}
+                           ? GetCudaComputeCapability().IsAtLeastAda()
+                           : GetCudaComputeCapability().IsAtLeastHopper();
+  if (fp8_supported) {
+    // Through the full pipeline, neither convolution may fall back to the
+    // legacy (non-FP8) Custom Call.
+    absl::StatusOr<bool> filecheck_result =
+        RunFileCheck(GetOptimizedHlo(kHloString), R"(
+// CHECK-NOT: custom_call_target="__cudnn$convForward"
+// CHECK: custom_call_target="__cudnn$convForwardGraph"
+// CHECK-NOT: custom_call_target="__cudnn$convForward"
+// CHECK: custom_call_target="__cudnn$convForwardGraph"
+// CHECK-NOT: custom_call_target="__cudnn$convForward"
+    )");
+    ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
+    EXPECT_TRUE(*filecheck_result);
+    EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.15, 0.15})) << kHloString;
+  }
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputF8) {
@@ -2014,9 +2101,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
       ROOT elu = select(cmp, sum, expm1)
     })";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2063,9 +2147,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
       ROOT root = tuple(elu, not_elu)
     })";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2115,9 +2196,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
       ROOT relu = clamp(zeros, sum, sixes)
     })";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2159,9 +2237,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
       ROOT root = tuple(relu, not_relu)
     })";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2206,9 +2281,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
       ROOT leaky_relu = select(cmp, sum, mul)
     })";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -2253,9 +2325,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseLeakyReluIfMultipleUses) {
       ROOT root = tuple(leaky_relu, not_leaky_relu)
     })";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  DebugOptions debug_opts = m->config().debug_options();
-  debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
   ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -3229,7 +3298,84 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8) {
       // post_hlo
       R"(
 // CHECK: [[cudnn_conv_bias_activation_7_0:%[^ ]+]] = (s8[1,3,3,64]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[input_1:%[^ ]+]], [[transpose_2:%[^ ]+]], [[bias_3:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward"
-      )");
+      )",
+      /*allow_integer_rounding=*/true);
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8RoundingDifference) {
+  MAYBE_SKIP_TEST("I8");
+  // Demonstrates the difference between standard round-to-zero (truncation)
+  // semantics in reference evaluation and round-to-nearest in cuDNN fused conv.
+  //
+  // When integer outputs are produced by converting clamped float activations,
+  // cuDNN fused convolution rounds to nearest (e.g. 1.0 + 2.9 = 3.9 -> 4),
+  // whereas the un-fused reference computation truncates towards zero
+  // (e.g. 1.0 + 2.9 = 3.9 -> 3).
+  //
+  // Strict integer comparison (default ErrorSpec) fails due to this off-by-one
+  // discrepancy, while ErrorSpec with allow_integer_rounding_difference = true
+  // accounts for it and succeeds.
+  constexpr absl::string_view kHlo = R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = f32[] constant(0)
+      zeros = f32[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = s8[1,3,3,64] parameter(0)
+      filter = s8[3,3,64,64] parameter(1)
+      bias = f32[64] parameter(2)
+
+      inputs32 = s32[1,3,3,64] convert(input)
+      filters32 = s32[3,3,64,64] convert(filter)
+
+      conv = s32[1,3,3,64] convolution(inputs32, filters32), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+
+      convfloat = f32[1,3,3,64] convert(conv)
+      broadcasted_bias = f32[1,3,3,64] broadcast(bias), dimensions={3}
+      add1 = f32[1,3,3,64] add(convfloat, broadcasted_bias)
+      relu = f32[1,3,3,64] maximum(zeros, add1)
+
+      lower = f32[] constant(-128)
+      lowers = f32[1,3,3,64] broadcast(lower), dimensions={}
+      upper = f32[] constant(127)
+      uppers = f32[1,3,3,64] broadcast(upper), dimensions={}
+
+      clamp = f32[1,3,3,64] clamp(lowers, relu, uppers)
+
+      ROOT convert = s8[1,3,3,64] convert(clamp)
+    })";
+
+  // Explicit inputs: input = 1, filter has a single 1 at center, bias[0] = 2.9.
+  // The activation sum is 1.0 + 2.9 = 3.9.
+  // Reference un-fused convert truncates to 3; cuDNN fused conv rounds to 4.
+  ASSERT_OK_AND_ASSIGN(
+      Literal input,
+      LiteralUtil::CreateR1<int8_t>(std::vector<int8_t>(1 * 3 * 3 * 64, 1))
+          .Reshape({1, 3, 3, 64}));
+  ASSERT_OK_AND_ASSIGN(
+      Literal filter,
+      LiteralUtil::CreateR1<int8_t>(std::vector<int8_t>(3 * 3 * 64 * 64, 0))
+          .Reshape({3, 3, 64, 64}));
+  filter.Set<int8_t>({1, 1, 0, 0}, 1);
+
+  std::vector<float> bias_vec(64, 0.0f);
+  bias_vec[0] = 2.9f;
+  Literal bias = LiteralUtil::CreateR1<float>(bias_vec);
+
+  std::vector<const Literal*> args = {&input, &filter, &bias};
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  // 1. Strict ErrorSpec rejects the off-by-one difference between GPU cuDNN
+  // (round-to-nearest) and reference interpreter (round-to-zero / truncation).
+  ErrorSpec strict_spec{0.01};
+  EXPECT_FALSE(RunAndCompare(module->Clone(), args, strict_spec));
+
+  // 2. ErrorSpec with allow_integer_rounding_difference accepts the difference.
+  ErrorSpec relaxed_spec{0.01};
+  relaxed_spec.allow_integer_rounding_difference = true;
+  EXPECT_TRUE(RunAndCompare(std::move(module), args, relaxed_spec));
 }
 
 // Disabled per b/190854862 or nvbugs/3326122.
@@ -3317,7 +3463,8 @@ TEST_F(CudnnFusedConvRewriterTest,
       // post_hlo
       R"(
 // CHECK: [[cudnn_conv_bias_activation_11_0:%[^ ]+]] = (s8[1,3,3,64]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[input_1:%[^ ]+]], [[transpose_2:%[^ ]+]], [[bias_3:%[^ ]+]], [[side_input_4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward"
-      )");
+      )",
+      /*allow_integer_rounding=*/true);
 }
 
 TEST_F(CudnnFusedConvRewriterTest,

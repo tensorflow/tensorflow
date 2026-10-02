@@ -168,23 +168,6 @@ enum PrimitiveType {
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
-// In XLA:GPU we use different streams for different kinds of collective
-// operations, and include the async stream kind into the GPU clique key.
-//
-// We carefully isolate different kinds of collectives using separate
-// communicators and guarantee that all collective operations have a total order
-// that will not create a deadlock.
-enum AsyncStreamKind {
-  // Stream for asynchronous collective ops.
-  ASYNC_STREAM_KIND_COLLECTIVE = 0;
-  // One Stream for P2P Send and Recv ops.
-  ASYNC_STREAM_KIND_P2P0 = 1;
-  // Another Stream for P2P Send and Recv ops.
-  ASYNC_STREAM_KIND_P2P1 = 2;
-  // Stream for MemCpyP2P
-  ASYNC_STREAM_KIND_MEMCPYP2P = 3;
-}
-
 // There are broadly 4 modes that collective communication ops use to describe
 // which sets of devices are participating with a given device in the operation.
 // These modes are determined by the values of channel_id (optional) and
@@ -900,11 +883,31 @@ message SparsityConfig {
     // - If it is k, every N elements with distance k (i.e., 0,k,2k,...,(N-1)k)
     //   are a sparsity block.
     int64 stride = 4;
+    // The operand index for the indices argument.
+    int32 idx = 5;
   }
   // Sparsity config for the LHS operand.
   TensorSparsityConfig lhs = 1;
   // Sparsity config for the RHS operand.
   TensorSparsityConfig rhs = 2;
+}
+
+// Describes the block scaling configuration for a convolution's operands.
+message BlockScalingConfig {
+  message TensorBlockScalingConfig {
+    // The operand index for the scale argument.
+    int32 scale_idx = 1;
+    // The operand index for the zero point argument.
+    optional int32 zero_idx = 2;
+    // The strides for the block scaling.
+    repeated int64 strides = 3;
+    // The steps for the block scaling.
+    repeated int64 steps = 4;
+  }
+  // Block scaling config for the LHS operand.
+  TensorBlockScalingConfig lhs = 1;
+  // Block scaling config for the RHS operand.
+  TensorBlockScalingConfig rhs = 2;
 }
 
 enum PaddingType {
@@ -959,6 +962,35 @@ enum RandomAlgorithm {
   RNG_DEFAULT = 0;  // Backend dependent default algorithm.
   RNG_THREE_FRY = 1;
   RNG_PHILOX = 2;
+  // Next: 2
+}
+
+// The mode of a `shuffle` instruction together with the attributes that
+// parameterize that mode. A shuffle moves the elements of its operand around
+// along its shuffled dimensions, and the mode is the pattern of that movement.
+// Every mode owns a message holding exactly the attributes that the mode
+// needs, and the active case of the `mode` oneof selects the mode; a mode
+// without attributes owns an empty message.
+//
+// The name of a case of the `mode` oneof is also the name of the mode in the
+// HLO text format, e.g. `mode=rotate`.
+message ShuffleMode {
+  // Rotates the elements along each shuffled dimension to the left, wrapping
+  // the elements that fall off the front around to the back, e.g. rotating
+  // `[1, 2, 3, 4]` by a shift of 1 yields `[2, 3, 4, 1]`.
+  message Rotate {
+    // The shift of each rotated dimension, in the order in which the
+    // dimensions appear in `dimensions`. A shift of `s` moves the
+    // element at index `i` of a dimension of size `d` to index
+    // `(i - s) mod d`, so `s` is the index of the element that ends up first.
+    // Shifts outside of `[0, d)`, including negative ones, wrap around.
+    repeated int64 shifts = 1;
+  }
+
+  oneof mode {
+    Rotate rotate = 1;
+  }
+
   // Next: 2
 }
 
@@ -1142,6 +1174,12 @@ message NamedShardingProto {
   // A sharding can have unreduced axes, meaning the tensor is unreduced
   // along these axes.
   repeated AxisRefProto unreduced_axes = 5;
+  enum ReductionOpProto {
+    SUM = 0;
+    MAX = 1;
+    MIN = 2;
+  }
+  ReductionOpProto reduction_op = 8;
   // A list of axes that is controlled by the users.
   repeated AxisRefProto manual_axes = 7;
 
@@ -1396,8 +1434,14 @@ message PrecisionConfig {
     ALG_DOT_F32_F32_F32 = 11;
     ALG_DOT_F64_F64_F64 = 12;
     ALG_DOT_BF16_BF16_F32_X9 = 13;
+    // An algorithm which uses 3 FP8 matmuls to emulate a BF16_BF16 dot product
+    // with F32 accumulation.
+    ALG_DOT_BF16_BF16_FP8X3 = 14;
+    // An algorithm which uses 4 FP8 matmuls to emulate a BF16_BF16 dot product
+    // with F32 accumulation.
+    ALG_DOT_BF16_BF16_FP8X4 = 15;
 
-    // Next: 14
+    // Next: 16
   }
 
   repeated Precision operand_precision = 1;
@@ -1506,7 +1550,12 @@ message OriginalValueProto {
   repeated OriginalValueElementProto elements = 1;
   // If true, the annotated instruction is a synthetic call and elements should
   // be ignored.
-  bool is_synthetic_call = 2;
+  // Deprecated: Use an empty string in call_hierarchy instead.
+  bool is_synthetic_call = 2 [deprecated = true];
+  // The call hierarchy of the original call instructions that produced this
+  // value. Format: "<call_instruction_name>#$" where "#$" is a placeholder
+  // for loop unrolling iteration count.
+  optional string call_hierarchy = 3;
 }
 
 message GemmPerfTableEntry {

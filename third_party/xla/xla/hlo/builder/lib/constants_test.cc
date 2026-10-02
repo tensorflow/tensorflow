@@ -31,7 +31,7 @@ namespace xla {
 namespace {
 
 using ConstantsTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 using ::testing::HasSubstr;
 

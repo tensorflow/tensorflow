@@ -155,7 +155,13 @@ absl::Status TryAcquireTpuLock() {
   static absl::Mutex* const mu = new absl::Mutex();
   absl::MutexLock l(*mu);
 
-  std::string load_library_override = absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
+  static bool libtpu_acquired = false;
+  if (libtpu_acquired) {
+    VLOG(1) << "TPU lock already acquired in this process.";
+    return absl::OkStatus();
+  }
+
+  std::string load_library_override = GetEnvVar("TPU_LOAD_LIBRARY");
 
   if (load_library_override == "1") {
     VLOG(1) << "TPU_LOAD_LIBRARY=1, force loading libtpu";
@@ -193,17 +199,8 @@ absl::Status TryAcquireTpuLock() {
   }
 
   static constexpr char libtpu_lockfn[] = "/tmp/libtpu_lockfile";
-  static bool libtpu_acquired = false;
 
-  // Clean-up call to remove user owned libtpu lockfile on proc exit.
-  atexit([]() {
-    if (libtpu_acquired) {
-      // Ignores any lockfile removal error at proc exit.
-      unlink(libtpu_lockfn);
-    }
-  });
-
-  int fd = open(libtpu_lockfn, O_CREAT | O_RDWR, 0600);
+  int fd = open(libtpu_lockfn, O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0666);
   if (fd == -1) {
     // File open permission locks multi-user access by default.
     return absl::AbortedError(absl::StrCat(
@@ -213,11 +210,13 @@ absl::Status TryAcquireTpuLock() {
         "\" to figure out which process is using the TPU. If you still get "
         "this message, run \"$ sudo rm /tmp/libtpu_lockfile\"."));
   }
+  fchmod(fd, 0666);
 
   // lockf() holds the lock until the process exits to guard the underlying
   // TPU devices throughout process lifetime.
   if (lockf(fd, F_TLOCK, 0) != 0) {
     auto pid = FindLibtpuProcess();
+    close(fd);
     if (pid.ok()) {
       return absl::AbortedError(absl::StrCat(
           "The TPU is already in use by process with pid ", pid.value(),

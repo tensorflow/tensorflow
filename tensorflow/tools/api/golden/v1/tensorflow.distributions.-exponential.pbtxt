@@ -112,10 +112,12 @@ tf_class {
   member_method {
     name: "param_shapes"
     argspec: "args=[\'cls\', \'sample_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'DistributionParamShapes\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "param_static_shapes"
     argspec: "args=[\'cls\', \'sample_shape\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "prob"

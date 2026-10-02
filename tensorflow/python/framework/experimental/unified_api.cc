@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/eager/abstract_context.h"

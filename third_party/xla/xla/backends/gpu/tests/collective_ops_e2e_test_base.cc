@@ -19,15 +19,22 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -37,13 +44,15 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
@@ -95,14 +104,14 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
     const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
   ExecutionResult execution_result;
 
-  ASSIGN_OR_RETURN(execution_result.executable,
+  ABSL_ASSIGN_OR_RETURN(execution_result.executable,
                    CreateExecutable(std::move(module), run_hlo_passes));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       execution_result.optimized_module,
       test_runner().HloModuleFromWrapped(execution_result.executable.get()));
 
-  ASSIGN_OR_RETURN(execution_result.results,
+  ABSL_ASSIGN_OR_RETURN(execution_result.results,
                    ExecuteReplicated(execution_result.executable.get(),
                                      arguments, run_hlo_passes));
 
@@ -113,7 +122,7 @@ absl::StatusOr<std::vector<Literal>>
 CollectiveOpsE2ETestBase::ExecuteReplicated(
     OpaqueExecutable* executable,
     const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
-  ASSIGN_OR_RETURN(const HloModule* module,
+  ABSL_ASSIGN_OR_RETURN(const HloModule* module,
                    test_runner().HloModuleFromWrapped(executable));
 
   int64_t num_replicas = module->config().replica_count();
@@ -153,7 +162,10 @@ DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
       CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
 
   // Enable or disable all async collectives based on test parameter.
-  if (!enable_async_) {
+  if (enable_async_) {
+    debug_options.add_xla_disable_hlo_passes(
+        "gpu-convert-async-collectives-to-sync");
+  } else {
     for (auto option :
          {DebugOptions::NOOP, DebugOptions::ALLREDUCE, DebugOptions::ALLGATHER,
           DebugOptions::REDUCESCATTER, DebugOptions::COLLECTIVEBROADCAST,
@@ -164,11 +176,11 @@ DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
   }
 
   if (enable_symmetric_buffer_) {
-    debug_options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+    auto* filter =
+        debug_options.add_xla_enable_nccl_symmetric_buffers_for_collectives();
+    filter->set_collective(DebugOptions::ALLCOLLECTIVES);
   }
 
-  debug_options.add_xla_disable_hlo_passes(
-      "gpu-convert-async-collectives-to-sync");
   if (enable_p2p_memcpy_) {
     debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
   }
@@ -181,10 +193,58 @@ CollectiveOpsWithFlagsBase::CreateExecutable(absl::string_view hlo_string,
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/num_replicas);
 
-  ASSIGN_OR_RETURN(auto module,
+  ABSL_ASSIGN_OR_RETURN(auto module,
                    ParseAndReturnVerifiedModule(hlo_string, config));
   return test_runner().CreateExecutable(std::move(module),
                                         /*run_hlo_passes=*/true);
+}
+
+absl::StatusOr<CommandBufferThunkCounts> CountThunksInDump(
+    absl::string_view dump_dir, absl::string_view thunk_kind_prefix) {
+  std::vector<std::string> dump_files;
+  ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(dump_dir, "*thunk_sequence_after_thunk_passes*.txt"),
+      &dump_files));
+  if (dump_files.empty()) {
+    // When thunk passes make no changes (e.g. no command buffers are formed),
+    // only the initial thunk_sequence.txt dump is written.
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
+        tsl::io::JoinPath(dump_dir, "*thunk_sequence.txt"), &dump_files));
+  }
+  if (dump_files.size() != 1) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Expected exactly one thunk sequence dump in ", dump_dir,
+                     ", found ", dump_files.size()));
+  }
+  std::string dump;
+  ABSL_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), dump_files[0], &dump));
+
+  // Each thunk line in the dump has the form "<indent><index>: <kind> ...".
+  // Thunks nested inside a top-level kCommandBuffer thunk are indented under
+  // it; non-thunk lines (such as WhileThunk's "condition:" and "body:" headers)
+  // do not start with "<digits>: " and are ignored.
+  CommandBufferThunkCounts counts;
+  bool in_command_buffer = false;
+  for (absl::string_view line : absl::StrSplit(dump, '\n')) {
+    absl::string_view thunk = absl::StripLeadingAsciiWhitespace(line);
+    size_t pos = thunk.find(": ");
+    if (pos == absl::string_view::npos || pos == 0 ||
+        !absl::c_all_of(thunk.substr(0, pos),
+                        [](char c) { return absl::ascii_isdigit(c); })) {
+      continue;
+    }
+    const bool is_top_level = thunk.size() == line.size();
+    thunk.remove_prefix(pos + 2);
+    if (is_top_level) {
+      in_command_buffer = absl::StartsWith(thunk, "kCommandBuffer");
+    }
+    if (absl::StartsWith(thunk, thunk_kind_prefix)) {
+      ++(in_command_buffer ? counts.in_command_buffer
+                           : counts.outside_command_buffer);
+    }
+  }
+  return counts;
 }
 
 }  // namespace xla

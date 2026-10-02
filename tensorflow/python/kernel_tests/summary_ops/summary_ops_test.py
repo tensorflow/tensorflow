@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
+from tensorflow.python.ops import gen_summary_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variables
@@ -580,6 +581,26 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       finally:
         # Reset to default state for other tests.
         summary_ops.set_step(None)
+
+  def testSetStep_rejectsNonCastableValue(self):
+    with context.eager_mode():
+      with self.assertRaises(errors.OpError):
+        summary_ops.set_step('not-a-step')
+
+  def testSetStep_rejectsNonScalarValue(self):
+    with self.assertRaisesRegex(ValueError, 'step.*must be a scalar'):
+      summary_ops.set_step([1, 2])
+
+  def testAsDefault_rejectsNonCastableStep(self):
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(self.get_temp_dir())
+      with self.assertRaises(errors.OpError):
+        writer.as_default(step='not-a-step')
+
+  def testAsDefault_rejectsNonScalarStep(self):
+    writer = summary_ops.create_file_writer_v2(self.get_temp_dir())
+    with self.assertRaisesRegex(ValueError, 'step.*must be a scalar'):
+      writer.as_default(step=[1, 2])
 
   def testGetSetStep_variable_fromFunction(self):
     with context.eager_mode():
@@ -1568,6 +1589,50 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
         r'graph\(\) cannot be invoked inside a graph context.',
     ):
       self.exec_summary_op(summary_op_fn)
+
+
+class WriteScalarSummaryRawOpsTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testValidScalarAndSingleElementInputs(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer_v2(logdir)
+    self.evaluate(writer.init())
+    step = constant_op.constant(1, dtype=dtypes.int64)
+    tag = constant_op.constant('test_tag', dtype=dtypes.string)
+
+    for val in [2.5, [2.5], [[2.5]]]:
+      t = constant_op.constant(val, dtype=dtypes.float32)
+      self.evaluate(
+          gen_summary_ops.write_scalar_summary(
+              writer=writer._resource,  # pylint: disable=protected-access
+              step=step,
+              tag=tag,
+              value=t,
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidEmptyAndMultiElementInputs(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer_v2(logdir)
+    self.evaluate(writer.init())
+    step = constant_op.constant(1, dtype=dtypes.int64)
+    tag = constant_op.constant('test_tag', dtype=dtypes.string)
+
+    for invalid_val in [[], [1.0, 2.0], [[1.0, 2.0]]]:
+      t = constant_op.constant(invalid_val, dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, 'must contain exactly one element'
+      ):
+        self.evaluate(
+            gen_summary_ops.write_scalar_summary(
+                writer=writer._resource,  # pylint: disable=protected-access
+                step=step,
+                tag=tag,
+                value=t,
+            )
+        )
 
 
 def events_from_file(filepath):

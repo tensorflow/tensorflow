@@ -287,7 +287,6 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
   return kTfLiteOk;
 }
 
-// LINT.ThenChange(//tensorflow/lite/experimental/examples/unity/TensorFlowLitePlugin/Assets/TensorFlowLite/SDK/Scripts/Interpreter.cs)
 
 int32_t TfLiteInterpreterGetSignatureCount(
     const TfLiteInterpreter* interpreter) {

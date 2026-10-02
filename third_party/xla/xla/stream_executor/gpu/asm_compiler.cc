@@ -25,13 +25,14 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/subprocess.h"
@@ -57,13 +58,14 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
       findRocmExecutable("llvm/bin/clang-offload-bundler", rocm_root_dir);
 
   // Initialise the "--inputs" / "--targets" arguments for the
-  // clang-offload-bundler with a dummy file / host target triple...
-  // clang-offload-bundler requires 1 and only 1 host target triple
+  // clang-offload-bundler with a dummy file / host target ID.
+  // clang-offload-bundler requires exactly one host target ID.
+  // Each ID is '<kind>-<arch>-<vendor>-<os>-<env>[-<target id>]'.
   std::ostringstream inputs_list;
   std::ostringstream targets_list;
 
   inputs_list << "/dev/null";
-  targets_list << "host-x86_64-unknown-linux";
+  targets_list << "host-x86_64-unknown-linux-gnu";
 
   // Write images to temporary files.
   std::vector<std::string> image_paths;
@@ -74,11 +76,12 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
       return absl::InternalError(
           "Could not get temporary filenames for images.");
     }
-    RETURN_IF_ERROR(tsl::WriteStringToFile(
+    ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, img_path, std::string(img.bytes.begin(), img.bytes.end())));
     VLOG(2) << "image written to " << img_path;
     inputs_list << "," << img_path;
-    targets_list << ",hip-amdgcn-amd-amdhsa-" << img.gfx_arch;
+    // Empty <env> is the extra '-' before gfx (hip-amdgcn-amd-amdhsa--gfx...).
+    targets_list << ",hip-amdgcn-amd-amdhsa--" << img.gfx_arch;
     image_paths.push_back(std::move(img_path));
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
@@ -129,7 +132,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 
   // Read in the result and return it as a byte vector.
   std::string result_blob;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), result_path, &result_blob));
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }

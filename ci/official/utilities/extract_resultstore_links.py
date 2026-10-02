@@ -114,8 +114,7 @@ def parse_log(file_path: str,
       else:
         tests_failed = re.search(TESTS_FAILED_RE, backtrack_line)
       if build_failed or tests_failed:
-        log_fragment = '\n'.join(
-            log_lines[max(k - 20, 0):min(end_line + 1, len(log_lines) - 1)])
+        log_fragment = '\n'.join(log_lines[max(k - 20, 0) : end_line + 1])
         lines['log_fragment'] = log_fragment
         lines['status'] = (InvokeStatus.build_failed if build_failed
                            else InvokeStatus.tests_failed)
@@ -172,9 +171,11 @@ def create_xml_file(result_store_dict: ResultDictType,
   failure_count = 0
   error_count = 0
 
-  date_time = datetime.datetime
-  attrib = {'name': 'Bazel Invocations', 'time': '0.0',
-            'timestamp': date_time.isoformat(date_time.utcnow())}
+  attrib = {
+      'name': 'Bazel Invocations',
+      'time': '0.0',
+      'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+  }
   testsuites = ElemTree.Element('testsuites')
   testsuite = ElemTree.SubElement(testsuites, 'testsuite')
   for url, invocation_results in result_store_dict.items():

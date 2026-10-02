@@ -1,9 +1,26 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
+load("@rules_ml_toolchain//cc/llvms/local:local_clang_configure.bzl", "local_clang_configure")
+load("@rules_ml_toolchain//cc/sysroots:local_sysroot_configure.bzl", "local_sysroot_configure")
 load("@rules_ml_toolchain//gpu/rocm:hipcc_configure.bzl", "hipcc_configure")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@xla//third_party/absl:workspace.bzl", absl = "repo")
@@ -50,6 +67,7 @@ load("@xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@xla//third_party/triton:workspace.bzl", triton = "repo")
 load("@xla//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
+load("@xla//third_party/xz:workspace.bzl", xz = "repo")
 load("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 load("@xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("@xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -164,8 +182,14 @@ def _tf_toolchains():
     git_configure(name = "local_config_git")
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
-    hipcc_configure(name = "config_rocm_hipcc")  # Must be before rocm_configure.
     rocm_configure(name = "local_config_rocm")
+    hipcc_configure(
+        name = "config_rocm_hipcc",
+        rocm_dist = "@local_config_rocm//rocm:toolchain_data",
+    )
+
+    local_clang_configure(name = "local_config_clang")
+    local_sysroot_configure(name = "local_sysroot_config")
     sycl_configure(name = "local_config_sycl")
     remote_execution_configure(name = "local_config_remote_execution")
 
@@ -232,13 +256,14 @@ def _tf_repositories():
     )
 
     xnnpack()
+    xz()
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "9b8d0df9bab42d1d19acb571337cbaa527027cae0efd361d75dfb9b10fd7dc4e",
-        strip_prefix = "kleidiai-51f7190558e51b7415d9ba24994fb477d7371446",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/51f7190558e51b7415d9ba24994fb477d7371446.zip"),
+        sha256 = "652ee046ebf99bee5ed78aaf8961ea1df6ac09b6ebbd3a33106d9ce255efba69",
+        strip_prefix = "kleidiai-4bc7bd457930de119f8b826ecfdebfbd9c08cf8c",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/4bc7bd457930de119f8b826ecfdebfbd9c08cf8c/kleidiai-4bc7bd457930de119f8b826ecfdebfbd9c08cf8c.zip"),
     )
 
     FXdiv()
@@ -300,6 +325,13 @@ def _tf_repositories():
     )
 
     tf_http_archive(
+        name = "rules_foreign_cc",
+        sha256 = "476303bd0f1b04cc311fc258f1708a5f6ef82d3091e53fd1977fa20383425a6a",
+        strip_prefix = "rules_foreign_cc-0.10.1",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_foreign_cc/releases/download/0.10.1/rules_foreign_cc-0.10.1.tar.gz"),
+    )
+
+    tf_http_archive(
         name = "com_github_google_crc32c",
         sha256 = "6b3b1d861bb8307658b2407bc7a4c59e566855ef5368a60b35c893551e4788e9",
         build_file = "@com_github_googlecloudplatform_google_cloud_cpp//bazel:crc32c.BUILD",
@@ -349,9 +381,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_googletest",
         # Use the commit on 2025/6/09:
-        # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
-        sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
-        strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
+        # https://github.com/google/googletest/commit/d72f9c8aea6817cdf1ca0ac10887f328de7f3da2
+        sha256 = "a4cb11930215b071168811982dfbebc82a2bb0f90db0e8713245931eb742ea46",
+        strip_prefix = "googletest-d72f9c8aea6817cdf1ca0ac10887f328de7f3da2",
         # Patch googletest to:
         #   - avoid dependencies on @fuchsia_sdk,
         #   - refer to re2 as @com_googlesource_code_re2,
@@ -363,13 +395,17 @@ def _tf_repositories():
         # $ cd github
         # $ git clone https://github.com/google/googletest.git
         # $ cd googletest
-        # $ git checkout 28e9d1f26771c6517c3b4be10254887673c94018
+        # $ git checkout d72f9c8aea6817cdf1ca0ac10887f328de7f3da2
         # ... make local changes to googletest ...
         # $ git diff > <client-root>/third_party/tensorflow/third_party/googletest/googletest.patch
         #
         # The patch path is relative to third_party/tensorflow.
         patch_file = ["@xla//third_party/googletest:googletest.patch"],
-        urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
+        urls = tf_mirror_urls("https://github.com/google/googletest/archive/d72f9c8aea6817cdf1ca0ac10887f328de7f3da29.zip"),
+        repo_mapping = {
+            "@abseil-cpp": "@com_google_absl",
+            "@re2": "@com_googlesource_code_re2",
+        },
     )
 
     tf_http_archive(
@@ -389,20 +425,23 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "@xla//third_party:curl.BUILD",
-        sha256 = "264537d90e58d2b09dddc50944baf3c38e7089151c8986715e2aaeaaf2b8118f",
-        strip_prefix = "curl-8.11.0",
+        sha256 = "d54dd598bf05927a726deb38df31c6a255ba83ff1de57c5d1464dac3ed8f44a1",
+        strip_prefix = "curl-8.22.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.se/download/curl-8.11.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.se/download/curl-8.22.0.tar.gz"),
     )
 
     tf_http_archive(
-        name = "com_github_grpc_grpc",
+        name = "grpc",
         sha256 = "41b695614b26652ff9e97ce50cfd4a6c7a3d45a9fe598d1454407746499bbf2c",
         strip_prefix = "grpc-1.81.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
             "@xla//third_party/grpc:grpc.patch",
         ],
+        repo_mapping = {
+            "@com_github_grpc_grpc": "@grpc",
+        },
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.81.0.tar.gz"),
     )
 

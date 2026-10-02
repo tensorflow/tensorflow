@@ -340,7 +340,7 @@ TEST_F(CopyOpTest, CopyConstantR4Layout0312_MultipleTilesPerLayer) {
 }
 
 using CopyOpClientTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(CopyOpClientTest, Copy0x0) {
   Shape in_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {0, 0}, {0, 1});

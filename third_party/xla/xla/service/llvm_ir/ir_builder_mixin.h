@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 
 namespace xla {
 
@@ -97,7 +98,7 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::BranchInst* CondBr(Args&&... args) {
+  llvm::CondBrInst* CondBr(Args&&... args) {
     return mixin_builder()->CreateCondBr(std::forward<Args>(args)...);
   }
 

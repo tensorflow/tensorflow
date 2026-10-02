@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
+#include "tensorflow/lite/delegates/ynnpack/ynnpack_delegate.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -96,14 +97,13 @@ int StridedSliceEndForAxis(const TfLiteStridedSliceParams* params,
   return end;
 }
 
-TfLiteStatus GetReshapeTargetShape(TfLiteContext* context,
-                                   const TfLiteNode* tflite_node,
+TfLiteStatus GetReshapeTargetShape(TfLiteContext* context, const int* inputs,
+                                   int num_inputs, const void* builtin_data,
                                    int32_t* target_shape,
-                                   int* target_shape_size) {
-  if (tflite_node->inputs->size == 2) {
-    const TfLiteTensor& shape_tensor =
-        context->tensors[tflite_node->inputs->data[1]];
-    if (shape_tensor.allocation_type == kTfLiteMmapRo) {
+                                   int* target_shape_size, bool static_shape) {
+  if (num_inputs == 2) {
+    const TfLiteTensor& shape_tensor = context->tensors[inputs[1]];
+    if (IsConstant(shape_tensor, static_shape)) {
       int num_elements = tflite::NumElements(&shape_tensor);
       TF_LITE_ENSURE_MSG(context, num_elements <= YNN_MAX_TENSOR_RANK,
                          "Reshape shape elements %d exceeds max %d",
@@ -116,8 +116,7 @@ TfLiteStatus GetReshapeTargetShape(TfLiteContext* context,
     }
   }
 
-  const auto* params =
-      static_cast<const TfLiteReshapeParams*>(tflite_node->builtin_data);
+  const auto* params = static_cast<const TfLiteReshapeParams*>(builtin_data);
   if (params && params->num_dimensions > 0) {
     TF_LITE_ENSURE_MSG(context, params->num_dimensions <= YNN_MAX_TENSOR_RANK,
                        "Reshape shape dimensions %d exceeds max %d",
@@ -134,7 +133,8 @@ TfLiteStatus GetReshapeTargetShape(TfLiteContext* context,
 
 TfLiteStatus IsTransposeSupported(const TfLiteRegistration* registration,
                                   const TfLiteNode* node,
-                                  TfLiteContext* context) {
+                                  TfLiteContext* context,
+                                  const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 2);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
@@ -142,19 +142,13 @@ TfLiteStatus IsTransposeSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& perm = context->tensors[node->inputs->data[1]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
-  TF_LITE_ENSURE(context, perm.allocation_type == kTfLiteMmapRo);
+  TF_LITE_ENSURE(context, IsConstant(perm, options.static_shape));
   TF_LITE_ENSURE_EQ(context, perm.type, kTfLiteInt32);
 
   TF_LITE_ENSURE_EQ(context, perm.dims->size, 1);
@@ -177,7 +171,8 @@ TfLiteStatus IsTransposeSupported(const TfLiteRegistration* registration,
 }
 
 TfLiteStatus IsSliceSupported(const TfLiteRegistration* registration,
-                              const TfLiteNode* node, TfLiteContext* context) {
+                              const TfLiteNode* node, TfLiteContext* context,
+                              const TfLiteYNNPackDelegateOptions& options) {
   const bool is_strided =
       (registration->builtin_code == kTfLiteBuiltinStridedSlice);
   if (is_strided) {
@@ -192,20 +187,14 @@ TfLiteStatus IsSliceSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& end_or_size = context->tensors[node->inputs->data[2]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
-  TF_LITE_ENSURE(context, begin.allocation_type == kTfLiteMmapRo);
-  TF_LITE_ENSURE(context, end_or_size.allocation_type == kTfLiteMmapRo);
+  TF_LITE_ENSURE(context, IsConstant(begin, options.static_shape));
+  TF_LITE_ENSURE(context, IsConstant(end_or_size, options.static_shape));
 
   TF_LITE_ENSURE_EQ(context, begin.type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, end_or_size.type, kTfLiteInt32);
@@ -221,7 +210,7 @@ TfLiteStatus IsSliceSupported(const TfLiteRegistration* registration,
 
   if (is_strided) {
     const TfLiteTensor& strides = context->tensors[node->inputs->data[3]];
-    TF_LITE_ENSURE(context, strides.allocation_type == kTfLiteMmapRo);
+    TF_LITE_ENSURE(context, IsConstant(strides, options.static_shape));
     TF_LITE_ENSURE_EQ(context, strides.type, kTfLiteInt32);
     TF_LITE_ENSURE_EQ(context, strides.dims->size, 1);
     TF_LITE_ENSURE_EQ(context, strides.dims->data[0], input.dims->size);
@@ -267,9 +256,9 @@ TfLiteStatus IsSliceSupported(const TfLiteRegistration* registration,
   return kTfLiteOk;
 }
 
-TfLiteStatus IsExpandDimsSupported(const TfLiteRegistration* registration,
-                                   const TfLiteNode* node,
-                                   TfLiteContext* context) {
+TfLiteStatus IsExpandDimsSupported(
+    const TfLiteRegistration* registration, const TfLiteNode* node,
+    TfLiteContext* context, const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 2);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
@@ -277,19 +266,13 @@ TfLiteStatus IsExpandDimsSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& axis = context->tensors[node->inputs->data[1]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
-  TF_LITE_ENSURE(context, axis.allocation_type == kTfLiteMmapRo);
+  TF_LITE_ENSURE(context, IsConstant(axis, options.static_shape));
   TF_LITE_ENSURE_EQ(context, axis.type, kTfLiteInt32);
   TF_LITE_ENSURE_MSG(context, axis.dims->size <= 1,
                      "Axis tensor must be 0D or 1D");
@@ -317,8 +300,7 @@ TfLiteStatus IsConcatenationSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   const auto* params =
       static_cast<const TfLiteConcatenationParams*>(node->builtin_data);
@@ -328,13 +310,9 @@ TfLiteStatus IsConcatenationSupported(const TfLiteRegistration* registration,
     int input_index = node->inputs->data[i];
     if (input_index == kTfLiteOptionalTensor) continue;
     const TfLiteTensor& input = context->tensors[input_index];
-    ynn_type input_ynn_type = GetYnnType(input.type);
-    TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
+    TF_LITE_ENSURE(context, IsTensorSupported(input));
     TF_LITE_ENSURE_EQ(context, input.type, output.type);
-    TF_LITE_ENSURE(context, IsSupportedQuantization(input));
   }
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   TF_LITE_ENSURE(context,
                  IsActivationSupported(params->activation, output.type));
@@ -343,8 +321,8 @@ TfLiteStatus IsConcatenationSupported(const TfLiteRegistration* registration,
 }
 
 TfLiteStatus IsReshapeSupported(const TfLiteRegistration* registration,
-                                const TfLiteNode* node,
-                                TfLiteContext* context) {
+                                const TfLiteNode* node, TfLiteContext* context,
+                                const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE(context, node->inputs->size == 1 || node->inputs->size == 2);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
@@ -355,28 +333,23 @@ TfLiteStatus IsReshapeSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE_MSG(context, tflite::NumElements(&input) > 0,
                      "0-size tensors are not supported");
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
   if (node->inputs->size == 2) {
     const TfLiteTensor& shape = context->tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE(context, shape.allocation_type == kTfLiteMmapRo);
+    TF_LITE_ENSURE(context, IsConstant(shape, options.static_shape));
     TF_LITE_ENSURE_EQ(context, shape.type, kTfLiteInt32);
   }
 
   int32_t target_shape[YNN_MAX_TENSOR_RANK];
   int target_shape_size = 0;
-  TF_LITE_ENSURE_STATUS(
-      GetReshapeTargetShape(context, node, target_shape, &target_shape_size));
+  TF_LITE_ENSURE_STATUS(GetReshapeTargetShape(
+      context, node->inputs->data, node->inputs->size, node->builtin_data,
+      target_shape, &target_shape_size, options.static_shape));
 
   // This is a weird special case that apparently old models use, indicating
   // scalar input and scalar output. Let's not handle it.
@@ -388,7 +361,8 @@ TfLiteStatus IsReshapeSupported(const TfLiteRegistration* registration,
 }
 
 TfLiteStatus IsPadSupported(const TfLiteRegistration* registration,
-                            const TfLiteNode* node, TfLiteContext* context) {
+                            const TfLiteNode* node, TfLiteContext* context,
+                            const TfLiteYNNPackDelegateOptions& options) {
   if (registration->builtin_code == kTfLiteBuiltinPad) {
     TF_LITE_ENSURE_EQ(context, node->inputs->size, 2);
   } else if (registration->builtin_code == kTfLiteBuiltinPadv2) {
@@ -402,19 +376,13 @@ TfLiteStatus IsPadSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& paddings = context->tensors[node->inputs->data[1]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
-  TF_LITE_ENSURE(context, paddings.allocation_type == kTfLiteMmapRo);
+  TF_LITE_ENSURE(context, IsConstant(paddings, options.static_shape));
   TF_LITE_ENSURE(
       context, paddings.type == kTfLiteInt32 || paddings.type == kTfLiteInt64);
   TF_LITE_ENSURE(context, paddings.data.raw != nullptr);
@@ -427,7 +395,7 @@ TfLiteStatus IsPadSupported(const TfLiteRegistration* registration,
     const TfLiteTensor& constant_value =
         context->tensors[node->inputs->data[2]];
     TF_LITE_ENSURE_EQ(context, constant_value.type, input.type);
-    TF_LITE_ENSURE(context, constant_value.allocation_type == kTfLiteMmapRo);
+    TF_LITE_ENSURE(context, IsConstant(constant_value, options.static_shape));
     TF_LITE_ENSURE(context, constant_value.data.raw != nullptr);
     TF_LITE_ENSURE_EQ(context, tflite::NumElements(&constant_value), 1);
   }
@@ -549,12 +517,7 @@ TfLiteStatus DefineSliceNode(TfLiteContext* context, ynn_subgraph_t subgraph,
     const TfLiteTensor& strides_tensor = context->tensors[strides_tensor_index];
     strides_data = reinterpret_cast<const int32_t*>(strides_tensor.data.raw);
 
-    TfLiteNode* tflite_node;
-    TfLiteRegistration* registration;
-    TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-        context, node.node_index, &tflite_node, &registration));
-    params =
-        static_cast<const TfLiteStridedSliceParams*>(tflite_node->builtin_data);
+    params = static_cast<const TfLiteStridedSliceParams*>(node.builtin_data);
   }
 
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(rank);
@@ -617,12 +580,8 @@ TfLiteStatus DefineConcatenationNode(TfLiteContext* context,
   bool is_output_quantized = IsQuantized(output_tensor);
   ynn_type internal_type = GetYnnType(output_tensor.type);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteConcatenationParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteConcatenationParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   std::vector<uint32_t> input_val_ids;
@@ -690,21 +649,18 @@ TfLiteStatus DefineConcatenationNode(TfLiteContext* context,
 
 TfLiteStatus DefineReshapeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                                TensorToValueIdMap& tensor_to_value_id,
-                               const NodeInfo& node) {
+                               const NodeInfo& node,
+                               const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE(context, node.inputs.size() == 1 || node.inputs.size() == 2);
   TF_LITE_ENSURE_EQ(context, node.outputs.size(), 1);
   int input_tensor_index = node.inputs[0];
   int output_tensor_index = node.outputs[0];
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
-
   int32_t target_shape[YNN_MAX_TENSOR_RANK];
   int target_shape_size = 0;
   TF_LITE_ENSURE_STATUS(GetReshapeTargetShape(
-      context, tflite_node, target_shape, &target_shape_size));
+      context, node.inputs.data(), node.inputs.size(), node.builtin_data,
+      target_shape, &target_shape_size, options.static_shape));
 
   uint32_t input_val_id = GetOrCreateValueId(
       context, subgraph, tensor_to_value_id, input_tensor_index);
@@ -714,7 +670,7 @@ TfLiteStatus DefineReshapeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   TF_LITE_ENSURE(context, input_val_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  size_t ynn_dims[YNN_MAX_TENSOR_RANK];
+  size_t ynn_dims[YNN_MAX_TENSOR_RANK] = {0};
   for (int i = 0; i < target_shape_size; ++i) {
     if (target_shape[i] == -1) {
       ynn_dims[i] = 0;
@@ -891,7 +847,8 @@ TfLiteStatus DefinePadNode(TfLiteContext* context, ynn_subgraph_t subgraph,
 }
 
 TfLiteStatus IsSplitSupported(const TfLiteRegistration* registration,
-                              const TfLiteNode* node, TfLiteContext* context) {
+                              const TfLiteNode* node, TfLiteContext* context,
+                              const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 2);
   TF_LITE_ENSURE(context, node->outputs->size >= 1);
 
@@ -899,19 +856,16 @@ TfLiteStatus IsSplitSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& value = context->tensors[node->inputs->data[1]];
 
   TF_LITE_ENSURE_EQ(context, split_dim.type, kTfLiteInt32);
-  TF_LITE_ENSURE_EQ(context, split_dim.allocation_type, kTfLiteMmapRo);
+  TF_LITE_ENSURE(context, IsConstant(split_dim, options.static_shape));
 
-  ynn_type value_ynn_type = GetYnnType(value.type);
-  TF_LITE_ENSURE(context, value_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(value));
 
   for (int i = 0; i < node->outputs->size; ++i) {
     const TfLiteTensor& output = context->tensors[node->outputs->data[i]];
+    TF_LITE_ENSURE(context, IsTensorSupported(output));
     TF_LITE_ENSURE_EQ(context, value.type, output.type);
-    TF_LITE_ENSURE(context, IsSupportedQuantization(output));
     TF_LITE_ENSURE(context, QuantizationParamsEqual(value, output));
   }
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(value));
   TF_LITE_ENSURE_MSG(context, value.dims->size <= YNN_MAX_TENSOR_RANK,
                      "Input rank exceeds max rank");
 
@@ -970,15 +924,10 @@ TfLiteStatus IsSpaceToDepthSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
@@ -997,16 +946,10 @@ TfLiteStatus IsDepthToSpaceSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& input = context->tensors[node->inputs->data[0]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
   TF_LITE_ENSURE_EQ(context, input.dims->size, 4);
@@ -1033,12 +976,8 @@ TfLiteStatus DefineSpaceToDepthNode(TfLiteContext* context,
   TF_LITE_ENSURE(context, input_val_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteSpaceToDepthParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteSpaceToDepthParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
   const size_t block_size = params->block_size;
 
@@ -1081,12 +1020,8 @@ TfLiteStatus DefineDepthToSpaceNode(TfLiteContext* context,
   TF_LITE_ENSURE(context, input_val_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteDepthToSpaceParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteDepthToSpaceParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
   const size_t block_size = params->block_size;
 
@@ -1112,7 +1047,8 @@ TfLiteStatus DefineDepthToSpaceNode(TfLiteContext* context,
 }
 
 TfLiteStatus IsGatherSupported(const TfLiteRegistration* registration,
-                               const TfLiteNode* node, TfLiteContext* context) {
+                               const TfLiteNode* node, TfLiteContext* context,
+                               const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE(context, node->inputs->size == 2 || node->inputs->size == 3);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
@@ -1120,13 +1056,9 @@ TfLiteStatus IsGatherSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& indices = context->tensors[node->inputs->data[1]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type input_ynn_type = GetYnnType(input.type);
-  ynn_type indices_ynn_type = GetYnnType(indices.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-
-  TF_LITE_ENSURE(context, input_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, indices_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(input));
+  TF_LITE_ENSURE(context, IsTensorSupported(indices));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
   TF_LITE_ENSURE(context, indices.type == kTfLiteInt32 ||
@@ -1139,8 +1071,7 @@ TfLiteStatus IsGatherSupported(const TfLiteRegistration* registration,
     const TfLiteTensor& axis_tensor = context->tensors[node->inputs->data[2]];
     TF_LITE_ENSURE_EQ(context, axis_tensor.type, kTfLiteInt32);
     TF_LITE_ENSURE_EQ(context, tflite::NumElements(&axis_tensor), 1);
-    TF_LITE_ENSURE_MSG(context, axis_tensor.allocation_type == kTfLiteMmapRo,
-                       "Gather axis must be constant");
+    TF_LITE_ENSURE(context, IsConstant(axis_tensor, options.static_shape));
     axis = axis_tensor.data.i32[0];
   } else {
     const auto* params =
@@ -1154,9 +1085,6 @@ TfLiteStatus IsGatherSupported(const TfLiteRegistration* registration,
   }
   TF_LITE_ENSURE(context, 0 <= axis && axis < input.dims->size);
 
-  TF_LITE_ENSURE(context, IsSupportedQuantization(input));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
-
   return kTfLiteOk;
 }
 
@@ -1166,10 +1094,8 @@ TfLiteStatus DefineGatherNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   TF_LITE_ENSURE(context, node.inputs.size() == 2 || node.inputs.size() == 3);
   TF_LITE_ENSURE_EQ(context, node.outputs.size(), 1);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
+  const auto* params =
+      static_cast<const TfLiteGatherParams*>(node.builtin_data);
 
   int input_tensor_index = node.inputs[0];
   int indices_tensor_index = node.inputs[1];
@@ -1196,8 +1122,7 @@ TfLiteStatus DefineGatherNode(TfLiteContext* context, ynn_subgraph_t subgraph,
     const TfLiteTensor& axis_tensor = context->tensors[axis_tensor_index];
     axis = axis_tensor.data.i32[0];
   } else {
-    const auto* params =
-        reinterpret_cast<const TfLiteGatherParams*>(tflite_node->builtin_data);
+    TF_LITE_ENSURE(context, params != nullptr);
     axis = params->axis;
   }
 
@@ -1206,9 +1131,7 @@ TfLiteStatus DefineGatherNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   }
 
   int batch_dims = 0;
-  if (tflite_node->builtin_data != nullptr) {
-    const auto* params =
-        reinterpret_cast<const TfLiteGatherParams*>(tflite_node->builtin_data);
+  if (params != nullptr) {
     batch_dims = params->batch_dims;
     if (batch_dims < 0) {
       batch_dims += indices_tensor.dims->size;
@@ -1302,13 +1225,9 @@ TfLiteStatus IsGatherNdSupported(const TfLiteRegistration* registration,
   const TfLiteTensor& indices = context->tensors[node->inputs->data[1]];
   const TfLiteTensor& output = context->tensors[node->outputs->data[0]];
 
-  ynn_type params_ynn_type = GetYnnType(params.type);
-  ynn_type indices_ynn_type = GetYnnType(indices.type);
-  ynn_type output_ynn_type = GetYnnType(output.type);
-
-  TF_LITE_ENSURE(context, params_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, indices_ynn_type != ynn_type_invalid);
-  TF_LITE_ENSURE(context, output_ynn_type != ynn_type_invalid);
+  TF_LITE_ENSURE(context, IsTensorSupported(params));
+  TF_LITE_ENSURE(context, IsTensorSupported(indices));
+  TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   TF_LITE_ENSURE_EQ(context, params.type, output.type);
   TF_LITE_ENSURE(context, indices.type == kTfLiteInt32 ||
@@ -1322,9 +1241,6 @@ TfLiteStatus IsGatherNdSupported(const TfLiteRegistration* registration,
   int W = indices.dims->data[indices.dims->size - 1];
   TF_LITE_ENSURE(context, W > 0);
   TF_LITE_ENSURE(context, W <= params.dims->size);
-
-  TF_LITE_ENSURE(context, IsSupportedQuantization(params));
-  TF_LITE_ENSURE(context, IsSupportedQuantization(output));
 
   return kTfLiteOk;
 }

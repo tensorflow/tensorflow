@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.lib.io.file_io.FileIO\'>"
   is_instance: "<class \'object\'>"
   member {
+    name: "closed"
+    mtype: "<class \'property\'>"
+  }
+  member {
     name: "mode"
     mtype: "<class \'property\'>"
   }
@@ -12,11 +16,31 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'unused_type\', \'unused_value\', \'unused_traceback\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\', \'mode\'], varargs=None, keywords=None, defaults=[\'r\'], "
   }
   member_method {
+    name: "__iter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__next__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "close"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "fileno"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

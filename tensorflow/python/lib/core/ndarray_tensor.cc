@@ -225,6 +225,9 @@ absl::Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       } else if (pyarray_type == custom_dtypes.float8_e5m2fnuz) {
         *out_tf_datatype = TF_FLOAT8_E5M2FNUZ;
         break;
+      } else if (pyarray_type == custom_dtypes.float8_e8m0fnu) {
+        *out_tf_datatype = TF_FLOAT8_E8M0FNU;
+        break;
       } else if (pyarray_type == custom_dtypes.float4_e2m1fn) {
         *out_tf_datatype = TF_FLOAT4_E2M1FN;
         break;
@@ -479,6 +482,18 @@ absl::Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor,
   absl::InlinedVector<npy_intp, 4UL> dims;
   TF_RETURN_IF_ERROR(
       GetPyArrayDimensionsForTensor(tensor.get(), &dims, &nelems));
+
+  // NumPy's array-creation APIs (PyArray_Empty below and
+  // PyArray_SimpleNewFromData in the aliased fast path) segfault when dim_size
+  // exceeds NPY_MAXDIMS. The aliased path guards this in ArrayFromMemory;
+  // mirror the check here so the string/resource and copy paths reject
+  // high-rank tensors instead of crashing.
+  if (dims.size() > NPY_MAXDIMS) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot convert tensor with ", dims.size(),
+        " dimensions to NumPy array. NumPy arrays can have at most ",
+        NPY_MAXDIMS, " dimensions"));
+  }
 
   // If the type is neither string nor resource we can reuse the Tensor memory.
   TF_Tensor* original = tensor.get();

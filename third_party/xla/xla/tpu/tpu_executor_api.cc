@@ -37,15 +37,9 @@ void SetExecutorApiFn(const TfTpu_ExecutorApiFn* fn) {
   g_executor_api_fn_ptr.store(fn, std::memory_order_release);
 }
 
-bool IsStreamExecutorEnabled(const TfTpu_ExecutorApiFn* executor_api_fn) {
-  return IsStreamExecutorEnabled();
-}
-
 bool IsInitialized(const TfTpu_ExecutorApiFn* executor_api_fn) {
   return IsInitialized();
 }
-
-bool IsStreamExecutorEnabled() { return false; }
 
 bool IsInitialized() {
   auto* executor_api_fn = ExecutorApiFn();

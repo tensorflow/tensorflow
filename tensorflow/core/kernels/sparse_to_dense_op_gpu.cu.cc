@@ -37,7 +37,8 @@ __global__ void SparseToDenseKernel(const Index* __restrict__ indices,
                                     const T* __restrict__ vals, const int nnz,
                                     const int num_vals,
                                     const Index* __restrict__ dims,
-                                    const int ndims, T* __restrict__ dense) {
+                                    const int ndims, T* __restrict__ dense,
+                                    const int64_t dense_size) {
   GPU_1D_KERNEL_LOOP(thread_idx, nnz) {
     eigen_assert(ndims >= 1);
 
@@ -137,10 +138,10 @@ absl::Status LaunchComputeKernels(OpKernelContext* c, const int64_t dense_size,
 
   if (num_elems > 0) {
     GpuLaunchConfig config1 = GetGpuLaunchConfig(num_elems, d);
-    TF_RETURN_IF_ERROR(
-        GpuLaunchKernel(SparseToDenseKernel<T, Index>, config1.block_count,
-                        config1.thread_per_block, 0, d.stream(), indices,
-                        values, num_elems, num_values, shape, num_dims, dense));
+    TF_RETURN_IF_ERROR(GpuLaunchKernel(
+        SparseToDenseKernel<T, Index>, config1.block_count,
+        config1.thread_per_block, 0, d.stream(), indices, values, num_elems,
+        num_values, shape, num_dims, dense, dense_size));
   }
   return absl::OkStatus();
 }
@@ -169,9 +170,9 @@ void LaunchSparseToDense<T, Index>::operator()(
     VLOG(1) << "SparseToDense will be performed on GPUs. For performance "
                "reasons, it is suggested to pass False to validate_indices.";
 
-    IndicesValidStatus valid_status;
-    int valid_status_size = sizeof(valid_status) / sizeof(int);
-    int valid_status_bytes = sizeof(valid_status);
+    auto valid_status = std::make_shared<IndicesValidStatus>();
+    int valid_status_size = sizeof(IndicesValidStatus) / sizeof(int);
+    int valid_status_bytes = sizeof(IndicesValidStatus);
 
     Tensor valid_status_tensor;
     OP_REQUIRES_OK_ASYNC(
@@ -193,15 +194,17 @@ void LaunchSparseToDense<T, Index>::operator()(
                         config.thread_per_block, 0, d.stream(), indices_ptr,
                         num_elems, shape_ptr, num_dims, status_ptr),
         done);
-    OP_REQUIRES_OK(c, stream->Memcpy(reinterpret_cast<int*>(&valid_status),
+    OP_REQUIRES_OK(c, stream->Memcpy(reinterpret_cast<int*>(valid_status.get()),
                                      valid_status_ptr, valid_status_bytes));
 
     // We capture 'shape' instead of 'shape_ptr' since this lambda outlives
     // the 'shape' tensor.
-    auto check_status_and_compute = [op, c, valid_status, dense_size,
-                                     default_value, indices_ptr, values_ptr,
-                                     num_elems, num_values, shape, num_dims,
-                                     dense_ptr, done]() {
+    // We also capture 'valid_status_tensor' (device memory) by value to keep it
+    // alive while the GPU is asynchronously executing kernels and memcpy.
+    auto check_status_and_compute = [op, c, valid_status, valid_status_tensor,
+                                     dense_size, default_value, indices_ptr,
+                                     values_ptr, num_elems, num_values, shape,
+                                     num_dims, dense_ptr, done]() {
       {
         // Ensure that within the callback, the proper GPU settings are
         // configured.
@@ -210,23 +213,23 @@ void LaunchSparseToDense<T, Index>::operator()(
             stream->parent()->Activate();
 
         OP_REQUIRES_ASYNC(
-            c, valid_status.valid == INT_MAX,
+            c, valid_status->valid == INT_MAX,
             absl::InvalidArgumentError(absl::StrCat(
-                "indices[", valid_status.valid, "] is out of bounds.")),
+                "indices[", valid_status->valid, "] is out of bounds.")),
             done);
 
-        OP_REQUIRES_ASYNC(c, valid_status.increasing == INT_MAX,
+        OP_REQUIRES_ASYNC(c, valid_status->increasing == INT_MAX,
                           absl::InvalidArgumentError(absl::StrCat(
-                              "indices[", valid_status.increasing,
+                              "indices[", valid_status->increasing,
                               "] is out of "
                               "order. Many sparse ops require sorted indices.\n"
                               "  Use `tf.sparse.reorder` to create a correctly "
                               "ordered copy.\n\n")),
                           done);
 
-        OP_REQUIRES_ASYNC(c, valid_status.different == INT_MAX,
+        OP_REQUIRES_ASYNC(c, valid_status->different == INT_MAX,
                           absl::InvalidArgumentError(
-                              absl::StrCat("indices[", valid_status.different,
+                              absl::StrCat("indices[", valid_status->different,
                                            "] is "
                                            "repeated.")),
                           done);

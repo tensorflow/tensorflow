@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -45,6 +46,15 @@ class TiledHloComputationTest : public HloHardwareIndependentTestBase {
   TiledHloComputationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
 
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // TODO: b/514293537 - remove this test completely after switching to new
+    // tiling.
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(false);
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
   TiledHloScheduleBuilder default_schedule_builder_ =
       CreateMajorToMinorTiledHloSchedule;

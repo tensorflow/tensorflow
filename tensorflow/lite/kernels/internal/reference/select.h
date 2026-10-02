@@ -109,18 +109,22 @@ void RunSelectOp(const D* cond, const T* x, const T* y, T* output,
     } else {
       TFLITE_DCHECK_EQ(cond_stride_0, 1);
       if (x_stride_0 == 0 && y_stride_0 == 0) {
+        const T x0 = *x;
+        const T y0 = *y;
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? *x : *y;
+          output[i] = cond[i] ? x0 : y0;
         }
       } else if (x_stride_0 == 0) {
         TFLITE_DCHECK_EQ(y_stride_0, 1);
+        const T x0 = *x;
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? *x : y[i];
+          output[i] = cond[i] ? x0 : y[i];
         }
       } else if (y_stride_0 == 0) {
         TFLITE_DCHECK_EQ(x_stride_0, 1);
+        const T y0 = *y;
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? x[i] : *y;
+          output[i] = cond[i] ? x[i] : y0;
         }
       } else {
         TFLITE_DCHECK_EQ(x_stride_0, 1);
@@ -155,12 +159,12 @@ inline void BroadcastSelectSimple(const RuntimeShape& cond_shape,
       output_shape.DimensionsCount(),
       std::max(cond_shape.DimensionsCount(),
                std::max(x_shape.DimensionsCount(), y_shape.DimensionsCount())));
+  TFLITE_CHECK_LE(dims_count, kMaxRank);
+
   if (dims_count <= 0) {
     *output_data = *cond_data ? *x_data : *y_data;
     return;
   }
-
-  TFLITE_DCHECK_LE(dims_count, kMaxRank);
 
   const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(dims_count, output_shape);
@@ -237,10 +241,11 @@ void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
                            const T* input_y_data,
                            const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Select/BroadcastSelectSlow");
-  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 5);
+
+  TFLITE_CHECK_LE(input_condition_shape.DimensionsCount(), 8);
+  TFLITE_CHECK_LE(input_x_shape.DimensionsCount(), 8);
+  TFLITE_CHECK_LE(input_y_shape.DimensionsCount(), 8);
+  TFLITE_CHECK_LE(output_shape.DimensionsCount(), 8);
 
   BroadcastSelectSimple(input_condition_shape, input_condition_data,
                         input_x_shape, input_x_data, input_y_shape,

@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -37,15 +38,6 @@ namespace tflite {
 namespace ynnpack {
 
 namespace {
-uint16_t FloatToBfloat16(float f) {
-  uint32_t val;
-  std::memcpy(&val, &f, sizeof(float));
-  // Round to nearest even.
-  uint32_t rounding_bias = 0x7fff + ((val >> 16) & 1);
-  val += rounding_bias;
-  return static_cast<uint16_t>(val >> 16);
-}
-
 template <typename T>
 T QuantizeValue(float value, float scale, int32_t zero_point) {
   int32_t quantized = zero_point + std::round(value / scale);
@@ -102,6 +94,14 @@ ynn_type GetYnnType(TfLiteType type) {
     case kTfLiteInt8:
       return ynn_type_int8;
     case kTfLiteUInt8:
+      return ynn_type_uint8;
+    case kTfLiteInt4:
+      return ynn_type_int4;
+    case kTfLiteUInt4:
+      return ynn_type_uint4;
+    case kTfLiteInt2:
+      return ynn_type_int2;
+    case kTfLiteBool:
       return ynn_type_uint8;
     default:
       return ynn_type_invalid;
@@ -182,6 +182,8 @@ ynn_binary_operator GetYnnBinaryOperator(int builtin_code) {
       return ynn_binary_subtract;
     case kTfLiteBuiltinSquaredDifference:
       return ynn_binary_squared_difference;
+    case kTfLiteBuiltinPrelu:
+      return ynn_binary_leaky_relu;
     default:
       return ynn_binary_invalid;
   }
@@ -206,7 +208,11 @@ bool IsUnaryOp(int builtin_code) {
          builtin_code == kTfLiteBuiltinGelu ||
          builtin_code == kTfLiteBuiltinElu ||
          builtin_code == kTfLiteBuiltinLeakyRelu ||
-         builtin_code == kTfLiteBuiltinHardSwish;
+         builtin_code == kTfLiteBuiltinHardSwish ||
+         builtin_code == kTfLiteBuiltinRelu ||
+         builtin_code == kTfLiteBuiltinRelu6 ||
+         builtin_code == kTfLiteBuiltinReluN1To1 ||
+         builtin_code == kTfLiteBuiltinRelu0To1;
 }
 
 bool IsBinaryOp(int builtin_code) {
@@ -240,8 +246,26 @@ bool IsStablehloOp(int builtin_code) {
 }
 
 bool IsQuantized(const TfLiteTensor& tensor) {
+  if (tensor.type == kTfLiteFloat32 || tensor.type == kTfLiteFloat16 ||
+      tensor.type == kTfLiteBFloat16 || tensor.type == kTfLiteFloat64 ||
+      tensor.type == kTfLiteFloat8E4M3FN || tensor.type == kTfLiteFloat8E5M2) {
+    return false;
+  }
   return tensor.quantization.type != kTfLiteNoQuantization ||
          tensor.params.scale != 0.0f;
+}
+
+bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare) {
+  switch (tensor.allocation_type) {
+    case kTfLiteMemNone:
+    case kTfLiteMmapRo:
+    case kTfLiteArenaRwPersistent:
+      return true;
+    case kTfLitePersistentRo:
+      return allow_prepare;
+    default:
+      return false;
+  }
 }
 
 bool IsSupportedQuantization(const TfLiteTensor& tensor,
@@ -261,6 +285,33 @@ bool IsSupportedQuantization(const TfLiteTensor& tensor,
     }
   }
   return true;
+}
+
+size_t YnnTypeElementCount(ynn_type type) {
+  switch (type) {
+    case ynn_type_int2:
+    case ynn_type_uint2:
+      return 4;
+    case ynn_type_int4:
+    case ynn_type_uint4:
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel) {
+  if (tensor.type == kTfLiteBool) return false;
+  ynn_type type = GetYnnType(tensor.type);
+  if (type == ynn_type_invalid) return false;
+  size_t element_count = YnnTypeElementCount(type);
+  if (element_count > 1) {
+    if (tensor.dims == nullptr) return false;
+    size_t dense_dim =
+        tensor.dims->size == 0 ? 1 : tensor.dims->data[tensor.dims->size - 1];
+    if (dense_dim % element_count != 0) return false;
+  }
+  return IsSupportedQuantization(tensor, allow_per_channel);
 }
 
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
@@ -325,65 +376,19 @@ TfLiteStatus DefineScalarConstant(TfLiteContext* context,
                                   ynn_subgraph_t subgraph, ynn_type type,
                                   double value, uint32_t* id_out) {
   TF_LITE_ENSURE(context, type != ynn_type_invalid);
-  switch (type) {
-    case ynn_type_fp32: {
-      float f_val = static_cast<float>(value);
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &f_val,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_int32: {
-      int32_t i_val = static_cast<int32_t>(value);
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &i_val,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_int8: {
-      int8_t i8_val = static_cast<int8_t>(value);
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &i8_val,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_uint8: {
-      uint8_t u8_val = static_cast<uint8_t>(value);
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &u8_val,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_fp64: {
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &value,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_fp16: {
-      tflite::half f16_val(static_cast<float>(value));
-      uint16_t bits = f16_val.to_bits();
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &bits,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    case ynn_type_bf16: {
-      uint16_t bits = FloatToBfloat16(static_cast<float>(value));
-      TF_LITE_ENSURE_EQ(context,
-                        ynn_define_tensor(subgraph, type, 0, nullptr, &bits,
-                                          YNN_VALUE_FLAG_COPY_DATA, id_out),
-                        ynn_status_success);
-      return kTfLiteOk;
-    }
-    default:
-      TF_LITE_ENSURE(context, false);
+  if (type == ynn_type_fp64) {
+    TF_LITE_ENSURE_EQ(context,
+                      ynn_define_tensor(subgraph, type, 0, nullptr, &value,
+                                        YNN_VALUE_FLAG_COPY_DATA, id_out),
+                      ynn_status_success);
+    return kTfLiteOk;
+  } else {
+    float f_val = static_cast<float>(value);
+    TF_LITE_ENSURE_EQ(context,
+                      ynn_define_tensor(subgraph, type, 0, nullptr, &f_val,
+                                        YNN_VALUE_FLAG_COPY_DATA_FP32, id_out),
+                      ynn_status_success);
+    return kTfLiteOk;
   }
 }
 
@@ -468,6 +473,54 @@ TfLiteStatus DefineQuantizationParams(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+TfLiteStatus ApplyClamp(TfLiteContext* context, ynn_subgraph_t subgraph,
+                        double min_val, double max_val, uint32_t input_id,
+                        uint32_t& output_id, int output_tensor_index,
+                        ynn_type internal_type) {
+  const TfLiteTensor& output_tensor = context->tensors[output_tensor_index];
+  const bool is_quantized =
+      IsQuantized(output_tensor) &&
+      (internal_type == ynn_type_int8 || internal_type == ynn_type_uint8);
+
+  auto quantize_val = [&](double val) -> double {
+    if (!is_quantized) return val;
+    const float scale = output_tensor.params.scale;
+    const int32_t zero_point = output_tensor.params.zero_point;
+    if (internal_type == ynn_type_int8) {
+      return QuantizeValue<int8_t>(val, scale, zero_point);
+    } else {
+      return QuantizeValue<uint8_t>(val, scale, zero_point);
+    }
+  };
+
+  uint32_t current_input_id = input_id;
+
+  uint32_t min_const_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_STATUS(DefineScalarConstant(
+      context, subgraph, internal_type, quantize_val(min_val), &min_const_id));
+
+  uint32_t max_output_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_EQ(
+      context,
+      ynn_define_binary(subgraph, ynn_binary_max, current_input_id,
+                        min_const_id, &max_output_id, 0),
+      ynn_status_success);
+
+  current_input_id = max_output_id;
+
+  uint32_t max_const_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_STATUS(DefineScalarConstant(
+      context, subgraph, internal_type, quantize_val(max_val), &max_const_id));
+
+  TF_LITE_ENSURE_EQ(
+      context,
+      ynn_define_binary(subgraph, ynn_binary_min, current_input_id,
+                        max_const_id, &output_id, 0),
+      ynn_status_success);
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus ApplyActivation(TfLiteContext* context, ynn_subgraph_t subgraph,
                              TfLiteFusedActivation activation,
                              uint32_t input_id, uint32_t& output_id,
@@ -494,46 +547,20 @@ TfLiteStatus ApplyActivation(TfLiteContext* context, ynn_subgraph_t subgraph,
 
   uint32_t current_input_id = input_id;
 
-  if (activation == kTfLiteActRelu || activation == kTfLiteActRelu6 ||
-      activation == kTfLiteActReluN1To1) {
-    double min_val = 0.0;
-    if (activation == kTfLiteActReluN1To1) {
-      min_val = -1.0;
-    }
-
+  if (activation == kTfLiteActRelu) {
     uint32_t min_const_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_STATUS(DefineScalarConstant(context, subgraph, internal_type,
-                                               quantize_val(min_val),
-                                               &min_const_id));
-
-    uint32_t max_output_id =
-        activation == kTfLiteActRelu6 || activation == kTfLiteActReluN1To1
-            ? YNN_INVALID_VALUE_ID
-            : output_id;
-
-    TF_LITE_ENSURE_EQ(
-        context,
-        ynn_define_binary(subgraph, ynn_binary_max, current_input_id,
-                          min_const_id, &max_output_id, 0),
-        ynn_status_success);
-
-    current_input_id = max_output_id;
-
-    if (activation == kTfLiteActRelu6 || activation == kTfLiteActReluN1To1) {
-      double max_val = (activation == kTfLiteActRelu6) ? 6.0 : 1.0;
-      uint32_t max_const_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_STATUS(
-          DefineScalarConstant(context, subgraph, internal_type,
-                               quantize_val(max_val), &max_const_id));
-
-      TF_LITE_ENSURE_EQ(
-          context,
-          ynn_define_binary(subgraph, ynn_binary_min, current_input_id,
-                            max_const_id, &output_id, 0),
-          ynn_status_success);
-    } else {
-      output_id = max_output_id;
-    }
+    TF_LITE_ENSURE_STATUS(DefineScalarConstant(
+        context, subgraph, internal_type, quantize_val(0.0), &min_const_id));
+    TF_LITE_ENSURE_EQ(context,
+                      ynn_define_binary(subgraph, ynn_binary_max, input_id,
+                                        min_const_id, &output_id, 0),
+                      ynn_status_success);
+  } else if (activation == kTfLiteActRelu6 ||
+             activation == kTfLiteActReluN1To1) {
+    double min_val = (activation == kTfLiteActReluN1To1) ? -1.0 : 0.0;
+    double max_val = (activation == kTfLiteActRelu6) ? 6.0 : 1.0;
+    return ApplyClamp(context, subgraph, min_val, max_val, input_id, output_id,
+                      output_tensor_index, internal_type);
   } else if (activation == kTfLiteActTanh) {
     TF_LITE_ENSURE_EQ(context,
                       ynn_define_unary(subgraph, ynn_unary_tanh,
@@ -608,7 +635,7 @@ uint32_t GetOrCreateValueId(TfLiteContext* context, ynn_subgraph_t subgraph,
   size_t dims_data[YNN_MAX_TENSOR_RANK];
   const size_t* dims = nullptr;
 
-  if (tensor.allocation_type == kTfLiteMmapRo) {
+  if (IsConstant(tensor)) {
     data = tensor.data.raw;
     std::copy_n(tensor.dims->data, tensor.dims->size, dims_data);
     dims = dims_data;
@@ -706,6 +733,71 @@ TfLiteStatus DefineYnnStencil(TfLiteContext* context, ynn_subgraph_t subgraph,
       stencil_strides, stencil_dilations, input_id, padding_id, stencil_id,
       /*flags=*/0));
 
+  return kTfLiteOk;
+}
+
+flexbuffers::Map GetFlexBufferMap(const NodeInfo& node) {
+  if (node.builtin_code == kTfLiteBuiltinStablehloComposite &&
+      node.builtin_data != nullptr) {
+    const auto* composite_params =
+        static_cast<const TfLiteStablehloCompositeParams*>(node.builtin_data);
+    if (composite_params->attributes != nullptr &&
+        composite_params->attributes_size > 0) {
+      return flexbuffers::GetRoot(composite_params->attributes,
+                                  composite_params->attributes_size)
+          .AsMap();
+    }
+  }
+  if (node.custom_initial_data != nullptr &&
+      node.custom_initial_data_size > 0) {
+    return flexbuffers::GetRoot(
+               reinterpret_cast<const uint8_t*>(node.custom_initial_data),
+               node.custom_initial_data_size)
+        .AsMap();
+  }
+  return flexbuffers::Map::EmptyMap();
+}
+
+// Find a dummy input we can use for a particular runtime_bmm op. Often, many
+// runtime_bmm ops use the same params tensor, which can share a dummy input.
+TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
+                                   ynn_subgraph_t subgraph,
+                                   uint32_t& next_external_id,
+                                   std::vector<DummyInputInfo>& dummy_inputs,
+                                   int param_tensor_index, int seq_axis,
+                                   size_t rank, const size_t* full_dims,
+                                   ynn_type type, uint32_t* dummy_val_id_out) {
+  for (const auto& dummy : dummy_inputs) {
+    if (dummy.param_tensor_index == param_tensor_index &&
+        dummy.seq_axis == seq_axis && dummy.rank == rank) {
+      bool dims_match = true;
+      for (size_t i = 0; i < rank; ++i) {
+        if (dummy.full_dims[i] != full_dims[i]) {
+          dims_match = false;
+          break;
+        }
+      }
+      if (dims_match) {
+        *dummy_val_id_out = dummy.dummy_val_id;
+        return kTfLiteOk;
+      }
+    }
+  }
+
+  uint32_t dummy_val_id = next_external_id++;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
+      subgraph, type, rank, /*dims=*/nullptr, /*data=*/nullptr,
+      YNN_VALUE_FLAG_EXTERNAL_INPUT, &dummy_val_id));
+
+  DummyInputInfo dummy_info = {};
+  dummy_info.param_tensor_index = param_tensor_index;
+  dummy_info.dummy_val_id = dummy_val_id;
+  dummy_info.seq_axis = seq_axis;
+  dummy_info.rank = rank;
+  std::copy_n(full_dims, rank, dummy_info.full_dims);
+  dummy_inputs.push_back(dummy_info);
+
+  *dummy_val_id_out = dummy_val_id;
   return kTfLiteOk;
 }
 

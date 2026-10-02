@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -47,12 +46,14 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
+#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -65,9 +66,30 @@ using PlatformId = ::xla::PjRtPlatformId;
 // API.
 using DeviceAssignment = ::xla::DeviceAssignment;
 
+// Abstract options for loading an `Executable` as `LoadedExecutable`.
+struct LoadOptions : RTTIExtends<LoadOptions, Serializable> {
+  LoadOptions() = default;
+
+  LoadOptions(DeviceListRef devices,
+              std::optional<std::vector<int>> outputs_bundle_slice_sizes)
+      : devices(std::move(devices)),
+        outputs_bundle_slice_sizes(std::move(outputs_bundle_slice_sizes)) {}
+
+  // The devices to load the executable onto.
+  DeviceListRef devices;
+
+  // When executing the program with `LoadedExecutable::ExecuteBundle()`, apply
+  // `Bundle::Slice()` to the execution output. If `std::nullopt`, the output is
+  // a single `Bundle` containing all output values. The sum of the slice sizes
+  // must match the number of output values.
+  std::optional<std::vector<int>> outputs_bundle_slice_sizes;
+
+  static char ID;  // NOLINT
+};
+
 // Represents an IFRT client. It wraps a runtime that interacts with computation
 // devices and memory attached to it.
-class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
+class Client : public RTTIExtends<Client, RTTIRoot> {
  public:
   // Describes the semantics the caller to `MakeArrayFromHostBuffer` expects
   // from the runtime, in a total order from most restrictive to least
@@ -197,6 +219,42 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // status must not be OK.
   virtual absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
       const absl::Status& error, absl::Span<const ArraySpec> array_specs) = 0;
+
+  // Represents a mutable destination host buffer shard.
+  struct MutableHostBuffer {
+    // `data` points to the backing array of the host buffer. Caution:
+    // `byte_strides` are allowed to be negative, in which case `data` may need
+    // to point to the interior of the buffer, not necessarily its start.
+    void* data;
+
+    DType dtype;
+    Shape shape;
+
+    using ByteStrides = std::vector<int64_t>;
+    std::optional<ByteStrides> byte_strides;
+  };
+
+  // Represents the specification of copying an array to host buffer shards.
+  //
+  // `buffers` is a list of destination host buffers that have one-to-one
+  // correspondence to the unique index domains in
+  // `Sharding::UniqueIndexDomains()`.
+  struct CopyArraysToHostBufferShardsSpec {
+    using Buffers = absl::InlinedVector<MutableHostBuffer, 1>;
+    ArrayRef array;
+    Buffers buffers;
+  };
+
+  // Copies arrays' shards into the provided destination host buffers.
+  //
+  // All source arrays should use the same device list.
+  //
+  // Returns a vector of futures, one for each spec, that will be fulfilled
+  // when all host buffer shards for that spec have been filled.
+  virtual absl::StatusOr<std::vector<tsl::Future<>>>
+  CopyArraysToHostBufferShards(
+      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+      ArrayCopySemantics semantics) = 0;
 
   // Builds a larger array out of individual per-device shards.
   // TODO(hyeontaek): Replace this API with the version that takes
@@ -402,6 +460,15 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;
+
+  // Loads executables onto devices as specified by `options`.
+  //
+  // `executables` and `options` must have the same size. `executables` may
+  // contain duplicates, e.g., when loading the same executable onto different
+  // sets of devices.
+  virtual absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
+      absl::Span<const ExecutableRef> executables,
+      absl::Span<std::unique_ptr<LoadOptions>> options) = 0;
 
   // Returns a topology that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(

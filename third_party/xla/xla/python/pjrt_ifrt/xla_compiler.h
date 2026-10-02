@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/rtti.h"
 
 namespace xla {
 namespace ifrt {
@@ -41,8 +41,7 @@ namespace ifrt {
 //
 // TODO(hyeontaek): Move `loaded_host_callbacks` to a (new) `LoadOptions`
 // because compilation (without loading) should not take them.
-struct XlaCompileOptions
-    : llvm::RTTIExtends<XlaCompileOptions, CompileOptions> {
+struct XlaCompileOptions : RTTIExtends<XlaCompileOptions, CompileOptions> {
   XlaCompileOptions() = default;
   explicit XlaCompileOptions(xla::CompileOptions compile_options,
                              DeviceListRef devices,
@@ -72,16 +71,16 @@ struct XlaCompileOptions
 // TODO(emilyaf): Make `devices` non-optional once it is plumbed through from
 // Australis.
 struct XlaDeserializeExecutableOptions
-    : llvm::RTTIExtends<XlaDeserializeExecutableOptions,
-                        DeserializeExecutableOptions> {
+    : RTTIExtends<XlaDeserializeExecutableOptions,
+                  DeserializeExecutableOptions> {
   XlaDeserializeExecutableOptions() = default;
   explicit XlaDeserializeExecutableOptions(
       std::optional<xla::CompileOptions> compile_options,
       std::optional<DeviceListRef> devices,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks =
           {})
-      : llvm::RTTIExtends<XlaDeserializeExecutableOptions,
-                          DeserializeExecutableOptions>(std::move(devices)),
+      : RTTIExtends<XlaDeserializeExecutableOptions,
+                    DeserializeExecutableOptions>(std::move(devices)),
         compile_options(std::move(compile_options)),
         loaded_host_callbacks(std::move(loaded_host_callbacks)) {}
 

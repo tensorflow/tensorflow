@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
-#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"

@@ -24,22 +24,21 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/compilation_stats.h"
-#include "xla/types.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
-  explicit HloPassPipeline(const std::string& name,
+  explicit HloPassPipeline(absl::string_view name,
                            CompilationStats* compilation_stats = nullptr)
       : name_(name), compilation_stats_(compilation_stats) {
     if (compilation_stats == nullptr) {
@@ -83,9 +82,9 @@ class HloPassPipeline : public HloPassInterface {
   // Add an invariant-checking pass to the pipeline on debug builds only.
   template <typename T, typename... Args>
   void AddInvariantCheckerDebug(Args&&... args) {
-#ifndef NDEBUG
-    AddInvariantChecker<T>(std::forward<Args>(args)...);
-#endif  // NDEBUG
+    if constexpr (tsl::kIsDebugBuild) {
+      AddInvariantChecker<T>(std::forward<Args>(args)...);
+    }
   }
 
   bool IsPassPipeline() const override { return true; }
@@ -104,11 +103,6 @@ class HloPassPipeline : public HloPassInterface {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  // Returns the set of passes which are enabled. DebugOptions can selectively
-  // disable passes via --xla_disable_hlo_passes flag.
-  std::vector<HloPassInterface*> GetEnabledPasses(
-      const DebugOptions& debug_options);
-
   // Maybe dumps the given module depending on flag values contained in
   // DebugOptions of module config. If it is dumped, saves the filenames of the
   // dumps into module metadata.
@@ -145,7 +139,7 @@ class HloPassPipeline : public HloPassInterface {
   static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloT module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
-    ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
+    ABSL_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
     module->Cleanup();
     return changed;
   }

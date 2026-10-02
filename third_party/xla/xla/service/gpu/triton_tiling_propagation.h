@@ -304,6 +304,12 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
     const se::GpuComputeCapability& gpu_version,
     const DotProperties& properties);
 
+// Returns true whether the given instruction is worth fusing as an input.
+bool IsInputWorthFusing(const HloInstruction& hlo);
+
+// Returns true whether the given instruction is worth fusing as an output.
+bool IsOutputWorthFusing(const HloInstruction& hlo);
+
 }  // namespace triton_fusion
 }  // namespace gpu
 }  // namespace xla

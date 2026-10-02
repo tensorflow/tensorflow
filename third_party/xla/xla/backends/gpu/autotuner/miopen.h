@@ -26,6 +26,8 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -55,10 +57,26 @@ class MIOpenBackend : public GpuCodegenBackend {
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 
+  std::string version() const override {
+    return target_config().device_description.dnn_version().ToString();
+  }
+
  private:
   bool IsSupported(const HloInstruction& instr) override;
-  // TODO(b/514330710): use valid version
-  std::string version() const override { return "unknown"; }
+
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetConvolutionCustomCallConfigs(
+      const HloCustomCallInstruction* instr, const HloModule* module,
+      stream_executor::StreamExecutor* stream_executor,
+      stream_executor::DeviceAddressAllocator* allocator,
+      stream_executor::Stream* stream);
+
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetFusedConvolutionCustomCallConfigs(
+      const HloCustomCallInstruction* instr, const HloModule* module,
+      stream_executor::StreamExecutor* stream_executor,
+      stream_executor::DeviceAddressAllocator* allocator);
+
   bool do_not_autotune_;
   stream_executor::DeviceAddressAllocator* allocator_;
 };

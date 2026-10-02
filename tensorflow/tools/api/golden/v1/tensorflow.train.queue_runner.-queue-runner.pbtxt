@@ -41,6 +41,7 @@ tf_class {
   member_method {
     name: "from_proto"
     argspec: "args=[\'queue_runner_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "to_proto"

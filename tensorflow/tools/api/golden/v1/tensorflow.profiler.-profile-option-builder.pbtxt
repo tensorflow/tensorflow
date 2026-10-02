@@ -17,6 +17,7 @@ tf_class {
   member_method {
     name: "float_operation"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "order_by"
@@ -29,10 +30,12 @@ tf_class {
   member_method {
     name: "time_and_memory"
     argspec: "args=[\'min_micros\', \'min_bytes\', \'min_accelerator_micros\', \'min_cpu_micros\', \'min_peak_bytes\', \'min_residual_bytes\', \'min_output_bytes\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'0\', \'0\', \'0\', \'0\', \'0\'], "
+    method_kind: STATIC
   }
   member_method {
     name: "trainable_variables_parameter"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "with_accounted_types"

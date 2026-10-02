@@ -14,6 +14,8 @@
 # ==============================================================================
 """Cond function for Control Flow Operations."""
 
+import os
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.framework import dtypes
@@ -32,6 +34,17 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+
+
+# When True, eager tf.cond with a constant predicate also traces the inactive
+# branch so that errors in it are surfaced early, consistent with graph/XLA
+# compilation. Off by default: tracing the inactive branch runs its Python side
+# effects and is incompatible with some constructs (e.g. captured TensorArrays,
+# certain AutoGraph-generated closures), so it is opt-in via the
+# TF_COND_VALIDATE_INACTIVE_BRANCH=1 environment variable.
+_VALIDATE_INACTIVE_BRANCH = (
+    os.environ.get("TF_COND_VALIDATE_INACTIVE_BRANCH", "0") == "1"
+)
 
 
 # pylint: disable=redefined-outer-name
@@ -380,6 +393,33 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
   else:
     # For conditions which are eager tensors with a constant value (most of
     # them), we only call the relevant branch function and execute it eagerly.
+    #
+    # When _VALIDATE_INACTIVE_BRANCH is enabled, both branches are additionally
+    # traced up front so that errors in the inactive branch are surfaced early,
+    # consistent with graph/XLA compilation. This is off by default because
+    # tracing the inactive branch runs its Python side effects and is
+    # incompatible with some constructs (e.g. captured TensorArrays, certain
+    # AutoGraph-generated closures). The selected branch is always executed
+    # eagerly using the original callable, so standard eager execution and
+    # gradient-tape semantics are unchanged (only the active branch's ops are
+    # recorded on the tape).
+    if _VALIDATE_INACTIVE_BRANCH:
+      # pylint: disable=g-import-not-at-top
+      from tensorflow.python.eager.polymorphic_function import polymorphic_function
+      # pylint: enable=g-import-not-at-top
+      validation_true_fn = (
+          true_fn
+          if isinstance(true_fn, core.PolymorphicFunction)
+          else polymorphic_function.function(true_fn)
+      )
+      validation_false_fn = (
+          false_fn
+          if isinstance(false_fn, core.PolymorphicFunction)
+          else polymorphic_function.function(false_fn)
+      )
+      validation_true_fn.get_concrete_function()
+      validation_false_fn.get_concrete_function()
+
     with ops.name_scope(name, "cond", [pred]):
       if pred_constant_value:
         result = true_fn()

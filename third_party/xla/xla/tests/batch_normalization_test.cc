@@ -51,9 +51,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.001, 0.001};
 
-class BatchNormalizationTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+class BatchNormalizationTest : public ClientLibraryTestRunnerMixin<
+                                   HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   BatchNormalizationTest() : input_array_(kSamples, kZ, kY, kX) {
     Array2D<float> pz({
@@ -470,7 +469,7 @@ struct BatchNormTestParam {
 // Tests to test the fused operation of BatchNorm.
 class BatchNormTestManySizes
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
+          HloInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<BatchNormTestParam> {};
 
 std::vector<BatchNormTestParam> BuildBatchNormTestParams() {

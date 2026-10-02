@@ -18,20 +18,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,7 +39,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ReplicatedIOFeedTest : public HloPjRtTestBase {};
+class ReplicatedIOFeedTest : public HloTestBase {};
 
 TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   static constexpr int kNumReplicas = 4;
@@ -79,12 +78,12 @@ TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   DeviceAssignment device_assn(/*replica_count=*/kNumReplicas,
                                /*computation_count=*/1);
   device_assn.FillIota(0);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(
-                              kHloText, GetModuleConfigForTest(kNumReplicas)));
-  TF_ASSERT_OK(test_runner()
-                   .ExecuteReplicated(std::move(module), opts, &device_assn)
-                   .status());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(
+                           kHloText, GetModuleConfigForTest(kNumReplicas)));
+  ASSERT_OK(test_runner()
+                .ExecuteReplicated(std::move(module), opts, &device_assn)
+                .status());
 
   // Verify that each infeed and outfeed is routed correctly. Each replica
   // should produce 10*replica (indeed) + replica (from HLO)

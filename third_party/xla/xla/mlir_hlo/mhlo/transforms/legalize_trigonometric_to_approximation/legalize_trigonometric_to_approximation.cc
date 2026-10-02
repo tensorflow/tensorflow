@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "mhlo/transforms/passes.h"
@@ -185,11 +184,6 @@ struct LegalizeTrigonometricToApproximationPass
 };
 
 }  // anonymous namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createLegalizeTrigonometricToApproximationPass() {
-  return std::make_unique<LegalizeTrigonometricToApproximationPass>();
-}
 
 void populateTrigonometricToApproximationPatterns(mlir::MLIRContext *context,
                                                   RewritePatternSet *patterns) {

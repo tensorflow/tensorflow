@@ -21,15 +21,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/Analysis.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
@@ -49,16 +47,16 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) {
-  const Shape& output_shape = concatenate->shape();
-  for (auto* op : concatenate->operands()) {
+absl::Status CanDoFastConcatenate(const HloInstruction& instruction) {
+  const Shape& output_shape = instruction.shape();
+  for (auto* op : instruction.operands()) {
     if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {
       return absl::Status(absl::StatusCode::kFailedPrecondition,
                           "Operand has mismatching layouts");
     }
   }
   return absl::OkStatus();
-};
+}
 
 ConcatenateKernelEmitter::ConcatenateKernelEmitter(
     const HloInstruction* instr, const BufferAssignment* buffer_assignment,
@@ -69,11 +67,10 @@ ConcatenateKernelEmitter::ConcatenateKernelEmitter(
 
 absl::StatusOr<ConcatenateKernelEmitter::KernelDefinition>
 ConcatenateKernelEmitter::EmitKernelDefinition() {
-  if (absl::Status status = CanDoFastConcatenate(instr_); !status.ok()) {
-    VLOG(1) << "Could not emit fast concatenate for " << instr_->ToString()
-            << ": " << status.message();
-    return ElementalKernelEmitter(instr_, buffer_assignment_, target_machine_)
-        .EmitKernelDefinition();
+  if (absl::Status status = CanDoFastConcatenate(*instr_); !status.ok()) {
+    return Internal(
+        "Concatenate is not supported by ConcatenateKernelEmitter: %s",
+        status.message());
   }
 
   auto ctx = std::make_unique<llvm::LLVMContext>();
@@ -83,8 +80,9 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
     return Internal("HloModule is null");
   }
 
-  const auto& backend_config = instr_->backend_config<BackendConfig>();
-  const auto& partitions = backend_config->outer_dimension_partitions();
+  const auto backend_config =
+      instr_->backend_config<BackendConfig>().value_or(BackendConfig());
+  const auto& partitions = backend_config.outer_dimension_partitions();
   auto total_workgroups =
       absl::c_accumulate(partitions, 1, std::multiplies<int64_t>());
 
@@ -93,9 +91,10 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
       KernelApiIrBuilder::Options::FromHloModuleConfig(hlo_module->config()));
 
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
-      absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
+      absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx,
+      target_machine_);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       KernelApiIrBuilder::KernelPrototype kernel_prototype,
       kernel_api_ir_builder.EmitKernelPrototype(
           *llvm_module, instr_, buffer_assignment_, name(), "_kernel"));
@@ -105,7 +104,7 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
       kernel_prototype.function->getEntryBlock().getTerminator());
 
   llvm_ir::IrArray output_array = kernel_prototype.results[0];
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       bool is_parallel,
       EmitFastConcatenate(instr_, kernel_prototype.arguments, output_array,
                           llvm_module.get(), ir_builder,

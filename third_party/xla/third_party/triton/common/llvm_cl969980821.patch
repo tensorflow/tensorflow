@@ -1,0 +1,12 @@
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -780,7 +780,7 @@
+           // registry name "vector-combine".
+           const StringRef kVectorCombinePassName = "VectorCombinePass";
+           passInstrCb.registerShouldRunOptionalPassCallback(
+-              [kVectorCombinePassName](StringRef passName, Any) {
++              [kVectorCombinePassName](StringRef passName, llvm::IRUnitRef) {
+                 return passName != kVectorCombinePassName;
+               });
+           enablePassInstrumentation = true;
+

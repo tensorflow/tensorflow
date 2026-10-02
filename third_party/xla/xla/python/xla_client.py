@@ -50,6 +50,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.F4E2M1FN: np.dtype(ml_dtypes.float4_e2m1fn),
+    PrimitiveType.F6E2M3FN: np.dtype(ml_dtypes.float6_e2m3fn),
+    PrimitiveType.F6E3M2FN: np.dtype(ml_dtypes.float6_e3m2fn),
     PrimitiveType.F8E3M4: np.dtype(ml_dtypes.float8_e3m4),
     PrimitiveType.F8E4M3: np.dtype(ml_dtypes.float8_e4m3),
     PrimitiveType.F8E4M3FN: np.dtype(ml_dtypes.float8_e4m3fn),
@@ -131,7 +133,7 @@ def current_source_info_metadata(op_type=None, op_name=None, skip_frames=1):
   frame = inspect.stack()[skip_frames]
   filename = os.path.basename(frame.filename)
   if hasattr(frame, 'positions'):
-    lineno, end_lineno, column, end_column = frame.positions
+    lineno, end_lineno, column, end_column = frame.positions  # pyrefly: ignore[not-iterable]
     return OpMetadata(op_type=op_type, op_name=op_name, source_file=filename,
                       source_line=lineno, source_end_line=end_lineno,
                       source_column=column, source_end_column=end_column)
@@ -494,4 +496,3 @@ if hasattr(_xla, 'hlo_module_from_text'):
   hlo = _xla
 else:
   from . import _hlo as hlo  # pylint: disable=g-import-not-at-top
-
