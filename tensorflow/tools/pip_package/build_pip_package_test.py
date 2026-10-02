@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for the pip package builder."""
 
+import itertools
 import json
 import os
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -25,17 +27,43 @@ from tensorflow.tools.pip_package import build_pip_package
 
 class BuildPipPackageTest(unittest.TestCase):
 
+  def test_parse_args_default_collab(self):
+    argv = [
+        "build_pip_package.py",
+        "--output-name",
+        "test.whl",
+        "--project-name",
+        "tensorflow_test",
+        "--platform",
+        "test_platform",
+    ]
+    with mock.patch.object(sys, "argv", argv):
+      args = build_pip_package.parse_args()
+    self.assertEqual("False", args.collab)
+
   def test_build_wheel_collaborator_environment(self):
+    default = object()
     cases = (
-        (None, None, None),
-        (None, "inherited", "inherited"),
-        ("False", None, None),
-        ("False", "inherited", "inherited"),
-        ("True", None, "True"),
-        ("True", "inherited", "True"),
+        (default, None),
+        (None, None),
+        (False, None),
+        ("False", None),
+        ("false", None),
+        ("0", None),
+        ("", None),
+        (True, "True"),
+        ("True", "True"),
+        ("true", "True"),
+        ("TRUE", "True"),
+        ("1", "True"),
     )
-    for collab, inherited, expected in cases:
-      with self.subTest(collab=collab, inherited=inherited):
+    for (collab, expected), inherited in itertools.product(
+        cases, (None, "inherited")
+    ):
+      with self.subTest(
+          collab="<default>" if collab is default else collab,
+          inherited=inherited,
+      ):
         with tempfile.TemporaryDirectory() as cwd, mock.patch.dict(os.environ):
           os.environ.pop("collaborator_build", None)
           if inherited is not None:
@@ -51,7 +79,7 @@ class BuildPipPackageTest(unittest.TestCase):
                 'with open("environment.json", "w", encoding="utf-8") as f:\n'
                 '  json.dump(os.environ.get("collaborator_build"), f)\n'
             )
-          kwargs = {} if collab is None else {"collab": collab}
+          kwargs = {} if collab is default else {"collab": collab}
           build_pip_package.build_wheel(
               dir_path=os.path.join(cwd, "dist"),
               cwd=cwd,
@@ -59,6 +87,7 @@ class BuildPipPackageTest(unittest.TestCase):
               platform="test_platform",
               **kwargs,
           )
+          self.assertEqual(inherited, os.environ.get("collaborator_build"))
           with open(
               os.path.join(cwd, "environment.json"), encoding="utf-8"
           ) as output:
