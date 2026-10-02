@@ -378,7 +378,6 @@ py_library(
     srcs = ["sparse_xent_op_test_base.py"],
     strict_deps = True,
     deps = [
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
