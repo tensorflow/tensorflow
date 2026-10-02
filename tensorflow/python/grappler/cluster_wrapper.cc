@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <map>
 #include <algorithm>
 #include <cfloat>
 #include <cstddef>
@@ -221,7 +221,7 @@ PYBIND11_MODULE(
         std::unordered_map<std::string, std::vector<std::string>> result;
         {
           py::gil_scoped_release release;
-          std::unordered_map<std::string, std::set<std::string>> device_types;
+          std::map<std::string, std::set<std::string>> device_types;
           std::string cluster_type;
 
           {
@@ -310,7 +310,7 @@ PYBIND11_MODULE(
                   }
                 }
               }
-              result[node] = device_names;
+              result.emplace(node, std::move(device_names));
             }
           }
         }
