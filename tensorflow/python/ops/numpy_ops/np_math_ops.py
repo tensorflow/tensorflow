@@ -1751,11 +1751,7 @@ def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing
 
   if offset == 0:
     a_shape = a.shape
-    if (
-        a_shape.rank is not None
-        and isinstance(axis1, (int, np.integer))
-        and isinstance(axis2, (int, np.integer))
-    ):
+    if a_shape.rank is not None:
       rank = len(a_shape)
       # Guard `rank >= 2` so the fast path never routes a rank-1 (or
       # rank-0) input with negative axes to `math_ops.trace`/

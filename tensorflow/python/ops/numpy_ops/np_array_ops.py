@@ -25,7 +25,6 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
@@ -389,48 +388,9 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
     # original user-supplied values and the fast path below consumes
     # normalized, non-negative axes.
     axis1, axis2 = norm1, norm2
-  else:
-    # `axis1`/`axis2` are runtime values (e.g. scalar `tf.Tensor`s) or the
-    # rank is only known at runtime: Python-level comparisons on Tensors
-    # are not allowed in graph mode, so normalization happens with tensor
-    # ops instead. Only in-bounds negative axes are normalized;
-    # out-of-bounds axes flow untouched to `moveaxis`/`transpose`, which
-    # reject them with an `InvalidArgumentError` (the pre-existing
-    # `moveaxis` runtime assert and the C++ Transpose kernel's permutation
-    # checks, respectively). Duplicate axes are likewise rejected by the
-    # Transpose kernel's permutation check. Keeping this path free of
-    # validation-only `Assert` nodes avoids injecting extra graph nodes
-    # and eager dispatch overhead into the green path; per policy, bounds
-    # enforcement belongs in the C++ backend.
-    axis1_t = ops.convert_to_tensor(axis1)
-    axis2_t = ops.convert_to_tensor(axis2)
-    # Canonicalize both axes to a common dtype: comparing a `tf.int64`
-    # `axis1` against a default `tf.int32` `axis2` directly would fail
-    # graph tracing with a `TypeError`. int32 also matches the rank
-    # dtype produced by `array_ops.rank` downstream.
-    if axis1_t.dtype != dtypes.int32:
-      axis1_t = math_ops.cast(axis1_t, dtypes.int32)
-    if axis2_t.dtype != dtypes.int32:
-      axis2_t = math_ops.cast(axis2_t, dtypes.int32)
-    if maybe_rank is not None:
-      rank_t = ops.convert_to_tensor(maybe_rank, dtype=dtypes.int32)
-    else:
-      rank_t = array_ops.rank(a)
-    axis1 = array_ops.where_v2(
-        math_ops.logical_and(axis1_t < 0, axis1_t >= -rank_t),
-        axis1_t + rank_t,
-        axis1_t,
-    )
-    axis2 = array_ops.where_v2(
-        math_ops.logical_and(axis2_t < 0, axis2_t >= -rank_t),
-        axis2_t + rank_t,
-        axis2_t,
-    )
 
   if (
       maybe_rank is not None
-      and isinstance(axis1, (int, np.integer))
-      and isinstance(axis2, (int, np.integer))
       and offset == 0
       and axis1 == maybe_rank - 2
       and axis2 == maybe_rank - 1
@@ -932,11 +892,7 @@ def real(val):
 def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
   maybe_rank = a.shape.rank
-  if (
-      axis is not None
-      and maybe_rank is not None
-      and isinstance(axis, (int, np.integer))
-  ):
+  if isinstance(axis, (int, np.integer)) and maybe_rank is not None:
     # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
     # 1-D of size 1), so validate against max(rank, 1).
     validation_rank = 1 if maybe_rank < 1 else maybe_rank
@@ -947,50 +903,10 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
           f'for input of rank {maybe_rank}.'
       )
     axis = normalized
-  elif axis is not None:
-    # `axis` is a runtime value (e.g. a scalar `tf.Tensor`); the underlying
-    # `array_ops.repeat` requires a Python `int` axis and would raise an
-    # opaque `TypeError` (and cannot consume a runtime value at all).
-    # Resolve the static value when possible: an out-of-bounds axis raises
-    # `InvalidArgumentError` with a clear message (mirroring the static-path
-    # `ValueError` above) and an in-bounds axis routes as a plain `int`
-    # (which also fixes the in-bounds tensor-axis `TypeError`). An axis
-    # whose value is only known at runtime cannot be supported, so it
-    # raises `InvalidArgumentError` as well.
-    axis_static = np_utils.get_static_value(ops.convert_to_tensor(axis))
-    if axis_static is None:
-      raise errors_impl.InvalidArgumentError(
-          None,
-          None,
-          f'Argument `axis` (received axis={axis}) must be a Python int or '
-          f'a tensor with a statically known value: `tf.experimental.numpy.'
-          f'repeat` does not support a runtime axis.',
-      )
-    axis_static = int(axis_static)
-    if maybe_rank is not None:
-      # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
-      # 1-D of size 1), so validate against max(rank, 1).
-      validation_rank = 1 if maybe_rank < 1 else maybe_rank
-      normalized = (
-          axis_static + validation_rank if axis_static < 0 else axis_static
-      )
-      if normalized < 0 or normalized >= validation_rank:
-        raise errors_impl.InvalidArgumentError(
-            None,
-            None,
-            f'Argument `axis` (received axis={axis_static}) is out of '
-            f'bounds for input of rank {maybe_rank}.',
-        )
-    # In-bounds (or rank-unknown) tensor axes route as plain ints, which
-    # also fixes the in-bounds tensor-axis `TypeError`.
-    axis = axis_static
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
-  # After the branches above, `axis` is either None or a Python int, so the
-  # best-effort static shape recovery below always applies.
-  static_axis = axis is None or isinstance(axis, (int, np.integer))
-  if known_shape and static_axis:
+  if known_shape:
     if not original_shape:
       original_shape = (repeats,)
     else:
@@ -1009,7 +925,7 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
 
   repeats = asarray(repeats)
   result = array_ops.repeat(a, repeats, axis)
-  if known_shape and static_axis:
+  if known_shape:
     result.set_shape(original_shape)
 
   return result
@@ -1992,7 +1908,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   rank = arr.shape.rank
   if rank is None:
     rank = array_ops.rank(arr)
-  if isinstance(rank, int) and isinstance(axis, (int, np.integer)):
+  if isinstance(rank, int):
     normalized = axis + rank if axis < 0 else axis
     if normalized < 0 or normalized >= rank:
       raise ValueError(
@@ -2001,23 +1917,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
       )
     axis = normalized
   else:
-    # Dynamic case: `rank` is only known at runtime, e.g. a `Tensor` rank
-    # inside a `tf.function` traced with an unspecified input signature.
-    # Static Python-level bounds checking can't run here, and normalizing
-    # `axis + rank` unconditionally would silently mask an out-of-bounds
-    # negative axis (e.g. axis=-5 on a rank-3 tensor) into an in-bounds
-    # one. So only in-bounds negative axes are normalized below;
-    # out-of-bounds axes flow untouched and are rejected downstream by
-    # the C++ kernels with an `InvalidArgumentError`.
-    axis_t = ops.convert_to_tensor(axis)
-    rank_t = math_ops.cast(ops.convert_to_tensor(rank), axis_t.dtype)
-    # Only normalize in-bounds negative axes; let out-of-bounds axes
-    # flow to the underlying C++ op to trigger C++ validation.
-    axis = array_ops.where_v2(
-        math_ops.logical_and(axis_t < 0, axis_t >= -rank_t),
-        axis_t + rank_t,
-        axis_t
-    )
+    axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
