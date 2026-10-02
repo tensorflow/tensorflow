@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/roll_op.h"
@@ -53,7 +54,7 @@ namespace functor {
 
 template <typename T>
 struct Roll<GPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64_t num_elements,
+  void operator()(OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
                   const absl::Span<const int32_t> threshold,
@@ -64,7 +65,7 @@ struct Roll<GPUDevice, T> {
 
     absl::StatusOr<GpuLaunchConfig64> config =
         GetGpuLaunchConfig64(num_elements, d);
-    TF_CHECK_OK(config.status());
+    OP_REQUIRES_OK(context, config.status());
 
     auto dim_bytes = sizeof(int32_t) * dim_size.size();
     auto dim_buf = d.allocate(dim_bytes);
@@ -79,17 +80,18 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
-    TF_CHECK_OK(
-        GpuLaunchKernel(RollKernel<T>, config->block_count,
-                        config->thread_per_block, 0, d.stream(),
-                        config->virtual_thread_count, num_dims, input, output,
-                        reinterpret_cast<const int32_t*>(dim_buf),
-                        reinterpret_cast<const int32_t*>(thres_buf),
-                        reinterpret_cast<const int64_t*>(range_buf)));
+    absl::Status launch_status = GpuLaunchKernel(
+        RollKernel<T>, config->block_count, config->thread_per_block, 0,
+        d.stream(), config->virtual_thread_count, num_dims, input, output,
+        reinterpret_cast<const int32_t*>(dim_buf),
+        reinterpret_cast<const int32_t*>(thres_buf),
+        reinterpret_cast<const int64_t*>(range_buf));
 
     d.deallocate(dim_buf);
     d.deallocate(thres_buf);
     d.deallocate(range_buf);
+
+    OP_REQUIRES_OK(context, launch_status);
   }
 };
 

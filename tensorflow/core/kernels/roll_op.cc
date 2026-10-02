@@ -319,7 +319,7 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 
 template <typename T>
 struct Roll<CPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64_t num_elements,
+  void operator()(OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
                   const absl::Span<const int32_t> threshold,
