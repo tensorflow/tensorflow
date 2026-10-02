@@ -4484,9 +4484,30 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(f(constant_op.constant(2.0)), 2.0)
     self.assertAllEqual(f.experimental_get_tracing_count(), 2)
     f.clear_cache()
+    # Reset outer variable to trigger variable re-creation in the function
+    v = None
     self.assertAllEqual(f.experimental_get_tracing_count(), 0)
     self.assertAllEqual(f(constant_op.constant(3.0)), 3.0)
-    self.assertAllEqual(f.experimental_get_tracing_count(), 1)
+    self.assertAllEqual(f.experimental_get_tracing_count(), 2)
+
+  def test_clear_cache_method_descriptor(self):
+
+    class Model:
+
+      @polymorphic_function.function
+      def call(self, x):
+        return x + 1
+
+    m1 = Model()
+    self.assertAllEqual(m1.call(constant_op.constant(1)), 2)
+    self.assertAllEqual(m1.call.experimental_get_tracing_count(), 1)
+
+    # Calling clear_cache on class method descriptor
+    Model.call.clear_cache()
+
+    self.assertAllEqual(m1.call.experimental_get_tracing_count(), 0)
+    self.assertAllEqual(m1.call(constant_op.constant(1)), 2)
+    self.assertAllEqual(m1.call.experimental_get_tracing_count(), 1)
 
   def test_tensor_shape_casted_to_specific(self):
     @polymorphic_function.function(

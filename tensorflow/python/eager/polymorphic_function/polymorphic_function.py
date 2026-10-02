@@ -802,10 +802,14 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
     return len(self._function_cache)
 
   def clear_cache(self) -> None:
-    """Removes all cached concrete functions for this tf.function."""
+    """Removes all cached concrete functions and tracing state for this tf.function."""
     with self._lock:
       self._function_cache.clear()
       self._concrete_variable_creation_fn = None
+      self._created_variables = None
+      self._variable_creation_config = None
+      self._no_variable_creation_config = None
+      self._descriptor_cache.clear()
 
   @property
   def _run_functions_eagerly(self):
