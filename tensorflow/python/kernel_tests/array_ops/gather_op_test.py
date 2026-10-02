@@ -457,6 +457,22 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             expected_error_regex):
           fn(params, indices, batch_dims=int32_max)
 
+  def testBatchDimsGreaterThanAxis(self):
+    params = constant_op.constant([[[1.0], [2.0]], [[3.0], [4.0]]])
+    indices = constant_op.constant([[0], [1]])
+
+    @def_function.function(autograph=False, jit_compile=False)
+    def gather_graph(x, idx, axis, batch_dims):
+      return array_ops.gather(x, idx, axis=axis, batch_dims=batch_dims)
+
+    functions = [("eager", array_ops.gather), ("graph", gather_graph)]
+    for fn_name, fn in functions:
+      with self.subTest(fn_name=fn_name):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            r"batch_dims \(2\) must be less than or equal to axis \(1\)"):
+          fn(params, indices, axis=1, batch_dims=2)
+
   def testEmptySlices(self):
     for dtype in _TEST_TYPES:
       for itype in _INDEX_TYPES:

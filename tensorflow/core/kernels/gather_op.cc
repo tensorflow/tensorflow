@@ -87,7 +87,7 @@ class GatherOp : public OpKernel {
     // std::numeric_limits<int64_t>::min() or
     // std::numeric_limits<int64_t>::max().
     OP_REQUIRES(
-        c, axis > std::numeric_limits<int64_t>::min(),
+        c, std::numeric_limits<int64_t>::min() < axis,
         absl::InvalidArgumentError(
             "axis must be greater than std::numeric_limits<int64_t>::min()"));
     OP_REQUIRES(

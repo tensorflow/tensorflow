@@ -1334,6 +1334,17 @@ REGISTER_OP("GatherV2")
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(
           params_shape, axis < 0 ? -axis : axis + 1, &unused));
 
+      if (axis >= 0 || c->RankKnown(params_shape)) {
+        int64_t canonical_axis =
+            axis < 0 ? c->Rank(params_shape) + axis : axis;
+        if (canonical_axis < batch_dims) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("batch_dims (", batch_dims,
+                           ") must be less than or equal to axis (",
+                           canonical_axis, ")."));
+        }
+      }
+
       ShapeHandle params_outer_subshape;
       TF_RETURN_IF_ERROR(
           c->Subshape(params_shape, 0, axis, &params_outer_subshape));
