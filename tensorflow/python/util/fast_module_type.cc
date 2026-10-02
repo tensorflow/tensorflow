@@ -236,10 +236,8 @@ static PyObject *CallFunc(FastModuleObject *self, PyObject *name,
                     "Attempting to call a callback that was not defined");
     return nullptr;
   }
-  PyObject *arglist = Py_BuildValue("(OO)", self, name);
-  auto result = PyObject_CallObject(func, arglist);
-  Py_XDECREF(arglist);
-  return result;
+  return PyObject_CallFunctionObjArgs(func, reinterpret_cast<PyObject*>(self),
+                                      name, nullptr);
 }
 
 static PyMethodDef FastModule_methods[] = {
