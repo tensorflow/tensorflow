@@ -83,13 +83,19 @@ class GatherOp : public OpKernel {
                     absl::InvalidArgumentError("axis must be int32 or int64."));
       }
     }
-    // special case to avoid checkfail when axis =
+    // Special cases to avoid checkfail / integer overflow when axis =
+    // std::numeric_limits<int64_t>::min() or
     // std::numeric_limits<int64_t>::max().
+    OP_REQUIRES(
+        c, axis > std::numeric_limits<int64_t>::min(),
+        absl::InvalidArgumentError(
+            "axis must be greater than std::numeric_limits<int64_t>::min()"));
     OP_REQUIRES(
         c, axis < std::numeric_limits<int64_t>::max(),
         absl::InvalidArgumentError(
             "axis must be less than std::numeric_limits<int64_t>::max()"));
 
+    // The bounds check above guarantees that -axis does not overflow int64_t
     int64_t min_params_dim = axis < 0 ? -axis : axis + 1;
     OP_REQUIRES(c, params.dims() >= min_params_dim,
                 absl::InvalidArgumentError(
