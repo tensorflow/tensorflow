@@ -84,7 +84,7 @@ __global__ void BiasNCHWKernel(int64_t nthreads, const T* __restrict__ input,
 // dimension.
 template <typename T>
 absl::Status BiasGPU<T>::compute(const GPUDevice& d, const T* input,
-                                 const T* bias, T* output, int32_t batch,
+                                 const T* bias, T* output, int64_t batch,
                                  int32_t height, int32_t width, int32_t depth,
                                  int32_t channel, TensorFormat data_format) {
   const int32_t bias_size = channel;
@@ -177,7 +177,7 @@ __global__ void BiasGradNHWC_SharedAtomics(
 template <typename T>
 __global__ void BiasGradNCHW_SharedAtomics(
     const T* __restrict__ output_backprop, T* __restrict__ bias_backprop,
-    int32_t batch, int32_t bias_size, int64_t image_size, int group_size) {
+    int64_t batch, int32_t bias_size, int64_t image_size, int group_size) {
   // Initialize the shared memory.
   typedef typename AccumulatorType<T>::type AccT;
   const int32_t kSDataSize = 32;
@@ -193,7 +193,7 @@ __global__ void BiasGradNCHW_SharedAtomics(
   int32_t group_index = blockIdx.x / bias_size;
   // Cannot overflow: the host checked batch * bias_size * image_size with
   // MultiplyWithoutOverflow before launching.
-  int64_t total_count = static_cast<int64_t>(batch) * image_size;
+  int64_t total_count = batch * image_size;
   AccT sum(0);
   for (int64_t index =
            static_cast<int64_t>(group_index) * blockDim.x + threadIdx.x;
@@ -243,7 +243,7 @@ __global__ void BiasGradNCHW_SharedAtomics(
 template <typename T>
 absl::Status BiasGradGPU<T>::compute(const GPUDevice& d,
                                      const T* output_backprop, T* bias_backprop,
-                                     int32_t batch, int32_t height,
+                                     int64_t batch, int32_t height,
                                      int32_t width, int32_t depth,
                                      int32_t channel,
                                      TensorFormat data_format) {
@@ -283,7 +283,9 @@ absl::Status BiasGradGPU<T>::compute(const GPUDevice& d,
                                   output_backprop, bias_backprop, bias_size));
     } else {
       // Round up the block count to multiple of bias_size.
-      int group_size = (config.block_count + bias_size - 1) / bias_size;
+      int group_size = static_cast<int>(
+          (static_cast<int64_t>(config.block_count) + bias_size - 1) /
+          bias_size);
       config.block_count = group_size * bias_size;
       if (config.thread_per_block < kWarpSize) {
         config.thread_per_block = kWarpSize;

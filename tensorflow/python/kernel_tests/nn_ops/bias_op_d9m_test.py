@@ -141,6 +141,11 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
   def testBiasInputsMatch(self):
     pass
 
+  # The deterministic BiasAddGrad only has the reduction kernels, which reject
+  # more than int32 max elements, so there is no large gradient to compute.
+  def testBiasAddGradInt32Overflow(self):
+    pass
+
 
 if __name__ == '__main__':
   # TODO(reedwm): Merge this file with bias_op_base.py and bias_op_test.py

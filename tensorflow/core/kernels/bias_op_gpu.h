@@ -32,7 +32,7 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T>
 struct BiasGPU {
   static absl::Status compute(const GPUDevice& d, const T* input, const T* bias,
-                              T* output, int32_t batch, int32_t height,
+                              T* output, int64_t batch, int32_t height,
                               int32_t width, int32_t depth, int32_t channel,
                               TensorFormat data_format);
 };
@@ -40,7 +40,7 @@ struct BiasGPU {
 template <typename T>
 struct BiasGradGPU {
   static absl::Status compute(const GPUDevice& device, const T* output_backprop,
-                              T* bias_backprop, int32_t batch, int32_t height,
+                              T* bias_backprop, int64_t batch, int32_t height,
                               int32_t width, int32_t depth, int32_t channel,
                               TensorFormat data_format);
 
