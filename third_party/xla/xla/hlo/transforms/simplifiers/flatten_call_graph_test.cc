@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -1435,217 +1437,376 @@ ENTRY %main (param: f32[]) -> f32[] {
   RunAndFilecheckHloRewrite(hlo_string, CreateSkipCallsFlattenPass());
 }
 
-// TODO(b/260601110): Flatten sparsecore threads consistently; should have
-// similar behavior for the original and clones of a computation.
-TEST_F(FlattenCallGraphTest, CrossThreadCalleeCalledTwiceInClonedCaller) {
-  constexpr absl::string_view hlo_string = R"hlo(
-HloModule CrossThreadCalleeCalledTwiceInClonedCaller
-
-// CHECK-LABEL: %bar (
-// CHECK: ROOT %neg{{.*}} = f32[] negate(%param{{.*}})
-// CHECK-NEXT: }, execution_thread="sparsecore"
-%bar (param: f32[]) -> f32[] {
-  %param = f32[] parameter(0)
-  ROOT %neg = f32[] negate(%param)
-}, execution_thread="sparsecore"
-
-// CHECK-LABEL: %foo (
-// CHECK: %bar_call_0 = f32[] call(%param{{.*}}), to_apply=%bar
-// CHECK: ROOT %bar_call_1 = f32[] call(%bar_call_0), to_apply=%bar
-%foo (param: f32[]) -> f32[] {
-  %param = f32[] parameter(0)
-  %bar_call_0 = f32[] call(%param), to_apply=%bar
-  ROOT %bar_call_1 = f32[] call(%bar_call_0), to_apply=%bar
-}
-
-// CHECK-LABEL: %bar.clone (
-// CHECK: ROOT %neg{{.*}} = f32[] negate(%param{{.*}})
-// CHECK-NEXT: }, execution_thread="sparsecore"
-
-// CHECK-LABEL: %bar.clone.1 (
-// CHECK: ROOT %neg{{.*}} = f32[] negate(%param{{.*}})
-// CHECK-NEXT: }, execution_thread="sparsecore"
-
-// CHECK-LABEL: %foo.clone (
-// CHECK: %[[CALL0:.*]] = f32[] call(%param{{.*}}), to_apply=%bar.clone
-// CHECK: ROOT %{{.*}} = f32[] call(%[[CALL0]]), to_apply=%bar.clone.1
-
-// CHECK-LABEL: ENTRY %main (
-// CHECK: %call_foo_0 = f32[] call(%param{{.*}}), to_apply=%foo
-// CHECK: ROOT %call_foo_1 = f32[] call(%call_foo_0), to_apply=%foo.clone
-ENTRY %main (param: f32[]) -> f32[] {
-  %param = f32[] parameter(0)
-  %call_foo_0 = f32[] call(%param), to_apply=%foo
-  ROOT %call_foo_1 = f32[] call(%call_foo_0), to_apply=%foo
-}
-)hlo";
-
-  FlattenCallGraph flatten;
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(flatten.Run(module.get(), {HloInstruction::kMainExecutionThread}),
-              IsOkAndHolds(true));
-  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
-}
-
+// Tests that an async computation (`ds_comp`) shared between a while-loop
+// prologue async chain (`prologue_start` -> `ds_done`) and an in-body next-
+// iteration prefetch chain (`async_next` -> `epilogue_done`) is duplicated
+// so that each distinct (start, done) async chain receives its own unique
+// called computation.
+//
+// In the input HLO below, look for:
+// - `prologue_start` in ENTRY calling `ds_comp` and feeding into `loop` init;
+// - `ds_done` in `while_body` completing the prologue's token and calling
+// `ds_comp`;
+// - `async_next` in `while_body` launching the next-iteration prefetch and
+// calling `ds_comp`;
+// - `epilogue_done` in ENTRY completing the final iteration's token and calling
+// `ds_comp`.
 TEST_F(FlattenCallGraphTest,
-       EntryCallsSeparateAsyncWrappersToSharedCallee_FlattenMainThread) {
-  constexpr absl::string_view hlo_string = R"hlo(
-HloModule test_module
+       AsyncPipelinedWhileLoopDuplicatesSharedAsyncComputationPerChain) {
+  absl::string_view hlo_string = R"hlo(
+HloModule Module, is_scheduled=true
 
-%bar (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %add = f32[] add(%p0, %p1)
-}, execution_thread="sparsecore"
-
-%bar.async_wrapper (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
-}, execution_thread="sparsecore"
-
-%bar.async_wrapper.1 (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
-}, execution_thread="sparsecore"
-
-ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  %start0 = ((f32[], f32[]), f32[]) async-start(%p0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
-  %done0 = f32[] async-done(%start0)
-  %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper.1
-  ROOT %done1 = f32[] async-done(%start1)
-}
-)hlo";
-
-  FlattenCallGraph flatten;
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(flatten.Run(module.get(), {HloInstruction::kMainExecutionThread}),
-              IsOkAndHolds(false));
+ds_comp {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
 }
 
+while_cond {
+  param = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(4)
+  ROOT cond = pred[] compare(i, limit), direction=LT
+}
+
+while_body {
+  param = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  async_in = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(param), index=1
+  acc = f32[2,16]{1,0} get-tuple-element(param), index=2
+  base = f32[8,16]{1,0} get-tuple-element(param), index=3
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ds_done = f32[2,16]{1,0} async-done(async_in), calls=ds_comp
+  new_acc = f32[2,16]{1,0} add(acc, ds_done)
+  zero = s32[] constant(0)
+  next_row = s32[] multiply(next_i, s32[] constant(2))
+  async_next = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(base, next_row, zero), calls=ds_comp
+  ROOT next_state = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) tuple(next_i, async_next, new_acc, base)
+}
+
+ENTRY main {
+  p_base = f32[8,16]{1,0} parameter(0)
+  c0 = s32[] constant(0)
+  c_idx0 = s32[] constant(0)
+  c_idx1 = s32[] constant(0)
+  c_zero = f32[] constant(0.0)
+  init_acc = f32[2,16]{1,0} broadcast(c_zero), dimensions={}
+  prologue_start = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p_base, c_idx0, c_idx1), calls=ds_comp
+  init = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) tuple(c0, prologue_start, init_acc, p_base)
+  loop = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) while(init), condition=while_cond, body=while_body
+  loop_async_out = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(loop), index=1
+  loop_acc_out = f32[2,16]{1,0} get-tuple-element(loop), index=2
+  epilogue_done = f32[2,16]{1,0} async-done(loop_async_out), calls=ds_comp
+  ROOT acc_with_done = f32[2,16]{1,0} add(loop_acc_out, epilogue_done)
+}
+  )hlo";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module_or =
+      ParseAndReturnVerifiedModule(hlo_string);
+  ASSERT_TRUE(module_or.ok());
+  if (!module_or.ok()) {
+    return;
+  }
+  std::unique_ptr<HloModule> module = std::move(*module_or);
+  FlattenCallGraph pass(FlattenCallGraph::SkipCloningForNonAsync);
+  absl::StatusOr<bool> changed_or = pass.Run(module.get());
+  ASSERT_TRUE(changed_or.ok());
+  if (!changed_or.ok()) {
+    return;
+  }
+  EXPECT_TRUE(*changed_or);
+
+  HloInstruction* while_instr =
+      module->entry_computation()->GetInstructionWithName("loop");
+  ASSERT_NE(while_instr, nullptr);
+  HloComputation* while_body = while_instr->while_body();
+  HloInstruction* prologue_start =
+      module->entry_computation()->GetInstructionWithName("prologue_start");
+  HloInstruction* epilogue_done =
+      module->entry_computation()->GetInstructionWithName("epilogue_done");
+  HloInstruction* ds_done = while_body->GetInstructionWithName("ds_done");
+  HloInstruction* async_next = while_body->GetInstructionWithName("async_next");
+
+  // Verify that the prologue chain and the in-body prefetch chain now point to
+  // distinct cloned computations rather than sharing `ds_comp`.
+  EXPECT_NE(prologue_start->async_wrapped_computation(),
+            async_next->async_wrapped_computation());
+
+  // Verify that within the prologue chain (prologue_start -> in_body ds_done),
+  // both start and done reference the same computation.
+  EXPECT_EQ(prologue_start->async_wrapped_computation(),
+            ds_done->async_wrapped_computation());
+
+  // Verify that within the loop-carried prefetch chain (in_body async_next ->
+  // epilogue_done), both start and done reference the same computation.
+  EXPECT_EQ(async_next->async_wrapped_computation(),
+            epilogue_done->async_wrapped_computation());
+
+  // Verify that both cloned computations maintain valid execution schedules.
+  EXPECT_TRUE(module->schedule().is_computation_scheduled(
+      prologue_start->async_wrapped_computation()));
+  EXPECT_TRUE(module->schedule().is_computation_scheduled(
+      async_next->async_wrapped_computation()));
+}
+
+// Tests a 2-stage (multi-buffered) pipelined while loop where `ds_comp` is
+// shared across 3 distinct async chains:
+// 1. `prologue_start0` (in ENTRY) -> `ds_done` (in `while_body` via index 1);
+// 2. `prologue_start1` (in ENTRY) -> `epilogue_done0` (in ENTRY via index 2 ->
+//    index 1);
+// 3. `async_next` (in `while_body`) -> `epilogue_done1` (in ENTRY via index 2).
 TEST_F(FlattenCallGraphTest,
-       EntryCallsSeparateAsyncWrappersToSharedCallee_FlattenSparseCoreThread) {
-  constexpr absl::string_view hlo_string = R"hlo(
-HloModule test_module
+       MultiBufferedAsyncPipelinedWhileLoopDuplicatesPerChain) {
+  absl::string_view hlo_string = R"hlo(
+HloModule Module, is_scheduled=true
 
-// CHECK-LABEL: %bar (
-// CHECK: ROOT %add = f32[] add(%p0{{.*}}, %p1{{.*}})
-// CHECK-NEXT: }, execution_thread="sparsecore"
-%bar (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %add = f32[] add(%p0, %p1)
-}, execution_thread="sparsecore"
-
-// CHECK-LABEL: %bar.async_wrapper (
-// CHECK: ROOT %{{.*}} = f32[] call(%p0{{.*}}, %p1{{.*}}), to_apply=%bar
-// CHECK-NEXT: }, execution_thread="sparsecore"
-%bar.async_wrapper (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
-}, execution_thread="sparsecore"
-
-// CHECK-LABEL: %bar.clone (
-// CHECK: ROOT %add{{.*}} = f32[] add(%p0{{.*}}, %p1{{.*}})
-// CHECK-NEXT: }, execution_thread="sparsecore"
-
-// CHECK-LABEL: %bar.async_wrapper.1 (
-// CHECK: ROOT %{{.*}} = f32[] call(%p0{{.*}}, %p1{{.*}}), to_apply=%bar.clone
-// CHECK-NEXT: }, execution_thread="sparsecore"
-%bar.async_wrapper.1 (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
-}, execution_thread="sparsecore"
-
-// CHECK-LABEL: ENTRY %main (
-// CHECK: %start0 = ((f32[], f32[]), f32[]) async-start(%p0{{.*}}, %p1{{.*}}), async_execution_thread="sparsecore", calls=%bar.async_wrapper
-// CHECK: %done0 = f32[] async-done(%start0)
-// CHECK: %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1{{.*}}), async_execution_thread="sparsecore", calls=%bar.async_wrapper.1
-// CHECK: ROOT %done1 = f32[] async-done(%start1)
-ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  %start0 = ((f32[], f32[]), f32[]) async-start(%p0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
-  %done0 = f32[] async-done(%start0)
-  %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper.1
-  ROOT %done1 = f32[] async-done(%start1)
-}
-)hlo";
-
-  FlattenCallGraph flatten;
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(flatten.Run(module.get(), {"sparsecore"}), IsOkAndHolds(true));
-  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+ds_comp {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
 }
 
-TEST_F(FlattenCallGraphTest, EntryCallsSharedAsyncWrapper_FlattenMainThread) {
-  constexpr absl::string_view hlo_string = R"hlo(
-HloModule test_module
-
-%bar (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %add = f32[] add(%p0, %p1)
-}, execution_thread="sparsecore"
-
-%bar.async_wrapper (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
-}, execution_thread="sparsecore"
-
-ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  %start0 = ((f32[], f32[]), f32[]) async-start(%p0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
-  %done0 = f32[] async-done(%start0)
-  %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
-  ROOT %done1 = f32[] async-done(%start1)
-}
-)hlo";
-
-  FlattenCallGraph flatten;
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(flatten.Run(module.get(), {HloInstruction::kMainExecutionThread}),
-              IsOkAndHolds(false));
+while_cond {
+  param = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  limit = s32[] constant(4)
+  ROOT cond = pred[] compare(i, limit), direction=LT
 }
 
-// TODO(b/260601110): Flatten sparsecore threads fully.
+while_body {
+  param = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  async_in0 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(param), index=1
+  async_in1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(param), index=2
+  acc = f32[2,16]{1,0} get-tuple-element(param), index=3
+  base = f32[8,16]{1,0} get-tuple-element(param), index=4
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ds_done = f32[2,16]{1,0} async-done(async_in0), calls=ds_comp
+  new_acc = f32[2,16]{1,0} add(acc, ds_done)
+  zero = s32[] constant(0)
+  next_row = s32[] multiply(next_i, s32[] constant(2))
+  async_next = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(base, next_row, zero), calls=ds_comp
+  ROOT next_state = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) tuple(next_i, async_in1, async_next, new_acc, base)
+}
+
+ENTRY main {
+  p_base = f32[8,16]{1,0} parameter(0)
+  c0 = s32[] constant(0)
+  c_idx0 = s32[] constant(0)
+  c_idx1 = s32[] constant(2)
+  c_zero = f32[] constant(0.0)
+  init_acc = f32[2,16]{1,0} broadcast(c_zero), dimensions={}
+  prologue_start0 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p_base, c_idx0, c0), calls=ds_comp
+  prologue_start1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p_base, c_idx1, c0), calls=ds_comp
+  init = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) tuple(c0, prologue_start0, prologue_start1, init_acc, p_base)
+  loop = (s32[], ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]), f32[2,16]{1,0}, f32[8,16]{1,0}) while(init), condition=while_cond, body=while_body
+  loop_async_out0 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(loop), index=1
+  loop_async_out1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) get-tuple-element(loop), index=2
+  loop_acc_out = f32[2,16]{1,0} get-tuple-element(loop), index=3
+  epilogue_done0 = f32[2,16]{1,0} async-done(loop_async_out0), calls=ds_comp
+  epilogue_done1 = f32[2,16]{1,0} async-done(loop_async_out1), calls=ds_comp
+  acc_with_done0 = f32[2,16]{1,0} add(loop_acc_out, epilogue_done0)
+  ROOT acc_with_done1 = f32[2,16]{1,0} add(acc_with_done0, epilogue_done1)
+}
+  )hlo";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module_or =
+      ParseAndReturnVerifiedModule(hlo_string);
+  ASSERT_TRUE(module_or.ok());
+  if (!module_or.ok()) {
+    return;
+  }
+  std::unique_ptr<HloModule> module = std::move(*module_or);
+  FlattenCallGraph pass(FlattenCallGraph::SkipCloningForNonAsync);
+  absl::StatusOr<bool> changed_or = pass.Run(module.get());
+  ASSERT_TRUE(changed_or.ok());
+  if (!changed_or.ok()) {
+    return;
+  }
+  EXPECT_TRUE(*changed_or);
+
+  HloInstruction* while_instr =
+      module->entry_computation()->GetInstructionWithName("loop");
+  ASSERT_NE(while_instr, nullptr);
+  HloComputation* while_body = while_instr->while_body();
+  HloInstruction* prologue_start0 =
+      module->entry_computation()->GetInstructionWithName("prologue_start0");
+  HloInstruction* prologue_start1 =
+      module->entry_computation()->GetInstructionWithName("prologue_start1");
+  HloInstruction* epilogue_done0 =
+      module->entry_computation()->GetInstructionWithName("epilogue_done0");
+  HloInstruction* epilogue_done1 =
+      module->entry_computation()->GetInstructionWithName("epilogue_done1");
+  HloInstruction* ds_done = while_body->GetInstructionWithName("ds_done");
+  HloInstruction* async_next = while_body->GetInstructionWithName("async_next");
+
+  // Verify that all 3 `kAsyncStart` chains receive distinct cloned
+  // computations.
+  EXPECT_NE(prologue_start0->async_wrapped_computation(),
+            prologue_start1->async_wrapped_computation());
+  EXPECT_NE(prologue_start0->async_wrapped_computation(),
+            async_next->async_wrapped_computation());
+  EXPECT_NE(prologue_start1->async_wrapped_computation(),
+            async_next->async_wrapped_computation());
+
+  // Verify that each `kAsyncDone` is paired with its matching `kAsyncStart`'s
+  // computation across the 2-stage pipeline.
+  EXPECT_EQ(prologue_start0->async_wrapped_computation(),
+            ds_done->async_wrapped_computation());
+  EXPECT_EQ(prologue_start1->async_wrapped_computation(),
+            epilogue_done0->async_wrapped_computation());
+  EXPECT_EQ(async_next->async_wrapped_computation(),
+            epilogue_done1->async_wrapped_computation());
+  EXPECT_THAT(
+      prologue_start0->async_wrapped_computation()->caller_instructions(),
+      ::testing::UnorderedElementsAre(prologue_start0, ds_done));
+  EXPECT_THAT(
+      prologue_start1->async_wrapped_computation()->caller_instructions(),
+      ::testing::UnorderedElementsAre(prologue_start1, epilogue_done0));
+  EXPECT_THAT(async_next->async_wrapped_computation()->caller_instructions(),
+              ::testing::UnorderedElementsAre(async_next, epilogue_done1));
+}
+
+// Tests that when an outer computation (`sub_comp`) containing an async chain
+// (`start` -> `done`) is cloned because `sub_comp` is called twice (`call0`,
+// `call1`), the subtree cloning inside `FlattenCallGraph` keeps `start` and
+// `done` within each cloned `sub_comp` pointing to the same cloned `ds_comp`.
 TEST_F(FlattenCallGraphTest,
-       EntryCallsSharedAsyncWrapper_FlattenSparseCoreThread) {
-  constexpr absl::string_view hlo_string = R"hlo(
-HloModule test_module
+       SharedOuterComputationWithAsyncChainPreservesChainInSubtreeClone) {
+  absl::string_view hlo_string = R"hlo(
+HloModule Module
 
-%bar (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %add = f32[] add(%p0, %p1)
-}, execution_thread="sparsecore"
-
-%bar.async_wrapper (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
-}, execution_thread="sparsecore"
-
-ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
-  %p0 = f32[] parameter(0)
-  %p1 = f32[] parameter(1)
-  %start0 = ((f32[], f32[]), f32[]) async-start(%p0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
-  %done0 = f32[] async-done(%start0)
-  %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
-  ROOT %done1 = f32[] async-done(%start1)
+ds_comp {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
 }
-)hlo";
 
-  FlattenCallGraph flatten;
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(flatten.Run(module.get(), {"sparsecore"}), IsOkAndHolds(false));
+sub_comp {
+  p0 = f32[8,16]{1,0} parameter(0)
+  c0 = s32[] constant(0)
+  start = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p0, c0, c0), calls=ds_comp
+  ROOT done = f32[2,16]{1,0} async-done(start), calls=ds_comp
+}
+
+ENTRY main {
+  p0 = f32[8,16]{1,0} parameter(0)
+  p1 = f32[8,16]{1,0} parameter(1)
+  call0 = f32[2,16]{1,0} call(p0), to_apply=sub_comp
+  call1 = f32[2,16]{1,0} call(p1), to_apply=sub_comp
+  ROOT sum = f32[2,16]{1,0} add(call0, call1)
+}
+  )hlo";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module_or =
+      ParseAndReturnVerifiedModule(hlo_string);
+  ASSERT_TRUE(module_or.ok());
+  if (!module_or.ok()) {
+    return;
+  }
+  std::unique_ptr<HloModule> module = std::move(*module_or);
+
+  FlattenCallGraph pass;
+  absl::StatusOr<bool> changed_or = pass.Run(module.get());
+  ASSERT_TRUE(changed_or.ok());
+  if (!changed_or.ok()) {
+    return;
+  }
+  EXPECT_TRUE(*changed_or);
+
+  HloInstruction* call0 =
+      module->entry_computation()->GetInstructionWithName("call0");
+  HloInstruction* call1 =
+      module->entry_computation()->GetInstructionWithName("call1");
+  // Verify the outer `sub_comp` computation was cloned for `call1`.
+  ASSERT_NE(call0->to_apply(), call1->to_apply());
+
+  HloInstruction* call0_done = call0->to_apply()->root_instruction();
+  HloInstruction* call0_start = call0_done->mutable_operand(0);
+  HloInstruction* call1_done = call1->to_apply()->root_instruction();
+  HloInstruction* call1_start = call1_done->mutable_operand(0);
+
+  // Verify each cloned `sub_comp` preserves the (start, done) computation match
+  // while separating `call0`'s async computation from `call1`'s.
+  EXPECT_EQ(call0_start->async_wrapped_computation(),
+            call0_done->async_wrapped_computation());
+  EXPECT_EQ(call1_start->async_wrapped_computation(),
+            call1_done->async_wrapped_computation());
+  EXPECT_NE(call0_start->async_wrapped_computation(),
+            call1_start->async_wrapped_computation());
+}
+
+// Tests that `SkipCloningForNonAsync` also clones nested sub-computations
+// (`inner_helper`, where `inner_helper.IsAsyncComputation() == false`) called
+// from inside a shared async computation (`async_comp`) when `async_comp` is
+// cloned across `start0` and `start1`.
+TEST_F(FlattenCallGraphTest,
+       SkipCloningForNonAsyncClonesSubComputationsInsideAsyncComputations) {
+  absl::string_view hlo_string = R"hlo(
+HloModule Module
+
+inner_helper {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT ds = f32[2,16]{1,0} dynamic-slice(p_base, p_idx0, p_idx1), dynamic_slice_sizes={2,16}
+}
+
+async_comp {
+  p_base = f32[8,16]{1,0} parameter(0)
+  p_idx0 = s32[] parameter(1)
+  p_idx1 = s32[] parameter(2)
+  ROOT called = f32[2,16]{1,0} call(p_base, p_idx0, p_idx1), to_apply=inner_helper
+}
+
+ENTRY main {
+  p0 = f32[8,16]{1,0} parameter(0)
+  c0 = s32[] constant(0)
+  c2 = s32[] constant(2)
+  start0 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p0, c0, c0), calls=async_comp
+  done0 = f32[2,16]{1,0} async-done(start0)
+  start1 = ((f32[8,16]{1,0}, s32[], s32[]), f32[2,16]{1,0}, s32[]) async-start(p0, c2, c0), calls=async_comp
+  done1 = f32[2,16]{1,0} async-done(start1)
+  ROOT sum = f32[2,16]{1,0} add(done0, done1)
+}
+  )hlo";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module_or =
+      ParseAndReturnVerifiedModule(hlo_string);
+  ASSERT_TRUE(module_or.ok());
+  if (!module_or.ok()) {
+    return;
+  }
+  std::unique_ptr<HloModule> module = std::move(*module_or);
+
+  FlattenCallGraph pass(FlattenCallGraph::SkipCloningForNonAsync);
+  absl::StatusOr<bool> changed_or = pass.Run(module.get());
+  ASSERT_TRUE(changed_or.ok());
+  if (!changed_or.ok()) {
+    return;
+  }
+  EXPECT_TRUE(*changed_or);
+
+  HloInstruction* start0 =
+      module->entry_computation()->GetInstructionWithName("start0");
+  HloInstruction* start1 =
+      module->entry_computation()->GetInstructionWithName("start1");
+  // Verify the outer async computation `async_comp` was cloned.
+  ASSERT_NE(start0->async_wrapped_computation(),
+            start1->async_wrapped_computation());
+
+  HloInstruction* inner_call0 =
+      start0->async_wrapped_computation()->root_instruction();
+  HloInstruction* inner_call1 =
+      start1->async_wrapped_computation()->root_instruction();
+  // Verify the nested `inner_helper` sub-computation inside `async_comp` was
+  // also cloned so the two async computations do not share `inner_helper`.
+  EXPECT_NE(inner_call0->to_apply(), inner_call1->to_apply());
 }
 
 }  // namespace

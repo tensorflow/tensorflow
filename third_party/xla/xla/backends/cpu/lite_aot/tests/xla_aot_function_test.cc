@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/lite_aot/tests/add_aot_example_lib.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"

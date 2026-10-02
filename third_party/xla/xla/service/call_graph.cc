@@ -472,6 +472,11 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
     const CallGraphNode& node = GetNode(instruction->parent());
     if (node.caller_callsites().size() != 1) {
       if (instruction->parent()->IsAsyncComputation()) {
+        for (const CallSite& callsite : node.caller_callsites()) {
+          if (callsite.instruction()->opcode() == HloOpcode::kAsyncStart) {
+            return callsite.instruction();
+          }
+        }
         return node.caller_callsites()[0].instruction();
       }
       return nullptr;
@@ -483,25 +488,19 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
   // element.
   HloInstruction* a_ancestor = a;
   HloInstruction* b_ancestor = b;
-  int a_depth = GetNode(a->parent()).depth();
-  int b_depth = GetNode(b->parent()).depth();
 
   // Advance a_ancestor (b_ancestor) up the call chain until the call depth of
-  // a_ancestor or b_ancestor are the same. Necessarily each call to next_caller
-  // reduces the depth by exactly one.
-  if (a_depth > b_depth) {
-    for (int i = 0; i < a_depth - b_depth; ++i) {
+  // a_ancestor or b_ancestor are the same. Compare depths dynamically at each
+  // step because a loop-crossing async computation may have caller callsites at
+  // different depths (e.g., kAsyncStart in ENTRY and kAsyncDone in while_body).
+  while (a_ancestor != nullptr && b_ancestor != nullptr &&
+         GetNode(a_ancestor->parent()).depth() !=
+             GetNode(b_ancestor->parent()).depth()) {
+    if (GetNode(a_ancestor->parent()).depth() >
+        GetNode(b_ancestor->parent()).depth()) {
       a_ancestor = next_caller(a_ancestor);
-      if (a_ancestor == nullptr) {
-        return {nullptr, nullptr};
-      }
-    }
-  } else if (b_depth > a_depth) {
-    for (int i = 0; i < b_depth - a_depth; ++i) {
+    } else {
       b_ancestor = next_caller(b_ancestor);
-      if (b_ancestor == nullptr) {
-        return {nullptr, nullptr};
-      }
     }
   }
 

@@ -885,10 +885,10 @@ void LaunchConvBackpropFilterOpImpl(
   // inputs. GPU transformation uses 32-bit indexing via To32Bit().
   OP_REQUIRES(
       context,
-      filter_backprop->NumElements() <= std::numeric_limits<int32>::max(),
-      errors::InvalidArgument("Filter tensor num elements (",
-                              filter_backprop->NumElements(),
-                              ") exceeds 32-bit limit for GPU transformation"));
+      filter_backprop->NumElements() <= std::numeric_limits<int32_t>::max(),
+      absl::InvalidArgumentError(absl::StrCat(
+          "Filter tensor num elements (", filter_backprop->NumElements(),
+          ") exceeds 32-bit limit for GPU transformation")));
   OP_REQUIRES_OK(context,
                  context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
                                         &pre_transformed_filter_backprop));
