@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
@@ -1298,6 +1300,40 @@ TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
                                                 /*kv_store=*/nullptr));
   EXPECT_FALSE(
       compile_options.executable_build_options.use_spmd_partitioning());
+}
+
+TEST(FunctionalHloRunnerTest, CreateCompileOptionsFromTopologyMatchesClient) {
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  raw_compile_options.hlo_passes_mode =
+      FunctionalHloRunner::HloPassesMode::kRunXLABackendOnly;
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
+
+  ASSERT_OK_AND_ASSIGN(
+      CompileOptions from_client,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options));
+  ASSERT_OK_AND_ASSIGN(CompileOptions from_topology,
+                       FunctionalHloRunner::CreateCompileOptions(
+                           *topology, raw_compile_options));
+
+  const ExecutableBuildOptions& client_build_options =
+      from_client.executable_build_options;
+  const ExecutableBuildOptions& topology_build_options =
+      from_topology.executable_build_options;
+  EXPECT_EQ(topology_build_options.num_replicas(),
+            client_build_options.num_replicas());
+  EXPECT_EQ(topology_build_options.num_partitions(),
+            client_build_options.num_partitions());
+  EXPECT_TRUE(topology_build_options.run_backend_only());
+  ASSERT_TRUE(client_build_options.has_device_assignment());
+  ASSERT_TRUE(topology_build_options.has_device_assignment());
+  EXPECT_EQ(topology_build_options.device_assignment().ToString(),
+            client_build_options.device_assignment().ToString());
 }
 
 TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
