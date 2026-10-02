@@ -75,13 +75,14 @@ inline auto SupportedTypes() {
 // Returns the supported reduction ops for the given element type as a span.
 absl::Span<const HloOpcode> SupportedReductionOps(PrimitiveType element_type);
 
-// Returns the all-reduce strategy for the given input size.
+// Returns the all-reduce strategy for the given input size and world size.
 // If `is_multimem_enabled` is true, then multimem strategies are also
 // considered.
 se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                                int64_t world_size,
                                                 bool is_multimem_enabled);
 
-// Returns the maximum supported all-reduce size in bytes for the given
+// Returns the maximum supported all-reduce read size in bytes for the given
 // strategy.
 int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 

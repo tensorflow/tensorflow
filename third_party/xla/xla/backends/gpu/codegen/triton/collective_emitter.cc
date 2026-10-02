@@ -200,12 +200,18 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
   ctx.non_tiled_input_shape = llvm::SmallVector<int64_t, 4>(
       ctx.input_extract.getSource().getType().getShape());
   ctx.num_elements = Product(ctx.non_tiled_input_shape);
+  auto replica_groups = xla::ConvertReplicaGroups(op.getReplicaGroups(), op);
+  if (!replica_groups.ok()) {
+    op.emitOpError(replica_groups.status().ToString());
+    return absl::InternalError(replica_groups.status().ToString());
+  }
+  ctx.world_size = (*replica_groups)->num_devices_per_group();
   int64_t input_byte_size =
       ctx.num_elements *
       llvm::divideCeil(mlir::cast<mlir::ShapedType>(ctx.input_tile.getType())
                            .getElementTypeBitWidth(),
                        8);
-  ctx.strategy = GetAllReduceStrategy(input_byte_size,
+  ctx.strategy = GetAllReduceStrategy(input_byte_size, ctx.world_size,
                                       /*is_multimem_enabled=*/false);
   ctx.op = op;
 
@@ -599,14 +605,6 @@ class AllReduceEmitter {
     remote_input_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 3);
 
     // 2. Constants and types.
-    auto replica_groups =
-        xla::ConvertReplicaGroups(ctx_.op.getReplicaGroups(), ctx_.op);
-    if (!replica_groups.ok()) {
-      ctx_.op.emitOpError(replica_groups.status().ToString());
-      return absl::InternalError(replica_groups.status().ToString());
-    }
-    ctx_.world_size = (*replica_groups)->num_devices_per_group();
-
     elem_type_ = mlir::getElementTypeOrSelf(ctx_.input_tile.getType());
     elem_storage_type_ = xtile::StorageType(elem_type_);
     ptr_to_i64_type_ =

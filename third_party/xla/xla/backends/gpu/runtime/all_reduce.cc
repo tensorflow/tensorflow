@@ -66,8 +66,8 @@ namespace {
 using se::gpu::AllReduceStrategy;
 static constexpr int64_t kKB = 1024;
 static constexpr int64_t kMB = kKB * 1024;
-static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * kKB;
-static constexpr int64_t kMaxTwoShotAllReduceSizeBytes = 4 * kMB;
+static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 2 * kMB;
+static constexpr int64_t kMaxTwoShotAllReduceSizeBytes = 32 * kMB;
 
 template <typename T, ReductionKind kReductionKindV>
 class TagRegistry {
@@ -188,8 +188,10 @@ absl::Span<const HloOpcode> SupportedReductionOps(PrimitiveType element_type) {
 }
 
 AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                       int64_t world_size,
                                        bool is_multimem_enabled) {
-  if (input_size_bytes > kMaxOneShotAllReduceSizeBytes) {
+  const int64_t read_size_bytes = input_size_bytes * world_size;
+  if (read_size_bytes > kMaxOneShotAllReduceSizeBytes) {
     return AllReduceStrategy::kTwoShot;
   }
   if (is_multimem_enabled) {
@@ -326,8 +328,8 @@ absl::Status IsAllReduceKernelSupported(
   const int64_t byte_size =
       num_elements * primitive_util::ByteWidth(element_type);
   const AllReduceStrategy strategy =
-      GetAllReduceStrategy(byte_size, is_multimem_enabled);
-  if (byte_size > GetMaxSupportedAllReduceSizeBytes(strategy)) {
+      GetAllReduceStrategy(byte_size, num_devices, is_multimem_enabled);
+  if (byte_size * num_devices > GetMaxSupportedAllReduceSizeBytes(strategy)) {
     return absl::UnimplementedError(
         "Custom all-reduce strategy is only supported for small inputs.");
   }
@@ -357,7 +359,7 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
   const int64_t byte_size =
       num_elements * primitive_util::ByteWidth(element_type);
   const AllReduceStrategy strategy =
-      GetAllReduceStrategy(byte_size, is_multimem_enabled);
+      GetAllReduceStrategy(byte_size, num_devices, is_multimem_enabled);
   ABSL_ASSIGN_OR_RETURN(
       const bool is_local,
       IsAllReplicasLocal(gpu_topology, *all_reduce, device_assignment));
@@ -448,8 +450,8 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
   }
   const int64_t input_size_bytes =
       ShapeUtil::ByteSizeOf(instr->operand(0)->shape());
-  const se::gpu::AllReduceStrategy strategy =
-      GetAllReduceStrategy(input_size_bytes, /*is_multimem_enabled=*/false);
+  const se::gpu::AllReduceStrategy strategy = GetAllReduceStrategy(
+      input_size_bytes, group_size, /*is_multimem_enabled=*/false);
   const int64_t num_signal_flags = group_size * launch_dimensions.num_blocks();
   const int64_t signal_size = xla::RoundUpTo<uint64_t>(
       num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);

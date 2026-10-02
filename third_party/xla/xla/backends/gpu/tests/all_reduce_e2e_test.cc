@@ -155,9 +155,10 @@ struct AllReduceTestParams {
                                            AllReduceStrategy::kOneShot)
                                      : 0;
     int64_t element_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+    const int64_t max_world_size = 8;
     int64_t min_elements = min_supported_size / element_size;
-    int64_t max_elements =
-        gpu::GetMaxSupportedAllReduceSizeBytes(strategy) / element_size;
+    int64_t max_elements = gpu::GetMaxSupportedAllReduceSizeBytes(strategy) /
+                           max_world_size / element_size;
     return {min_elements, max_elements};
   }
 
