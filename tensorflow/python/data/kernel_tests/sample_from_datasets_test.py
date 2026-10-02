@@ -171,6 +171,24 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsSkippingOneOfThreeDatasets(self, weights_type):
+    # Once the dataset with zero weight is skipped, the other two are still
+    # sampled in proportion to their weights.
+    random_seed.set_random_seed(1619)
+    num_samples = 5000
+    weights = _get_weights_of_type([0., .5, .5], weights_type)
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        [dataset_ops.Dataset.from_tensors(i).repeat() for i in range(3)],
+        weights=weights).take(num_samples)
+    freqs = np.bincount(
+        self.getDatasetOutput(sample_dataset, requires_initialization=True),
+        minlength=3) / num_samples
+    self.assertEqual(freqs[0], 0)
+    self.assertLess(self._chi2([.5, .5], freqs[1:]), 1e-2)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
   def testSampleFromDatasetsAllWeightsAreZero(self, weights_type):
     # Sampling skips both datasets.
     weights = _get_weights_of_type(np.asarray([0., 0.]), weights_type)
@@ -355,8 +373,22 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
            dataset_ops.Dataset.range(20)],
           weights=weights)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsRejectsInvalidWeights(self, weights_type):
+    for weights_list in ([1., -1.], [1., np.nan], [1., np.inf]):
+      with self.subTest(weights=weights_list):
+        weights = _get_weights_of_type(weights_list, weights_type)
+        with self.assertRaisesRegex(ValueError,
+                                    "must be non-negative and finite"):
+          dataset_ops.Dataset.sample_from_datasets(
+              [dataset_ops.Dataset.range(10),
+               dataset_ops.Dataset.range(20)],
+              weights=weights)
+
   @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasetsRuntimeNegativeAndNanWeights(self):
+  def testSampleFromDatasetsRejectsRuntimeInvalidWeights(self):
 
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec([2], dtypes.float32)])
@@ -369,10 +401,11 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
           datasets, weights=weights, stop_on_empty_dataset=False)
       return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
 
-    # Like list weights, a runtime weight that isn't positive drops its
-    # dataset.
-    for weights in ([1., -1.], [1., np.nan]):
-      self.assertEqual(self.evaluate(count(constant_op.constant(weights))), 3)
+    for weights in ([1., -1.], [1., np.nan], [1., np.inf]):
+      with self.subTest(weights=weights):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "must be non-negative and finite"):
+          self.evaluate(count(constant_op.constant(weights)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsRuntimeZeroWeightsWithCheckNumerics(self):

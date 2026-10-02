@@ -26,6 +26,7 @@ from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.types import data as data_types
@@ -44,6 +45,21 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
                             if weight > 0]
     return (zip(*datasets_and_weights) if datasets_and_weights else
             ([datasets[0].take(0)], [1.]))
+
+  def _check_weights(weights, weights_value):
+    # Negative and NaN weights would be dropped like zero ones, and infinite
+    # ones would have infinite logits, so reject them instead.
+    message = "Invalid `weights`. The weights must be non-negative and finite"
+    if weights_value is not None:
+      if not (np.isfinite(weights_value).all() and
+              (weights_value >= 0).all()):
+        raise ValueError(f"{message} but got {weights_value}.")
+      return weights
+    valid = math_ops.reduce_all(
+        math_ops.logical_and(weights >= 0, math_ops.is_finite(weights)))
+    check = control_flow_assert.Assert(valid, [f"{message} but got", weights])
+    with ops.control_dependencies([check]):
+      return array_ops.identity(weights)
 
   def _empty_datasets_with_zero_weight(datasets, positive):
     # Weights only known at runtime can't drop datasets up front, so make
@@ -113,10 +129,11 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
 
       # Use the given `weights` as the probability of choosing the respective
       # input.
-      # A list of bfloat16 scalars can't be converted to a tensor, but an
-      # array of them can. A list with tensors in it is converted as is.
-      if isinstance(weights, (list, tuple)) and not any(
-          isinstance(weight, tensor.Tensor) for weight in weights):
+      # A list of NumPy bfloat16 scalars can't be converted to a tensor, but
+      # an array of them can. Other lists are converted as is, so that Python
+      # floats are still float32.
+      if isinstance(weights, (list, tuple)) and all(
+          isinstance(weight, np.generic) for weight in weights):
         weights = np.asarray(weights)
       weights = ops.convert_to_tensor(weights, name="weights")
       if weights.dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
@@ -125,10 +142,12 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
                         f"`tf.float16`, `tf.bfloat16`, `tf.float32` or "
                         f"`tf.float64` but is {weights.dtype}.")
       weights_value = tensor_util.constant_value(weights)
+      weights = _check_weights(weights, weights_value)
       if weights_value is not None and not (weights_value > 0).all():
         datasets, weights = _skip_datasets_with_zero_weight(
             datasets, weights_value)
-        weights = ops.convert_to_tensor(np.asarray(weights), name="weights")
+        weights = ops.convert_to_tensor(
+            np.asarray(weights, weights_value.dtype), name="weights")
 
       if weights_value is None:
         positive = weights > 0
