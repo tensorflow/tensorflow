@@ -271,6 +271,11 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, GetDefaultCompiler).WillByDefault([this]() {
     return delegated_->GetDefaultCompiler();
   });
+  ON_CALL(*this, Load)
+      .WillByDefault([this](absl::Span<const ExecutableRef> executables,
+                            absl::Span<std::unique_ptr<LoadOptions>> options) {
+        return delegated_->Load(executables, options);
+      });
   ON_CALL(*this, GetTopologyForDevices)
       .WillByDefault([this](const DeviceListRef& devices) {
         return delegated_->GetTopologyForDevices(devices);

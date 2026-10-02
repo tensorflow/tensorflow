@@ -26,11 +26,13 @@ pjrt_ifrt_package_groups()
 cc_library(
     name = "xla_ifrt",
     srcs = [
+        "xla_client.cc",
         "xla_compiler.cc",
         "xla_sharding.cc",
         "xla_sharding_spec.cc",
     ],
     hdrs = [
+        "xla_client.h",
         "xla_compiler.h",
         "xla_sharding.h",
         "xla_sharding_spec.h",
@@ -47,6 +49,7 @@ cc_library(
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_version",
         "//xla/service:device_assignment",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
