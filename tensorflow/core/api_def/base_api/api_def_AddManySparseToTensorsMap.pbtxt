@@ -31,6 +31,7 @@ END
     name: "container"
     description: <<END
 The container name for the `SparseTensorsMap` created by this op.
+A non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.
 END
   }
   attr {
