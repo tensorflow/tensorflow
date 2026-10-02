@@ -32,6 +32,11 @@ from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_strategy_util
 
 
+_CPU_DEVICE = collections.namedtuple(
+    "LogicalDevice", ["name", "device_type"]
+)(name="/device:CPU:0", device_type="CPU")
+
+
 class AutoStrategyTest(test.TestCase):
 
   def setUp(self):
@@ -196,8 +201,18 @@ class AutoStrategyTest(test.TestCase):
     self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
     self.assertIn("CPU:0", strategy.extended._device)
 
+  @mock.patch.object(config, "list_physical_devices", return_value=[])
+  @mock.patch.object(
+      config,
+      "list_logical_devices",
+      side_effect=lambda device_type=None: (
+          [_CPU_DEVICE] if device_type in ("CPU", None) else []
+      ),
+  )
   @mock.patch.object(config, "get_visible_devices", return_value=[])
-  def testMalformedTFConfigGracefulFallback(self, mock_get_visible_devices):
+  def testMalformedTFConfigGracefulFallback(
+      self, mock_get_visible_devices, mock_list_logical, mock_list_physical
+  ):
     for malformed in [
         "123",
         "null",
@@ -212,10 +227,14 @@ class AutoStrategyTest(test.TestCase):
       self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
       self.assertIn("CPU:0", strategy.extended._device)
 
+  @mock.patch.object(config, "list_physical_devices", return_value=[])
+  @mock.patch.object(config, "list_logical_devices", return_value=[])
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
   )
-  def testMultiWorkerDetection(self, mock_cars_cls):
+  def testMultiWorkerDetection(
+      self, mock_cars_cls, mock_list_logical, mock_list_physical
+  ):
     # Prevent the real constructor from starting a live gRPC
     # CoordinationService and blocking indefinitely waiting for a second
     # worker (localhost:23456) that never connects, causing a 300s+ timeout.
@@ -230,12 +249,24 @@ class AutoStrategyTest(test.TestCase):
     mock_cars_cls.assert_called_once()
     self.assertIs(strategy, mock_cars_cls.return_value)
 
+  @mock.patch.object(config, "list_physical_devices", return_value=[])
+  @mock.patch.object(
+      config,
+      "list_logical_devices",
+      side_effect=lambda device_type=None: (
+          [_CPU_DEVICE] if device_type in ("CPU", None) else []
+      ),
+  )
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
   )
   @mock.patch.object(config, "get_visible_devices", return_value=[])
   def testSingleChiefDoesNotUseMultiWorker(
-      self, mock_get_visible_devices, mock_cars_cls
+      self,
+      mock_get_visible_devices,
+      mock_cars_cls,
+      mock_list_logical,
+      mock_list_physical,
   ):
     os.environ["TF_CONFIG"] = json.dumps({
         "cluster": {"chief": ["localhost:12345"]},
@@ -246,12 +277,24 @@ class AutoStrategyTest(test.TestCase):
     self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
     self.assertIn("CPU:0", strategy.extended._device)
 
+  @mock.patch.object(config, "list_physical_devices", return_value=[])
+  @mock.patch.object(
+      config,
+      "list_logical_devices",
+      side_effect=lambda device_type=None: (
+          [_CPU_DEVICE] if device_type in ("CPU", None) else []
+      ),
+  )
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
   )
   @mock.patch.object(config, "get_visible_devices", return_value=[])
   def testEvaluatorTaskDoesNotUseMultiWorker(
-      self, mock_get_visible_devices, mock_cars_cls
+      self,
+      mock_get_visible_devices,
+      mock_cars_cls,
+      mock_list_logical,
+      mock_list_physical,
   ):
     os.environ["TF_CONFIG"] = json.dumps({
         "cluster": {
@@ -312,12 +355,24 @@ class AutoStrategyTest(test.TestCase):
       mock_tpu_strategy_cls.assert_called_once_with(mock_resolver)
       self.assertIs(strategy, mock_tpu_strategy_cls.return_value)
 
+  @mock.patch.object(config, "list_physical_devices", return_value=[])
+  @mock.patch.object(
+      config,
+      "list_logical_devices",
+      side_effect=lambda device_type=None: (
+          [_CPU_DEVICE] if device_type in ("CPU", None) else []
+      ),
+  )
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
   )
   @mock.patch.object(config, "get_visible_devices", return_value=[])
   def testParameterServerTaskDoesNotUseMultiWorker(
-      self, mock_get_visible_devices, mock_cars_cls
+      self,
+      mock_get_visible_devices,
+      mock_cars_cls,
+      mock_list_logical,
+      mock_list_physical,
   ):
     os.environ["TF_CONFIG"] = json.dumps({
         "cluster": {
