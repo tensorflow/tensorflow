@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/util/determinism.h"
 
@@ -37,7 +38,16 @@ xla::ExecutableBuildOptions GetExecutableBuildOptions(
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
   build_options.mutable_debug_options()->set_xla_detailed_logging(
       options.detailed_logging);
-  if (tensorflow::OpDeterminismRequired()) {
+  bool xla_deterministic = tensorflow::OpDeterminismRequired();
+  if (!xla_deterministic && result.computation != nullptr) {
+    const auto& frontend_attrs =
+        result.computation->proto().frontend_attributes().map();
+    auto it = frontend_attrs.find(kXlaDeterministicAttr);
+    if (it != frontend_attrs.end() && it->second == "true") {
+      xla_deterministic = true;
+    }
+  }
+  if (xla_deterministic) {
     build_options.mutable_debug_options()
         ->set_xla_gpu_exclude_nondeterministic_ops(true);
   }
