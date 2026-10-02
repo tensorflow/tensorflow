@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from typing import Optional, Union
 
 from tensorflow.tools.pip_package.utils.utils import copy_file
 from tensorflow.tools.pip_package.utils.utils import create_init_files
@@ -443,7 +444,7 @@ def build_wheel(
     cwd: str,
     project_name: str,
     platform: str,
-    collab: str | bool | None = "False",
+    collab: Optional[Union[str, bool]] = "False",
 ) -> None:
   """Build the wheel in the target directory.
 
