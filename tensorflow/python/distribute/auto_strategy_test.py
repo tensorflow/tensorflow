@@ -171,6 +171,7 @@ class AutoStrategyTest(test.TestCase):
         '{"cluster": {"worker": null}}',
         '{"cluster": {"chief": null}}',
         '{"cluster": {"worker": "not-a-list"}}',
+        '{"cluster": {"worker": ["a", "b"]}, "task": null}',
     ]:
       os.environ["TF_CONFIG"] = malformed
       strategy = auto_strategy.auto_strategy()
