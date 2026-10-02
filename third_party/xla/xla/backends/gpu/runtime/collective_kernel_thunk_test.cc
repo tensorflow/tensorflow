@@ -260,6 +260,7 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
       result.buffers, /*is_collective_kernel_enabled=*/true,
       /*kernel_name=*/kKernelName,
       /*launch_dimensions=*/launch_dimensions,
+      /*devices_in_process=*/num_devices,
       /*shmem_bytes=*/0);
   result.total_buffer_size = total_buffer_size;
   result.num_devices = num_devices;
@@ -591,7 +592,7 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
       CreateCollectiveKernelSpec(num_elements, signal_size, remote_size,
                                  is_multimem_enabled),
       buffers, /*is_collective_kernel_enabled=*/true, std::string(kKernelName),
-      launch_dimensions);
+      launch_dimensions, /*devices_in_process=*/1);
 
   DeviceAssignment device_assignment(/*replica_count=*/1,
                                      /*computation_count=*/1);

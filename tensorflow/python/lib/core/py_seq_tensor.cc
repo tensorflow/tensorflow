@@ -350,6 +350,7 @@ struct ConverterTraits<int64_t> {
 #else
       Safe_PyObjectPtr as_int = make_safe(PyNumber_Long(v));
 #endif
+      if (TF_PREDICT_FALSE(as_int == nullptr)) return ErrorConverting;
       return ConvertScalar(as_int.get(), out);
     }
     if (IsPyFloat(v)) return ErrorFoundFloat;
@@ -380,6 +381,10 @@ struct ConverterTraits<uint64_t> {
 #endif
     if (TF_PREDICT_TRUE(PyLong_Check(v) || IsPyDimension(v))) {
       *out = PyLong_AsUnsignedLongLong(v);
+      if (TF_PREDICT_FALSE(*out == static_cast<uint64_t>(-1) &&
+                           PyErr_Occurred())) {
+        return ErrorOutOfRange;
+      }
       return nullptr;
     }
     if (PyIsInstance(v, &PyIntegerArrType_Type)) {  // NumPy integers
@@ -388,6 +393,7 @@ struct ConverterTraits<uint64_t> {
 #else
       Safe_PyObjectPtr as_int = make_safe(PyNumber_Long(v));
 #endif
+      if (TF_PREDICT_FALSE(as_int == nullptr)) return ErrorConverting;
       return ConvertScalar(as_int.get(), out);
     }
     if (IsPyFloat(v)) return ErrorFoundFloat;
@@ -427,6 +433,7 @@ struct ConverterTraits<int32_t> {
 #else
       Safe_PyObjectPtr as_int = make_safe(PyNumber_Long(v));
 #endif
+      if (TF_PREDICT_FALSE(as_int == nullptr)) return ErrorConverting;
       return ConvertScalar(as_int.get(), out);
     } else if (IsPyFloat(v)) {
       return ErrorFoundFloat;
@@ -479,8 +486,13 @@ static const char* ConvertOneFloat(PyObject* v, T* out) {
   }
 #endif
   if (PyLong_Check(v)) {
-    *out = static_cast<T>(PyLong_AsDouble(v));
-    if (PyErr_Occurred()) return ErrorOutOfRangeDouble;
+    const double d = PyLong_AsDouble(v);
+    *out = static_cast<T>(d);
+    if (TF_PREDICT_FALSE(d == -1.0 && PyErr_Occurred())) {
+      // Keep integer-to-float overflow on the existing status/error path.
+      if (PyErr_ExceptionMatches(PyExc_OverflowError)) PyErr_Clear();
+      return ErrorOutOfRangeDouble;
+    }
     return nullptr;
   }
   if (PyIsInstance(v, &PyFloatingArrType_Type)) {  // NumPy float types
@@ -844,6 +856,8 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
     default:
       break;
   }
+  // Preserve Python errors from the requested conversion before falling back.
+  if (TF_PREDICT_FALSE(!status.ok() && PyErr_Occurred())) return nullptr;
   if (status.ok()) return handle;
 
   switch (state.inferred_dtype) {
@@ -917,6 +931,8 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   if (!status.ok()) {
+    // Inferred conversions may also fail with a more specific Python error.
+    if (TF_PREDICT_FALSE(PyErr_Occurred())) return nullptr;
     PyErr_SetString(PyExc_ValueError, absl::StatusMessageAsCStr(status));
     return nullptr;
   }

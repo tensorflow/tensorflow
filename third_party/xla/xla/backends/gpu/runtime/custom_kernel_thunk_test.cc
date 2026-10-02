@@ -79,7 +79,8 @@ TEST(CustomKernelThunkTest, BufferUsesReturnsCorrectBuffers) {
   arg0.set_written(false);
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
-  CustomKernelThunk thunk(Thunk::ThunkInfo{}, kernel, kernel_arguments);
+  CustomKernelThunk thunk(Thunk::ThunkInfo{}, kernel, kernel_arguments,
+                          /*devices_in_process=*/1);
 
   Thunk::BufferUses buffers = thunk.buffer_uses();
 
@@ -102,7 +103,8 @@ TEST(CustomKernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {
   arg0.set_written(false);
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
-  CustomKernelThunk thunk(Thunk::ThunkInfo{}, kernel, kernel_arguments);
+  CustomKernelThunk thunk(Thunk::ThunkInfo{}, kernel, kernel_arguments,
+                          /*devices_in_process=*/1);
 
   Thunk::BufferUses buffers1 = thunk.buffer_uses();
   Thunk::BufferUses buffers2 = thunk.buffer_uses();
@@ -126,7 +128,8 @@ TEST(CustomKernelThunkTest, ToProto) {
   emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {512}), slice0);
   arg0.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0});
-  CustomKernelThunk thunk(thunk_info, kernel, kernel_arguments);
+  CustomKernelThunk thunk(thunk_info, kernel, kernel_arguments,
+                          /*devices_in_process=*/1);
 
   EXPECT_THAT(
       thunk.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
@@ -188,7 +191,8 @@ TEST(CustomKernelThunkTest, FromProto) {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<CustomKernelThunk> thunk,
                        CustomKernelThunk::FromProto(Thunk::ThunkInfo{}, proto,
-                                                    buffer_allocations));
+                                                    buffer_allocations,
+                                                    /*devices_in_process=*/1));
 
   EXPECT_THAT(thunk->custom_kernel().name(), "test_kernel");
   EXPECT_THAT(thunk->arguments(),
@@ -240,7 +244,8 @@ MakeAddI32CustomKernelThunk(const std::vector<BufferAllocation>& allocs) {
 
   return std::make_unique<CustomKernelThunk>(
       Thunk::ThunkInfo(), std::move(kernel),
-      emitters::KernelArguments({arg_a, arg_b, arg_c}));
+      emitters::KernelArguments({arg_a, arg_b, arg_c}),
+      /*devices_in_process=*/1);
 }
 
 TEST(CustomKernelThunkTest, RecordCommandBuffer) {
@@ -505,6 +510,70 @@ TEST(CustomKernelThunkTest, RecordFailsWithoutInitialize) {
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.status().message(),
               ::testing::HasSubstr("Custom kernel not loaded"));
+}
+
+TEST(CustomKernelThunkTest, ExecuteFailsWithoutInitialize) {
+  ASSERT_OK_AND_ASSIGN(std::string platform_name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
+  auto name = absl::AsciiStrToUpper(platform_name);
+  if (name == "ROCM" || name == "SYCL") {
+    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm or oneAPI.";
+  }
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  se::DeviceAddress<int32_t> a_dev = executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceAddress<int32_t> b_dev = executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceAddress<int32_t> c_dev = executor->AllocateArray<int32_t>(1, 0);
+
+  int32_t sentinel = 99;
+  ASSERT_OK(stream->Memcpy(&c_dev, &sentinel, sizeof(int32_t)));
+
+  std::vector<BufferAllocation> allocs = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),
+      BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),
+  };
+  absl::string_view ptx =
+      se::gpu::GetAddI32PtxKernelSpec().cuda_ptx_in_memory().value().ptx;
+  ASSERT_OK_AND_ASSIGN(
+      CustomKernel kernel,
+      kernel::GetPtxCustomKernel(/*kernel_name=*/"AddI32", ptx, /*num_args=*/3,
+                                 /*block_dim=*/se::BlockDim(1, 1, 1),
+                                 /*thread_dim=*/se::ThreadDim(1, 1, 1)));
+  emitters::KernelArgument arg_a(ShapeUtil::MakeShape(S32, {1}),
+                                 BufferAllocation::Slice(&allocs[0], 0, 4));
+  emitters::KernelArgument arg_b(ShapeUtil::MakeShape(S32, {1}),
+                                 BufferAllocation::Slice(&allocs[1], 0, 4));
+  emitters::KernelArgument arg_c(ShapeUtil::MakeShape(S32, {1}),
+                                 BufferAllocation::Slice(&allocs[2], 0, 4));
+  arg_a.set_written(false);
+  arg_b.set_written(false);
+  arg_c.set_written(true);
+
+  CustomKernelThunk thunk(Thunk::ThunkInfo(), std::move(kernel),
+                          emitters::KernelArguments({arg_a, arg_b, arg_c}),
+                          /*devices_in_process=*/1,
+                          /*use_pdl=*/false,
+                          /*zeroed_output_buffer_indices=*/{2});
+  // Intentionally skip Initialize().
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations buffer_allocations({a_dev, b_dev, c_dev}, 0, &allocator);
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  auto execute_params = Thunk::ExecuteParams::Create(
+      run_options, buffer_allocations, stream.get(), nullptr, nullptr, nullptr,
+      nullptr, {});
+
+  auto status = thunk.ExecuteOnStream(execute_params);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("Custom kernel not loaded"));
+
+  int32_t observed = 0;
+  ASSERT_OK(stream->Memcpy(&observed, c_dev, sizeof(int32_t)));
+  EXPECT_EQ(observed, sentinel);
 }
 
 }  // namespace

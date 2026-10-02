@@ -416,23 +416,28 @@ AsyncThunkSequence MlirKernelFusion::Emit(
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       &fusion, ir_emitter_context.GetNextThunkId());
   bool kernel_cached = cached;
-  return future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
-                           args = std::move(args), kernel_cached](
-                              const KernelReuseCache::Entry& entry) mutable
-                              -> absl::StatusOr<ThunkSequence> {
-    if (kernel_cached) {
-      VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry.kernel_name;
-    }
-    ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                     kernel::CreateSharedCubinCustomKernel(
-                         entry.kernel_name, entry.binary, args.args().size(),
-                         entry.launch_dimensions.block_counts(),
-                         entry.launch_dimensions.thread_counts_per_block(),
-                         entry.shmem_bytes));
+  return future_entry.Map(
+      [&fusion, thunk_info = std::move(thunk_info), args = std::move(args),
+       kernel_cached,
+       devices_in_process =
+           ir_emitter_context.gpu_topology().num_devices_per_process()](
+          const KernelReuseCache::Entry& entry) mutable
+          -> absl::StatusOr<ThunkSequence> {
+        if (kernel_cached) {
+          VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry.kernel_name;
+        }
+        ABSL_ASSIGN_OR_RETURN(
+            CustomKernel custom_kernel,
+            kernel::CreateSharedCubinCustomKernel(
+                entry.kernel_name, entry.binary, args.args().size(),
+                entry.launch_dimensions.block_counts(),
+                entry.launch_dimensions.thread_counts_per_block(),
+                entry.shmem_bytes));
 
-    return ThunkSequence::Of<CustomKernelThunk>(
-        thunk_info, std::move(custom_kernel), args, entry.use_pdl);
-  });
+        return ThunkSequence::Of<CustomKernelThunk>(
+            thunk_info, std::move(custom_kernel), args, devices_in_process,
+            entry.use_pdl);
+      });
 }
 
 xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(

@@ -44,7 +44,7 @@ std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
 
 // Returns true if the Eigen C++ intrinsics were compiled and are available.
 // If the compiler does not support vector extensions, this will return false.
-bool AreEigenIntrinsicsAvailable();
+bool AreEigenIntrinsicsAvailable(absl::string_view features = "");
 
 // Helper for Intrinsic<T> classes that use CppGen backend for some types.
 // Looks up a function by name in the module (assuming it was linked from
