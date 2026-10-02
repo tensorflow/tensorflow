@@ -460,6 +460,8 @@ def build_wheel(
   if is_windows():
     # HOMEPATH is not set by bazel but it's required by setuptools.
     env["HOMEPATH"] = "C:"
+    # os.environ uppercases keys on Windows; its copy is case-sensitive.
+    env.pop("COLLABORATOR_BUILD", None)
   # project_name is needed by setup.py.
   env["project_name"] = project_name
 

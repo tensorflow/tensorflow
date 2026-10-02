@@ -27,6 +27,29 @@ from tensorflow.tools.pip_package import build_pip_package
 
 class BuildPipPackageTest(unittest.TestCase):
 
+  def test_build_wheel_windows_inherited_environment(self):
+    for collab, expected in ((None, []), (False, []), (True, ["True"])):
+      with self.subTest(collab=collab):
+        parent_env = {"COLLABORATOR_BUILD": "inherited"}
+        with mock.patch.object(os, "environ", parent_env), mock.patch.object(
+            build_pip_package, "is_windows", return_value=True
+        ), mock.patch.object(build_pip_package.subprocess, "run") as run:
+          build_pip_package.build_wheel(
+              dir_path="dist",
+              cwd="wheel_source",
+              project_name="tensorflow_test",
+              platform="test_platform",
+              collab=collab,
+          )
+        child_env = run.call_args.kwargs["env"]
+        values = [
+            value
+            for key, value in child_env.items()
+            if key.upper() == "COLLABORATOR_BUILD"
+        ]
+        self.assertEqual(expected, values)
+        self.assertEqual({"COLLABORATOR_BUILD": "inherited"}, parent_env)
+
   def test_parse_args_default_collab(self):
     argv = [
         "build_pip_package.py",
