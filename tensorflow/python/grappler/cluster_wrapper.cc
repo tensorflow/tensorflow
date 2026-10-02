@@ -113,6 +113,9 @@ PYBIND11_MODULE(
             cluster->AllowSoftPlacement(allow_soft_placement);
             cluster->SetNumWarmupSteps(10);
             provision_status = cluster->Provision();
+            if (!provision_status.ok()) {
+              cluster.reset();
+            }
           }
           tsl::MaybeRaiseRegisteredFromStatusWithGIL(provision_status);
           return cluster.release();
