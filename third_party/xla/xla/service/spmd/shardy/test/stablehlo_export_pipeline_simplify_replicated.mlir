@@ -46,3 +46,20 @@ func.func @do_not_simplify_unreduced(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
+
+// -----
+
+sdy.mesh @empty_mesh = <[]>
+sdy.mesh @maximal_mesh = <[], device_ids=[0]>
+
+// CHECK-LABEL: func @simplify_replicated_sharding_empty_mesh(
+// CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh[], replicated}"},
+// CHECK-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{mesh[], [{?}, {}]}"},
+// CHECK-SAME:      %arg2: tensor<8x8xf32> {mhlo.sharding = "{maximal_mesh[device_id=0]}"})
+func.func @simplify_replicated_sharding_empty_mesh(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@empty_mesh, [{}, {}]>},
+                                                   %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@empty_mesh, [{?}, {}]>},
+                                                   %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh, []>}) -> tensor<8x8xf32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
