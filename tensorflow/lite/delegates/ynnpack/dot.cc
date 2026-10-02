@@ -472,12 +472,8 @@ TfLiteStatus DefineBatchMatMulNode(TfLiteContext* context,
   TF_LITE_ENSURE(context, input_b_val_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteBatchMatMulParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteBatchMatMulParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int rank_a = input_a_tensor.dims->size;
@@ -530,26 +526,17 @@ TfLiteStatus DefineRuntimeBatchedMatMulNode(
   bool adj_x = false;
   bool adj_y = false;
   bool is_src = false;
-  TfLiteNode* tflite_node = nullptr;
-  TfLiteRegistration* reg = nullptr;
-  if (context->GetNodeAndRegistration(context, node.node_index, &tflite_node,
-                                      &reg) == kTfLiteOk &&
-      tflite_node != nullptr) {
-    if (reg->builtin_code == kTfLiteBuiltinBatchMatmul) {
-      if (tflite_node->builtin_data != nullptr) {
-        const auto* params = static_cast<const TfLiteBatchMatMulParams*>(
-            tflite_node->builtin_data);
-        if (params) {
-          adj_x = params->adj_x;
-          adj_y = params->adj_y;
-        }
-      }
-    } else {
-      const flexbuffers::Map flexbuffer_map =
-          GetFlexBufferMap(reg, tflite_node);
-      if (!flexbuffer_map["is_src"].IsNull()) {
-        is_src = flexbuffer_map["is_src"].AsBool();
-      }
+  if (node.builtin_code == kTfLiteBuiltinBatchMatmul) {
+    const auto* params =
+        static_cast<const TfLiteBatchMatMulParams*>(node.builtin_data);
+    if (params) {
+      adj_x = params->adj_x;
+      adj_y = params->adj_y;
+    }
+  } else {
+    const flexbuffers::Map flexbuffer_map = GetFlexBufferMap(node);
+    if (!flexbuffer_map["is_src"].IsNull()) {
+      is_src = flexbuffer_map["is_src"].AsBool();
     }
   }
 
@@ -688,12 +675,8 @@ TfLiteStatus DefineFullyConnectedNode(TfLiteContext* context,
   }
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteFullyConnectedParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteFullyConnectedParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int rank_a = input_tensor.dims->size;
@@ -1081,12 +1064,7 @@ TfLiteStatus DefineConvNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   TF_LITE_ENSURE(context, bias_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
-  const auto* params =
-      static_cast<const TfLiteConvParams*>(tflite_node->builtin_data);
+  const auto* params = static_cast<const TfLiteConvParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int output_channels = filter_tensor.dims->data[0];
@@ -1134,12 +1112,8 @@ TfLiteStatus DefineDepthwiseConvNode(TfLiteContext* context,
   TF_LITE_ENSURE(context, bias_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteDepthwiseConvParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteDepthwiseConvParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int filter_channels = filter_tensor.dims->data[3];

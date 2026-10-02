@@ -84,6 +84,13 @@ bool IsTritonSupportedRaggedDot(
     const se::GpuComputeCapability& gpu_compute_capability,
     const HloInstruction& instr);
 
+// Returns true if `dnums` describes the weight-gradient (wgrad) flavor of
+// ragged-dot, i.e. the LHS ragged dimension is also one of the contracting
+// dimensions (kRaggedContracting mode), as opposed to a batch or
+// non-contracting dimension. Wgrad ragged-dots lower to cuDNN's
+// moe_grouped_matmul_bwd rather than the forward moe_grouped_matmul path.
+bool IsRaggedDotWgrad(const RaggedDotDimensionNumbers& dnums);
+
 constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
 }

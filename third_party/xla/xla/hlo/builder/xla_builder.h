@@ -1951,6 +1951,8 @@ class XlaBuilder {
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Exp(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Exp2(XlaOp operand,
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Expm1(XlaOp operand,
                      const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Floor(XlaOp operand);
@@ -1961,6 +1963,8 @@ class XlaBuilder {
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Log1p(XlaOp operand,
                      const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Log2(XlaOp operand,
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Logistic(XlaOp operand,
                         const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Sign(XlaOp operand);
@@ -3306,6 +3310,10 @@ XlaOp Erf(XlaOp operand,
 XlaOp Exp(XlaOp operand,
           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
+// Enqueues an exp2 instruction onto the computation.
+XlaOp Exp2(XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
+
 // Enqueues an expm1 instruction onto the computation.
 XlaOp Expm1(
     XlaOp operand,
@@ -3332,6 +3340,10 @@ XlaOp Log(XlaOp operand,
 XlaOp Log1p(
     XlaOp operand,
     const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
+
+// Enqueues a log2 instruction onto the computation.
+XlaOp Log2(XlaOp operand,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a logistic instruction onto the computation.
 XlaOp Logistic(

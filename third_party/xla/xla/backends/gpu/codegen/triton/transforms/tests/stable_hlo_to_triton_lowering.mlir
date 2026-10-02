@@ -315,8 +315,8 @@ xtile.entry_func @all_reduce_one_shot(%input: memref<65536xf32>, %output: memref
 }
 
 // CHECK-LABEL: xtile.entry_func @all_reduce_two_shot
-xtile.entry_func @all_reduce_two_shot(%input: memref<131072xf32>, %output: memref<131072xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
-  %tile = xtile.extract %input[%tile_id][131072][1] : memref<131072xf32> -> tensor<131072xf32>
+xtile.entry_func @all_reduce_two_shot(%input: memref<524288xf32>, %output: memref<524288xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %tile = xtile.extract %input[%tile_id][131072][1] : memref<524288xf32> -> tensor<131072xf32>
   // CHECK: triton_xla.block_barrier
   // CHECK: triton_xla.block_barrier
   // CHECK-NOT: triton_xla.block_barrier
@@ -325,7 +325,7 @@ xtile.entry_func @all_reduce_two_shot(%input: memref<131072xf32>, %output: memre
       %4 = arith.addf %arg7, %arg8 : tensor<f32>
       stablehlo.return %4 : tensor<f32>
     }) : (tensor<131072xf32>) -> tensor<131072xf32>
-  xtile.insert %all_reduce into %output[%tile_id][131072][1] : tensor<131072xf32> -> memref<131072xf32>
+  xtile.insert %all_reduce into %output[%tile_id][131072][1] : tensor<131072xf32> -> memref<524288xf32>
   xtile.return
 }
 

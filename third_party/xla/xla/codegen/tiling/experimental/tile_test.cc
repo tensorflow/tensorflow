@@ -20,10 +20,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -101,12 +104,101 @@ TEST_F(TileTest, CloneWithNewTilingSpaceWorksCorrectly) {
   auto c16 = CreateSymbolicConstant(16, &mlir_context_);
 
   Tile tile{*space1, {DimTile{c0, c8, c1, c16}}};
+  tile.AddConstraint(CreateDimExpr(0, &mlir_context_), Interval{0, 10});
   EXPECT_EQ(&tile.tiling_space(), space1.get());
 
   Tile cloned_tile = tile.CloneWithNewTilingSpace(*space2);
   EXPECT_EQ(&cloned_tile.tiling_space(), space2.get());
   EXPECT_EQ(cloned_tile.dim_tiles(), tile.dim_tiles());
   EXPECT_EQ(cloned_tile.replica_ids(), tile.replica_ids());
+  EXPECT_EQ(cloned_tile.constraints(), tile.constraints());
+}
+
+TEST_F(TileTest, ConstraintsAreUsedInEqualityAndHash) {
+  std::unique_ptr<TilingSpace> space =
+      GetFakeTilingSpace(/*num_dims=*/1, /*num_rt_vars=*/0);
+  SymbolicExpr tid0 = CreateDimExpr(0, &mlir_context_);
+  auto c0 = CreateSymbolicConstant(0, &mlir_context_);
+  auto c8 = CreateSymbolicConstant(8, &mlir_context_);
+  auto c1 = CreateSymbolicConstant(1, &mlir_context_);
+  auto c16 = CreateSymbolicConstant(16, &mlir_context_);
+
+  Tile tile{*space, {DimTile{c0, c8, c1, c16}}};
+  EXPECT_EQ(tile.num_constraints(), 0);
+  EXPECT_TRUE(tile.constraints().empty());
+
+  tile.AddConstraint(tid0, Interval{0, 10});
+  EXPECT_EQ(tile.num_constraints(), 1);
+  EXPECT_EQ(tile.constraints().size(), 1);
+  EXPECT_EQ(tile.constraints()[0].first, tid0);
+  EXPECT_EQ(tile.constraints()[0].second, (Interval{0, 10}));
+
+  // Intersects existing constraint.
+  tile.AddConstraint(tid0, Interval{5, 15});
+  EXPECT_EQ(tile.num_constraints(), 1);
+  EXPECT_EQ(tile.constraints()[0].second, (Interval{5, 10}));
+
+  // CloneWithNewDims preserves constraints.
+  Tile cloned = tile.CloneWithNewDims({DimTile{c0, c8, c1, c16}});
+  EXPECT_EQ(cloned.num_constraints(), 1);
+  EXPECT_EQ(cloned.constraints()[0], tile.constraints()[0]);
+
+  // Constraints are taken into account for equality and hash.
+  Tile unconstrained_tile{*space, {DimTile{c0, c8, c1, c16}}};
+  EXPECT_NE(tile, unconstrained_tile);
+  EXPECT_NE(absl::HashOf(tile), absl::HashOf(unconstrained_tile));
+
+  Tile same_constrained_tile{*space, {DimTile{c0, c8, c1, c16}}};
+  same_constrained_tile.AddConstraint(tid0, Interval{5, 10});
+  EXPECT_EQ(tile, same_constrained_tile);
+  EXPECT_EQ(absl::HashOf(tile), absl::HashOf(same_constrained_tile));
+
+  Tile different_constrained_tile{*space, {DimTile{c0, c8, c1, c16}}};
+  different_constrained_tile.AddConstraint(tid0, Interval{0, 5});
+  EXPECT_NE(tile, different_constrained_tile);
+  EXPECT_NE(absl::HashOf(tile), absl::HashOf(different_constrained_tile));
+}
+
+TEST_F(TileTest, ReplaceWithConstraints) {
+  std::unique_ptr<TilingSpace> space =
+      GetFakeTilingSpace(/*num_dims=*/1, /*num_rt_vars=*/0);
+  SymbolicExpr tid0 = CreateDimExpr(0, &mlir_context_);
+  SymbolicExpr ts0 = CreateSymbolExpr(0, /*num_dims=*/1, &mlir_context_);
+  auto c1 = CreateSymbolicConstant(1, &mlir_context_);
+  auto c16 = CreateSymbolicConstant(16, &mlir_context_);
+  auto c10 = CreateSymbolicConstant(10, &mlir_context_);
+
+  Tile tile{*space, {DimTile{tid0 * ts0, ts0, c1, c16}}};
+  tile.AddConstraint(tid0 * ts0, Interval{0, 9});
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> map;
+  map[ts0] = c10;
+  tile.Replace(map);
+
+  EXPECT_EQ(tile.dim_tiles()[0].offset, tid0 * c10);
+  EXPECT_EQ(tile.dim_tiles()[0].size, c10);
+  ASSERT_EQ(tile.num_constraints(), 1);
+  EXPECT_EQ(tile.constraints()[0].first, tid0 * c10);
+  EXPECT_EQ(tile.constraints()[0].second, (Interval{0, 9}));
+}
+
+TEST_F(TileTest, ToStringWithMultipleConstraints) {
+  std::unique_ptr<TilingSpace> space =
+      GetFakeTilingSpace(/*num_dims=*/2, /*num_rt_vars=*/0);
+  SymbolicExpr tid0 = CreateDimExpr(0, &mlir_context_);
+  SymbolicExpr tid1 = CreateDimExpr(1, &mlir_context_);
+  auto c0 = CreateSymbolicConstant(0, &mlir_context_);
+  auto c8 = CreateSymbolicConstant(8, &mlir_context_);
+  auto c1 = CreateSymbolicConstant(1, &mlir_context_);
+  auto c16 = CreateSymbolicConstant(16, &mlir_context_);
+
+  Tile tile{*space, {DimTile{c0, c8, c1, c16}}};
+  tile.AddConstraint(tid0, Interval{0, 5});
+  tile.AddConstraint(tid1, Interval{0, 10});
+
+  EXPECT_EQ(tile.ToString(/*print_variables=*/false),
+            " offsets [0] sizes [8] strides [1] upper bounds [16] "
+            "constraints {tid_0 in [0, 5]\ntid_1 in [0, 10]}");
 }
 
 }  // namespace

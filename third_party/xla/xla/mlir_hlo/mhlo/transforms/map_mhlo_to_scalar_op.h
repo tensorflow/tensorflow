@@ -114,6 +114,10 @@ struct MhloToScalarOp<mhlo::ExpOp> {
   using COp = ::mlir::complex::ExpOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::Exp2Op> {
+  using FOp = ::mlir::math::Exp2Op;
+};
+template <>
 struct MhloToScalarOp<mhlo::Expm1Op> {
   using FOp = ::mlir::math::ExpM1Op;
   using COp = ::mlir::complex::Expm1Op;
@@ -131,6 +135,10 @@ template <>
 struct MhloToScalarOp<mhlo::Log1pOp> {
   using FOp = ::mlir::math::Log1pOp;
   using COp = ::mlir::complex::Log1pOp;
+};
+template <>
+struct MhloToScalarOp<mhlo::Log2Op> {
+  using FOp = ::mlir::math::Log2Op;
 };
 template <>
 struct MhloToScalarOp<mhlo::MulOp> {
@@ -622,6 +630,50 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ImagOp>(
         *b, loc, b->getZeroAttr(adaptor.getOperand().getType()));
   return MapMhloOpToScalarOpImpl<complex::ImOp>{}(
       loc, resultTypes, argTypes, adaptor.getOperands(), attributes, b);
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::Exp2Op>(
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> argTypes,
+    mhlo::Exp2Op::Adaptor adaptor, ArrayRef<NamedAttribute> attributes,
+    OpBuilder* b) {
+  Type type = adaptor.getOperand().getType();
+  if (!mlir::isa<ComplexType>(type)) {
+    return MapMhloOpToScalarOpImpl<IsFloatType, math::Exp2Op>{}(
+        loc, resultTypes, argTypes, adaptor.getOperands(), attributes, b);
+  }
+  auto complexTy = mlir::cast<ComplexType>(type);
+  auto floatTy = complexTy.getElementType();
+  Value ln2 =
+      arith::ConstantOp::create(*b, loc, b->getFloatAttr(floatTy, M_LN2));
+  Value re = complex::ReOp::create(*b, loc, floatTy, adaptor.getOperand());
+  Value im = complex::ImOp::create(*b, loc, floatTy, adaptor.getOperand());
+  Value scaled = complex::CreateOp::create(
+      *b, loc, complexTy, arith::MulFOp::create(*b, loc, re, ln2),
+      arith::MulFOp::create(*b, loc, im, ln2));
+  return complex::ExpOp::create(*b, loc, scaled);
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::Log2Op>(
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> argTypes,
+    mhlo::Log2Op::Adaptor adaptor, ArrayRef<NamedAttribute> attributes,
+    OpBuilder* b) {
+  Type type = adaptor.getOperand().getType();
+  if (!mlir::isa<ComplexType>(type)) {
+    return MapMhloOpToScalarOpImpl<IsFloatType, math::Log2Op>{}(
+        loc, resultTypes, argTypes, adaptor.getOperands(), attributes, b);
+  }
+  auto complexTy = mlir::cast<ComplexType>(type);
+  auto floatTy = complexTy.getElementType();
+  Value logZ = complex::LogOp::create(*b, loc, adaptor.getOperand());
+  Value oneOverLn2 =
+      arith::ConstantOp::create(*b, loc, b->getFloatAttr(floatTy, M_LOG2E));
+  Value re = complex::ReOp::create(*b, loc, floatTy, logZ);
+  Value im = complex::ImOp::create(*b, loc, floatTy, logZ);
+  return complex::CreateOp::create(
+      *b, loc, complexTy, arith::MulFOp::create(*b, loc, re, oneOverLn2),
+      arith::MulFOp::create(*b, loc, im, oneOverLn2));
 }
 
 // 'target_types' is the unconverted type (signed or unsigned if integer),

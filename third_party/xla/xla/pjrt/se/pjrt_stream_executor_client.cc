@@ -533,43 +533,6 @@ bool PjRtStreamExecutorRawClient::IsOnCpu(PjRtMemorySpace* memory_space) {
   return memory_space->kind() == PinnedHostMemorySpace::kKind;
 }
 
-bool PjRtStreamExecutorClient::ShouldPerformZeroCopyLinearize(
-    const void* data, const xla::Shape& device_shape, PrimitiveType type,
-    absl::Span<int64_t const> dims,
-    std::optional<absl::Span<int64_t const>> byte_strides,
-    PjRtMemorySpace* memory_space) {
-  Shape on_host_shape = ShapeUtil::MakeShape(type, dims);
-  absl::InlinedVector<int64_t, 4> tmp_strides;
-  if (!byte_strides) {
-    tmp_strides.resize(dims.size());
-    if (!ShapeUtil::UnpackedByteStrides(on_host_shape,
-                                        absl::MakeSpan(tmp_strides))
-             .ok()) {
-      return false;
-    }
-    byte_strides = tmp_strides;
-  }
-  int64_t size = ShapeUtil::ByteSizeOf(on_host_shape);
-  auto packed_size_or =
-      GetOnDeviceBytesCount(memory_space->kind_id(), device_shape);
-  if (!packed_size_or.ok()) {
-    return false;
-  }
-  int64_t packed_size = *packed_size_or;
-  absl::InlinedVector<int64_t, 4> shape_strides(
-      device_shape.dimensions().size());
-  if (!ShapeUtil::UnpackedByteStrides(device_shape,
-                                      absl::MakeSpan(shape_strides))
-           .ok()) {
-    return false;
-  }
-  bool host_and_device_strides_equal =
-      (size == 0 || *byte_strides == shape_strides);
-
-  return host_and_device_strides_equal && (packed_size == size) &&
-         !raw_client()->ShouldStageHostToDeviceTransfers(data, size);
-}
-
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtStreamExecutorRawClient::CreateLinkedEventPromise(
     LocalDeviceId local_device_id, int memory_kind_id,

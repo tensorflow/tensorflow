@@ -1708,6 +1708,12 @@ absl::StatusOr<ifrt::DeviceListRef> NanoIfrtClient::MakeDeviceList(
 
 ifrt::Compiler* NanoIfrtClient::GetDefaultCompiler() { return compiler_.get(); }
 
+absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>>
+NanoIfrtClient::Load(absl::Span<const ifrt::ExecutableRef> executables,
+                     absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) {
+  return absl::UnimplementedError("Load is not implemented.");
+}
+
 absl::StatusOr<std::shared_ptr<ifrt::Topology>>
 NanoIfrtClient::GetTopologyForDevices(
     const ifrt::DeviceListRef& devices) const {

@@ -56,9 +56,9 @@ module @reshard_not_converted {
 module @extract_copy_from_reshard {
   func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
       attributes {ifrt.function} {
-    // CHECK: %[[RESHARDED:.+]], %{{.+}} = ifrt.Reshard(%arg1) {donated = true}
-    // CHECK: %[[COPIED:.+]], %{{.+}} = ifrt.CopyArrays(%arg0) {donated = true}
-    %0, %1, %ctrl_0 = ifrt.Reshard(%arg0, %arg1) {donated = true}
+    // CHECK: %[[RESHARDED:.+]], %{{.+}} = ifrt.Reshard(%arg1) <donated = true>
+    // CHECK: %[[COPIED:.+]], %{{.+}} = ifrt.CopyArrays(%arg0) <donated = true>
+    %0, %1, %ctrl_0 = ifrt.Reshard(%arg0, %arg1) <donated = true>
         : (!array0, !array1) -> (!array1, !array2)
     // CHECK: return %[[COPIED]], %[[RESHARDED]]
     return %0, %1: !array1, !array2

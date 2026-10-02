@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -187,23 +188,23 @@ void HloDataflowAnalysis::DeleteMarkedValues() {
   // Use a set to prevent deleting an id twice.
   absl::flat_hash_set<HloValue::Id> id_set(value_ids_to_delete_.begin(),
                                            value_ids_to_delete_.end());
-#ifndef NDEBUG
-  // Verify that no marked-for-deletion values are in any of the value sets.
-  for (const auto& pair : value_sets_) {
-    const HloInstruction* instruction = pair.first;
-    const InstructionValueSet& instruction_value_set = *pair.second;
-    for (const auto& index_value_set : instruction_value_set) {
-      const HloValueSet& value_set = index_value_set.second;
-      for (const HloValue* value : value_set.values()) {
-        DCHECK(!ContainsKey(id_set, value->id()))
-            << "Value " << value->ToShortString()
-            << " marked for deletion, but still exists in value set for "
-               "instruction "
-            << instruction->name();
+  if constexpr (tsl::kIsDebugBuild) {
+    // Verify that no marked-for-deletion values are in any of the value sets.
+    for (const auto& pair : value_sets_) {
+      const HloInstruction* instruction = pair.first;
+      const InstructionValueSet& instruction_value_set = *pair.second;
+      for (const auto& index_value_set : instruction_value_set) {
+        const HloValueSet& value_set = index_value_set.second;
+        for (const HloValue* value : value_set.values()) {
+          DCHECK(!ContainsKey(id_set, value->id()))
+              << "Value " << value->ToShortString()
+              << " marked for deletion, but still exists in value set for "
+                 "instruction "
+              << instruction->name();
+        }
       }
     }
   }
-#endif
 
   for (HloValue::Id value_id : id_set) {
     values_.erase(value_id);
@@ -1383,9 +1384,17 @@ void HloDataflowAnalysis::Propagate() {
           add_to_worklist(
               callsite.instruction()->while_condition()->parameter_instruction(
                   0));
-        } else if (call_graph_node.context() == CallContext::kControlFlow ||
-                   callsite.instruction()->opcode() ==
-                       HloOpcode::kConditional) {
+        } else if (callsite.context() == CallContext::kControlFlow) {
+          // The callsite instruction (kCall, kConditional, kAsyncStart, etc.)
+          // forwards the values of the callee's root to its own output, so it
+          // must be revisited whenever the root's value set changes. This
+          // holds regardless of the context of the called computation: a kCall
+          // nested inside an embedded computation (e.g. one called by a
+          // kCustomCall or a kFusion) still copies its callee's root value set
+          // (see UpdateCallValueSet), even though parameters in that context
+          // define their own values. Not revisiting such a callsite leaves its
+          // value set stale (possibly empty) if it was visited before the
+          // callee's root.
           add_to_worklist(callsite.instruction());
         }
       }

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -1397,6 +1398,123 @@ TEST(XplaneUtilsTest, MergeXSpaceRemapsPlaneStatRefValue) {
     plane_stats.emplace_back(stat.Name(), stat.StrOrRefValue());
   });
   EXPECT_THAT(plane_stats, ElementsAre(Pair("device_vendor", "Google")));
+}
+
+// Adds an XEventMetadata named "fusion.1" with the given stats and optional
+// display_name, like the TPU trace converter does for each (program_id,
+// symbol_id) and derived async op.
+XEventMetadata* AddFusionMetadata(XPlaneBuilder& plane, int64_t program_id,
+                                  int64_t symbol_id, absl::string_view tf_op,
+                                  absl::string_view display_name = "") {
+  XEventMetadata* metadata = plane.CreateEventMetadata();
+  metadata->set_name("fusion.1");
+  if (!display_name.empty()) {
+    metadata->set_display_name(display_name);
+  }
+  XStatsBuilder<XEventMetadata> stats(metadata, &plane);
+  stats.AddStatValue(
+      *plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProgramId)),
+      program_id);
+  stats.AddStatValue(
+      *plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kSymbolId)),
+      symbol_id);
+  stats.AddStatValue(
+      *plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)), tf_op);
+  return metadata;
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceKeepsEventMetadataWithSameNameApart) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder plane(to->add_planes());
+    plane.SetName("p1");
+    XLineBuilder line = plane.GetOrCreateLine(1);
+    line.AddEvent(*AddFusionMetadata(plane, /*program_id=*/1, /*symbol_id=*/10,
+                                     "program1/MatMul"))
+        .SetOffsetNs(10);
+  }
+  {
+    XPlaneBuilder plane(from->add_planes());
+    plane.SetName("p1");
+    // Make the stat metadata IDs of `from` differ from those of `to`.
+    plane.GetOrCreateStatMetadata("padding");
+    XLineBuilder line = plane.GetOrCreateLine(1);
+    // Same op name as in `to`, but a different op of a different program.
+    line.AddEvent(*AddFusionMetadata(plane, /*program_id=*/2, /*symbol_id=*/20,
+                                     "program2/Conv"))
+        .SetOffsetNs(20);
+    // Same op name and stats as in `to`, but a different display_name (as for
+    // a derived async op).
+    line.AddEvent(*AddFusionMetadata(plane, /*program_id=*/1, /*symbol_id=*/10,
+                                     "program1/MatMul", "fusion.1.done"))
+        .SetOffsetNs(30);
+    // The same op as in `to`.
+    line.AddEvent(*AddFusionMetadata(plane, /*program_id=*/1, /*symbol_id=*/10,
+                                     "program1/MatMul"))
+        .SetOffsetNs(40);
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&to->planes(0));
+  int num_fusion_metadata = 0;
+  plane.ForEachEventMetadata([&](const XEventMetadataVisitor& metadata) {
+    if (metadata.Name() == "fusion.1") {
+      ++num_fusion_metadata;
+    }
+  });
+  EXPECT_EQ(num_fusion_metadata, 3);
+  std::vector<std::string> events;
+  plane.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      std::vector<std::string> fields;
+      if (event.HasDisplayName()) {
+        fields.push_back(absl::StrCat("display_name=", event.DisplayName()));
+      }
+      event.Metadata().ForEachStat([&](const XStatVisitor& stat) {
+        fields.push_back(absl::StrCat(stat.Name(), "=", stat.ToString()));
+      });
+      events.push_back(absl::StrJoin(fields, ","));
+    });
+  });
+  EXPECT_THAT(
+      events,
+      ElementsAre("program_id=1,symbol_id=10,tf_op=program1/MatMul",
+                  "program_id=2,symbol_id=20,tf_op=program2/Conv",
+                  "display_name=fusion.1.done,program_id=1,symbol_id=10,"
+                  "tf_op=program1/MatMul",
+                  "program_id=1,symbol_id=10,tf_op=program1/MatMul"));
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceDoesNotAssignEventMetadataIdZero) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    // `to` has stat metadata, but no event metadata yet.
+    p1.GetOrCreateStatMetadata("stat");
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    p2.GetOrCreateLine(1).AddEvent(*p2.GetOrCreateEventMetadata("event"));
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  const XPlane& merged = to->planes(0);
+  // ID 0 is the default metadata_id of an XEvent, so it must not be assigned.
+  EXPECT_FALSE(merged.event_metadata().contains(0));
+  ASSERT_EQ(merged.lines_size(), 1);
+  ASSERT_EQ(merged.lines(0).events_size(), 1);
+  const int64_t metadata_id = merged.lines(0).events(0).metadata_id();
+  EXPECT_EQ(metadata_id, 1);
+  ASSERT_TRUE(merged.event_metadata().contains(metadata_id));
+  EXPECT_EQ(merged.event_metadata().at(metadata_id).name(), "event");
 }
 
 TEST(XplaneUtilsTest, RemoveNonExistentLine) {

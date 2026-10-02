@@ -178,6 +178,25 @@ cc_library(
     ]),
 )
 
+tsl_cc_test(
+    name = "threadpool_listener_test",
+    srcs = ["threadpool_listener_test.cc"],
+    deps = [
+        ":threadpool_listener",
+        ":traceme_recorder_impl",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "//xla/tsl/profiler/utils:time_utils",
+        "//xla/tsl/profiler/utils:time_utils_impl",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:tracing",
+    ],
+)
+
 cc_library(
     name = "traceme_encode_benchmark",
     testonly = True,

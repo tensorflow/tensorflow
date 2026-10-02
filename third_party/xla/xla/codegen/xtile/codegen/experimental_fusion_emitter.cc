@@ -227,6 +227,51 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   return mlir::cast<TensorValue>(all_reduce_op.getResult(0));
 }
 
+absl::StatusOr<TensorValue> EmitReduceScatter(
+    EmitterContext& emitter_ctx,
+    const HloReduceScatterInstruction* reduce_scatter,
+    const ge::TiledHloInstruction& tiled_reduce_scatter, ValueRange operands) {
+  if (reduce_scatter->device_list()->replica_groups().empty()) {
+    return Internal(
+        "Triton emitting ReduceScatter (%s) without replica groups is not "
+        "supported.",
+        reduce_scatter->name());
+  }
+
+  llvm::SmallVector<int64_t> flattened_replica_group_ids;
+  for (const auto& replica_group : reduce_scatter->replica_groups()) {
+    for (const auto& replica_id : replica_group.replica_ids()) {
+      flattened_replica_group_ids.push_back(replica_id);
+    }
+  }
+
+  bool use_global_device_ids = reduce_scatter->use_global_device_ids();
+
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  ABSL_ASSIGN_OR_RETURN(auto output_element_type,
+                   xtile::PrimitiveTypeToMlirType(
+                       b, reduce_scatter->shape().element_type()));
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                   tiled_reduce_scatter.tile().GetStaticTileSizes());
+  auto output_type = mlir::RankedTensorType::get(GetPaddedTileSizes(tile_sizes),
+                                                 output_element_type);
+
+  auto replica_groups_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(reduce_scatter->replica_groups().size()),
+       static_cast<int64_t>(
+           reduce_scatter->replica_groups()[0].replica_ids_size())},
+      b.getI64Type());
+  auto replica_groups_attr = mlir::DenseIntElementsAttr::get(
+      replica_groups_type, flattened_replica_group_ids);
+  auto reduce_scatter_op = mlir::stablehlo::ReduceScatterOp::create(
+      b, output_type, operands[0], reduce_scatter->scatter_dimension(),
+      replica_groups_attr, /*channel_handle=*/nullptr, use_global_device_ids);
+
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(
+      b, reduce_scatter, reduce_scatter->to_apply(), reduce_scatter_op));
+  return mlir::cast<TensorValue>(reduce_scatter_op.getResult());
+}
+
 absl::StatusOr<TensorValue> EmitBroadcast(
     mlir::ImplicitLocOpBuilder& b,
     const ge::TiledHloInstruction& tiled_broadcast, TensorValue input) {
@@ -1959,6 +2004,11 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     }
     case HloOpcode::kPad: {
       return EmitPad(emitter_ctx, tiled_hlo);
+    }
+    case HloOpcode::kReduceScatter: {
+      return EmitReduceScatter(emitter_ctx,
+                               xla::Cast<HloReduceScatterInstruction>(hlo),
+                               tiled_hlo, operands);
     }
     case HloOpcode::kReshape: {
       ABSL_ASSIGN_OR_RETURN(auto logical_tile_sizes,

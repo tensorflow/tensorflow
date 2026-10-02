@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 #define DEBUG_TYPE "xla-translate"
 
@@ -6107,9 +6108,9 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
 
   // Only enable verifier in debug builds.
   bool enableVerifier = false;
-#ifndef NDEBUG
-  enableVerifier = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    enableVerifier = true;
+  }
   pm.enableVerifier(enableVerifier);
 
   mlir::mhlo::HloLegalizeToStablehloPassOptions options;
@@ -6155,9 +6156,9 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 
   // Only enable verifier in debug builds.
   bool enableVerifier = false;
-#ifndef NDEBUG
-  enableVerifier = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    enableVerifier = true;
+  }
   pm.enableVerifier(enableVerifier);
 
   mhlo::HloLegalizeToStablehloPassOptions shlo_pass_opts;

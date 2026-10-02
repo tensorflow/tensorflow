@@ -1,0 +1,63 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+# .github/workflows/presubmit_benchmark.yml
+name: Presubmit Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_filter:
+        description: "Regex to filter by benchmark name (e.g., 'gemma3_.*')."
+        required: false
+        type: string
+        default: ""
+      environment_filter:
+        description: "Regex to filter by environment configuration ID (e.g., 'gpu_.*')."
+        required: false
+        type: string
+        default: ""
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/presubmit_benchmark.yml'
+      - 'xla/tools/benchmarks/**'
+      - 'xla/tools/multihost_hlo_runner/**'
+      - 'xla/service/gpu/**'
+      - 'xla/backends/gpu/**'
+      - 'xla/stream_executor/cuda/**'
+      - 'xla/stream_executor/gpu/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  # Scope to the PR head ref so a new push cancels in-flight presubmit runs.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run_benchmarks:
+    name: Run XLA Presubmit Benchmarks
+    uses: google-ml-infra/bap/.github/workflows/run-benchmarks.yaml@aabe067ccf0612e9fe5dfb280176df43b12babf9
+    with:
+      registry_file: "xla/tools/benchmarks/benchmark_registry.pbtxt"
+      tag_filter: "presubmit"
+      bap_ref: "aabe067ccf0612e9fe5dfb280176df43b12babf9"
+      publish_metrics: false
+      benchmark_filter: ${{ inputs.benchmark_filter || '' }}
+      environment_filter: ${{ inputs.environment_filter || '' }}

@@ -210,31 +210,25 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   TF_LITE_ENSURE(context, v_val_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node = nullptr;
-  TfLiteRegistration* reg = nullptr;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
-
   bool is_seq_major = true;
-  if (reg && reg->builtin_code == kTfLiteBuiltinStablehloComposite) {
+  if (node.builtin_code == kTfLiteBuiltinStablehloComposite) {
     const auto* composite_params =
-        static_cast<const TfLiteStablehloCompositeParams*>(
-            tflite_node->builtin_data);
+        static_cast<const TfLiteStablehloCompositeParams*>(node.builtin_data);
     if (composite_params != nullptr && composite_params->name != nullptr) {
       if (strcmp(composite_params->name, "odml.sdpa_transposed") == 0) {
         is_seq_major = false;
       }
     }
-  } else if (reg && reg->builtin_code == kTfLiteBuiltinCustom &&
-             reg->custom_name != nullptr) {
-    if (strcmp(reg->custom_name, "odml.sdpa_transposed") == 0) {
+  } else if (node.builtin_code == kTfLiteBuiltinCustom &&
+             node.custom_name != nullptr) {
+    if (strcmp(node.custom_name, "odml.sdpa_transposed") == 0) {
       is_seq_major = false;
     }
   }
 
   float scale_val = 1.0f;
   bool scale_specified = false;
-  const flexbuffers::Map flexbuffer_map = GetFlexBufferMap(reg, tflite_node);
+  const flexbuffers::Map flexbuffer_map = GetFlexBufferMap(node);
   if (!flexbuffer_map["scale"].IsNull()) {
     scale_val = flexbuffer_map["scale"].AsFloat();
     scale_specified = true;

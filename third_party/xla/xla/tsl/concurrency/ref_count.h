@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/nullability.h"
+#include "tsl/platform/platform.h"
 
 namespace tsl {
 
@@ -34,7 +35,6 @@ template <typename Derived, typename Base>
 using DerivedFrom = typename std::enable_if_t<std::is_base_of_v<Base, Derived>>;
 }  // namespace internal
 
-#ifndef NDEBUG
 inline std::atomic<size_t> total_reference_counted_objects;
 
 // Return the total number of reference-counted objects that are currently
@@ -44,15 +44,15 @@ inline size_t GetNumReferenceCountedObjects() {
   return total_reference_counted_objects.load(std::memory_order_relaxed);
 }
 inline void AddNumReferenceCountedObjects() {
-  total_reference_counted_objects.fetch_add(1, std::memory_order_relaxed);
+  if constexpr (tsl::kIsDebugBuild) {
+    total_reference_counted_objects.fetch_add(1, std::memory_order_relaxed);
+  }
 }
 inline void DropNumReferenceCountedObjects() {
-  total_reference_counted_objects.fetch_sub(1, std::memory_order_relaxed);
+  if constexpr (tsl::kIsDebugBuild) {
+    total_reference_counted_objects.fetch_sub(1, std::memory_order_relaxed);
+  }
 }
-#else
-inline void AddNumReferenceCountedObjects() {}
-inline void DropNumReferenceCountedObjects() {}
-#endif
 
 // This class is a common base class for things that need an atomic reference
 // count for ownership management.

@@ -321,11 +321,13 @@ cc_library(
     srcs = ["command_buffer_cmd_emitter.cc"],
     hdrs = ["command_buffer_cmd_emitter.h"],
     deps = [
+        ":async_execution",
         ":async_thunk",
         ":command",
         ":command_executor",
         ":conditional_thunk",
         ":dynamic_slice_fusion_v2_thunk",
+        ":execution_stream_id",
         ":sequential_thunk",
         ":thunk",
         ":thunk_executor",
@@ -335,6 +337,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:vlog_is_on",
@@ -4906,6 +4909,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -5017,6 +5021,7 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform",
     ],
 )
 

@@ -930,7 +930,23 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
   if (parent() && parent()->has_entry_computation() &&
       parent()->entry_computation() == this) {
     if (!Shape::Equal().IgnoreLayout()(new_root_instruction->shape(),
-                                       root_instruction_->shape())) {
+                                       root_instruction_->shape()) &&
+        !Shape::Equal().IgnoreLayout()(
+            new_root_instruction->shape(),
+            parent()->input_output_alias_config().shape()) &&
+        !Shape::Equal().IgnoreLayout()(
+            new_root_instruction->shape(),
+            parent()->entry_computation_layout().result_shape())) {
+      // Do not remove this CHECK. Hitting it means a pass or caller is about
+      // to silently drop configured input/output aliases by changing the entry
+      // root shape. Fix the caller to update or clear the alias configuration
+      // explicitly instead of removing this check.
+      CHECK(!parent()->input_output_alias_config().OutputHasAnyAlias())
+          << "Cannot overwrite non-empty input_output_alias_config ("
+          << parent()->input_output_alias_config().ToShortString()
+          << ") when changing entry computation root from "
+          << root_instruction_->ToString() << " to "
+          << new_root_instruction->ToString();
       // Rebuild input output alias config now that we have a new output shape.
       parent()->input_output_alias_config() =
           HloInputOutputAliasConfig(new_root_instruction->shape());

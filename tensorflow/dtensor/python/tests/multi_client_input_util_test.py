@@ -492,8 +492,14 @@ class MultiClientDTensorDatasetTest(test_util.DTensorBaseTest):
 
     def get_results():
       # Run the DTensor client processes and get the DTensor dataset components.
-      with mp_context.Pool(NUM_CLIENTS) as pool:
+      # Do not use the pool as a context manager: Pool.__exit__ calls
+      # terminate(), which sends SIGTERM to the workers. DTensor clients
+      # install a preemption notifier that overrides the default SIGTERM
+      # action, so the workers would never exit and join() would hang.
+      pool = mp_context.Pool(NUM_CLIENTS)
+      try:
         results = pool.starmap(run_client, args)
+      finally:
         pool.close()
         pool.join()
 

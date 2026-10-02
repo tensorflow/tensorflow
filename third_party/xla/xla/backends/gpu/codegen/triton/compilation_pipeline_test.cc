@@ -58,6 +58,7 @@ TEST(CompilationPipelineTest, ContainsUnswitchLoopsCompositePass) {
 
   std::vector<std::string> pass_names = GetPassNames(pm);
   ASSERT_THAT(pass_names, Contains("TritonXLAUnswitchLoopsComposite"));
+  EXPECT_THAT(pass_names, Contains("TritonXLACollapseContiguousMinorDimsPass"));
 
   std::string pipeline_str;
   llvm::raw_string_ostream os(pipeline_str);

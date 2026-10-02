@@ -209,6 +209,9 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleExp(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual absl::Status HandleExp2(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual absl::Status HandleExpm1(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -225,6 +228,9 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleLog1p(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual absl::Status HandleLog2(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleCos(HloInstructionPtr hlo) {

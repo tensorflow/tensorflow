@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/numbers.h"
+#include "tsl/platform/platform.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -272,12 +273,12 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   // In debug builds we verify that all pending nodes are completed before
   // execute_event is marked available. We skip this check in non-debug builds
   // to avoid performance penalty of adding a waiter to the async value.
-#ifndef NDEBUG
-  execute_event.AndThen([state] {
-    auto cnt = state->pending_nodes.load(std::memory_order_acquire);
-    DCHECK_EQ(cnt, 0) << "All pending nodes must be completed";
-  });
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    execute_event.AndThen([state] {
+      auto cnt = state->pending_nodes.load(std::memory_order_acquire);
+      DCHECK_EQ(cnt, 0) << "All pending nodes must be completed";
+    });
+  }
 
   // When we kick-off execution we don't have to grab the session lock, as the
   // main thread is not counted towards the number of concurrent workers limit.

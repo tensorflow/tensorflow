@@ -58,6 +58,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:context",
     ],
 )
@@ -217,7 +218,10 @@ cc_library(
     name = "ref_count",
     hdrs = ["ref_count.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@com_google_absl//absl/base:nullability"],
+    deps = [
+        "@com_google_absl//absl/base:nullability",
+        "@tsl//tsl/platform",
+    ],
 )
 
 tsl_cc_test(

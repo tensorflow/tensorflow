@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -499,11 +500,13 @@ int64_t DotOpEmitter::EmitTiledLlvmIrGemv() {
 // We parallelize the GEMV computation to have at least this many FMA
 // instructions per task. In debug builds we prefer smaller tasks to test that
 // we correctly parallelize the loop.
-#ifdef NDEBUG
-  static constexpr int64_t kFmaPerTask = 1 << 19;  // 0.5M FMA/task
-#else
-  static constexpr int64_t kFmaPerTask = 1 << 12;  // 4096 FMA/task
-#endif
+  static constexpr int64_t kFmaPerTask = [] {
+    if constexpr (tsl::kIsDebugBuild) {
+      return 1 << 12;  // 4096 FMA/task
+    } else {
+      return 1 << 19;  // 0.5M FMA/task
+    }
+  }();
 
   // GEMV has very little data reuse, and we hit memory bandwidth bound
   // before we hit compute bound. So we limit the number of tasks to avoid

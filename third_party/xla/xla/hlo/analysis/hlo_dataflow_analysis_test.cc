@@ -409,6 +409,74 @@ ENTRY main {
   EXPECT_TRUE(analysis.GetValueDefinedAt(add).live_out_of_module());
 }
 
+TEST_P(HloDataflowAnalysisTest, CallInsideEmbeddedComputation) {
+  // A kCall nested inside a computation called in an embedded context (here
+  // the called computation of a custom-call) forwards the values of its
+  // callee's root, even though parameters in that context define their own
+  // values. The callee is additionally called from the entry computation so
+  // that its instructions are visited after the embedded call in the dataflow
+  // worklist (instructions reachable only through the custom-call get the
+  // lowest priority). The embedded call therefore has to be revisited once the
+  // callee's root value set is complete, otherwise its value set stays stale
+  // (empty at index {0}).
+  std::string hlo_str = R"(
+HloModule CallInsideEmbeddedComputation
+
+callee {
+  constant = f32[] constant(1.0)
+  ROOT tuple = (f32[]) tuple(constant)
+}
+
+embedded_computation {
+  embedded_param = f32[] parameter(0)
+  embedded_call = (f32[]) call(), to_apply=callee
+  embedded_gte = f32[] get-tuple-element(embedded_call), index=0
+  ROOT embedded_add = f32[] add(embedded_param, embedded_gte)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  entry_call = (f32[]) call(), to_apply=callee
+  entry_gte = f32[] get-tuple-element(entry_call), index=0
+  ROOT custom_call = f32[] custom-call(param, entry_gte), custom_call_target="foo", called_computations={embedded_computation}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  // Run the analysis directly, without flattening the call graph, so that the
+  // callee keeps both of its callers.
+  TF_ASSERT_OK_AND_ASSIGN(analysis_,
+                          HloDataflowAnalysis::Run(*module_, ssa_form));
+  const HloDataflowAnalysis& analysis = *analysis_;
+
+  const HloInstruction* constant = FindInstruction(module_.get(), "constant");
+  const HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  const HloInstruction* embedded_call =
+      FindInstruction(module_.get(), "embedded_call");
+  const HloInstruction* embedded_gte =
+      FindInstruction(module_.get(), "embedded_gte");
+  const HloInstruction* entry_call =
+      FindInstruction(module_.get(), "entry_call");
+  const HloInstruction* entry_gte = FindInstruction(module_.get(), "entry_gte");
+
+  // Both calls forward the values of the callee's root.
+  for (const HloInstruction* call : {embedded_call, entry_call}) {
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(call, /*index=*/{}));
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(call, /*index=*/{0}));
+    EXPECT_THAT(HloValuesAt(call, /*index=*/{}),
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(tuple)));
+    EXPECT_THAT(HloValuesAt(call, /*index=*/{0}),
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
+  }
+  EXPECT_THAT(HloValuesAt(embedded_gte),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
+  EXPECT_THAT(HloValuesAt(entry_gte),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
+}
+
 TEST_P(HloDataflowAnalysisTest, SingleWhile) {
   // Element 0 passes transparently through the body.
   std::string hlo_str = R"(

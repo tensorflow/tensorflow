@@ -203,15 +203,6 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
                                     .debug_options()
                                     .xla_allow_excess_precision();
 
-  // If we are rewriting the root instruction of the entry computation, we need
-  // to save and restore original input output alias config.
-  std::optional<HloInputOutputAliasConfig> alias_config;
-  HloModule* module = computation->parent();
-  if (is_root && module->has_entry_computation() &&
-      module->entry_computation() == computation) {
-    alias_config = module->input_output_alias_config();
-  }
-
   ShapeUtil::ForEachMutableSubshape(
       hlo->mutable_shape(), [&](Shape* subshape, const xla::ShapeIndex& index) {
         if (subshape->element_type() == from) {
@@ -271,9 +262,6 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
   }
   if (is_root) {
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
-    if (alias_config.has_value()) {
-      module->set_input_output_alias_config(*alias_config);
-    }
   }
   changed_ = true;
   return absl::OkStatus();

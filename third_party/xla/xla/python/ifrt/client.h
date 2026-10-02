@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/rtti.h"
+#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -64,6 +65,27 @@ using PlatformId = ::xla::PjRtPlatformId;
 // TODO(hyeontaek): Generalize DeviceAssignment or hide it from the top-level
 // API.
 using DeviceAssignment = ::xla::DeviceAssignment;
+
+// Abstract options for loading an `Executable` as `LoadedExecutable`.
+struct LoadOptions : RTTIExtends<LoadOptions, Serializable> {
+  LoadOptions() = default;
+
+  LoadOptions(DeviceListRef devices,
+              std::optional<std::vector<int>> outputs_bundle_slice_sizes)
+      : devices(std::move(devices)),
+        outputs_bundle_slice_sizes(std::move(outputs_bundle_slice_sizes)) {}
+
+  // The devices to load the executable onto.
+  DeviceListRef devices;
+
+  // When executing the program with `LoadedExecutable::ExecuteBundle()`, apply
+  // `Bundle::Slice()` to the execution output. If `std::nullopt`, the output is
+  // a single `Bundle` containing all output values. The sum of the slice sizes
+  // must match the number of output values.
+  std::optional<std::vector<int>> outputs_bundle_slice_sizes;
+
+  static char ID;  // NOLINT
+};
 
 // Represents an IFRT client. It wraps a runtime that interacts with computation
 // devices and memory attached to it.
@@ -438,6 +460,15 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;
+
+  // Loads executables onto devices as specified by `options`.
+  //
+  // `executables` and `options` must have the same size. `executables` may
+  // contain duplicates, e.g., when loading the same executable onto different
+  // sets of devices.
+  virtual absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
+      absl::Span<const ExecutableRef> executables,
+      absl::Span<std::unique_ptr<LoadOptions>> options) = 0;
 
   // Returns a topology that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(

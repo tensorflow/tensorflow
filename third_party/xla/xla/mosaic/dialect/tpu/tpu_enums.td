@@ -121,11 +121,17 @@ def TPU_MemorySpace : I32EnumAttr<"MemorySpace", "Memory space", [
 
 def TPU_ReductionKind : I32EnumAttr<"ReductionKind", "Reduction kind", [
   I32EnumAttrCase<"kSum", 0, "sum">,
-  I32EnumAttrCase<"kMax", 1, "max">,
-  I32EnumAttrCase<"kMin", 2, "min">,
+  I32EnumAttrCase<"kMax_DEPRECATED", 1, "max">,
+  I32EnumAttrCase<"kMin_DEPRECATED", 2, "min">,
   I32EnumAttrCase<"kArgMax", 3, "arg_max">,
   I32EnumAttrCase<"kArgMin", 4, "arg_min">,
-  I32EnumAttrCase<"kFindFirstSet", 5, "find_first_set">
+  I32EnumAttrCase<"kFindFirstSet", 5, "find_first_set">,
+  I32EnumAttrCase<"kMaxF", 6, "maxf">,
+  I32EnumAttrCase<"kMinF", 7, "minf">,
+  I32EnumAttrCase<"kMaxSI", 8, "maxsi">,
+  I32EnumAttrCase<"kMinSI", 9, "minsi">,
+  I32EnumAttrCase<"kMaxUI", 10, "maxui">,
+  I32EnumAttrCase<"kMinUI", 11, "minui">
 ]> {
     let genSpecializedAttr = 0;
     let cppNamespace = "::mlir::tpu";

@@ -940,6 +940,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+        "@tsl//tsl/platform",
     ],
 )
 

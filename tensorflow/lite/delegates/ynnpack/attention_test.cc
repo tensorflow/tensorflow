@@ -270,6 +270,99 @@ std::string PrintAttentionImplName(
   }
 }
 
+// Resizing an input after the delegate has been applied re-prepares the
+// delegate kernel outside of the delegate context, which forces it to rebuild
+// its YNNPACK subgraph without access to delegate-only TfLiteContext functions
+// such as GetNodeAndRegistration (b/568341993).
+TEST_P(AttentionTest, ResizeAfterDelegation) {
+  AttentionImpl impl = GetParam();
+  const int b = 1;
+  const int t = 4;
+  const int t_new = 2;
+  const int s = 8;
+  const int h = 16;
+  const int n = 2;
+  const int s_active = 5;
+  const float scale = 1.0f / std::sqrt(static_cast<float>(h));
+
+  TfLiteYNNPackDelegateOptions options = TfLiteYNNPackDelegateOptionsDefault();
+  options.num_threads = 1;
+  options.static_shape = true;
+
+  std::vector<float> q_data(b * n * t * h);
+  std::vector<float> k_data(b * n * s * h);
+  std::vector<float> v_data(b * n * h * s);
+  std::vector<float> mask_data(b * 1 * t * s);
+  for (size_t i = 0; i < q_data.size(); ++i) q_data[i] = 0.1f * (i % 10);
+  for (size_t i = 0; i < k_data.size(); ++i) k_data[i] = 0.2f * (i % 10);
+  for (size_t i = 0; i < v_data.size(); ++i) v_data[i] = 0.3f * (i % 10);
+  for (int i = 0; i < b * t; ++i) {
+    for (int j = 0; j < s; ++j) {
+      mask_data[i * s + j] = (j < s_active) ? 0.0f : -1e9f;
+    }
+  }
+
+  AttentionModel model(b, t, s, h, n, scale, /*transpose_io=*/false,
+                       /*use_delegate=*/true, options, impl);
+  model.PopulateTensor(model.query(), q_data);
+  model.PopulateTensor(model.key(), k_data);
+  model.PopulateTensor(model.value(), v_data);
+  if (model.runtime_bmm_params() != -1) {
+    model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  }
+  model.PopulateTensor(model.mask(), mask_data);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  // Shrink the query sequence length and re-allocate. This re-prepares the
+  // delegate kernel with new input shapes.
+  ASSERT_EQ(model.ResizeInputTensor(model.query(), {b, n, t_new, h}),
+            kTfLiteOk);
+  ASSERT_EQ(model.ResizeInputTensor(model.mask(), {b, 1, t_new, s}), kTfLiteOk);
+  ASSERT_EQ(model.AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> q_data_new(b * n * t_new * h);
+  std::vector<float> mask_data_new(b * 1 * t_new * s);
+  for (size_t i = 0; i < q_data_new.size(); ++i) {
+    q_data_new[i] = 0.15f * (i % 7);
+  }
+  for (int i = 0; i < b * t_new; ++i) {
+    for (int j = 0; j < s; ++j) {
+      mask_data_new[i * s + j] = (j < s_active) ? 0.0f : -1e9f;
+    }
+  }
+  model.PopulateTensor(model.query(), q_data_new);
+  model.PopulateTensor(model.key(), k_data);
+  model.PopulateTensor(model.value(), v_data);
+  if (model.runtime_bmm_params() != -1) {
+    model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+  }
+  model.PopulateTensor(model.mask(), mask_data_new);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  AttentionImpl ref_impl = (impl == AttentionImpl::kOdmlSdpa)
+                               ? AttentionImpl::kOdmlRuntimeBmm
+                               : impl;
+  AttentionModel model_ref(b, t_new, s, h, n, scale, /*transpose_io=*/false,
+                           /*use_delegate=*/false, options, ref_impl);
+  model_ref.PopulateTensor(model_ref.query(), q_data_new);
+  model_ref.PopulateTensor(model_ref.key(), k_data);
+  model_ref.PopulateTensor(model_ref.value(), v_data);
+  if (model_ref.runtime_bmm_params() != -1) {
+    model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+  }
+  model_ref.PopulateTensor(model_ref.mask(), mask_data_new);
+  ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
+
+  auto out_delegate = model.ExtractVector<float>(model.output());
+  auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
+  ASSERT_EQ(out_delegate.size(), out_ref.size());
+  for (size_t i = 0; i < out_delegate.size(); ++i) {
+    EXPECT_FALSE(std::isnan(out_delegate[i]));
+    EXPECT_FALSE(std::isnan(out_ref[i]));
+    EXPECT_NEAR(out_delegate[i], out_ref[i], 1e-3f);
+  }
+}
+
 TEST(AttentionGqaTest, OdmlSdpaTransposedGqaDecodeAndPrefill) {
   for (int t : {1, 4, 12, 20}) {
     for (int n_kv : {1, 2}) {

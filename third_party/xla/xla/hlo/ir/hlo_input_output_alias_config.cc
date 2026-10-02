@@ -48,6 +48,15 @@ bool HloInputOutputAliasConfig::OutputHasAlias(
   return alias_.element(output_index).has_value();
 }
 
+bool HloInputOutputAliasConfig::OutputHasAnyAlias() const {
+  for (const auto& [index, alias] : alias_) {
+    if (alias.has_value()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 absl::Status HloInputOutputAliasConfig::SetUpAlias(
     const ShapeIndex& output_index, int64_t param_number,
     const ShapeIndex& param_index,
