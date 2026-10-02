@@ -147,5 +147,6 @@ cc_library(
         "@llvm-project//mlir:UBDialect",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_passes_optimization",
+        "@tsl//tsl/platform",
     ],
 )

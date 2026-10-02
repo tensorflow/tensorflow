@@ -162,11 +162,26 @@ TEST_F(BuildAllReduceInfoTest, ReturnsOneShotStrategyForSmallS32) {
 
 TEST_F(BuildAllReduceInfoTest, ReturnsTwoShotStrategyForLargerF32) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {128, 1024}, HloOpcode::kAdd, {0, 1}),
+                        F32, {1024, 1024}, HloOpcode::kAdd, {0, 1}),
               IsOkAndHolds(AllOf(
                   Field(&AllReduceInfo::reduction_kind, ReductionKind::SUM),
                   Field(&AllReduceInfo::all_reduce_strategy,
                         AllReduceStrategy::kTwoShot))));
+}
+
+TEST_F(BuildAllReduceInfoTest, StrategyDependsOnReadSizeBytes) {
+  // 512 KB input (128K F32 elements):
+  // - On 2 devices: read_size_bytes = 1 MB <= 2 MB -> kOneShot.
+  // - On 8 devices: read_size_bytes = 4 MB > 2 MB -> kTwoShot.
+  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
+                        F32, {128, 1024}, HloOpcode::kAdd, {0, 1}),
+              IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                                 AllReduceStrategy::kOneShot)));
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false), F32,
+                {128, 1024}, HloOpcode::kAdd, {0, 1, 2, 3, 4, 5, 6, 7}),
+      IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                         AllReduceStrategy::kTwoShot)));
 }
 
 TEST_F(BuildAllReduceInfoTest, ReturnsMultimemStrategy) {
@@ -220,7 +235,7 @@ TEST_F(BuildAllReduceInfoTest, FailsForUnsupportedTypeCombination) {
 
 TEST_F(BuildAllReduceInfoTest, FailsForLargeInputs) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {2, 1024, 1024}, HloOpcode::kAdd, {0, 1}),
+                        F32, {8, 1024, 1024}, HloOpcode::kAdd, {0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("only supported for small inputs")));
 }

@@ -206,6 +206,8 @@ MakeTestPjRtStreamExecutorClient(
   attrs.attributes["allows_execute_recursion"] = true;
   attrs.attributes["use_stream_based_compaction"] = true;
   attrs.attributes["dump_on_deserialize"] = true;
+  attrs.attributes["should_stage_host_to_device_transfers"] =
+      should_stage_host_to_device_transfers;
   auto result = std::make_unique<PjRtStreamExecutorClient>(
       platform_id, std::move(platform_name), "<unknown>", process_index,
       std::move(topology), std::move(raw_client), std::move(kv_store),

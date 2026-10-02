@@ -375,7 +375,7 @@ TEST_P(CollectiveEmitterParameterizedTest,
   };
   DebugOptions debug_options;
   CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
-                                            debug_options);
+                                            debug_options, *gpu_topology_);
 
   ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
       []() { return CreateMlirContext(); });
@@ -399,7 +399,11 @@ INSTANTIATE_TEST_SUITE_P(
         {{ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(BF16, {200, 100}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(PRED, {200, 64}), HloOpcode::kAllReduce},
-         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllReduce}}),
+         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kReduceScatter},
+         {ShapeUtil::MakeShape(BF16, {200, 100}), HloOpcode::kReduceScatter},
+         {ShapeUtil::MakeShape(PRED, {200, 64}), HloOpcode::kReduceScatter},
+         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kReduceScatter}}),
     [](const ::testing::TestParamInfo<
         CollectiveEmitterParameterizedTest::ParamType>& info) {
       std::string op_prefix =

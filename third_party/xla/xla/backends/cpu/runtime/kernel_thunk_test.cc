@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/platform.h"
 
 namespace xla::cpu {
 namespace {
@@ -116,9 +117,9 @@ TEST(KernelThunkTest, AddF32Inline) {
 }
 
 TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
-#ifdef NDEBUG
-  GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
+  }
 
   auto in = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto out = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
@@ -151,9 +152,9 @@ TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
 }
 
 TEST(KernelThunkInvariantBuffersTest, ExtraInputOutputBufferSlice) {
-#ifdef NDEBUG
-  GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
+  }
 
   auto in_out = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   BufferAllocations allocations = CreateBufferAllocations(in_out);
@@ -186,9 +187,9 @@ TEST(KernelThunkInvariantBuffersTest, ExtraInputOutputBufferSlice) {
 // that incorrectly sets up aliases.
 TEST(KernelThunkInvariantBuffersTest,
      MemorySectionIncorrectlyMarkedAsInvariant) {
-#ifdef NDEBUG
-  GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
+  }
 
   // Thunk is correctly configured to have two arguments and the second marked
   // as invariant.

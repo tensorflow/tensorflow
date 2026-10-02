@@ -86,6 +86,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
@@ -453,7 +454,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
       std::move(params.buffer_allocations_debug_summary),
-      collective_use_minimal_resource));
+      collective_use_minimal_resource, std::move(params.gpu_topology)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -473,7 +474,8 @@ GpuExecutable::GpuExecutable(
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
     std::string buffer_allocations_debug_summary,
-    bool collective_use_minimal_resource)
+    bool collective_use_minimal_resource,
+    std::optional<GpuTopology> gpu_topology)
     : Executable(std::move(debug_module)),
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
@@ -512,7 +514,8 @@ GpuExecutable::GpuExecutable(
       cpu_target_machine_options_(std::move(cpu_target_machine_options)),
       buffer_allocations_debug_summary_(
           std::move(buffer_allocations_debug_summary)),
-      collective_use_minimal_resource_(collective_use_minimal_resource) {
+      collective_use_minimal_resource_(collective_use_minimal_resource),
+      gpu_topology_(std::move(gpu_topology)) {
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_proto_);
@@ -1481,6 +1484,12 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
         cpu_target_machine_options_->ToProto();
   }
 
+  if (!gpu_topology_.has_value()) {
+    return absl::FailedPreconditionError(
+        "Cannot serialize GpuExecutable without gpu_topology.");
+  }
+  *proto.mutable_gpu_topology() = gpu_topology_->ToProto();
+
   return proto;
 }
 
@@ -1552,14 +1561,24 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
                          proto.cpu_target_machine_options()));
   }
 
+  // TODO(b/567074116): Make `gpu_topology` mandatory in `FromProto` after April
+  // 2027, once executables serialized before cl/989587532 have aged out of the
+  // 6-month AOT backward compatibility window, before dropping `optional` from
+  // `GpuExecutableProto.gpu_topology`.
+  if (proto.has_gpu_topology()) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> gpu_topology,
+                     GpuTopology::FromProto(proto.gpu_topology()));
+    params.gpu_topology = *gpu_topology;
+  }
+
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
-      DeserializeThunkSequenceProto(thunk_sequence_proto, params.allocations,
-                                    params.debug_module.get(), platform_name,
-                                    gpu_compute_capability, symbol_resolver,
-                                    params.cpu_target_machine_options));
+      DeserializeThunkSequenceProto(
+          thunk_sequence_proto, params.allocations, params.debug_module.get(),
+          platform_name, gpu_compute_capability, params.gpu_topology,
+          symbol_resolver, params.cpu_target_machine_options));
 
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));

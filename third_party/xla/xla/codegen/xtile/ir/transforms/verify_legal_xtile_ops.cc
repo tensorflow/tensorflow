@@ -93,9 +93,10 @@ std::optional<absl::string_view> IsLegalStablehloOp(mlir::Operation* op) {
           mlir::stablehlo::MinOp, mlir::stablehlo::MulOp,
           mlir::stablehlo::NegOp, mlir::stablehlo::OrOp, mlir::stablehlo::PowOp,
           mlir::stablehlo::RealOp, mlir::stablehlo::ReduceOp,
-          mlir::stablehlo::RemOp, mlir::stablehlo::ReshapeOp,
-          mlir::stablehlo::ReturnOp, mlir::stablehlo::SubtractOp,
-          mlir::stablehlo::TransposeOp, mlir::stablehlo::XorOp
+          mlir::stablehlo::ReduceScatterOp, mlir::stablehlo::RemOp,
+          mlir::stablehlo::ReshapeOp, mlir::stablehlo::ReturnOp,
+          mlir::stablehlo::SubtractOp, mlir::stablehlo::TransposeOp,
+          mlir::stablehlo::XorOp
           // go/keep-sorted end
           >(op)) {
     return std::nullopt;

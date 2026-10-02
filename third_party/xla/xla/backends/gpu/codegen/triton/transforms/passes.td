@@ -302,4 +302,32 @@ def TritonXLAFoldReshapeAroundForLoopPass
   ];
 }
 
+def TritonXLACollapseContiguousMinorDimsPass
+    : Pass<"triton-xla-collapse-contiguous-minor-dims", "mlir::ModuleOp"> {
+  let summary = "Collapse contiguous minor dims of triton_xla extract/insert ops.";
+  let description = [{
+    Collapses contiguous minor source/destination dimensions of
+    `triton_xla.extract` and `triton_xla.insert` ops when the minor dimension is
+    fully extracted/inserted, enabling 128-bit vectorization of small (<16
+    bytes) minor dimensions in Triton. Inserts a `tt.reshape` between the
+    collapsed and original tile shapes when needed.
+
+    Preconditions (assuming m = rank - 1, i.e. the minormost dimension):
+    - Default row-major layout on the merged dimensions
+      (layout[0] == rank - 1 and layout[1] == layout[0] - 1).
+    - Full minor tile (sizes[m] == shape[m]).
+    - Zero minor offset (offsets[m] == 0).
+    - Unit strides on both dimensions (strides[m] == 1 and strides[m - 1] == 1).
+    - Merged dimension and constant merged offset do not exceed INT32_MAX.
+
+    Gate:
+    - Minor tile size is less than 128 bits (sizes[m] * bit_width < 128).
+  }];
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::triton::TritonDialect",
+    "::xla::XlaDialect",
+  ];
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

@@ -51,11 +51,11 @@ module @reshard_with_donation {
   func.func public @main(%arg0: !array0) -> (!array1)
       attributes {ifrt.function} {
     // CHECK: ifrt.Call @reshard_4784300543980450571::@main(%arg0) on devices [0, 1, 2]
+    // CHECK-SAME: <donated_input_indices = [0]>
     // CHECK-SAME: {
     // CHECK-DAG:    ifrt.module_type = "mpmd_reshard"
-    // CHECK-DAG:    donated_input_indices = array<i32: 0>
     // CHECK-SAME: }
-    %0, %ctrl_0 = ifrt.Reshard(%arg0) {donated=true} : (!array0) -> !array1
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) <donated=true> : (!array0) -> !array1
     return %0 : !array1
   }
 

@@ -1066,6 +1066,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       }
       return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder,
                                            attributes);
+    case HloOpcode::kExp2:
+      return MapElementwiseOp<mhlo::Exp2Op>(arg_types, operands, builder);
     case HloOpcode::kExpm1:
       return MapElementwiseOp<mhlo::Expm1Op>(arg_types, operands, builder);
     case HloOpcode::kFloor:
@@ -1086,6 +1088,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
                                            attributes);
     case HloOpcode::kLog1p:
       return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
+    case HloOpcode::kLog2:
+      return MapElementwiseOp<mhlo::Log2Op>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
       return MapElementwiseOp<mhlo::LogisticOp>(arg_types, operands, builder);
     case HloOpcode::kMap: {

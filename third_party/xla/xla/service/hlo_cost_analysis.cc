@@ -170,9 +170,11 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
       opcode == HloOpcode::kCosh ||
       opcode == HloOpcode::kErf ||
       opcode == HloOpcode::kExp ||
+      opcode == HloOpcode::kExp2 ||
       opcode == HloOpcode::kExpm1 ||
       opcode == HloOpcode::kLog ||
       opcode == HloOpcode::kLog1p ||
+      opcode == HloOpcode::kLog2 ||
       opcode == HloOpcode::kLogistic ||
       opcode == HloOpcode::kPower ||
       opcode == HloOpcode::kRsqrt ||

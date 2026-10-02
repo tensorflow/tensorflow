@@ -1217,7 +1217,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
   Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
-      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMin, mask, 0)),
+      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMinUI, mask, 0)),
       StatusIs(
           _,
           HasSubstr(
@@ -1256,6 +1256,10 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kArgMax, mask, 0)),
       StatusIs(_,
                HasSubstr("Only sum, max and min reductions are supported.")));
+  ASSERT_THAT(
+      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMaxF, mask, 0)),
+      StatusIs(
+          _, HasSubstr("maxf and minf reductions require float element type")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
@@ -1265,7 +1269,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
   Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
-      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMin, mask, 0)),
+      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMinUI, mask, 0)),
       StatusIs(
           _,
           HasSubstr("Only sum reduction is supported for i1 vector inputs.")));
@@ -1288,7 +1292,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationInvalidMaskRank) {
   Value mask = ConstantI1Vector(/*shape=*/{1, 8}, /*values=*/{true});
 
   ASSERT_THAT(
-      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMax, mask, 0)),
+      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMaxUI, mask, 0)),
       StatusIs(
           _,
           HasSubstr(
@@ -1301,7 +1305,7 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationInvalidMaskShape) {
   Value mask = ConstantI1Vector(/*shape=*/{16}, /*values=*/{true});
 
   ASSERT_THAT(
-      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMax, mask, 1)),
+      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMaxUI, mask, 1)),
       StatusIs(_, HasSubstr("Mask and input mismatch. Expected mask of "
                             "length: 8, but got 16.")));
 }
@@ -1312,10 +1316,10 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest, ScanVerificationInvalidDimension) {
   Value mask = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
 
   ASSERT_THAT(
-      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMax, mask, -1)),
+      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMaxUI, mask, -1)),
       StatusIs(_, HasSubstr("Dimension must be in [0, rank).")));
   ASSERT_THAT(
-      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMax, mask, 1)),
+      VerifyOp(Create<ScanOp>(dst, src, tpu::ReductionKind::kMaxUI, mask, 1)),
       StatusIs(_, HasSubstr("Dimension must be in [0, rank).")));
 }
 
@@ -2193,6 +2197,38 @@ TEST_F(TpuOpsVerificationTest, ReduceOpDuplicateDims) {
       VerifyOp(reduce),
       StatusIs(_, HasSubstr("Reduced dimension 0 is present more than once")));
 }
+
+TEST_F(TpuOpsVerificationTest, ReduceOpReductionKindElementType) {
+  Value f32_input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  Value i32_input = ConstantI32Vector(/*shape=*/{100, 200}, /*values=*/{1});
+  Type f32_out_ty = VectorType::get({1, 200}, builder().getF32Type());
+  Type i32_out_ty = VectorType::get({1, 200}, builder().getI32Type());
+  auto dims = builder().getDenseI64ArrayAttr({0});
+
+  ASSERT_OK(VerifyOp(Create<ReduceOp>(
+      f32_out_ty, f32_input, dims,
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kMaxF))));
+  ASSERT_OK(VerifyOp(Create<ReduceOp>(
+      i32_out_ty, i32_input, dims,
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kMaxSI))));
+  ASSERT_OK(VerifyOp(Create<ReduceOp>(
+      i32_out_ty, i32_input, dims,
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kMaxUI))));
+
+  ASSERT_THAT(
+      VerifyOp(Create<ReduceOp>(f32_out_ty, f32_input, dims,
+                                ReductionKindAttr::get(builder().getContext(),
+                                                       ReductionKind::kMaxSI))),
+      StatusIs(_, HasSubstr("maxsi, minsi, maxui and minui reductions require "
+                            "integer element type")));
+  ASSERT_THAT(
+      VerifyOp(Create<ReduceOp>(i32_out_ty, i32_input, dims,
+                                ReductionKindAttr::get(builder().getContext(),
+                                                       ReductionKind::kMaxF))),
+      StatusIs(_, HasSubstr("maxf and minf reductions require float element "
+                            "type")));
+}
+
 TEST_F(TpuOpsVerificationTest, ConvOpVerificationWorks) {
   Value lhs = ConstantF32Vector({1, 8, 128}, {1.0f});
   Value rhs = ConstantF32Vector({3, 128, 128}, {1.0f});

@@ -937,7 +937,7 @@ CollectiveKernelThunk::FromProto(
         {KernelArgType::kScratchBuffer, /*index=*/1}};
     kernel_spec.codegen_config.sync_count_increment =
         1 + static_cast<uint32_t>(GetAllReduceStrategy(
-                input_size_bytes, /*is_multimem_enabled=*/false));
+                input_size_bytes, group_size, /*is_multimem_enabled=*/false));
     // Legacy kernels read the host-provided invocation count.
     kernel_spec.codegen_config.device_sync_count = false;
   }

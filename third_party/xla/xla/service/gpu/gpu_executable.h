@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -134,6 +135,7 @@ class GpuExecutable : public Executable {
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options;
     BufferAssignmentProto buffer_assignment_proto;
     std::string buffer_allocations_debug_summary;
+    std::optional<GpuTopology> gpu_topology;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -270,6 +272,12 @@ class GpuExecutable : public Executable {
     return cpu_target_machine_options_;
   }
 
+  // The GPU topology the executable was compiled for. Not set for executables
+  // deserialized from protos that predate the `gpu_topology` field.
+  const std::optional<GpuTopology>& gpu_topology() const {
+    return gpu_topology_;
+  }
+
  private:
   // Additional streams borrowed at run time for the execution.
   struct BorrowedStreams {
@@ -296,7 +304,8 @@ class GpuExecutable : public Executable {
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       BufferAssignmentProto buffer_assignment_proto,
       std::string buffer_allocations_debug_summary,
-      bool collective_use_minimal_resource);
+      bool collective_use_minimal_resource,
+      std::optional<GpuTopology> gpu_topology);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -422,6 +431,9 @@ class GpuExecutable : public Executable {
   std::string buffer_allocations_debug_summary_;
 
   const bool collective_use_minimal_resource_;
+
+  // The GPU topology the executable was compiled for, if known.
+  std::optional<GpuTopology> gpu_topology_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

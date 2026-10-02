@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -64,6 +65,12 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+GpuTopology SingleDeviceGpuTopology() {
+  return GpuTopology(/*platform_version=*/"", /*num_partitions=*/1,
+                     /*num_hosts_per_partition=*/1,
+                     /*num_devices_per_host=*/1);
+}
+
 absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
     const ThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
@@ -73,10 +80,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
         symbol_resolver = std::nullopt) {
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.add_thunks() = thunk_proto;
-  ABSL_ASSIGN_OR_RETURN(ThunkSequence sequence,
-                   DeserializeThunkSequenceProto(
-                       thunk_sequence_proto, buffer_allocations, hlo_module,
-                       platform_name, gpu_compute_capability, symbol_resolver));
+  ABSL_ASSIGN_OR_RETURN(
+      ThunkSequence sequence,
+      DeserializeThunkSequenceProto(
+          thunk_sequence_proto, buffer_allocations, hlo_module, platform_name,
+          gpu_compute_capability, SingleDeviceGpuTopology(), symbol_resolver));
   return std::move(sequence.front());
 }
 
@@ -1316,7 +1324,8 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
       ThunkSequence sequence,
       DeserializeThunkSequenceProto(thunk_protos, /*buffer_allocations=*/{},
                                     /*hlo_module=*/nullptr, kTestPlatformName,
-                                    se::GpuComputeCapability()));
+                                    se::GpuComputeCapability(),
+                                    SingleDeviceGpuTopology()));
 
   ASSERT_EQ(sequence.size(), 2);
   EXPECT_EQ(sequence[0]->kind(), Kind::kAsyncStart);
@@ -1367,7 +1376,8 @@ TEST(ThunkProtoDeserializationTest, AsyncStartThunkMemcpyStreamRoundTrip) {
         ThunkSequence sequence,
         DeserializeThunkSequenceProto(thunk_protos, /*buffer_allocations=*/{},
                                       /*hlo_module=*/nullptr, kTestPlatformName,
-                                      se::GpuComputeCapability()));
+                                      se::GpuComputeCapability(),
+                                      SingleDeviceGpuTopology()));
 
     ASSERT_EQ(sequence.size(), 2);
     auto* deserialized_start =

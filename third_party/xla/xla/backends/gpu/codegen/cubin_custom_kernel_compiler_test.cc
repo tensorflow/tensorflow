@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -57,6 +58,12 @@ namespace {
 using ::xla::xtile::BlockLevelFusionConfig;
 using ::xla::xtile::BlockLevelParameters;
 
+GpuTopology SingleDeviceGpuTopology() {
+  return GpuTopology(/*platform_version=*/"", /*num_partitions=*/1,
+                     /*num_hosts_per_partition=*/1,
+                     /*num_devices_per_host=*/1);
+}
+
 TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
   int compiler_invoked = 0;
   auto llvm_compiler =
@@ -67,8 +74,10 @@ TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
   };
 
   DebugOptions debug_options;
+  GpuTopology gpu_topology = SingleDeviceGpuTopology();
   CubinCustomKernelCompiler kernel_compiler(
-      llvm_compiler, TestGpuDeviceInfo::H100SXMDeviceInfo(), debug_options);
+      llvm_compiler, TestGpuDeviceInfo::H100SXMDeviceInfo(), debug_options,
+      gpu_topology);
 
   int hook_invoked = 0;
   kernel_compiler.SetPreOptimizationHook(
@@ -124,8 +133,10 @@ module {
     return std::vector<uint8_t>{1};
   };
   DebugOptions debug_options;
+  GpuTopology gpu_topology = SingleDeviceGpuTopology();
   CubinCustomKernelCompiler kernel_compiler(
-      llvm_compiler, TestGpuDeviceInfo::H100SXMDeviceInfo(), debug_options);
+      llvm_compiler, TestGpuDeviceInfo::H100SXMDeviceInfo(), debug_options,
+      gpu_topology);
 
   llvm::Triple triple(nvptx::TargetTriple());
   std::string data_layout = nvptx::DataLayout();

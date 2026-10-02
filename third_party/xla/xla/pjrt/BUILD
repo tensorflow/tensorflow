@@ -834,6 +834,7 @@ cc_library(
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
+        "@tsl//tsl/platform",
     ],
 )
 

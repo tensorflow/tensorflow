@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -507,12 +508,12 @@ ENTRY e {
          {"$rhs_contracting_dim", rhs_k_minor ? "1" : "0"}});
     if (scale_type == F8E8M0FNU && block_size == 16 &&
         GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
-#ifndef NDEBUG
-      EXPECT_DEATH(
-          { (void)GetOptimizedModule(hlo); },
-          "MMAv5 with kind=mxf4nvf4 does not support transpose");
-      return;
-#endif
+      if constexpr (tsl::kIsDebugBuild) {
+        EXPECT_DEATH(
+            { (void)GetOptimizedModule(hlo); },
+            "MMAv5 with kind=mxf4nvf4 does not support transpose");
+        return;
+      }
     }
     ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(hlo));
     HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
@@ -1284,12 +1285,12 @@ ENTRY e {
 
   if (param.scale_type == F8E8M0FNU && param.block_size == 16 &&
       GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
-#ifndef NDEBUG
-    EXPECT_DEATH(
-        { (void)GetOptimizedModule(hlo); },
-        "MMAv5 with kind=mxf4nvf4 does not support transpose");
-    return;
-#endif
+    if constexpr (tsl::kIsDebugBuild) {
+      EXPECT_DEATH(
+          { (void)GetOptimizedModule(hlo); },
+          "MMAv5 with kind=mxf4nvf4 does not support transpose");
+      return;
+    }
   }
 
   std::string optimized_hlo = "N/A";

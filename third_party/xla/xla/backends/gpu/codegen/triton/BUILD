@@ -339,6 +339,7 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
         "@triton//:TritonTransforms",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
     ],
 )

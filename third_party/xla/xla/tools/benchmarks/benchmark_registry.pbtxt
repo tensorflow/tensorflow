@@ -358,3 +358,54 @@ benchmarks {
     }
   }
 }
+
+benchmarks {
+  name: "nv_maxtext_llama3_8b_1n8g_after_spmd_partitioner"
+  description: "Nvidia benchmark for MaxText llama3-8b, 1 node x 8 GPU FSDP, jit_train_step after_spmd_partitioner. Captured with scan_layers=True, remat_policy=minimal_with_context, per_device_batch_size=1, max_target_length=4096, attention=cudnn_flash_jax. Runtime flags mirror JAX_OPTIMIZATION_LEVEL=O1."
+  owner: "Sevin-F@"
+
+  workload {
+    action: "./user_repo/xla/tools/benchmarks/hlo_workload_executor"
+    action_inputs {
+      key: "hlo_path"
+      value: "user_repo/xla/tools/benchmarks/hlo/nv_maxtext_llama3_8b_1n8g_after_spmd_partitioner.hlo"
+    }
+    action_inputs {
+      key: "runtime_flags"
+      value: "--num_repeats=5 --run_single_shard_id=0 --hlo_argument_mode=use_zeros_as_input --xla_gpu_enable_latency_hiding_scheduler --xla_gpu_pipeline_all_gather=on --xla_gpu_pipeline_all_reduce=on --xla_gpu_pipeline_reduce_scatter=on --xla_gpu_enable_while_loop_double_buffering --xla_gpu_enable_analytical_sol_latency_estimator"
+    }
+  }
+
+  environment_configs {
+    id: "gpu_b200"
+    runner_label: "linux-x86-a4-224-b200-1gpu"
+    container_image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda13.2-cudnn9.15:latest"
+    workload_action_inputs {
+      key: "hardware_category"
+      value: "GPU_B200"
+    }
+    tags: "presubmit"
+
+    metrics {
+      name: "GPU_DEVICE_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+      }
+    }
+    metrics {
+      name: "GPU_DEVICE_MEMCPY_TIME"
+      unit: "ms"
+      stats {
+        stat: MEDIAN
+      }
+    }
+    metrics {
+      name: "PEAK_GPU_MEMORY"
+      unit: "GB"
+      stats {
+        stat: MEDIAN
+      }
+    }
+  }
+}

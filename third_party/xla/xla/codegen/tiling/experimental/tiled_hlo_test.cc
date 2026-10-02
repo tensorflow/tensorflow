@@ -399,13 +399,13 @@ Root tiles:
 Tiled HLO:
   concatenate.tile_0 = concatenate(p0.1.tile_0, p1.1.tile_0, p2.1.tile_0)  offsets [tid_0 * 3] sizes [3] strides [1] upper bounds [18]
   region #0 {
-    p0.1.tile_0 = parameter(0)  offsets [tid_0 * 3] sizes [3] strides [1] upper bounds [6]
+    p0.1.tile_0 = parameter(0)  offsets [tid_0 * 3] sizes [3] strides [1] upper bounds [6] constraints {tid_0 * 3 in [0, 5]}
   }
   region #1 {
-    p1.1.tile_0 = parameter(1)  offsets [tid_0 * 3 - 6] sizes [3] strides [1] upper bounds [6]
+    p1.1.tile_0 = parameter(1)  offsets [tid_0 * 3 - 6] sizes [3] strides [1] upper bounds [6] constraints {tid_0 * 3 - 6 in [0, 5]}
   }
   region #2 {
-    p2.1.tile_0 = parameter(2)  offsets [tid_0 * 3 - 12] sizes [3] strides [1] upper bounds [6]
+    p2.1.tile_0 = parameter(2)  offsets [tid_0 * 3 - 12] sizes [3] strides [1] upper bounds [6] constraints {tid_0 * 3 - 12 in [0, 5]}
   }
   )"));
 
@@ -413,6 +413,36 @@ Tiled HLO:
               Contains(IsHloWithOperands(
                   HloOpcode::kConcatenate,
                   std::vector<HloOpcode>(3, HloOpcode::kParameter))));
+}
+
+TEST_P(TileAnalysisTest, ConcatenateWithIdenticalOperandsNotDeduplicated) {
+  ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_computation, ParseAndTile(
+                                                                  R"hlo(
+    concatenate {
+      p0 = bf16[6] parameter(0)
+      ROOT concatenate = bf16[12] concatenate(p0, p0), dimensions={0}
+    }
+
+    ENTRY main {
+      p0 = bf16[6] parameter(0)
+      ROOT fusion = bf16[12] fusion(p0),
+        kind=kCustom, calls=concatenate
+    })hlo",
+                                                                  {6}));
+  tiled_computation.Simplify();
+
+  const TiledHloInstruction* concat_root = tiled_computation.roots()[0];
+  ASSERT_EQ(concat_root->operands().size(), 2);
+  const TiledHloInstruction* op0 = concat_root->operand(0);
+  const TiledHloInstruction* op1 = concat_root->operand(1);
+
+  // Both operands simplify to the same dim tiles (offset 0, size 6).
+  EXPECT_EQ(op0->tile().dim_tiles(), op1->tile().dim_tiles());
+  // But they have different constraints, so their tiles are not equal and they
+  // must not be deduplicated into the same instruction.
+  EXPECT_NE(op0->tile().constraints(), op1->tile().constraints());
+  EXPECT_NE(op0->tile(), op1->tile());
+  EXPECT_NE(op0, op1);
 }
 
 TEST_P(TileAnalysisTest, DuplicateRegionRoots) {
