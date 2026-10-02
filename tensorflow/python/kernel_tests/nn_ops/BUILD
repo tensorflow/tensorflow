@@ -156,10 +156,13 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["conv1d_test.py"],
     deps = [
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",

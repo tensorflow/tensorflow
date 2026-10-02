@@ -21,6 +21,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -48,24 +50,6 @@ using dnnl::stream;
 
 namespace tensorflow {
 
-inline absl::Status CheckWindowFitsInput(int64_t input, int64_t filter,
-                                         int64_t dilation, int64_t pad_before,
-                                         int64_t pad_after, Padding padding) {
-  if (padding != Padding::VALID && padding != Padding::EXPLICIT) {
-    return absl::OkStatus();
-  }
-  const int64_t effective_filter_size = (filter - 1) * dilation + 1;
-  const int64_t padded = input + pad_before + pad_after;
-  if (input != 0 && padded < effective_filter_size) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "input_size + padding (", padded,
-        ") must be at least effective_filter_size (", effective_filter_size,
-        ") for ", padding == Padding::VALID ? "VALID" : "EXPLICIT",
-        " padding."));
-  }
-  return absl::OkStatus();
-}
-
 #ifndef ENABLE_ONEDNN_V3
 // Op descriptor is no longer supported in oneDNN v3.x. Instead, primitive
 // descriptor will directly accept primitive parameters during creation.
@@ -82,6 +66,24 @@ class MklDnnConvUtil {
   TensorFormat data_format_;
 
  public:
+  static absl::Status CheckWindowFitsInput(
+      int64_t input, int64_t filter, int64_t dilation, int64_t pad_before,
+      int64_t pad_after, Padding padding) {
+    if (padding != Padding::VALID && padding != Padding::EXPLICIT) {
+      return absl::OkStatus();
+    }
+    const int64_t effective_filter_size = (filter - 1) * dilation + 1;
+    const int64_t padded = input + pad_before + pad_after;
+    if (input != 0 && padded < effective_filter_size) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "input_size + padding (", padded,
+          ") must be at least effective_filter_size (", effective_filter_size,
+          ") for ", padding == Padding::VALID ? "VALID" : "EXPLICIT",
+          " padding."));
+    }
+    return absl::OkStatus();
+  }
+
   MklDnnConvUtil(OpKernelContext* context, const std::vector<int32>& strides,
                  Padding pad, TensorFormat fm,
                  const std::vector<int32>& dilations, bool is_depthwise = false)
@@ -472,11 +474,11 @@ class MklDnnConvUtil {
                          input_cols, filter_cols, dilation_cols, stride_cols,
                          padding_type, &out_cols, &pad_left, &pad_right));
       OP_REQUIRES_OK(context_,
-                     CheckWindowFitsInput(input_rows, filter_rows,
+                     MklDnnConvUtil::CheckWindowFitsInput(input_rows, filter_rows,
                                           dilation_rows, pad_top, pad_bottom,
                                           padding_type));
       OP_REQUIRES_OK(context_,
-                     CheckWindowFitsInput(input_cols, filter_cols,
+                     MklDnnConvUtil::CheckWindowFitsInput(input_cols, filter_cols,
                                           dilation_cols, pad_left, pad_right,
                                           padding_type));
     } else {
@@ -505,15 +507,15 @@ class MklDnnConvUtil {
                          input_cols, filter_cols, dilation_cols, stride_cols,
                          padding_type, &out_cols, &pad_left, &pad_right));
       OP_REQUIRES_OK(context_,
-                     CheckWindowFitsInput(input_planes, filter_planes,
+                     MklDnnConvUtil::CheckWindowFitsInput(input_planes, filter_planes,
                                           dilation_planes, pad_front, pad_back,
                                           padding_type));
       OP_REQUIRES_OK(context_,
-                     CheckWindowFitsInput(input_rows, filter_rows,
+                     MklDnnConvUtil::CheckWindowFitsInput(input_rows, filter_rows,
                                           dilation_rows, pad_top, pad_bottom,
                                           padding_type));
       OP_REQUIRES_OK(context_,
-                     CheckWindowFitsInput(input_cols, filter_cols,
+                     MklDnnConvUtil::CheckWindowFitsInput(input_cols, filter_cols,
                                           dilation_cols, pad_left, pad_right,
                                           padding_type));
     }
