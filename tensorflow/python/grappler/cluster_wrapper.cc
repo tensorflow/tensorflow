@@ -170,26 +170,22 @@ PYBIND11_MODULE(
                 absl::InvalidArgumentError("Cluster cannot be None."));
           }
 
-          std::vector<std::pair<std::string, tensorflow::DeviceProperties>>
-              devices;
-          {
-            const auto& cluster_devices = cluster->GetDevices();
-            devices.reserve(cluster_devices.size());
-            for (const auto& dev : cluster_devices) {
-              devices.emplace_back(dev.first, dev.second);
-            }
+          const auto& cluster_devices = cluster->GetDevices();
+          std::vector<std::string> device_names;
+          device_names.reserve(cluster_devices.size());
+          for (const auto& dev : cluster_devices) {
+            device_names.push_back(dev.first);
           }
-          std::sort(devices.begin(), devices.end(),
-                    [](const auto& lhs, const auto& rhs) {
-                      return lhs.first < rhs.first;
-                    });
+          std::sort(device_names.begin(), device_names.end());
 
           std::vector<py::bytes> named_devices;
-          named_devices.reserve(devices.size());
-          for (const auto& dev : devices) {
+          named_devices.reserve(device_names.size());
+          for (const std::string& name : device_names) {
+            const auto it = cluster_devices.find(name);
+            DCHECK(it != cluster_devices.end());
             tensorflow::NamedDevice d;
-            d.set_name(dev.first);
-            *d.mutable_properties() = dev.second;
+            d.set_name(name);
+            *d.mutable_properties() = it->second;
             named_devices.push_back(d.SerializeAsString());
           }
           return named_devices;
