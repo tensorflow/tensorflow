@@ -138,61 +138,28 @@ class Conv1DTest(test.TestCase):
           padding="VALID",
           dilations=10)
 
+  @test_util.disable_xla("Runtime check is in the standard CPU/GPU kernels")
   def testInvalidDilationValidPaddingRaisesDynamic(self):
-    # XLA compilation bypasses the standard CPU/GPU kernels where the runtime
-    # check is located.
-    if test_util.is_xla_enabled():
-      return
-    # 2. Dynamic shape validation fails during execution (runtime).
-    if context.executing_eagerly():
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[2, None, 3], dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=[2, 3, 1], dtype=dtypes.float32),
+        ]
+    )
+    def run_conv(x, filters):
+      return nn_ops.conv1d(x, filters, stride=1, padding="VALID", dilations=10)
 
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[2, None, 3], dtype=dtypes.float32),
-          tensor_spec.TensorSpec(shape=[2, 3, 1], dtype=dtypes.float32),
-          tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)
-      ])
-      def run_conv(x, filters, length):
-        x_dynamic = x[:, :length, :]
-        return nn_ops.conv1d(
-            x_dynamic,
-            filters,
-            stride=1,
-            padding="VALID",
-            dilations=10)
-
-      x_val = np.zeros([2, 15, 3], dtype=np.float32)
-      filters_val = np.zeros([2, 3, 1], dtype=np.float32)
-
-      dyn_len = array_ops.identity(constant_op.constant(10))
-
-      with self.assertRaisesRegex(
-          errors.InvalidArgumentError,
-          "(Negative dimension size|must be at least effective_filter_size)"):
-        self.evaluate(run_conv(x_val, filters_val, dyn_len))
-
-    else:
-      with self.cached_session() as sess:
-        x = array_ops.placeholder(dtypes.float32, shape=[2, None, 3])
-        filters = array_ops.placeholder(dtypes.float32,
-                                        shape=[2, 3, 1])
-
-        output = nn_ops.conv1d(
-            x,
-            filters,
-            stride=1,
-            padding="VALID",
-            dilations=10)
-
-        x_val = np.zeros([2, 10, 3], dtype=np.float32)
-        filters_val = np.zeros([2, 3, 1], dtype=np.float32)
-
-        with self.assertRaisesRegex(
-            errors.InvalidArgumentError,
-            "(Negative dimension size|must be at least effective_filter_size)"):
-          sess.run(output, feed_dict={
-              x: x_val,
-              filters: filters_val,
-          })
+    # Eager execution keeps the traced dynamic shape, so only the runtime
+    # kernel check can catch the invalid configuration.
+    with context.eager_mode(), self.assertRaisesRegex(
+        errors.InvalidArgumentError, "must be at least effective_filter_size"
+    ):
+      self.evaluate(
+          run_conv(
+              constant_op.constant(np.zeros([2, 10, 3], np.float32)),
+              constant_op.constant(np.zeros([2, 3, 1], np.float32)),
+          )
+      )
 
 
 if __name__ == "__main__":

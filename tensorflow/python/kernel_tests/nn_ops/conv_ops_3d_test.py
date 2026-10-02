@@ -19,10 +19,13 @@ import math
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -32,7 +35,6 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.eager import context
 
 
 def DtypesToTest(use_gpu):
@@ -689,6 +691,34 @@ class Conv3DTest(parameterized.TestCase, test.TestCase):
         use_gpu=use_gpu,
         op_name=op_name,
     )
+
+  @test_util.disable_xla("Runtime check is in the standard CPU/GPU kernels")
+  def testInputSmallerThanFilterValidPaddingDynamic(self):
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(
+                shape=[1, None, 4, 4, 1], dtype=dtypes.float32),
+            tensor_spec.TensorSpec(
+                shape=[3, 1, 1, 1, 1], dtype=dtypes.float32),
+        ]
+    )
+    def run_conv(x, filters):
+      return nn_ops.conv3d(
+          x,
+          filters,
+          strides=[1, 1, 1, 1, 1],
+          padding="VALID")
+
+    with context.eager_mode(), self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "must be at least effective_filter_size"):
+      self.evaluate(
+          run_conv(
+              constant_op.constant(
+                  np.zeros([1, 2, 4, 4, 1], np.float32)),
+              constant_op.constant(
+                  np.zeros([3, 1, 1, 1, 1], np.float32))))
 
   def testZeroSizedFilterThrowsIllegalArgument(self):
     tensor_in_sizes = [1, 1, 1, 1, 1]
