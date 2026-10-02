@@ -11541,6 +11541,50 @@ TEST_F(AlgebraicSimplifierTest, RemainderOfNPlusIotaOverflow) {
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest, RemainderOfNegativeNPlusIotaNotSimplified) {
+  constexpr absl::string_view kNegativeNModuleStr = R"(
+    HloModule m
+    test {
+      iota = s32[5] iota(), iota_dimension=0
+      neg_three = s32[] constant(-3)
+      bcast = s32[5] broadcast(neg_three), dimensions={}
+      sum = s32[5] add(iota, bcast)
+      ROOT remainder = s32[5] remainder(sum, bcast)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m1,
+                       ParseAndReturnVerifiedModule(kNegativeNModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m1.get()).value());
+
+  constexpr absl::string_view kNarrowIotaModuleStr = R"(
+    HloModule m
+    test {
+      iota = s8[200] iota(), iota_dimension=0
+      n = s8[] constant(-100)
+      bcast = s8[200] broadcast(n), dimensions={}
+      sum = s8[200] add(iota, bcast)
+      ROOT remainder = s8[200] remainder(sum, bcast)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m2,
+                       ParseAndReturnVerifiedModule(kNarrowIotaModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m2.get()).value());
+
+  constexpr absl::string_view kRank1EffectiveScalarModuleStr = R"(
+    HloModule m
+    test {
+      iota = s32[5,1] iota(), iota_dimension=0
+      five = s32[1] constant({5})
+      five_bcast = s32[5,1] broadcast(five), dimensions={1}
+      ROOT remainder = s32[5,1] remainder(iota, five_bcast)
+    })";
+  ASSERT_OK_AND_ASSIGN(
+      auto m3, ParseAndReturnVerifiedModule(kRank1EffectiveScalarModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_broadcast_degenerate_dimension(false);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m3.get()).value());
+  EXPECT_THAT(m3->entry_computation()->root_instruction(),
+              GmockMatch(m::Iota()));
+}
+
 TEST_F(AlgebraicSimplifierTest, RepeatedRemainder) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m

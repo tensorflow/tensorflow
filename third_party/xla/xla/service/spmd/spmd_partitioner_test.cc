@@ -3092,6 +3092,99 @@ ENTRY entry {
                           op::Shape("f32[27,11]")));
 }
 
+TEST_P(SpmdPartitioningTest,
+       PadsWithDifferentFillValuesDoNotShareWindowReshardCache) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8] parameter(0), sharding={devices=[4]<=[4]}
+  %zero = f32[] constant(0)
+  %five = f32[] constant(5)
+  %pad0 = f32[12] pad(%param0, %zero), padding=2_2, sharding={devices=[4]<=[4]}
+  %pad5 = f32[12] pad(%param0, %five), padding=2_2, sharding={devices=[4]<=[4]}
+  ROOT %tuple = (f32[12], f32[12]) tuple(%pad0, %pad5),
+    sharding={{devices=[4]<=[4]}, {devices=[4]<=[4]}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto* root = module->entry_computation()->root_instruction();
+  auto zero = op::Constant(LiteralUtil::CreateR0<float>(0));
+  auto five = op::Constant(LiteralUtil::CreateR0<float>(5));
+
+  EXPECT_THAT(
+      root,
+      op::Tuple(
+          op::DynamicSlice(op::Pad(op::Concatenate(), zero), _),
+          op::Select(_, op::DynamicSlice(op::Pad(op::Concatenate(), five), _),
+                     op::Broadcast(five))));
+}
+
+TEST_P(SpmdPartitioningTest,
+       DifferentMaskInvalidRegionDoNotShareWindowReshardCache) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %param0 = f32[6,1] parameter(0), sharding={devices=[4,1]<=[4]}
+  %reshape = f32[3,2] reshape(%param0), sharding={devices=[4,1]<=[4]}
+  %zero = f32[] constant(0)
+  %rw = f32[8,1] reduce-window(%param0, %zero), window={size=1x1 pad=0_2x0_0},
+    to_apply=add, sharding={devices=[4,1]<=[4]}
+  ROOT %tuple = (f32[3,2], f32[8,1]) tuple(%reshape, %rw),
+    sharding={{devices=[4,1]<=[4]}, {devices=[4,1]<=[4]}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto* root = module->entry_computation()->root_instruction();
+  auto zero = op::Constant(LiteralUtil::CreateR0<float>(0));
+
+  EXPECT_THAT(root, op::Tuple(op::Reshape(op::Parameter(0)),
+                              op::ReduceWindow(op::Select(_, op::Parameter(0),
+                                                          op::Broadcast(zero)),
+                                               zero)));
+}
+
+TEST_P(SpmdPartitioningTest,
+       DifferentForceMaskInCompactDoNotShareWindowReshardCache) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[24,1] parameter(0), sharding={devices=[8,1]<=[8]}
+  %reshape = f32[3,8] reshape(%param0), sharding={devices=[8,1]<=[8]}
+  %zero = f32[] constant(0)
+  %pad = f32[64,1] pad(%param0, %zero), padding=0_40x0_0,
+    sharding={devices=[8,1]<=[8]}
+  ROOT %tuple = (f32[3,8], f32[64,1]) tuple(%reshape, %pad),
+    sharding={{devices=[8,1]<=[8]}, {devices=[8,1]<=[8]}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  const auto* root = module->entry_computation()->root_instruction();
+  auto zero = op::Constant(LiteralUtil::CreateR0<float>(0));
+
+  EXPECT_THAT(root,
+              op::Tuple(op::Reshape(op::DynamicSlice(op::Concatenate(), _, _)),
+                        op::Select(_, op::DynamicSlice(op::Concatenate(), _, _),
+                                   op::Broadcast(zero))));
+}
+
 TEST_P(SpmdPartitioningTest, SliceAlongNonPartitionedDimension) {
   absl::string_view hlo_string = R"(
 HloModule module

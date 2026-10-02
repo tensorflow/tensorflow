@@ -6668,14 +6668,17 @@ absl::Status AlgebraicSimplifierVisitor::HandleRemainder(
   if (Match(remainder,
             m::Remainder(m::Iota(&iota),
                          m::Broadcast(m::ConstantEffectiveScalar(&divisor))))) {
-    // The iota counts {0, ..., iota_upper_bound - 1}.  (Actually this is
-    // conservative; the iota may overflow and count up to a smaller value than
-    // this.  But that's OK for our purposes here.)
+    // The iota counts {0, ..., iota_upper_bound - 1}. Require that
+    // iota_upper_bound - 1 fits in the element type, so the iota never wraps
+    // to negative values, and that N is positive, since X % N for negative N
+    // is not the identity.
     int64_t iota_upper_bound = iota->shape().dimensions(
         Cast<HloIotaInstruction>(iota)->iota_dimension());
-    std::optional<int64_t> divisor_val = divisor->literal().GetIntegralAsS64(
-        std::vector<int64_t>(0, divisor->shape().dimensions().size()));
-    if (divisor_val && *divisor_val >= iota_upper_bound) {
+    std::optional<int64_t> divisor_val = divisor->literal().GetFirstInteger();
+    if (divisor_val && *divisor_val > 0 && *divisor_val >= iota_upper_bound &&
+        (iota_upper_bound == 0 ||
+         primitive_util::FitsInIntegralType(iota_upper_bound - 1,
+                                            iota->shape().element_type()))) {
       return ReplaceInstruction(remainder, iota);
     }
   }
@@ -6696,17 +6699,19 @@ absl::Status AlgebraicSimplifierVisitor::HandleRemainder(
                              m::Broadcast(m::ConstantEffectiveScalar(&addend))),
               m::Broadcast(&bcast, m::ConstantEffectiveScalar(&divisor)))) &&
       addend == divisor) {
-    // The iota counts {0, ...iota_upper_bound - 1}, with the same caveat above
-    // that iota_upper_bound is conservative, and the true upper bound may be
-    // smaller.
+    // The iota counts {0, ..., iota_upper_bound - 1}. As above, require a
+    // positive N and an iota that does not wrap. Then the largest value of
+    // X + N is N + iota_upper_bound - 1, which must also fit in the element
+    // type.
     int64_t iota_upper_bound = iota->shape().dimensions(
         Cast<HloIotaInstruction>(iota)->iota_dimension());
-    std::optional<int64_t> divisor_val = divisor->literal().GetIntegralAsS64(
-        std::vector<int64_t>(0, divisor->shape().dimensions().size()));
-    if (divisor_val) {
+    std::optional<int64_t> divisor_val = divisor->literal().GetFirstInteger();
+    if (divisor_val && *divisor_val > 0 && iota_upper_bound > 0 &&
+        primitive_util::FitsInIntegralType(iota_upper_bound - 1,
+                                           iota->shape().element_type())) {
       // Check whether divisor_val + iota_upper_bound - 1 overflows.
       std::optional<int64_t> max_val =
-          OverflowSafeAdd(*divisor_val, iota_upper_bound);
+          OverflowSafeAdd(*divisor_val, iota_upper_bound - 1);
       if (max_val.has_value() && primitive_util::FitsInIntegralType(
                                      *max_val, iota->shape().element_type())) {
         return ReplaceWithNewInstruction(
