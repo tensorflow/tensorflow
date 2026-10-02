@@ -423,6 +423,14 @@ REGISTER_OP("ResizeNearestNeighborGrad")
           return errors::InvalidArgument(
               "shape_t's elements must be non-negative");
         }
+        bool non_empty = c->FullyDefined(input);
+        for (int i = 0; non_empty && i < c->Rank(input); ++i) {
+          non_empty = c->Value(c->Dim(input, i)) > 0;
+        }
+        if (non_empty && (size_vec(0) == 0 || size_vec(1) == 0)) {
+          return errors::InvalidArgument(
+              "shape_t's elements must be positive for non-empty grads");
+        }
         TF_RETURN_IF_ERROR(
             c->ReplaceDim(input, 1, c->MakeDim(size_vec(0)), &input));
         TF_RETURN_IF_ERROR(
