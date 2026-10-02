@@ -63,14 +63,15 @@ TEST(CandidateSamplerOpsTest, UnigramRange_ShapeFn) {
                      .Input({"a", 0, DT_INT64})
                      .Attr("num_sampled", 1)
                      .Attr("num_true", 1)
-                     .Attr("range_max", std::numeric_limits<int32_t>::max() - 1)
+                     .Attr("range_max", int64_t{1} << 30)
                      .Finalize(&op.node_def));
     INFER_OK(op, "[1,1]", "[1];[d0_0,1];[1]");
-    for (int64_t range_max : {int64_t{std::numeric_limits<int32_t>::max()},
+    for (int64_t range_max : {(int64_t{1} << 30) + 1,
+                              int64_t{std::numeric_limits<int32_t>::max()},
                               (int64_t{1} << 32) + 1,
                               std::numeric_limits<int64_t>::max()}) {
       (*op.node_def.mutable_attr())["range_max"].set_i(range_max);
-      INFER_ERROR("range_max must be less than 2147483647", op, "[1,1]");
+      INFER_ERROR("range_max must be at most 1073741824", op, "[1,1]");
     }
   }
 }

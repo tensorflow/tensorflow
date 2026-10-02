@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <limits>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -48,9 +47,11 @@ absl::Status CandidateSamplerShapeFn(InferenceContext* c) {
 absl::Status UnigramCandidateSamplerShapeFn(InferenceContext* c) {
   int64_t range_max;
   TF_RETURN_IF_ERROR(c->GetAttr("range_max", &range_max));
-  if (range_max >= std::numeric_limits<int32_t>::max()) {
+  // Match the largest power-of-two level representable by WeightedPicker.
+  constexpr int64_t kMaxUnigramRange = int64_t{1} << 30;
+  if (range_max > kMaxUnigramRange) {
     return errors::InvalidArgument(
-        "range_max must be less than 2147483647 for unigram samplers");
+        "range_max must be at most 1073741824 for unigram samplers");
   }
   return CandidateSamplerShapeFn(c);
 }

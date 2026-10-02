@@ -135,12 +135,12 @@ class RangeSamplerOpsTest(test.TestCase):
         raw_ops.ThreadUnsafeUnigramCandidateSampler,
         raw_ops.LearnedUnigramCandidateSampler):
       # The first range truncates to one, keeping the unfixed reproducer small.
-      for range_max in (2**32 + 1, np.iinfo(np.int32).max,
+      for range_max in (2**32 + 1, 2**30 + 1, np.iinfo(np.int32).max,
                         np.iinfo(np.int64).max):
         with self.subTest(sampler=sampler.__name__, range_max=range_max):
           with self.assertRaisesRegex(
               (ValueError, errors.InvalidArgumentError),
-              "range_max must be less than 2147483647"):
+              "range_max must be at most 1073741824"):
             result = sampler(
                 true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
                 num_true=1, num_sampled=1, unique=False, range_max=range_max)
@@ -148,11 +148,11 @@ class RangeSamplerOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testLearnedUnigramRangeTooLarge(self):
-    for range_max in (np.iinfo(np.int32).max, 2**32 + 1):
+    for range_max in (2**30 + 1, np.iinfo(np.int32).max, 2**32 + 1):
       with self.subTest(range_max=range_max):
         with self.assertRaisesRegex(
             (ValueError, errors.InvalidArgumentError),
-            "range_max must be less than 2147483647"):
+            "range_max must be at most 1073741824"):
           result = candidate_sampling_ops.learned_unigram_candidate_sampler(
               true_classes=[[0]], num_true=1, num_sampled=1,
               unique=False, range_max=range_max)
@@ -165,7 +165,8 @@ class RangeSamplerOpsTest(test.TestCase):
       for range_max in (0, -1):
         with self.subTest(sampler=sampler.__name__, range_max=range_max):
           with self.assertRaisesRegex(
-              (ValueError, errors.InvalidArgumentError), "range_max"):
+              (ValueError, errors.InvalidArgumentError),
+              "must be at least minimum 1|range_max must be positive"):
             result = sampler(
                 true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
                 num_true=1, num_sampled=1, unique=False, range_max=range_max)

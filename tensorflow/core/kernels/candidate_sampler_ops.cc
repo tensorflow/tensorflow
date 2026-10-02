@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <string>
 #include <type_traits>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #define EIGEN_USE_THREADS
@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/range_sampler.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
@@ -53,10 +52,10 @@ class BaseCandidateSamplerOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& true_classes = context->input(0);
     OP_REQUIRES(context, true_classes.dims() == 2,
-                errors::InvalidArgument("true_classes must be a matrix"));
+                absl::InvalidArgumentError("true_classes must be a matrix"));
     const int32_t batch_size = true_classes.dim_size(0);
     OP_REQUIRES(context, true_classes.dim_size(1) == num_true_,
-                errors::InvalidArgument(absl::StrCat(
+                absl::InvalidArgumentError(absl::StrCat(
                     "true_classes must have "
                     "num_true columns, expected: ",
                     true_classes.dim_size(1), " was: ", num_true_)));
@@ -64,7 +63,7 @@ class BaseCandidateSamplerOp : public OpKernel {
 
     if (unique_) {
       OP_REQUIRES(context, num_sampled_ <= sampler_->range(),
-                  errors::InvalidArgument("Sampler's range is too small."));
+                  absl::InvalidArgumentError("Sampler's range is too small."));
     }
 
     // Output candidates and expected_count.
@@ -87,7 +86,7 @@ class BaseCandidateSamplerOp : public OpKernel {
 
     for (const auto& candidate : true_candidate) {
       OP_REQUIRES(context, candidate >= 0 && candidate < sampler_->range(),
-                  errors::InvalidArgument(absl::StrCat(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "`true_candidate` out of range [", 0, ", ",
                       sampler_->range(), "), received ", candidate)));
     }
@@ -135,15 +134,14 @@ class SimpleCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
-    OP_REQUIRES(context, range_max > 0,
-                errors::InvalidArgument("range_max must be positive"));
     if constexpr (std::is_same_v<RangeSamplerType, UnigramSampler> ||
                   std::is_same_v<RangeSamplerType, ThreadUnsafeUnigramSampler>) {
+      // WeightedPicker's largest representable power-of-two level is 1 << 30.
+      constexpr int64_t kMaxUnigramRange = int64_t{1} << 30;
       OP_REQUIRES(
-          context, range_max < std::numeric_limits<int32_t>::max(),
-          errors::InvalidArgument(absl::StrCat(
-              "range_max must be less than ",
-              std::numeric_limits<int32_t>::max(),
+          context, range_max <= kMaxUnigramRange,
+          absl::InvalidArgumentError(absl::StrCat(
+              "range_max must be at most ", kMaxUnigramRange,
               " for unigram samplers, got ", range_max)));
     }
     set_sampler(new RangeSamplerType(range_max));
@@ -188,10 +186,10 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
     std::vector<float> unigrams;
     OP_REQUIRES_OK(context, context->GetAttr("unigrams", &unigrams));
     OP_REQUIRES(context, !vocab_file.empty() || !unigrams.empty(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Must provide either vocab_file or unigrams."));
     OP_REQUIRES(context, vocab_file.empty() || unigrams.empty(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Must only provide one of vocab_file and unigrams."));
     float distortion;
     OP_REQUIRES_OK(context, context->GetAttr("distortion", &distortion));
@@ -229,7 +227,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
     OP_REQUIRES(context,
                 TensorShapeUtils::IsMatrix(in_true_candidates_shape) &&
                     in_true_candidates_shape.dim_size(1) == num_true_,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "true_candidates must be a batch_size * num_true matrix"));
 
     const int64_t batch_size = in_true_candidates_shape.dim_size(0);
@@ -237,7 +235,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
     const Tensor& in_sampled_candidates = context->input(1);
     OP_REQUIRES(context,
                 TensorShapeUtils::IsVector(in_sampled_candidates.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "sampled_candidates must be a vector, which is typically "
                     "an output from CandidateSampler"));
 
