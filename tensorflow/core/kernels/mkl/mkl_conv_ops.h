@@ -56,7 +56,7 @@ inline absl::Status CheckWindowFitsInput(int64_t input, int64_t filter,
   }
   const int64_t effective_filter_size = (filter - 1) * dilation + 1;
   const int64_t padded = input + pad_before + pad_after;
-  if (padded < effective_filter_size) {
+  if (input != 0 && padded < effective_filter_size) {
     return absl::InvalidArgumentError(absl::StrCat(
         "input_size + padding (", padded,
         ") must be at least effective_filter_size (", effective_filter_size,

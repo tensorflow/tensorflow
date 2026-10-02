@@ -168,7 +168,7 @@ class Conv3DOp : public BinaryOp<T> {
         int64_t effective_filter_size =
             (filter_size[i] - 1) * dilations[i] + 1;
         OP_REQUIRES(
-            context, input_size[i] >= effective_filter_size,
+            context, input_size[i] == 0 || input_size[i] >= effective_filter_size,
             errors::InvalidArgument(absl::StrCat(
                 "input_size (", input_size[i],
                 ") must be at least effective_filter_size (",
