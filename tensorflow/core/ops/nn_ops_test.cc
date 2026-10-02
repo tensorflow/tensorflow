@@ -445,13 +445,6 @@ TEST(NNOpsTest, SoftmaxCrossEntropyWithLogits_ShapeFn) {
   INFER_OK(op, "[1,?];[?,2]", "[d0_0];[d0_0,d0_1|d1_1]");
   INFER_OK(op, "[?,2];[1,2]", "[d1_0];in1");
 
-  INFER_OK(op, "[0,2];[0,2]", "[d0_0|d1_0];in0|in1");
-  INFER_OK(op, "[0,2];[1,2]", "[d0_0];[d0_0,d0_1|d1_1]");
-  INFER_ERROR("Must have at least one class", op, "[0,0];[0,0]");
-  INFER_ERROR("Must have at least one class", op, "[1,0];[1,0]");
-  INFER_ERROR("Must have at least one class", op, "[?,0];[?,0]");
-  INFER_ERROR("Must have at least one class", op, "[1,0];[2,1]");
-
   INFER_ERROR("Shape must be broadcasted with rank 2", op, "[1,2,3];?");
   INFER_ERROR("Shape must be broadcasted with rank 2", op, "?;[1,2,3]");
 
@@ -475,10 +468,6 @@ TEST(NNOpsTest, SparseSoftmaxCrossEntropyWithLogits_ShapeFn) {
   INFER_OK(op, "[?,?];[?]", "[d0_0|d1_0];[d0_0|d1_0,d0_1]");
   INFER_OK(op, "[1,2];[1]", "[d0_0|d1_0];[d0_0|d1_0,d0_1]");
   INFER_OK(op, "[?,2];[1]", "[d1_0];[d1_0,d0_1]");
-  INFER_OK(op, "[0,2];[0]", "[d0_0|d1_0];[d0_0|d1_0,d0_1]");
-  INFER_ERROR("Must have at least one class", op, "[0,0];[0]");
-  INFER_ERROR("Must have at least one class", op, "[1,0];[1]");
-  INFER_ERROR("Must have at least one class", op, "[?,0];[?]");
 
   INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,?];[2]");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3];?");

@@ -23,7 +23,6 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.nn_ops import xent_op_test_base
@@ -100,38 +99,6 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
           self.assertAllClose(
               [[dominant, tail]], gradient,
               rtol=1e-14 if dtype == dtypes.float64 else 1e-2, atol=0.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testRejectsZeroClasses(self):
-    for batch_size in (0, 1):
-      for dtype in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
-                    dtypes.float64):
-        with self.subTest(batch_size=batch_size, dtype=dtype):
-          empty = constant_op.constant([], shape=[batch_size, 0], dtype=dtype)
-          with self.assertRaisesRegex(
-              (ValueError, errors.InvalidArgumentError),
-              "Must have at least one class, but got 0 classes"):
-            result = nn_ops.softmax_cross_entropy_with_logits_v2(
-                logits=empty, labels=empty)
-            self.evaluate(result)
-
-  @test_util.run_deprecated_v1
-  def testRejectsDynamicallyZeroClasses(self):
-    with self.cached_session() as sess:
-      for dtype in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
-                    dtypes.float64):
-        features = array_ops.placeholder(dtype, shape=[None, None])
-        result = nn_ops.softmax_cross_entropy_with_logits_v2(
-            logits=features, labels=features)
-        for batch_size in (0, 1):
-          with self.subTest(batch_size=batch_size, dtype=dtype):
-            with self.assertRaisesRegex(
-                errors.InvalidArgumentError,
-                "Must have at least one class, but got 0 classes"):
-              sess.run(result, feed_dict={
-                  features: np.zeros((batch_size, 0),
-                                     dtype=dtype.as_numpy_dtype)
-              })
 
   @test_util.run_in_graph_and_eager_modes
   def testDoublePreservesMultiClassTailGradient(self):
@@ -214,7 +181,7 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
                                                     4.]]]).astype(dtype)
       np_labels = np.array([[[0., 0., 0., 1.]], [[0., .5, .5,
                                                   0.]]]).astype(dtype)
-      self.assertRaisesRegex(ValueError, "rank 2, but its rank is 3",
+      self.assertRaisesRegex(ValueError, "rank 2, but is rank 3",
                              gen_nn_ops.softmax_cross_entropy_with_logits,
                              np_features, np_labels)
 

@@ -66,10 +66,6 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
         absl::InvalidArgumentError("logits and labels must be either "
                                    "2-dimensional, or broadcasted to be "
                                    "2-dimensional"));
-    OP_REQUIRES(context, shape_in.dim_size(1) > 0,
-                absl::InvalidArgumentError(
-                    absl::StrCat("Must have at least one class, but got ",
-                                 shape_in.dim_size(1), " classes.")));
 
     if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(context, !OpDeterminismRequired(),

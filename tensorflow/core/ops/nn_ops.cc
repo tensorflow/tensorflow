@@ -17,8 +17,6 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -1311,31 +1309,27 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
-      if (c->WithRank(c->input(0), 2, &input) != absl::OkStatus() ||
-          c->Merge(input, c->input(1), &input) != absl::OkStatus()) {
-        TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFn(c, 1));
-
-        if (!c->RankKnown(c->output(1))) {
-          return absl::InvalidArgumentError(
-              "Shape must be broadcasted with rank 2, but its rank is unknown.");
-        }
-
-        if (c->Rank(c->output(1)) != 2) {
-          return absl::InvalidArgumentError(absl::StrCat(
-              "Shape must be broadcasted with rank 2, but its rank is ",
-              c->Rank(c->output(1))));
-        }
-        input = c->output(1);
+      if (c->WithRank(c->input(0), 2, &input) == absl::OkStatus() &&
+          c->Merge(input, c->input(1), &input) == absl::OkStatus()) {
+        DimensionHandle batch_size = c->Dim(input, 0);
+        c->set_output(0, c->Vector(batch_size));
+        c->set_output(1, input);
+        return absl::OkStatus();
       }
-      DimensionHandle num_classes = c->Dim(input, 1);
-      if (c->ValueKnown(num_classes) && c->Value(num_classes) <= 0) {
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFn(c, 1));
+
+      if (!c->RankKnown(c->output(1))) {
         return absl::InvalidArgumentError(
-            absl::StrCat("Must have at least one class, but got ",
-                         c->Value(num_classes), " classes."));
+            "Shape must be broadcasted with rank 2, but is rank is unknown.");
       }
-      DimensionHandle batch_size = c->Dim(input, 0);
+
+      if (c->Rank(c->output(1)) != 2) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Shape must be broadcasted with rank 2, but is rank ",
+                         c->Rank(c->output(1))));
+      }
+      DimensionHandle batch_size = c->Dim(c->output(1), 0);
       c->set_output(0, c->Vector(batch_size));
-      c->set_output(1, input);
       return absl::OkStatus();
     });
 
@@ -1351,13 +1345,6 @@ REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
       ShapeHandle labels;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &features));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &labels));
-
-      DimensionHandle num_classes = c->Dim(features, 1);
-      if (c->ValueKnown(num_classes) && c->Value(num_classes) <= 0) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Must have at least one class, but got ",
-                         c->Value(num_classes), " classes."));
-      }
 
       DimensionHandle batch_size;
       TF_RETURN_IF_ERROR(

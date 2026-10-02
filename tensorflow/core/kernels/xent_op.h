@@ -109,7 +109,20 @@ struct XentEigenImpl {
     // Near a unit float64 denominator, subtracting a unit label loses the tail
     // gradient. Sum small terms separately to retain that signal.
     if constexpr (std::is_same_v<T, double>) {
-      if (scratch_storage.size() == 2 * scratch.size()) {
+      bool needs_tail = scratch_storage.size() == 2 * scratch.size();
+      if constexpr (std::is_same_v<Device, Eigen::ThreadPoolDevice>) {
+        // Avoid extra full-tensor passes when no CPU row needs correction.
+        if (needs_tail) {
+          needs_tail = false;
+          for (int i = 0; i < batch_size; ++i) {
+            if (scratch(i, 0) < T(1) + T(1e-14)) {
+              needs_tail = true;
+              break;
+            }
+          }
+        }
+      }
+      if (needs_tail) {
         // The packed second half may not be aligned when batch_size is odd.
         T* tail_data = scratch_storage.data() + batch_size;
         typename TTypes<T>::UnalignedVec tail(tail_data, batch_size);
@@ -124,8 +137,6 @@ struct XentEigenImpl {
         const auto denominator = scratch.broadcast(one_by_class);
         const auto tail_ratio_bcast =
             tail.reshape(batch_by_one).broadcast(one_by_class);
-        // Keep this lazy to avoid dynamic heap allocations (malloc/free) on CPU
-        // and maintain GPU device execution compatibility via kernel fusion.
         backprop.device(d) =
             ((scratch < scratch.constant(T(1) + T(1e-14)))
                  .broadcast(one_by_class) &&
@@ -136,8 +147,8 @@ struct XentEigenImpl {
         return;
       }
     }
-    // Preserve the original path for non-double types and 9-argument callers
-    // that provide only a single-column scratch tensor.
+    // Preserve the original path for non-double types, CPU batches that need no
+    // correction, and callers that provide only a single-column scratch tensor.
     backprop.device(d) = (backprop.exp() / scratch.broadcast(one_by_class)) -
                          labels.broadcast(labels_bcast);
   }
