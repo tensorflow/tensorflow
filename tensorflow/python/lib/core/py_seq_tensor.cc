@@ -486,8 +486,9 @@ static const char* ConvertOneFloat(PyObject* v, T* out) {
   }
 #endif
   if (PyLong_Check(v)) {
-    *out = static_cast<T>(PyLong_AsDouble(v));
-    if (PyErr_Occurred()) {
+    const double d = PyLong_AsDouble(v);
+    *out = static_cast<T>(d);
+    if (TF_PREDICT_FALSE(d == -1.0 && PyErr_Occurred())) {
       // Keep integer-to-float overflow on the existing status/error path.
       if (PyErr_ExceptionMatches(PyExc_OverflowError)) PyErr_Clear();
       return ErrorOutOfRangeDouble;
