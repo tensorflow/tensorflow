@@ -1054,6 +1054,19 @@ class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
   }
 };
 
+class LowerReduceScatter
+    : public mlir::OpRewritePattern<stablehlo::ReduceScatterOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::ReduceScatterOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    return ::xla::gpu::RewriteReduceScatter(op, rewriter);
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
@@ -1066,8 +1079,8 @@ class StableHLOLowerToTritonPass
     {
       mlir::RewritePatternSet patterns(mlir_context);
       patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                   LowerReduce, LowerReshape, LowerAllGather, LowerAllReduce>(
-          mlir_context);
+                   LowerReduce, LowerReshape, LowerAllGather, LowerAllReduce,
+                   LowerReduceScatter>(mlir_context);
       patterns.add<CanonicalizeDotGeneral>(mlir_context);
       patterns.add<LowerDotGeneral>(mlir_context, warp_specialization_allowed_);
       if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),

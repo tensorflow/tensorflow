@@ -463,6 +463,35 @@ xtile.entry_func @all_gather_without_remote_buffers_arg_doesnt_lower(%input: mem
   xtile.return
 }
 
+// CHECK-LABEL: xtile.entry_func @reduce_scatter_one_shot(
+xtile.entry_func @reduce_scatter_one_shot(%input: memref<4x1024xf32>, %output: memref<2x1024xf32>, %device_rank: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 3 : i32} {
+  %c0 = arith.constant 0 : index
+  %tile = xtile.extract %input[%c0, %tile_id][2, 64][1, 1] : memref<4x1024xf32> -> tensor<2x64xf32>
+  // CHECK: triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 16, barrier_mode = producer_symmetric>
+  // CHECK-NOT: stablehlo.reduce_scatter
+  %reduce_scatter = "stablehlo.reduce_scatter"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>, scatter_dimension = 0 : i64}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<2x64xf32>) -> tensor<1x64xf32>
+  xtile.insert %reduce_scatter into %output[%c0, %tile_id][1, 64][1, 1] : tensor<1x64xf32> -> memref<2x1024xf32>
+  xtile.return
+}
+
+// CHECK-LABEL: xtile.entry_func @reduce_scatter_invalid_tile_size_doesnt_lower(
+xtile.entry_func @reduce_scatter_invalid_tile_size_doesnt_lower(%input: memref<4x1024xf32>, %output: memref<2x1024xf32>, %device_rank: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 3 : i32} {
+  %c0 = arith.constant 0 : index
+  %tile = xtile.extract %input[%c0, %tile_id][4, 64][1, 1] : memref<4x1024xf32> -> tensor<4x64xf32>
+  // CHECK: stablehlo.reduce_scatter
+  %reduce_scatter = "stablehlo.reduce_scatter"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>, scatter_dimension = 0 : i64}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<4x64xf32>) -> tensor<2x64xf32>
+  xtile.insert %reduce_scatter into %output[%c0, %tile_id][2, 64][1, 1] : tensor<2x64xf32> -> memref<2x1024xf32>
+  xtile.return
+}
+
 // CHECK: func @lower_dot_with_warp_specialization_to_triton
 func.func @lower_dot_with_warp_specialization_to_triton(
     %arg0: tensor<2x4xf32>,

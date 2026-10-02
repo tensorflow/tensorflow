@@ -245,8 +245,6 @@ absl::StatusOr<TensorValue> EmitReduceScatter(
     }
   }
 
-  bool use_global_device_ids = reduce_scatter->use_global_device_ids();
-
   ImplicitLocOpBuilder& b = emitter_ctx.b();
   ABSL_ASSIGN_OR_RETURN(auto output_element_type,
                    xtile::PrimitiveTypeToMlirType(
@@ -265,7 +263,7 @@ absl::StatusOr<TensorValue> EmitReduceScatter(
       replica_groups_type, flattened_replica_group_ids);
   auto reduce_scatter_op = mlir::stablehlo::ReduceScatterOp::create(
       b, output_type, operands[0], reduce_scatter->scatter_dimension(),
-      replica_groups_attr, /*channel_handle=*/nullptr, use_global_device_ids);
+      replica_groups_attr, /*channel_handle=*/nullptr);
 
   ABSL_RETURN_IF_ERROR(EmitReduceComputation(
       b, reduce_scatter, reduce_scatter->to_apply(), reduce_scatter_op));

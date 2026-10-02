@@ -105,6 +105,10 @@ mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
 mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
                                      mlir::PatternRewriter& rewriter);
 
+// Rewrites stablehlo reduce-scatter op to a triton implementation.
+mlir::LogicalResult RewriteReduceScatter(mlir::stablehlo::ReduceScatterOp op,
+                                         mlir::PatternRewriter& rewriter);
+
 // Creates a CollectiveKernelSpec for a given collective or fusion instruction.
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
