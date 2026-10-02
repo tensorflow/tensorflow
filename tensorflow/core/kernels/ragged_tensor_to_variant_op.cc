@@ -282,6 +282,7 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
 
     // Get a Tensor containing the flat_values for each variant.
     std::vector<Tensor> values;
+    values.reserve(flat_variants.size());
     int64_t total_values = 0;
     for (int i = 0; i < flat_variants.size(); ++i) {
       if (const auto* encoded = flat_variants(i).get<RaggedTensorVariant>()) {
@@ -301,16 +302,18 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
         auto piece_size = flat_row_splits(i + 1) - flat_row_splits(i);
         TensorShape zeros_shape = dense_values_shape;
         zeros_shape.set_dim(0, piece_size);
-        // Bound the running total before materializing the zero piece, so a
-        // crafted `row_splits` can't drive an oversized allocation (OOM) or
-        // overflow `total_values` before the equality check below runs.
-        total_values += zeros_shape.num_elements();
-        OP_REQUIRES(context, total_values <= expected_values,
+        // Bound the piece against the remaining capacity before adding it to
+        // `total_values` or materializing the zero tensor. Comparing against the
+        // difference rather than the sum keeps a crafted `row_splits` from
+        // overflowing the accumulator (which would wrap negative and bypass the
+        // check) and avoids an oversized allocation (OOM).
+        const int64_t piece_elements = zeros_shape.num_elements();
+        OP_REQUIRES(context, piece_elements <= expected_values - total_values,
                     errors::InvalidArgument(
-                        "Number of encoded ragged values (", total_values,
-                        ") exceeds the number of values implied by "
-                        "dense_values_shape (",
+                        "Number of encoded ragged values exceeds the number "
+                        "of values implied by dense_values_shape (",
                         expected_values, ")"));
+        total_values += piece_elements;
         Tensor zero(value_dtype, zeros_shape);
         zero.flat<VALUE_TYPE>().setZero();
         values.push_back(zero);

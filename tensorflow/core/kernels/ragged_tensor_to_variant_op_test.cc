@@ -628,5 +628,24 @@ TEST_F(RaggedTensorToVariantGradientKernelTest,
       test::AsTensor<int>({1, 2, 3, 4}, TensorShape({2, 2})), *GetOutput(0));
 }
 
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       MissingVariantLargeRowSplitsError) {
+  // A default-constructed variant takes the missing-value path, where a zero
+  // piece is reconstructed with dimension 0 set from `row_splits`. A large
+  // interval (1e9) must be rejected with InvalidArgument before the oversized
+  // zero tensor is allocated, rather than overflowing the accumulator or
+  // aborting on allocation.
+  Variant missing;
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>({missing}, {0, 1000000000},
+                                                     {2});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Number of encoded ragged values exceeds the number of "
+                  "values implied by dense_values_shape (2)"));
+}
+
 }  // namespace
 }  // namespace tensorflow
