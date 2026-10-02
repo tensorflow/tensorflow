@@ -1075,7 +1075,7 @@ class RoundingTest(test.TestCase):
     # arithmetic operations such as floor, so the sign-bit check below
     # intentionally excludes NaN elements.
     #
-    # AVX-512 uses 16-wide packets.  Eigen's vectorised loop may consume up
+    # AVX-512 uses 16-wide packets.  Eigen's vectorized loop may consume up
     # to 15 elements in the unaligned scalar prefix and up to 15 in the
     # scalar tail.  safe_base must have >= 15 elements so that base[:15]
     # (used as the scalar tail/prefix) never contains a negative subnormal.
@@ -1123,7 +1123,7 @@ class RoundingTest(test.TestCase):
       # is placed first so that base[:15] contains only safe values — this
       # ensures AVX-512's worst-case 15-element scalar tail/prefix never
       # includes a negative subnormal, while the neg_subnormals at the end
-      # of base are always processed by the vectorised path.
+      # of base are always processed by the vectorized path.
       base = np.concatenate([safe_base, neg_subnormals])
       base_exp = np.concatenate([safe_expected, neg_subnormals_exp])
 
