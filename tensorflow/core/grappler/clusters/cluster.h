@@ -142,7 +142,6 @@ class Cluster {
   const int timeout_s_;
   SessionOptions options_;
   RunOptions run_options_;
-
 };
 
 }  // end namespace grappler

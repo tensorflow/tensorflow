@@ -54,7 +54,7 @@ PYBIND11_MODULE(
           py::gil_scoped_release release;
           status = server->Start();
         }
-        tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+        tensorflow::MaybeRaiseFromStatus(status);
       })
       .def("stop", [](tensorflow::data::DispatchGrpcDataServer* server) {
         py::gil_scoped_release release;
@@ -74,7 +74,7 @@ PYBIND11_MODULE(
                py::gil_scoped_release release;
                status = server->NumWorkers(&num_workers);
              }
-             tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+             tensorflow::MaybeRaiseFromStatus(status);
              return num_workers;
            })
       .def("snapshot_streams",
@@ -87,7 +87,7 @@ PYBIND11_MODULE(
                py::gil_scoped_release release;
                status = server->SnapshotStreams(path, &streams);
              }
-             tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+             tensorflow::MaybeRaiseFromStatus(status);
              return streams;
            });
 
@@ -99,7 +99,7 @@ PYBIND11_MODULE(
           py::gil_scoped_release release;
           status = server->Start();
         }
-        tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+        tensorflow::MaybeRaiseFromStatus(status);
       })
       .def("stop", [](tensorflow::data::WorkerGrpcDataServer* server) {
         py::gil_scoped_release release;
@@ -119,7 +119,7 @@ PYBIND11_MODULE(
                py::gil_scoped_release release;
                status = server->NumTasks(&num_tasks);
              }
-             tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+             tensorflow::MaybeRaiseFromStatus(status);
              return num_tasks;
            })
       .def("snapshot_task_progresses",
@@ -133,7 +133,7 @@ PYBIND11_MODULE(
                status =
                    server->SnapshotTaskProgresses(&snapshot_task_progresses);
              }
-             tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+             tensorflow::MaybeRaiseFromStatus(status);
              return snapshot_task_progresses;
            });
 
@@ -143,13 +143,13 @@ PYBIND11_MODULE(
           -> std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> {
         tensorflow::data::experimental::DispatcherConfig config;
         if (!config.ParseFromString(serialized_dispatcher_config)) {
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::InvalidArgumentError(
+          tensorflow::MaybeRaiseFromStatus(absl::InvalidArgumentError(
               "Failed to deserialize dispatcher config."));
         }
         std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
         absl::Status status =
             tensorflow::data::NewDispatchServer(config, server);
-        tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+        tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
       py::return_value_policy::reference);
@@ -160,13 +160,13 @@ PYBIND11_MODULE(
           -> std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> {
         tensorflow::data::experimental::WorkerConfig config;
         if (!config.ParseFromString(serialized_worker_config)) {
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::InvalidArgumentError(
+          tensorflow::MaybeRaiseFromStatus(absl::InvalidArgumentError(
               "Failed to deserialize worker config."));
         }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
         absl::Status status =
             tensorflow::data::NewWorkerServer(config, server);
-        tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+        tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
       py::return_value_policy::reference);
@@ -189,7 +189,7 @@ PYBIND11_MODULE(
                          " from dispatcher at ", address),
             deadline_micros);
         Py_END_ALLOW_THREADS;
-        tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
+        tensorflow::MaybeRaiseFromStatus(status);
         return metadata;
       },
       py::return_value_policy::reference);

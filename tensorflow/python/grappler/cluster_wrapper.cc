@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -56,7 +55,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
 namespace py = pybind11;
-
 
 namespace {
 
@@ -77,7 +75,7 @@ absl::Status _GetOpPerformanceDataAndRunTime(
   if (!status.ok()) return status;
 
   tensorflow::RunMetadata run_metadata;
-  TF_RETURN_IF_ERROR(
+  tsl::MaybeRaiseRegisteredFromStatusWithGIL(
       cost_measure->PredictCosts(item.graph, &run_metadata, costs));
 
   if (op_performance_data) {
@@ -307,7 +305,6 @@ PYBIND11_MODULE(
                 "You need both a cluster and an item to measure costs."));
           }
 
-
           const int num_measurements = cluster->type() == "virtual" ? 1 : 10;
           tensorflow::grappler::MeasuringCostEstimator cost_measure(
               cluster, num_measurements, 0);
@@ -316,9 +313,11 @@ PYBIND11_MODULE(
           tensorflow::grappler::Costs costs;
           absl::Status s = _GetOpPerformanceDataAndRunTime(
               *item, &cost_measure, &op_performance_data, &costs);
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(s);
-          double run_time =
-              static_cast<double>(costs.execution_time.count()) / 1e9;
+          double run_time = FLT_MAX;
+          if (s.ok()) {
+            run_time =
+                static_cast<double>(costs.execution_time.count()) / 1e9;
+          }
           tensorflow::StepStats step_stats;
           if (generate_timeline) {
             tensorflow::RunMetadata metadata;

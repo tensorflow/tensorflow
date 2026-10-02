@@ -293,7 +293,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
