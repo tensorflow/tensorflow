@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
@@ -436,15 +437,20 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(filename, &file_));
       // Bound both zlib buffers even for very large compressed files.
       constexpr int64_t kMaxZlibBufferSize = int64_t{512} << 20;
-      const size_t buffer_size = EffectiveBufferSize(
-          std::min(dataset()->buffer_size_, kMaxZlibBufferSize), file_size);
+      const int64_t max_buffer_size =
+          std::min(dataset()->buffer_size_, kMaxZlibBufferSize);
+      const size_t input_buffer_size =
+          EffectiveBufferSize(max_buffer_size, file_size);
+      const size_t output_buffer_size = static_cast<size_t>(std::min<uint64_t>(
+          max_buffer_size, std::numeric_limits<size_t>::max()));
       const io::ZlibCompressionOptions zlib_options =
           dataset()->compression_type_ == kZLIB
               ? io::ZlibCompressionOptions::DEFAULT()
               : io::ZlibCompressionOptions::GZIP();
       file_stream_ = std::make_unique<io::RandomAccessInputStream>(file_.get());
       buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
-          file_stream_.get(), buffer_size, buffer_size, zlib_options);
+          file_stream_.get(), input_buffer_size, output_buffer_size,
+          zlib_options);
       return absl::OkStatus();
     }
 
