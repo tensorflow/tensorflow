@@ -487,7 +487,11 @@ static const char* ConvertOneFloat(PyObject* v, T* out) {
 #endif
   if (PyLong_Check(v)) {
     *out = static_cast<T>(PyLong_AsDouble(v));
-    if (PyErr_Occurred()) return ErrorOutOfRangeDouble;
+    if (PyErr_Occurred()) {
+      // Keep integer-to-float overflow on the existing status/error path.
+      if (PyErr_ExceptionMatches(PyExc_OverflowError)) PyErr_Clear();
+      return ErrorOutOfRangeDouble;
+    }
     return nullptr;
   }
   if (PyIsInstance(v, &PyFloatingArrType_Type)) {  // NumPy float types
