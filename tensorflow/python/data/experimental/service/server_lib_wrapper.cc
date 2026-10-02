@@ -62,10 +62,8 @@ PYBIND11_MODULE(
       })
       .def("join", &tensorflow::data::DispatchGrpcDataServer::Join,
            py::call_guard<py::gil_scoped_release>())
-      .def("bound_port",
-           [](tensorflow::data::DispatchGrpcDataServer* server) {
-             return server->BoundPort();
-           })
+      .def("bound_port", &tensorflow::data::DispatchGrpcDataServer::BoundPort,
+           py::call_guard<py::gil_scoped_release>())
       .def("num_workers",
            [](tensorflow::data::DispatchGrpcDataServer* server) -> int {
              int num_workers;
@@ -107,10 +105,8 @@ PYBIND11_MODULE(
       })
       .def("join", &tensorflow::data::WorkerGrpcDataServer::Join,
            py::call_guard<py::gil_scoped_release>())
-      .def("bound_port",
-           [](tensorflow::data::WorkerGrpcDataServer* server) {
-             return server->BoundPort();
-           })
+      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort,
+           py::call_guard<py::gil_scoped_release>())
       .def("num_tasks",
            [](tensorflow::data::WorkerGrpcDataServer* server) -> int {
              int num_tasks;
