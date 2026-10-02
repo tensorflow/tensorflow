@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/roll_op.h"
@@ -53,7 +54,7 @@ namespace functor {
 
 template <typename T>
 struct Roll<GPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64_t num_elements,
+  void operator()(OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
                   const absl::Span<const int32_t> threshold,
@@ -63,7 +64,7 @@ struct Roll<GPUDevice, T> {
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     auto config_or = GetGpuLaunchConfig64(num_elements, d);
-    CHECK_OK(config_or.status());  // Crash OK
+    OP_REQUIRES_OK(context, config_or.status());
     const GpuLaunchConfig64& cfg = *config_or;
 
     auto dim_bytes = sizeof(int32_t) * dim_size.size();
@@ -79,16 +80,19 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
-    TF_CHECK_OK(
-        GpuLaunchKernel(RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
-                        d.stream(), cfg.virtual_thread_count, num_dims, input,
-                        output, reinterpret_cast<const int32_t*>(dim_buf),
-                        reinterpret_cast<const int32_t*>(thres_buf),
-                        reinterpret_cast<const int64_t*>(range_buf)));
+    absl::Status launch_status = GpuLaunchKernel(
+        RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
+        d.stream(), cfg.virtual_thread_count, num_dims, input, output,
+        reinterpret_cast<const int32_t*>(dim_buf),
+        reinterpret_cast<const int32_t*>(thres_buf),
+        reinterpret_cast<const int64_t*>(range_buf));
+>>>>>>> c841948c8a2 (fix(gpu): propagate RollKernel launch errors with OP_REQUIRES_OK)
 
     d.deallocate(dim_buf);
     d.deallocate(thres_buf);
     d.deallocate(range_buf);
+
+    OP_REQUIRES_OK(context, launch_status);
   }
 };
 
