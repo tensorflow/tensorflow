@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
@@ -97,7 +96,7 @@ class RaggedTensorToSparseOp : public OpKernel {
         }
 
         // Update index_prefix.
-        for (size_t dim = 0; dim < index_prefix.size(); ++dim) {
+        for (int dim = 0; dim < static_cast<int>(index_prefix.size()); ++dim) {
           int64_t start = dim > 0 ? rt_nested_splits[dim - 1](pos[dim - 1]) : 0;
           index_prefix[dim] = pos[dim] - start;
         }
