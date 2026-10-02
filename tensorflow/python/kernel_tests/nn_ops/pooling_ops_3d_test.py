@@ -137,9 +137,9 @@ class PoolingTest(test.TestCase):
         expected=expected_output)
 
   def testAvgPool3dGrad(self):
-    with self.assertRaises(
-        (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
-      for dtype in [dtypes.float32, dtypes.bfloat16]:
+    for dtype in [dtypes.float32, dtypes.bfloat16]:
+      with self.assertRaises(
+          (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
         with self.cached_session():
           orig_input_shape = constant_op.constant(
               1879048192, shape=[5], dtype=dtypes.int32
