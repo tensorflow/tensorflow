@@ -17,16 +17,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-// floor_cpu applies the FTZ/DAZ subnormal correction for all CPU-registered
-// types.  float uses scalar + SIMD (packetOp).  double, Eigen::half, and
-// bfloat16 use the scalar path only (PacketAccess = false): double lacks a
-// 256-bit integer packet on AVX1; half and bfloat16 lack a guaranteed
-// integer_packet on all platforms.
-// GPU registration uses functor::floor (Eigen's scalar_floor_op) directly;
-// GPU kernels do not run under CPU FTZ/DAZ settings and GPU packet types
-// have no integer_packet.
-REGISTER4(UnaryOp, CPU, "Floor", functor::floor_cpu, float, Eigen::half,
-          bfloat16, double);
+// float32 uses the FTZ/DAZ-corrected functor (scalar + SIMD packetOp).
+// double, Eigen::half, and bfloat16 use Eigen's standard scalar_floor_op;
+// float16 subnormals are not flushed on CPU (they are normal float32 values),
+// and the SIMD penalty of a corrected double/half/bfloat16 path is not
+// justified for subnormal-only correctness.
+// GPU registration uses functor::floor directly; GPU kernels do not run
+// under CPU FTZ/DAZ settings.
+REGISTER(UnaryOp, CPU, "Floor", functor::floor_cpu, float);
+REGISTER3(UnaryOp, CPU, "Floor", functor::floor, Eigen::half, bfloat16,
+          double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)

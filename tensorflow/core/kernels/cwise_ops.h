@@ -921,31 +921,24 @@ struct functor_traits<igamma_op<Scalar>> {
 };
 
 // TensorFlow runs CPU kernels with FTZ/DAZ enabled, so floor() of a negative
-// subnormal is computed as floor(-0.0) = -0.0 instead of -1.0.  The functors
-// below fix this for float32, double, Eigen::half, and bfloat16.
+// float32 subnormal is computed as floor(-0.0f) = -0.0f instead of -1.0f.
+// scalar_cpu_floor_float_op fixes this for float32 on CPU.
 //
-// Note: These are TensorFlow-only workarounds because TF globally enables
-// FTZ/DAZ on CPU, whereas Eigen upstream does not assume FTZ/DAZ mode.
-// Upstreaming would unconditionally penalize the fast path for non-FTZ
-// environments and is therefore not appropriate for the Eigen library.
+// Note: TensorFlow-only workaround; Eigen upstream does not assume FTZ/DAZ.
+// Upstreaming would unconditionally penalize non-FTZ environments.
 //
-// Scalar path: bit_cast reads the raw bit pattern via memcpy, bypassing FP
-// registers.  Only evaluated when r == 0.0 (short-circuit), so normal inputs
-// pay no extra cost.  Negative NaNs satisfy the bit test but are excluded
-// because floor(NaN) is NaN, for which r == 0.0 is always false.
-// The canonical ordering predicate operator< is used throughout.
+// Scalar path: bit_cast reads raw bits via memcpy, bypassing FP registers.
+// Only evaluated when r == 0.0f (short-circuit); normal inputs pay no cost.
+// Negative NaNs are excluded because floor(NaN) is NaN != 0.0f.
+// Known limitation: on Windows MSVC the scalar argument can be flushed to
+// -0.0f through an XMM register before bit_cast reads its bits, so the
+// scalar path does not fix the value on Windows.
 //
-// Packet path (float32 only): the correction runs entirely in the integer
-// domain via zero-cost bit-reinterpretation (preinterpret), which is immune
-// to FTZ/DAZ flushing.  double lacks a 256-bit integer packet on AVX1
-// (PacketAccess = false).  Eigen::half and bfloat16 lack a guaranteed
-// integer_packet on all platforms (PacketAccess = false); the scalar
-// correction is sufficient for those types.
+// Packet path: the correction runs in the integer domain via zero-cost
+// bit-reinterpretation (preinterpret), immune to FTZ/DAZ flushing.
+// PacketAccess requires HasRound (pfloor) and HasCmp (pcmp_eq/pandnot).
 //
-// packetOp helper used by float32 only.
-// The IntMin parameter must be the INT32_MIN (0x80000000) sign-bit constant
-// for float32 Packet4f/Packet8f.  The helper is not used for double because
-// PacketAccess = false for scalar_cpu_floor_double_op.
+// packetOp helper for float32.  IntMin must be INT32_MIN (0x80000000).
 template <typename Packet, typename IntMin>
 EIGEN_STRONG_INLINE Packet
 cpu_floor_packet_correction(const Packet& x, const Packet& r,
@@ -975,6 +968,9 @@ struct scalar_cpu_floor_float_op {
     // bit_cast reads raw bits via memcpy, never through an FP register.
     // Only evaluated when r == 0.0f; short-circuits for normal inputs.
     // Negative NaNs are excluded because floor(NaN) is NaN != 0.0f.
+    // Known limitation: on Windows MSVC the scalar argument x can be
+    // flushed to -0.0f through an XMM register before bit_cast reads its
+    // bits, so this scalar path does not fix the value on Windows.
     return (r == 0.0f && 0x80000000u < numext::bit_cast<uint32_t>(x))
                ? -1.0f
                : r;
@@ -999,84 +995,6 @@ struct functor_traits<scalar_cpu_floor_float_op> {
     // -Wconstant-logical-operand in Clang when operands are enum constants.
     PacketAccess =
         packet_traits<float>::HasRound & packet_traits<float>::HasCmp,
-  };
-};
-
-// Functor for tf.math.floor on double on CPU.
-// Note: TensorFlow-only FTZ/DAZ workaround; see scalar_cpu_floor_float_op.
-// Scalar path only: on AVX1, Packet4d is 256-bit but there is no 256-bit
-// integer packet, so unpacket_traits<Packet4d>::integer_packet degrades to
-// scalar int (32-bit).  Calling preinterpret in cpu_floor_packet_correction
-// would then fail the sizeof(_ToType)==sizeof(_FromType) assertion in
-// bit_cast.  PacketAccess = false ensures the scalar path is always used.
-struct scalar_cpu_floor_double_op {
-  EIGEN_STRONG_INLINE double operator()(const double& x) const {
-    const double r = numext::floor(x);
-    return (r == 0.0 && 0x8000000000000000ull < numext::bit_cast<uint64_t>(x))
-               ? -1.0
-               : r;
-  }
-};
-
-template <>
-struct functor_traits<scalar_cpu_floor_double_op> {
-  enum {
-    Cost = functor_traits<scalar_floor_op<double>>::Cost +
-           3 * NumTraits<double>::AddCost,
-    // PacketAccess is disabled for double: unpacket_traits<Packet4d>
-    // ::integer_packet is scalar int on AVX1, which causes preinterpret to
-    // fail size assertions in cpu_floor_packet_correction.
-    PacketAccess = false,
-  };
-};
-
-// Functor for tf.math.floor on Eigen::half on CPU.
-// Note: TensorFlow-only FTZ/DAZ workaround; see scalar_cpu_floor_float_op.
-// Eigen::half lacks a guaranteed integer_packet on all platforms, so only
-// the scalar path is corrected; PacketAccess is left false.
-struct scalar_cpu_floor_half_op {
-  EIGEN_STRONG_INLINE Eigen::half operator()(const Eigen::half& x) const {
-    const Eigen::half r = numext::floor(x);
-    // 0x8000 is the bit pattern of -0.0 in float16.
-    return (r == Eigen::half(0.0f) &&
-            static_cast<uint16_t>(0x8000u) <
-                numext::bit_cast<uint16_t>(x))
-               ? Eigen::half(-1.0f)
-               : r;
-  }
-};
-
-template <>
-struct functor_traits<scalar_cpu_floor_half_op> {
-  enum {
-    Cost = functor_traits<scalar_floor_op<Eigen::half>>::Cost +
-           3 * NumTraits<Eigen::half>::AddCost,
-    PacketAccess = false,
-  };
-};
-
-// Functor for tf.math.floor on bfloat16 on CPU.
-// Note: TensorFlow-only FTZ/DAZ workaround; see scalar_cpu_floor_float_op.
-// bfloat16 lacks a guaranteed integer_packet on all platforms, so only the
-// scalar path is corrected; PacketAccess is left false.
-struct scalar_cpu_floor_bfloat16_op {
-  EIGEN_STRONG_INLINE bfloat16 operator()(const bfloat16& x) const {
-    const bfloat16 r = numext::floor(x);
-    // 0x8000 is the bit pattern of -0.0 in bfloat16.
-    return (r == bfloat16(0.0f) &&
-            static_cast<uint16_t>(0x8000u) <
-                numext::bit_cast<uint16_t>(x))
-               ? bfloat16(-1.0f)
-               : r;
-  }
-};
-
-template <>
-struct functor_traits<scalar_cpu_floor_bfloat16_op> {
-  enum {
-    Cost = functor_traits<scalar_floor_op<bfloat16>>::Cost +
-           3 * NumTraits<bfloat16>::AddCost,
-    PacketAccess = false,
   };
 };
 
@@ -1298,18 +1216,6 @@ struct floor_cpu : floor<T> {};
 template <>
 struct floor_cpu<float>
     : base<float, Eigen::internal::scalar_cpu_floor_float_op> {};
-
-template <>
-struct floor_cpu<double>
-    : base<double, Eigen::internal::scalar_cpu_floor_double_op> {};
-
-template <>
-struct floor_cpu<Eigen::half>
-    : base<Eigen::half, Eigen::internal::scalar_cpu_floor_half_op> {};
-
-template <>
-struct floor_cpu<bfloat16>
-    : base<bfloat16, Eigen::internal::scalar_cpu_floor_bfloat16_op> {};
 #endif  // !defined(EIGEN_GPUCC)
 
 template <typename T>
