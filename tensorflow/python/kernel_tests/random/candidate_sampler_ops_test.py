@@ -16,13 +16,13 @@
 
 import numpy as np
 
-from tensorflow import raw_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import gen_candidate_sampling_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -131,20 +131,18 @@ class RangeSamplerOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testUnigramRangeTooLarge(self):
-    for sampler in (
-        raw_ops.ThreadUnsafeUnigramCandidateSampler,
-        raw_ops.LearnedUnigramCandidateSampler):
-      # The first range truncates to one, keeping the unfixed reproducer small.
-      for range_max in (2**32 + 1, 2**30 + 1, np.iinfo(np.int32).max,
-                        np.iinfo(np.int64).max):
-        with self.subTest(sampler=sampler.__name__, range_max=range_max):
-          with self.assertRaisesRegex(
-              (ValueError, errors.InvalidArgumentError),
-              "range_max must be at most 1073741824"):
-            result = sampler(
-                true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
-                num_true=1, num_sampled=1, unique=False, range_max=range_max)
-            self.evaluate(result)
+    sampler = gen_candidate_sampling_ops.thread_unsafe_unigram_candidate_sampler
+    # The first range truncates to one, keeping the unfixed reproducer small.
+    for range_max in (2**32 + 1, 2**30 + 1, np.iinfo(np.int32).max,
+                      np.iinfo(np.int64).max):
+      with self.subTest(range_max=range_max):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            "range_max must be at most 1073741824"):
+          result = sampler(
+              true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
+              num_true=1, num_sampled=1, unique=False, range_max=range_max)
+          self.evaluate(result)
 
   @test_util.run_in_graph_and_eager_modes
   def testLearnedUnigramRangeTooLarge(self):
@@ -160,14 +158,14 @@ class RangeSamplerOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testUnigramNonpositiveRange(self):
-    for sampler in (raw_ops.ThreadUnsafeUnigramCandidateSampler,
-                    raw_ops.LearnedUnigramCandidateSampler):
+    for sampler in (
+        gen_candidate_sampling_ops.thread_unsafe_unigram_candidate_sampler,
+        candidate_sampling_ops.learned_unigram_candidate_sampler):
       for range_max in (0, -1):
         with self.subTest(sampler=sampler.__name__, range_max=range_max):
           with self.assertRaisesRegex(
               (ValueError, errors.InvalidArgumentError),
-              r"range_max.*(?:must be at least|less than) minimum 1|"
-              r"range_max must be positive"):
+              r"must be at least minimum 1|less than minimum 1"):
             result = sampler(
                 true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
                 num_true=1, num_sampled=1, unique=False, range_max=range_max)
@@ -176,8 +174,8 @@ class RangeSamplerOpsTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testUnigramSingleClass(self):
     for sampler in (
-        raw_ops.ThreadUnsafeUnigramCandidateSampler,
-        raw_ops.LearnedUnigramCandidateSampler):
+        gen_candidate_sampling_ops.thread_unsafe_unigram_candidate_sampler,
+        candidate_sampling_ops.learned_unigram_candidate_sampler):
       for unique in (False, True):
         with self.subTest(sampler=sampler.__name__, unique=unique):
           sampled, true_count, sampled_count = self.evaluate(sampler(
