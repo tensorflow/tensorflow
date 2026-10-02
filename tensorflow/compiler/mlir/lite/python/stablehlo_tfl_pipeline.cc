@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cast_bf16_ops_to_f32_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/downcast_x64_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/large_constant_fold_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
@@ -140,7 +141,8 @@ std::unique_ptr<mlir::Pass> CreatePruneDeadResourcesPass() {
 }  // namespace
 
 void AddPipelinePasses(mlir::OpPassManager& pass_manager,
-                       const mlir::TFL::PassConfig& pass_config) {
+                       const mlir::TFL::PassConfig& pass_config,
+                       const tflite::ConverterFlags& converter_flags) {
   // =========================================================================
   // 1. Skip-to-TFLite & Pre-Lowering Passes
   // =========================================================================
@@ -307,6 +309,12 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
       mlir::createCanonicalizerPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());
   pass_manager.addPass(mlir::TFL::CreateCleanupOptimizationBarrierPass());
+  if (!converter_flags.enable_x64()) {
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateDowncastX64Pass());
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::createCanonicalizerPass());
+  }
   pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
   pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
   pass_manager.addPass(CreatePruneDeadResourcesPass());
@@ -426,7 +434,7 @@ absl::Status ConvertStableHloToTFLite(
       tensorflow::InitPassManager(pm, converter_flags.debug_options());
     }
 
-    AddPipelinePasses(pm, pass_config);
+    AddPipelinePasses(pm, pass_config, converter_flags);
 
     mlir::StatusScopedDiagnosticHandler status_handler(context,
                                                        /*propagate=*/false);
