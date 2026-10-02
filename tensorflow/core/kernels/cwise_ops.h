@@ -987,10 +987,10 @@ struct scalar_cpu_floor_float_op {
 template <>
 struct functor_traits<scalar_cpu_floor_float_op> {
   enum {
-    // Base pfloor cost plus three extra packet ops: two pcmp_eq (for r_bits
-    // and x_bits against the sign-bit mask) and one pandnot to combine them.
+    // Base pfloor cost plus four extra packet ops: two pcmp_eq (for r_bits
+    // and x_bits against the sign-bit mask), one pandnot, and one pselect.
     Cost = functor_traits<scalar_floor_op<float>>::Cost +
-           3 * NumTraits<float>::AddCost,
+           4 * NumTraits<float>::AddCost,
     // Use bitwise & (not logical &&): logical && triggers
     // -Wconstant-logical-operand in Clang when operands are enum constants.
     PacketAccess =
