@@ -23,6 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
+#include <type_traits>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
