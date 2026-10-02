@@ -87,6 +87,7 @@ namespace {
 #ifdef Py_GIL_DISABLED
 using PyReaderMutexLock = absl::ReaderMutexLock;
 using PyWriterMutexLock = absl::WriterMutexLock;
+#define TF_GUARDED_BY_IF_FREE_THREADED(m) TF_GUARDED_BY(m)
 #else
 struct TF_SCOPED_LOCKABLE PyReaderMutexLock {
   explicit PyReaderMutexLock(absl::Mutex* mu) TF_SHARED_LOCK_FUNCTION(mu) {}
@@ -96,6 +97,7 @@ struct TF_SCOPED_LOCKABLE PyWriterMutexLock {
   explicit PyWriterMutexLock(absl::Mutex* mu) TF_EXCLUSIVE_LOCK_FUNCTION(mu) {}
   ~PyWriterMutexLock() TF_UNLOCK_FUNCTION() {}
 };
+#define TF_GUARDED_BY_IF_FREE_THREADED(m)
 #endif
 
 // NOTE: Items are retrieved from and returned to these unique_ptrs, and they
@@ -911,21 +913,25 @@ PyObject* GetPythonObjectFromInt(int num) {
 
 // Python subclass of Exception that is created on not ok Status.
 static absl::Mutex exception_class_mutex(absl::kConstInit);
-PyObject* exception_class TF_GUARDED_BY(exception_class_mutex) = nullptr;
+PyObject* exception_class
+    TF_GUARDED_BY_IF_FREE_THREADED(exception_class_mutex) = nullptr;
 
 // Python subclass of Exception that is created to signal fallback.
 static absl::Mutex fallback_exception_class_mutex(absl::kConstInit);
 PyObject* fallback_exception_class
-    TF_GUARDED_BY(fallback_exception_class_mutex) = nullptr;
+    TF_GUARDED_BY_IF_FREE_THREADED(fallback_exception_class_mutex) = nullptr;
 
 // Python function that returns input gradients given output gradients.
 static absl::Mutex gradient_function_mutex(absl::kConstInit);
-PyObject* gradient_function TF_GUARDED_BY(gradient_function_mutex) = nullptr;
+PyObject* gradient_function
+    TF_GUARDED_BY_IF_FREE_THREADED(gradient_function_mutex) = nullptr;
 
 // Python function that returns output gradients given input gradients.
 static absl::Mutex forward_gradient_function_mutex(absl::kConstInit);
 PyObject* forward_gradient_function
-    TF_GUARDED_BY(forward_gradient_function_mutex) = nullptr;
+    TF_GUARDED_BY_IF_FREE_THREADED(forward_gradient_function_mutex) = nullptr;
+
+#undef TF_GUARDED_BY_IF_FREE_THREADED
 
 static std::atomic<int64_t> _uid = ATOMIC_VAR_INIT(int64_t{0});
 
@@ -1730,8 +1736,8 @@ PyObject* PyTapeTensor::OnesLike(const PyVSpace& vspace) const {
   PyObject* py_shape = GetShape(vspace);
   PyObject* dtype_field = GetPyDType();
   PyObject* result = vspace.Ones(py_shape, dtype_field);
-  Py_DECREF(dtype_field);
-  Py_DECREF(py_shape);
+  Py_XDECREF(dtype_field);
+  Py_XDECREF(py_shape);
   return result;
 }
 
@@ -1749,8 +1755,8 @@ PyObject* PyTapeTensor::ZerosLike(const PyVSpace& vspace) const {
   PyObject* py_shape = GetShape(vspace);
   PyObject* dtype_field = GetPyDType();
   PyObject* result = vspace.Zeros(py_shape, dtype_field);
-  Py_DECREF(dtype_field);
-  Py_DECREF(py_shape);
+  Py_XDECREF(dtype_field);
+  Py_XDECREF(py_shape);
   return result;
 }
 

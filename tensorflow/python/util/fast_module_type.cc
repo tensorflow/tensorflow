@@ -238,7 +238,7 @@ static PyObject *CallFunc(FastModuleObject *self, PyObject *name,
   }
   PyObject *arglist = Py_BuildValue("(OO)", self, name);
   auto result = PyObject_CallObject(func, arglist);
-  Py_DECREF(arglist);
+  Py_XDECREF(arglist);
   return result;
 }
 
