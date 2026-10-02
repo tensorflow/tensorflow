@@ -202,10 +202,25 @@ class TilingSpace {
 
   bool IsSymbolic() const { return is_symbolic_; }
 
+  // Result of `SimplifyExpressions`.
+  // TODO(b/565301234): follow up: we can also return simplified constraint
+  // intervals but that requires extracting them from IndexingMap properly,
+  // as it sometimes converts them to dimension constraints.
+  struct SimplificationResult {
+    // Simplified expressions. If `is_known_empty` is true, the expressions are
+    // returned as is.
+    llvm::SmallVector<SymbolicExpr> expressions;
+    // True if the constraints are infeasible for the current tiling space
+    // bounds, i.e. there is no assignment of the variables under which the
+    // expressions are evaluated.
+    bool is_known_empty = false;
+  };
+
   // Simplifies expressions using actual dimension and symbol bounds
   // based on the assigned tile sizes and runtime variable bounds.
-  llvm::SmallVector<SymbolicExpr> SimplifyExpressions(
-      const llvm::SmallVector<SymbolicExpr>& expressions) const;
+  SimplificationResult SimplifyExpressions(
+      const llvm::SmallVector<SymbolicExpr>& expressions,
+      llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {}) const;
 
   // Returns the list of valid tilings for the tiling space.
   absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();

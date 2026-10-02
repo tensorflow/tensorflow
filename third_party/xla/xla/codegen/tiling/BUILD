@@ -191,7 +191,6 @@ cc_library(
     srcs = ["constraint_expression.cc"],
     hdrs = ["constraint_expression.h"],
     deps = [
-        "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
         "@com_google_absl//absl/algorithm:container",

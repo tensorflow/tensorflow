@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -30,8 +31,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
-#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/analysis/symbolic_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -47,10 +48,18 @@ using ::mlir::MLIRContext;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
-MATCHER_P(MatchString, tiling_space_string, "") {
-  return ExplainMatchResult(
-      true, ApproximateMatch(tiling_space_string, arg.ToString()),
-      result_listener);
+MATCHER_P(MatchString, expected, "") {
+  const absl::string_view expected_string = expected;
+  const std::string actual_string = arg.ToString();
+  const auto [expected_index, actual_index] =
+      FindApproximateMismatch(expected_string, actual_string);
+  const bool matches = expected_index == expected_string.size() &&
+                       actual_index == actual_string.size();
+  if (!matches) {
+    *result_listener << GetMismatchReport(expected_index, actual_index,
+                                          expected_string, actual_string);
+  }
+  return matches;
 }
 
 class TilingSpaceTest : public HloHardwareIndependentTestBase {
@@ -474,45 +483,53 @@ class TilingSpaceSimplifyExpressionsTest : public TilingSpaceTest {
 };
 
 TEST_F(TilingSpaceSimplifyExpressionsTest, ModRemovedIfLessThanDivisor) {
-  EXPECT_THAT(
-      tiling_space_->SimplifyExpressions({ParseExpr("(d0 * 8) mod 96")}),
-      ElementsAre(ParseExpr("d0 * 8")));
+  EXPECT_THAT(tiling_space_->SimplifyExpressions({ParseExpr("(d0 * 8) mod 96")})
+                  .expressions,
+              ElementsAre(ParseExpr("d0 * 8")));
 }
 
 TEST_F(TilingSpaceSimplifyExpressionsTest, MultipleExpressionsSimplified) {
-  EXPECT_THAT(tiling_space_->SimplifyExpressions({ParseExpr("(d0 * 8) mod 96"),
-                                                  ParseExpr("(d1 * 2) / 10"),
-                                                  ParseExpr("d0 * 16 + 500")}),
-              ElementsAre(ParseExpr("d0 * 8"), ParseExpr("d1 / 5"),
+  EXPECT_THAT(tiling_space_
+                  ->SimplifyExpressions({ParseExpr("(d0 * 8) mod 96"),
+                                         ParseExpr("(d1 * 2) / 4"),
+                                         ParseExpr("d0 * 16 + 500")})
+                  .expressions,
+              ElementsAre(ParseExpr("d0 * 8"), ParseExpr("d1 / 2"),
                           ParseExpr("d0 * 16 + 500")));
 }
 
 TEST_F(TilingSpaceSimplifyExpressionsTest, DimTileSimplify) {
-  DimTile dt{ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+  DimTile dt{ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 4"),
              ParseExpr("d0 * 16 + 500"),
              ParseExpr("(d0 * 16 + d1 * 2) mod 200")};
   dt.Simplify(*tiling_space_);
-  EXPECT_EQ(dt.offset, ParseExpr("d0 * 8"));
-  EXPECT_EQ(dt.size, ParseExpr("d1 / 5"));
-  EXPECT_EQ(dt.stride, ParseExpr("d0 * 16 + 500"));
-  EXPECT_EQ(dt.upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
+  EXPECT_THAT(dt, MatchString(R"(
+    offset [v0 * 8],
+    size [v1 / 2],
+    stride [v0 * 16 + 500],
+    upper bound [v0 * 16 + v1 * 2]
+  )"));
 }
 
 TEST_F(TilingSpaceSimplifyExpressionsTest, SimplifyDimTiles) {
   llvm::SmallVector<DimTile> dim_tiles = {
-      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 4"),
        ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")},
-      {ParseExpr("(d1 * 2) / 10"), ParseExpr("(d0 * 8) mod 96"),
+      {ParseExpr("(d1 * 2) / 4"), ParseExpr("(d0 * 8) mod 96"),
        ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
   SimplifyDimTiles(dim_tiles, *tiling_space_);
-  EXPECT_EQ(dim_tiles[0].offset, ParseExpr("d0 * 8"));
-  EXPECT_EQ(dim_tiles[0].size, ParseExpr("d1 / 5"));
-  EXPECT_EQ(dim_tiles[0].stride, ParseExpr("d0 * 16 + 500"));
-  EXPECT_EQ(dim_tiles[0].upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
-  EXPECT_EQ(dim_tiles[1].offset, ParseExpr("d1 / 5"));
-  EXPECT_EQ(dim_tiles[1].size, ParseExpr("d0 * 8"));
-  EXPECT_EQ(dim_tiles[1].stride, ParseExpr("d0 * 16 + 500"));
-  EXPECT_EQ(dim_tiles[1].upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
+  EXPECT_THAT(dim_tiles[0], MatchString(R"(
+    offset [v0 * 8],
+    size [v1 / 2],
+    stride [v0 * 16 + 500],
+    upper bound [v0 * 16 + v1 * 2]
+  )"));
+  EXPECT_THAT(dim_tiles[1], MatchString(R"(
+    offset [v1 / 2],
+    size [v0 * 8],
+    stride [v0 * 16 + 500],
+    upper bound [v0 * 16 + v1 * 2]
+  )"));
 
   llvm::SmallVector<DimTile> empty_dim_tiles;
   SimplifyDimTiles(empty_dim_tiles, *tiling_space_);
@@ -521,16 +538,66 @@ TEST_F(TilingSpaceSimplifyExpressionsTest, SimplifyDimTiles) {
 
 TEST_F(TilingSpaceSimplifyExpressionsTest, SimplifyDimTilesGroups) {
   llvm::SmallVector<DimTile> group1 = {
-      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 4"),
        ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
   llvm::SmallVector<DimTile> group2 = {
-      {ParseExpr("(d1 * 2) / 10"), ParseExpr("(d0 * 8) mod 96"),
+      {ParseExpr("(d1 * 2) / 4"), ParseExpr("(d0 * 8) mod 96"),
        ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
   SimplifyDimTiles({group1, group2}, *tiling_space_);
-  EXPECT_EQ(group1[0].offset, ParseExpr("d0 * 8"));
-  EXPECT_EQ(group1[0].size, ParseExpr("d1 / 5"));
-  EXPECT_EQ(group2[0].offset, ParseExpr("d1 / 5"));
-  EXPECT_EQ(group2[0].size, ParseExpr("d0 * 8"));
+  EXPECT_THAT(group1[0], MatchString(R"(
+    offset [v0 * 8],
+    size [v1 / 2],
+    stride [v0 * 16 + 500],
+    upper bound [v0 * 16 + v1 * 2]
+  )"));
+  EXPECT_THAT(group2[0], MatchString(R"(
+    offset [v1 / 2],
+    size [v0 * 8],
+    stride [v0 * 16 + 500],
+    upper bound [v0 * 16 + v1 * 2]
+  )"));
+}
+
+TEST_F(TilingSpaceSimplifyExpressionsTest, SimplifyDimTilesWithConstraints) {
+  llvm::SmallVector<DimTile> dim_tiles = {
+      {ParseExpr("d0"), ParseExpr("d1"), ParseExpr("1"),
+       ParseExpr("(d0 * 16 + d1 * 2) mod 100")}};
+  SimplifyDimTiles(dim_tiles, *tiling_space_,
+                   {{ParseExpr("d0 * 16 + d1 * 2"), Interval{0, 50}}});
+  EXPECT_THAT(dim_tiles[0], MatchString(R"(
+    offset [v0],
+    size [v1],
+    stride [1],
+    upper bound [v0 * 16 + v1 * 2]
+  )"));
+}
+
+TEST_F(TilingSpaceSimplifyExpressionsTest,
+       PointExpressionsSimplifiedToConstant) {
+  EXPECT_THAT(tiling_space_->SimplifyExpressions({ParseExpr("(d1 * 2) / 10")})
+                  .expressions,
+              ElementsAre(ParseExpr("0")));
+}
+
+TEST_F(TilingSpaceSimplifyExpressionsTest,
+       InfeasibleConstraintsReturnOriginalExpressions) {
+  // d0 in [0, 6], so d0 * 16 <= 96 and the constraint is never satisfied.
+  TilingSpace::SimplificationResult result = tiling_space_->SimplifyExpressions(
+      {ParseExpr("(d0 * 8) mod 96")},
+      {{ParseExpr("d0 * 16"), Interval{200, 300}}});
+  EXPECT_TRUE(result.is_known_empty);
+  EXPECT_THAT(result.expressions, ElementsAre(ParseExpr("(d0 * 8) mod 96")));
+}
+
+TEST_F(TilingSpaceSimplifyExpressionsTest,
+       SimplifyDimTilesKeepsExpressionsForInfeasibleConstraints) {
+  llvm::SmallVector<DimTile> dim_tiles = {
+      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 4"), ParseExpr("1"),
+       ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
+  llvm::SmallVector<DimTile> original = dim_tiles;
+  SimplifyDimTiles(dim_tiles, *tiling_space_,
+                   {{ParseExpr("d0 * 16"), Interval{200, 300}}});
+  EXPECT_EQ(dim_tiles, original);
 }
 
 TEST_F(TilingSpaceTest, ClonePerformsDeepCopies) {
