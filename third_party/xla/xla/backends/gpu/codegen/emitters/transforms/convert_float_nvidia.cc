@@ -118,16 +118,16 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
     } else {
       // Other FP types get converted to F32 first.
       value = ConvertToF32(value, b);
+      Value pzo = ma::ConstantIntOp::create(b, 0, 1);
       if (llvm::isa<mlir::Float4E2M1FNType>(to_ty)) {
         cvtOp = ml::CallIntrinsicOp::create(
             b, b.getIntegerType(16),
             b.getStringAttr("llvm.nvvm.ff.to.e2m1x2.rn.satfinite"),
-            mlir::ValueRange{value, value});
+            mlir::ValueRange{value, value, pzo});
       } else {
         const std::string cvtIntr = llvm::isa<mlir::Float8E4M3FNType>(to_ty)
                                         ? "llvm.nvvm.ff.to.e4m3x2.rn"
                                         : "llvm.nvvm.ff.to.e5m2x2.rn";
-        Value pzo = ma::ConstantIntOp::create(b, 0, 1);
         cvtOp = ml::CallIntrinsicOp::create(
             b, b.getIntegerType(16), b.getStringAttr(cvtIntr),
             mlir::ValueRange{value, value, pzo});
