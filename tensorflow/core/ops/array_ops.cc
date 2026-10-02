@@ -1278,21 +1278,31 @@ REGISTER_OP("GatherV2")
       ShapeHandle indices_shape = c->input(1);
       ShapeHandle unused_axis_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_axis_shape));
+
+      // Note, batch_dims can be negative.
+      int32_t batch_dims;
+      TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
+      ShapeHandle unused;
+      // -rank(indices) <= batch_dims <= rank(indices)
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          indices_shape, std::abs(static_cast<int64_t>(batch_dims)), &unused));
+      if (batch_dims < 0) {
+        if (!c->RankKnown(indices_shape)) {
+          c->set_output(0, c->UnknownShape());
+          return absl::OkStatus();
+        }
+        batch_dims += c->Rank(indices_shape);
+      }
+      // rank(params) > batch_dims
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          params_shape, static_cast<int64_t>(batch_dims) + 1, &unused));
+
       const Tensor* axis_t = c->input_tensor(2);
 
       // If axis is unknown, we can only infer that the result is params_rank +
       // indices_rank - 1 - batch_dims.
       if (axis_t == nullptr) {
         if (c->RankKnown(params_shape) && c->RankKnown(indices_shape)) {
-          int32_t batch_dims;
-          TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
-          if (batch_dims < 0) {
-            batch_dims += c->Rank(indices_shape);
-          }
-          if (batch_dims < 0 || batch_dims > c->Rank(indices_shape) ||
-              batch_dims >= c->Rank(params_shape)) {
-            return absl::InvalidArgumentError("batch_dims is out of bounds");
-          }
           c->set_output(0, c->UnknownShapeOfRank(c->Rank(params_shape) +
                                                  c->Rank(indices_shape) - 1 -
                                                  batch_dims));
@@ -1320,26 +1330,8 @@ REGISTER_OP("GatherV2")
       }
 
       // Check that params has rank of at least axis + 1.
-      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(
           params_shape, axis < 0 ? -axis : axis + 1, &unused));
-
-      // Note, batch_dims can be negative.
-      int32_t batch_dims;
-      TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
-      // -rank(indices) <= batch_dims <= rank(indices)
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
-          indices_shape, std::abs(static_cast<int64_t>(batch_dims)), &unused));
-      if (batch_dims < 0) {
-        if (!c->RankKnown(indices_shape)) {
-          c->set_output(0, c->UnknownShape());
-          return absl::OkStatus();
-        }
-        batch_dims += c->Rank(indices_shape);
-      }
-      // rank(params) > batch_dims
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
-          params_shape, static_cast<int64_t>(batch_dims) + 1, &unused));
 
       ShapeHandle params_outer_subshape;
       TF_RETURN_IF_ERROR(

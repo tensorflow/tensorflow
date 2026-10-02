@@ -439,13 +439,22 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         ("graph", gather_graph),
         ("graph_unknown_shape", gather_graph_unknown_shape)
     ]
+    expected_error_regex = (
+        r"Expected batch_dims in the range|"
+        r"Rank cannot exceed kint32max|"
+        r"Shape must be at least rank"
+    )
     for fn_name, fn in functions:
       with self.subTest(fn_name=fn_name, batch_dims="int32_min"):
-        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            expected_error_regex):
           fn(params, indices, batch_dims=int32_min)
 
       with self.subTest(fn_name=fn_name, batch_dims="int32_max"):
-        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            expected_error_regex):
           fn(params, indices, batch_dims=int32_max)
 
   def testEmptySlices(self):
