@@ -45,9 +45,9 @@ TEST(CompressionUtilsTest, Exceeds4GB) {
 }
 
 TEST(CompressionUtilsTest, ZeroElementNonMemcpyableComponent) {
-  // Compressing an empty element yields a `data` field holding zero
-  // uncompressed bytes, so the size reconciliation against the (empty) iovec
-  // succeeds and the third pass is reached.
+  // If metadata claims a non-memcpyable component has 65536 uncompressed bytes
+  // when the compressed data only has 0 bytes, the size reconciliation against
+  // the iovec fails before any decompression or deserialization occurs.
   std::vector<Tensor> empty_element;
   CompressedElement compressed;
   TF_ASSERT_OK(CompressElement(empty_element, &compressed));
@@ -61,8 +61,21 @@ TEST(CompressionUtilsTest, ZeroElementNonMemcpyableComponent) {
 
   std::vector<Tensor> element;
   EXPECT_THAT(UncompressElement(compressed, &element),
-              absl_testing::StatusIs(error::INVALID_ARGUMENT,
-                                     HasSubstr("Zero-element component")));
+              absl_testing::StatusIs(error::INTERNAL,
+                                     HasSubstr("Uncompressed size mismatch")));
+}
+
+TEST(CompressionUtilsTest, RoundTripEmptyVariantTensor) {
+  // A zero-element variant tensor is a legitimate, first-class tensor and must
+  // round-trip through compression without being rejected.
+  std::vector<Tensor> element = {Tensor(DT_VARIANT, TensorShape{0})};
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(element, &compressed));
+  std::vector<Tensor> round_trip;
+  TF_ASSERT_OK(UncompressElement(compressed, &round_trip));
+  ASSERT_EQ(round_trip.size(), 1);
+  EXPECT_EQ(round_trip[0].dtype(), DT_VARIANT);
+  EXPECT_EQ(round_trip[0].shape(), TensorShape({0}));
 }
 
 TEST(CompressionUtilsTest, MalformedTensorShape) {
