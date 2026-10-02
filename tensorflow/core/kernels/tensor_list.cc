@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -126,16 +125,13 @@ bool TensorList::Decode(const VariantTensorData& data) {
   TensorShapeProto element_shape_proto;
   if (!element_shape_proto.ParseFromString(iter)) return false;
   // The PartialTensorShape constructor calls AddDim(), which fatally CHECKs on a
-  // malformed rank or dimension size. The proto is untrusted, so build the shape
-  // through the factory, which validates and constructs in a single pass and
-  // returns an error instead of aborting the process.
-  PartialTensorShape decoded_element_shape;
-  if (!PartialTensorShape::BuildPartialTensorShape(element_shape_proto,
-                                                   &decoded_element_shape)
-           .ok()) {
-    VLOG(1) << "TensorList::Decode failed: malformed element_shape_proto";
-    return false;
-  }
+  // malformed rank or dimension size. BuildPartialTensorShape is not a safe
+  // substitute here: for partial shapes it silently coerces any dimension below
+  // -1 to unknown instead of rejecting it. The proto is untrusted, so validate
+  // it with IsValid (which also rejects dims < -1 and excessive rank) before
+  // constructing the shape.
+  if (!PartialTensorShape::IsValid(element_shape_proto)) return false;
+  const PartialTensorShape decoded_element_shape(element_shape_proto);
 
   // Every element stored in a list must match its element_dtype and be
   // compatible with its element_shape; the mutation paths (TensorListPushBack,
