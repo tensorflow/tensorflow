@@ -277,6 +277,61 @@ class AutoStrategyTest(test.TestCase):
       self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
       self.assertIn("CPU:0", strategy.extended._device)
 
+  @mock.patch.object(remote, "connect_to_cluster")
+  @mock.patch.object(
+      tpu_strategy_util, "get_initialized_tpu_systems", return_value=[]
+  )
+  @mock.patch.object(tpu_cluster_resolver, "initialize_tpu_system")
+  @mock.patch.object(tpu_cluster_resolver, "TPUClusterResolver")
+  @mock.patch.object(tpu_strategy, "TPUStrategy")
+  @mock.patch.object(
+      collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
+  )
+  def testMultiWorkerTPUPreemptsTFConfig(
+      self,
+      mock_cars_cls,
+      mock_tpu_strategy_cls,
+      mock_resolver_cls,
+      mock_init,
+      mock_get_init,
+      mock_connect,
+  ):
+    mock_resolver = mock.MagicMock()
+    mock_resolver_cls.return_value = mock_resolver
+    os.environ["TF_CONFIG"] = json.dumps({
+        "cluster": {
+            "worker": ["localhost:12345", "localhost:23456"]
+        },
+        "task": {"type": "worker", "index": 0},
+    })
+    with mock.patch.dict(os.environ, {"TPU_NAME": "test-tpu"}):
+      strategy = auto_strategy.auto_strategy()
+      mock_cars_cls.assert_not_called()
+      mock_connect.assert_called_once_with(mock_resolver)
+      mock_init.assert_called_once_with(mock_resolver)
+      mock_tpu_strategy_cls.assert_called_once_with(mock_resolver)
+      self.assertIs(strategy, mock_tpu_strategy_cls.return_value)
+
+  @mock.patch.object(
+      collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
+  )
+  @mock.patch.object(config, "get_visible_devices", return_value=[])
+  def testParameterServerTaskDoesNotUseMultiWorker(
+      self, mock_get_visible_devices, mock_cars_cls
+  ):
+    os.environ["TF_CONFIG"] = json.dumps({
+        "cluster": {
+            "worker": ["localhost:12345", "localhost:23456"],
+            "ps": ["localhost:34567"],
+        },
+        "task": {"type": "ps", "index": 0},
+    })
+    strategy = auto_strategy.auto_strategy()
+    mock_cars_cls.assert_not_called()
+    self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
+    self.assertIn("CPU:0", strategy.extended._device)
+
 
 if __name__ == "__main__":
   test.main()
+
