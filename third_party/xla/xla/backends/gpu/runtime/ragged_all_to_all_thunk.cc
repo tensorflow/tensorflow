@@ -605,6 +605,17 @@ RecordRaggedAllToAllWithSymmetricMemory(
   const int64_t num_updates_per_replica = config.num_total_updates / num_ranks;
   PrimitiveType element_type = device_buffers[0].element_type;
   se::DeviceAddressBase input_buffer = device_buffers[0].source_buffer;
+  se::DeviceAddressBase output_buffer = device_buffers[1].destination_buffer;
+  XLA_VLOG_DEVICE(4, state->device_ordinal)
+      << "Performing one-shot ragged-all-to-all "
+         "with NCCL barrier. input buffer: ("
+      << input_buffer.opaque() << ", size=" << input_buffer.size()
+      << ") output buffer: (" << output_buffer.opaque()
+      << ", size=" << output_buffer.size() << ")"
+      << " output sym memory (handle=" << output_sym_mem
+      << ", address=" << output_sym_mem->addr().opaque()
+      << ", size=" << output_sym_mem->addr().size()
+      << ", sym_offset=" << output_sym_offset << ")";
 
   RaggedAllToAllCommandState* cmd_state =
       record_params.state.GetOrCreate<RaggedAllToAllCommandState>(
@@ -745,26 +756,31 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
         *state = RaggedAllToAllStreamState(executor->device_ordinal(),
                                            rank.value(), std::move(clique_key));
 
-        // Allocate temp buffers in the host memory to load the sizes and
-        // offsets of ragged tensors from device memory.
-        for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
-          ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
-                           executor->HostMemoryAllocate(
-                               config_.num_total_updates * sizeof(int64_t)));
-          state->host_buffer_allocs.push_back(std::move(alloc));
-        }
+        // Allocate buffers only if fallback to NCCL is allowed. The fallback
+        // should not be enabled, unless explicitly requested by the user.
+        if (config_.allow_fallback_to_nccl) {
+          // Allocate temp buffers in the host memory to load the sizes and
+          // offsets of ragged tensors from device memory.
+          for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
+            ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
+                             executor->HostMemoryAllocate(
+                                 config_.num_total_updates * sizeof(int64_t)));
+            state->host_buffer_allocs.push_back(std::move(alloc));
+          }
 
-        const uint64_t output_offsets_buffer_bytes =
-            static_cast<uint64_t>(config_.num_total_updates) * sizeof(int64_t);
-        ABSL_ASSIGN_OR_RETURN(
-            state->output_offsets_device_buffer,
-            params.buffer_allocations->memory_allocator()->Allocate(
-                executor->device_ordinal(), output_offsets_buffer_bytes));
+          const uint64_t output_offsets_buffer_bytes =
+              static_cast<uint64_t>(config_.num_total_updates) *
+              sizeof(int64_t);
+          ABSL_ASSIGN_OR_RETURN(
+              state->output_offsets_device_buffer,
+              params.buffer_allocations->memory_allocator()->Allocate(
+                  executor->device_ordinal(), output_offsets_buffer_bytes));
 
-        if (output_offsets_buffer_bytes > 0 &&
-            state->output_offsets_device_buffer.is_null()) {
-          return absl::InternalError(
-              "Failed to allocate output offsets buffer.");
+          if (output_offsets_buffer_bytes > 0 &&
+              state->output_offsets_device_buffer.is_null()) {
+            return absl::InternalError(
+                "Failed to allocate output offsets buffer.");
+          }
         }
 
         if ((use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() &&
@@ -1210,15 +1226,6 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
     }
   }
 
-  // Get buffer allocs to load sizes and offsets of ragged tensors from device
-  // memory.
-  absl::InlinedVector<int64_t*, 8> ragged_metadata_allocs;
-  ragged_metadata_allocs.reserve(kNumRaggedMetadataOperands);
-  for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
-    ragged_metadata_allocs.push_back(reinterpret_cast<int64_t*>(
-        state->host_buffer_allocs[i]->address().opaque()));
-  }
-
   SymmetricMemory* output_sym_mem = nullptr;
   size_t output_base_offset = 0;
   if (use_symmetric_memory() && params.collective_memory) {
@@ -1244,6 +1251,15 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
         "(`xla_gpu_experimental_ragged_all_to_all_use_device_kernel`) is used. "
         "If NCCL fallback is intentional, please set "
         "`xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback` to true.");
+  }
+
+  // Get buffer allocs to load sizes and offsets of ragged tensors from device
+  // memory.
+  absl::InlinedVector<int64_t*, 8> ragged_metadata_allocs(
+      kNumRaggedMetadataOperands);
+  for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
+    ragged_metadata_allocs[i] = reinterpret_cast<int64_t*>(
+        state->host_buffer_allocs[i]->address().opaque());
   }
 
   return RunNcclFallbackRaggedAllToAll(

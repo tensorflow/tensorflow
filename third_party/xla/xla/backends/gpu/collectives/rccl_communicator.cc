@@ -584,7 +584,8 @@ absl::Status RcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
 }
 
 absl::StatusOr<std::unique_ptr<SymmetricMemory>>
-RcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
+RcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr,
+                                        bool symmetric_window) {
   return RcclSymmetricMemory::Create(comm_, addr);
 }
 

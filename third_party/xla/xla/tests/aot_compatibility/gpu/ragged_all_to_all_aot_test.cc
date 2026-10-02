@@ -124,6 +124,7 @@ TEST_P(RaggedAllToAllAotTest, SymmetricMemory) {
       false);
   debug_options.set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(
       true);
+  debug_options.set_xla_gpu_experimental_nccl_window_symmetric(true);
   EnableNcclSymmetricBuffers(debug_options);
   RunAndExpectRaggedAllToAll(config);
 }

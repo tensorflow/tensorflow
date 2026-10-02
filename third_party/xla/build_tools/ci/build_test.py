@@ -58,6 +58,44 @@ class BuildTest(parameterized.TestCase):
           builds[build_type].startup_options.get("host_jvm_args", ""),
       )
 
+  def test_default_and_jax_builds_disable_runfile_links_and_downloads(
+      self,
+  ) -> None:
+    builds = build.Build.all_builds()
+    for build_type in (
+        build.BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
+        build.BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
+    ):
+      self.assertIs(
+          builds[build_type].options.get("build_runfile_links"), False
+      )
+      self.assertNotIn("remote_download_toplevel", builds[build_type].options)
+    for build_type in (
+        build.BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
+        build.BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    ):
+      self.assertIs(
+          builds[build_type].options.get("build_runfile_links"), False
+      )
+      self.assertIs(
+          builds[build_type].options.get("remote_download_minimal"), True
+      )
+
+  def test_benchmark_presubmit_builds_enable_runfile_links_and_toplevel_downloads(
+      self,
+  ) -> None:
+    builds = build.Build.all_builds()
+    for build_type in (
+        build.BuildType.XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+    ):
+      self.assertIs(builds[build_type].options.get("build_runfile_links"), True)
+      self.assertIs(
+          builds[build_type].options.get("remote_download_toplevel"), True
+      )
+
   @parameterized.named_parameters(
       dict(
           testcase_name="xla_windows_succeeds_on_first_attempt",
@@ -121,7 +159,6 @@ class BuildTest(parameterized.TestCase):
       self, mock_sh: mock.MagicMock
   ) -> None:
     mock_sh.side_effect = [
-        subprocess.CompletedProcess(args=["parallel"], returncode=0),
         subprocess.CompletedProcess(args=["bazel"], returncode=2),
     ]
     target_build = build.Build.all_builds()[
@@ -129,7 +166,7 @@ class BuildTest(parameterized.TestCase):
     ]
     with self.assertRaisesRegex(SystemExit, "^2$"):
       build.execute_build_commands(target_build)
-    self.assertEqual(mock_sh.call_count, 2)
+    self.assertEqual(mock_sh.call_count, 1)
 
   @mock.patch.object(build, "sh", autospec=True, spec_set=True)
   def test_execute_build_commands_exit_code_4_with_target_pattern_file(

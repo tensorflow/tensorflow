@@ -87,7 +87,7 @@ class MoriCommunicator : public GpuCommunicator {
   absl::StatusOr<size_t> CurrentRank() final;
 
   absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
-      se::DeviceAddressBase addr) final {
+      se::DeviceAddressBase addr, bool symmetric_window = false) final {
     // Dummy implementation: MORI buffers are already allocated from the
     // symmetric shmem heap, so the local device address is the symmetric
     // handle. Just wrap and return it unchanged.

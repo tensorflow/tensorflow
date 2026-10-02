@@ -91,3 +91,11 @@ func.func @op_unary_einsum(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
   } : (tensor<8x16xf32>) -> tensor<8xf32>
   func.return %0 : tensor<8xf32>
 }
+
+// -----
+
+func.func @main(%a: tensor<4xf32>, %b: tensor<4xf32>, %c: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: op can't be translated to XLA HLO
+  %0 = stablehlo.fma %a, %b, %c : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}

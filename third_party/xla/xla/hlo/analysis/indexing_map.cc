@@ -1561,10 +1561,16 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
   std::vector<SymbolicExpr> to_remove;
   std::vector<std::pair<SymbolicExpr, Interval>> to_add;
   for (const auto& [expr, range] : constraints_) {
-    auto updated_expr =
-        (num_dims_changed
-             ? expr.ReplaceDimsAndSymbols(dim_replacements, symbol_replacements)
-             : expr.ReplaceSymbols(symbol_replacements, num_dims_before));
+    SymbolicExpr updated_expr = expr;
+    if (num_dims_changed && num_symbols_changed) {
+      updated_expr =
+          expr.ReplaceDimsAndSymbols(dim_replacements, symbol_replacements);
+    } else if (num_dims_changed) {
+      updated_expr = expr.ReplaceDims(dim_replacements, num_dims_before,
+                                      num_dims_after, num_symbols_before);
+    } else if (num_symbols_changed) {
+      updated_expr = expr.ReplaceSymbols(symbol_replacements, num_dims_before);
+    }
     if (updated_expr == expr) {
       continue;
     }

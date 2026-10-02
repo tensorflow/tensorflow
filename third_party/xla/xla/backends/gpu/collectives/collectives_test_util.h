@@ -64,7 +64,8 @@ absl::StatusOr<std::vector<std::unique_ptr<se::MemoryAllocation>>> Allocate(
 std::vector<Future<std::unique_ptr<SymmetricMemory>>> CreateSymmetricMemory(
     tsl::Executor& exec,
     absl::Span<const std::unique_ptr<GpuCommunicator>> comms,
-    absl::Span<const std::unique_ptr<se::MemoryAllocation>> allocs);
+    absl::Span<const std::unique_ptr<se::MemoryAllocation>> allocs,
+    bool symmetric_window = false);
 
 absl::StatusOr<std::vector<std::unique_ptr<SymmetricMemory>>>
 AwaitSymmetricMemory(

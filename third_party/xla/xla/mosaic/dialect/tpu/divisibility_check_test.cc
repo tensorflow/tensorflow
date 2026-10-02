@@ -197,6 +197,36 @@ TEST_F(DivisibilityCheckTest, DivOpsOnlyPropagateTrue) {
             std::optional<bool>(true));
 }
 
+// Tests that masking keeps divisibility by powers of two, as when rounding up
+// with (x + 127) & -128.
+TEST_F(DivisibilityCheckTest, AndIWithAlignedOperandIsDivisible) {
+  Location loc = builder_.getUnknownLoc();
+  Value x = Create<arith::IndexCastOp>(loc, builder_.getI32Type(),
+                                       CreateEntryBlock(1)->getArgument(0));
+  auto c127 = Create<arith::ConstantIntOp>(loc, builder_.getI32Type(), 127);
+  auto cm128 = Create<arith::ConstantIntOp>(loc, builder_.getI32Type(), -128);
+
+  auto add = Create<arith::AddIOp>(loc, x, c127);
+  for (Value rounded : {Create<arith::AndIOp>(loc, add, cm128).getResult(),
+                        Create<arith::AndIOp>(loc, cm128, add).getResult()}) {
+    EXPECT_EQ(isDivisible(rounded, /*divisor=*/128), std::optional<bool>(true));
+    EXPECT_EQ(isDivisible(rounded, /*divisor=*/256), std::nullopt);
+    // Only powers of two are handled.
+    EXPECT_EQ(isDivisible(rounded, /*divisor=*/3), std::nullopt);
+  }
+}
+
+// Tests that a mask never proves a value indivisible: 5 & 6 == 4 is divisible
+// by 4 although neither operand is.
+TEST_F(DivisibilityCheckTest, AndIOnlyPropagatesTrue) {
+  Location loc = builder_.getUnknownLoc();
+  auto c5 = Create<arith::ConstantIntOp>(loc, builder_.getI32Type(), 5);
+  auto c6 = Create<arith::ConstantIntOp>(loc, builder_.getI32Type(), 6);
+
+  EXPECT_EQ(isDivisible(Create<arith::AndIOp>(loc, c5, c6), /*divisor=*/4),
+            std::nullopt);
+}
+
 TEST_F(DivisibilityCheckTest, OverflowGuardsInMulAndDiv) {
   Location loc = builder_.getUnknownLoc();
   Value x = CreateEntryBlock(1)->getArgument(0);

@@ -39,6 +39,25 @@ for arg in "$@"; do
 done
 
 SCRIPT_DIR=$(dirname $0)
+BAZEL_ARGS=()
+if [[ -n "${XLA_ROCM_TARGET_PATTERN_FILE:-}" && -f "${XLA_ROCM_TARGET_PATTERN_FILE}" ]]; then
+    TAG_FILTERS="${TAG_FILTERS},-manual"
+    for arg in "$@"; do
+        if [[ "$arg" == "--" ]]; then
+            break
+        fi
+        BAZEL_ARGS+=("$arg")
+    done
+    BAZEL_ARGS+=(
+        "--skip_incompatible_explicit_targets"
+        "--build_tests_only"
+        "--target_pattern_file=${XLA_ROCM_TARGET_PATTERN_FILE}"
+    )
+else
+    BAZEL_ARGS=("$@")
+fi
+
+set +e
 bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
     --build_tag_filters=$TAG_FILTERS \
     --test_tag_filters=$TAG_FILTERS \
@@ -49,4 +68,12 @@ bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
     --sandbox_add_mount_pair=/dev/null:/etc/ld.so.cache \
     --curses=no \
     --color=yes \
-    "$@"
+    "${BAZEL_ARGS[@]}"
+BAZEL_RC=$?
+set -e
+
+if [[ $BAZEL_RC -eq 4 && -n "${XLA_ROCM_TARGET_PATTERN_FILE:-}" ]]; then
+    echo "Bazel returned exit code 4 (no matching test targets in ${XLA_ROCM_TARGET_PATTERN_FILE}); treating as success."
+    exit 0
+fi
+exit $BAZEL_RC
