@@ -39,12 +39,11 @@ SCRIPT_DIR=$(dirname $0)
 bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
     --build_tag_filters=$TAG_FILTERS \
     --test_tag_filters=$TAG_FILTERS \
-    --test_timeout=920,2400,7200,9600 \
-    --profile=/tf/pkg/profile.json.gz \
-    --test_sharding_strategy=disabled \
-    --flaky_test_attempts=3 \
     --nokeep_going \
     --test_env=TF_TESTS_PER_GPU=1 \
     --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16 --xla_gpu_blas_max_algorithms=8" \
     --test_output=errors \
+    --sandbox_add_mount_pair=/dev/null:/etc/ld.so.cache \
+    --curses=no \
+    --color=yes \
     "$@"
