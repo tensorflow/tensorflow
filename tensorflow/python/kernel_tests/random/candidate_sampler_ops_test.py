@@ -166,7 +166,8 @@ class RangeSamplerOpsTest(test.TestCase):
         with self.subTest(sampler=sampler.__name__, range_max=range_max):
           with self.assertRaisesRegex(
               (ValueError, errors.InvalidArgumentError),
-              "must be at least minimum 1|range_max must be positive"):
+              r"range_max.*(?:must be at least|less than) minimum 1|"
+              r"range_max must be positive"):
             result = sampler(
                 true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
                 num_true=1, num_sampled=1, unique=False, range_max=range_max)
