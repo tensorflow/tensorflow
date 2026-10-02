@@ -321,8 +321,8 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     When weights arrive as a @tf.function argument, tensor_util.constant_value
     returns None and the Python-level pruning cannot remove the zero-weight
-    dataset.  The C++ DirectedInterleaveDataset kernel must therefore detect
-    the all-exhausted condition and terminate cleanly instead of deadlocking.
+    dataset.  The zero-weight dataset must instead be marked exhausted up
+    front so that iteration terminates cleanly instead of deadlocking.
     """
     d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
     d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
@@ -334,6 +334,20 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     ds = make_sampled(constant_op.constant([0.0, 1.0]))
     # All elements from d2 must appear; the iteration must terminate.
+    result = self.getDatasetOutput(ds, requires_initialization=True)
+    self.assertCountEqual(result, [4, 5, 6])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testZeroWeightDynamicTensorStopOnEmptyDataset(self):
+    d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
+
+    @def_function.function
+    def make_sampled(w):
+      return dataset_ops.Dataset.sample_from_datasets(
+          [d1, d2], weights=w, stop_on_empty_dataset=True)
+
+    ds = make_sampled(constant_op.constant([0.0, 1.0]))
     result = self.getDatasetOutput(ds, requires_initialization=True)
     self.assertCountEqual(result, [4, 5, 6])
 

@@ -17,6 +17,7 @@
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import directed_interleave_op
 from tensorflow.python.data.ops import map_op
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -44,6 +45,8 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
   if not datasets:
     raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
 
+  zero_indices_ds = None
+
   if not isinstance(weights, data_types.DatasetV2):
     if weights is None:
       # Select inputs with uniform probability.
@@ -63,13 +66,15 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
                            f"`len(datasets)={len(datasets)}`.")
 
       # Filter zero-weight datasets before computing logits.
-      # - For static tf.Tensor weights (e.g. tf.constant), resolve the values
-      #   statically via tensor_util.constant_value and remove the zero-weight
-      #   datasets, preventing -inf logits from reaching the selector dataset.
-      # - For dynamic tensors (e.g. @tf.function arguments), constant_value
-      #   returns None and pruning cannot be done here.  The C++ kernel in
-      #   directed_interleave_dataset_op.cc detects the all-exhausted state
-      #   via a consecutive-miss counter and terminates cleanly in that case.
+      # - For static weights (including a `tf.constant`), resolve the values
+      #   statically via `tensor_util.constant_value` and remove the
+      #   zero-weight datasets, so -inf logits never reach the selector.
+      # - For dynamic tensors (e.g. `tf.function` arguments) the values are
+      #   unknown here. A zero-weight dataset is never sampled, so its
+      #   iterator would never reach EOF and `directed_interleave` would spin
+      #   forever. Instead, map zero-weight datasets to empty datasets and
+      #   have the selector pick each of them once up front so they are
+      #   marked exhausted.
       weights_to_filter = weights
       if isinstance(weights, tensor.Tensor):
         static_weights = tensor_util.constant_value(weights)
@@ -81,6 +86,22 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       if weights_to_filter is not None:
         datasets, weights = _skip_datasets_with_zero_weight(
             datasets, weights_to_filter)
+      elif not stop_on_empty_dataset:
+        # With `stop_on_empty_dataset=True` an unsampled zero-weight dataset
+        # cannot cause a hang, and selecting an empty dataset up front would
+        # end the iteration immediately.
+        is_zero = math_ops.equal(weights, math_ops.cast(0, weights.dtype))
+        zero_indices = math_ops.cast(
+            array_ops.squeeze(array_ops.where_v2(is_zero), axis=1),
+            dtypes.int64)
+        zero_indices_ds = dataset_ops.Dataset.from_tensor_slices(zero_indices)
+        datasets = list(datasets)
+        for i in range(len(datasets)):
+          datasets[i] = datasets[i].take(
+              array_ops.where_v2(
+                  is_zero[i],
+                  constant_op.constant(0, dtype=dtypes.int64),
+                  constant_op.constant(-1, dtype=dtypes.int64)))
 
       weights = ops.convert_to_tensor(weights, name="weights")
       if weights.dtype not in (dtypes.float32, dtypes.float64):
@@ -134,6 +155,9 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
         logits_and_seeds,
         select_dataset_varying_logits,
         use_inter_op_parallelism=False)
+
+  if zero_indices_ds is not None:
+    selector_input = zero_indices_ds.concatenate(selector_input)
 
   return directed_interleave_op._directed_interleave(  # pylint: disable=protected-access
       selector_input, datasets, stop_on_empty_dataset
