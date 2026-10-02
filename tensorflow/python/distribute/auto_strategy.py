@@ -60,10 +60,10 @@ def auto_strategy() -> distribute_lib.StrategyBase:
     if isinstance(tf_config, dict):
       cluster = tf_config.get("cluster", {})
       if isinstance(cluster, dict):
-        task = tf_config.get("task", {})
-        if task.get("type") == "evaluator":
+        task = tf_config.get("task") or {}
+        if isinstance(task, dict) and task.get("type") == "evaluator":
           pass  # Do not use multi-worker strategy for evaluator
-        else:
+        elif isinstance(task, dict) and task.get("type"):
           workers = cluster.get("worker") or []
           chiefs = cluster.get("chief") or []
           if (
@@ -71,7 +71,12 @@ def auto_strategy() -> distribute_lib.StrategyBase:
               and isinstance(chiefs, (list, tuple))
               and len(workers) + len(chiefs) > 1
           ):
-            return collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+            try:
+              return (
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+              )
+            except (ValueError, TypeError, KeyError):
+              pass
 
   # Check for TPUs
   if config.list_logical_devices("TPU") or os.environ.get("TPU_NAME"):
