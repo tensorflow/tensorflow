@@ -81,7 +81,7 @@ func.func @remap_attributes(
   %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
-      {donated=true}
+      <donated=true>
       : (!array_rattr_in0, !array_rattr_in1) -> (!array_rattr_out)
   return
 }
@@ -193,7 +193,7 @@ func.func @op_call_loaded_executable(
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<4x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
   %1, %ctrl_1 = ifrt.CallLoadedExecutable @test_loaded_executable1(%arg0)
-      {donated_input_indices=array<i32: 0>} : (!array_le_in) -> !array_le_out
+      <donated_input_indices=[0]> : (!array_le_in) -> !array_le_out
   // CHECK: "vifrt.CallLoadedExecutableV1"(%[[ARG1]])
   // CHECK-SAME: <{
   // CHECK-DAG: callee = @test_loaded_executable2
@@ -203,7 +203,7 @@ func.func @op_call_loaded_executable(
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
   %2, %ctrl_2 = ifrt.CallLoadedExecutable @test_loaded_executable2(%arg1)
-      {io_aliases=[array<i32: 0, 0>]} : (!array_le_in) -> !array_le_in
+      <io_aliases=[array<i32: 0, 0>]> : (!array_le_in) -> !array_le_in
   return
 }
 
@@ -246,7 +246,7 @@ func.func @op_remap_arrays(
   %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
-      {donated=true}
+      <donated=true>
       : (!array_ra_in0, !array_ra_in1) -> (!array_ra_out)
   return
 }
@@ -265,7 +265,7 @@ func.func @op_bitcast_arrays(%arg0: !array_bc0 {ifrt.donated}) -> !array_bc1
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x1x4xi32>, #vifrt.sharding_param_v2<1x1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
-  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array_bc0) -> !array_bc1
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated=true> : (!array_bc0) -> !array_bc1
   return %0: !array_bc1
 }
 
@@ -310,7 +310,7 @@ func.func @donated_arguments(
   // CHECK-DAG: operandSegmentSizes = array<i32: 2, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2xi32>, #vifrt.sharding_param_v2<2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2xi32>, #vifrt.sharding_param_v2<2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2xi32>, #vifrt.sharding_param_v2<1 to [0] on 1>, [2], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2xi32>, #vifrt.sharding_param_v2<1 to [0] on 1>, [3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
-  %0, %1, %ctrl_1 = ifrt.Reshard(%arg0, %arg1) {donated=true}
+  %0, %1, %ctrl_1 = ifrt.Reshard(%arg0, %arg1) <donated=true>
       : (!array_r0, !array_r0) -> (!array_r1, !array_r2)
   // CHECK: "vifrt.ReturnV1"(%[[OUT]]#0, %[[OUT]]#1) : (!vifrt.array_v1<tensor<2xi32>, #vifrt.sharding_param_v2<1 to [0] on 1>, [2], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2xi32>, #vifrt.sharding_param_v2<1 to [0] on 1>, [3], memory_kind = "vifrt.default", layout = "vifrt.default">)
   return %0, %1 : !array_r1, !array_r2
@@ -442,7 +442,7 @@ func.func @op_call(
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
   %3, %ctrl_3 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
-      {donated_input_indices=array<i32: 0>} : (!array_op_call) -> !array_op_call
+      <donated_input_indices=[0]> : (!array_op_call) -> !array_op_call
 
   // Verifies that the io_aliases attribute is converted.
 
@@ -456,7 +456,7 @@ func.func @op_call(
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
   %4, %ctrl_4 = ifrt.Call @add_two::@main(%arg1) on devices [0,1]
-      {io_aliases=[array<i32: 0, 0>]} : (!array_op_call) -> !array_op_call
+      <io_aliases=[array<i32: 0, 0>]> : (!array_op_call) -> !array_op_call
 
   return %1 : !array_op_call
 }

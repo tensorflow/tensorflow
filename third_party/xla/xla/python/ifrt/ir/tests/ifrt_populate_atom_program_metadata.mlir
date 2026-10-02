@@ -269,7 +269,7 @@ module @populate_io_alias_and_donation {
   func.func @main(%arg0: !array, %arg1: !array) attributes {ifrt.function} {
     // CHECK: ifrt.Call @[[CALLEE_0:.+]]::@main(%arg0, %arg1)
     %0, %ctrl_0 = ifrt.Call @callee::@main(%arg0, %arg1) on devices [0,1]
-        {io_aliases=[array<i32: 0, 0>], donated_input_indices=array<i32: 1>}
+        <io_aliases=[array<i32: 0, 0>], donated_input_indices=[1]>
         : (!array, !array) -> !array
     // Verify that the module is cloned if io_aliases differ.
     // CHECK: ifrt.Call @[[CALLEE_1:.+]]::@main(%arg0, %arg1)
@@ -320,9 +320,9 @@ module @output_of_call_donated {
     // CHECK: %[[OUT_0:.+]], %{{.+}} = ifrt.Call @[[CALLEE_0:.+]]::@main(%arg0) on devices [0, 1] :
     %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
         : (!shared_array) -> !shared_array
-    // CHECK: %[[OUT_1:.+]], %{{.+}} = ifrt.Call @[[CALLEE_1:.+]]::@main(%[[OUT_0]]) on devices [0, 1] {io_aliases = [array<i32: 0, 0>]} :
+    // CHECK: %[[OUT_1:.+]], %{{.+}} = ifrt.Call @[[CALLEE_1:.+]]::@main(%[[OUT_0]]) on devices [0, 1] <io_aliases = [array<i32: 0, 0>]> :
     %1, %ctrl_1 = ifrt.Call @add_one::@main(%0) on devices [0,1]
-        {io_aliases=[array<i32: 0, 0>]} : (!shared_array) -> !shared_array
+        <io_aliases=[array<i32: 0, 0>]> : (!shared_array) -> !shared_array
     return %1 : !shared_array
   }
 
