@@ -302,6 +302,7 @@ class BatchOpsTest(test.TestCase):
     for index_shape, id_shape, message in (
         ([], [], "Shape must be rank 2"),
         ([0, 5], [], "Dimension must be 3"),
+        ([5, 3], [], "0th dimension size to be no greater than"),
         ([0, 3], [1], "Shape must be rank 0"),
     ):
       with self.subTest(index_shape=index_shape, id_shape=id_shape):
