@@ -69,8 +69,10 @@ class AutoStrategyTest(test.TestCase):
   @mock.patch.object(tpu_cluster_resolver, "initialize_tpu_system")
   @mock.patch.object(tpu_cluster_resolver, "TPUClusterResolver")
   @mock.patch.object(tpu_strategy, "TPUStrategy")
+  @mock.patch.object(config, "get_visible_devices", return_value=[])
   def testTPUDetection(
       self,
+      mock_get_visible_devices,
       mock_tpu_strategy_cls,
       mock_resolver_cls,
       mock_init,
@@ -96,8 +98,10 @@ class AutoStrategyTest(test.TestCase):
   @mock.patch.object(tpu_cluster_resolver, "initialize_tpu_system")
   @mock.patch.object(tpu_cluster_resolver, "TPUClusterResolver")
   @mock.patch.object(tpu_strategy, "TPUStrategy")
+  @mock.patch.object(config, "get_visible_devices", return_value=[])
   def testTPUAlreadyInitialized(
       self,
+      mock_get_visible_devices,
       mock_tpu_strategy_cls,
       mock_resolver_cls,
       mock_init,
@@ -245,7 +249,10 @@ class AutoStrategyTest(test.TestCase):
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
   )
-  def testMultiWorkerDetection(self, mock_cars_cls):
+  @mock.patch.object(config, "get_visible_devices", return_value=[])
+  def testMultiWorkerDetection(
+      self, mock_get_visible_devices, mock_cars_cls
+  ):
     # Prevent the real constructor from starting a live gRPC
     # CoordinationService and blocking indefinitely waiting for a second
     # worker (localhost:23456) that never connects, causing a 300s+ timeout.
@@ -321,8 +328,10 @@ class AutoStrategyTest(test.TestCase):
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
   )
+  @mock.patch.object(config, "get_visible_devices", return_value=[])
   def testMultiWorkerTPUPreemptsTFConfig(
       self,
+      mock_get_visible_devices,
       mock_cars_cls,
       mock_tpu_strategy_cls,
       mock_resolver_cls,
