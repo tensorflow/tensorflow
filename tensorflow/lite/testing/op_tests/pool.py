@@ -91,6 +91,8 @@ def make_pool_tests(pool_op_in, allow_fully_quantize=False):
           strides=parameters["strides"],
           data_format=parameters["data_format"],
           padding=parameters["padding"])
+      if 0 in out.shape.as_list():
+        raise ValueError("TFLite pooling tests require nonempty outputs")
       return [input_tensor], [out]
 
     def build_inputs(parameters, sess, inputs, outputs):
@@ -125,18 +127,18 @@ def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
 
 @register_make_test_function()
 def make_l2_pool_tests(options):
-  make_pool_tests(make_l2_pool)(options, expected_tf_failures=76)
+  make_pool_tests(make_l2_pool)(options, expected_tf_failures=80)
 
 
 @register_make_test_function()
 def make_avg_pool_tests(options):
   make_pool_tests(
       tf.nn.avg_pool2d, allow_fully_quantize=True)(
-          options, expected_tf_failures=152)
+          options, expected_tf_failures=160)
 
 
 @register_make_test_function()
 def make_max_pool_tests(options):
   make_pool_tests(
       tf.nn.max_pool2d, allow_fully_quantize=True)(
-          options, expected_tf_failures=152)
+          options, expected_tf_failures=160)

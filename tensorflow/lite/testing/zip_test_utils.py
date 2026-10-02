@@ -641,14 +641,8 @@ def make_zip_of_tests(options,
         if tflite_model_binary:
           if options.make_edgetpu_tests:
             # Set proper min max values according to input dtype.
-            try:
-              baseline_input_map, baseline_output_map = generate_inputs_outputs(
-                  tflite_model_binary, min_value=0, max_value=255)
-            except ValueError as error:
-              if "Invalid tensor size" not in str(error):
-                raise
-              report["tflite_invoke"] = report_lib.FAILED
-              return None, report
+            baseline_input_map, baseline_output_map = generate_inputs_outputs(
+                tflite_model_binary, min_value=0, max_value=255)
           zipinfo = zipfile.ZipInfo(zip_path_label + ".bin")
           if sys.byteorder == "big":
             tflite_model_binary = flatbuffer_utils.byte_swap_tflite_buffer(

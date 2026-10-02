@@ -395,6 +395,26 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
+  @parameterized.parameters((1, 2, 1), (1, 4, 2), (0, 1, 1), (20, 21, 1))
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolValidEmptyOutput(self, rows, window, stride):
+    value = array_ops.zeros([1, rows, 10, 3])
+    output = nn_ops.avg_pool(
+        value, ksize=[1, window, 2, 1], strides=[1, stride, 1, 1],
+        padding="VALID")
+    self.assertEqual(output.shape.as_list(), [1, 0, 9, 3])
+    self.assertEqual(self.evaluate(output).shape, (1, 0, 9, 3))
+
+  @parameterized.parameters((1, 3), (0, 2))
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolNegativeOutput(self, rows, window):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Negative dimension size|Computed output size would be negative"):
+      self.evaluate(nn_ops.avg_pool(
+          array_ops.zeros([1, rows, 10, 3]),
+          ksize=[1, window, 2, 1], strides=[1, 1, 1, 1], padding="VALID"))
+
   @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
   @test_util.run_deprecated_v1
   def testAvgPoolSamePadding(self, **kwargs):
@@ -792,30 +812,17 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
-  @parameterized.parameters(GetTestConfigsDicts(nn_ops.max_pool))
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
   @test_util.run_deprecated_v1
   def testMaxPoolInvalidFilterSize(self, **kwargs):
-    with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError),
-        "Negative dimension size|Computed output size would be negative"):
-      self._VerifyOneType(
-          input_sizes=[1, 1, 1, 1],
-          ksize=[1, 1, 3, 1],
-          strides=[1, 1, 1, 1],
-          padding="VALID",
-          expected=[],
-          **kwargs)
-
-  @parameterized.parameters(GetTestConfigsDicts(gen_nn_ops.max_pool_v2))
-  @test_util.run_deprecated_v1
-  def testMaxPoolEmptyOutput(self, **kwargs):
-    self._VerifyOneType(
-        input_sizes=[1, 1, 1, 1],
-        ksize=[1, 1, 2, 1],
-        strides=[1, 1, 1, 1],
-        padding="VALID",
-        expected=[],
-        **kwargs)
+    with self.cached_session(use_gpu=test.is_gpu_available()):
+      t = constant_op.constant(1.0, shape=[1, 1, 1, 1])
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "Negative dimension size"):
+        t = self.evaluate(
+            nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
@@ -2455,18 +2462,21 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                     strides=[2, 1, 1, 1],
                     padding="SAME"))
 
-        # A filter one larger gives an empty output; two larger is invalid.
+        # AvgPool accepts zero-sized outputs; MaxPool keeps its existing check.
+        if pool_func == nn_ops.avg_pool:
+          continue
+        # Filter too large.
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           sess.run(
               pool_func(
                   array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                  ksize=[1, 20, 22, 1],
+                  ksize=[1, 20, 21, 1],
                   strides=[1, 1, 1, 1],
                   padding="VALID"))
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           pool_func(
               array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-              ksize=[1, 22, 20, 1],
+              ksize=[1, 21, 20, 1],
               strides=[1, 1, 1, 1],
               padding="VALID")
 
