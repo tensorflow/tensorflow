@@ -1937,7 +1937,7 @@ NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
   if (subshape().element_type() == PRED) {
     return static_cast<NativeT>(buffer()[linear_index] ? true : false);
   }
-  return data<NativeT>().data()[linear_index];
+  return data<NativeT>()[linear_index];
 }
 
 template <typename NativeT>
@@ -1945,7 +1945,7 @@ void LiteralBase::Piece::SetLinear(int64_t linear_index, NativeT value) {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
-  data<NativeT>().data()[linear_index] = value;
+  data<NativeT>()[linear_index] = value;
 }
 
 template <typename NativeT>
