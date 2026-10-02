@@ -26,6 +26,8 @@ limitations under the License.
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/ops_util.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
@@ -654,7 +656,8 @@ class MklPoolingOpBase : public OpKernel {
     DCHECK(output_tensor);
 
     // Empty quantized pools still return the input quantization range.
-    if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value) {
+    if constexpr (std::is_same<T, qint8>::value ||
+                  std::is_same<T, quint8>::value) {
       for (int index = 1; index <= 2; ++index) {
         const Tensor& range_input = MklGetInput(context, index);
         OP_REQUIRES(context, TensorShapeUtils::IsScalar(range_input.shape()),

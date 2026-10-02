@@ -299,19 +299,21 @@ class QuantizedAvgPoolingOpTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_tensor_input(self):
-    inputs = constant_op.constant(
-        [], shape=[0, 3, 3, 3], dtype=dtypes.quint8)
-    output, min_output, max_output = self.evaluate(
-        nn_ops.quantized_avg_pool(
-            input=inputs,
-            min_input=0.0,
-            max_input=1.0,
-            ksize=[1, 1, 1, 1],
-            strides=[1, 1, 1, 1],
-            padding="SAME"))
-    self.assertEqual(output.shape, (0, 3, 3, 3))
-    self.assertEqual(min_output, 0.0)
-    self.assertEqual(max_output, 1.0)
+    for empty_shape in ([0, 3, 3, 3], [1, 0, 3, 3], [1, 3, 0, 3]):
+      for ksize in ([1, 1, 1, 1], [1, 2, 2, 1]):
+        inputs = constant_op.constant(
+            [], shape=empty_shape, dtype=dtypes.quint8)
+        output, min_output, max_output = self.evaluate(
+            nn_ops.quantized_avg_pool(
+                input=inputs,
+                min_input=-0.75,
+                max_input=1.25,
+                ksize=ksize,
+                strides=[1, 1, 1, 1],
+                padding="SAME"))
+        self.assertEqual(output.shape, tuple(empty_shape))
+        self.assertEqual(min_output, -0.75)
+        self.assertEqual(max_output, 1.25)
 
 
 class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
@@ -369,19 +371,21 @@ class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_tensor_input(self):
-    inputs = constant_op.constant(
-        [], shape=[0, 3, 3, 3], dtype=dtypes.quint8)
-    output, min_output, max_output = self.evaluate(
-        nn_ops.quantized_max_pool(
-            input=inputs,
-            min_input=0.0,
-            max_input=1.0,
-            ksize=[1, 1, 1, 1],
-            strides=[1, 1, 1, 1],
-            padding="SAME"))
-    self.assertEqual(output.shape, (0, 3, 3, 3))
-    self.assertEqual(min_output, 0.0)
-    self.assertEqual(max_output, 1.0)
+    for empty_shape in ([0, 3, 3, 3], [1, 0, 3, 3], [1, 3, 0, 3]):
+      for ksize in ([1, 1, 1, 1], [1, 2, 2, 1]):
+        inputs = constant_op.constant(
+            [], shape=empty_shape, dtype=dtypes.quint8)
+        output, min_output, max_output = self.evaluate(
+            nn_ops.quantized_max_pool(
+                input=inputs,
+                min_input=-0.75,
+                max_input=1.25,
+                ksize=ksize,
+                strides=[1, 1, 1, 1],
+                padding="SAME"))
+        self.assertEqual(output.shape, tuple(empty_shape))
+        self.assertEqual(min_output, -0.75)
+        self.assertEqual(max_output, 1.25)
 
 
 class RequantizeOpTest(test_util.TensorFlowTestCase):
