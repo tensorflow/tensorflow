@@ -233,20 +233,22 @@ PYBIND11_MODULE(
             }
           }
 
-          std::unordered_map<std::string, std::set<std::string>>
-              supported_device_types;
-          std::unordered_map<std::string, std::set<std::string>>
-              device_restrictions;
-
           if (cluster_type != "single_machine") {
-            std::set<std::string> all_types;
+            std::vector<std::string> all_device_names;
             for (const auto& dev : device_types) {
-              all_types.insert(dev.first);
+              for (const std::string& name : dev.second) {
+                all_device_names.push_back(name);
+              }
             }
             for (const auto& node : item->graph.node()) {
-              supported_device_types[node.name()] = all_types;
+              result[node.name()] = all_device_names;
             }
           } else {
+            std::unordered_map<std::string, std::set<std::string>>
+                supported_device_types;
+            std::unordered_map<std::string, std::set<std::string>>
+                device_restrictions;
+
             for (const auto& node : item->graph.node()) {
               auto& supported = supported_device_types[node.name()];
               for (const auto& dev : device_types) {
@@ -263,10 +265,10 @@ PYBIND11_MODULE(
                   // TODO: extends this to support outputs as well.
                   tensorflow::MemoryTypeVector inp_mtypes;
                   tensorflow::MemoryTypeVector out_mtypes;
-                  absl::Status s = tensorflow::MemoryTypesForNode(
+                  absl::Status s2 = tensorflow::MemoryTypesForNode(
                       tensorflow::OpRegistry::Global(), dev_type, node,
                       &inp_mtypes, &out_mtypes);
-                  if (s.ok()) {
+                  if (s2.ok()) {
                     for (size_t i = 0; i < inp_mtypes.size(); ++i) {
                       if (inp_mtypes[i] == tensorflow::HOST_MEMORY) {
                         device_restrictions[tensorflow::grappler::NodeName(
@@ -279,31 +281,37 @@ PYBIND11_MODULE(
                 }
               }
             }
-          }
 
-          for (const auto& supported_dev : supported_device_types) {
-            const std::string& node = supported_dev.first;
-            std::set<std::string> feasible;
-            const auto it = device_restrictions.find(node);
-            if (it != device_restrictions.end()) {
-              const std::set<std::string>& candidates = supported_dev.second;
-              const std::set<std::string>& valid = it->second;
-              std::set_intersection(candidates.begin(), candidates.end(),
-                                    valid.begin(), valid.end(),
-                                    std::inserter(feasible, feasible.begin()));
-            } else {
-              feasible = supported_dev.second;
-            }
+            for (const auto& supported_dev : supported_device_types) {
+              const std::string& node = supported_dev.first;
+              const auto it = device_restrictions.find(node);
+              std::vector<std::string> device_names;
 
-            std::vector<std::string> device_names;
-            for (const std::string& type : feasible) {
-              auto it = device_types.find(type);
-              DCHECK(it != device_types.end());
-              for (const std::string& name : it->second) {
-                device_names.push_back(name);
+              if (it != device_restrictions.end()) {
+                std::set<std::string> feasible;
+                const std::set<std::string>& candidates = supported_dev.second;
+                const std::set<std::string>& valid = it->second;
+                std::set_intersection(candidates.begin(), candidates.end(),
+                                      valid.begin(), valid.end(),
+                                      std::inserter(feasible, feasible.begin()));
+                for (const std::string& type : feasible) {
+                  auto type_it = device_types.find(type);
+                  DCHECK(type_it != device_types.end());
+                  for (const std::string& name : type_it->second) {
+                    device_names.push_back(name);
+                  }
+                }
+              } else {
+                for (const std::string& type : supported_dev.second) {
+                  auto type_it = device_types.find(type);
+                  DCHECK(type_it != device_types.end());
+                  for (const std::string& name : type_it->second) {
+                    device_names.push_back(name);
+                  }
+                }
               }
+              result[node] = device_names;
             }
-            result[node] = device_names;
           }
         }
         return result;
