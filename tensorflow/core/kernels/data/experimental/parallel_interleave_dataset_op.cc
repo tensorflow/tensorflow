@@ -1293,10 +1293,8 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(
       ctx, prefetch_input_elements >= 0,
       absl::InvalidArgumentError("`prefetch_input_elements` must be >= 0"));
-  // Bound prefetch first so the subsequent addition cannot overflow.
   OP_REQUIRES(
-      ctx, prefetch_input_elements <= kMaxCycleLength &&
-               cycle_length + prefetch_input_elements <= kMaxCycleLength,
+      ctx, prefetch_input_elements <= kMaxCycleLength - cycle_length,
       absl::InvalidArgumentError(absl::StrCat(
           "`cycle_length` + `prefetch_input_elements` must be <= ",
           kMaxCycleLength)));
