@@ -207,11 +207,10 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     # Covers the dynamic path: the axes arrive as a feed, so the reduction
     # cannot be lowered by the MLIR legalization pattern and falls back to
     # the legacy tf2xla kernel, which must reject duplicate axes too.
-    del index_dtype
     with self.session() as sess:
       with self.test_scope():
         a = array_ops.placeholder(np.float32)
-        index = array_ops.placeholder(np.int32)
+        index = array_ops.placeholder(index_dtype)
         out = math_ops.reduce_sum(a, index)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
