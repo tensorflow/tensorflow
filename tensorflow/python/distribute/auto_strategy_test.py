@@ -50,19 +50,20 @@ class AutoStrategyTest(test.TestCase):
     super(AutoStrategyTest, self).tearDown()
 
   @mock.patch.object(tpu_cluster_resolver, "TPUClusterResolver")
-  @mock.patch.object(config, "get_visible_devices")
-  def testFallbackToCPU(
-      self, mock_get_visible_devices, mock_resolver_cls
-  ):
+  def testFallbackToCPU(self, mock_resolver_cls):
     mock_resolver_cls.side_effect = ValueError("No TPU found")
-    mock_get_visible_devices.return_value = []
-    strategy = auto_strategy.AutoStrategy()
-    self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
-    # device_util.resolve() returns a fully-qualified device string; the
-    # format varies by environment (e.g. "/device:CPU:0" locally vs.
-    # "/job:localhost/replica:0/task:0/device:CPU:0" on CI runners).
-    # Assert only on the meaningful suffix that is always present.
-    self.assertIn("CPU:0", strategy.extended._device)
+    original_visible_devices = config.get_visible_devices("GPU")
+    try:
+      config.set_visible_devices([], "GPU")
+      strategy = auto_strategy.AutoStrategy()
+      self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
+      # device_util.resolve() returns a fully-qualified device string; the
+      # format varies by environment (e.g. "/device:CPU:0" locally vs.
+      # "/job:localhost/replica:0/task:0/device:CPU:0" on CI runners).
+      # Assert only on the meaningful suffix that is always present.
+      self.assertIn("CPU:0", strategy.extended._device)
+    finally:
+      config.set_visible_devices(original_visible_devices, "GPU")
 
   @mock.patch.object(remote, "connect_to_cluster")
   @mock.patch.object(
@@ -113,7 +114,7 @@ class AutoStrategyTest(test.TestCase):
         config, "list_logical_devices", return_value=["TPU:0"]
     ):
       strategy = auto_strategy.AutoStrategy()
-      mock_connect.assert_called_once_with(mock_resolver)
+      mock_connect.assert_not_called()
       mock_init.assert_not_called()
       mock_tpu_strategy_cls.assert_called_once_with(mock_resolver)
       self.assertIs(strategy, mock_tpu_strategy_cls.return_value)
@@ -153,31 +154,39 @@ class AutoStrategyTest(test.TestCase):
     mock_mirrored_cls.assert_called_once()
     self.assertIs(strategy, mock_mirrored_cls.return_value)
 
-  @mock.patch.object(config, "get_visible_devices", return_value=[])
   @mock.patch.object(
       config, "list_physical_devices", return_value=["GPU:0", "GPU:1"]
   )
   def testMaskedVisibleGPUsFallbackToCPU(
-      self, mock_list_physical_devices, mock_get_visible_devices
+      self, mock_list_physical_devices
   ):
-    strategy = auto_strategy.AutoStrategy()
-    self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
-    self.assertIn("CPU:0", strategy.extended._device)
-
-  @mock.patch.object(config, "get_visible_devices", return_value=[])
-  def testMalformedTFConfigGracefulFallback(self, mock_get_visible_devices):
-    for malformed in [
-        "123",
-        "null",
-        "[1, 2]",
-        '{"cluster": {"worker": null}}',
-        '{"cluster": {"chief": null}}',
-        '{"cluster": {"worker": "not-a-list"}}',
-    ]:
-      os.environ["TF_CONFIG"] = malformed
+    original_visible_devices = config.get_visible_devices("GPU")
+    try:
+      config.set_visible_devices([], "GPU")
       strategy = auto_strategy.AutoStrategy()
       self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
       self.assertIn("CPU:0", strategy.extended._device)
+    finally:
+      config.set_visible_devices(original_visible_devices, "GPU")
+
+  def testMalformedTFConfigGracefulFallback(self):
+    original_visible_devices = config.get_visible_devices("GPU")
+    try:
+      config.set_visible_devices([], "GPU")
+      for malformed in [
+          "123",
+          "null",
+          "[1, 2]",
+          '{"cluster": {"worker": null}}',
+          '{"cluster": {"chief": null}}',
+          '{"cluster": {"worker": "not-a-list"}}',
+      ]:
+        os.environ["TF_CONFIG"] = malformed
+        strategy = auto_strategy.AutoStrategy()
+        self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
+        self.assertIn("CPU:0", strategy.extended._device)
+    finally:
+      config.set_visible_devices(original_visible_devices, "GPU")
 
   @mock.patch.object(
       collective_all_reduce_strategy, "CollectiveAllReduceStrategy"

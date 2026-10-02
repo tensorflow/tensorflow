@@ -70,8 +70,8 @@ def AutoStrategy() -> distribute_lib.StrategyBase:
   if config.list_logical_devices("TPU") or os.environ.get("TPU_NAME"):
     try:
       resolver = tpu_cluster_resolver.TPUClusterResolver()
-      remote.connect_to_cluster(resolver)
       if not tpu_strategy_util.get_initialized_tpu_systems():
+        remote.connect_to_cluster(resolver)
         tpu_cluster_resolver.initialize_tpu_system(resolver)
       return tpu_strategy.TPUStrategy(resolver)
     except (ValueError, RuntimeError, ImportError):
@@ -84,7 +84,10 @@ def AutoStrategy() -> distribute_lib.StrategyBase:
     if len(logical_gpus) > 1:
       return mirrored_strategy.MirroredStrategy()
     elif len(logical_gpus) == 1:
-      return one_device_strategy.OneDeviceStrategy("/GPU:0")
+      return one_device_strategy.OneDeviceStrategy(logical_gpus[0].name)
 
   # Fallback to CPU
-  return one_device_strategy.OneDeviceStrategy("/CPU:0")
+  cpu_devices = config.list_logical_devices("CPU")
+  if cpu_devices:
+    return one_device_strategy.OneDeviceStrategy(cpu_devices[0].name)
+  return one_device_strategy.OneDeviceStrategy("/device:CPU:0")
