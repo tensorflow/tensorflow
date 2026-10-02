@@ -1384,9 +1384,17 @@ void HloDataflowAnalysis::Propagate() {
           add_to_worklist(
               callsite.instruction()->while_condition()->parameter_instruction(
                   0));
-        } else if (call_graph_node.context() == CallContext::kControlFlow ||
-                   callsite.instruction()->opcode() ==
-                       HloOpcode::kConditional) {
+        } else if (callsite.context() == CallContext::kControlFlow) {
+          // The callsite instruction (kCall, kConditional, kAsyncStart, etc.)
+          // forwards the values of the callee's root to its own output, so it
+          // must be revisited whenever the root's value set changes. This
+          // holds regardless of the context of the called computation: a kCall
+          // nested inside an embedded computation (e.g. one called by a
+          // kCustomCall or a kFusion) still copies its callee's root value set
+          // (see UpdateCallValueSet), even though parameters in that context
+          // define their own values. Not revisiting such a callsite leaves its
+          // value set stale (possibly empty) if it was visited before the
+          // callee's root.
           add_to_worklist(callsite.instruction());
         }
       }
