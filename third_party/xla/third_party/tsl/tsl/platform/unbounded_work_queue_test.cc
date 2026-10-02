@@ -17,13 +17,16 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/blocking_counter.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/random.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace {
@@ -104,6 +107,73 @@ TEST_F(UnboundedWorkQueueTest, RacyDestructor) {
   ResetQueue();
   EXPECT_LE(NumClosuresExecuted(), num_closures);
 }
+
+// Confirm pool grows so that threads on UnboundedWorkQueue do not wait
+// indefinitely. (b/566567502).
+TEST(UnboundedWorkQueueOptionsTest, BlockingClosuresExceedingNumCpus) {
+  // Start more closures than the default pool to confirm it grows to
+  // accommodate additional work.
+  const int num_closures = port::NumSchedulableCPUs() + 5;
+
+  BlockingCounter all_started(num_closures);
+  absl::Notification may_exit;
+
+  {
+    UnboundedWorkQueue queue(Env::Default(), "blocking_test");
+    for (int i = 0; i < num_closures; ++i) {
+      queue.Schedule([&]() {
+        all_started.DecrementCount();
+        may_exit.WaitForNotification();
+      });
+    }
+
+    // Wait for all closures to start.
+    EXPECT_TRUE(all_started.WaitFor(std::chrono::seconds(20)));
+
+    // Notify them all to finish.
+    may_exit.Notify();
+    // queue going out of scope should wait for all to finish.
+  }
+}
+
+TEST(UnboundedWorkQueueOptionsTest, DestructorWaitsForCallbackDestruction) {
+  absl::Notification callback_running;
+  bool capture_destroyed = false;
+  {
+    UnboundedWorkQueue queue(Env::Default(), "callback_destruction_test");
+    auto on_destroy = std::shared_ptr<void>(nullptr, [&](void*) {
+      Env::Default()->SleepForMicroseconds(10000);
+      capture_destroyed = true;
+    });
+    queue.Schedule([&callback_running, on_destroy = std::move(on_destroy)]() {
+      callback_running.Notify();
+    });
+    callback_running.WaitForNotification();
+  }
+  EXPECT_TRUE(capture_destroyed);
+}
+
+TEST(UnboundedWorkQueueOptionsTest, CustomStackSize) {
+  ThreadOptions thread_options;
+  thread_options.stack_size = 2 * 1024 * 1024;  // 2 MB
+  UnboundedWorkQueue queue(Env::Default(), "custom_stack_test", thread_options);
+  BlockingCounter counter(10);
+  for (int i = 0; i < 10; ++i) {
+    queue.Schedule([&counter]() { counter.DecrementCount(); });
+  }
+  counter.Wait();
+}
+
+#if defined(PLATFORM_GOOGLE)
+TEST(UnboundedWorkQueueOptionsDeathTest, DefaultThreadOptions) {
+  EXPECT_DEATH(
+      {
+        UnboundedWorkQueue queue(Env::Default(), "default_options_test",
+                                 ThreadOptions{});
+      },
+      "Requires valid ThreadOptions");
+}
+#endif  // PLATFORM_GOOGLE
 
 }  // namespace
 }  // namespace tsl
