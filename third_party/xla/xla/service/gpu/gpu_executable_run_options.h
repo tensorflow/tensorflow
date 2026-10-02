@@ -36,7 +36,8 @@ namespace xla::gpu {
 using CliqueIdCallback =  // NOLINT
     std::function<absl::StatusOr<CliqueIds>(const CliqueKey&)>;
 
-// Called when GPU execution exceeds the HangWatchdog timeout. Used to abort
+// Called when the host execution call exceeds its HangWatchdog timeout.
+// This does not monitor device work after dispatch returns. Used to abort
 // local collectives and report the failure to the coordination service.
 using ExecutionTimeoutHandler =
     std::function<void(absl::string_view action, absl::Duration timeout)>;

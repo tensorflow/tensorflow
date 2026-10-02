@@ -16,7 +16,13 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -25,6 +31,37 @@ namespace ifrt_serving {
 
 tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
   return thread_pool_;
+}
+
+std::optional<int64_t> IfrtModelContext::LookupProgramId(
+    uint64_t fingerprint, absl::Span<const int> variable_arg_indices) const {
+  absl::MutexLock lock(mutex_);
+  auto it = compiled_programs_by_module_fingerprint_.find(fingerprint);
+  if (it == compiled_programs_by_module_fingerprint_.end()) {
+    return std::nullopt;
+  }
+  for (const CompiledProgram& program : it->second) {
+    if (absl::MakeConstSpan(program.variable_arg_indices) ==
+        variable_arg_indices) {
+      return program.program_id;
+    }
+  }
+  return std::nullopt;
+}
+
+bool IfrtModelContext::HasProgramWithFingerprint(uint64_t fingerprint) const {
+  absl::MutexLock lock(mutex_);
+  return compiled_programs_by_module_fingerprint_.contains(fingerprint);
+}
+
+void IfrtModelContext::RegisterProgramId(
+    uint64_t fingerprint, absl::Span<const int> variable_arg_indices,
+    int64_t program_id) {
+  absl::MutexLock lock(mutex_);
+  compiled_programs_by_module_fingerprint_[fingerprint].push_back(
+      {.variable_arg_indices = std::vector<int>(variable_arg_indices.begin(),
+                                                variable_arg_indices.end()),
+       .program_id = program_id});
 }
 
 absl::Status IfrtModelContext::Freeze() {

@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -133,8 +134,30 @@ std::string RegenerationHint(absl::string_view target_name) {
       "reviewing the differences.\n"
       "(Google-internal: run, from the workspace root, "
       "third_party/tensorflow/compiler/xla/tests/"
-      "aot_compatibility_experimental/google/update_goldens.py ",
+      "aot_compatibility/google/update_goldens.py ",
       label, ")");
+}
+
+// Context for a load failure in kBackwardsCompatibility mode: the golden came
+// from an older compiler, so failing to load it is a compatibility break.
+std::string BackwardsCompatibilityHint(absl::string_view artifact_path,
+                                       absl::string_view platform_name) {
+  std::string hint = absl::StrCat(
+      "Backwards compatibility check failed: the current runtime could not "
+      "load the golden executable ",
+      artifact_path,
+      ", which was serialized by an older compiler. The runtime must keep "
+      "loading everything compilers emitted in the last 6 months; a thunk "
+      "kind, proto field, or registered symbol was most likely removed or "
+      "renamed.");
+  // The guide only covers XLA:GPU; do not point CPU failures at it.
+  if (AOTInterceptionPjrtClient::PlatformFromName(platform_name)
+          .value_or(AOTTestPlatform::kCpu) == AOTTestPlatform::kGpu) {
+    absl::StrAppend(&hint,
+                    " See the GPU AOT compatibility guide: "
+                    "https://openxla.org/xla/gpu_aot_compatibility");
+  }
+  return hint;
 }
 
 }  // namespace
@@ -231,6 +254,22 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
           ExecutableBuildOptionsProto::descriptor()->FindFieldByName(
               "debug_options"),
           HloModuleConfigProto::descriptor()->FindFieldByName("debug_options"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cuda_toolkit_version"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cudnn_version"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cub_version"),
+          // GpuTopology embeds the compile host's driver/toolkit/CPU details.
+          // Only the topology shape (partitions/hosts/devices) is stable across
+          // hosts of the same arch.
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"gpu_topology", "gpu_target_config"}),
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"gpu_topology", "host_target_machine_options"}),
       });
 }
 
@@ -431,8 +470,12 @@ AOTInterceptionPjrtClient::Compile(const XlaComputation& computation,
       ABSL_ASSIGN_OR_RETURN(std::string serialized, PackArtifactForInnerClient());
       VLOG(1) << "AOTInterceptionPjrtClient: Calling "
                  "inner_client_->DeserializeExecutable.";
-      return inner_client_->DeserializeExecutable(serialized,
-                                                  std::move(options));
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtExecutable> exec,
+          inner_client_->DeserializeExecutable(serialized, std::move(options)),
+          _ << BackwardsCompatibilityHint(artifact_path_,
+                                          inner_client_->platform_name()));
+      return exec;
     }
     case AOTTestMode::kUpdateGolden:
     case AOTTestMode::kGoldenVerification: {
@@ -463,8 +506,12 @@ AOTInterceptionPjrtClient::CompileAndLoad(const XlaComputation& computation,
       ABSL_ASSIGN_OR_RETURN(std::string serialized, PackArtifactForInnerClient());
       VLOG(1) << "AOTInterceptionPjrtClient: Calling "
                  "inner_client_->LoadSerializedExecutable.";
-      return inner_client_->LoadSerializedExecutable(
-          serialized, std::move(options), LoadOptions());
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> exec,
+                       inner_client_->LoadSerializedExecutable(
+                           serialized, std::move(options), LoadOptions()),
+                       _ << BackwardsCompatibilityHint(
+                           artifact_path_, inner_client_->platform_name()));
+      return exec;
     }
     case AOTTestMode::kUpdateGolden:
     case AOTTestMode::kGoldenVerification: {

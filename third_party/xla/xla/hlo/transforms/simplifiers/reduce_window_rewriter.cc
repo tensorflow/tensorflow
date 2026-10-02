@@ -154,9 +154,8 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
         break;
       default: {
         if (!inst->IsElementwise()) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Instruction is not elementwise: ",
-                           HloOpcodeString(inst->opcode())));
+          return InvalidArgumentStrCat("Instruction is not elementwise: ",
+                                       HloOpcodeString(inst->opcode()));
         }
         ABSL_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(

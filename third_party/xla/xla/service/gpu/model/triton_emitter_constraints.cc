@@ -320,8 +320,8 @@ void CollectAllInstructions(
     llvm::SmallVector<const TiledHloInstruction*>& out) {
   out.push_back(inst);
   for (const auto& region : inst->hlo_regions()) {
-    for (const auto& sub_inst : region.instructions()) {
-      CollectAllInstructions(sub_inst.get(), out);
+    for (const TiledHloInstruction* sub_inst : region.instructions()) {
+      CollectAllInstructions(sub_inst, out);
     }
   }
 }

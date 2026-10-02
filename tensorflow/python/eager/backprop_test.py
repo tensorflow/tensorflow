@@ -1864,6 +1864,9 @@ class JacobianTest(test.TestCase):
                           array_ops.reshape(def_function.function(f)(x), [-1]),
                           rtol=1e-3)
 
+  @test_util.run_without_tensor_float_32(
+      'Avoid TF32 conv2d in finite-difference Jacobian test'
+  )
   def test_grad_jacobian_conv(self):
     def _inner(x):
       kernel = array_ops.ones([3, 3, 1, 9])

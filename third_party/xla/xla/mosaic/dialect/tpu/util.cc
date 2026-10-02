@@ -35,12 +35,12 @@ limitations under the License.
 
 namespace mlir::tpu {
 
-FailureOr<SmallVector<int>> computeSqueezedDimsChecked(
+FailureOr<SmallVector<int64_t>> computeSqueezedDimsChecked(
     Operation* op, ArrayRef<int64_t> source_shape,
     ArrayRef<int64_t> target_shape) {
-  SmallVector<int> squeezed;
-  int source_index = source_shape.size() - 1;
-  int target_index = target_shape.size() - 1;
+  SmallVector<int64_t> squeezed;
+  int64_t source_index = source_shape.size() - 1;
+  int64_t target_index = target_shape.size() - 1;
 
   while (source_index >= 0 || target_index >= 0) {
     int64_t target_dim = (target_index >= 0) ? target_shape[target_index] : -1;

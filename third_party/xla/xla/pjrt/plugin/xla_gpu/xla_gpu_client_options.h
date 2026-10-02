@@ -67,6 +67,8 @@ struct GpuClientOptions {
   std::optional<bool> use_async_dispatch;
 
   std::optional<int> max_inflight_computations = 32;
+
+  bool verify_topology_fingerprint = true;
 };
 
 }  //  namespace xla

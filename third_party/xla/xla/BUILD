@@ -392,6 +392,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -735,6 +736,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@highway//:hwy",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:ml_dtypes",
         "@tsl//tsl/platform:platform_port",
     ],
@@ -1174,6 +1176,7 @@ xla_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -1353,7 +1356,6 @@ cc_library(
             "//xla/backends/autotuner:backends_proto_cc",
             "//xla/hlo/pass:hlo_pass_filter",
             "//xla/service:collective_utils",
-            "//xla/stream_executor/cuda:nvjitlink_support",
             "//xla/stream_executor/cuda:ptx_compiler_support",
             "//xla/tsl/platform:logging",
             "//xla/tsl/util:command_line_flags",
@@ -1426,11 +1428,23 @@ xla_cc_test(
 cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
+    deps = ["@com_google_absl//absl/log:check"],
+)
+
+xla_cc_test(
+    name = "union_find_test",
+    srcs = ["union_find_test.cc"],
+    deps = [
+        ":union_find",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+    ],
 )
 
 cc_library(
-    name = "inlined_bit_set",
-    hdrs = ["inlined_bit_set.h"],
+    name = "bit_set",
+    hdrs = ["bit_set.h"],
     deps = [
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -1438,11 +1452,12 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "inlined_bit_set_test",
-    srcs = ["inlined_bit_set_test.cc"],
+    name = "bit_set_test",
+    srcs = ["bit_set_test.cc"],
     deps = [
-        ":inlined_bit_set",
+        ":bit_set",
         "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
     ],

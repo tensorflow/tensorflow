@@ -175,6 +175,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@stablehlo//:stablehlo_passes",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -195,11 +196,11 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/runtime:object_pool",
+        "//xla/service:gpu_topology",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

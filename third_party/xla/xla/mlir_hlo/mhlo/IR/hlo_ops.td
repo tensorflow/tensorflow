@@ -436,6 +436,19 @@ def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
   let hasVerifier = 1;
   let hasFolder = 1;
 }
+def MHLO_Exp2Op: MHLO_UnaryElementwiseOp<"exp2",
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+  let summary = "Exp2 operation";
+  let description = [{
+    Performs element-wise base-2 exponential operation on `operand` tensor
+    and produces a `result` tensor.
+  }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
+}
 def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Expm1 operation";
@@ -553,6 +566,19 @@ def MHLO_Log1pOp: MHLO_UnaryElementwiseOp<"log_plus_one",
     ```mlir
     %result = mhlo.log_plus_one %operand : tensor<6xf32>
     ```
+  }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+                       DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,
+                       "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
+}
+def MHLO_Log2Op: MHLO_UnaryElementwiseOp<"log2",
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+  let summary = "Log2 operation";
+  let description = [{
+    Performs element-wise base-2 logarithm operation on `operand` tensor and
+    produces a `result` tensor.
   }];
   let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
                        DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr,

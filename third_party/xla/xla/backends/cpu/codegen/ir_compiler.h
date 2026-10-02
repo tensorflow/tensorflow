@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
@@ -140,6 +141,11 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   // races when calling user provided compilation hooks.
   absl::Mutex mutex_;
   CompilationHooks hooks_ ABSL_GUARDED_BY(mutex_);
+
+  // Runs the enabled sanitizer passes. Must be the last IR transformation,
+  // otherwise any later pass would produce uninstrumented code.
+  void RunSanitizerPasses(llvm::Module& module,
+                          llvm::ModuleAnalysisManager& mam) const;
 };
 
 }  // namespace xla::cpu

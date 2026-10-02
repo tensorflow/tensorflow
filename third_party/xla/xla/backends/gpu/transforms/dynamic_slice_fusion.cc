@@ -405,8 +405,8 @@ static std::optional<DynamicSliceConfig> ComputeStaticSliceConfig(
     byte_offset += slice->slice_starts(dim) * (*byte_strides)[dim];
   }
   DynamicSliceConfig config;
-  config.set_byte_offset(byte_offset);
-  config.set_byte_stride(0);
+  config.mutable_linear()->set_byte_offset(byte_offset);
+  config.mutable_linear()->set_byte_stride(0);
   return config;
 }
 

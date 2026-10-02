@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -220,16 +221,16 @@ void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
 
   // The positions must be unique and should not contain the defining position
   // as this is added at construction time.
-#ifndef NDEBUG
-  for (const HloPosition& position_a : positions) {
-    DCHECK_NE(position_a, defining_position());
-    for (const HloPosition& position_b : positions) {
-      if (&position_a != &position_b) {
-        DCHECK_NE(position_a, position_b);
+  if constexpr (tsl::kIsDebugBuild) {
+    for (const HloPosition& position_a : positions) {
+      DCHECK_NE(position_a, defining_position());
+      for (const HloPosition& position_b : positions) {
+        if (&position_a != &position_b) {
+          DCHECK_NE(position_a, position_b);
+        }
       }
     }
   }
-#endif  // NDEBUG
 
   positions_.insert(positions_.end(), positions.begin(), positions.end());
   // Update liveout status of this HloValue.
@@ -252,12 +253,12 @@ HloValue::Uses HloValue::ComputeUses(UseCache* use_cache) const {
     HloInstruction* const instruction = position.instruction;
     // Appends the uses of this position by `user`, if any.
     auto add_uses_by = [&](HloInstruction* const user) {
-#ifndef NDEBUG
-      // If user is in the root positions of this value, it must be a root.
-      if (root_positions.contains(user)) {
-        CHECK(user->IsRoot());
+      if constexpr (tsl::kIsDebugBuild) {
+        // If user is in the root positions of this value, it must be a root.
+        if (root_positions.contains(user)) {
+          CHECK(user->IsRoot());
+        }
       }
-#endif  // NDEBUG
       // Root instructions of computations are considered to be uses whether
       // or not the root instruction itself actually uses the value.
       if (!MayUseOperandValue(position.index, user) &&
@@ -283,12 +284,12 @@ HloValue::Uses HloValue::ComputeUses(UseCache* use_cache) const {
         }
 
         uses.emplace_back(user, i, position.index);
-#ifndef NDEBUG
-        // The new use must not already exist in uses.
-        for (int index = 0; index + 1 < uses.size(); ++index) {
-          DCHECK_NE(uses[index], uses.back());
+        if constexpr (tsl::kIsDebugBuild) {
+          // The new use must not already exist in uses.
+          for (int index = 0; index + 1 < uses.size(); ++index) {
+            DCHECK_NE(uses[index], uses.back());
+          }
         }
-#endif  // NDEBUG
       }
       // In case of HloOpcode::kGetTupleElement or HloOpcode::kCopy instruction,
       // ensure that user has at most one operand.

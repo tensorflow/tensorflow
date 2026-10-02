@@ -2986,6 +2986,13 @@ absl::Status SpmdPartitioningVisitor::HandleTriangularSolve(
 }
 
 absl::Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
+  if (module_->config().debug_options().xla_enable_enzyme_comms_opt()) {
+    ABSL_ASSIGN_OR_RETURN(bool handled,
+                     TryHandleConcatenateWithConstantOffsets(hlo));
+    if (handled) {
+      return absl::OkStatus();
+    }
+  }
   return HandleElementwiseWithDimsToReplicate(hlo,
                                               {hlo->concatenate_dimension()});
 }
@@ -5055,9 +5062,15 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
     bool enableBroadcastOptimization =
         actual_update->operand(0)->shape().dimensions().empty();
     if (enableBroadcastOptimization) {
+      // The concatenate handler has no input tensor; the target is the
+      // result's shard shape either way.
+      Shape broadcast_shape =
+          input_tensor != nullptr
+              ? GetPartitionedHlo(input_tensor).hlo()->shape()
+              : MakePartitionedShape(hlo->shape(), hlo->sharding());
       newOperand = add_hlo(HloInstruction::CreateBroadcast(
-          GetPartitionedHlo(input_tensor).hlo()->shape(),
-          GetPartitionedHlo(actual_update->operand(0)).hlo(), {}));
+          broadcast_shape, GetPartitionedHlo(actual_update->operand(0)).hlo(),
+          {}));
       newOperand->set_sharding(hlo->sharding());
     }
   } else {
@@ -5365,8 +5378,14 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
               break;
             }
             if (ShardCountAtDim(hlo->sharding(), i) > 1) {
-              int64_t dus_start =
-                  dus->operand(i + 2)->literal().GetIntegralAsS64({}).value();
+              // A concatenate handled through this path has no
+              // dynamic-update-slice; the piece's own start is what the
+              // index would say.
+              int64_t dus_start = dus != nullptr ? dus->operand(i + 2)
+                                                       ->literal()
+                                                       .GetIntegralAsS64({})
+                                                       .value()
+                                                 : piece_dus_starts[i];
               int64_t slice_start = slice->slice_starts(i);
               if (absl::c_linear_search(reverse_dims, i)) {
                 slice_start = slice->operand(0)->shape().dimensions(i) -
@@ -5519,6 +5538,89 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
   }
 
   return newOperand;
+}
+
+absl::StatusOr<bool>
+SpmdPartitioningVisitor::TryHandleConcatenateWithConstantOffsets(
+    HloInstruction* hlo) {
+  const HloSharding& sharding = hlo->sharding();
+  if (hlo->shape().IsTuple() || !sharding.IsTiled() ||
+      hlo->operand_count() < 2) {
+    return false;
+  }
+  const int64_t dim = hlo->concatenate_dimension();
+  const int64_t num_shards = sharding.dimension(dim);
+  if (num_shards <= 1) {
+    return false;
+  }
+  // Every operand has to be laid out like the result, so that the only data
+  // movement is the shift along the concatenate dimension.
+  for (const HloInstruction* operand : hlo->operands()) {
+    if (!operand->has_sharding() || operand->sharding() != sharding) {
+      return false;
+    }
+  }
+
+  const int64_t rank = hlo->shape().dimensions().size();
+  const int64_t full_size = hlo->shape().dimensions(dim);
+  const int64_t shard_size = CeilOfRatio(full_size, num_shards);
+
+  // The largest operand stays where it is; the others are written in around
+  // it.
+  int64_t largest = 0;
+  std::vector<int64_t> offsets(hlo->operand_count());
+  int64_t offset = 0;
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+    offsets[i] = offset;
+    offset += hlo->operand(i)->shape().dimensions(dim);
+    if (hlo->operand(i)->shape().dimensions(dim) >
+        hlo->operand(largest)->shape().dimensions(dim)) {
+      largest = i;
+    }
+  }
+  // Halo exchange only reaches the direct neighbour, so every shift has to be
+  // smaller than a shard: the largest operand's offset, and the size of each
+  // operand written in over it.
+  if (offsets[largest] >= shard_size) {
+    return false;
+  }
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+    if (i != largest &&
+        hlo->operand(i)->shape().dimensions(dim) >= shard_size) {
+      return false;
+    }
+  }
+
+  PaddingConfig padding_config;
+  for (int64_t d = 0; d < rank; ++d) {
+    auto* padding_dim = padding_config.add_dimensions();
+    padding_dim->set_interior_padding(0);
+    padding_dim->set_edge_padding_low(d == dim ? offsets[largest] : 0);
+    padding_dim->set_edge_padding_high(
+        d == dim ? full_size - offsets[largest] -
+                       hlo->operand(largest)->shape().dimensions(dim)
+                 : 0);
+  }
+  HloInstruction* zero = b_.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(hlo->shape().element_type())));
+  HloInstruction* current =
+      PadHelper(*this, GetPartitionedHlo(hlo->operand(largest)), zero,
+                padding_config, hlo->shape(), sharding);
+  if (current == nullptr) {
+    return false;
+  }
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+    if (i == largest) {
+      continue;
+    }
+    std::vector<int64_t> starts(rank, 0);
+    starts[dim] = offsets[i];
+    ABSL_ASSIGN_OR_RETURN(current,
+                     ProcessUpdatePiece(hlo, /*input_tensor=*/nullptr,
+                                        hlo->operand(i), starts, current));
+  }
+  SetPartitionedHlo(hlo, current);
+  return true;
 }
 
 absl::Status
@@ -7496,41 +7598,20 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
         return res;
       };
       auto convert_unreduced_subgroup_sharding =
-          [](HloInstruction* hlo,
-             const HloSharding& sharding) -> absl::StatusOr<HloSharding> {
-        // TODO(b/438306205): Remove this check once the unreduced
-        // subgroup sharding is compatible with manual.
-        TF_RET_CHECK(!sharding.IsManualSubgroup())
-            << "Incompatible unreduced sharding at " << hlo->ToString();
+          [](HloInstruction* hlo, const HloSharding& sharding) -> HloSharding {
         hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
-        TileAssignment tile_assignment = sharding.tile_assignment();
-        if (sharding.HasPartialReplication()) {
-          // When we have both replicated and unreduced, merge them into one
-          // in the tile assignment.
-          int64_t unreduced_dim = sharding.SubgroupUnreducedDim();
-          DimensionVector new_dims(tile_assignment.dimensions().begin(),
-                                   tile_assignment.dimensions().end());
-          new_dims[sharding.SubgroupReplicationDim()] *=
-              new_dims[unreduced_dim];
-          new_dims.erase(new_dims.begin() + unreduced_dim);
-          tile_assignment = tile_assignment.Reshape(new_dims);
-        }
-        HloSharding res =
-            HloSharding::PartialTile(tile_assignment, sharding.metadata());
+        std::vector<OpSharding::Type> subgroup_types(
+            sharding.subgroup_types().begin(), sharding.subgroup_types().end());
+        absl::c_replace(subgroup_types, OpSharding::UNREDUCED,
+                        OpSharding::REPLICATED);
+        HloSharding res = HloSharding::Subgroup(
+            sharding.tile_assignment(), subgroup_types, sharding.metadata());
         res.set_reduction_op(sharding.reduction_op());
         return res;
       };
       auto convert_unreduced_named_sharding =
-          [](HloInstruction* hlo,
-             const HloSharding& sharding) -> absl::StatusOr<HloSharding> {
+          [](HloInstruction* hlo, const HloSharding& sharding) -> HloSharding {
         const NamedSharding& named_sharding = sharding.named_sharding();
-        // TODO(b/438306205): Remove this check once the unreduced named
-        // sharding is compatible with manual.
-        if (!named_sharding.manual_axes().empty()) {
-          return absl::UnimplementedError(
-              "NamedSharding with both unreduced and manual axes is not "
-              "supported.");
-        }
         hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
         std::vector<AxisRef> new_replicated_axes(
             named_sharding.replicated_axes().begin(),
@@ -7552,11 +7633,10 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
         for (HloSharding& subsharding : subshardings) {
           if (subsharding.IsUnreducedSubgroup()) {
             if (subsharding.UseNamedShardingLeaf()) {
-              ABSL_ASSIGN_OR_RETURN(subsharding, convert_unreduced_named_sharding(
-                                                hlo, subsharding));
+              subsharding = convert_unreduced_named_sharding(hlo, subsharding);
             } else {
-              ABSL_ASSIGN_OR_RETURN(subsharding, convert_unreduced_subgroup_sharding(
-                                                hlo, subsharding));
+              subsharding =
+                  convert_unreduced_subgroup_sharding(hlo, subsharding);
             }
             should_convert = true;
           } else if (subsharding.IsUnreduced()) {
@@ -7570,14 +7650,10 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
       } else {
         if (sharding.IsUnreducedSubgroup()) {
           if (sharding.UseNamedShardingLeaf()) {
-            ABSL_ASSIGN_OR_RETURN(HloSharding new_sharding,
-                             convert_unreduced_named_sharding(hlo, sharding));
-            hlo->set_sharding(new_sharding);
+            hlo->set_sharding(convert_unreduced_named_sharding(hlo, sharding));
           } else {
-            ABSL_ASSIGN_OR_RETURN(
-                HloSharding new_sharding,
+            hlo->set_sharding(
                 convert_unreduced_subgroup_sharding(hlo, sharding));
-            hlo->set_sharding(new_sharding);
           }
         } else if (sharding.IsUnreduced()) {
           hlo->set_sharding(convert_unreduced_sharding(hlo));

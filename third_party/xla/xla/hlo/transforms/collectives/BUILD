@@ -786,6 +786,7 @@ cc_library(
     deps = [
         ":collective_permute_cycle",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",

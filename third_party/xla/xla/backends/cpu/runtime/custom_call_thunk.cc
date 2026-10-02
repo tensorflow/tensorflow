@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
@@ -336,7 +337,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       results.push_back(
           params.buffer_allocations->GetDeviceAddressUnchecked(slice));
     }
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(results[i].opaque(), results[i].size());
     VLOG(3) << absl::StreamFormat("  res: %s in slice %s (%p)",
                                   op_buffers_.results_shapes[i].ToString(true),
                                   slice.ToString(), results[i].opaque());
@@ -358,8 +358,22 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       custom_call_params->ffi_execution_context};
 
   ffi::HandlerRegistration& handler = std::get<1>(target_);
-  return ffi::InvokeAsync(ffi::GetXlaFfiApi(), handler.bundle.execute,
-                          *call_frame, invoke_context);
+  auto future = ffi::InvokeAsync(ffi::GetXlaFfiApi(), handler.bundle.execute,
+                                 *call_frame, invoke_context);
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+  // Use `FlatMap` instead of `AndThen` (which runs waiters in LIFO order) so
+  // dependent thunks only run after the result buffers are unpoisoned.
+  return future.FlatMap([results = std::move(results)](ExecuteEvent) {
+    // Custom calls may dispatch to external code that is not MSan-instrumented,
+    // e.g. hand-written assembly or libraries built without msan.
+    for (const auto& res : results) {
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(res.opaque(), res.size());
+    }
+    return OkExecuteEvent();
+  });
+#else
+  return future;
+#endif  // ABSL_HAVE_MEMORY_SANITIZER
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
@@ -412,6 +426,12 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
   auto status_message = xla::CustomCallStatusGetMessage(&status);
   if (status_message.has_value()) {
     return Internal("%s", status_message.value());
+  }
+  // Custom calls may dispatch to external code that is not MSan-instrumented,
+  // e.g. hand-written assembly or libraries built without msan.
+  for (size_t i = 0; i < results.size(); ++i) {
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(results[i],
+                                        op_buffers_.results_buffers[i].size());
   }
   return OkExecuteEvent();
 }

@@ -29,7 +29,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/stat_summarizer_options.h"
 #include "tensorflow/core/util/stats_calculator.h"
+#ifndef TFLITE_WITHOUT_PROTO
 #include "tensorflow/lite/profiling/proto/profiling_info.pb.h"
+#endif  // TFLITE_WITHOUT_PROTO
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
@@ -139,6 +141,7 @@ ProfileSummaryCSVFormatter::GetStatSummarizerOptions() const {
   return options;
 }
 
+#ifndef TFLITE_WITHOUT_PROTO
 std::vector<tensorflow::StatsCalculator::Detail>
 ProfileSummaryProtoFormatter::GetDetailsSortedByRunOrder(
     const tensorflow::StatsCalculator* stats_calculator) const {
@@ -305,6 +308,7 @@ void ProfileSummaryProtoFormatter::HandleOutput(
     benchmark_profiling_data.SerializeToOstream(output_stream);
   }
 }
+#endif  // TFLITE_WITHOUT_PROTO
 
 }  // namespace profiling
 }  // namespace tflite

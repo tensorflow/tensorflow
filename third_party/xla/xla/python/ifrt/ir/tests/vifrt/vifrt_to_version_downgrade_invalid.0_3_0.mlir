@@ -20,6 +20,6 @@
 // expected-error@-20 {{failed to convert to VIFRT version 0.3.0}}
 // expected-error@+2 {{failed to legalize operation 'vifrt.CopyArraysV2' that was explicitly marked illegal}}
 func.func @copy_array_with_reuse(%arg0: !array) attributes {ifrt.function} {
-  %0, %ctrl = ifrt.CopyArrays(%arg0) {reuse = true} : (!array) -> !array
+  %0, %ctrl = ifrt.CopyArrays(%arg0) <reuse = true> : (!array) -> !array
   return
 }

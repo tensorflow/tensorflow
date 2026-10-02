@@ -108,6 +108,7 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/transforms:lowering_utils",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/simplifiers:gather_simplifier",

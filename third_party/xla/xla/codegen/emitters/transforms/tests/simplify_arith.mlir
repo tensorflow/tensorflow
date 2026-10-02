@@ -479,7 +479,18 @@ module {
 // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<true> : tensor<4xi1>
 // CHECK-NEXT: return %[[CST]]
 
+// -----
 
+#constrained_map = #xla.indexing_map<"(d0, d1) -> ((d0 * 21846 + d1) floordiv 256), domain: d0 in [0, 11], d1 in [0, 21845]">
+module {
+  func.func @apply_indexing_range_attr(%pid: index, %tid: index) -> i1 {
+    %row = xla.apply_indexing #constrained_map(%pid, %tid) {xla.range = [0 : index, 1023 : index]}
+    %c1024 = arith.constant 1024 : index
+    %in_bounds = arith.cmpi slt, %row, %c1024 : index
+    return %in_bounds : i1
+  }
+}
 
-
-
+// CHECK-LABEL: @apply_indexing_range_attr
+// CHECK-NEXT: %[[TRUE:.*]] = arith.constant true
+// CHECK-NEXT: return %[[TRUE]]

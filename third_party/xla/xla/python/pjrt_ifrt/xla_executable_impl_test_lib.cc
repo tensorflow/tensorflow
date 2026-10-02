@@ -268,7 +268,8 @@ module @add_sub attributes {
                        /*replicated=*/false, serialize));
 
   EXPECT_EQ(executable->name(), "add_sub");
-  EXPECT_EQ(executable->num_devices(), devices.size());
+  ASSERT_TRUE(executable->devices().has_value());
+  EXPECT_THAT((*executable->devices())->devices(), ElementsAreArray(devices));
 
   EXPECT_THAT(executable->GetParameterShardings(),
               Optional(ElementsAre(EquivToProto(R"pb(

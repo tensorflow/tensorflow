@@ -575,3 +575,35 @@ module {
 // CHECK-TDM-LABEL: tt.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end
 // CHECK-TDM:         tt.descriptor_load
 // CHECK-TDM:         tt.descriptor_store
+
+// -----
+
+#indexing_map_reduced_oob = #xla.indexing_map<"(pid) -> (pid floordiv 2), domain: pid in [0, 7]">
+module {
+  func.func @apply_mask_to_reduced_dim_with_out_of_bounds_offset(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+    %0 = tt.get_program_id x : i32
+    %1 = arith.index_cast %0 : i32 to index
+    %2 = xla.apply_indexing #indexing_map_reduced_oob(%1)
+    // Dimension 0 has size 3, while %2 ranges in [0, 3]. Even though the tile
+    // size along dimension 0 is 1 and rank-reduced, a bounds mask must still be
+    // emitted for dimension 0.
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<3x8xbf16, #xtile.layout<[1, 0]>>
+        [%2, 0] [1, 8] [1, 1] : tensor<8xbf16>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<4x8xbf16, #xtile.layout<[1, 0]>>
+        [%2, 0] [1, 8] [1, 1] : tensor<8xbf16>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @apply_mask_to_reduced_dim_with_out_of_bounds_offset
+// CHECK-DAG: %[[C3:.*]] = arith.constant 3 : i64
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i64
+// CHECK: %[[OFFSET:.*]] = arith.index_cast %{{.*}} : index to i64
+// CHECK: %[[RIGHT_MASK:.*]] = arith.cmpi slt, %[[OFFSET]], %[[C3]] : i64
+// CHECK: %[[LEFT_MASK:.*]] = arith.cmpi sge, %[[OFFSET]], %[[C0]] : i64
+// CHECK: %[[MASK:.*]] = arith.andi %[[LEFT_MASK]], %[[RIGHT_MASK]] : i1
+// CHECK: %[[SPLAT_MASK:.*]] = tt.splat %[[MASK]] : i1 -> tensor<8xi1>
+// CHECK: tt.load {{.*}}, %[[SPLAT_MASK]], {{.*}}
+// CHECK: tt.store {{.*}}, %{{.*}} : tensor<8x!tt.ptr<bf16>>

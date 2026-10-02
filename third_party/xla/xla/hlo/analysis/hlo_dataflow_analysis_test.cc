@@ -409,6 +409,74 @@ ENTRY main {
   EXPECT_TRUE(analysis.GetValueDefinedAt(add).live_out_of_module());
 }
 
+TEST_P(HloDataflowAnalysisTest, CallInsideEmbeddedComputation) {
+  // A kCall nested inside a computation called in an embedded context (here
+  // the called computation of a custom-call) forwards the values of its
+  // callee's root, even though parameters in that context define their own
+  // values. The callee is additionally called from the entry computation so
+  // that its instructions are visited after the embedded call in the dataflow
+  // worklist (instructions reachable only through the custom-call get the
+  // lowest priority). The embedded call therefore has to be revisited once the
+  // callee's root value set is complete, otherwise its value set stays stale
+  // (empty at index {0}).
+  std::string hlo_str = R"(
+HloModule CallInsideEmbeddedComputation
+
+callee {
+  constant = f32[] constant(1.0)
+  ROOT tuple = (f32[]) tuple(constant)
+}
+
+embedded_computation {
+  embedded_param = f32[] parameter(0)
+  embedded_call = (f32[]) call(), to_apply=callee
+  embedded_gte = f32[] get-tuple-element(embedded_call), index=0
+  ROOT embedded_add = f32[] add(embedded_param, embedded_gte)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  entry_call = (f32[]) call(), to_apply=callee
+  entry_gte = f32[] get-tuple-element(entry_call), index=0
+  ROOT custom_call = f32[] custom-call(param, entry_gte), custom_call_target="foo", called_computations={embedded_computation}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  // Run the analysis directly, without flattening the call graph, so that the
+  // callee keeps both of its callers.
+  TF_ASSERT_OK_AND_ASSIGN(analysis_,
+                          HloDataflowAnalysis::Run(*module_, ssa_form));
+  const HloDataflowAnalysis& analysis = *analysis_;
+
+  const HloInstruction* constant = FindInstruction(module_.get(), "constant");
+  const HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  const HloInstruction* embedded_call =
+      FindInstruction(module_.get(), "embedded_call");
+  const HloInstruction* embedded_gte =
+      FindInstruction(module_.get(), "embedded_gte");
+  const HloInstruction* entry_call =
+      FindInstruction(module_.get(), "entry_call");
+  const HloInstruction* entry_gte = FindInstruction(module_.get(), "entry_gte");
+
+  // Both calls forward the values of the callee's root.
+  for (const HloInstruction* call : {embedded_call, entry_call}) {
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(call, /*index=*/{}));
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(call, /*index=*/{0}));
+    EXPECT_THAT(HloValuesAt(call, /*index=*/{}),
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(tuple)));
+    EXPECT_THAT(HloValuesAt(call, /*index=*/{0}),
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
+  }
+  EXPECT_THAT(HloValuesAt(embedded_gte),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
+  EXPECT_THAT(HloValuesAt(entry_gte),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant)));
+}
+
 TEST_P(HloDataflowAnalysisTest, SingleWhile) {
   // Element 0 passes transparently through the body.
   std::string hlo_str = R"(
@@ -4330,6 +4398,110 @@ ENTRY main {
     EXPECT_THAT(call1_value_set.values(),
                 ::testing::Contains(&analysis->GetValueDefinedAt(const1)));
   }
+}
+
+TEST_F(HloDataflowAnalysisTest, DisablePropagateThroughControlFlow) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+callee {
+  ROOT call_param = f32[] parameter(0)
+}
+
+while_cond {
+  param = f32[] parameter(0)
+  ROOT cond = pred[] constant(false)
+}
+
+while_body {
+  param = f32[] parameter(0)
+  ROOT add = f32[] add(param, param)
+}
+
+ENTRY main {
+  const0 = f32[] constant(1.0)
+  call_inst = f32[] call(const0), to_apply=callee
+  ROOT while_inst = f32[] while(call_inst), condition=while_cond, body=while_body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* const0 = FindInstruction(module_.get(), "const0");
+  HloInstruction* call_inst = FindInstruction(module_.get(), "call_inst");
+  HloInstruction* call_param =
+      module_->GetComputationWithName("callee")->parameter_instruction(0);
+  HloInstruction* while_inst = FindInstruction(module_.get(), "while_inst");
+  HloInstruction* body_param =
+      module_->GetComputationWithName("while_body")->parameter_instruction(0);
+
+  {
+    ASSERT_OK_AND_ASSIGN(
+        auto analysis,
+        HloDataflowAnalysis::Run(
+            *module_, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+            /*execution_threads=*/{}, /*propagate_through_calls=*/false,
+            /*precompute_uses=*/std::nullopt,
+            /*propagate_through_control_flow=*/false));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(call_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(call_param));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(while_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(body_param));
+    EXPECT_THAT(analysis->GetValueSet(body_param).values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(
+        auto analysis,
+        HloDataflowAnalysis::Run(
+            *module_, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+            /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+            /*precompute_uses=*/std::nullopt,
+            /*propagate_through_control_flow=*/false));
+    EXPECT_FALSE(analysis->ValueIsDefinedAt(call_inst));
+    EXPECT_FALSE(analysis->ValueIsDefinedAt(call_param));
+    EXPECT_THAT(analysis->GetValueSet(call_inst).values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const0)));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(while_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(body_param));
+    EXPECT_THAT(analysis->GetValueSet(body_param).values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+  }
+}
+
+TEST_F(HloDataflowAnalysisTest, CallMarkerCustomCalls) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  before = (f32[4], f32[4]) custom-call(p0, p1), custom_call_target="__xla_internal_call_marker_before"
+  gte0 = f32[4] get-tuple-element(before), index=0
+  gte1 = f32[4] get-tuple-element(before), index=1
+  add = f32[4] add(gte0, gte1)
+  ROOT after = f32[4] custom-call(add), custom_call_target="__xla_internal_call_marker_after"
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* p0 = FindInstruction(module_.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module_.get(), "p1");
+  HloInstruction* before = FindInstruction(module_.get(), "before");
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* after = FindInstruction(module_.get(), "after");
+
+  ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(*module_));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(before, {}));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(before, {0}));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(before, {0}),
+            &analysis->GetValueDefinedAt(p0));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(before, {1}),
+            &analysis->GetValueDefinedAt(p1));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(after));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(after),
+            &analysis->GetValueDefinedAt(add));
 }
 
 }  // namespace

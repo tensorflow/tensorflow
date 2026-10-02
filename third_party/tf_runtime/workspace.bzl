@@ -34,5 +34,6 @@ def repo():
         patch_file = [
             "//third_party/tf_runtime:f16_attr.patch",
             "//third_party/tf_runtime:pointer_union.patch",
+            "//third_party/tf_runtime:strict_properties.patch",
         ],
     )

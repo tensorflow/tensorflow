@@ -990,10 +990,8 @@ TEST_F(HloVerifierTest, ConvBlockScalingConfigSameScaleAndZeroIdxNotAllowed) {
   config.mutable_lhs()->set_zero_idx(2);
   conv->set_block_scaling_config(config);
 
-  EXPECT_THAT(
-      verifier().Run(module.get()).status().message(),
-      HasSubstr(
-          "LHS block scaling scale_idx and zero_idx cannot be the same (2)"));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Duplicate index 2"));
 }
 
 TEST_F(HloVerifierTest, ConvBlockScalingConfigLhsAndRhsSameScaleIdxNotAllowed) {
@@ -1005,9 +1003,56 @@ TEST_F(HloVerifierTest, ConvBlockScalingConfigLhsAndRhsSameScaleIdxNotAllowed) {
   config.mutable_rhs()->set_scale_idx(2);
   conv->set_block_scaling_config(config);
 
-  EXPECT_THAT(
-      verifier().Run(module.get()).status().message(),
-      HasSubstr("LHS and RHS block scaling scale_idx cannot be the same (2)"));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Duplicate index 2"));
+}
+
+static const char* const kDotWith4OperandsHloString = R"(
+HloModule module
+ENTRY entry_computation {
+  param0 = bf16[64,128] parameter(0)
+  param1 = bf16[128,64] parameter(1)
+  param2 = f8e8m0fnu[64,4] parameter(2)
+  param3 = f8e8m0fnu[4,64] parameter(3)
+  ROOT dot = bf16[64,64] dot(param0, param1, param2, param3),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+TEST_F(HloVerifierTest, DotBlockScalingConfigScaleIdxOutOfBoundsNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kDotWith4OperandsHloString));
+  auto* dot = module->entry_computation()->root_instruction();
+  BlockScalingConfig config;
+  config.mutable_rhs()->set_scale_idx(5);
+  dot->set_block_scaling_config(config);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Block scaling scale_idx for rhs 5 out of bounds"));
+}
+
+TEST_F(HloVerifierTest, DotSparsityConfigLhsAndRhsSameIdxNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kDotWith4OperandsHloString));
+  auto* dot = module->entry_computation()->root_instruction();
+  SparsityConfig config;
+  config.mutable_lhs()->set_idx(2);
+  config.mutable_rhs()->set_idx(2);
+  dot->set_sparsity_config(config);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Duplicate index 2"));
+}
+
+TEST_F(HloVerifierTest, DotUnreferencedExtraOperandsNotAllowed) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnUnverifiedModule(kDotWith4OperandsHloString));
+  auto* dot = module->entry_computation()->root_instruction();
+  BlockScalingConfig config;
+  config.mutable_lhs()->set_scale_idx(2);
+  dot->set_block_scaling_config(config);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("Expected all 2 extra operands to be referenced"));
 }
 
 static const char* const kAddWithLayoutChangeHlo = R"(

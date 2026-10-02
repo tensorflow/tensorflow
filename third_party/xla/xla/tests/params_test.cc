@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -216,9 +217,11 @@ TEST_F(ParamsTest, HundredLargeR1Parameters) {
 
 // Only run the 3,000-parameter tests in opt mode to avoid test timeouts.
 // Timeout last observed on 2017-11-20.
-#ifdef NDEBUG
 
 TEST_F(ParamsTest, ThreeThousandParameters) {
+  if constexpr (tsl::kIsDebugBuild) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
 
   std::vector<Literal> param_data_owner;
@@ -243,6 +246,9 @@ TEST_F(ParamsTest, ThreeThousandParameters) {
 }
 
 TEST_F(ParamsTest, ThreeThousandParametersAndOutputElements) {
+  if constexpr (tsl::kIsDebugBuild) {
+    GTEST_SKIP();
+  }
   // TODO(b/488995691): Triggers O(n^2 log n) behavior in InstructionFusion on
   // CPU.
   if (test::DeviceIs(test::kCpu)) {
@@ -306,6 +312,9 @@ TEST_F(ParamsTest, ThreeThousandParametersAndOutputElements) {
 // }
 // result = {p0, p1, ..., pN}
 TEST_F(ParamsTest, ManyParametersIntoWhileLoop) {
+  if constexpr (tsl::kIsDebugBuild) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
 
   std::vector<Literal> param_data_owner;
@@ -389,8 +398,6 @@ TEST_F(ParamsTest, ManyParametersIntoWhileLoop) {
   }
   ComputeAndCompareTuple(&builder, LiteralUtil::MakeTuple(ptrs), param_data);
 }
-
-#endif
 
 TEST_F(ParamsTest, TupleOfR1ParametersAddedTogether) {
   XlaBuilder builder(TestName());

@@ -2966,10 +2966,11 @@ absl::Status MIOpenSupport::GetConvolveRunners(
   }
 
   std::vector<dnn::ProfileResult> profile_results;
-  if (!GetMIOpenConvolveAlgorithms(
+  if (!GetMIOpenConvolveAlgorithmsInternal(
           kind, input_type, output_type, stream, input_descriptor, input_data,
           filter_descriptor, filter_data, output_descriptor, output_data,
-          convolution_descriptor, scratch_allocator, &profile_results))
+          convolution_descriptor, scratch_allocator, &profile_results,
+          use_fallback))
     return absl::InternalError("GetMIOpenConvolveAlgorithms failure");
 
   for (const auto& profile_result : profile_results) {
@@ -3092,13 +3093,33 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     ScratchAllocator* scratch_allocator,
     std::vector<dnn::ProfileResult>* out_algorithms) {
+  return GetMIOpenConvolveAlgorithmsInternal(
+      kind, input_type, output_type, stream, input_descriptor, input_data,
+      filter_descriptor, filter_data, output_descriptor, output_data,
+      convolution_descriptor, scratch_allocator, out_algorithms,
+      /*use_fallback=*/false);
+}
+
+bool MIOpenSupport::GetMIOpenConvolveAlgorithmsInternal(
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceAddressBase input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceAddressBase filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceAddressBase output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    ScratchAllocator* scratch_allocator,
+    std::vector<dnn::ProfileResult>* out_algorithms, bool use_fallback) {
   // TODO(rocm): Create handles only once and reuse them between the methods
-  if (!PopulateMIOpenFindDb(kind, input_type, output_type, stream,
-                            input_descriptor, input_data, filter_descriptor,
-                            filter_data, output_descriptor, output_data,
-                            convolution_descriptor, scratch_allocator)
-           .ok()) {
-    return false;
+  if (!use_fallback) {
+    if (!PopulateMIOpenFindDb(kind, input_type, output_type, stream,
+                              input_descriptor, input_data, filter_descriptor,
+                              filter_data, output_descriptor, output_data,
+                              convolution_descriptor, scratch_allocator)
+             .ok()) {
+      return false;
+    }
   }
   return GetMIOpenConvolveAlgorithmsImmediateMode(
              kind, input_type, output_type, stream, input_descriptor,

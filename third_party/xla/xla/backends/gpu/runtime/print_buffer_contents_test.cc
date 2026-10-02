@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla::gpu {
 namespace {
@@ -49,8 +48,8 @@ TEST(PrintBufferContentsTest, PrintBufferContents) {
   stream_executor::DeviceAddress<int> arg1 =
       executor->AllocateArray<int32_t>(10, 0);
 
-  TF_ASSERT_OK(stream->Memset32(&arg1, 0x12345678, 10 * sizeof(int32_t)));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->Memset32(&arg1, 0x12345678, 10 * sizeof(int32_t)));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<stream_executor::KernelArg> kernel_args;
   kernel_args.push_back(arg1);

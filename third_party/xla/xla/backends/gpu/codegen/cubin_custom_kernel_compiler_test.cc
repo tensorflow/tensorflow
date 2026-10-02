@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -45,8 +46,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/xla.pb.h"
@@ -56,6 +57,12 @@ namespace {
 
 using ::xla::xtile::BlockLevelFusionConfig;
 using ::xla::xtile::BlockLevelParameters;
+
+GpuTopology SingleDeviceGpuTopology() {
+  return GpuTopology(/*platform_version=*/"", /*num_partitions=*/1,
+                     /*num_hosts_per_partition=*/1,
+                     /*num_devices_per_host=*/1);
+}
 
 TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
   int compiler_invoked = 0;
@@ -67,8 +74,10 @@ TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
   };
 
   DebugOptions debug_options;
+  GpuTopology gpu_topology = SingleDeviceGpuTopology();
   CubinCustomKernelCompiler kernel_compiler(
-      llvm_compiler, TestGpuDeviceInfo::H100SXMDeviceInfo(), debug_options);
+      llvm_compiler, TestGpuDeviceInfo::H100SXMDeviceInfo(), debug_options,
+      gpu_topology);
 
   int hook_invoked = 0;
   kernel_compiler.SetPreOptimizationHook(
@@ -99,12 +108,12 @@ TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
 TEST_F(HloHardwareIndependentTestBase, TritonCompile) {
   ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
       []() { return CreateMlirContext(); });
-  TF_ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
-                          mlir_context_pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                       mlir_context_pool.GetOrCreate());
   LoadMlirDialectsForTriton(**borrowed_context);
 
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(R"(
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModuleString(R"(
 module {
   xtile.entry_func @random_name(%arg0: memref<125x127xf32>, %arg1: memref<125x127xf32>, %arg2: index) attributes {num_opaque_args = 0 : i32} {
     %c0 = arith.constant 0 : index
@@ -115,7 +124,7 @@ module {
     xtile.return
   }
 })",
-                                                **borrowed_context));
+                                             **borrowed_context));
   TritonKernelSource triton_source(std::move(module));
 
   auto llvm_compiler =
@@ -124,8 +133,10 @@ module {
     return std::vector<uint8_t>{1};
   };
   DebugOptions debug_options;
+  GpuTopology gpu_topology = SingleDeviceGpuTopology();
   CubinCustomKernelCompiler kernel_compiler(
-      llvm_compiler, TestGpuDeviceInfo::H100SXMDeviceInfo(), debug_options);
+      llvm_compiler, TestGpuDeviceInfo::H100SXMDeviceInfo(), debug_options,
+      gpu_topology);
 
   llvm::Triple triple(nvptx::TargetTriple());
   std::string data_layout = nvptx::DataLayout();
@@ -139,7 +150,7 @@ module {
             num_ctas: 1
             num_stages: 1
           )pb"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TritonWrapperResult result,
       kernel_compiler
           .CompileTritonToLlvm("random_name", HloModule{"test_module", {}},

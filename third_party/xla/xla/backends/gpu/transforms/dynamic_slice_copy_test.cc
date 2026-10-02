@@ -49,14 +49,14 @@ DynamicSliceConfig MakeConfig(int64_t loop_index, int64_t offset,
                               int64_t stride) {
   DynamicSliceConfig config;
   config.set_loop_index(loop_index);
-  config.set_byte_offset(offset);
-  config.set_byte_stride(stride);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(stride);
   return config;
 }
 
 DynamicSliceConfig MakeStaticConfig(int64_t offset) {
   DynamicSliceConfig config;
-  config.set_byte_offset(offset);
+  config.mutable_linear()->set_byte_offset(offset);
   return config;
 }
 
@@ -68,7 +68,7 @@ TEST_F(DynamicSliceCopyTest, AnalyzesDynamicSliceRootCopy) {
 
       ROOT slice = s32[1] dynamic-slice(p0, c1), dynamic_slice_sizes={1},
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
     }
 
     ENTRY main {
@@ -106,7 +106,8 @@ TEST_F(DynamicSliceCopyTest, AnalyzesDynamicUpdateSliceRootCopy) {
 
       ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, p2, c1, c1),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"32","byte_stride":"256","loop_index":"0"}}
+              {"loop_index":"0",
+                "linear":{"byte_offset":"32","byte_stride":"256"}}}
     }
 
     ENTRY main {
@@ -150,7 +151,8 @@ TEST_F(DynamicSliceCopyTest, AnalyzesComputedDusOffset) {
 
       ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, offset, c1, c1),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"32","byte_stride":"256","loop_index":"0"}}
+              {"loop_index":"0",
+                "linear":{"byte_offset":"32","byte_stride":"256"}}}
     }
 
     ENTRY main {
@@ -189,7 +191,7 @@ TEST_F(DynamicSliceCopyTest, RejectsComputedDusUpdate) {
 
       ROOT update-slice = s32[4] dynamic-update-slice(p0, update, c0),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"0","byte_stride":"4","loop_index":"0"}}
+              {"loop_index":"0","linear":{"byte_offset":"0","byte_stride":"4"}}}
     }
 
     ENTRY main {
@@ -219,7 +221,8 @@ TEST_F(DynamicSliceCopyTest, AnalyzesDusWithStaticSliceUpdate) {
 
       ROOT update-slice = s32[4,8] dynamic-update-slice(p0, update, p2, c0),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"0","byte_stride":"32","loop_index":"0"}}
+              {"loop_index":"0",
+                "linear":{"byte_offset":"0","byte_stride":"32"}}}
     }
 
     ENTRY main {
@@ -255,7 +258,8 @@ TEST_F(DynamicSliceCopyTest, RejectsStridedStaticSliceUpdate) {
 
       ROOT update-slice = s32[4,8] dynamic-update-slice(p0, update, p2, c0),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"0","byte_stride":"32","loop_index":"0"}}
+              {"loop_index":"0",
+                "linear":{"byte_offset":"0","byte_stride":"32"}}}
     }
 
     ENTRY main {

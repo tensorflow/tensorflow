@@ -1093,7 +1093,7 @@ cc_library(
     name = "command_buffer",
     srcs = ["command_buffer.cc"],
     hdrs = ["command_buffer.h"],
-    visibility = [":internal"],
+    visibility = internal_visibility([":internal"]),
     deps = [
         ":bit_pattern",
         ":device_address",

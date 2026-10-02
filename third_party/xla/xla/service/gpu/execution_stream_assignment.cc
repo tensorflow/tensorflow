@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
@@ -45,10 +46,15 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-// There are two kinds of async execution scopes: compute and collective. We
-// need just two as our goal is to effectively overlap computation with
-// communication.
-enum class ExecutionScopeKind { kCompute, kCommunication };
+// Execution scope kinds. kMemcpyD2H and kMemcpyH2D use the dedicated
+// device_to_host_stream / host_to_device_stream from ExecuteParams, which
+// keeps host↔device copies off the compute and collective streams.
+enum class ExecutionScopeKind {
+  kCompute,
+  kCommunication,
+  kMemcpyD2H,
+  kMemcpyH2D,
+};
 
 template <typename Sink>
 void AbslStringify(Sink sink, ExecutionScopeKind kind) {
@@ -58,6 +64,12 @@ void AbslStringify(Sink sink, ExecutionScopeKind kind) {
       break;
     case ExecutionScopeKind::kCommunication:
       sink.Append("communication");
+      break;
+    case ExecutionScopeKind::kMemcpyD2H:
+      sink.Append("memcpy_d2h");
+      break;
+    case ExecutionScopeKind::kMemcpyH2D:
+      sink.Append("memcpy_h2d");
       break;
   }
 }
@@ -102,6 +114,10 @@ class ExecutionStreams {
       case ExecutionScopeKind::kCommunication: {
         return NextCollective(kUnspecifiedCollectiveDomain);
       }
+      case ExecutionScopeKind::kMemcpyD2H:
+        return kMemcpyD2HStreamId;
+      case ExecutionScopeKind::kMemcpyH2D:
+        return kMemcpyH2DStreamId;
     }
   }
 
@@ -148,16 +164,79 @@ bool IsWrappedCollective(const HloAsyncInstruction* async) {
   }
 }
 
+// Returns true if the shape is in host memory space (S(5)).
+bool IsHostShape(const Shape& shape) {
+  return shape.IsArray() && shape.has_layout() &&
+         shape.layout().memory_space() == Layout::kHostMemorySpace;
+}
+
+// Returns the memcpy direction for a copy-start instruction whose shape is the
+// tuple {dst, src, u32[]}.  Returns nullopt for D2D copies (neither endpoint
+// is in host memory).
+std::optional<ExecutionScopeKind> CopyStartDirection(
+    const HloInstruction* copy_start) {
+  const Shape& shape = copy_start->shape();
+  if (!shape.IsTuple() || shape.tuple_shapes_size() < 2) {
+    return std::nullopt;
+  }
+  bool dst_host = IsHostShape(shape.tuple_shapes(0));
+  bool src_host = IsHostShape(shape.tuple_shapes(1));
+  if (dst_host) {
+    return ExecutionScopeKind::kMemcpyD2H;
+  }
+  if (src_host) {
+    return ExecutionScopeKind::kMemcpyH2D;
+  }
+  return std::nullopt;
+}
+
+// Returns the memcpy direction for an async-start whose wrapped computation
+// contains a host↔device DUS or DS.  The inner instruction may have been
+// wrapped in a kLoop fusion by StreamAttributeAnnotator.
+std::optional<ExecutionScopeKind> AsyncHostMemcpyDirection(
+    const HloAsyncInstruction* async_start) {
+  const HloInstruction* inner = async_start->async_wrapped_instruction();
+
+  // After StreamAttributeAnnotator the DUS/DS is wrapped in a kLoop fusion;
+  // unwrap to the fused root so the checks below apply uniformly to both the
+  // fused and non-fused (pre-StreamAttributeAnnotator) cases.
+  if (inner->opcode() == HloOpcode::kFusion &&
+      inner->fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    inner = inner->fused_expression_root();
+  }
+
+  // DUS writes to its first operand (the base buffer) and the result has the
+  // same shape.  DS reads from its first operand.
+  if (inner->opcode() == HloOpcode::kDynamicUpdateSlice &&
+      IsHostShape(inner->shape())) {
+    return ExecutionScopeKind::kMemcpyD2H;
+  }
+  if (inner->opcode() == HloOpcode::kDynamicSlice &&
+      !inner->operands().empty() && IsHostShape(inner->operand(0)->shape())) {
+    return ExecutionScopeKind::kMemcpyH2D;
+  }
+  return std::nullopt;
+}
+
 // Returns an execution scope kind if operations starts it.
 std::optional<ExecutionScopeKind> IsExecutionScopeStart(
-    const HloInstruction* hlo) {
+    const HloInstruction* hlo, bool enable_dedicated_memcpy_streams) {
   // Async operation that starts a new execution scope.
   if (auto* start = DynCast<HloAsyncStartInstruction>(hlo)) {
-    return IsWrappedCollective(start) || IsCustomCollectiveOp(start) ||
-                   start->frontend_attributes().map().contains(
-                       kCollectiveGroupMarkerAttr)
-               ? ExecutionScopeKind::kCommunication
-               : ExecutionScopeKind::kCompute;
+    // Collective operations run on communication streams.
+    if (IsWrappedCollective(start) || IsCustomCollectiveOp(start) ||
+        start->frontend_attributes().map().contains(
+            kCollectiveGroupMarkerAttr)) {
+      return ExecutionScopeKind::kCommunication;
+    }
+    // Host↔device memcpy (DUS/DS wrapping host memory) runs on dedicated
+    // memcpy streams rather than the general compute pool.
+    if (enable_dedicated_memcpy_streams) {
+      if (auto dir = AsyncHostMemcpyDirection(start)) {
+        return dir;
+      }
+    }
+    return ExecutionScopeKind::kCompute;
   }
 
   // Async-collective operations not yet migrated to async wrappers.
@@ -173,8 +252,14 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
                : std::nullopt;
   }
 
-  // A special case of asynchronous compute operation.
+  // copy-start: D2H and H2D go on their dedicated memcpy streams; D2D stays
+  // on a compute stream.
   if (HloPredicateIsOp<HloOpcode::kCopyStart>(hlo)) {
+    if (enable_dedicated_memcpy_streams) {
+      if (auto dir = CopyStartDirection(hlo)) {
+        return dir;
+      }
+    }
     return ExecutionScopeKind::kCompute;
   }
 
@@ -195,6 +280,11 @@ std::optional<ExecutionStreamId> FindAssignedStreamId(
         return ExecutionStreamId(ComputationStreamId(assigned_stream_id));
       case ExecutionScopeKind::kCommunication:
         return ExecutionStreamId(CommunicationStreamId(assigned_stream_id));
+      case ExecutionScopeKind::kMemcpyD2H:
+      case ExecutionScopeKind::kMemcpyH2D:
+        // Memcpy streams are fixed singletons; per-instruction annotation
+        // does not apply.
+        return std::nullopt;
     }
   }
   return std::nullopt;
@@ -242,7 +332,8 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
 
     for (const HloInstruction* hlo : instructions) {
       // Only assign execution stream IDs to scope-start operations.
-      if (std::optional<ExecutionScopeKind> kind = IsExecutionScopeStart(hlo)) {
+      if (std::optional<ExecutionScopeKind> kind = IsExecutionScopeStart(
+              hlo, options.enable_dedicated_memcpy_streams)) {
         // Prefer an explicitly assigned stream id, then a collective-domain
         // stream or a dedicated P2P stream for pipelined send/recv. Otherwise,
         // generate a new stream id for the execution scope.

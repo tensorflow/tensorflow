@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -40,12 +41,12 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 
@@ -104,6 +105,49 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<PriorityFusionTest::ParamType>& info) {
       return info.param ? "TilingPropagation" : "SymbolicAnalysis";
     });
+
+TEST_P(PriorityFusionTest, ParallelTilingSearchMatchesSerialTilingSearch) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+
+    ENTRY main {
+      %p0 = f32[64,256] parameter(0)
+      %p1 = f32[64,256] parameter(1)
+      %log = f32[64,256] log(%p0)
+      %exp = f32[64,256] exponential(%p1)
+      %multiply = f32[64,256] multiply(%log, %exp)
+      %add = f32[64,256] add(%multiply, %p0)
+      ROOT %negate = f32[64,256] negate(%add)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> serial_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(bool serial_changed,
+                       priority_fusion_.Run(serial_module.get()));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> parallel_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 8);
+  // Mirrors the contexts GpuCompiler pools: multithreading is disabled, so the
+  // cost model must give each candidate its own context.
+  MlirContextPool mlir_context_pool(
+      [] {
+        return std::make_unique<mlir::MLIRContext>(
+            mlir::MLIRContext::Threading::DISABLED);
+      },
+      /*preallocate=*/8);
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion parallel_priority_fusion(&thread_pool, device_info_,
+                                          &alias_info_, options, &mlir_context_,
+                                          &mlir_context_pool);
+  ASSERT_OK_AND_ASSIGN(bool parallel_changed,
+                       parallel_priority_fusion.Run(parallel_module.get()));
+
+  EXPECT_EQ(parallel_changed, serial_changed);
+  EXPECT_EQ(parallel_module->ToString(HloPrintOptions::ShortParsable()),
+            serial_module->ToString(HloPrintOptions::ShortParsable()));
+}
 
 TEST_P(PriorityFusionTest, FuseWithSharedArgument) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -1001,7 +1045,7 @@ ENTRY main {
   triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","127"]}],"num_warps":"1"}}}
   ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_1, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
@@ -1054,7 +1098,7 @@ ENTRY main {
   ROOT tuple = (f32[125,127], f32[125,127]) tuple(consumer_fusion.1, consumer_fusion.2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
@@ -1064,8 +1108,8 @@ ENTRY main {
   EXPECT_THAT(root, GmockMatch(m::Tuple(m::Fusion(&fusion1, m::Parameter()),
                                         m::Fusion(&fusion2, m::Parameter()))));
   EXPECT_TRUE(IsGenericTritonFusion(*fusion1));
-  TF_ASSERT_OK_AND_ASSIGN(auto backend_config1,
-                          fusion1->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto backend_config1,
+                       fusion1->backend_config<GpuBackendConfig>());
   EXPECT_TRUE(
       backend_config1.fusion_backend_config().has_block_level_fusion_config());
   EXPECT_EQ(backend_config1.fusion_backend_config()
@@ -1075,8 +1119,8 @@ ENTRY main {
             2);
 
   EXPECT_TRUE(IsGenericTritonFusion(*fusion2));
-  TF_ASSERT_OK_AND_ASSIGN(auto backend_config2,
-                          fusion2->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto backend_config2,
+                       fusion2->backend_config<GpuBackendConfig>());
   EXPECT_TRUE(
       backend_config2.fusion_backend_config().has_block_level_fusion_config());
   EXPECT_EQ(backend_config2.fusion_backend_config()
@@ -1113,7 +1157,7 @@ ENTRY main {
   ROOT tuple = (f32[125,127], f32[125,127]) tuple(consumer_fusion, producer_fusion)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   module->mutable_config()
       .mutable_debug_options()
@@ -1134,8 +1178,8 @@ ENTRY main {
                   m::GetTupleElement(m::Fusion(&fusion2, m::Parameter()), 1))));
   EXPECT_EQ(fusion1, fusion2);
   EXPECT_TRUE(IsGenericTritonFusion(*fusion1));
-  TF_ASSERT_OK_AND_ASSIGN(auto backend_config1,
-                          fusion1->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto backend_config1,
+                       fusion1->backend_config<GpuBackendConfig>());
   EXPECT_TRUE(
       backend_config1.fusion_backend_config().has_block_level_fusion_config());
   EXPECT_EQ(backend_config1.fusion_backend_config()
@@ -1166,7 +1210,7 @@ ENTRY main {
   ROOT tuple = (f32[125,127], f32[125,127]) tuple(consumer_fusion, producer)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   module->mutable_config()
       .mutable_debug_options()
@@ -1187,8 +1231,8 @@ ENTRY main {
                   m::GetTupleElement(m::Fusion(&fusion2, m::Parameter()), 1))));
   EXPECT_EQ(fusion1, fusion2);
   EXPECT_TRUE(IsGenericTritonFusion(*fusion1));
-  TF_ASSERT_OK_AND_ASSIGN(auto backend_config1,
-                          fusion1->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto backend_config1,
+                       fusion1->backend_config<GpuBackendConfig>());
   EXPECT_TRUE(
       backend_config1.fusion_backend_config().has_block_level_fusion_config());
   EXPECT_EQ(backend_config1.fusion_backend_config()
@@ -1226,7 +1270,7 @@ ENTRY main {
   ROOT tuple = (f32[1024,512],f32[1024,512],f32[1024,512]) tuple(exponential, sqrt, log)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   module->mutable_config()
       .mutable_debug_options()
@@ -1242,6 +1286,27 @@ ENTRY main {
   EXPECT_NE(fusion1, fusion2);
   EXPECT_TRUE(IsGenericTritonFusion(*fusion1));
   EXPECT_TRUE(IsGenericTritonFusion(*fusion2));
+}
+
+TEST_P(PriorityFusionTest,
+       ProducerWithOnlyBitcastUsersHasNoMultiOutputFusionCandidates) {
+  // `negate` can only be fused into bitcasts, so there are no candidates for
+  // Triton multi-output fusion either.
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY main {
+  p0 = f32[16,32] parameter(0)
+  negate = f32[16,32] negate(p0)
+  ROOT bitcast = f32[512] bitcast(negate)
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
+  ASSERT_OK_AND_ASSIGN(bool changed, priority_fusion_.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 TEST_P(PriorityFusionTest, TritonProducerNotSupported_DoNotFuse) {
@@ -1266,7 +1331,7 @@ ENTRY main {
   producer_fusion = f32[125,127] fusion(param_0), kind=kLoop, calls=producer_computation
   ROOT triton_fusion = f32[125,127] fusion(producer_fusion, param_1), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","127"]}],"num_warps":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   // Triton does not support c64, so producer_fusion and triton_fusion and will
   // not be fused.
@@ -1296,7 +1361,7 @@ ENTRY main {
   triton_fusion = f32[125,127] fusion(param_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","127"]}],"num_warps":"1"}}}
   ROOT consumer_fusion = f32[125,127] fusion(param_1, triton_fusion), kind=kLoop, calls=consumer_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   // Triton does not support c64, so triton_fusion and consumer_fusion will not
   // be fused.
@@ -1329,7 +1394,7 @@ TEST_P(PriorityFusionTest, DoNotFuseInsideReducer) {
 }
 
 TEST_P(PriorityFusionTest, SkipsTilingsWithInfiniteRuntime) {
-  // This test verifies the fix in TryFindBestTilingForFusion that skips
+  // This test verifies the fix in TryFindBestTilingForFusionAsync that skips
   // tilings with infinite runtime estimates.
   //
   // The fix: After estimating runtime for each tiling candidate, check if
@@ -1428,7 +1493,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   module->mutable_config()
       .mutable_debug_options()
@@ -1508,8 +1573,7 @@ TEST_P(HerolessPriorityFusionTest, LimitNumberOfParameters) {
         absl::StrFormat("add%d = f32[] add(add%d, p%d)\n", i, i - 1, i);
   }
   module_text += "}";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_text));
   EXPECT_THAT(priority_fusion_.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   // Assert that there is not just a single fusion with all parameters as

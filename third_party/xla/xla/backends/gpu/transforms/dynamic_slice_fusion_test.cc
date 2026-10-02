@@ -45,14 +45,14 @@ DynamicSliceConfig MakeConfig(int64_t loop_index, int64_t offset,
                               int64_t stride) {
   DynamicSliceConfig config;
   config.set_loop_index(loop_index);
-  config.set_byte_offset(offset);
-  config.set_byte_stride(stride);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(stride);
   return config;
 }
 
 DynamicSliceConfig MakeStaticConfig(int64_t offset) {
   DynamicSliceConfig config;
-  config.set_byte_offset(offset);
+  config.mutable_linear()->set_byte_offset(offset);
   return config;
 }
 
@@ -183,7 +183,8 @@ TEST_F(DynamicSliceFusionTest, ResolveParamWithDynamicSliceConstantOffsets) {
       %p0 = f32[4,4] parameter(0)
       %zero = s32[] constant(0)
       %ds = f32[1,4] dynamic-slice(%p0, %zero, %zero), dynamic_slice_sizes={1,4},
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
     }
 
@@ -218,7 +219,8 @@ TEST_F(DynamicSliceFusionTest, ResolveParamWithDynamicSliceRuntimeOffsets) {
       %p1 = s32[] parameter(1)
       %zero = s32[] constant(0)
       %ds = f32[1,4] dynamic-slice(%p0, %p1, %zero), dynamic_slice_sizes={1,4},
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
     }
 
@@ -255,7 +257,8 @@ TEST_F(DynamicSliceFusionTest, ResolveParamWithComputedDynamicSliceOffset) {
       %zero = s32[] constant(0)
       %offset = s32[] add(%p1, %one)
       %ds = f32[1,4] dynamic-slice(%p0, %offset, %zero), dynamic_slice_sizes={1,4},
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
     }
 
@@ -296,7 +299,8 @@ TEST_F(DynamicSliceFusionTest, ResolveParamWithSelectOffsetExpression) {
       %incremented = s32[] add(%p1, %one)
       %offset = s32[] select(%is_negative, %zero, %incremented)
       %ds = f32[1,4] dynamic-slice(%p0, %offset, %zero), dynamic_slice_sizes={1,4},
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
     }
 
@@ -405,7 +409,8 @@ TEST_F(DynamicSliceFusionTest, ResolveParamWithBitcastBeforeDynamicSlice) {
       %bc = f32[8,4] bitcast(%p0)
       %zero = s32[] constant(0)
       %ds = f32[1,4] dynamic-slice(%bc, %p1, %zero), dynamic_slice_sizes={1,4},
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
     }
 
@@ -445,7 +450,8 @@ TEST_F(DynamicSliceFusionTest, ResolveResultWithDUSConstantOffsets) {
       %bitcast = f32[1,4] bitcast(%fill)
       %zero = s32[] constant(0)
       ROOT %dus = f32[4,4] dynamic-update-slice(%p0, %bitcast, %zero, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     ENTRY main {
@@ -480,7 +486,8 @@ TEST_F(DynamicSliceFusionTest, ResolveResultWithDUSRuntimeOffsets) {
       %bitcast = f32[1,4] bitcast(%fill)
       %zero = s32[] constant(0)
       ROOT %dus = f32[4,4] dynamic-update-slice(%p0, %bitcast, %p1, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     ENTRY main {
@@ -517,7 +524,8 @@ TEST_F(DynamicSliceFusionTest, ResolveResultWithComputedDusOffset) {
       %zero = s32[] constant(0)
       %offset = s32[] add(%p1, %one)
       ROOT %dus = f32[4,4] dynamic-update-slice(%p0, %bitcast, %offset, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     ENTRY main {
@@ -554,7 +562,8 @@ TEST_F(DynamicSliceFusionTest, ResolveResultWithBitcastThenDUS) {
       %bitcast2 = f32[1,4] bitcast(%bitcast)
       %zero = s32[] constant(0)
       ROOT %dus = f32[4,4] dynamic-update-slice(%p0, %bitcast2, %zero, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":1,"byte_offset":32,"byte_stride":64}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":1,"linear":{"byte_offset":32,"byte_stride":64}}}
     }
 
     ENTRY main {
@@ -652,10 +661,12 @@ TEST_F(DynamicSliceFusionTest, ParamsAndResultsWithRuntimeOffsets) {
       %p2 = s32[] parameter(2)
       %zero = s32[] constant(0)
       %ds = f32[1,4] dynamic-slice(%p0, %p2, %zero), dynamic_slice_sizes={1,4},
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
       ROOT %dus = f32[4,4] dynamic-update-slice(%p1, %custom, %p2, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     ENTRY main {
@@ -708,9 +719,11 @@ TEST_F(DynamicSliceFusionTest, ResolveResultsFlatTupleWithDUS) {
       %gte0 = f32[1,4] get-tuple-element(%custom), index=0
       %gte1 = f32[1,8] get-tuple-element(%custom), index=1
       %dus0 = f32[4,4] dynamic-update-slice(%p0, %gte0, %p2, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus1 = f32[4,8] dynamic-update-slice(%p1, %gte1, %zero, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":32}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":32}}}
       ROOT %tuple = (f32[4,4], f32[4,8]) tuple(%dus0, %dus1)
     }
 
@@ -761,11 +774,14 @@ TEST_F(DynamicSliceFusionTest, ResolveResultsNestedTupleWithDUS) {
       %bitcast01 = f32[1,4] bitcast(%gte01)
       %bitcast1 = f32[1,8] bitcast(%gte1)
       %dus0 = f32[4,4] dynamic-update-slice(%p0, %bitcast00, %zero, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus1 = f32[4,4] dynamic-update-slice(%p1, %bitcast01, %zero, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus2 = f32[4,8] dynamic-update-slice(%p2, %bitcast1, %zero, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":32}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":32}}}
       ROOT %tuple = (f32[4,4], f32[4,4], f32[4,8]) tuple(%dus0, %dus1, %dus2)
     }
 
@@ -812,9 +828,11 @@ TEST_F(DynamicSliceFusionTest, ResolveResultsNestedTuplePartialDUS) {
       %bitcast00 = f32[1,4] bitcast(%gte00)
       %bitcast1 = f32[1,8] bitcast(%gte1)
       %dus0 = f32[4,4] dynamic-update-slice(%p0, %bitcast00, %zero, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus2 = f32[4,8] dynamic-update-slice(%p1, %bitcast1, %zero, %zero),
-        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":32}}
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":32}}}
       ROOT %tuple = (f32[4,4], f32[4,8]) tuple(%dus0, %dus2)
     }
 

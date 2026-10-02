@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
@@ -146,6 +147,9 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.allocations = {BufferAllocation(0, 1024, 0)};
+    params.gpu_topology =
+        GpuTopology(/*platform_version=*/"", /*num_partitions=*/1,
+                    /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/1);
     ABSL_ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(
@@ -236,10 +240,14 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
 
   EnsureCudaSymbolIsRegistered();
 
+  std::shared_ptr<HloModule> expected_module =
+      result->shared_optimized_module();
+
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       std::move(*result).LoadExecutable(platform_.id(), GetDeviceDescription(),
                                         DebugOptions()));
+  EXPECT_EQ(executable->shared_module(), expected_module);
 
   {
     ASSERT_OK_AND_ASSIGN(

@@ -324,6 +324,7 @@ xla_test(
         "//xla:array4d",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla:types",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",

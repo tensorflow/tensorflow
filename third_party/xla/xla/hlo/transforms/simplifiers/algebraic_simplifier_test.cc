@@ -6581,6 +6581,29 @@ TEST_P(ConvInputPaddingTest, DoTest) {
   }
 }
 
+// Test that a pad with negative (cropping) edge padding is not folded into
+// the convolution's window padding: a crop followed by window padding on the
+// same side is not the sum of the two amounts.
+TEST_F(AlgebraicSimplifierTest, DoNotFoldNegativePadIntoConvolution) {
+  const std::string& hlo_string = R"(
+HloModule test
+ENTRY entry {
+  input = f32[1,1,4,1] parameter(0)
+  filter = f32[1,2,1,1] parameter(1)
+  zero = f32[] constant(0)
+  pad = f32[1,1,3,1] pad(input, zero), padding=0_0x0_0x-1_0x0_0
+  ROOT conv = f32[1,1,3,1] convolution(pad, filter), window={size=1x2 pad=0_0x1_0}, dim_labels=b01f_01io->b01f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // Keep the negative pad instead of rewriting it into pad + slice.
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_negative_padding_replacement(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(RunHloPass(&simplifier, module.get()).value());
+}
+
 // ConvFilterPaddingTest (and its one associated TEST_P) checks that a
 // computation that does
 //
@@ -7350,6 +7373,33 @@ ENTRY entry {
   EXPECT_EQ(root->window().dimensions(1).padding_high(), 100);
   EXPECT_EQ(root->window().dimensions(2).padding_high(), 100);
   EXPECT_EQ(root->window().dimensions(3).padding_high(), 106);
+}
+
+// Test that a pad with negative (cropping) edge padding is not folded into
+// ReduceWindow: a crop followed by window padding on the same side is not the
+// sum of the two amounts.
+TEST_F(AlgebraicSimplifierTest, DoNotFoldNegativePadIntoReduceWindow) {
+  const std::string& hlo_string = R"(
+HloModule test
+fn {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+ENTRY entry {
+  param = f32[1,2] parameter(0)
+  const = f32[] constant(0)
+  pad = f32[1,1] pad(param, const), padding=0_0x-1_0
+  ROOT r = f32[1,1] reduce-window(pad, const), to_apply=fn, window={size=1x2 pad=0_0x1_0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // Keep the negative pad instead of rewriting it into pad + slice.
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_negative_padding_replacement(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(RunHloPass(&simplifier, module.get()).value());
 }
 
 // Test that ReduceWindow(Convert(Pad(op, x)), y) can simplify to
@@ -13679,6 +13729,28 @@ TEST_F(AlgebraicSimplifierTest, NoOpSliceToDynamicOfPadToStatic) {
               GmockMatch(m::Parameter(0)));
 }
 
+TEST_F(AlgebraicSimplifierTest, NoOpSliceToDynamicOfPadToStaticWithClamp) {
+  // The dynamic padder clamps the materialized size to [0, bound]; the
+  // round-trip elimination must look through the clamp.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[<=512] parameter(0)
+      c = (f32[512], s32[]) custom-call(p0), custom_call_target="PadToStatic"
+      gte0 = f32[512] get-tuple-element(c), index=0
+      gte1 = s32[] get-tuple-element(c), index=1
+      zero = s32[] constant(0)
+      bound = s32[] constant(512)
+      clamped = s32[] clamp(zero, gte1, bound)
+      ROOT c2 = f32[<=512] custom-call(gte0, clamped), custom_call_target="SliceToDynamic"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
 TEST_F(AlgebraicSimplifierTest, DiffShapeSliceToDynamicOfPadToStatic) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
@@ -14960,6 +15032,56 @@ TEST_F(AlgebraicSimplifierTest, CommuteReduceAndBroadcastUnsorted) {
 }
 
 TEST_F(AlgebraicSimplifierTest, FoldTransposeIntoScatter) {
+  // The scatter writes strided [10,1] columns; folding the transpose makes it
+  // write contiguous [1,10] rows, so the fold is profitable.
+  const std::string& hlo_string = R"(
+    HloModule m
+
+    update_computation {
+      a_val = f32[] parameter(0)
+      b_val = f32[] parameter(1)
+      ROOT add = f32[] add(a_val, b_val)
+    }
+
+    ENTRY test {
+      operand = f32[10, 20] parameter(0)
+      indices = s32[5, 1] parameter(1)
+      updates = f32[5, 10, 1] parameter(2)
+
+      scatter = f32[10, 20] scatter(operand, indices, updates),
+        update_window_dims={1, 2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={1},
+        index_vector_dim=1,
+        to_apply=update_computation
+
+      ROOT transpose = f32[20, 10] transpose(scatter), dimensions={1, 0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fold_transpose_into_scatter(true);
+  ASSERT_THAT(AlgebraicSimplifier(options).Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  constexpr absl::string_view kPattern = R"(
+CHECK: %[[transposed_operand:.*]] = f32[20,10]{{.*}} transpose(%[[operand:.*]]), dimensions={1,0}
+CHECK: %[[transposed_updates:.*]] = f32[5,1,10]{{.*}} transpose(%[[updates:.*]]), dimensions={0,2,1}
+CHECK: ROOT %[[new_scatter:.*]] = f32[20,10]{{.*}} scatter(%[[transposed_operand]], %[[indices:.*]], %[[transposed_updates]]),
+CHECK-SAME: update_window_dims={1,2},
+CHECK-SAME: inserted_window_dims={},
+CHECK-SAME: scatter_dims_to_operand_dims={0},
+CHECK-SAME: index_vector_dim=1
+  )";
+  ASSERT_OK_AND_ASSIGN(bool matched,
+                       RunFileCheck(module->ToString(), kPattern));
+  EXPECT_TRUE(matched);
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       DoNotFoldTransposeIntoScatterWhenWritesBecomeStrided) {
+  // The scatter writes contiguous [1,20] rows; folding the transpose would
+  // make it write strided [20,1] columns, which does not coalesce on GPUs.
   const std::string& hlo_string = R"(
     HloModule m
 
@@ -14987,21 +15109,8 @@ TEST_F(AlgebraicSimplifierTest, FoldTransposeIntoScatter) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifierOptions options = default_options_;
   options.set_enable_fold_transpose_into_scatter(true);
-  ASSERT_THAT(AlgebraicSimplifier(options).Run(module.get()),
-              absl_testing::IsOkAndHolds(true));
-
-  constexpr absl::string_view kPattern = R"(
-CHECK: %[[transposed_operand:.*]] = f32[20,10]{{.*}} transpose(%[[operand:.*]]), dimensions={1,0}
-CHECK: %[[transposed_updates:.*]] = f32[5,20,1]{{.*}} transpose(%[[updates:.*]]), dimensions={0,2,1}
-CHECK: ROOT %[[new_scatter:.*]] = f32[20,10]{{.*}} scatter(%[[transposed_operand]], %[[indices:.*]], %[[transposed_updates]]),
-CHECK-SAME: update_window_dims={1,2},
-CHECK-SAME: inserted_window_dims={},
-CHECK-SAME: scatter_dims_to_operand_dims={1},
-CHECK-SAME: index_vector_dim=1
-  )";
-  ASSERT_OK_AND_ASSIGN(bool matched,
-                       RunFileCheck(module->ToString(), kPattern));
-  EXPECT_TRUE(matched);
+  EXPECT_THAT(AlgebraicSimplifier(options).Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(AlgebraicSimplifierTest,
@@ -15085,6 +15194,32 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceOfDynamicSlice) {
                                   m::ConstantScalar(3)),
                          m::Clamp(m::ConstantScalar(0), m::Parameter(1),
                                   m::ConstantScalar(6))))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfDynamicUpdateSlice) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      operand = s32[6] parameter(0)
+      update = s32[1] parameter(1)
+      i = s32[] parameter(2)
+      j = s32[] parameter(3)
+      ds = s32[3] dynamic-slice(operand, i), dynamic_slice_sizes={3}
+      inner_dus = s32[3] dynamic-update-slice(ds, update, j)
+      ROOT outer_dus = s32[6] dynamic-update-slice(operand, inner_dus, i)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(
+                  m::Parameter(0), m::Parameter(1),
+                  m::Add(m::Clamp(m::ConstantScalar(0), m::Parameter(2),
+                                  m::ConstantScalar(3)),
+                         m::Clamp(m::ConstantScalar(0), m::Parameter(3),
+                                  m::ConstantScalar(2))))));
 }
 
 TEST_F(AlgebraicSimplifierTest, FusesShuffleRotates) {

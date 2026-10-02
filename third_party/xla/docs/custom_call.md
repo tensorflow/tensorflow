@@ -309,7 +309,7 @@ The external FFI API in `xla/ffi/api/ffi.h` returns `Error` from `Verify` and
 
 ```c++
 ABSL_ASSIGN_OR_RETURN(BufferR2<F32> input,
-                 Match("input", buffer, m::Buffer<F32, 2>()));
+                      Match("input", buffer, m::Buffer<F32, 2>()));
 ABSL_RETURN_IF_ERROR(Verify(
     "input", input,
     m::Buffer().WithDims(expected_rows, m::Dim())));

@@ -342,6 +342,10 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
     return &default_compiler_;
   }
 
+  absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
+      absl::Span<const ExecutableRef> executables,
+      absl::Span<std::unique_ptr<LoadOptions>> options) override;
+
   absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
       const DeviceListRef& devices) const override;
 

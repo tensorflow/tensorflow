@@ -340,6 +340,7 @@ cc_library(
         "//xla/service:host_offload_utils",
         "//xla/service:memory_annotations_hdr",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -725,6 +726,7 @@ cc_library(
     hdrs = ["hlo_module_stitcher.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/cleanup",

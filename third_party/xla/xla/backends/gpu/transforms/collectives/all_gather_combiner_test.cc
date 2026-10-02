@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -120,8 +119,7 @@ ENTRY entry {
   // Combine at most 4 pipelined collectives.
   int suggested_threshold_bytes = 4 * collective_size;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), default_threshold_bytes,
@@ -205,8 +203,7 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(RunCombiner(module.get(), kDefaultAllGatherCombineThreshold),
               absl_testing::IsOkAndHolds(true));
 
@@ -292,8 +289,7 @@ ENTRY entry {
   int collective_size = 2 * 6 * 8 * 128;
   int threshold_bytes = 2 * collective_size;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(RunCombiner(module.get(), threshold_bytes),
               absl_testing::IsOkAndHolds(true));
 
@@ -337,7 +333,7 @@ TEST_F(GpuAllGatherCombinerTest,
       ROOT result = tuple(ag0, ag1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
@@ -368,7 +364,7 @@ TEST_F(GpuAllGatherCombinerTest,
       ROOT result = tuple(ag0, ag1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
@@ -397,8 +393,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(
       RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
       absl_testing::IsOkAndHolds(true));
@@ -431,8 +426,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(
       RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
       absl_testing::IsOkAndHolds(true));
@@ -503,8 +497,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(
       RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
       absl_testing::IsOkAndHolds(true));
@@ -513,8 +506,8 @@ ENTRY entry {
   const HloInstruction* combined =
       module->entry_computation()->GetInstructionWithName("all-gather");
   ASSERT_NE(combined, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          combined->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       combined->backend_config<GpuBackendConfig>());
   EXPECT_TRUE(config.collective_backend_config().is_pipelined());
 }
 

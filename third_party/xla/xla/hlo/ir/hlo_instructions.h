@@ -46,7 +46,9 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_pool.h"
+#include "xla/primitive_util.h"
 #include "xla/printer.h"
+#include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -79,6 +81,10 @@ class HloDimensionsInstruction : public HloInstruction {
       default:
         return false;
     }
+  }
+
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), dimensions());
   }
 
  protected:
@@ -460,6 +466,10 @@ class HloCompareInstruction : public HloInstruction {
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kCompare;
+  }
+
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), direction(), order());
   }
 
  private:
@@ -1081,6 +1091,10 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
            hlo->opcode() == HloOpcode::kCollectivePermuteStart;
   }
 
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), source_target_pairs());
+  }
+
   // Whether this is an in-place collective permute (with dynamic slice
   // operands). Derived from the presence of slice_sizes.
   bool inplace() const { return !slice_sizes_.empty(); }
@@ -1517,6 +1531,11 @@ class HloSliceInstruction : public HloInstruction {
     return hlo->opcode() == HloOpcode::kSlice;
   }
 
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), slice_starts(), slice_limits(),
+                             slice_strides());
+  }
+
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -1579,11 +1598,19 @@ class HloConstantInstruction : public HloInstruction {
     return false;
   }
 
-  // Add literal to the hash state.
+  // Hashes the literal the way Identical compares it: by value, ignoring the
+  // literal's layout, over at most 64 bytes. Literal equality compares sub
+  // byte types under a bit mask and dynamic arrays only up to their dynamic
+  // sizes, so their bytes stay out.
   void HashAdditionalAttributes(absl::HashState h) const override {
-    if (HasLiteral()) {
-      absl::HashState::combine(std::move(h),
-                               Literal::AbslHashable<true>(literal()));
+    if (!HasLiteral()) {
+      return;
+    }
+    const Shape& shape = literal().shape();
+    if (shape.IsArray() && shape.is_static() &&
+        !primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      LiteralBase::Hash<absl::HashState, /*kIsLayoutSensitive=*/false,
+                        /*kByteLimit=*/64>(std::move(h), literal());
     }
   }
 
@@ -1976,6 +2003,10 @@ class HloGetTupleElementInstruction : public HloInstruction {
     return hlo->opcode() == HloOpcode::kGetTupleElement;
   }
 
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), tuple_index());
+  }
+
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -2167,6 +2198,11 @@ class HloConvolutionInstruction : public HloInstruction {
     return hlo->opcode() == HloOpcode::kConvolution;
   }
 
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(
+        std::move(h), protobuf_util::ProtobufHashBySerialization(window()));
+  }
+
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -2268,6 +2304,11 @@ class HloReduceWindowInstruction : public HloInstruction {
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kReduceWindow;
+  }
+
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(
+        std::move(h), protobuf_util::ProtobufHashBySerialization(window()));
   }
 
  private:
@@ -2461,6 +2502,10 @@ class HloCustomCallInstruction : public HloCallableInstruction {
     return hlo->opcode() == HloOpcode::kCustomCall;
   }
 
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), custom_call_target());
+  }
+
   class PerInstructionStorage {
     // Abstract class for per-instruction storage.
    public:
@@ -2548,6 +2593,12 @@ class HloPadInstruction : public HloInstruction {
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kPad;
+  }
+
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(
+        std::move(h),
+        protobuf_util::ProtobufHashBySerialization(padding_config()));
   }
 
  private:
@@ -2792,6 +2843,10 @@ class HloIotaInstruction : public HloInstruction {
     return hlo->opcode() == HloOpcode::kIota;
   }
 
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(std::move(h), iota_dimension());
+  }
+
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -2815,6 +2870,25 @@ class HloDotInstruction : public HloInstruction {
                              HloInstruction* rhs,
                              const DotDimensionNumbers& dimension_numbers,
                              const PrecisionConfig& precision_config);
+
+  explicit HloDotInstruction(const Shape& shape,
+                             absl::Span<HloInstruction* const> operands,
+                             const DotDimensionNumbers& dimension_numbers,
+                             const PrecisionConfig& precision_config,
+                             const SparsityConfig& sparsity_config,
+                             const BlockScalingConfig& block_scaling_config);
+
+  const SparsityConfig& sparsity_config() const { return sparsity_config_; }
+  void set_sparsity_config(const SparsityConfig& sparsity_config) {
+    sparsity_config_ = sparsity_config;
+  }
+
+  const BlockScalingConfig& block_scaling_config() const {
+    return block_scaling_config_;
+  }
+  void set_block_scaling_config(const BlockScalingConfig& config) {
+    block_scaling_config_ = config;
+  }
 
   // Returns data on the dimension numbers used for a dot operation.
   const DotDimensionNumbers& dot_dimension_numbers() const {
@@ -2842,6 +2916,13 @@ class HloDotInstruction : public HloInstruction {
     return hlo->opcode() == HloOpcode::kDot;
   }
 
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(
+        std::move(h),
+        protobuf_util::ProtobufHashBySerialization(dot_dimension_numbers()),
+        protobuf_util::ProtobufHashBySerialization(precision_config()));
+  }
+
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -2860,6 +2941,12 @@ class HloDotInstruction : public HloInstruction {
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
   PrecisionConfig precision_config_;
+
+  // The sparsity configuration used for the dot.
+  SparsityConfig sparsity_config_;
+
+  // Dot block scaling config.
+  BlockScalingConfig block_scaling_config_;
 };
 
 class HloRaggedDotInstruction : public HloInstruction {

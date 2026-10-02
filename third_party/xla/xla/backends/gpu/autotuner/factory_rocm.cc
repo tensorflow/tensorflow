@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
@@ -84,7 +85,8 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
     const DebugOptions* debug_options, Compiler* compiler,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     MLIRContext* mlir_context, HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-    absl::Span<const autotuner::Backend> backend_allowlist) {
+    absl::Span<const autotuner::Backend> backend_allowlist,
+    tsl::thread::ThreadPool* thread_pool, MlirContextPool* mlir_context_pool) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
       debug_options, compiler, target_config, alias_info, mlir_context));
@@ -103,7 +105,8 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
   backends.push_back(std::make_unique<NativeEmitterBackend>(
       debug_options, compiler, target_config));
   backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
-      debug_options, compiler, shape_size_fn, target_config));
+      debug_options, compiler, shape_size_fn, target_config, thread_pool,
+      mlir_context_pool));
 
   if (!backend_allowlist.empty()) {
     backends.erase(
