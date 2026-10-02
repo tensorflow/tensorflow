@@ -1352,7 +1352,9 @@ def eigh_tridiagonal(alpha,
       def _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, x):
         """Implements the Sturm sequence recurrence."""
         with ops.name_scope('sturm'):
-          n = alpha.shape[0]
+          n = tensor_shape.dimension_value(alpha.shape[0])
+          if n is None:
+            n = array_ops.shape(alpha)[0]
           zeros = array_ops.zeros(array_ops.shape(x), dtype=dtypes.int32)
           ones = array_ops.ones(array_ops.shape(x), dtype=dtypes.int32)
 
@@ -1380,14 +1382,23 @@ def eigh_tridiagonal(alpha,
           blocksize = 16
           i = 1
           peel = (n - 1) % blocksize
-          unroll_cnt = peel
+          # If n is only known at runtime, so is the number of steps to peel
+          # off, so take them one at a time in a loop.
+          peel_is_static = isinstance(peel, int)
+          unroll_cnt = peel if peel_is_static else 1
 
           def unrolled_steps(start, q, count):
             for j in range(unroll_cnt):
               q, count = sturm_step(start + j, q, count)
             return start + unroll_cnt, q, count
 
-          i, q, count = unrolled_steps(i, q, count)
+          if peel_is_static:
+            i, q, count = unrolled_steps(i, q, count)
+          else:
+            i, q, count = while_loop.while_loop(
+                lambda i, q, count: math_ops.less(i, 1 + peel),
+                unrolled_steps, [i, q, count],
+                back_prop=False)
 
           # Run the remaining steps of the Sturm sequence using a partially
           # unrolled while loop.
@@ -1547,7 +1558,7 @@ def eigh_tridiagonal(alpha,
             dtype=beta.dtype)
         nrm_v = norm(v0, axis=1)
         v0 = v0 / nrm_v[:, array_ops.newaxis]
-        zero_nrm = constant_op.constant(0, shape=nrm_v.shape, dtype=nrm_v.dtype)
+        zero_nrm = array_ops.zeros_like(nrm_v)
 
         # Replicate alpha-eigvals(ik) and beta across the k eigenvectors so we
         # can solve the k systems
@@ -1557,7 +1568,12 @@ def eigh_tridiagonal(alpha,
         alpha_shifted = (
             alpha[array_ops.newaxis, :] - eigvals_cast[:, array_ops.newaxis])
         beta = array_ops.tile(beta[array_ops.newaxis, :], [k, 1])
-        diags = [beta, alpha_shifted, math_ops.conj(beta)]
+        # Pad the off-diagonals to length n, since tridiagonal_solve only pads
+        # them itself when n is known statically.
+        diags = [
+            array_ops.pad(beta, [[0, 0], [0, 1]]), alpha_shifted,
+            array_ops.pad(math_ops.conj(beta), [[0, 0], [1, 0]])
+        ]
 
         def orthogonalize_close_eigenvectors(eigenvectors):
           # Eigenvectors corresponding to a cluster of close eigenvalues are not
@@ -1618,18 +1634,34 @@ def eigh_tridiagonal(alpha,
                                                [0, v0, nrm_v, zero_nrm])
         return transpose(v)
 
+    def _compute_trivial(alpha):
+      """Handles a matrix with at most one row."""
+      eigvals = math_ops.real(alpha)
+      if eigvals_only:
+        return eigvals
+      return eigvals, eye(array_ops.size(alpha), dtype=alpha.dtype)
+
+    def _compute(alpha, beta):
+      eigvals = _compute_eigenvalues(alpha, beta)
+      if eigvals_only:
+        return eigvals
+
+      eigvectors = _compute_eigenvectors(alpha, beta, eigvals)
+      return eigvals, eigvectors
+
     alpha = ops.convert_to_tensor(alpha, name='alpha')
-    n = alpha.shape[0]
-    if n <= 1:
-      return math_ops.real(alpha)
+    n = tensor_shape.dimension_value(alpha.shape[0])
+    if n is not None and n <= 1:
+      return _compute_trivial(alpha)
     beta = ops.convert_to_tensor(beta, name='beta')
 
     if alpha.dtype != beta.dtype:
       raise ValueError("'alpha' and 'beta' must have the same type.")
 
-    eigvals = _compute_eigenvalues(alpha, beta)
-    if eigvals_only:
-      return eigvals
-
-    eigvectors = _compute_eigenvectors(alpha, beta, eigvals)
-    return eigvals, eigvectors
+    if n is not None:
+      return _compute(alpha, beta)
+    # The size of the matrix is only known at runtime, e.g. in a tf.function
+    # whose input signature leaves it unknown.
+    n = array_ops.shape(alpha)[0]
+    return tf_cond.cond(n <= 1, lambda: _compute_trivial(alpha),
+                        lambda: _compute(alpha, beta))
