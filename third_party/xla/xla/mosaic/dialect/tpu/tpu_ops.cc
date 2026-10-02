@@ -1654,17 +1654,11 @@ OpFoldResult EraseLayoutOp::fold(FoldAdaptor adaptor) {
 LogicalResult EraseLayoutOp::verify() {
   MemRefType operand_type = getOperand().getType();
   MemRefType result_type = getType();
-  // TODO(tlongeri): Enforce no shape changes
-  if (operand_type.getElementType() != result_type.getElementType()) {
-    return emitOpError("Cannot change the memref element type");
+  if (operand_type.getMemorySpace() != result_type.getMemorySpace()) {
+    return emitOpError("Cannot change the memref memory space");
   }
-  if (operand_type.getMemorySpace() != result_type.getMemorySpace() &&
-      result_type.getMemorySpace()) {
-    return emitOpError(
-        "Memref memory space must be either erased (changed to null) or "
-        "preserved");
-  }
-  if (operand_type.getLayout() == nullptr) {
+  if (auto affine_map_attr = dyn_cast<AffineMapAttr>(result_type.getLayout());
+      affine_map_attr == nullptr || !affine_map_attr.isIdentity()) {
     return emitOpError("Memref layout must be erased");
   }
   return success();
