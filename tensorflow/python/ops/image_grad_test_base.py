@@ -669,11 +669,11 @@ class CropAndResizeOpTestBase(test.TestCase):
     grads = np.ones((1, 2, 2, 1), dtype=np.float32)
     image = np.ones((1, 4, 4, 1), dtype=np.float32)
     image_size = np.array([1, 4, 4, 1], dtype=np.int32)
-    
+
     # 0 elements, but invalid rank/shape.
     boxes_bad = np.zeros((0, 5), dtype=np.float32)
     box_ind_bad = np.zeros((0, 6), dtype=np.int32)
-    
+
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, ValueError),
         "boxes must have 4 columns|box_index must be 1-D",
@@ -692,8 +692,6 @@ class CropAndResizeOpTestBase(test.TestCase):
               grads, boxes_bad, box_ind_bad, image_size, T=dtypes.float32
           )
       )
-
-
 
 
 @test_util.run_all_in_graph_and_eager_modes
