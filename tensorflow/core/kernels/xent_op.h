@@ -129,7 +129,7 @@ struct XentEigenImpl {
         backprop.device(d) =
             ((scratch < scratch.constant(T(1) + T(1e-14)))
                  .broadcast(one_by_class) &&
-             (backprop > backprop.constant(T(0.5))))
+             (backprop.constant(T(0.5)) < backprop))
                 .select((labels_broadcast.constant(T(1)) - labels_broadcast) -
                             tail_ratio_bcast,
                         backprop / denominator - labels_broadcast);
