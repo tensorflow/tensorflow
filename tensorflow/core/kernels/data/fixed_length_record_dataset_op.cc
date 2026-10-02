@@ -438,7 +438,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       // Bound both zlib buffers even for very large compressed files.
       constexpr int64_t kMaxZlibBufferSize = int64_t{512} << 20;
       const int64_t max_buffer_size =
-          std::min(dataset()->buffer_size_, kMaxZlibBufferSize);
+          std::min(std::max<int64_t>(dataset()->buffer_size_, 1),
+                   kMaxZlibBufferSize);
       const size_t input_buffer_size =
           EffectiveBufferSize(max_buffer_size, file_size);
       const size_t output_buffer_size = static_cast<size_t>(std::min<uint64_t>(
