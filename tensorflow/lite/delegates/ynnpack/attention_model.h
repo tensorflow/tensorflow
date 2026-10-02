@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_YNNPACK_ATTENTION_MODEL_H_
 #define TENSORFLOW_LITE_DELEGATES_YNNPACK_ATTENTION_MODEL_H_
 
+#include <vector>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/ynnpack_delegate.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -50,6 +52,11 @@ class AttentionModel : public MultiOpModel {
   int runtime_bmm_params() const { return runtime_bmm_params_id_; }
   int mask() const { return mask_id_; }
   int output() const { return output_id_; }
+
+  TfLiteStatus ResizeInputTensor(int id, const std::vector<int>& dims) {
+    return interpreter_->ResizeInputTensor(id, dims);
+  }
+  TfLiteStatus AllocateTensors() { return interpreter_->AllocateTensors(); }
 
  private:
   int query_id_;
