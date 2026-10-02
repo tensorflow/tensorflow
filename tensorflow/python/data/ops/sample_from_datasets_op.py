@@ -17,7 +17,6 @@
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import directed_interleave_op
 from tensorflow.python.data.ops import map_op
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -90,18 +89,20 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
         # With `stop_on_empty_dataset=True` an unsampled zero-weight dataset
         # cannot cause a hang, and selecting an empty dataset up front would
         # end the iteration immediately.
-        is_zero = math_ops.equal(weights, math_ops.cast(0, weights.dtype))
+        # Non-positive weights are dropped, matching the static path.
+        is_zero = math_ops.less_equal(weights, math_ops.cast(0, weights.dtype))
+        # Clamp negative weights to zero so `log` yields -inf, not NaN.
+        weights = array_ops.where_v2(
+            is_zero, array_ops.zeros_like(weights), weights)
         zero_indices = math_ops.cast(
             array_ops.squeeze(array_ops.where_v2(is_zero), axis=1),
             dtypes.int64)
         zero_indices_ds = dataset_ops.Dataset.from_tensor_slices(zero_indices)
         datasets = list(datasets)
         for i in range(len(datasets)):
+          # True -> take(0), False -> take(-1) (all elements).
           datasets[i] = datasets[i].take(
-              array_ops.where_v2(
-                  is_zero[i],
-                  constant_op.constant(0, dtype=dtypes.int64),
-                  constant_op.constant(-1, dtype=dtypes.int64)))
+              math_ops.cast(is_zero[i], dtypes.int64) - 1)
 
       weights = ops.convert_to_tensor(weights, name="weights")
       if weights.dtype not in (dtypes.float32, dtypes.float64):

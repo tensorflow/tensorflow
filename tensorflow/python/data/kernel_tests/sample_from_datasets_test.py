@@ -24,6 +24,7 @@ from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -347,7 +348,35 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset_ops.Dataset.sample_from_datasets(
           [d1, d2], weights=w, stop_on_empty_dataset=True)
 
+    ds = make_sampled(constant_op.constant([0.0, 1.0], dtype=dtypes.float64))
+    result = self.getDatasetOutput(ds, requires_initialization=True)
+    self.assertCountEqual(result, [4, 5, 6])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testZeroWeightDynamicTensorEmptyDatasets(self):
+    d1 = dataset_ops.Dataset.range(0)
+    d2 = dataset_ops.Dataset.range(0)
+
+    @def_function.function
+    def make_sampled(w):
+      return dataset_ops.Dataset.sample_from_datasets(
+          [d1, d2], weights=w, stop_on_empty_dataset=False)
+
     ds = make_sampled(constant_op.constant([0.0, 1.0]))
+    result = self.getDatasetOutput(ds, requires_initialization=True)
+    self.assertEmpty(result)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNegativeWeightDynamicTensor(self):
+    d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
+
+    @def_function.function
+    def make_sampled(w):
+      return dataset_ops.Dataset.sample_from_datasets(
+          [d1, d2], weights=w, stop_on_empty_dataset=False)
+
+    ds = make_sampled(constant_op.constant([-1.0, 1.0]))
     result = self.getDatasetOutput(ds, requires_initialization=True)
     self.assertCountEqual(result, [4, 5, 6])
 
