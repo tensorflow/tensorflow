@@ -60,4 +60,8 @@ tf_module {
     name: "rpc"
     mtype: "<class \'module\'>"
   }
+  member_method {
+    name: "auto_strategy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
 }
