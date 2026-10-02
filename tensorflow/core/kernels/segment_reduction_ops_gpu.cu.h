@@ -124,7 +124,7 @@ __global__ void SortedSegmentReductionCustomKernel(
       // Decide whether to write result to global memory. Result is only written
       // to global memory if we move to another segment. Otherwise we can keep
       // accumulating locally.
-      if (current_output_segment_id > last_output_segment_id) {
+      if (last_output_segment_id < current_output_segment_id) {
         if (last_output_segment_id >= 0 &&
             last_output_segment_id < output_outer_dim_size) {
           const Index output_index =
