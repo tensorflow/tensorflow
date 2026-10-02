@@ -180,17 +180,21 @@ REGISTER_OP("Unbatch")
 
       shape_inference::ShapeHandle data;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data));
-      if (c->ValueKnown(c->Dim(batch_index, 0)) &&
-          c->ValueKnown(c->Dim(data, 0)) &&
-          c->Value(c->Dim(batch_index, 0)) > c->Value(c->Dim(data, 0))) {
-        return errors::InvalidArgument(
-            "Wrong shape for index tensor. Expected 0th dimension size to be no "
-            "greater than ", c->Value(c->Dim(data, 0)), "; Got: ",
-            c->Value(c->Dim(batch_index, 0)), ".");
-      }
       shape_inference::ShapeHandle out_shape;
-      TF_RETURN_IF_ERROR(
-          c->ReplaceDim(data, 0, c->UnknownDim(), &out_shape));
+      if (c->RankKnown(data)) {
+        if (c->ValueKnown(c->Dim(batch_index, 0)) &&
+            c->ValueKnown(c->Dim(data, 0)) &&
+            c->Value(c->Dim(batch_index, 0)) > c->Value(c->Dim(data, 0))) {
+          return errors::InvalidArgument(
+              "Wrong shape for index tensor. Expected 0th dimension size to be "
+              "no greater than ", c->Value(c->Dim(data, 0)), "; Got: ",
+              c->Value(c->Dim(batch_index, 0)), ".");
+        }
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(data, 0, c->UnknownDim(), &out_shape));
+      } else {
+        out_shape = c->UnknownShape();
+      }
       c->set_output(0, out_shape);
       return absl::OkStatus();
     });

@@ -337,6 +337,18 @@ class BatchOpsTest(test.TestCase):
             with self.cached_session() as sess:
               sess.run(result, feed_dict=feed_dict)
 
+  @test_util.run_deprecated_v1
+  def testUnbatchUnknownRank(self):
+    data = array_ops.placeholder(dtypes.float32, shape=None)
+    result = batch_ops.unbatch(
+        batched_tensor=data,
+        batch_index=constant_op.constant([[0, 0, 2]], dtype=dtypes.int64),
+        id=constant_op.constant(0, dtype=dtypes.int64), timeout_micros=0)
+    self.assertIsNone(result.shape.rank)
+    with self.cached_session() as sess:
+      self.assertAllEqual([1.0, 2.0], sess.run(
+          result, feed_dict={data: [1.0, 2.0]}))
+
   def testUnbatchInvalidSplitRanges(self):
     min_index = np.iinfo(np.int64).min
     max_index = np.iinfo(np.int64).max
