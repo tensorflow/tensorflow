@@ -512,7 +512,3 @@ def main() -> None:
     )
   finally:
     temp_dir.cleanup()
-
-
-if __name__ == "__main__":
-  main()
