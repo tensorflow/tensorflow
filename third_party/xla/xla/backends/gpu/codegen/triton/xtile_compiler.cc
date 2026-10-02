@@ -229,13 +229,14 @@ absl::Status ValidateComplexUseInTritonFusion(
   return absl::OkStatus();
 }
 
-bool IsAllGatherFusion(const HloFusionInstruction& fusion) {
+bool IsCollectiveFusion(const HloFusionInstruction& fusion) {
   const HloComputation* computation = fusion.fused_instructions_computation();
   if (computation == nullptr) {
     return false;
   }
-  return absl::c_any_of(computation->instructions(),
-                        HloPredicateIsOp<HloOpcode::kAllGather>);
+  return absl::c_any_of(
+      computation->instructions(),
+      HloPredicateIsOp<HloOpcode::kAllGather, HloOpcode::kReduceScatter>);
 }
 
 }  // namespace
@@ -311,7 +312,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion) {
   const HloComputation* computation = fusion.fused_instructions_computation();
 
-  if (use_experimental_tiling || IsAllGatherFusion(fusion)) {
+  if (use_experimental_tiling || IsCollectiveFusion(fusion)) {
     using experimental::TiledHloComputation;
     using experimental::TilingSpace;
 
@@ -388,7 +389,7 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
       fusion.GetModule()->config().debug_options();
   bool use_experimental_tiling =
       debug_options.xla_gpu_experimental_enable_tiling_propagation() ||
-      IsAllGatherFusion(fusion);
+      IsCollectiveFusion(fusion);
   bool enable_same_shape_multi_output_fusion =
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
