@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import backprop as backprop_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
@@ -187,8 +188,11 @@ class SparseXentOpTestBase(test.TestCase):
           np_logits=np.array([[1., 1., 1., 1.], [1., 2., 3.,
                                                  4.]]).astype(np.float64))
 
-  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
-  @test_util.disable_xla("This test exercises the standard CPU OpKernel.")
+  @test_util.run_in_graph_and_eager_modes(
+      use_gpu=False, config=config_pb2.ConfigProto(device_count={"GPU": 0}))
+  @test_util.disable_xla(
+      "XLA bypasses the standard CPU OpKernel, which this test explicitly "
+      "exercises.")
   def testDoublePreservesSmallGradient(self):
     tail_logit = 37.42994775023705
     tail_probability = 5.551115123125776e-17
@@ -228,8 +232,17 @@ class SparseXentOpTestBase(test.TestCase):
       self.assertEqual(single_gradient[0, 0], 0.0)
       self.assertFalse(np.signbit(single_gradient[0, 0]))
 
-  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
-  @test_util.disable_xla("This test exercises the standard CPU OpKernel.")
+      _, empty_gradient = self._opFwdBwd(
+          labels=np.zeros([0], dtype=label_dtype),
+          logits=np.zeros([0, 3], dtype=np.float64))
+      empty_gradient = self.evaluate(empty_gradient)
+      self.assertEqual(empty_gradient.shape, (0, 3))
+
+  @test_util.run_in_graph_and_eager_modes(
+      use_gpu=False, config=config_pb2.ConfigProto(device_count={"GPU": 0}))
+  @test_util.disable_xla(
+      "XLA bypasses the standard CPU OpKernel, which this test explicitly "
+      "exercises.")
   def testDoubleTailAcrossClassCounts(self):
     for label_dtype in (np.int32, np.int64):
       for num_classes in (3, 8, 17, 33):

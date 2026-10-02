@@ -232,8 +232,8 @@ struct SparseXentEigenImpl {
     // half, and bfloat16 path avoids adding a full gradient pass to those
     // performance-sensitive kernels.
     // Restrict the host-side correction to the CPU thread-pool device.
-    if constexpr (std::is_same<T, double>::value &&
-                  std::is_same<Device, Eigen::ThreadPoolDevice>::value) {
+    if constexpr (std::is_same_v<T, double> &&
+                  std::is_same_v<Device, Eigen::ThreadPoolDevice>) {
       // Removing the row sum from the labeled gradient retains the negative
       // non-label probability sum without a per-element masking generator.
       To32Bit(scratch).device(d) = To32Bit(backprop).sum(along_class);
