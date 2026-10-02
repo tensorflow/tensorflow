@@ -870,6 +870,9 @@ bool FlattenHelper(
       return false;
     }
   }
+  if (PyErr_Occurred()) {
+    return false;
+  }
   return true;
 }
 

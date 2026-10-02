@@ -914,16 +914,18 @@ static absl::Mutex exception_class_mutex(absl::kConstInit);
 PyObject* exception_class TF_GUARDED_BY(exception_class_mutex) = nullptr;
 
 // Python subclass of Exception that is created to signal fallback.
-PyObject* fallback_exception_class = nullptr;
 static absl::Mutex fallback_exception_class_mutex(absl::kConstInit);
+PyObject* fallback_exception_class
+    TF_GUARDED_BY(fallback_exception_class_mutex) = nullptr;
 
 // Python function that returns input gradients given output gradients.
-PyObject* gradient_function = nullptr;
 static absl::Mutex gradient_function_mutex(absl::kConstInit);
+PyObject* gradient_function TF_GUARDED_BY(gradient_function_mutex) = nullptr;
 
 // Python function that returns output gradients given input gradients.
-PyObject* forward_gradient_function = nullptr;
 static absl::Mutex forward_gradient_function_mutex(absl::kConstInit);
+PyObject* forward_gradient_function
+    TF_GUARDED_BY(forward_gradient_function_mutex) = nullptr;
 
 static std::atomic<int64_t> _uid = ATOMIC_VAR_INIT(int64_t{0});
 
@@ -1096,6 +1098,7 @@ void RaiseFallbackException(const char* message) {
     Py_XINCREF(registered_fallback_exception_class);
   }
 #else
+  PyReaderMutexLock lock(&fallback_exception_class_mutex);
   registered_fallback_exception_class = fallback_exception_class;
 #endif
 
@@ -2842,6 +2845,7 @@ absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
     Py_XINCREF(jvp_function);
   }
 #else
+  PyReaderMutexLock lock(&forward_gradient_function_mutex);
   jvp_function = forward_gradient_function;
 #endif
 
@@ -3740,6 +3744,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
                 Py_XINCREF(registered_gradient_function);
               }
 #else
+              PyReaderMutexLock lock(&gradient_function_mutex);
               registered_gradient_function = gradient_function;
 #endif
 
