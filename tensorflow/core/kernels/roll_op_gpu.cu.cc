@@ -53,7 +53,7 @@ namespace functor {
 
 template <typename T>
 struct Roll<GPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64_t num_elements,
+  void operator()(OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
                   const absl::Span<const int32_t> threshold,
@@ -61,6 +61,10 @@ struct Roll<GPUDevice, T> {
                   const int64_t isd) {
     if (!num_elements) return;
     const GPUDevice& d = context->eigen_device<GPUDevice>();
+
+    auto config_or = GetGpuLaunchConfig64(num_elements, d);
+    OP_REQUIRES_OK(context, config_or.status());
+    const GpuLaunchConfig64& cfg = *config_or;
 
     auto dim_bytes = sizeof(int32_t) * dim_size.size();
     auto dim_buf = d.allocate(dim_bytes);
@@ -74,10 +78,6 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(dim_buf, dim_size.data(), dim_bytes);
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
-
-    auto config_or = GetGpuLaunchConfig64(num_elements, d);
-    CHECK_OK(config_or.status());  // Crash OK
-    const GpuLaunchConfig64& cfg = *config_or;
 
     TF_CHECK_OK(
         GpuLaunchKernel(RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,

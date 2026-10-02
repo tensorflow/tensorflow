@@ -79,10 +79,7 @@ __global__ void PopulationCountKernel<int64_t>(
       return;                                                                 \
     }                                                                         \
     auto config_or = GetGpuLaunchConfig64(total_count, d);                    \
-    if (!config_or.ok()) {                                                    \
-      c->SetStatus(config_or.status());                                       \
-      return;                                                                 \
-    }                                                                         \
+    OP_REQUIRES_OK(c, config_or.status());                                    \
     const GpuLaunchConfig64& config = *config_or;                             \
     TF_CHECK_OK(GpuLaunchKernel(PopulationCountKernel<T>, config.block_count, \
                                 config.thread_per_block, 0, d.stream(),       \
