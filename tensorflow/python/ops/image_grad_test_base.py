@@ -205,10 +205,13 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
               array_ops.zeros(image_shape), [2, 3]))
     for size in ([0, 3], [2, 0]):
       with self.subTest(size=size):
+        grads = array_ops.ones([1, 2, 3, 1])
+        if not context.executing_eagerly():
+          grads = array_ops.placeholder_with_default(grads, shape=[None] * 4)
         with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError, "positive for non-empty grads"):
           self.evaluate(gen_image_ops.resize_nearest_neighbor_grad(
-              array_ops.ones([1, 2, 3, 1]), size))
+              grads, size))
 
   def testRejectsNegativeResizeSizeDuringTracing(self):
     for size in ([-1, 10], [10, -1]):
@@ -232,6 +235,19 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
 
         with self.assertRaisesRegex(
             ValueError, "shape_t's elements must be non-negative"):
+          resize_grad.get_concrete_function()
+
+  def testRejectsEmptySizeForNonemptyGradsDuringTracing(self):
+    for size in ([0, 3], [2, 0]):
+      with self.subTest(size=size):
+        @def_function.function
+        def resize_grad():
+          return gen_image_ops.resize_nearest_neighbor_grad(
+              array_ops.ones([1, 2, 3, 1]), size)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "shape_t's elements must be positive for non-empty grads"):
           resize_grad.get_concrete_function()
 
   @test_util.run_deprecated_v1
