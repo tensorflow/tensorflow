@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
@@ -62,6 +63,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -70,6 +72,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::ElementsAre;
@@ -684,6 +687,150 @@ TEST_F(CollectiveEmitterTest,
   ASSERT_EQ(unmanaged_arguments[1].dimensions().size(), 2);
   EXPECT_EQ(unmanaged_arguments[1].dimensions()[0], 2);
   EXPECT_THAT(unmanaged_arguments[2].dimensions(), ElementsAre(2, 4, 16384));
+}
+
+GpuTopology MakeGpuTopology(int32_t num_partitions,
+                            int32_t num_hosts_per_partition,
+                            int32_t num_devices_per_host,
+                            int32_t num_devices_per_process,
+                            bool is_cuda = true) {
+  se::DeviceDescription device_info =
+      is_cuda ? TestGpuDeviceInfo::H100SXMDeviceInfo()
+              : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+  target_config_proto.set_platform_name(is_cuda ? "CUDA" : "ROCM");
+  absl::StatusOr<GpuTargetConfig> target_config =
+      GpuTargetConfig::FromProto(target_config_proto);
+  CHECK_OK(target_config);
+  return GpuTopology(
+      /*platform_version=*/"", num_partitions, num_hosts_per_partition,
+      num_devices_per_host, *target_config,
+      /*host_target_machine_options=*/std::nullopt, num_devices_per_process);
+}
+
+class GetSymmetricMemoryTypeTest : public HloHardwareIndependentTestBase {
+ protected:
+  // Returns a module with an all-reduce over 8 replicas wrapped in a fusion.
+  // The cross-host one-shot kernel flag is set to ALLCOLLECTIVES iff
+  // `cross_host_kernel_enabled`.
+  absl::StatusOr<ModuleWithFusion> BuildAllReduceFusion(
+      bool cross_host_kernel_enabled) {
+    constexpr absl::string_view kHlo = R"(
+      HloModule test
+      add {
+        x = f32[] parameter(0)
+        y = f32[] parameter(1)
+        ROOT add = f32[] add(x, y)
+      }
+      ENTRY e {
+        p = f32[1024] parameter(0)
+        ROOT all-reduce = f32[1024] all-reduce(p),
+            replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=add
+      }
+    )";
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(kHlo, /*replica_count=*/8));
+    DebugOptions& debug_options =
+        module->mutable_config().mutable_debug_options();
+    debug_options.clear_xla_gpu_unsupported_use_cross_host_one_shot_kernel();
+    if (cross_host_kernel_enabled) {
+      debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+          DebugOptions::ALLCOLLECTIVES);
+    }
+    return ModuleWithFusion{
+        NewModuleWithFusion(module->entry_computation()->root_instruction(),
+                            HloInstruction::FusionKind::kLoop)};
+  }
+};
+
+TEST_F(GetSymmetricMemoryTypeTest, SingleProcessNvidiaIsLoadStoreAccessible) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/false));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/2,
+                                             /*num_hosts_per_partition=*/1,
+                                             /*num_devices_per_host=*/8,
+                                             /*num_devices_per_process=*/8,
+                                             /*is_cuda=*/true),
+                             *module_with_fusion.FusionInstr()),
+      IsOkAndHolds(SymmetricMemoryType::kLoadStoreAccessible));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest, SingleProcessRocmIsXlaRendezvous) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/false));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/2,
+                                             /*num_hosts_per_partition=*/1,
+                                             /*num_devices_per_host=*/8,
+                                             /*num_devices_per_process=*/8,
+                                             /*is_cuda=*/false),
+                             *module_with_fusion.FusionInstr()),
+      IsOkAndHolds(SymmetricMemoryType::kXlaRendezvous));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest,
+       CrossProcessNvidiaSharedSliceWithFlagIsLoadStoreAccessible) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/true));
+  const GpuTopology topology = MakeGpuTopology(/*num_partitions=*/1,
+                                               /*num_hosts_per_partition=*/2,
+                                               /*num_devices_per_host=*/4,
+                                               /*num_devices_per_process=*/4,
+                                               /*is_cuda=*/true);
+  const HloFusionInstruction& fusion = *module_with_fusion.FusionInstr();
+  EXPECT_THAT(GetSymmetricMemoryType(topology, fusion),
+              IsOkAndHolds(SymmetricMemoryType::kLoadStoreAccessible));
+  EXPECT_THAT(GetSymmetricMemoryType(topology, *fusion.fused_expression_root()),
+              IsOkAndHolds(SymmetricMemoryType::kLoadStoreAccessible));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest,
+       CrossProcessNvidiaSharedSliceWithoutFlagReturnsError) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/false));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/1,
+                                             /*num_hosts_per_partition=*/2,
+                                             /*num_devices_per_host=*/4,
+                                             /*num_devices_per_process=*/4,
+                                             /*is_cuda=*/true),
+                             *module_with_fusion.FusionInstr()),
+      StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest,
+       CrossProcessNvidiaSeparateSlicesReturnsError) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/true));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/2,
+                                             /*num_hosts_per_partition=*/1,
+                                             /*num_devices_per_host=*/4,
+                                             /*num_devices_per_process=*/4,
+                                             /*is_cuda=*/true),
+                             *module_with_fusion.FusionInstr()),
+      StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest, CrossProcessRocmSharedSliceReturnsError) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/true));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/1,
+                                             /*num_hosts_per_partition=*/2,
+                                             /*num_devices_per_host=*/4,
+                                             /*num_devices_per_process=*/4,
+                                             /*is_cuda=*/false),
+                             *module_with_fusion.FusionInstr()),
+      StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 }  // namespace

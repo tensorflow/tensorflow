@@ -109,9 +109,18 @@ mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
 mlir::LogicalResult RewriteReduceScatter(mlir::stablehlo::ReduceScatterOp op,
                                          mlir::PatternRewriter& rewriter);
 
+// Returns the symmetric memory type for the scratch buffers of the collective
+// kernel emitted for `instr` (a collective or a collective fusion), or an error
+// if the collective is cross-host and cross-host symmetric memory collectives
+// are not supported on `gpu_topology`.
+absl::StatusOr<SymmetricMemoryType> GetSymmetricMemoryType(
+    const GpuTopology& gpu_topology, const HloInstruction& instr,
+    const DeviceAssignment* device_assignment = nullptr);
 // Creates a CollectiveKernelSpec for a given collective or fusion instruction.
+// `scratch_memory_type` is used for all scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type);
 
 // Reshapes a reduce-scatter fusion (whose root is a reduce-scatter that
 // satisfies IsReduceScatterFlattenable) to a 2D reduce-scatter along dimension

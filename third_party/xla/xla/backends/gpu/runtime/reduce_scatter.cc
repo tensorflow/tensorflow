@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -161,9 +160,9 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
     return absl::UnimplementedError(
         "Custom reduce-scatter strategy is only supported for small inputs.");
   }
-  ABSL_ASSIGN_OR_RETURN(
-      const bool is_local,
-      IsAllReplicasLocal(gpu_topology, *reduce_scatter, device_assignment));
+  ABSL_ASSIGN_OR_RETURN(const bool is_local,
+                   AreAllReplicasOnSameSlice(gpu_topology, *reduce_scatter,
+                                             device_assignment));
   if (!is_local) {
     return absl::UnimplementedError(
         "Cross-host symmetric memory collectives are not supported.");
@@ -197,7 +196,8 @@ LaunchDimensions ReduceScatterLaunchDimensions(
 }
 
 absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type) {
   int64_t group_size = instr->GetModule()->config().replica_count();
   if (!instr->replica_groups().empty() &&
       instr->replica_groups()[0].replica_ids_size() > 0) {
@@ -211,14 +211,6 @@ absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
       num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
   const int64_t remote_size =
       xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
-
-  const DebugOptions& debug_options =
-      instr->GetModule()->config().debug_options();
-  const SymmetricMemoryType sym_mem_type =
-      IsCrossHostOneShotKernelEnabled(debug_options,
-                                      DebugOptions::REDUCESCATTER)
-          ? SymmetricMemoryType::kLoadStoreAccessible
-          : SymmetricMemoryType::kXlaRendezvous;
 
   CollectiveKernelSpec kernel_spec = {
       /* .codegen_config= */ {
@@ -237,10 +229,10 @@ absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
           /* .sync_count_increment= */ 1u,
           /* .device_sync_count= */ true},
       /* .scratch_buffers= */
-      {{signal_size, /*requires_multimem=*/false, sym_mem_type,
+      {{signal_size, /*requires_multimem=*/false, scratch_memory_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
-       {remote_size, /*requires_multimem=*/false, sym_mem_type,
+       {remote_size, /*requires_multimem=*/false, scratch_memory_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/true}}};
   return kernel_spec;
