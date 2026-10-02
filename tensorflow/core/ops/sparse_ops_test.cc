@@ -366,6 +366,8 @@ TEST(SparseOpsTest, TakeManySparseFromTensorsMap_ShapeFn) {
   // output is always [?,?];[?];[?].
   INFER_OK(op, "?", "[?,?];[?];[?]");
   INFER_OK(op, "[?]", "[?,?];[?];[?]");
+  INFER_OK(op, "[1]", "[?,?];[?];[?]");
+  INFER_ERROR("Must have at least 1 serialized SparseTensor", op, "[0]");
 }
 
 }  // end namespace tensorflow

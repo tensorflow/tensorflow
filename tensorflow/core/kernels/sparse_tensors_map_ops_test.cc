@@ -203,6 +203,57 @@ TEST(AddManySparseToTensorsMapTest, CheckedMinibatchAllocations) {
   }
 }
 
+TEST(AddManySparseToTensorsMapTest, FailedBatchDoesNotPublishTensors) {
+  for (int allocation : {4, 5}) {
+    SCOPED_TRACE(allocation);
+    FailNthAllocation allocator;
+    AllocationFailureDevice device(&allocator);
+    ResourceMgr resources;
+    auto add = MakeMapKernel("AddManySparseToTensorsMap", &device);
+    auto take = MakeMapKernel("TakeManySparseFromTensorsMap", &device);
+    ASSERT_NE(add, nullptr);
+    ASSERT_NE(take, nullptr);
+    Tensor indices(DT_INT64, TensorShape({2, 2}));
+    indices.matrix<int64_t>()(0, 0) = 0;
+    indices.matrix<int64_t>()(0, 1) = 1;
+    indices.matrix<int64_t>()(1, 0) = 1;
+    indices.matrix<int64_t>()(1, 1) = 2;
+    Tensor values(DT_FLOAT, TensorShape({2}));
+    values.vec<float>()(0) = 2.0;
+    values.vec<float>()(1) = 3.0;
+    Tensor shape(DT_INT64, TensorShape({2}));
+    shape.vec<int64_t>()(0) = 2;
+    shape.vec<int64_t>()(1) = 5;
+    const std::vector<TensorValue> inputs{
+        TensorValue(&indices), TensorValue(&values), TensorValue(&shape)};
+    std::vector<Tensor> outputs;
+    allocator.FailAt(allocation);
+    ExpectAllocationFailure(
+        RunMapKernel(add.get(), &device, &resources, inputs, &outputs));
+    allocator.FailAt(0);
+    Tensor handles(DT_INT64, TensorShape({1}));
+    handles.vec<int64_t>()(0) = 0;
+    absl::Status status = RunMapKernel(
+        take.get(), &device, &resources, {TensorValue(&handles)}, &outputs);
+    EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+    EXPECT_NE(status.message().find("Unable to find SparseTensor"),
+              std::string::npos) << status;
+    outputs.clear();
+    ASSERT_TRUE(RunMapKernel(add.get(), &device, &resources, inputs, &outputs)
+                    .ok());
+    EXPECT_EQ(outputs[0].vec<int64_t>()(0), 0);
+    EXPECT_EQ(outputs[0].vec<int64_t>()(1), 1);
+    handles = outputs[0];
+    outputs.clear();
+    ASSERT_TRUE(RunMapKernel(take.get(), &device, &resources,
+                            {TensorValue(&handles)}, &outputs).ok());
+    EXPECT_EQ(outputs[0].matrix<int64_t>()(0, 1), 1);
+    EXPECT_EQ(outputs[0].matrix<int64_t>()(1, 1), 2);
+    EXPECT_EQ(outputs[1].vec<float>()(0), 2.0);
+    EXPECT_EQ(outputs[1].vec<float>()(1), 3.0);
+  }
+}
+
 TEST(AddSparseToTensorsMapTest, CheckedScalarHandleAllocation) {
   FailNthAllocation allocator;
   AllocationFailureDevice device(&allocator);

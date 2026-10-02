@@ -281,16 +281,17 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
                                 input_shape->NumElements() - 1, &output_shape));
 
     // Get groups by minibatch dimension
-    std::unordered_set<int64_t> visited;
+    std::vector<SparseTensor> staged_tensors(N);
+    std::vector<bool> visited(N, false);
     sparse::GroupIterable minibatch = input_st.group({0});
     for (const auto& subset : minibatch) {
       const int64_t b = subset.group()[0];
-      visited.insert(b);
       OP_REQUIRES(
           context, b > -1 && b < N,
           absl::InvalidArgumentError(absl::StrCat(
               "Received unexpected column 0 value in input SparseTensor: ", b,
               " < 0 or >= N (= ", N, ")")));
+      visited[b] = true;
 
       const auto indices = subset.indices();
       const auto values = subset.values<T>();
@@ -319,14 +320,12 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
       OP_REQUIRES_OK(context,
                      SparseTensor::Create(output_indices, output_values,
                                           output_shape, &st_i));
-      int64_t handle;
-      OP_REQUIRES_OK(context, map->AddSparseTensor(context, st_i, &handle));
-      sparse_handles_t(b) = handle;
+      staged_tensors[b] = std::move(st_i);
     }
 
     // Fill in any gaps; we must provide an empty ST for batch entries
     // the grouper didn't find.
-    if (visited.size() < N) {
+    if (std::find(visited.begin(), visited.end(), false) != visited.end()) {
       Tensor empty_indices;
       OP_REQUIRES_OK(context,
                      context->allocate_temp(DT_INT64, TensorShape({0, rank - 1}),
@@ -341,13 +340,17 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
 
       for (int64_t b = 0; b < N; ++b) {
         // We skipped this batch entry.
-        if (visited.find(b) == visited.end()) {
-          int64_t handle;
-          OP_REQUIRES_OK(context,
-                         map->AddSparseTensor(context, empty_st, &handle));
-          sparse_handles_t(b) = handle;
+        if (!visited[b]) {
+          staged_tensors[b] = empty_st;
         }
       }
+    }
+    // Publish handles only after all tensor allocations have succeeded.
+    for (int64_t b = 0; b < N; ++b) {
+      int64_t handle;
+      OP_REQUIRES_OK(context,
+                     map->AddSparseTensor(context, staged_tensors[b], &handle));
+      sparse_handles_t(b) = handle;
     }
   }
 };
@@ -461,12 +464,13 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
       const int64_t num_entries = st.num_entries();
       if (num_entries > 0) {
         const auto input_indices = st.indices().matrix<int64_t>();
-        for (int64_t row = 0; row < num_entries; ++row) {
-          indices_t(offset + row, 0) = i;
-          for (int d = 0; d < rank; ++d) {
-            indices_t(offset + row, d + 1) = input_indices(row, d);
-          }
-        }
+        Eigen::DSizes<Eigen::DenseIndex, 2> slice_start(offset, 0);
+        Eigen::DSizes<Eigen::DenseIndex, 2> slice_sizes(num_entries, rank + 1);
+        auto slice = indices_t.slice(slice_start, slice_sizes);
+        slice.chip<1>(0).setConstant(i);
+        Eigen::DSizes<Eigen::DenseIndex, 2> in_start(0, 1);
+        Eigen::DSizes<Eigen::DenseIndex, 2> in_sizes(num_entries, rank);
+        slice.slice(in_start, in_sizes) = input_indices;
         std::copy_n(st.values().vec<T>().data(), num_entries,
                     values_t.data() + offset);
       }

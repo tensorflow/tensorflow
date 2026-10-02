@@ -588,9 +588,14 @@ REGISTER_OP("TakeManySparseFromTensorsMap")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      // serialized sparse is [?,1] matrix.
       ShapeHandle sparse_handles;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &sparse_handles));
+      DimensionHandle num_handles = c->Dim(sparse_handles, 0);
+      if (c->ValueKnown(num_handles) && c->Value(num_handles) == 0) {
+        return errors::InvalidArgument(
+            "Must have at least 1 serialized SparseTensor, "
+            "but input matrix has 0 rows");
+      }
 
       c->set_output(0, c->Matrix(InferenceContext::kUnknownDim,
                                  InferenceContext::kUnknownDim));
