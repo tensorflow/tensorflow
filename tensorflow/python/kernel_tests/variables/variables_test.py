@@ -112,6 +112,70 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(v_val, [1.0, 20.0, 30.0])
     self.assertAllEqual(m_val, [[1.0, 99.0], [3.0, 4.0]])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSliceAssignmentEmptySlice(self):
+    v = variables.Variable(
+        [[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32
+    )
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def mutate():
+      v[:0, :0] = array_ops.zeros((0, 0), dtype=dtypes.float32)
+      return v.read_value()
+
+    val = self.evaluate(mutate())
+    self.assertAllEqual(val, [[1.0, 2.0], [3.0, 4.0]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSliceAssignmentStrided(self):
+    v = variables.Variable(
+        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+        dtype=dtypes.float32,
+    )
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def mutate():
+      v[::2, ::2] = [[10.0, 30.0], [70.0, 90.0]]
+      return v.read_value()
+
+    val = self.evaluate(mutate())
+    self.assertAllEqual(
+        val, [[10.0, 2.0, 30.0], [4.0, 5.0, 6.0], [70.0, 8.0, 90.0]]
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSliceAssignmentNegativeCases(self):
+    v = variables.Variable(
+        [[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32
+    )
+    self.evaluate(variables.global_variables_initializer())
+
+    # Incompatible shape
+    @def_function.function
+    def mutate_shape():
+      v[:1, :1] = array_ops.ones((2, 2), dtype=dtypes.float32)
+      return v.read_value()
+
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(mutate_shape())
+
+    # Incompatible dtype
+    @def_function.function
+    def mutate_dtype():
+      v[:1, :1] = array_ops.ones((1, 1), dtype=dtypes.int32)
+      return v.read_value()
+
+    with self.assertRaises((TypeError, ValueError)):
+      self.evaluate(mutate_dtype())
+
+    # Boolean mask indexing
+    with self.assertRaisesRegex(
+        TypeError, "Variable item assignment does not support indexing with"
+    ):
+      v[v > 0.0] = 0.0
+
   @test_util.run_v1_only("b/120545219")
   def testInitialization(self):
     with self.cached_session():

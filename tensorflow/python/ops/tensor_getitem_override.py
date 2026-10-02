@@ -319,9 +319,17 @@ def _setitem_helper_var(var, slice_spec, value):
 
   ```python
   import tensorflow as tf
-  A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
-  A[:2,:2] = 22. * tf.ones((2, 2))
+  A = tf.Variable([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=tf.float32)
+  A[:2, :2] = 22. * tf.ones((2, 2))
   ```
+
+  Note: In standard Python syntax, `var[slice_spec] = value` is a statement
+  and discards the return value of `__setitem__`. In eager mode and inside
+  `@tf.function` (with automatic control dependencies), the assignment runs
+  immediately. In legacy TF1 graph mode outside `@tf.function`, the created
+  assignment operation cannot be returned or scheduled directly via
+  `sess.run()`. Users in legacy graph mode should use
+  `var[slice_spec].assign(value)`.
 
   Args:
     var: An `ops.Variable` object.
@@ -330,8 +338,19 @@ def _setitem_helper_var(var, slice_spec, value):
 
   Returns:
     The assignment operation.
+
+  Raises:
+    TypeError: If the indexed target does not support assignment (e.g., when
+      indexing with a boolean mask).
   """
-  return var[slice_spec].assign(value)
+  target = var[slice_spec]
+  if not hasattr(target, "assign"):
+    raise TypeError(
+        f"Variable item assignment does not support indexing with "
+        f"{type(slice_spec).__name__} (target {type(target).__name__} does "
+        f"not support assignment)."
+    )
+  return target.assign(value)
 
 
 tensor_lib.Tensor._override_operator("__getitem__", _slice_helper)  # pylint: disable=protected-access
