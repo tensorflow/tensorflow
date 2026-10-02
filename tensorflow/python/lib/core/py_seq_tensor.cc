@@ -834,8 +834,6 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_UINT64:
       status = UInt64Converter::Convert(ctx, obj, &state, &handle, &error);
-      // Preserve Python errors instead of falling back to a signed dtype.
-      if (TF_PREDICT_FALSE(!status.ok() && PyErr_Occurred())) return nullptr;
       break;
 
     case DT_COMPLEX128:
@@ -853,6 +851,8 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
     default:
       break;
   }
+  // Preserve Python errors from the requested conversion before falling back.
+  if (TF_PREDICT_FALSE(!status.ok() && PyErr_Occurred())) return nullptr;
   if (status.ok()) return handle;
 
   switch (state.inferred_dtype) {
@@ -926,6 +926,8 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   if (!status.ok()) {
+    // Inferred conversions may also fail with a more specific Python error.
+    if (TF_PREDICT_FALSE(PyErr_Occurred())) return nullptr;
     PyErr_SetString(PyExc_ValueError, absl::StatusMessageAsCStr(status));
     return nullptr;
   }

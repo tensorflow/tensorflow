@@ -392,7 +392,10 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       for value in (-1, -2, -(2**64), 2**64):
         for invalid in (value, [value], [[0, value]]):
           with self.subTest(convert=convert.__name__, value=invalid):
-            with self.assertRaises(OverflowError):
+            with self.assertRaisesRegex(
+                OverflowError,
+                r"can't convert negative (?:value|int) to unsigned(?: int)?|"
+                r"int too big to convert|int too large to convert"):
               convert(invalid, dtype=dtypes.uint64)
             self.assertAllEqual(convert(1, dtype=dtypes.uint64), 1)
 
@@ -402,13 +405,13 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       def __int__(self):
         raise RuntimeError("integer conversion failed")
 
-    for dtype in (dtypes.int32, dtypes.int64, dtypes.uint64):
-      error = RuntimeError if dtype == dtypes.uint64 else ValueError
+    for dtype in (None, dtypes.int32, dtypes.int64, dtypes.uint64):
       # Scalars use NumPy's array conversion; sequences use ConvertScalar.
       self.assertAllEqual(_create_tensor(InvalidInteger(1), dtype=dtype), 1)
       for value in ([InvalidInteger(1)], [[InvalidInteger(1)]]):
         with self.subTest(dtype=dtype, value=value):
-          with self.assertRaises(error):
+          with self.assertRaisesRegex(
+              RuntimeError, "integer conversion failed"):
             _create_tensor(value, dtype=dtype)
           self.assertAllEqual(_create_tensor(1, dtype=dtype), 1)
 
