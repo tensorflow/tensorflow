@@ -68,6 +68,8 @@ void CreateTritonXlaPipeline(
   if (enable_pdl) {
     pm->addPass(createInsertPDLPass());
   }
+  pm->addPass(
+      mlir::triton::xla::createTritonXLACollapseContiguousMinorDimsPass());
   mlir::triton::xla::TritonXLAExtractInsertToTritonPassOptions
       extract_insert_options;
   extract_insert_options.allow_tma_ = allow_tma && is_at_least_hopper;
