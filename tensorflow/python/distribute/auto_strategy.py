@@ -51,10 +51,11 @@ def auto_strategy() -> distribute_lib.StrategyBase:
   """
   # Check for TPUs
   tpu_visible = config.get_visible_devices("TPU")
+  tpu_name = os.environ.get("TPU_NAME", "")
   if (
       tpu_visible
       or config.list_logical_devices("TPU")
-      or os.environ.get("TPU_NAME")
+      or (tpu_name and tpu_name.lower() != "local")
   ):
     try:
       resolver = (
