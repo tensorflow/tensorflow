@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <map>
 #include <memory>
 #include <set>
 #include <stdexcept>
@@ -117,7 +116,7 @@ PYBIND11_MODULE(
               cluster.reset();
             }
           }
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(provision_status);
+          tsl::MaybeRaiseRegisteredFromStatus(provision_status);
           return cluster.release();
         });
 
@@ -146,7 +145,7 @@ PYBIND11_MODULE(
             py::gil_scoped_release release;
             provision_status = cluster->Provision();
           }
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(provision_status);
+          tsl::MaybeRaiseRegisteredFromStatus(provision_status);
           return cluster.release();
         });
 
@@ -167,7 +166,7 @@ PYBIND11_MODULE(
   m.def("TF_ListDevices",
         [](tensorflow::grappler::Cluster* cluster) -> std::vector<py::bytes> {
           if (cluster == nullptr) {
-            tsl::MaybeRaiseRegisteredFromStatusWithGIL(
+            tsl::MaybeRaiseRegisteredFromStatus(
                 absl::InvalidArgumentError("Cluster cannot be None."));
           }
 
@@ -213,95 +212,100 @@ PYBIND11_MODULE(
       "TF_GetSupportedDevices",
       [](tensorflow::grappler::Cluster* cluster,
          tensorflow::grappler::GrapplerItem* item)
-          -> std::map<std::string, std::vector<std::string>> {
+          -> std::unordered_map<std::string, std::vector<std::string>> {
         if (cluster == nullptr || item == nullptr) {
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::Status(
+          tsl::MaybeRaiseRegisteredFromStatus(absl::Status(
               absl::InternalError("You need both a cluster and an "
                                   "item to get supported devices.")));
         }
-        std::unordered_map<std::string, std::set<std::string>> device_types;
-        std::string cluster_type;
 
+        std::unordered_map<std::string, std::vector<std::string>> result;
         {
-          const auto& devices = cluster->GetDevices();
-          cluster_type = cluster->type();
+          py::gil_scoped_release release;
+          std::unordered_map<std::string, std::set<std::string>> device_types;
+          std::string cluster_type;
 
-          for (const auto& dev : devices) {
-            device_types[dev.second.type()].insert(dev.first);
-          }
-        }
+          {
+            const auto& devices = cluster->GetDevices();
+            cluster_type = cluster->type();
 
-        std::map<std::string, std::set<std::string>> supported_device_types;
-        std::unordered_map<std::string, std::set<std::string>>
-            device_restrictions;
-
-        if (cluster_type != "single_machine") {
-          for (const auto& node : item->graph.node()) {
-            auto& supported = supported_device_types[node.name()];
-            for (const auto& dev : device_types) {
-              // The actual kernel may not be linked in this binary.
-              supported.insert(dev.first);
+            for (const auto& dev : devices) {
+              device_types[dev.second.type()].insert(dev.first);
             }
           }
-        } else {
-          for (const auto& node : item->graph.node()) {
-            auto& supported = supported_device_types[node.name()];
+
+          std::unordered_map<std::string, std::set<std::string>>
+              supported_device_types;
+          std::unordered_map<std::string, std::set<std::string>>
+              device_restrictions;
+
+          if (cluster_type != "single_machine") {
+            std::set<std::string> all_types;
             for (const auto& dev : device_types) {
-              const std::string& type = dev.first;
+              all_types.insert(dev.first);
+            }
+            for (const auto& node : item->graph.node()) {
+              supported_device_types[node.name()] = all_types;
+            }
+          } else {
+            for (const auto& node : item->graph.node()) {
+              auto& supported = supported_device_types[node.name()];
+              for (const auto& dev : device_types) {
+                const std::string& type = dev.first;
 
-              // Check the kernel capabilities.
-              const tensorflow::DeviceType dev_type(type);
-              absl::Status s =
-                  tensorflow::FindKernelDef(dev_type, node, nullptr, nullptr);
-              if (s.ok()) {
-                supported.insert(type);
-
-                // Check which inputs are restricted to reside on the host.
-                // TODO: extends this to support outputs as well.
-                tensorflow::MemoryTypeVector inp_mtypes;
-                tensorflow::MemoryTypeVector out_mtypes;
-                absl::Status s = tensorflow::MemoryTypesForNode(
-                    tensorflow::OpRegistry::Global(), dev_type, node,
-                    &inp_mtypes, &out_mtypes);
+                // Check the kernel capabilities.
+                const tensorflow::DeviceType dev_type(type);
+                absl::Status s =
+                    tensorflow::FindKernelDef(dev_type, node, nullptr, nullptr);
                 if (s.ok()) {
-                  for (size_t i = 0; i < inp_mtypes.size(); ++i) {
-                    if (inp_mtypes[i] == tensorflow::HOST_MEMORY) {
-                      device_restrictions[tensorflow::grappler::NodeName(
-                                              node.input(i))]
-                          .insert("CPU");
-                      break;
+                  supported.insert(type);
+
+                  // Check which inputs are restricted to reside on the host.
+                  // TODO: extends this to support outputs as well.
+                  tensorflow::MemoryTypeVector inp_mtypes;
+                  tensorflow::MemoryTypeVector out_mtypes;
+                  absl::Status s = tensorflow::MemoryTypesForNode(
+                      tensorflow::OpRegistry::Global(), dev_type, node,
+                      &inp_mtypes, &out_mtypes);
+                  if (s.ok()) {
+                    for (size_t i = 0; i < inp_mtypes.size(); ++i) {
+                      if (inp_mtypes[i] == tensorflow::HOST_MEMORY) {
+                        device_restrictions[tensorflow::grappler::NodeName(
+                                                node.input(i))]
+                            .insert("CPU");
+                        break;
+                      }
                     }
                   }
                 }
               }
             }
           }
-        }
 
-        std::map<std::string, std::vector<std::string>> result;
-        for (const auto& supported_dev : supported_device_types) {
-          const std::string& node = supported_dev.first;
-          std::set<std::string> feasible;
-          const auto it = device_restrictions.find(node);
-          if (it != device_restrictions.end()) {
-            const std::set<std::string>& candidates = supported_dev.second;
-            const std::set<std::string>& valid = it->second;
-            std::set_intersection(candidates.begin(), candidates.end(),
-                                  valid.begin(), valid.end(),
-                                  std::inserter(feasible, feasible.begin()));
-          } else {
-            feasible = supported_dev.second;
-          }
-
-          std::vector<std::string> device_names;
-          for (const std::string& type : feasible) {
-            auto it = device_types.find(type);
-            DCHECK(it != device_types.end());
-            for (const std::string& name : it->second) {
-              device_names.push_back(name);
+          for (const auto& supported_dev : supported_device_types) {
+            const std::string& node = supported_dev.first;
+            std::set<std::string> feasible;
+            const auto it = device_restrictions.find(node);
+            if (it != device_restrictions.end()) {
+              const std::set<std::string>& candidates = supported_dev.second;
+              const std::set<std::string>& valid = it->second;
+              std::set_intersection(candidates.begin(), candidates.end(),
+                                    valid.begin(), valid.end(),
+                                    std::inserter(feasible, feasible.begin()));
+            } else {
+              feasible = supported_dev.second;
             }
+
+            std::vector<std::string> device_names;
+            for (const std::string& type : feasible) {
+              auto it = device_types.find(type);
+              DCHECK(it != device_types.end());
+              for (const std::string& name : it->second) {
+                device_names.push_back(name);
+              }
+            }
+            result[node] = device_names;
           }
-          result[node] = device_names;
         }
         return result;
       });
@@ -323,7 +327,7 @@ PYBIND11_MODULE(
            tensorflow::grappler::Cluster* cluster, bool generate_timeline)
             -> std::tuple<std::vector<py::bytes>, double, py::bytes> {
           if (cluster == nullptr || item == nullptr) {
-            tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::InvalidArgumentError(
+            tsl::MaybeRaiseRegisteredFromStatus(absl::InvalidArgumentError(
                 "You need both a cluster and an item to measure costs."));
           }
 
@@ -333,8 +337,12 @@ PYBIND11_MODULE(
 
           tensorflow::OpPerformanceList op_performance_data;
           tensorflow::grappler::Costs costs;
-          absl::Status s = _GetOpPerformanceDataAndRunTime(
-              *item, &cost_measure, &op_performance_data, &costs);
+          absl::Status s;
+          {
+            py::gil_scoped_release release;
+            s = _GetOpPerformanceDataAndRunTime(
+                *item, &cost_measure, &op_performance_data, &costs);
+          }
           double run_time = FLT_MAX;
           if (s.ok()) {
             run_time =
@@ -349,7 +357,7 @@ PYBIND11_MODULE(
               run_status =
                   cluster->Run(item->graph, item->feed, item->fetch, &metadata);
             }
-            tsl::MaybeRaiseRegisteredFromStatusWithGIL(run_status);
+            tsl::MaybeRaiseRegisteredFromStatus(run_status);
             step_stats = metadata.step_stats();
           }
 
@@ -375,7 +383,7 @@ PYBIND11_MODULE(
           -> std::unordered_map<std::string,
                                 std::tuple<int64_t, std::vector<MemoryUsage>>> {
         if (cluster == nullptr || item == nullptr) {
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::Status(absl::InternalError(
+          tsl::MaybeRaiseRegisteredFromStatus(absl::Status(absl::InternalError(
               "You need both a cluster and an item to determine peak "
               "memory usage.")));
         }
@@ -391,7 +399,7 @@ PYBIND11_MODULE(
             inference_status = memory.InferStatically(cluster->GetDevices());
           }
         }
-        tsl::MaybeRaiseRegisteredFromStatusWithGIL(inference_status);
+        tsl::MaybeRaiseRegisteredFromStatus(inference_status);
 
         std::unordered_map<std::string,
                            std::tuple<int64_t, std::vector<MemoryUsage>>>
