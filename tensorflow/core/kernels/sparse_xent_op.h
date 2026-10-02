@@ -241,10 +241,13 @@ struct SparseXentEigenImpl {
       auto backprop_mat = To32Bit(backprop);
       auto labels_vec = To32Bit(labels);
       auto scratch_vec = To32Bit(scratch);
+      const Index max_depth = backprop.dimension(1);
       for (int b = 0; b < batch_size; ++b) {
-        // The CPU kernel validates all label indices before calling us.
+        // Recheck the copied label before indexing mutable host memory.
         const Index label = internal::SubtleMustCopy(labels_vec(b));
-        backprop_mat(b, label) -= scratch_vec(b);
+        if (FastBoundsCheck(label, max_depth)) {
+          backprop_mat(b, label) -= scratch_vec(b);
+        }
       }
     }
   }
