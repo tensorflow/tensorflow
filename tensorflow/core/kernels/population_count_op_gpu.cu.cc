@@ -18,6 +18,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"

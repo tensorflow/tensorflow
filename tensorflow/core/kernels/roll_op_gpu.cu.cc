@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/types/span.h"
