@@ -50,16 +50,16 @@ def auto_strategy() -> distribute_lib.StrategyBase:
   ```
   """
   # Check for TPUs
-  tpu_physical = config.list_physical_devices("TPU")
+  tpu_visible = config.get_visible_devices("TPU")
   if (
-      tpu_physical
+      tpu_visible
       or config.list_logical_devices("TPU")
       or os.environ.get("TPU_NAME")
   ):
     try:
       resolver = (
           tpu_cluster_resolver.TPUClusterResolver(tpu="local")
-          if tpu_physical and not os.environ.get("TPU_NAME")
+          if tpu_visible and not os.environ.get("TPU_NAME")
           else tpu_cluster_resolver.TPUClusterResolver()
       )
       if not tpu_strategy_util.get_initialized_tpu_systems():
