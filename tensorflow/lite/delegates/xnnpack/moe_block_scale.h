@@ -19,6 +19,31 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+// Hint for the float-reduction loops in the dot products below. Clang only
+// vectorizes them when a loop hint lets it reorder the additions. Sanitizer
+// instrumentation (e.g. the UBSan checks that --config=ubsan enables, and that
+// some --config=asan presubmits add on top of ASan) inserts control flow into
+// the loop bodies that defeats the transformation, and clang then reports the
+// unhonored hint as -Wpass-failed, which -Werror turns into a build break. That
+// diagnostic is attributed to whatever source location the loop has after
+// inlining (the enclosing function when built with -g0), so it cannot be
+// reliably silenced with `#pragma clang diagnostic`. The hint is therefore
+// omitted entirely in instrumented builds, where the loops stay correct when
+// left scalar.
+#if defined(__clang__)
+#if __has_feature(address_sanitizer) || __has_feature(hwaddress_sanitizer) || \
+    __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer) ||     \
+    __has_feature(undefined_behavior_sanitizer) ||                            \
+    __has_feature(dataflow_sanitizer) || __has_feature(coverage_sanitizer)
+#define TFLITE_XNNPACK_MOE_VECTORIZE_LOOP
+#else
+#define TFLITE_XNNPACK_MOE_VECTORIZE_LOOP \
+  _Pragma("clang loop vectorize(enable) interleave(enable)")
+#endif
+#else
+#define TFLITE_XNNPACK_MOE_VECTORIZE_LOOP
+#endif
+
 // Scale layout and dequantization helpers shared by the custom "moe" XNNPACK
 // delegate kernel. They live in their own header so they can be unit tested
 // without standing up a delegate.
@@ -214,16 +239,6 @@ inline void CopyAndDequantizeExpertWeightRowsInt4(
       input_channels, dst);
 }
 
-// The dot products below ask clang to vectorize float reductions, which it only
-// does when the loop hint allows reordering them. Instrumented builds (e.g.
-// --config=ubsan) can block that transformation, and clang reports it as
-// -Wpass-failed, which -Werror turns into a build break. The loops stay correct
-// when left scalar, so the warning is silenced for this section only.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wpass-failed"
-#endif
-
 // Computes the dot product of a single int8 weight row with `input`
 // (`[input_channels]`) without materializing a dequantized FP32 row buffer.
 inline float DotDequantizeExpertWeightRowInt8(const int8_t* src_row,
@@ -233,9 +248,7 @@ inline float DotDequantizeExpertWeightRowInt8(const int8_t* src_row,
                                               const float* input) {
   if (layout.groups_per_row <= 1 || layout.group_size == 0) {
     float sum = 0.0f;
-#if defined(__clang__)
-#pragma clang loop vectorize(enable) interleave(enable)
-#endif
+    TFLITE_XNNPACK_MOE_VECTORIZE_LOOP
     for (size_t in = 0; in < input_channels; ++in) {
       sum += static_cast<float>(src_row[in]) * input[in];
     }
@@ -248,9 +261,7 @@ inline float DotDequantizeExpertWeightRowInt8(const int8_t* src_row,
   for (size_t g = 0; g + 1 < num_groups && in < input_channels; ++g) {
     const size_t block_end = std::min(in + group_size, input_channels);
     float block_sum = 0.0f;
-#if defined(__clang__)
-#pragma clang loop vectorize(enable) interleave(enable)
-#endif
+    TFLITE_XNNPACK_MOE_VECTORIZE_LOOP
     for (size_t i = in; i < block_end; ++i) {
       block_sum += static_cast<float>(src_row[i]) * input[i];
     }
@@ -259,9 +270,7 @@ inline float DotDequantizeExpertWeightRowInt8(const int8_t* src_row,
   }
   if (in < input_channels) {
     float block_sum = 0.0f;
-#if defined(__clang__)
-#pragma clang loop vectorize(enable) interleave(enable)
-#endif
+    TFLITE_XNNPACK_MOE_VECTORIZE_LOOP
     for (size_t i = in; i < input_channels; ++i) {
       block_sum += static_cast<float>(src_row[i]) * input[i];
     }
@@ -288,9 +297,7 @@ inline float DotInt4Span(const int8_t* src_row_packed, size_t in_begin,
   }
   const size_t byte_begin = in >> 1;
   const size_t byte_end = in_end >> 1;
-#if defined(__clang__)
-#pragma clang loop vectorize(enable) interleave(enable)
-#endif
+  TFLITE_XNNPACK_MOE_VECTORIZE_LOOP
   for (size_t b = byte_begin; b < byte_end; ++b) {
     const int8_t byte_val = src_row_packed[b];
     const int8_t low = static_cast<int8_t>(byte_val << 4) >> 4;
@@ -333,10 +340,6 @@ inline float DotDequantizeExpertWeightRowInt4(const int8_t* src_row_packed,
   }
   return total;
 }
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
 
 }  // namespace xnnpack
 }  // namespace tflite
