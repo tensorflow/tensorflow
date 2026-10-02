@@ -270,9 +270,12 @@ absl::Status BiasGradGPU<T>::compute(const GPUDevice& d,
   GpuLaunchConfig config = GetGpuLaunchConfig(config_count, d);
 
   const int max_shared_memory_size = d.sharedMemPerBlock() / 2;
-  int32_t shared_memory_size = 0;
+  // In int64, as a large bias_size times the accumulator size overflows int32
+  // and would then look like it fits.
+  int64_t shared_memory_size = 0;
   if (data_format == FORMAT_NHWC) {
-    shared_memory_size = bias_size * sizeof(typename AccumulatorType<T>::type);
+    shared_memory_size = static_cast<int64_t>(bias_size) *
+                         sizeof(typename AccumulatorType<T>::type);
   }
   // Check if we have enough shared memory.
   if (shared_memory_size <= max_shared_memory_size) {
