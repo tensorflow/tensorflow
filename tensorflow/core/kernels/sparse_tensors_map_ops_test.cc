@@ -123,6 +123,11 @@ absl::Status RunMapKernel(OpKernel* kernel, DeviceBase* device,
   return absl::OkStatus();
 }
 
+void ExpectAllocationFailure(const absl::Status& status) {
+  EXPECT_TRUE(absl::IsResourceExhausted(status)) << status;
+  EXPECT_NE(status.message().find("OOM"), std::string::npos) << status;
+}
+
 TEST(AddManySparseToTensorsMapTest, CheckedHandleAllocation) {
   // Exercise allocation failure without requesting a huge buffer.
   for (int64_t batch_size : {0, 3}) {
@@ -166,7 +171,7 @@ TEST(AddManySparseToTensorsMapTest, CheckedHandleAllocation) {
       EXPECT_EQ(context.mutable_output(0)->shape(), TensorShape({0}));
       EXPECT_EQ(allocator.requested_bytes(), 0);
     } else {
-      EXPECT_TRUE(absl::IsResourceExhausted(context.status())) << context.status();
+      ExpectAllocationFailure(context.status());
       EXPECT_EQ(context.mutable_output(0), nullptr);
       EXPECT_EQ(allocator.requested_bytes(), batch_size * sizeof(int64_t));
     }
@@ -191,10 +196,10 @@ TEST(AddManySparseToTensorsMapTest, CheckedMinibatchAllocations) {
     shape.vec<int64_t>()(1) = 5;
     std::vector<Tensor> outputs;
     allocator.FailAt(allocation);
-    EXPECT_TRUE(absl::IsResourceExhausted(RunMapKernel(
+    ExpectAllocationFailure(RunMapKernel(
         kernel.get(), &device, &resources,
         {TensorValue(&indices), TensorValue(&values), TensorValue(&shape)},
-        &outputs)));
+        &outputs));
   }
 }
 
@@ -210,10 +215,48 @@ TEST(AddSparseToTensorsMapTest, CheckedScalarHandleAllocation) {
   shape.vec<int64_t>()(0) = 5;
   std::vector<Tensor> outputs;
   allocator.FailAt(1);
-  EXPECT_TRUE(absl::IsResourceExhausted(RunMapKernel(
+  ExpectAllocationFailure(RunMapKernel(
       kernel.get(), &device, &resources,
       {TensorValue(&indices), TensorValue(&values), TensorValue(&shape)},
-      &outputs)));
+      &outputs));
+}
+
+TEST(AddSparseToTensorsMapTest, RetainsInputBuffersWithoutTemporaryAllocations) {
+  FailNthAllocation allocator;
+  AllocationFailureDevice device(&allocator);
+  ResourceMgr resources;
+  auto add = MakeMapKernel("AddSparseToTensorsMap", &device);
+  auto take = MakeMapKernel("TakeManySparseFromTensorsMap", &device);
+  ASSERT_NE(add, nullptr);
+  ASSERT_NE(take, nullptr);
+  Tensor indices(DT_INT64, TensorShape({1, 1}));
+  indices.matrix<int64_t>()(0, 0) = 1;
+  Tensor values(DT_FLOAT, TensorShape({1}));
+  values.vec<float>()(0) = 2.0;
+  Tensor shape(DT_INT64, TensorShape({1}));
+  shape.vec<int64_t>()(0) = 5;
+  std::vector<Tensor> outputs;
+  allocator.FailAt(2);
+  ASSERT_TRUE(RunMapKernel(
+                  add.get(), &device, &resources,
+                  {TensorValue(&indices), TensorValue(&values),
+                   TensorValue(&shape)},
+                  &outputs)
+                  .ok());
+  Tensor handles(DT_INT64, TensorShape({1}));
+  handles.vec<int64_t>()(0) = outputs[0].scalar<int64_t>()();
+  indices = Tensor();
+  values = Tensor();
+  outputs.clear();
+  allocator.FailAt(0);
+  ASSERT_TRUE(RunMapKernel(take.get(), &device, &resources,
+                          {TensorValue(&handles)}, &outputs)
+                  .ok());
+  EXPECT_EQ(outputs[0].matrix<int64_t>()(0, 0), 0);
+  EXPECT_EQ(outputs[0].matrix<int64_t>()(0, 1), 1);
+  EXPECT_EQ(outputs[1].vec<float>()(0), 2.0);
+  EXPECT_EQ(outputs[2].vec<int64_t>()(0), 1);
+  EXPECT_EQ(outputs[2].vec<int64_t>()(1), 5);
 }
 
 TEST(TakeManySparseFromTensorsMapTest, CheckedOutputAllocations) {
@@ -243,8 +286,8 @@ TEST(TakeManySparseFromTensorsMapTest, CheckedOutputAllocations) {
     handles.vec<int64_t>()(0) = outputs[0].scalar<int64_t>()();
     outputs.clear();
     allocator.FailAt(allocation);
-    EXPECT_TRUE(absl::IsResourceExhausted(RunMapKernel(
-        take.get(), &device, &resources, {TensorValue(&handles)}, &outputs)));
+    ExpectAllocationFailure(RunMapKernel(
+        take.get(), &device, &resources, {TensorValue(&handles)}, &outputs));
   }
 }
 

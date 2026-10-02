@@ -50,22 +50,13 @@ class SparseTensorsMap : public ResourceBase {
     absl::InlinedVector<int64_t, 8UL> shape;
   } PersistentSparseTensor;
 
-  absl::Status AddSparseTensor(OpKernelContext* ctx, const SparseTensor& sp,
+  absl::Status AddSparseTensor(OpKernelContext* /*ctx*/, const SparseTensor& sp,
                                int64_t* handle) {
-    Tensor ix;
-    TF_RETURN_IF_ERROR(
-        ctx->allocate_temp(sp.indices().dtype(), sp.indices().shape(), &ix));
-    ix = sp.indices();
-
-    Tensor values;
-    TF_RETURN_IF_ERROR(ctx->allocate_temp(sp.indices().dtype(),
-                                          sp.indices().shape(), &values));
-    values = sp.values();
     {
       mutex_lock l(mu_);
       int64_t unique_st_handle = counter_++;  // increment is guarded on purpose
       sp_tensors_[unique_st_handle] =
-          PersistentSparseTensor{ix, values,
+          PersistentSparseTensor{sp.indices(), sp.values(),
                                  absl::InlinedVector<int64_t, 8UL>(
                                      sp.shape().begin(), sp.shape().end())};
       *handle = unique_st_handle;
@@ -396,8 +387,14 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
                                 &sparse_tensors));
 
     const int rank = sparse_tensors[0].dims();
-    std::vector<int64_t> output_shape(rank + 1, 0);
-    output_shape[0] = N;
+    Tensor* shape = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                2, TensorShape({rank + 1}), &shape));
+    auto shape_t = shape->vec<int64_t>();
+    shape_t(0) = N;
+    for (int d = 0; d < rank; ++d) {
+      shape_t(d + 1) = 0;
+    }
     int64_t total_entries = 0;
     for (int64_t i = 0; i < N; ++i) {
       const SparseTensor& st = sparse_tensors[i];
@@ -443,7 +440,7 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
       OP_REQUIRES(context, total_entries >= 0,
                   absl::ResourceExhaustedError("Too many sparse entries"));
       for (int d = 0; d < rank; ++d) {
-        output_shape[d + 1] = std::max(output_shape[d + 1], st.shape()[d]);
+        shape_t(d + 1) = std::max<int64_t>(shape_t(d + 1), st.shape()[d]);
       }
     }
 
@@ -451,18 +448,13 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
     // unchecked Tensor constructors and bypasses the context allocator.
     Tensor* indices = nullptr;
     Tensor* values = nullptr;
-    Tensor* shape = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, TensorShape({total_entries, rank + 1}),
                                 &indices));
     OP_REQUIRES_OK(context, context->allocate_output(
                                 1, TensorShape({total_entries}), &values));
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                2, TensorShape({rank + 1}), &shape));
     auto indices_t = indices->matrix<int64_t>();
     auto values_t = values->vec<T>();
-    std::copy(output_shape.begin(), output_shape.end(),
-              shape->vec<int64_t>().data());
     int64_t offset = 0;
     for (int64_t i = 0; i < N; ++i) {
       const SparseTensor& st = sparse_tensors[i];
