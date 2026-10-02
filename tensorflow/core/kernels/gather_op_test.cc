@@ -17,8 +17,6 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <vector>
-
-#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -216,9 +214,10 @@ TEST_F(GatherOpTest, Error_AxisMinInt64) {
   AddInputFromArray<int64_t>(TensorShape({}),
                              {std::numeric_limits<int64_t>::min()});
   absl::Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(),
-      "axis must be greater than std::numeric_limits<int64_t>::min()"))
+  EXPECT_TRUE(
+      s.ToString().find(
+          "axis must be greater than std::numeric_limits<int64_t>::min()") !=
+      std::string::npos)
       << s;
 }
 
@@ -232,9 +231,10 @@ TEST_F(GatherOpTest, Error_AxisMaxInt64) {
   AddInputFromArray<int64_t>(TensorShape({}),
                              {std::numeric_limits<int64_t>::max()});
   absl::Status s = RunOpKernel();
-  EXPECT_TRUE(absl::StrContains(
-      s.ToString(),
-      "axis must be less than std::numeric_limits<int64_t>::max()"))
+  EXPECT_TRUE(
+      s.ToString().find(
+          "axis must be less than std::numeric_limits<int64_t>::max()") !=
+      std::string::npos)
       << s;
 }
 
