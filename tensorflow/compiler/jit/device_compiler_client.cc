@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/util/determinism.h"
 
@@ -37,9 +38,25 @@ xla::ExecutableBuildOptions GetExecutableBuildOptions(
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
   build_options.mutable_debug_options()->set_xla_detailed_logging(
       options.detailed_logging);
-  if (tensorflow::OpDeterminismRequired()) {
+  bool cluster_deterministic = false;
+  if (result.computation != nullptr) {
+    const auto& frontend_attrs =
+        result.computation->proto().frontend_attributes().map();
+    auto it = frontend_attrs.find(kXlaDeterministicAttr);
+    if (it != frontend_attrs.end() && it->second == "true") {
+      cluster_deterministic = true;
+    }
+  }
+  if (tensorflow::OpDeterminismRequired() || cluster_deterministic) {
     build_options.mutable_debug_options()
         ->set_xla_gpu_exclude_nondeterministic_ops(true);
+  }
+  if (cluster_deterministic) {
+    // Autotuning is disabled under determinism. Use the cost model to pick
+    // default GEMM tilings so that (deterministic) Triton GEMMs remain
+    // eligible and the selected kernel is stable across processes.
+    build_options.mutable_debug_options()
+        ->set_xla_gpu_experimental_cost_model_gemm_tiling_default(true);
   }
   return build_options;
 }

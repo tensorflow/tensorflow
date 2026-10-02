@@ -420,8 +420,13 @@ ConfigAssignerPass::GetEnabledBackends(
         autotuner::Backend::BLOCK_LEVEL_EMITTER);
   }
 
-  if (debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      debug_options.xla_gpu_deterministic_ops()) {
+  // Triton GEMMs never use split-K, so they are deterministic at runtime. They
+  // are only disabled under determinism because, without autotuning, the first
+  // (smallest) tile config would be selected. When the static cost model picks
+  // configs, selection is deterministic and fast, so keep Triton enabled.
+  if ((debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+       debug_options.xla_gpu_deterministic_ops()) &&
+      !debug_options.xla_gpu_experimental_cost_model_gemm_tiling_default()) {
     disabled_autotune_backends.push_back(autotuner::Backend::TRITON);
   }
 
