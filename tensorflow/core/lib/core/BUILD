@@ -42,6 +42,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -135,8 +136,11 @@ tf_cc_test(
         ":errors",
         ":status",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -164,6 +168,7 @@ tf_cc_test(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/platform:test_main",
