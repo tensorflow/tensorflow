@@ -81,9 +81,7 @@ def auto_strategy() -> distribute_lib.StrategyBase:
       cluster = tf_config.get("cluster", {})
       if isinstance(cluster, dict):
         task = tf_config.get("task") or {}
-        if isinstance(task, dict) and task.get("type") == "evaluator":
-          pass  # Do not use multi-worker strategy for evaluator
-        elif isinstance(task, dict) and task.get("type") in ("worker", "chief"):
+        if isinstance(task, dict) and task.get("type") in ("worker", "chief"):
           workers = cluster.get("worker") or []
           chiefs = cluster.get("chief") or []
           if (
