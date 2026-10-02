@@ -369,18 +369,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         }
 
         // Actually move on to next file.
-        TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            TranslateFileName(dataset()->filenames_[current_file_index_]),
-            &file_));
-        const io::ZlibCompressionOptions zlib_options =
-            dataset()->compression_type_ == kZLIB
-                ? io::ZlibCompressionOptions::DEFAULT()
-                : io::ZlibCompressionOptions::GZIP();
-        file_stream_ =
-            std::make_unique<io::RandomAccessInputStream>(file_.get());
-        buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
-            file_stream_.get(), dataset()->buffer_size_,
-            dataset()->buffer_size_, zlib_options);
+        TF_RETURN_IF_ERROR(CreateInputStream(ctx));
         TF_RETURN_IF_ERROR(
             buffered_input_stream_->SkipNBytes(dataset()->header_bytes_));
         lookahead_cache_.clear();
@@ -426,18 +415,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       buffered_input_stream_.reset();
       file_.reset();
       if (current_pos >= 0) {  // There was an active buffered_input_stream_.
-        TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
-            TranslateFileName(dataset()->filenames_[current_file_index_]),
-            &file_));
-        const io::ZlibCompressionOptions zlib_options =
-            dataset()->compression_type_ == kZLIB
-                ? io::ZlibCompressionOptions::DEFAULT()
-                : io::ZlibCompressionOptions::GZIP();
-        file_stream_ =
-            std::make_unique<io::RandomAccessInputStream>(file_.get());
-        buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
-            file_stream_.get(), dataset()->buffer_size_, dataset()->buffer_size_,
-            zlib_options);
+        TF_RETURN_IF_ERROR(CreateInputStream(ctx));
         lookahead_cache_.clear();
         TF_RETURN_IF_ERROR(buffered_input_stream_->SkipNBytes(
             current_pos - dataset()->footer_bytes_));
@@ -449,6 +427,27 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
+    absl::Status CreateInputStream(IteratorContext* ctx)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      const std::string filename =
+          TranslateFileName(dataset()->filenames_[current_file_index_]);
+      uint64_t file_size;
+      TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(filename, &file_size));
+      TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(filename, &file_));
+      // Bound both zlib buffers even for very large compressed files.
+      constexpr int64_t kMaxZlibBufferSize = int64_t{512} << 20;
+      const size_t buffer_size = EffectiveBufferSize(
+          std::min(dataset()->buffer_size_, kMaxZlibBufferSize), file_size);
+      const io::ZlibCompressionOptions zlib_options =
+          dataset()->compression_type_ == kZLIB
+              ? io::ZlibCompressionOptions::DEFAULT()
+              : io::ZlibCompressionOptions::GZIP();
+      file_stream_ = std::make_unique<io::RandomAccessInputStream>(file_.get());
+      buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
+          file_stream_.get(), buffer_size, buffer_size, zlib_options);
+      return absl::OkStatus();
+    }
+
     mutex mu_;
     size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
     std::unique_ptr<RandomAccessFile> file_

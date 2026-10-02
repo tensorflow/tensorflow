@@ -45,10 +45,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kTarguments = "Targuments";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
-  // Match InterleaveDataset's limit so a legacy parallel interleave cannot
-  // allocate an unbounded number of worker and buffering slots. OS thread
-  // limits may still be reached below this ceiling.
-  static constexpr int64_t kMaxCycleLength = 1'048'576;
+  // Legacy parallel interleave creates one OS thread per worker slot.
+  static constexpr int64_t kMaxCycleLength = 1000;
+  static constexpr int64_t kMaxBlockLength = 1'048'576;
 
   explicit ParallelInterleaveDatasetOp(OpKernelConstruction* ctx);
 

@@ -400,7 +400,7 @@ ParallelInterleaveDatasetParams InvalidPrefetchInputElementsParams(
 
 ParallelInterleaveDatasetParams ExcessiveBlockLengthParams() {
   return InvalidBlockLengthParams(
-      ParallelInterleaveDatasetOp::kMaxCycleLength + 1);
+      ParallelInterleaveDatasetOp::kMaxBlockLength + 1);
 }
 
 ParallelInterleaveDatasetParams ExcessivePrefetchInputElementsParams(

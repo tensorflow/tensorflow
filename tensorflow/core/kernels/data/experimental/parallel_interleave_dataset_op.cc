@@ -1264,9 +1264,9 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(ctx, block_length > 0,
               absl::InvalidArgumentError("`block_length` must be > 0"));
   OP_REQUIRES(
-      ctx, block_length <= kMaxCycleLength,
+      ctx, block_length <= kMaxBlockLength,
       absl::InvalidArgumentError(absl::StrCat(
-          "`block_length` must be <= ", kMaxCycleLength)));
+          "`block_length` must be <= ", kMaxBlockLength)));
 
   if (op_version_ == 1) {
     bool sloppy = false;
