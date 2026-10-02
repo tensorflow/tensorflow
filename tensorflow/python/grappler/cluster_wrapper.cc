@@ -101,6 +101,7 @@ PYBIND11_MODULE(
           std::unique_ptr<tensorflow::grappler::Cluster> cluster;
           absl::Status provision_status;
           {
+            py::gil_scoped_release release;
             tensorflow::mutex_lock lifecycle_lock(GetClusterLifecycleMutex());
             int num_cpu_cores =
                 tensorflow::grappler::GetNumAvailableLogicalCPUCores();
@@ -137,7 +138,12 @@ PYBIND11_MODULE(
           }
           std::unique_ptr<tensorflow::grappler::Cluster> cluster =
               std::make_unique<tensorflow::grappler::VirtualCluster>(devices);
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(cluster->Provision());
+          absl::Status provision_status;
+          {
+            py::gil_scoped_release release;
+            provision_status = cluster->Provision();
+          }
+          tsl::MaybeRaiseRegisteredFromStatusWithGIL(provision_status);
           return cluster.release();
         });
 
@@ -145,7 +151,9 @@ PYBIND11_MODULE(
     if (cluster == nullptr) {
       return;
     }
-    if (cluster->type() == "single_machine") {
+    const bool is_single_machine = cluster->type() == "single_machine";
+    py::gil_scoped_release release;
+    if (is_single_machine) {
       tensorflow::mutex_lock lifecycle_lock(GetClusterLifecycleMutex());
       (void)cluster->Shutdown();
     } else {
@@ -160,16 +168,27 @@ PYBIND11_MODULE(
                 absl::InvalidArgumentError("Cluster cannot be None."));
           }
 
-          std::vector<py::bytes> named_devices;
+          std::vector<std::pair<std::string, tensorflow::DeviceProperties>>
+              devices;
           {
-            const auto& devices = cluster->GetDevices();
-
-            for (const auto& dev : devices) {
-              tensorflow::NamedDevice d;
-              d.set_name(dev.first);
-              *d.mutable_properties() = dev.second;
-              named_devices.push_back(d.SerializeAsString());
+            const auto& cluster_devices = cluster->GetDevices();
+            devices.reserve(cluster_devices.size());
+            for (const auto& dev : cluster_devices) {
+              devices.emplace_back(dev.first, dev.second);
             }
+          }
+          std::sort(devices.begin(), devices.end(),
+                    [](const auto& lhs, const auto& rhs) {
+                      return lhs.first < rhs.first;
+                    });
+
+          std::vector<py::bytes> named_devices;
+          named_devices.reserve(devices.size());
+          for (const auto& dev : devices) {
+            tensorflow::NamedDevice d;
+            d.set_name(dev.first);
+            *d.mutable_properties() = dev.second;
+            named_devices.push_back(d.SerializeAsString());
           }
           return named_devices;
         });
@@ -321,8 +340,13 @@ PYBIND11_MODULE(
           tensorflow::StepStats step_stats;
           if (generate_timeline) {
             tensorflow::RunMetadata metadata;
-            tsl::MaybeRaiseRegisteredFromStatusWithGIL(
-                cluster->Run(item->graph, item->feed, item->fetch, &metadata));
+            absl::Status run_status;
+            {
+              py::gil_scoped_release release;
+              run_status =
+                  cluster->Run(item->graph, item->feed, item->fetch, &metadata);
+            }
+            tsl::MaybeRaiseRegisteredFromStatusWithGIL(run_status);
             step_stats = metadata.step_stats();
           }
 
@@ -355,12 +379,16 @@ PYBIND11_MODULE(
 
         tensorflow::grappler::GraphMemory memory(*item);
 
-        if (cluster->DetailedStatsEnabled()) {
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(memory.InferDynamically(cluster));
-        } else {
-          tsl::MaybeRaiseRegisteredFromStatusWithGIL(
-              memory.InferStatically(cluster->GetDevices()));
+        absl::Status inference_status;
+        {
+          py::gil_scoped_release release;
+          if (cluster->DetailedStatsEnabled()) {
+            inference_status = memory.InferDynamically(cluster);
+          } else {
+            inference_status = memory.InferStatically(cluster->GetDevices());
+          }
         }
+        tsl::MaybeRaiseRegisteredFromStatusWithGIL(inference_status);
 
         std::unordered_map<std::string,
                            std::tuple<int64_t, std::vector<MemoryUsage>>>

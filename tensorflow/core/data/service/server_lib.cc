@@ -92,17 +92,23 @@ absl::Status GrpcDataServerBase::Start() {
 }
 
 void GrpcDataServerBase::Stop() {
-  mutex_lock lock(lifecycle_mu_);
-  if (stopped_) {
-    return;
+  ::grpc::Server* server = nullptr;
+  int port = 0;
+  {
+    mutex_lock lock(lifecycle_mu_);
+    if (stopped_) {
+      return;
+    }
+    stopped_ = true;
+    server = server_.get();
+    port = bound_port_;
   }
-  if (server_) {
+  if (server) {
     StopServiceInternal();
-    server_->Shutdown();
+    server->Shutdown();
     LOG(INFO) << "Shut down " << server_type_ << " server running at port "
-              << bound_port_;
+              << port;
   }
-  stopped_ = true;
 }
 
 void GrpcDataServerBase::Join() {
