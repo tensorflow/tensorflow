@@ -16,13 +16,13 @@
 
 import numpy as np
 
+from tensorflow import raw_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
-from tensorflow.python.ops import gen_candidate_sampling_ops as raw_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -188,8 +188,8 @@ class RangeSamplerOpsTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testLargeUniformRange(self):
     range_max = 2**32 + 1
-    for sampler in (raw_ops.UniformCandidateSampler,
-                    raw_ops.LogUniformCandidateSampler):
+    for sampler in (candidate_sampling_ops.uniform_candidate_sampler,
+                    candidate_sampling_ops.log_uniform_candidate_sampler):
       for unique in (False, True):
         with self.subTest(sampler=sampler.__name__, unique=unique):
           sampled, true_count, sampled_count = self.evaluate(sampler(

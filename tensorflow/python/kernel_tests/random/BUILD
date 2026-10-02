@@ -33,6 +33,7 @@ tf_py_strict_test(
     size = "small",
     srcs = ["candidate_sampler_ops_test.py"],
     deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -40,7 +41,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:candidate_sampling_ops",
-        "//tensorflow/python/ops:candidate_sampling_ops_gen",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
