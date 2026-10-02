@@ -34,6 +34,7 @@ from tensorflow.python.tpu import tpu_strategy_util
 
 def setUpModule():
   config.set_visible_devices([], "TPU")
+  config.set_visible_devices([], "GPU")
 
 
 class AutoStrategyTest(test.TestCase):
@@ -186,15 +187,8 @@ class AutoStrategyTest(test.TestCase):
     self.assertIs(strategy, mock_tpu_strategy_cls.return_value)
 
   @mock.patch.object(config, "get_visible_devices", return_value=[])
-  @mock.patch.object(
-      config,
-      "list_physical_devices",
-      side_effect=lambda device_type=None: (
-          ["GPU:0", "GPU:1"] if device_type == "GPU" else []
-      ),
-  )
   def testMaskedVisibleGPUsFallbackToCPU(
-      self, mock_list_physical_devices, mock_get_visible_devices
+      self, mock_get_visible_devices
   ):
     strategy = auto_strategy.auto_strategy()
     self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
