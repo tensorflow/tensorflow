@@ -538,9 +538,13 @@ class ArrayCreationTest(test.TestCase):
         [1, 2],
         np.array([1, 2]),
         constant_op.constant([1, 2]),
+        1.5,
+        constant_op.constant(1.5),
+        True,
+        constant_op.constant(True),
     ]
     for k in invalid_ks:
-      with self.assertRaises(ValueError):
+      with self.assertRaisesRegex(ValueError, "k must be an integer scalar"):
         np_array_ops.diag(v, k=k)
 
   def testDiagFlatInvalidK(self):
@@ -549,10 +553,19 @@ class ArrayCreationTest(test.TestCase):
         [1, 2],
         np.array([1, 2]),
         constant_op.constant([1, 2]),
+        1.5,
+        constant_op.constant(1.5),
+        True,
+        constant_op.constant(True),
     ]
     for k in invalid_ks:
-      with self.assertRaises(ValueError):
+      with self.assertRaisesRegex(ValueError, "k must be an integer scalar"):
         np_array_ops.diagflat(v, k=k)
+
+  def testDiagEmptyArrayWithNonZeroK(self):
+    res = np_array_ops.diag([], k=3)
+    self.assertEqual(res.shape, (3, 3))
+    self.assertAllEqual(res, np.zeros((3, 3)))
 
   def match_shape(self, actual, expected, msg=None):
     if msg:
