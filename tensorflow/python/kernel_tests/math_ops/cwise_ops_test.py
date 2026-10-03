@@ -14,6 +14,8 @@
 # ==============================================================================
 """Functional tests for coefficient-wise operations."""
 
+import os
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -1054,6 +1056,123 @@ class RoundingTest(test.TestCase):
     x = [-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]
     y = [-2., -2., -0., 0., 2., 2., 2.]
     self._compare_values(x, y=y)
+
+  @test_util.disable_xla("Tests the CPU kernel FTZ/DAZ workaround.")
+  @test_util.run_in_graph_and_eager_modes
+  def testNegativeFloat32SubnormalsFloorToMinusOne(self):
+    # Scalar subnormal arrays: MSVC flushes negative subnormals to -0.0f
+    # through an XMM register before bit_cast can read the original bits, so
+    # the scalar path cannot be verified on Windows.  The vectorized (packet)
+    # path does not have this limitation and runs on all platforms.
+    neg_subnormals = np.array(
+        [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45], dtype=np.float32)
+    neg_subnormals_exp = np.array([-1.0, -1.0, -1.0, -1.0], dtype=np.float32)
+
+    # Elements that exercise packet logic and are safe on all platforms:
+    # signed zeros, positive subnormals, normals, inf, and NaN.  NaN inputs
+    # confirm that the bit-mask correction never fires on NaN bit patterns.
+    # IEEE-754 does not guarantee sign-bit preservation for quiet NaNs under
+    # arithmetic operations such as floor, so the sign-bit check below
+    # intentionally excludes NaN elements.
+    #
+    # AVX-512 uses 16-wide packets.  Eigen's vectorized loop may consume up
+    # to 15 elements in the unaligned scalar prefix and up to 15 in the
+    # scalar tail.  safe_base must have >= 15 elements so that base[:15]
+    # (used as the scalar tail/prefix) never contains a negative subnormal.
+    safe_base = np.array(
+        [-0.0, 0.0, 1e-40, 1.40129846e-45,   # signed zeros, pos subnormals
+         -0.5, -1.0, 2.5, -np.inf, np.inf,
+         np.nan, -np.nan,                     # NaN (sign bit set or clear)
+         -2.0, 3.0, -3.5, 100.0, -100.0],    # extra normals (padding to 16)
+        dtype=np.float32)
+    safe_expected = np.array(
+        [-0.0, 0.0, 0.0, 0.0,
+         -1.0, -1.0, 2.0, -np.inf, np.inf,
+         np.nan, np.nan,
+         -2.0, 3.0, -4.0, 100.0, -100.0],
+        dtype=np.float32)
+
+    with test_util.force_cpu():
+      # --- Boundary checks ---
+      # Empty tensor (N=0): floor must return empty tensor, same dtype/shape.
+      empty_out = self.evaluate(
+          math_ops.floor(np.array([], dtype=np.float32)))
+      self.assertAllEqual(np.array([], dtype=np.float32), empty_out)
+
+      # Rank-0 scalar tensor (N=1): a negative subnormal must floor to -1.0.
+      # A 1-element tensor uses Eigen's scalar tail loop, which goes through
+      # XMM registers on MSVC; skip on Windows for the same reason as the
+      # short-array test below.
+      if os.name != 'nt':
+        scalar_out = self.evaluate(
+            math_ops.floor(
+                constant_op.constant(-1.40129846e-45,
+                                     dtype=dtypes_lib.float32)))
+        self.assertEqual(-1.0, scalar_out)
+
+      # --- Scalar / short-array test (skipped on Windows) ---
+      # MSVC flushes negative subnormals to -0.0f through an XMM register
+      # before bit_cast can read the original bits; skip on Windows only.
+      if os.name != 'nt':
+        out = self.evaluate(math_ops.floor(neg_subnormals))
+        self.assertAllEqual(neg_subnormals_exp, out)
+
+      # --- Vectorized (packet) test: runs on all platforms ---
+      # Build an array long enough to fill full SIMD packets (AVX=8-wide,
+      # AVX-512=16-wide) plus a scalar tail of 15 safe elements.  safe_base
+      # is placed first so that base[:15] contains only safe values — this
+      # ensures AVX-512's worst-case 15-element scalar tail/prefix never
+      # includes a negative subnormal, while the neg_subnormals at the end
+      # of base are always processed by the vectorized path.
+      base = np.concatenate([safe_base, neg_subnormals])
+      base_exp = np.concatenate([safe_expected, neg_subnormals_exp])
+
+      x = np.concatenate([np.tile(base, 8), base[:15]])
+      expected = np.concatenate([np.tile(base_exp, 8), base_exp[:15]])
+
+      for inp, exp in (
+          (x, expected),
+          (np.tile(base, (8, 1)), np.tile(base_exp, (8, 1))),
+      ):
+        out = self.evaluate(math_ops.floor(inp))
+        self.assertAllEqual(exp, out)
+        # assertAllEqual treats -0.0 == +0.0; check sign bits for non-NaN
+        # elements only.  IEEE-754 does not specify sign-bit semantics for
+        # quiet NaNs under arithmetic operations like floor, so SIMD
+        # implementations may not preserve the sign bit of negative NaNs.
+        non_nan_mask = ~np.isnan(exp)
+        self.assertAllEqual(
+            np.signbit(exp[non_nan_mask]), np.signbit(out[non_nan_mask]))
+
+  @test_util.disable_xla("Tests CPU floor for non-float32 dtypes.")
+  @test_util.run_in_graph_and_eager_modes
+  def testFloorAcrossNonFloat32Dtypes(self):
+    """Verify floor correctness for double, float16, and bfloat16 on CPU.
+
+    These types use Eigen's standard scalar_floor_op (no FTZ/DAZ correction).
+    Tests cover normal values, signed zeros, and IEEE-754 edge cases.
+    """
+    with test_util.force_cpu():
+      for dtype in (np.float64, np.float16,
+                    dtypes_lib.bfloat16.as_numpy_dtype):
+        with self.subTest(dtype=dtype):
+          # Normal values and IEEE-754 edge cases.
+          normal_vals = np.array(
+              [-1.5, -0.5, 0.0, 0.5, 1.5,
+               np.inf, -np.inf, np.nan],
+              dtype=dtype)
+          exp_vals = np.array(
+              [-2.0, -1.0, 0.0, 0.0, 1.0,
+               np.inf, -np.inf, np.nan],
+              dtype=dtype)
+          self.assertAllEqual(
+              exp_vals,
+              self.evaluate(math_ops.floor(normal_vals)))
+          # -0.0 must be preserved.
+          neg_zero = np.array([-0.0], dtype=dtype)
+          out_nz = self.evaluate(math_ops.floor(neg_zero))
+          self.assertAllEqual(
+              np.signbit(neg_zero), np.signbit(out_nz))
 
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64,

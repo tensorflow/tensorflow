@@ -18,7 +18,9 @@ limitations under the License.
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -971,6 +973,84 @@ struct functor_traits<igamma_op<Scalar>> {
   };
 };
 
+// TensorFlow runs CPU kernels with FTZ/DAZ enabled, so floor() of a negative
+// float32 subnormal is computed as floor(-0.0f) = -0.0f instead of -1.0f.
+// scalar_cpu_floor_float_op fixes this for float32 on CPU.
+//
+// Note: TensorFlow-only workaround; Eigen upstream does not assume FTZ/DAZ.
+// Upstreaming would unconditionally penalize non-FTZ environments.
+//
+// Scalar path: bit_cast reads raw bits via memcpy, bypassing FP registers.
+// Only evaluated when r == 0.0f (short-circuit); normal inputs pay no cost.
+// Negative NaNs are excluded because floor(NaN) is NaN != 0.0f.
+// Known limitation: on Windows MSVC the scalar argument can be flushed to
+// -0.0f through an XMM register before bit_cast reads its bits, so the
+// scalar path does not fix the value on Windows.
+//
+// Packet path: the correction runs in the integer domain via zero-cost
+// bit-reinterpretation (preinterpret), immune to FTZ/DAZ flushing.
+// PacketAccess requires HasRound (pfloor) and HasCmp (pcmp_eq/pandnot).
+//
+// packetOp helper for float32.  IntMin must be INT32_MIN (0x80000000).
+template <typename Packet, typename IntMin>
+EIGEN_STRONG_INLINE Packet
+cpu_floor_packet_correction(const Packet& x, const Packet& r,
+                            IntMin signed_int_min) {
+  using IPacket = typename unpacket_traits<Packet>::integer_packet;
+  const IPacket r_bits = preinterpret<IPacket>(r);
+  const IPacket x_bits = preinterpret<IPacket>(x);
+  // sign_bit_mask == -0.0 bit pattern.
+  const IPacket sign_bit_mask = pset1<IPacket>(signed_int_min);
+  // r == -0.0 AND x was not a genuine -0.0 (i.e. it was a flushed subnormal).
+  const IPacket fix = pandnot(pcmp_eq(r_bits, sign_bit_mask),
+                              pcmp_eq(x_bits, sign_bit_mask));
+  return pselect(
+      preinterpret<Packet>(fix),
+      pset1<Packet>(
+          static_cast<typename unpacket_traits<Packet>::type>(-1.0)),
+      r);
+}
+
+// Functor for tf.math.floor on float32 on CPU.
+// Note: This is a TensorFlow-only workaround because TF globally enables
+// FTZ/DAZ on CPU, whereas Eigen upstream does not assume FTZ/DAZ. Upstreaming
+// this would unconditionally penalize the fast path for non-FTZ environments.
+struct scalar_cpu_floor_float_op {
+  EIGEN_STRONG_INLINE float operator()(const float& x) const {
+    const float r = numext::floor(x);
+    // bit_cast reads raw bits via memcpy, never through an FP register.
+    // Only evaluated when r == 0.0f; short-circuits for normal inputs.
+    // Negative NaNs are excluded because floor(NaN) is NaN != 0.0f.
+    // Known limitation: on Windows MSVC the scalar argument x can be
+    // flushed to -0.0f through an XMM register before bit_cast reads its
+    // bits, so this scalar path does not fix the value on Windows.
+    return (r == 0.0f && 0x80000000u < numext::bit_cast<uint32_t>(x))
+               ? -1.0f
+               : r;
+  }
+
+  template <typename Packet>
+  EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    const Packet r = pfloor(x);
+    return cpu_floor_packet_correction(x, r,
+                                       std::numeric_limits<int32_t>::min());
+  }
+};
+
+template <>
+struct functor_traits<scalar_cpu_floor_float_op> {
+  enum {
+    // Base pfloor cost plus four extra packet ops: two pcmp_eq (for r_bits
+    // and x_bits against the sign-bit mask), one pandnot, and one pselect.
+    Cost = functor_traits<scalar_floor_op<float>>::Cost +
+           4 * NumTraits<float>::AddCost,
+    // Use bitwise & (not logical &&): logical && triggers
+    // -Wconstant-logical-operand in Clang when operands are enum constants.
+    PacketAccess =
+        packet_traits<float>::HasRound & packet_traits<float>::HasCmp,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -1200,6 +1280,25 @@ struct isfinite : base<T, Eigen::internal::scalar_isfinite_op<T>, bool> {};
 
 template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
+
+// floor_cpu is the CPU-only variant of floor that applies the FTZ/DAZ
+// workaround for negative subnormals.  It is a separate type (not a
+// specialization of floor<T>) to avoid an ODR violation: GPU translation
+// units see only floor<T>, while CPU translation units use floor_cpu<T>.
+//
+// The primary template is declared unconditionally so that cwise_op_floor.cc
+// can always reference functor::floor_cpu regardless of compilation target.
+// Only the CPU-specific specializations are guarded by !defined(EIGEN_GPUCC).
+// GPU packet types (e.g. float4) have no integer_packet, so the corrected
+// functors must never be instantiated in GPU compilation units.
+template <typename T>
+struct floor_cpu : floor<T> {};
+
+#if !defined(EIGEN_GPUCC)
+template <>
+struct floor_cpu<float>
+    : base<float, Eigen::internal::scalar_cpu_floor_float_op> {};
+#endif  // !defined(EIGEN_GPUCC)
 
 template <typename T>
 struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};

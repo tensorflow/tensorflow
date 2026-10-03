@@ -17,7 +17,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER4(UnaryOp, CPU, "Floor", functor::floor, float, Eigen::half, bfloat16,
+// float32 uses the FTZ/DAZ-corrected functor (scalar + SIMD packetOp).
+// double, Eigen::half, and bfloat16 use Eigen's standard scalar_floor_op;
+// float16 subnormals are not flushed on CPU (they are normal float32 values),
+// and the SIMD penalty of a corrected double/half/bfloat16 path is not
+// justified for subnormal-only correctness.
+// GPU registration uses functor::floor directly; GPU kernels do not run
+// under CPU FTZ/DAZ settings.
+REGISTER(UnaryOp, CPU, "Floor", functor::floor_cpu, float);
+REGISTER3(UnaryOp, CPU, "Floor", functor::floor, Eigen::half, bfloat16,
           double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
