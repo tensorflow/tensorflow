@@ -670,26 +670,49 @@ class CropAndResizeOpTestBase(test.TestCase):
     image = np.ones((1, 4, 4, 1), dtype=np.float32)
     image_size = np.array([1, 4, 4, 1], dtype=np.int32)
 
-    # 0 elements, but invalid rank/shape.
-    boxes_bad = np.zeros((0, 5), dtype=np.float32)
-    box_ind_bad = np.zeros((0, 6), dtype=np.int32)
+    # 1. 0 elements, invalid boxes columns.
+    boxes_bad_cols = np.zeros((0, 5), dtype=np.float32)
+    box_ind_valid = np.zeros((0,), dtype=np.int32)
 
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, ValueError),
-        "boxes must have 4 columns|box_index must be 1-D",
+        "boxes must have 4 columns",
     ):
       self.evaluate(
           image_ops.crop_and_resize_grad_boxes(
-              grads, image, boxes_bad, box_ind_bad
+              grads, image, boxes_bad_cols, box_ind_valid
           )
       )
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, ValueError),
-        "boxes must have 4 columns|box_index must be 1-D",
+        "boxes must have 4 columns",
     ):
       self.evaluate(
           image_ops.crop_and_resize_grad_image(
-              grads, boxes_bad, box_ind_bad, image_size, T=dtypes.float32
+              grads, boxes_bad_cols, box_ind_valid, image_size, T=dtypes.float32
+          )
+      )
+
+    # 2. 0 elements, invalid box_index rank.
+    boxes_valid = np.zeros((0, 4), dtype=np.float32)
+    box_ind_bad_rank = np.zeros((0, 6), dtype=np.int32)
+
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "box_index must be 1-D",
+    ):
+      self.evaluate(
+          image_ops.crop_and_resize_grad_boxes(
+              grads, image, boxes_valid, box_ind_bad_rank
+          )
+      )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "box_index must be 1-D",
+    ):
+      self.evaluate(
+          image_ops.crop_and_resize_grad_image(
+              grads, boxes_valid, box_ind_bad_rank, image_size, T=dtypes.float32
           )
       )
 
