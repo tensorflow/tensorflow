@@ -131,41 +131,58 @@ class ArgMinOp
       : ArgOp<Device, T, Tout, functor::ArgMin<Device, T, Tout> >(context) {}
 };
 
+// NB: `ArgOp::Compute` above unconditionally reads the `dimension` input as
+// `int32_t` (`dimension.scalar<int32_t>()()`), regardless of what the op's
+// `Tidx` attr actually is. Every CPU registration below therefore now
+// explicitly constrains `Tidx` to `int32`, matching the GPU registrations
+// further down in this file (which already had this constraint). Without
+// it, TensorFlow's kernel-matching would treat these CPU kernels as also
+// matching `Tidx=int64` (since an unconstrained attr matches any legal
+// value), and the hardcoded `scalar<int32_t>()` read would then fail a
+// fatal `Tensor::scalar<T>()` dtype-mismatch CHECK -- crashing the process
+// -- instead of TensorFlow cleanly reporting "No OpKernel registered for
+// this op with these attr values" the way it already does on GPU.
 #define REGISTER_ARGMAX(type)                                         \
   REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
                               .Device(DEVICE_CPU)                     \
                               .TypeConstraint<type>("T")              \
                               .TypeConstraint<int64_t>("output_type") \
+                              .TypeConstraint<int32>("Tidx")          \
                               .HostMemory("dimension"),               \
                           ArgMaxOp<CPUDevice, type, int64>);          \
   REGISTER_KERNEL_BUILDER(Name("ArgMin")                              \
                               .Device(DEVICE_CPU)                     \
                               .TypeConstraint<type>("T")              \
                               .TypeConstraint<int64_t>("output_type") \
+                              .TypeConstraint<int32>("Tidx")          \
                               .HostMemory("dimension"),               \
                           ArgMinOp<CPUDevice, type, int64>);          \
   REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
                               .Device(DEVICE_CPU)                     \
                               .TypeConstraint<type>("T")              \
                               .TypeConstraint<int32>("output_type")   \
+                              .TypeConstraint<int32>("Tidx")          \
                               .HostMemory("dimension"),               \
                           ArgMaxOp<CPUDevice, type, int32>);          \
   REGISTER_KERNEL_BUILDER(Name("ArgMin")                              \
                               .Device(DEVICE_CPU)                     \
                               .TypeConstraint<type>("T")              \
                               .TypeConstraint<int32>("output_type")   \
+                              .TypeConstraint<int32>("Tidx")          \
                               .HostMemory("dimension"),               \
                           ArgMinOp<CPUDevice, type, int32>);          \
   REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
                               .Device(DEVICE_CPU)                     \
                               .TypeConstraint<type>("T")              \
                               .TypeConstraint<int16>("output_type")   \
+                              .TypeConstraint<int32>("Tidx")          \
                               .HostMemory("dimension"),               \
                           ArgMaxOp<CPUDevice, type, int16>);          \
   REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
                               .Device(DEVICE_CPU)                     \
                               .TypeConstraint<type>("T")              \
                               .TypeConstraint<uint16>("output_type")  \
+                              .TypeConstraint<int32>("Tidx")          \
                               .HostMemory("dimension"),               \
                           ArgMaxOp<CPUDevice, type, uint16>);
 
