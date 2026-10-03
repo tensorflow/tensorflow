@@ -275,12 +275,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, output->quantization.type != kTfLiteNoQuantization);
     auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
         output->quantization.params);
-    const double effective_scale_1 = input_params->scale->data[0] *
-                                     weights_feature_params->scale->data[0] /
-                                     state_params->scale->data[0];
-    const double effective_scale_2 = state_params->scale->data[0] *
-                                     weight_time_params->scale->data[0] /
-                                     output_params->scale->data[0];
+    const double effective_scale_1 =
+        static_cast<double>(input_params->scale->data[0]) *
+        static_cast<double>(weights_feature_params->scale->data[0]) /
+        static_cast<double>(state_params->scale->data[0]);
+    const double effective_scale_2 =
+        static_cast<double>(state_params->scale->data[0]) *
+        static_cast<double>(weight_time_params->scale->data[0]) /
+        static_cast<double>(output_params->scale->data[0]);
     QuantizeMultiplier(effective_scale_1, &op_data->effective_scale_1_a,
                        &op_data->effective_scale_1_b);
     QuantizeMultiplier(effective_scale_2, &op_data->effective_scale_2_a,
