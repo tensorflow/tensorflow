@@ -179,3 +179,23 @@ sh_binary(
     name = "run_clang_tidy",
     srcs = ["run_clang_tidy.sh"],
 )
+
+sh_binary(
+    name = "asan_wrapper",
+    srcs = ["asan_wrapper.sh"],
+    data = if_oss([
+        "@{}//:bin/llvm-symbolizer".format(_LLVM_REPO_NAME),  # buildifier: disable=platform-specific-binaries
+        "@{}//:distro_libs".format(_LLVM_REPO_NAME),  # buildifier: disable=platform-specific-binaries
+        "@{}//:rt_asan".format(_LLVM_REPO_NAME),  # buildifier: disable=platform-specific-binaries
+    ]),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "run_asan",
+    srcs = ["run_asan.sh"],
+)
