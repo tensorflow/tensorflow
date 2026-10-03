@@ -4908,14 +4908,6 @@ def binary_crossentropy(target, output, from_logits=False):
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
-  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Sigmoid') and not hasattr(output, '_keras_history'):
-    # When sigmoid activation function is used for output operation, we
-    # use logits from the sigmoid function directly to compute loss in order
-    # to prevent collapsing zero when training.
-    assert len(output.op.inputs) == 1
-    output = output.op.inputs[0]
-    return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
   output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
