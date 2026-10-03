@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -277,7 +277,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
     return false;
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       WhileUtil::MakeInstructionsLiveInResult live_in_instructions_result,
       WhileUtil::MakeInstructionsLiveIn(while_instr, replacement_instructions));
 
@@ -288,7 +288,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
     HloInstruction* instruction_to_replace_in_new_while =
         FindOrDie(live_in_instructions_result.while_body_instruction_map,
                   instructions_to_replace[i]);
-    RETURN_IF_ERROR(new_while_body->ReplaceInstruction(
+    ABSL_RETURN_IF_ERROR(new_while_body->ReplaceInstruction(
         instruction_to_replace_in_new_while,
         live_in_instructions_result.while_body_live_in_values[i]));
   }
@@ -341,7 +341,7 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::RunImpl(
       continue;
     }
 
-    ASSIGN_OR_RETURN(bool result, TryHoistingInvariantInstructionsFromWhileBody(
+    ABSL_ASSIGN_OR_RETURN(bool result, TryHoistingInvariantInstructionsFromWhileBody(
                                       while_instr));
     changed |= result;
   }

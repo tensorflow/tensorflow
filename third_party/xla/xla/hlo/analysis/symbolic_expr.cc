@@ -49,6 +49,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+uint64_t GetLargestKnownDivisor(SymbolicExpr expr);
+
 // Returns the absolute value of n as a uint64_t. This is safe for
 // n = std::numeric_limits<int64_t>::min().
 uint64_t SafeAbs(int64_t n) {
@@ -379,6 +381,35 @@ SymbolicExpr CanonicalizeFloorDiv(SymbolicExpr lhs, SymbolicExpr rhs) {
         TrySimplifyDivModByGCD(SymbolicExprType::kFloorDiv, lhs, divisor);
     if (gcd_simplified) {
       return gcd_simplified;
+    }
+
+    // `(X + c) / D`, for constant `c` can be rewritten as `X / D + c / D` when
+    // adding the maximum possible remainder of `X / D` to `c` doesn't push the
+    // result over the next multiple of D, i.e. `|X % D| + |c % D| < |D|`.
+    // The absolute value of remainder of |X % D| is bounded by |D -
+    // GCD(X, D)|.
+    // Therefore we check that |c % D| < GCD(X, D).
+    if (lhs.GetType() == SymbolicExprType::kAdd &&
+        (lhs.GetRHS().GetType() == SymbolicExprType::kConstant ||
+         lhs.GetLHS().GetType() == SymbolicExprType::kConstant)) {
+      int64_t const_val = 0;
+      SymbolicExpr other = lhs;
+      if (lhs.GetRHS().GetType() == SymbolicExprType::kConstant) {
+        const_val = lhs.GetRHS().GetValue();
+        other = lhs.GetLHS();
+      } else {
+        const_val = lhs.GetLHS().GetValue();
+        other = lhs.GetRHS();
+      }
+      if (uint64_t const_d = GetLargestKnownDivisor(other); const_d > 1) {
+        int64_t g = std::gcd(const_d, std::abs(divisor));
+        int64_t c_div = llvm::divideFloorSigned(const_val, divisor);
+        int64_t rem = const_val - c_div * divisor;
+        if (std::abs(rem) < g) {
+          return (other.floorDiv(divisor) + CreateSymbolicConstant(c_div, ctx))
+              .Canonicalize();
+        }
+      }
     }
 
     // Distributivity for (A + C1) floordiv C2 where C1 % C2 == 0

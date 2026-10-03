@@ -3,6 +3,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.errors_impl.raise_exception_on_not_ok_status\'>"
   is_instance: "<class \'object\'>"
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'type_arg\', \'value_arg\', \'traceback_arg\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
   }
 }

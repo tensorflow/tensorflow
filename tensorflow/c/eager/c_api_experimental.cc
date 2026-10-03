@@ -832,8 +832,8 @@ void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,
   status->status =
       tensorflow::DeviceFactory::AddCpuDevices(sess_options, prefix, &devices);
 
-  // Remove the device that has the host device name since host device is alreay
-  // in an initialized context.
+  // Remove the device that has the host device name since host device is
+  // already in an initialized context.
   for (auto d = devices.begin(); d != devices.end();) {
     if (absl::StrContains(d->get()->name(), "CPU:0")) {
       d = devices.erase(d);

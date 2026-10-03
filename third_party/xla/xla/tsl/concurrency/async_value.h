@@ -24,11 +24,13 @@ limitations under the License.
 #include <memory>
 #include <new>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 
 #include "absl/base/optimization.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/concurrent_vector.h"
 #include "xla/tsl/concurrency/executor.h"
@@ -36,12 +38,15 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/context.h"
+#include "tsl/platform/platform.h"
 
 namespace tsl {
 namespace internal {
 
 template <typename T>
 class ConcreteAsyncValue;
+
+class SharedPtrAsyncValue;
 
 template <typename T>
 constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
@@ -178,11 +183,11 @@ class AsyncValue {
   static bool AsyncValueAllocationTrackingEnabled() {
     // For now we track the number of alive AsyncValue instances only in debug
     // builds.
-#ifdef NDEBUG
-    return false;
-#else
-    return true;
-#endif
+    if constexpr (tsl::kIsDebugBuild) {
+      return true;
+    } else {
+      return false;
+    }
   }
 
   // What sort of AsyncValue this is.
@@ -190,8 +195,9 @@ class AsyncValue {
   // We make this an unsigned type so that loading the enum from the bitfield
   // does not sign extend.
   enum class Kind : uint8_t {
-    kConcrete = 0,  // ConcreteAsyncValue
-    kIndirect = 1,  // IndirectAsyncValue
+    kConcrete = 0,   // ConcreteAsyncValue
+    kIndirect = 1,   // IndirectAsyncValue
+    kSharedPtr = 2,  // SharedPtrAsyncValue
   };
 
   // Return the kind of this AsyncValue.
@@ -261,6 +267,7 @@ class AsyncValue {
 
  protected:
   friend class IndirectAsyncValue;
+  friend class internal::SharedPtrAsyncValue;
 
   struct WaiterListNode;
 
@@ -347,7 +354,13 @@ class AsyncValue {
   template <typename T>
   static uint16_t CreateTypeInfoAndReturnTypeId() {
     return CreateTypeInfoAndReturnTypeIdImpl(
-        MakeTypeInfo<internal::ConcreteAsyncValue<T>>());
+        TypeName<T>(), MakeTypeInfo<internal::ConcreteAsyncValue<T>>());
+  }
+
+  // Process-stable key for `T`, used to deduplicate type ids across DSOs.
+  template <typename T>
+  static absl::string_view TypeName() {
+    return typeid(T).name();
   }
 
   std::atomic<uint32_t> refcount_{1};
@@ -438,8 +451,13 @@ class AsyncValue {
     GetErrorFn get_error;
     SetErrorFn set_error;
 #ifndef NDEBUG
-    // This function is only used in debug builds, so it can be omitted from the
-    // type info in optimized builds for better data locality of other members.
+    // This function is only used in debug builds, so it is omitted from
+    // TypeInfo in optimized builds for better data locality of other members.
+    // We keep `#ifndef NDEBUG` here (and at the call site in `get<T>()`) rather
+    // than `if constexpr (tsl::kIsDebugBuild)` because omitting a struct field
+    // in C++17 without preprocessor conditionals requires non-trivial layout
+    // workarounds, and `has_data` cannot be called directly on
+    // `ConcreteAsyncValue<T>` when `T` is an upcast abstract base class.
     HasDataFn has_data;
 #endif
   };
@@ -465,7 +483,8 @@ class AsyncValue {
     };
   }
 
-  static uint16_t CreateTypeInfoAndReturnTypeIdImpl(const TypeInfo& type_info);
+  static uint16_t CreateTypeInfoAndReturnTypeIdImpl(absl::string_view type_name,
+                                                    const TypeInfo& type_info);
 
   template <typename T>
   T& GetConcreteValue() const;
@@ -769,6 +788,32 @@ class ConcreteAsyncValue : public AsyncValue {
   }
 };
 
+// Subclass for storing payload owned by a std::shared_ptr.
+class SharedPtrAsyncValue : public AsyncValue {
+ public:
+  template <typename T>
+  explicit SharedPtrAsyncValue(std::shared_ptr<T> value)
+      : AsyncValue(Kind::kSharedPtr, State::kConcrete,
+                   /*is_refcounted=*/true, TypeTag<T>()),
+        ptr_(value.get()),
+        owner_(std::move(value)) {
+    DCHECK(ptr_ != nullptr);
+  }
+
+  ~SharedPtrAsyncValue() = default;
+
+  void* ptr() const { return ptr_; }
+  bool IsUnique() const { return owner_.use_count() == 1; }
+
+  static bool classof(const AsyncValue* v) {
+    return v->kind() == AsyncValue::Kind::kSharedPtr;
+  }
+
+ private:
+  void* ptr_;
+  std::shared_ptr<const void> owner_;
+};
+
 }  // namespace internal
 
 struct DummyValueForErrorAsyncValue {};
@@ -891,12 +936,12 @@ inline AsyncValue* AsyncValue::AddRef(uint32_t count) {
   // Always enable reference counting in debug builds to verify that the use of
   // async values is "ref count correct". In optimized builds the async value
   // owner is responsible for destructing the non-reference-counted async value.
-#if defined(NDEBUG)
-  // We try hard to make the fast path for non-refcounted async values to be
-  // as fast as possible. It's ok if we mispredict this branch, because atomic
-  // operations below are order of magnitude more expensive.
-  if (ABSL_PREDICT_TRUE(!is_refcounted_)) return this;
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    // We try hard to make the fast path for non-refcounted async values to be
+    // as fast as possible. It's ok if we mispredict this branch, because atomic
+    // operations below are order of magnitude more expensive.
+    if (ABSL_PREDICT_TRUE(!is_refcounted_)) return this;
+  }
 
   if (ABSL_PREDICT_FALSE(count == 0)) {
     return this;
@@ -916,12 +961,12 @@ inline void AsyncValue::DropRef(uint32_t count) {
   // Always enable reference counting in debug builds to verify that the use of
   // async values is "ref count correct". In optimized builds the async value
   // owner is responsible for destructing the non-reference-counted async value.
-#if defined(NDEBUG)
-  // We try hard to make the fast path for non-refcounted async values to be
-  // as fast as possible. It's ok if we mispredict this branch, because atomic
-  // operations below are order of magnitude more expensive.
-  if (ABSL_PREDICT_TRUE(!is_refcounted_)) return;
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    // We try hard to make the fast path for non-refcounted async values to be
+    // as fast as possible. It's ok if we mispredict this branch, because atomic
+    // operations below are order of magnitude more expensive.
+    if (ABSL_PREDICT_TRUE(!is_refcounted_)) return;
+  }
 
   if (ABSL_PREDICT_FALSE(count == 0)) {
     return;
@@ -965,6 +1010,8 @@ T& AsyncValue::get() const {
   switch (kind()) {
     case Kind::kConcrete:
 #ifndef NDEBUG
+      // Uses `#ifndef NDEBUG` because `TypeInfo::has_data` is only present in
+      // debug builds (see comment on `TypeInfo::has_data`).
       if (!GetTypeInfo().has_data(this)) {
         LOG(FATAL) << "Cannot call get() when ConcreteAsyncValue"
                    << " isn't constructed; state: " << s.DebugString() << ","
@@ -973,18 +1020,29 @@ T& AsyncValue::get() const {
       }
 #endif  // NDEBUG
       return GetConcreteValue<T>();
-    case Kind::kIndirect:
-#ifndef NDEBUG
-      if (s != State::kConcrete) {
-        LOG(FATAL) << "Cannot call get() when IndirectAsyncValue"
-                   << " isn't concrete; state: " << s.DebugString() << ","
-                   << " error message: "
-                   << (IsError() ? GetError().message() : "None");
+    case Kind::kIndirect: {
+      if constexpr (tsl::kIsDebugBuild) {
+        if (s != State::kConcrete) {
+          LOG(FATAL) << "Cannot call get() when IndirectAsyncValue"
+                     << " isn't concrete; state: " << s.DebugString() << ","
+                     << " error message: "
+                     << (IsError() ? GetError().message() : "None");
+        }
       }
-#endif  // NDEBUG
       auto* iv_value = static_cast<const IndirectAsyncValue*>(this)->value_;
       DCHECK(iv_value) << "Indirect value not resolved";
       return iv_value->get<T>();
+    }
+    case Kind::kSharedPtr:
+      if constexpr (tsl::kIsDebugBuild) {
+        if (s != State::kConcrete) {
+          LOG(FATAL) << "Cannot call get() when SharedPtrAsyncValue"
+                     << " isn't concrete; state: " << s.DebugString();
+        }
+      }
+      DCHECK(IsTypeIdCompatible<T>()) << "Incorrect accessor";
+      return *reinterpret_cast<T*>(
+          static_cast<const internal::SharedPtrAsyncValue*>(this)->ptr());
   }
 }
 
@@ -1021,6 +1079,8 @@ inline const absl::Status* AsyncValue::GetErrorIfPresent() const {
       DCHECK(iv_value->kind() != Kind::kIndirect);
       return iv_value->GetErrorIfPresent();
     }
+    case Kind::kSharedPtr:
+      return nullptr;
   }
 }
 
@@ -1144,6 +1204,31 @@ inline void AsyncValue::Destroy() {
     return;
   }
 
+  if (ABSL_PREDICT_FALSE(kind() == Kind::kSharedPtr)) {
+    static_cast<internal::SharedPtrAsyncValue*>(this)->~SharedPtrAsyncValue();
+    if (was_ref_counted) {
+#if defined(__cpp_sized_deallocation)
+      if constexpr (alignof(internal::SharedPtrAsyncValue) <=
+                    __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
+        ::operator delete(this, sizeof(internal::SharedPtrAsyncValue));
+      } else {
+        ::operator delete(
+            this, sizeof(internal::SharedPtrAsyncValue),
+            std::align_val_t{alignof(internal::SharedPtrAsyncValue)});
+      }
+#else   // defined(__cpp_sized_deallocation)
+      if constexpr (alignof(internal::SharedPtrAsyncValue) <=
+                    __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
+        ::operator delete(this);
+      } else {
+        ::operator delete(
+            this, std::align_val_t{alignof(internal::SharedPtrAsyncValue)});
+      }
+#endif  // defined(__cpp_sized_deallocation)
+    }
+    return;
+  }
+
   auto [size, alignment] = GetTypeInfo().destructor(this);
   if (was_ref_counted) {
 #if defined(__cpp_sized_deallocation)
@@ -1155,13 +1240,18 @@ inline void AsyncValue::Destroy() {
 }
 
 inline bool AsyncValue::IsUnique() const {
-  if (kind() != Kind::kIndirect) {
-    return NumRef() == 1;
+  switch (kind()) {
+    case Kind::kConcrete:
+      return NumRef() == 1;
+    case Kind::kIndirect:
+      // If it is an IndirectAsyncValue, we also need to check the refcount of
+      // the underlying value.
+      return static_cast<const IndirectAsyncValue*>(this)->IsUnique();
+    case Kind::kSharedPtr:
+      return NumRef() == 1 &&
+             static_cast<const internal::SharedPtrAsyncValue*>(this)
+                 ->IsUnique();
   }
-
-  // If it is an IndirectAsyncValue, we also need to check the refcount of the
-  // underlying value.
-  return static_cast<const IndirectAsyncValue*>(this)->IsUnique();
 }
 
 }  // namespace tsl

@@ -29,6 +29,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+char LoadOptions::ID = 0;
 char Client::ID = 0;
 
 absl::StatusOr<CustomLayoutRef> Client::GetDefaultLayout(

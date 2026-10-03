@@ -51,6 +51,13 @@ func.func @uint8() -> tensor<4xui8> {
   func.return %0 : tensor<4xui8>
 }
 
+func.func @empty() -> tensor<0xi32> {
+  // CHECK-LABEL: @empty
+  // CHECK: value = dense<> : tensor<0xi32>
+  %0 = "tfl.pseudo_const"() { value = dense_resource<dense_elements_empty> : tensor<0xi32> } : () -> tensor<0xi32>
+  func.return %0 : tensor<0xi32>
+}
+
 // Identity function to make the exporter happy
 func.func @main(%arg0: tensor<4xi8>) -> tensor<4xi8> {
   func.return %arg0 : tensor<4xi8>
@@ -63,7 +70,8 @@ func.func @main(%arg0: tensor<4xi8>) -> tensor<4xi8> {
       dense_elements_i16: "0x400000000100020003000201",
       dense_elements_i32: "0x4000000001000000020000000300000004030201",
       dense_elements_i8: "0x4000000001020304",
-      dense_elements_i8_1: "0x40000000DEADBEEF"
+      dense_elements_i8_1: "0x40000000DEADBEEF",
+      dense_elements_empty: "0x40000000"
     }
   }
 #-}

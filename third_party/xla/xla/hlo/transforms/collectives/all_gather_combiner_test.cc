@@ -624,8 +624,12 @@ TEST_F(AllGatherCombinerTest, PreservesMetadata) {
     ENTRY entry {
       param0 = f32[32] parameter(0)
       param1 = f32[32] parameter(1)
-      allgather0 = f32[128] all-gather(param0), replica_groups={}, dimensions={0}, metadata={op_type="test_type0" op_name="test_name0"}
-      allgather1 = f32[128] all-gather(param1), replica_groups={}, dimensions={0}, metadata={op_type="test_type1" op_name="test_name1"}
+      allgather0 = f32[128] all-gather(param0), replica_groups={},
+          dimensions={0},
+          metadata={op_type="test_type0" op_name="test_name0"}
+      allgather1 = f32[128] all-gather(param1), replica_groups={},
+          dimensions={0},
+          metadata={op_type="test_type1" op_name="test_name1"}
       ROOT tuple = (f32[128], f32[128]) tuple(allgather0, allgather1)
     }
   )";
@@ -654,8 +658,14 @@ TEST_F(AllGatherCombinerTest, PreservesFrontendAttributesAndMergedMetadata) {
     ENTRY entry {
       param0 = f32[32] parameter(0)
       param1 = f32[32] parameter(1)
-      allgather0 = f32[128] all-gather(param0), replica_groups={}, dimensions={0}, frontend_attributes={is_pipelinable="true", color="red"}, metadata={op_type="ag" op_name="model/layer/ag_0"}
-      allgather1 = f32[128] all-gather(param1), replica_groups={}, dimensions={0}, frontend_attributes={is_pipelinable="true", color="blue"}, metadata={op_type="ag" op_name="model/layer/ag_1"}
+      allgather0 = f32[128] all-gather(param0), replica_groups={},
+          dimensions={0},
+          frontend_attributes={is_pipelineable="true", color="red"},
+          metadata={op_type="ag" op_name="model/layer/ag_0"}
+      allgather1 = f32[128] all-gather(param1), replica_groups={},
+          dimensions={0},
+          frontend_attributes={is_pipelineable="true", color="blue"},
+          metadata={op_type="ag" op_name="model/layer/ag_1"}
       ROOT tuple = (f32[128], f32[128]) tuple(allgather0, allgather1)
     }
   )";
@@ -675,7 +685,7 @@ TEST_F(AllGatherCombinerTest, PreservesFrontendAttributesAndMergedMetadata) {
   // conflicting values sorted and comma-joined.
   ASSERT_TRUE(combined_ag->has_frontend_attributes());
   const auto& attrs = combined_ag->frontend_attributes().map();
-  EXPECT_EQ(attrs.at("is_pipelinable"), "true");
+  EXPECT_EQ(attrs.at("is_pipelineable"), "true");
   EXPECT_EQ(attrs.at("color"), "blue,red");
 
   // Metadata: common prefix "model/layer/" extracted, suffixes joined.

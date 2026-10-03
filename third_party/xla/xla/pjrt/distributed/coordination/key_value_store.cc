@@ -46,20 +46,24 @@ KeyValueStore::~KeyValueStore() {
 
 absl::Status KeyValueStore::Put(absl::string_view key, absl::string_view value,
                                 bool allow_overwrite) {
-  absl::MutexLock l(mu_);
-
-  if (allow_overwrite) {
-    data_[key] = value;
-    NotifyCallbacksForKey(key, value);
-    return absl::OkStatus();
+  std::vector<Callback> callbacks;
+  {
+    absl::MutexLock l(mu_);
+    if (allow_overwrite) {
+      data_[key] = value;
+    } else {
+      auto [it, inserted] = data_.try_emplace(key, value);
+      if (!inserted) {
+        return absl::AlreadyExistsError(
+            absl::StrCat("key ", key, " already exists."));
+      }
+    }
+    callbacks = ExtractCallbacksForKey(key);
   }
 
-  auto [it, inserted] = data_.try_emplace(key, value);
-  if (!inserted) {
-    return absl::AlreadyExistsError(
-        absl::StrCat("key ", key, " already exists."));
+  for (Callback& callback : callbacks) {
+    callback(value);
   }
-  NotifyCallbacksForKey(key, value);
   return absl::OkStatus();
 }
 
@@ -74,16 +78,25 @@ std::optional<std::string> KeyValueStore::Get(absl::string_view key) {
 
 absl::StatusOr<std::string> KeyValueStore::IncrementBy(absl::string_view key,
                                                        int64_t increment) {
-  absl::MutexLock l(mu_);
-  auto [it, inserted] = data_.try_emplace(key, "0");
-  int val;
-  if (!absl::SimpleAtoi(it->second, &val)) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "Failed to parse value \"%s\" as an integer.", it->second));
+  std::string result_value;
+  std::vector<Callback> callbacks;
+  {
+    absl::MutexLock l(mu_);
+    auto [it, inserted] = data_.try_emplace(key, "0");
+    int val;
+    if (!absl::SimpleAtoi(it->second, &val)) {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Failed to parse value \"%s\" as an integer.", it->second));
+    }
+    it->second = absl::StrCat(val + increment);
+    result_value = it->second;
+    callbacks = ExtractCallbacksForKey(key);
   }
-  it->second = absl::StrCat(val + increment);
-  NotifyCallbacksForKey(key, it->second);
-  return it->second;
+
+  for (Callback& callback : callbacks) {
+    callback(result_value);
+  }
+  return result_value;
 }
 
 std::vector<xla::coordination::KeyValueEntry> KeyValueStore::GetPrefix(
@@ -125,23 +138,56 @@ void KeyValueStore::DeletePrefix(absl::string_view prefix) {
 
 void KeyValueStore::AddCallbackForKey(absl::string_view key,
                                       Callback callback) {
-  absl::MutexLock l(mu_);
-
-  if (auto it = data_.find(key); it != data_.end()) {
-    callback(it->second);
-    return;
+  std::string value;
+  {
+    absl::MutexLock l(mu_);
+    if (auto it = data_.find(key); it != data_.end()) {
+      value = it->second;
+    } else {
+      callbacks_[key].push_back(std::move(callback));
+      return;
+    }
   }
-  callbacks_[key].push_back(std::move(callback));
+
+  callback(value);
 }
 
-void KeyValueStore::NotifyCallbacksForKey(
-    absl::string_view key, const absl::StatusOr<absl::string_view>& value) {
+std::vector<KeyValueStore::Callback> KeyValueStore::ExtractCallbacksForKey(
+    absl::string_view key) {
+  std::vector<Callback> callbacks;
   if (auto it = callbacks_.find(key); it != callbacks_.end()) {
-    for (Callback& callback : it->second) {
-      callback(value);
-    }
+    callbacks = std::move(it->second);
     callbacks_.erase(it);
   }
+  return callbacks;
+}
+
+std::string KeyValueStore::NormalizeKey(absl::string_view key) {
+  std::string norm_key = std::string(key);
+  const char* src = norm_key.c_str();
+  std::string::iterator dst = norm_key.begin();
+
+  // Parse all characters
+  while (*src) {
+    // Skip leading slashes
+    while (*src == '/') {
+      src++;
+    }
+    // Copy over all non-slash characters
+    while (*src && *src != '/') {
+      *dst++ = *src++;
+    }
+    // Allow one slash at the end of current directory
+    if (*src) {
+      *dst++ = *src++;
+    }
+  }
+  // If ending with slash, remove the trailing slash
+  if (dst > norm_key.begin() && *(dst - 1) == '/') {
+    dst--;
+  }
+  norm_key.resize(dst - norm_key.begin());
+  return norm_key;
 }
 
 }  // namespace xla

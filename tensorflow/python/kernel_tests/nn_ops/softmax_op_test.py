@@ -18,10 +18,11 @@ import unittest
 
 import numpy as np
 
-
+from tensorflow.python.eager import backprop as backprop_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -163,6 +164,37 @@ class SoftmaxTest(test.TestCase):
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64))
     self._testOverflow()
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testLogSoftmaxDoubleGradientPreservesSmallGradient(self):
+    logits = constant_op.constant(
+        [37.42994775023705, 0.0], dtype=dtypes.float64
+    )
+    cotangent = constant_op.constant([1.0, 0.0], dtype=dtypes.float64)
+    with backprop_lib.GradientTape() as tape:
+      tape.watch(logits)
+      output = nn_ops.log_softmax(logits)
+      objective = math_ops.reduce_sum(output * cotangent)
+    gradient = self.evaluate(tape.gradient(objective, logits))
+
+    tail_probability = 5.551115123125776e-17
+    self.assertAllClose(
+        [tail_probability, -tail_probability], gradient, rtol=1e-14, atol=0
+    )
+    self.assertEqual(gradient[0], -gradient[1])
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testSoftmaxDoubleGradientPreservesSmallComponent(self):
+    logits = constant_op.constant([37.42994775023705, 0.0], dtypes.float64)
+    cotangent = constant_op.constant([1.0, 0.0], dtypes.float64)
+    with backprop_lib.GradientTape() as tape:
+      tape.watch(logits)
+      objective = math_ops.reduce_sum(nn_ops.softmax(logits) * cotangent)
+    gradient = self.evaluate(tape.gradient(objective, logits))
+
+    tail = 5.551115123125775e-17
+    self.assertAllClose([tail, -tail], gradient, rtol=1e-14, atol=0.0)
+    self.assertEqual(gradient[0], -gradient[1])
+
   @unittest.skipUnless(test.is_built_with_gpu_support(),
                        "Test only applicable when running on GPUs")
   def testDoubleGPU(self):
@@ -284,6 +316,53 @@ class SoftmaxTest(test.TestCase):
           y = nn_ops.softmax(x)
           tf_softmax = self.evaluate(y)
         self.assertAllClose(tf_softmax, np_softmax)
+
+  def testSingleClassExactPrecision(self):
+    # Regression test for GitHub issue #116933:
+    # Single-class softmax must return exact 1.0 without 1-ULP precision loss
+    # across SIMD batch boundaries (e.g. AVX2 Packet8f vectorized batches).
+    batch_sizes = [1, 2, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 128, 129]
+    for batch_size in batch_sizes:
+      for dtype in [
+          dtypes.float32,
+          dtypes.float64,
+          dtypes.float16,
+          dtypes.bfloat16,
+      ]:
+        for use_gpu in [False, True]:
+          with self.cached_session(use_gpu=use_gpu):
+            logits = math_ops.cast(
+                constant_op.constant(np.random.randn(batch_size, 1)),
+                dtype=dtype,
+            )
+            res = self.evaluate(nn_ops.softmax(logits, axis=-1))
+            expected = np.ones((batch_size, 1), dtype=dtype.as_numpy_dtype)
+            self.assertAllEqual(res, expected)
+
+  def testSingleClassLogSoftmax(self):
+    # Single-class log-softmax must return exact 0.0 across SIMD batch sizes.
+    batch_sizes = [1, 7, 8, 9, 16, 32, 64, 128]
+    for batch_size in batch_sizes:
+      for dtype in [dtypes.float32, dtypes.float64]:
+        with self.cached_session():
+          logits = math_ops.cast(
+              constant_op.constant(np.random.randn(batch_size, 1)), dtype=dtype
+          )
+          res = self.evaluate(nn_ops.log_softmax(logits, axis=-1))
+          expected = np.zeros((batch_size, 1), dtype=dtype.as_numpy_dtype)
+          self.assertAllEqual(res, expected)
+
+  def testSingleClassNonFinite(self):
+    # Verify that non-finite logits (NaN, Inf, -Inf) correctly produce NaN
+    # in single-class softmax and log-softmax as mandated by IEEE-754.
+    non_finites = [np.nan, np.inf, -np.inf]
+    for val in non_finites:
+      with self.cached_session():
+        logits = constant_op.constant([[val]], dtype=dtypes.float32)
+        sm = self.evaluate(nn_ops.softmax(logits))
+        lsm = self.evaluate(nn_ops.log_softmax(logits))
+        self.assertTrue(np.isnan(sm[0, 0]))
+        self.assertTrue(np.isnan(lsm[0, 0]))
 
 
 if __name__ == "__main__":

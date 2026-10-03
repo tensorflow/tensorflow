@@ -22,9 +22,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -120,7 +120,7 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes().size());
     for (const auto& subtype : shape.tuple_shapes()) {
-      ASSIGN_OR_RETURN(auto mlir_subtype,
+      ABSL_ASSIGN_OR_RETURN(auto mlir_subtype,
                        ConvertShapeToType<TypeT>(subtype, builder));
       contents.push_back(mlir_subtype);
     }

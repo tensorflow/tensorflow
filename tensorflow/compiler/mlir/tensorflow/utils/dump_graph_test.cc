@@ -69,7 +69,7 @@ class StringWritableFile : public WritableFile {
   absl::Status Sync() override { return absl::OkStatus(); }
 
   absl::Status Tell(int64_t* position) override {
-    return errors::Unimplemented("Stream not seekable");
+    return absl::UnimplementedError("Stream not seekable");
   }
 
  private:

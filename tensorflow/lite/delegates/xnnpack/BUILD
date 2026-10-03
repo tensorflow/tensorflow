@@ -462,9 +462,12 @@ cc_library(
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deps = [
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -479,8 +482,10 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
         "@com_google_googletest//:gtest",
@@ -539,8 +544,10 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
         "@com_google_googletest//:gtest",
@@ -622,6 +629,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -681,8 +689,10 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
         "@com_google_googletest//:gtest",
@@ -755,12 +765,15 @@ cc_library(
     srcs = ["pool_2d_tester.cc"],
     hdrs = ["pool_2d_tester.h"],
     deps = [
+        ":test_util",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1182,11 +1195,14 @@ cc_library(
     srcs = ["unary_elementwise_tester.cc"],
     hdrs = ["unary_elementwise_tester.h"],
     deps = [
+        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -1308,12 +1324,45 @@ cc_library(
 )
 
 cc_library(
+    name = "moe_block_scale",
+    hdrs = ["moe_block_scale.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+)
+
+# moe_block_scale.h asks clang to vectorize its dot-product loops. Clang reports
+# a hint it could not honor (e.g. under instrumentation it does not expect) as
+# -Wpass-failed, attributed to a post-inlining location that source pragmas
+# cannot reliably cover, so the warning is disabled for the translation units
+# that compile those loops.
+MOE_VECTORIZE_HINT_COPTS = select({
+    "//tensorflow:windows": [],
+    "//conditions:default": ["-Wno-pass-failed"],
+})
+
+cc_test(
+    name = "moe_block_scale_test",
+    srcs = ["moe_block_scale_test.cc"],
+    copts = MOE_VECTORIZE_HINT_COPTS,
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":moe_block_scale",
+        ":test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "moe_delegate_kernel",
     srcs = ["moe_delegate_kernel.cc"],
     hdrs = ["moe_delegate_kernel.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
+    copts = tflite_copts() + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"] + MOE_VECTORIZE_HINT_COPTS,
     deps = [
+        ":moe_block_scale",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
@@ -1322,6 +1371,25 @@ cc_library(
         "@XNNPACK",
         "@flatbuffers//:runtime_cc",
         "@pthreadpool",
+    ],
+)
+
+cc_test(
+    name = "moe_delegate_kernel_test",
+    srcs = ["moe_delegate_kernel_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":moe_delegate_kernel",
+        ":test_main",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -1353,8 +1421,15 @@ cc_test(
         ":batch_matrix_multiply_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -1456,8 +1531,14 @@ cc_test(
     deps = [
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
         "@pthreadpool",
     ],
 )
@@ -2800,6 +2881,30 @@ cc_test(
     srcs = ["file_util_test.cc"],
     deps = [
         ":file_util",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
+    name = "force_fp16_test",
+    srcs = ["force_fp16_test.cc"],
+    deps = [
+        ":binary_elementwise_tester",
+        ":conv_2d_tester",
+        ":fully_connected_tester",
+        ":pool_2d_tester",
+        ":test_util",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ],

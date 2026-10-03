@@ -18,20 +18,31 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
-#include "tensorflow/compiler/jit/flags.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
 // Pad value used for SparseCore mini batching logic.
 const int32_t kXlaPadValue = std::numeric_limits<int32_t>::max();
+
+absl::Status SetSparseCoreFrontendAttributes(
+    xla::FrontendAttributes* attributes, int64_t max_ids_per_partition,
+    int64_t max_unique_ids_per_partition, int64_t num_sparsecores_per_device,
+    int64_t vocab_size, int64_t feature_width, int64_t input_size,
+    absl::string_view table_name = "",
+    std::optional<int64_t> max_valency = std::nullopt,
+    std::optional<float> quantization_config_low = std::nullopt,
+    std::optional<float> quantization_config_high = std::nullopt,
+    std::optional<int> quantization_config_num_buckets = std::nullopt);
 
 std::vector<int> ConvertBinarySplitsToBucketSplits(int64_t split,
                                                    int max_division_level);
@@ -46,6 +57,17 @@ std::function<float(float)> GetCombinerScaleContributionFunction(
 
 std::function<float(float)> GetCombinerScaleTransformFunction(
     absl::string_view combiner);
+
+// Parses the quantization config attributes from the op kernel context into the
+// given mutable optional arguments.
+// Returns true if the quantization config attributes are fully present, or if
+// none of the quantization config attributes are present. Otherwise, returns
+// false.
+bool ParseQuantizationConfigs(
+    OpKernelConstruction* ctx,
+    std::optional<int>& quantization_config_num_buckets,
+    std::optional<float>& quantization_config_low,
+    std::optional<float>& quantization_config_high);
 
 // Stacks tables, so long as table have the same 'group' index. We assume that
 // all tables with a given group index have the same width. Returns a list of
@@ -64,6 +86,10 @@ bool GetDisableTableStacking();
 int64_t GetXlaSparseCoreStackingMemLimit();
 
 int64_t GetXlaSparseCoreStackingTableShardLimit();
+
+int64_t GetPerSparseCorePreservedBufferSize(
+    int64_t max_ids_per_partition, int64_t max_unique_ids_per_partition,
+    int32_t num_logical_devices, int32_t num_sparse_cores_per_logical_device);
 
 absl::Status GetMaxIdsAndUniquesExternal(const std::string& program_key,
                                          const std::string& table_name,

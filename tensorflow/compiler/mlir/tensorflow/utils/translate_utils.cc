@@ -104,12 +104,12 @@ mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
 absl::StatusOr<int64_t> GetTfGraphProducerVersion(mlir::ModuleOp module) {
   auto versions = module->getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
   if (!versions) {
-    return errors::Internal(
+    return absl::InternalError(
         "Missing 'tf.versions' attribute on the module, abort.\n");
   }
   auto producer = mlir::dyn_cast<mlir::IntegerAttr>(versions.get("producer"));
   if (!producer) {
-    return errors::Internal(
+    return absl::InternalError(
         "Missing 'producer' attribute on the module, abort.\n");
   }
   return producer.getInt();
@@ -120,9 +120,8 @@ namespace {
 // Sets type list attribute with the given `name` to the given `types`. If the
 // attribute already exists with a different value, returns an error.
 template <typename ContainerT,
-          typename = typename std::enable_if<
-              std::is_same<mlir::Type, decltype(*std::declval<ContainerT>()
-                                                     .begin())>::value>::type>
+          typename = std::enable_if_t<std::is_same_v<
+              mlir::Type, decltype(*std::declval<ContainerT>().begin())>>>
 absl::Status SetTypeAttribute(absl::string_view name, ContainerT types,
                               AttrValueMap* values) {
   AttrValue value;
@@ -143,9 +142,9 @@ absl::Status SetTypeAttribute(absl::string_view name, ContainerT types,
 // Sets shape list attribute with the given `name` to the given `shapes`. If the
 // attribute already exists then this will just retain the set value.
 template <typename ContainerT,
-          typename = typename std::enable_if<std::is_same<
-              std::optional<llvm::ArrayRef<int64_t>>,
-              decltype(*std::declval<ContainerT>().begin())>::value>::type>
+          typename = std::enable_if_t<
+              std::is_same_v<std::optional<llvm::ArrayRef<int64_t>>,
+                             decltype(*std::declval<ContainerT>().begin())>>>
 void SetShapeAttribute(absl::string_view name, ContainerT shapes,
                        AttrValueMap* values) {
   AttrValue value;

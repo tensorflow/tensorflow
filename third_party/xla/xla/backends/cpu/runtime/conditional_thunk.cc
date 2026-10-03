@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/runtime/buffer_use.h"
@@ -70,12 +70,12 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::Create(
   std::vector<ThunkExecutor> branch_executors;
   branch_executors.reserve(branch_sequences.size());
   for (auto& branch_sequence : branch_sequences) {
-    ASSIGN_OR_RETURN(auto branch_executor,
+    ABSL_ASSIGN_OR_RETURN(auto branch_executor,
                      ThunkExecutor::Create(std::move(branch_sequence)));
     branch_executors.push_back(std::move(branch_executor));
   }
 
-  ASSIGN_OR_RETURN(Shape shape, ShapeForBranchIndexBuffer(branch_index_buffer));
+  ABSL_ASSIGN_OR_RETURN(Shape shape, ShapeForBranchIndexBuffer(branch_index_buffer));
 
   return absl::WrapUnique(
       new ConditionalThunk(std::move(info), std::move(branch_index_buffer),
@@ -93,7 +93,7 @@ ConditionalThunk::ConditionalThunk(Info info,
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
     const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::DeviceAddressBase branch_index_data,
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_));
 

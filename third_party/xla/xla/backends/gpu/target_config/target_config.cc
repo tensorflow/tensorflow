@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/target_config/embed_gpu_specs.h"
 #include "xla/status_macros.h"
@@ -60,6 +60,9 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
     case GpuModel::B200:
       filename = "b200.txtpb";
       break;
+    case GpuModel::B200_MIG:
+      filename = "b200_mig.txtpb";
+      break;
     case GpuModel::B300:
       filename = "b300.txtpb";
       break;
@@ -71,6 +74,9 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
       break;
     case GpuModel::H100_SXM:
       filename = "h100_sxm.txtpb";
+      break;
+    case GpuModel::H100_SXM_MIG:
+      filename = "h100_sxm_mig.txtpb";
       break;
     case GpuModel::H200:
       filename = "h200.txtpb";
@@ -115,7 +121,7 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
 
 absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
     GpuModel gpu_model) {
-  ASSIGN_OR_RETURN(absl::string_view gpu_spec,
+  ABSL_ASSIGN_OR_RETURN(absl::string_view gpu_spec,
                    GetEmbeddedGpuTargetConfigData(gpu_model));
 
   stream_executor::GpuTargetConfigProto config;
@@ -131,19 +137,10 @@ GpuTargetConfig::GpuTargetConfig(se::StreamExecutor* s)
     : device_description(
           s->GetDeviceDescription().DeviceSpecificFieldsCleared()),
       platform_name(s->GetPlatform()->Name()),
-      device_description_str(s->GetDeviceDescription().name()) {
-  se::dnn::DnnSupport* dnn = s->AsDnn();
-  if (dnn != nullptr) {
-    absl::StatusOr<se::dnn::VersionInfo> dnn_version = dnn->GetVersion();
-    if (dnn_version.ok()) {
-      dnn_version_info = *dnn_version;
-    }
-  }
-}
+      device_description_str(s->GetDeviceDescription().name()) {}
 
 bool GpuTargetConfig::operator==(const GpuTargetConfig& other) const {
   return platform_name == other.platform_name &&
-         dnn_version_info == other.dnn_version_info &&
          device_description_str == other.device_description_str &&
          device_description == other.device_description;
 }
@@ -151,11 +148,9 @@ bool GpuTargetConfig::operator==(const GpuTargetConfig& other) const {
 absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
     const se::GpuTargetConfigProto& proto) {
   GpuTargetConfig target_config;
-  ASSIGN_OR_RETURN(target_config.device_description,
+  ABSL_ASSIGN_OR_RETURN(target_config.device_description,
                    se::DeviceDescription::FromProto(proto.gpu_device_info()));
   target_config.platform_name = proto.platform_name();
-  target_config.dnn_version_info =
-      se::dnn::VersionInfo(proto.dnn_version_info());
   target_config.device_description_str = proto.device_description_str();
   if (!target_config.device_description_str.empty()) {
     target_config.device_description.set_name(
@@ -170,13 +165,6 @@ absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
                                         proto.runtime_version().patch());
     target_config.device_description.set_runtime_version(runtime_version);
   }
-  if (proto.has_dnn_version_info()) {
-    se::SemanticVersion dnn_version(
-        static_cast<unsigned>(proto.dnn_version_info().major()),
-        static_cast<unsigned>(proto.dnn_version_info().minor()),
-        static_cast<unsigned>(proto.dnn_version_info().patch()));
-    target_config.device_description.set_dnn_version(dnn_version);
-  }
   return target_config;
 }
 
@@ -184,7 +172,6 @@ se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
   se::GpuTargetConfigProto proto;
   *proto.mutable_gpu_device_info() = device_description.ToProto();
   proto.set_platform_name(platform_name);
-  *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
   se::RuntimeVersionProto runtime_version_proto;
   runtime_version_proto.set_major(
       device_description.runtime_version().major_version());
@@ -201,7 +188,7 @@ absl::StatusOr<GpuTargetConfig> GetTargetConfigFromFile(
     absl::string_view filename) {
   TF_RET_CHECK(!filename.empty());
   std::string gpu_target_config_string;
-  RETURN_IF_ERROR(tsl::ReadFileToString(
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
       tsl::Env::Default(), std::string(filename), &gpu_target_config_string));
   stream_executor::GpuTargetConfigProto gpu_target_config_proto;
   if (!google::protobuf::TextFormat::ParseFromString(gpu_target_config_string,

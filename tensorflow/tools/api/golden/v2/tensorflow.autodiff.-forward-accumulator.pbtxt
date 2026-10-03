@@ -3,6 +3,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.eager.forwardprop.ForwardAccumulator\'>"
   is_instance: "<class \'object\'>"
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\', \'typ\', \'value\', \'traceback\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'primals\', \'tangents\'], varargs=None, keywords=None, defaults=None"
   }

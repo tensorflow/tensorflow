@@ -19,12 +19,13 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/tsl/concurrency/future.h"
 
@@ -37,7 +38,7 @@ class PjRtClient;
 //
 // TODO(hyeontaek): Move executable loading to `PjRtClient` and remove the
 // requirement of `PjRtClient`, which will enable ahead-of-time compilation.
-class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
+class PjRtCompiler final : public RTTIExtends<PjRtCompiler, Compiler> {
  public:
   explicit PjRtCompiler(PjRtClient* client);
 
@@ -60,7 +61,7 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
   }
 
   tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) override;
 
   static char ID;  // NOLINT

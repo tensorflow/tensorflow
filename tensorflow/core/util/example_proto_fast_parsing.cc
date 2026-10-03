@@ -2372,7 +2372,15 @@ absl::Status ParseContextDenseFeatures(
             reinterpret_cast<const uint8_t*>(feature_proto.data()),
             feature_proto.size());
         EnableAliasing(&stream);
-        num_elements += ParseFeature(dtype, &stream, &out, &out_offset);
+        const int num_added = ParseFeature(dtype, &stream, &out, &out_offset);
+        if (num_added < 0) {
+          // This should be unreachable -- we already scanned the feature in
+          // GetContextFeatureLengths, and it hasn't changed since then.
+          return absl::InvalidArgumentError(
+              absl::StrCat("Error in context feature ", c.feature_name,
+                           " in example ", ExampleName(example_names, e)));
+        }
+        num_elements += num_added;
       }
       if (num_elements != data_max_elements) {
         return absl::InvalidArgumentError(
@@ -2422,10 +2430,17 @@ absl::Status ParseContextSparseFeatures(
           reinterpret_cast<const uint8_t*>(feature_proto.data()),
           feature_proto.size());
       EnableAliasing(&stream);
-      size_t num_added =
+      int num_added =
           ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+      if (num_added < 0) {
+        // This should be unreachable -- we already scanned the feature in
+        // GetContextFeatureLengths, and it hasn't changed since then.
+        return absl::InvalidArgumentError(
+            absl::StrCat("Error in context feature ", c.feature_name,
+                         " in example ", ExampleName(example_names, e)));
+      }
       num_elements += num_added;
-      max_num_cols = std::max(max_num_cols, num_added);
+      max_num_cols = std::max(max_num_cols, static_cast<size_t>(num_added));
       for (int i = 0; i < num_added; i++) {
         if (is_batch) *out_indices++ = e;
         *out_indices++ = i;
@@ -2492,8 +2507,15 @@ absl::Status ParseContextRaggedFeatures(
             reinterpret_cast<const uint8_t*>(feature_proto.data()),
             feature_proto.size());
         EnableAliasing(&stream);
-        size_t num_added =
+        int num_added =
             ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+        if (num_added < 0) {
+          // This should be unreachable -- we already scanned the feature in
+          // GetContextFeatureLengths, and it hasn't changed since then.
+          return absl::InvalidArgumentError(
+              absl::StrCat("Error in context feature ", c.feature_name,
+                           " in example ", ExampleName(example_names, e)));
+        }
         split += num_added;
       }
       if (int32_splits) {
@@ -2541,10 +2563,16 @@ absl::Status ParseSequenceDenseFeatures(
     TensorShape dense_shape, row_shape;
     DataType dtype = c.dtype;
     const size_t expected_max_elements = feature.length;
-    if (!c.shape.AsTensorShape(&row_shape) ||
-        expected_max_elements !=
-            (expected_max_elements / row_shape.num_elements()) *
-                row_shape.num_elements()) {
+    const int64_t row_num_elements =
+        c.shape.AsTensorShape(&row_shape) ? row_shape.num_elements() : -1;
+    // Guard against division by zero when any shape dimension is 0.  When
+    // row_num_elements==0, the only consistent state is zero total elements;
+    // any positive count would be impossible to fit into zero-element rows.
+    if (row_num_elements < 0 ||
+        (row_num_elements == 0
+             ? expected_max_elements != 0
+             : expected_max_elements % static_cast<size_t>(row_num_elements) !=
+                   0)) {
       PartialTensorShape total_shape = row_shape;
       total_shape.InsertDim(0, -1);
       return absl::InvalidArgumentError(absl::StrCat(
@@ -2554,7 +2582,10 @@ absl::Status ParseSequenceDenseFeatures(
           " is not consistent with output shape: ", total_shape.DebugString()));
     }
     int64_t expected_max_rows =
-        expected_max_elements / row_shape.num_elements();
+        row_num_elements == 0
+            ? 0
+            : static_cast<int64_t>(expected_max_elements /
+                                   static_cast<size_t>(row_num_elements));
     if (is_batch) {
       dense_shape.AddDim(num_examples);
     }

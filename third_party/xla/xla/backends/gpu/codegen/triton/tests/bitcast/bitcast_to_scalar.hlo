@@ -1,6 +1,6 @@
-// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation=false | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation=false | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=false
-// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {
@@ -11,7 +11,7 @@ fusion {
 // CHECK-LABEL: xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:.*]]: memref<1x1x1xf32>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<f32>,
-// CHECK-SAME:      %[[PID:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-SAME:      %[[PID:.*]]: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 // CHECK:           %[[C0:.*]] = arith.constant 0 : index
 // CHECK-OLD:       %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] [0, 0, 0] : memref<1x1x1xf32> -> tensor<1x1x1xf32>
 // CHECK-NEW:       %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] [1, 1, 1] : memref<1x1x1xf32> -> tensor<1x1x1xf32>

@@ -1,0 +1,17 @@
+diff --git a/lib/basic_kernels/opdefs/basic_kernels.cc b/lib/basic_kernels/opdefs/basic_kernels.cc
+--- a/lib/basic_kernels/opdefs/basic_kernels.cc
++++ b/lib/basic_kernels/opdefs/basic_kernels.cc
+@@ -137,11 +137,11 @@
+ void CallOp::setCalleeFromCallable(CallInterfaceCallable callee) {
+   // Direct call.
+   if (FlatSymbolRefAttr calleeAttr = getCalleeAttr()) {
+-    auto symRef = callee.get<SymbolRefAttr>();
++    auto symRef = cast<SymbolRefAttr>(callee);
+     return setCalleeAttr(cast<FlatSymbolRefAttr>(symRef));
+   }
+   // Indirect call, callee Value is the first operand.
+-  return setOperand(0, callee.get<Value>());
++  return setOperand(0, cast<Value>(callee));
+ }
+ 
+ //===----------------------------------------------------------------------===//

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -436,6 +438,73 @@ class KernelTest : public ::testing::TestWithParam<bool> {
             client_->addressable_device_count());
   }
 
+  // Runs the `tf_mlrt.ifrt_restore_variable` kernel over the `num_variables`
+  // variables of the test checkpoint (`w`, `w1`, ...). This consumes
+  // `tf_context_`, so it can only be called once per test.
+  void RestoreVariables(int num_variables) {
+    const std::string checkpoint_prefix =
+        tensorflow::GetDataDependencyFilepath(
+            "tensorflow/core/tfrt/mlrt/kernel/testdata/"
+            "gen_checkpoint_data/variables") +
+        "/variables";
+
+    auto buffer = CreateExecutableForIfrtRestoreVariableOp(num_variables);
+    mlrt::bc::Executable executable(buffer.data());
+    mlrt::LoadedExecutable loaded_executable(executable, registry_);
+
+    mlrt::ExecutionContext execution_context(&loaded_executable);
+    execution_context.set_work_queue(execution_work_queue_.get());
+    execution_context.AddUserContext(std::move(tf_context_));
+
+    std::vector<tsl::tstring> tensor_names;
+    std::vector<tsl::tstring> shape_and_slices;
+    tensor_names.reserve(num_variables);
+    shape_and_slices.reserve(num_variables);
+    for (int i = 0; i < num_variables; ++i) {
+      const std::string index_suffix = i == 0 ? "" : absl::StrCat(i);
+      tensor_names.push_back(tsl::tstring(
+          absl::StrCat("w", index_suffix, "/.ATTRIBUTES/VARIABLE_VALUE")));
+      shape_and_slices.push_back(tsl::tstring(""));
+    }
+
+    std::vector<mlrt::Value> args;
+    args.resize(3);
+    args.at(0).Set(tfrt_stub::FallbackTensor(
+        AsTensor<tsl::tstring>({tsl::tstring(checkpoint_prefix)})));
+    args.at(1).Set(
+        tfrt_stub::FallbackTensor(AsTensor<tsl::tstring>(tensor_names)));
+    args.at(2).Set(
+        tfrt_stub::FallbackTensor(AsTensor<tsl::tstring>(shape_and_slices)));
+
+    std::vector<uint8_t> last_uses = {true, true, true};
+    std::vector<mlrt::Value> results;
+
+    absl::Notification notification;
+    execution_context.set_exit_handler(
+        [&notification]() { notification.Notify(); });
+
+    execution_context.Call(executable.functions()[0], last_uses,
+                           absl::MakeSpan(args), absl::MakeSpan(results));
+    mlrt::Execute(execution_context);
+    notification.WaitForNotification();
+
+    TF_ASSERT_OK(execution_context.status());
+  }
+
+  // Looks up the variable materialized under `kContainer`/`kSharedName{index}`
+  // in the host ResourceManager, without retaining a reference to it.
+  absl::Status LookupVariable(int index) {
+    tensorflow::Var* variable = nullptr;
+    absl::Status status =
+        fallback_state_->device_manager().HostCPU()->resource_manager()->Lookup(
+            std::string(kContainer), absl::StrCat(kSharedName, index),
+            &variable);
+    if (status.ok()) {
+      variable->Unref();
+    }
+    return status;
+  }
+
   std::unique_ptr<tsl::test_util::MockServingDeviceSelector>
       serving_device_selector_;
   std::unique_ptr<ifrt_serving::IfrtServingCoreSelector> ifrt_core_selector_;
@@ -471,16 +540,34 @@ TEST_P(KernelTest, IfrtLoadVariableOpCanGetTensorFromResourceManager) {
 
   execution_context.AddUserContext(std::move(tf_context_));
 
+  auto* restore_context =
+      *resource_context_
+           .GetResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+               ifrt_serving::kIfrtModelRestoreContextName);
+  restore_context->checkpoint_loader()
+      ->set_materialize_variables_in_resource_manager(true);
+
   tensorflow::Tensor input_tensor;
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
 
-  tsl::core::RefCountPtr<Var> variable(new Var(DT_INT32));
+  auto [input_tensor_promise, input_tensor_future] =
+      tsl::MakePromise<tensorflow::Tensor>();
+  input_tensor_promise.Set(input_tensor);
+  TF_ASSERT_OK(ifrt_model_context_->GetRestoreTensorRegistry().TryRegister(
+      kVariableRuntimeName,
+      ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo{
+          false,
+          tsl::Future<ifrt_serving::DtypeAndShape>(ifrt_serving::DtypeAndShape{
+              .dtype = input_tensor.dtype(), .shape = input_tensor.shape()}),
+          std::move(input_tensor_future)}));
+
+  auto* variable = new Var(DT_INT32);
   *variable->tensor() = input_tensor;
   variable->is_initialized = true;
   ASSERT_OK(
       fallback_state_->device_manager().HostCPU()->resource_manager()->Create(
-          std::string(kContainer), std::string(kSharedName), &(*variable)));
+          std::string(kContainer), std::string(kSharedName), variable));
 
   std::vector<mlrt::Value> args;
   std::vector<uint8_t> last_uses;
@@ -673,6 +760,188 @@ TEST_P(KernelTest, IfrtRestoreVariableOp) {
   absl::StatusOr<tensorflow::Tensor> restored_tensor = restored_future.Await();
   TF_ASSERT_OK(restored_tensor.status());
   EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int16_t>({1, 2, 3}, {3})));
+}
+
+TEST_P(KernelTest, IfrtRestoreVariableOpMaterializeInResourceManager) {
+  auto* restore_context =
+      *resource_context_
+           .GetResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+               ifrt_serving::kIfrtModelRestoreContextName);
+  restore_context->checkpoint_loader()
+      ->set_materialize_variables_in_resource_manager(true);
+
+  std::string checkpoint_prefix =
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/core/tfrt/mlrt/kernel/testdata/"
+          "gen_checkpoint_data/variables") +
+      "/variables";
+
+  auto buffer = CreateExecutableForIfrtRestoreVariableOp();
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry_);
+
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(execution_work_queue_.get());
+
+  execution_context.AddUserContext(std::move(tf_context_));
+
+  std::vector<mlrt::Value> args;
+  args.resize(3);
+
+  tensorflow::Tensor prefix_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring(checkpoint_prefix)});
+  args.at(0).Set(tfrt_stub::FallbackTensor(std::move(prefix_tensor)));
+
+  tensorflow::Tensor name_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring("w/.ATTRIBUTES/VARIABLE_VALUE")});
+  args.at(1).Set(tfrt_stub::FallbackTensor(std::move(name_tensor)));
+
+  tensorflow::Tensor slice_tensor = AsTensor<tsl::tstring>({tsl::tstring("")});
+  args.at(2).Set(tfrt_stub::FallbackTensor(std::move(slice_tensor)));
+
+  std::vector<uint8_t> last_uses = {true, true, true};
+  std::vector<mlrt::Value> results;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(results));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+
+  TF_ASSERT_OK(execution_context.status());
+
+  // Verify variable was materialized in ResourceManager and is initialized.
+  tensorflow::Var* variable = nullptr;
+  TF_ASSERT_OK(
+      fallback_state_->device_manager().HostCPU()->resource_manager()->Lookup(
+          std::string(kContainer), absl::StrCat(kSharedName, 0), &variable));
+  core::ScopedUnref unref(variable);
+  EXPECT_TRUE(variable->is_initialized);
+  EXPECT_THAT(*variable->tensor(), TensorEq(AsTensor<int16_t>({1, 2, 3}, {3})));
+}
+
+TEST_P(KernelTest, FreezeCleanupPrunesOnlyDeviceOnlyVariables) {
+  auto* restore_context =
+      *resource_context_
+           .GetResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+               ifrt_serving::kIfrtModelRestoreContextName);
+  restore_context->checkpoint_loader()
+      ->set_materialize_variables_in_resource_manager(true);
+
+  static constexpr int kNumVariables = 4;
+  RestoreVariables(kNumVariables);
+
+  // Restore materializes every variable on the host.
+  for (int i = 0; i < kNumVariables; ++i) {
+    TF_EXPECT_OK(LookupVariable(i));
+  }
+
+  // Variables 0 and 1 are loaded on device, but 1 is also needed by the host.
+  // Variables 2 and 3 were never loaded on device (host-only).
+  const absl::flat_hash_set<std::string> device_variables = {
+      absl::StrCat(kVariableRuntimeName, 0),
+      absl::StrCat(kVariableRuntimeName, 1)};
+  const absl::flat_hash_set<std::string> host_needed = {
+      absl::StrCat(kVariableRuntimeName, 1)};
+
+  TF_ASSERT_OK(restore_context->checkpoint_loader()->FreezeCleanup(
+      device_variables, host_needed));
+
+  // Only the device-only variable is pruned from the ResourceManager.
+  EXPECT_THAT(LookupVariable(0),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  TF_EXPECT_OK(LookupVariable(1));
+  TF_EXPECT_OK(LookupVariable(2));
+  TF_EXPECT_OK(LookupVariable(3));
+
+  // A second cleanup is a no-op: the pruned entry is no longer tracked.
+  TF_EXPECT_OK(restore_context->checkpoint_loader()->FreezeCleanup(
+      device_variables, host_needed));
+  EXPECT_THAT(LookupVariable(0),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  TF_EXPECT_OK(LookupVariable(1));
+}
+
+TEST_P(KernelTest, FreezeCleanupPrunesVariablesRetainedByAnEarlierCleanup) {
+  auto* restore_context =
+      *resource_context_
+           .GetResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+               ifrt_serving::kIfrtModelRestoreContextName);
+  restore_context->checkpoint_loader()
+      ->set_materialize_variables_in_resource_manager(true);
+
+  static constexpr int kNumVariables = 2;
+  RestoreVariables(kNumVariables);
+
+  const absl::flat_hash_set<std::string> device_variables = {
+      absl::StrCat(kVariableRuntimeName, 0),
+      absl::StrCat(kVariableRuntimeName, 1)};
+
+  // Both variables are still needed by the host, so both are retained. A
+  // retained variable must stay in the bookkeeping, otherwise it could never be
+  // pruned again.
+  TF_ASSERT_OK(restore_context->checkpoint_loader()->FreezeCleanup(
+      device_variables, /*host_needed=*/device_variables));
+  TF_EXPECT_OK(LookupVariable(0));
+  TF_EXPECT_OK(LookupVariable(1));
+
+  // Once the host no longer needs them, the very same variables are pruned.
+  TF_ASSERT_OK(restore_context->checkpoint_loader()->FreezeCleanup(
+      device_variables, /*host_needed=*/{}));
+  EXPECT_THAT(LookupVariable(0),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(LookupVariable(1),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_P(KernelTest, FreezeCleanupDoesNotPruneVariablesItNoLongerTracks) {
+  auto* restore_context =
+      *resource_context_
+           .GetResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+               ifrt_serving::kIfrtModelRestoreContextName);
+  restore_context->checkpoint_loader()
+      ->set_materialize_variables_in_resource_manager(true);
+
+  RestoreVariables(/*num_variables=*/1);
+
+  const absl::flat_hash_set<std::string> device_variables = {
+      absl::StrCat(kVariableRuntimeName, 0)};
+
+  TF_ASSERT_OK(restore_context->checkpoint_loader()->FreezeCleanup(
+      device_variables, /*host_needed=*/{}));
+  EXPECT_THAT(LookupVariable(0),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+
+  // Cleanup only owns the entries it materialized itself. A variable that
+  // someone else puts back under the same name afterwards must survive a
+  // subsequent cleanup.
+  TF_ASSERT_OK(
+      fallback_state_->device_manager().HostCPU()->resource_manager()->Create(
+          std::string(kContainer), absl::StrCat(kSharedName, 0),
+          new tensorflow::Var(tensorflow::DT_INT16)));
+
+  TF_ASSERT_OK(restore_context->checkpoint_loader()->FreezeCleanup(
+      device_variables, /*host_needed=*/{}));
+  TF_EXPECT_OK(LookupVariable(0));
+}
+
+TEST_P(KernelTest, FreezeCleanupWithoutMaterializationIsNoOp) {
+  auto* restore_context =
+      *resource_context_
+           .GetResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+               ifrt_serving::kIfrtModelRestoreContextName);
+
+  // Nothing was materialized in the ResourceManager, so there is nothing to
+  // prune and no host ResourceManager to prune it from.
+  TF_EXPECT_OK(restore_context->checkpoint_loader()->FreezeCleanup(
+      /*device_variables=*/{absl::StrCat(kVariableRuntimeName, 0)},
+      /*host_needed=*/{}));
 }
 
 TEST_P(KernelTest, IfrtRestoreVariableOp4Variables) {

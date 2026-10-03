@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "xla/backends/cpu/target_machine_options.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
+#include "xla/backends/gpu/runtime/collective_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_host_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
-#include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -114,15 +115,16 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver,
     const std::optional<xla::cpu::TargetMachineOptions>&
-        cpu_target_machine_options) {
-  ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+        cpu_target_machine_options,
+    const std::optional<GpuTopology>& gpu_topology) {
+  ABSL_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                    Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
   auto deserializer = [&](const ThunkProto& thunk_proto) {
     return DeserializeThunkProtoImpl(
         thunk_proto, buffer_allocations, hlo_module, platform_name,
         host_executable_async_events_map, host_send_recv_async_events_map,
         async_execution_map, gpu_compute_capability, symbol_resolver,
-        cpu_target_machine_options);
+        cpu_target_machine_options, gpu_topology);
   };
 
   switch (thunk_proto.impl_case()) {
@@ -206,21 +208,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return Memset32BitValueThunk::FromProto(
           std::move(thunk_info), thunk_proto.memset32bit_value_thunk(),
           buffer_allocations);
-    case ThunkProto::kDynamicSliceThunk: {
-      auto deserializer =
-          [&](const ThunkProto& thunk_proto,
-              absl::Span<const BufferAllocation> custom_allocations) {
-            return DeserializeThunkProtoImpl(
-                thunk_proto, custom_allocations, hlo_module, platform_name,
-                host_executable_async_events_map,
-                host_send_recv_async_events_map, async_execution_map,
-                gpu_compute_capability, symbol_resolver,
-                cpu_target_machine_options);
-          };
-      return DynamicSliceThunk::FromProto(std::move(thunk_info),
-                                          thunk_proto.dynamic_slice_thunk(),
-                                          buffer_allocations, deserializer);
-    }
     case ThunkProto::kDynamicSliceFusionThunk: {
       auto deserializer =
           [&](const ThunkProto& thunk_proto,
@@ -230,7 +217,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                 host_executable_async_events_map,
                 host_send_recv_async_events_map, async_execution_map,
                 gpu_compute_capability, symbol_resolver,
-                cpu_target_machine_options);
+                cpu_target_machine_options, gpu_topology);
           };
       return DynamicSliceFusionV2Thunk::FromProto(
           std::move(thunk_info), thunk_proto.dynamic_slice_fusion_thunk(),
@@ -317,6 +304,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return CollectiveBroadcastThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_broadcast_thunk(),
           buffer_allocations);
+    case ThunkProto::kCollectiveReduceThunk:
+      return CollectiveReduceThunk::FromProto(
+          std::move(thunk_info), thunk_proto.collective_reduce_thunk(),
+          buffer_allocations);
     case ThunkProto::kCollectiveGroupThunk:
       return CollectiveGroupThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_group_thunk(),
@@ -361,6 +352,7 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
     absl::Span<const BufferAllocation> buffer_allocations,
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,
+    const std::optional<GpuTopology>& gpu_topology,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver,
     const std::optional<xla::cpu::TargetMachineOptions>&
@@ -370,13 +362,13 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
   AsyncExecutionMap async_execution_map;
   ThunkSequence sequence;
   for (const ThunkProto& thunk_proto : thunk_sequence_proto.thunks()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Thunk> thunk,
         DeserializeThunkProtoImpl(
             thunk_proto, buffer_allocations, hlo_module, platform_name,
             host_executable_async_events_map, host_send_recv_async_events_map,
             async_execution_map, gpu_compute_capability, symbol_resolver,
-            cpu_target_machine_options));
+            cpu_target_machine_options, gpu_topology));
     sequence.push_back(std::move(thunk));
   }
   return sequence;

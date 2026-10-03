@@ -103,7 +103,7 @@ absl::StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
         HloInstruction::CreateCall(sas->select()->root_instruction()->shape(),
                                    {operand_lhs, operand_rhs}, sas->select()));
     call->set_original_value(
-        std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+        std::make_shared<OriginalValue>(call->shape(), /*call_hierarchy=*/""));
 
     auto* pred = builder.AddInstruction(HloInstruction::CreateBinary(
         call->shape(), HloOpcode::kAnd, call, lhs_first_in_window));

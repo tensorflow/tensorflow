@@ -16,9 +16,14 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/factory.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
@@ -34,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -50,6 +54,32 @@ struct FactoryTestParams {
   bool run_on_rocm = true;
 };
 
+// Returns the canonical GPU platform.
+se::Platform* GetGpuPlatform() {
+  absl::StatusOr<std::string> name = PlatformUtil::CanonicalPlatformName("gpu");
+  CHECK_OK(name.status());
+  absl::StatusOr<se::Platform*> platform =
+      se::PlatformManager::PlatformWithName(absl::AsciiStrToUpper(*name));
+  CHECK_OK(platform.status());
+  return *platform;
+}
+
+// Returns the compiler registered for `platform`.
+std::unique_ptr<Compiler> GetCompilerForPlatform(se::Platform* platform) {
+  absl::StatusOr<std::unique_ptr<Compiler>> compiler =
+      Compiler::GetForPlatform(platform->id());
+  CHECK_OK(compiler.status());
+  return *std::move(compiler);
+}
+
+// Returns the first device executor of `platform`.
+se::StreamExecutor* GetStreamExecutor(se::Platform* platform) {
+  absl::StatusOr<se::StreamExecutor*> stream_executor =
+      platform->ExecutorForDevice(0);
+  CHECK_OK(stream_executor.status());
+  return *stream_executor;
+}
+
 class FactoryTest : public xla::HloHardwareIndependentTestBase,
                     public ::testing::WithParamInterface<FactoryTestParams> {
  protected:
@@ -61,12 +91,9 @@ class FactoryTest : public xla::HloHardwareIndependentTestBase,
   stream_executor::StreamExecutorAddressAllocator allocator_;
 
   FactoryTest()
-      : platform_(se::PlatformManager::PlatformWithName(
-                      absl::AsciiStrToUpper(
-                          PlatformUtil::CanonicalPlatformName("gpu").value()))
-                      .value()),
-        compiler_(xla::Compiler::GetForPlatform(platform_->id()).value()),
-        stream_executor_(platform_->ExecutorForDevice(0).value()),
+      : platform_(GetGpuPlatform()),
+        compiler_(GetCompilerForPlatform(platform_)),
+        stream_executor_(GetStreamExecutor(platform_)),
         target_config_(stream_executor_),
         allocator_(stream_executor_) {}
 };
@@ -79,7 +106,7 @@ TEST_P(FactoryTest, GetCodegenBackends) {
       (GetParam().run_on_rocm && is_rocm)) {
     auto& registry =
         stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         const GetCodegenBackends::Type& get_codegen_backends,
         registry.FindObject<GetCodegenBackends>(platform_->id()));
     mlir::MLIRContext mlir_context;
@@ -89,7 +116,8 @@ TEST_P(FactoryTest, GetCodegenBackends) {
         get_codegen_backends(
             stream_executor_, &allocator_, &debug_options_, compiler_.get(),
             &target_config_, &alias_info, &mlir_context,
-            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names);
+            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names,
+            /*thread_pool=*/nullptr, /*mlir_context_pool=*/nullptr);
     EXPECT_EQ(backends.size(), GetParam().expected_num_backends);
   } else {
     GTEST_SKIP() << "Skipping test for platform " << platform_->id();

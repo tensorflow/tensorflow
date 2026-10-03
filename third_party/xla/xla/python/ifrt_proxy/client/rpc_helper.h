@@ -122,17 +122,13 @@ class RpcHelper {
       std::unique_ptr<RemapArraysRequest> req);
   ResponseFuture<BitcastArraysResponse> BitcastArrays(
       std::unique_ptr<BitcastArraysRequest> req);
-  ResponseFuture<ReshardArraysResponse> ReshardArrays(
-      std::unique_ptr<ReshardArraysRequest> req);
-  ResponseFuture<DisassembleIntoSingleDeviceArraysResponse>
-  DisassembleIntoSingleDeviceArrays(
+  void ReshardArrays(std::unique_ptr<ReshardArraysRequest> req);
+  void DisassembleIntoSingleDeviceArrays(
       std::unique_ptr<DisassembleIntoSingleDeviceArraysRequest> req);
   ResponseFuture<CopyToHostBufferResponse> CopyToHostBuffer(
       std::unique_ptr<CopyToHostBufferRequest> req);
-  ResponseFuture<CopyArraysResponse> CopyArrays(
-      std::unique_ptr<CopyArraysRequest> req);
-  ResponseFuture<FullyReplicatedShardResponse> FullyReplicatedShard(
-      std::unique_ptr<FullyReplicatedShardRequest> req);
+  void CopyArrays(std::unique_ptr<CopyArraysRequest> req);
+  void FullyReplicatedShard(std::unique_ptr<FullyReplicatedShardRequest> req);
   ResponseFuture<IsArrayDeletedResponse> IsArrayDeleted(
       std::unique_ptr<IsArrayDeletedRequest> req);
   ResponseFuture<DeleteArrayResponse> DeleteArray(

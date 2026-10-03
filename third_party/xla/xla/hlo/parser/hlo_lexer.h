@@ -148,6 +148,9 @@ class HloLexer {
   // Returns the location of the current token.
   LocTy GetLoc() const { return token_state_.token_start; }
 
+  // Returns the end of the underlying buffer.
+  LocTy GetBufferEnd() const { return buf_.data() + buf_.size(); }
+
   // Returns the line and column of a location in the buffer.
   std::pair<unsigned, unsigned> GetLineAndColumn(LocTy location) const;
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -85,6 +86,10 @@ class NcclCollectives : public GpuCollectives {
 
   absl::StatusOr<CliqueIdCallback> InitializeTopology(
       const Topology& topology) final;
+
+  absl::Status MaybeAttachGxlCommunicators(
+      const CliqueKey& clique_key, absl::Span<const DeviceRank> ranks,
+      absl::Span<Communicator* const> comms) final;
 
  private:
   GxlCollectives* gxl_collectives();

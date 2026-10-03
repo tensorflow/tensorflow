@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -42,8 +41,8 @@ TEST_F(SanitizeConstantNamesTest, InstructionNameWithHyphenSanitized) {
         ROOT equal-to = s32[2]{0} constant({42, 73})
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_TRUE(SanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
@@ -57,8 +56,8 @@ TEST_F(SanitizeConstantNamesTest, InstructionNameWithDotSanitized) {
         ROOT equal.to = s32[2]{0} constant({42, 73})
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_TRUE(SanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
@@ -72,8 +71,8 @@ TEST_F(SanitizeConstantNamesTest, NewInstructionNameRegisteredWithModule) {
         ROOT equal.to = s32[2]{0} constant({42, 73})
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_TRUE(SanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
@@ -97,8 +96,8 @@ TEST_F(SanitizeConstantNamesTest, BufferSanitizedNameCollisionResolved) {
       ROOT equal_to = s32[2]{0} add(equal.to, equal-to)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_TRUE(SanitizeConstantNames().Run(module.get()).value());
   EXPECT_THAT(FindInstruction(module.get(), "equal_to_1"),

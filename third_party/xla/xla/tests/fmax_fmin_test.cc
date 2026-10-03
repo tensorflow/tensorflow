@@ -28,7 +28,7 @@ namespace xla {
 namespace {
 
 using FmaxSimpleTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(FmaxSimpleTest, FmaxTenValues) {
   SetFastMathDisabled(true);

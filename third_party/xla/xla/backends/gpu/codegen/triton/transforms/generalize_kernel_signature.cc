@@ -76,8 +76,10 @@ void StripParameterAddressSpaces(RewriterBase& rewriter,
   auto generic_func = LLVM::LLVMFuncOp::create(
       rewriter, func.getLoc(), func.getSymName(), generic_func_ty,
       func.getLinkage(), func.getDsoLocal(), func.getCConv(),
-      /*comdat=*/nullptr, GetExtraAttrs(func), arg_attrs,
-      func.getFunctionEntryCount());
+      /*comdat=*/nullptr, GetExtraAttrs(func), arg_attrs);
+  if (auto entry_count = func.getFunctionEntryCountAttr()) {
+    generic_func.setFunctionEntryCountAttr(entry_count);
+  }
 
   // Convert generic address spaces back to original ones within the function
   // body.

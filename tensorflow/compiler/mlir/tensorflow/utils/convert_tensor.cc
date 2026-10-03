@@ -280,6 +280,7 @@ absl::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     case DT_FLOAT8_E4M3FNUZ:
     case DT_FLOAT8_E4M3B11FNUZ:
     case DT_FLOAT8_E5M2FNUZ:
+    case DT_FLOAT8_E8M0FNU:
       return ConvertTensorOfCustomFloatType(input_tensor, type);
     case DT_INT4:
       return ConvertSubByteTensor<tsl::int4>(input_tensor, type);
@@ -370,7 +371,7 @@ absl::StatusOr<ElementsAttr> ConvertTensorProto(
 
   Tensor t;
   if (!t.FromProto(input_tensor))
-    return InvalidArgument("Failed to parse input_tensor.");
+    return absl::InvalidArgumentError("Failed to parse input_tensor.");
   return ConvertTensor(t, builder, convert_to_dense_resource);
 }
 
@@ -723,6 +724,10 @@ absl::Status ConvertToTensorProto(const ElementsAttr attr,
       TF_RETURN_IF_ERROR(ConvertFloat8ElementsAttr<tsl::float8_e5m2fnuz>(
           attr, output->mutable_float8_val()));
       break;
+    case DT_FLOAT8_E8M0FNU:
+      TF_RETURN_IF_ERROR(ConvertFloat8ElementsAttr<tsl::float8_e8m0fnu>(
+          attr, output->mutable_float8_val()));
+      break;
     case tensorflow::DT_INT4:
       TF_RETURN_IF_ERROR(ConvertIntElementsAttr<int, tsl::int4>(
           attr, output->mutable_int_val(), output->mutable_tensor_content()));
@@ -792,7 +797,8 @@ absl::Status ConvertToTensor(const mlir::ElementsAttr attr,
   TensorProto tensor_proto;
   TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor_proto));
   if (!output_tensor->FromProto(tensor_proto)) {
-    return InvalidArgument("Couldn't convert tensor proto to tensor.");
+    return absl::InvalidArgumentError(
+        "Couldn't convert tensor proto to tensor.");
   }
   return absl::OkStatus();
 }

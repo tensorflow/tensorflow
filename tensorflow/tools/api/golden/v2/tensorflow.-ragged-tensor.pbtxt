@@ -38,8 +38,148 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__abs__"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__add__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__and__"
+    argspec: "args=[\'self\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__bool__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__div__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__floordiv__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__ge__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__getitem__"
+    argspec: "args=[\'rt_input\', \'key\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__gt__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'values\', \'row_partition\', \'internal\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "__invert__"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__le__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__lt__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__mod__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__mul__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__neg__"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__nonzero__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__or__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__pow__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__radd__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rand__"
+    argspec: "args=[\'self\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rdiv__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rfloordiv__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rmod__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rmul__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__ror__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rpow__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rsub__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rtruediv__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__rxor__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'LogicalXor\'], "
+  }
+  member_method {
+    name: "__sub__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__truediv__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "__xor__"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'LogicalXor\'], "
   }
   member_method {
     name: "bounding_shape"
@@ -52,46 +192,57 @@ tf_class {
   member_method {
     name: "from_nested_row_lengths"
     argspec: "args=[\'cls\', \'flat_values\', \'nested_row_lengths\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_nested_row_splits"
     argspec: "args=[\'cls\', \'flat_values\', \'nested_row_splits\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_nested_value_rowids"
     argspec: "args=[\'cls\', \'flat_values\', \'nested_value_rowids\', \'nested_nrows\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_row_lengths"
     argspec: "args=[\'cls\', \'values\', \'row_lengths\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_row_limits"
     argspec: "args=[\'cls\', \'values\', \'row_limits\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_row_splits"
     argspec: "args=[\'cls\', \'values\', \'row_splits\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_row_starts"
     argspec: "args=[\'cls\', \'values\', \'row_starts\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_sparse"
     argspec: "args=[\'cls\', \'st_input\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int64\'>\"], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_tensor"
     argspec: "args=[\'cls\', \'tensor\', \'lengths\', \'padding\', \'ragged_rank\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\', \'None\', \"<dtype: \'int64\'>\"], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_uniform_row_length"
     argspec: "args=[\'cls\', \'values\', \'uniform_row_length\', \'nrows\', \'validate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_value_rowids"
     argspec: "args=[\'cls\', \'values\', \'value_rowids\', \'nrows\', \'name\', \'validate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "get_shape"

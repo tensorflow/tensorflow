@@ -29,11 +29,11 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/rccl/rccl.h"
 #include "rocm/rocm_config.h"  // IWYU pragma: keep
@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/collectives/rccl_errors.h"
 #include "xla/backends/gpu/collectives/rccl_group.h"
+#include "xla/backends/gpu/collectives/rccl_registered_memory.h"
 #include "xla/backends/gpu/collectives/rccl_symmetric_memory.h"
 #include "xla/backends/gpu/collectives/rccl_types.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
@@ -82,12 +83,12 @@ absl::StatusOr<std::unique_ptr<RcclCommunicator>> RcclCommunicator::Create(
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
     std::shared_ptr<CancellationToken> cancel, bool is_async, tsl::Env& env) {
   auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
-    ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
+    ABSL_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
     if (cancel) {
-      RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
+      ABSL_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
     } else {
       CancellationToken never_cancelled;
-      RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
+      ABSL_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
     }
     return comm;
   };
@@ -95,7 +96,7 @@ absl::StatusOr<std::unique_ptr<RcclCommunicator>> RcclCommunicator::Create(
   if (!is_async) {
     // If this RcclCommunicator is synchronous, construct ncclComm_t in the
     // calling thread.
-    ASSIGN_OR_RETURN(ncclComm_t comm, f());
+    ABSL_ASSIGN_OR_RETURN(ncclComm_t comm, f());
     return absl::WrapUnique(
         new RcclCommunicator(comm, nullptr, std::move(cancel)));
   }
@@ -104,7 +105,7 @@ absl::StatusOr<std::unique_ptr<RcclCommunicator>> RcclCommunicator::Create(
   // underlying ncclComm_t, including its creation, must take place on the
   // single threaded executor.
   auto executor = std::make_unique<SingleThreadedExecutor>(env);
-  ASSIGN_OR_RETURN(ncclComm_t comm,
+  ABSL_ASSIGN_OR_RETURN(ncclComm_t comm,
                    MakeFutureOn<ncclComm_t>(*executor, f).Await());
   return absl::WrapUnique(
       new RcclCommunicator(comm, std::move(executor), std::move(cancel)));
@@ -192,7 +193,7 @@ Future<> RcclCommunicator::GroupExecute(
 
 absl::Status RcclCommunicator::GroupLaunch(
     absl::FunctionRef<absl::Status()> group) {
-  ASSIGN_OR_RETURN(bool launched, RcclGroupLaunch(group));
+  ABSL_ASSIGN_OR_RETURN(bool launched, RcclGroupLaunch(group));
   if (launched) {
     return PollUntilDone();
   }
@@ -299,18 +300,18 @@ absl::Status RcclCommunicator::LaunchAllReduce(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, reduction_kind, comm_, stream);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/true,
           stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
-  RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllReduce(
+  ABSL_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllReduce(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       AsHipStream(stream))));
   if (!IsInsideRcclGroupLaunch()) {
-    RETURN_IF_ERROR(PollUntilDone());
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -331,17 +332,17 @@ absl::Status RcclCommunicator::LaunchBroadcast(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, root.value(), comm_, stream);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/false,
           stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
-  RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclBroadcast(
+  ABSL_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, root.value(), comm_, AsHipStream(stream))));
   if (!IsInsideRcclGroupLaunch()) {
-    RETURN_IF_ERROR(PollUntilDone());
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -363,18 +364,18 @@ absl::Status RcclCommunicator::LaunchReduceScatter(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, reduction_kind, comm_, stream);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/true,
           stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
-  RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclReduceScatter(
+  ABSL_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclReduceScatter(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       AsHipStream(stream))));
   if (!IsInsideRcclGroupLaunch()) {
-    RETURN_IF_ERROR(PollUntilDone());
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -394,17 +395,17 @@ absl::Status RcclCommunicator::LaunchAllGather(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, comm_, stream);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/false,
           stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
-  RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllGather(
+  ABSL_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, comm_, AsHipStream(stream))));
   if (!IsInsideRcclGroupLaunch()) {
-    RETURN_IF_ERROR(PollUntilDone());
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -445,7 +446,7 @@ absl::Status RcclCommunicator::LaunchAllToAll(
         send_buffers.size(), num_ranks);
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/false,
@@ -490,7 +491,7 @@ absl::Status RcclCommunicator::LaunchCollectivePermute(
       source_rank ? absl::StrCat(source_rank->value()) : "<empty>",
       absl::StrJoin(target_ranks, ", ", rank_formatter), count, comm_, stream);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/false,
@@ -536,17 +537,17 @@ absl::Status RcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/false,
           stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
-  RETURN_IF_ERROR(XLA_RCCL_STATUS(
+  ABSL_RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, AsHipStream(stream))));
   if (!IsInsideRcclGroupLaunch()) {
-    RETURN_IF_ERROR(PollUntilDone());
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -567,17 +568,17 @@ absl::Status RcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ncclDataType_t nccl_dtype,
       ToNcclDataType(
           dtype, /*is_reduction_op=*/false,
           stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
-  RETURN_IF_ERROR(XLA_RCCL_STATUS(
+  ABSL_RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, AsHipStream(stream))));
   if (!IsInsideRcclGroupLaunch()) {
-    RETURN_IF_ERROR(PollUntilDone());
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -585,6 +586,11 @@ absl::Status RcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
 absl::StatusOr<std::unique_ptr<SymmetricMemory>>
 RcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
   return RcclSymmetricMemory::Create(comm_, addr);
+}
+
+absl::StatusOr<std::unique_ptr<RegisteredMemory>>
+RcclCommunicator::CreateRegisteredMemory(se::DeviceAddressBase addr) {
+  return RcclRegisteredMemory::Create(comm_, addr);
 }
 
 std::string RcclCommunicator::ToString() const {

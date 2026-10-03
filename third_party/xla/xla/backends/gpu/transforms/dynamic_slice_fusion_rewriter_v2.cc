@@ -28,12 +28,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -139,6 +140,23 @@ bool HasSupportedShapes(const HloInstruction* hero) {
         LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping "
                      << hero->name()
                      << " because nested tuple results are not supported";
+        return false;
+      }
+    }
+    absl::flat_hash_set<int64_t> seen_tuple_indices;
+    for (const HloInstruction* user : hero->users()) {
+      const auto* gte = DynCast<HloGetTupleElementInstruction>(user);
+      if (gte == nullptr) {
+        LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping "
+                     << hero->name()
+                     << " because tuple result has non-GTE user "
+                     << user->name();
+        return false;
+      }
+      if (!seen_tuple_indices.insert(gte->tuple_index()).second) {
+        LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping "
+                     << hero->name() << " because tuple result has duplicate "
+                     << "GTE user for index " << gte->tuple_index();
         return false;
       }
     }
@@ -309,6 +327,9 @@ HloInstruction* FindGte(HloInstruction* hero, int64_t tuple_index) {
 // Walks forward from `gte` to find a DUS chain. If found, returns a
 // SlicedResult with the GTE prepended into noops.
 std::optional<SlicedResult> ResolveLeafDus(HloInstruction* gte) {
+  if (gte->user_count() != 1) {
+    return std::nullopt;
+  }
   for (HloInstruction* user : gte->users()) {
     if (auto sliced = ResolveSlicedResult(user)) {
       sliced->noops.insert(sliced->noops.begin(), gte);
@@ -321,6 +342,9 @@ std::optional<SlicedResult> ResolveLeafDus(HloInstruction* gte) {
 // Resolves the sliced result for a non-tuple hero.
 std::vector<SlicedResult> ResolveNonTupleSlicedResult(
     HloInstruction* hero, const CaptureUpdateSlice& capture_update_slice) {
+  if (hero->user_count() != 1) {
+    return {};
+  }
   for (HloInstruction* user : hero->users()) {
     if (auto sliced = ResolveSlicedResult(user)) {
       if (!capture_update_slice(hero, std::nullopt, sliced->update_slice)) {
@@ -659,7 +683,7 @@ absl::Status SetDynamicSliceFusionBackendConfig(HloInstruction* fusion) {
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind("__custom_fusion");
-  CustomFusionConfig config;
+  xtile::CustomFusionConfig config;
   config.set_name(std::string(kDynamicSliceFusionConfigName));
   *backend_config.mutable_custom_fusion_config() = config;
   return fusion->set_backend_config(std::move(gpu_config));
@@ -678,7 +702,7 @@ absl::StatusOr<bool> RewriteHero(
     return false;
   }
 
-  ASSIGN_OR_RETURN(HloComputation * fusion_body,
+  ABSL_ASSIGN_OR_RETURN(HloComputation * fusion_body,
                    CreateFusionBody(module, *plan, sliced_results, hero));
 
   HloComputation* parent = hero->parent();
@@ -687,7 +711,11 @@ absl::StatusOr<bool> RewriteHero(
                                    HloInstruction::FusionKind::kCustom,
                                    plan->external_operands, fusion_body));
   module->SetAndUniquifyInstrName(fusion, "dynamic_slice_fusion");
-  RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
+  ABSL_RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
+  ABSL_RETURN_IF_ERROR(fusion->CopyAllControlDepsFrom(hero));
+  ABSL_RETURN_IF_ERROR(hero->DropAllControlDeps());
+
+  const bool hero_has_side_effect = hero->HasSideEffect();
 
   if (sliced_results.size() > 1) {
     bool any_result_replaced = false;
@@ -695,27 +723,38 @@ absl::StatusOr<bool> RewriteHero(
       auto* gte = parent->AddInstruction(
           HloInstruction::CreateGetTupleElement(fusion, i));
       if (sliced_results[i].update_slice != nullptr) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             parent->ReplaceInstruction(sliced_results[i].update_slice, gte));
         any_result_replaced = true;
       } else if (!sliced_results[i].noops.empty()) {
         HloInstruction* original_leaf = sliced_results[i].noops.back();
-        RETURN_IF_ERROR(parent->ReplaceInstruction(original_leaf, gte));
+        ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(original_leaf, gte));
         any_result_replaced = true;
       }
     }
     if (!any_result_replaced) {
-      RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+      ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+    } else if (hero_has_side_effect) {
+      ABSL_RETURN_IF_ERROR(parent->RemoveInstructionAndUnusedOperands(hero));
     }
   } else if (sliced_results.size() == 1) {
     if (sliced_results[0].update_slice != nullptr) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           parent->ReplaceInstruction(sliced_results[0].update_slice, fusion));
+      if (hero_has_side_effect) {
+        ABSL_RETURN_IF_ERROR(parent->RemoveInstructionAndUnusedOperands(hero));
+      }
+    } else if (hero->shape().IsTuple() && !sliced_results[0].noops.empty()) {
+      ABSL_RETURN_IF_ERROR(
+          parent->ReplaceInstruction(sliced_results[0].noops.back(), fusion));
+      if (hero_has_side_effect) {
+        ABSL_RETURN_IF_ERROR(parent->RemoveInstructionAndUnusedOperands(hero));
+      }
     } else {
-      RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+      ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
     }
   } else {
-    RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
+    ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
   }
 
   return true;
@@ -756,7 +795,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriterV2::RunImpl(
                                                    options_.capture_slice);
       auto sliced_results =
           ResolveSlicedResults(hero, options_.capture_update_slice);
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           bool hero_changed,
           RewriteHero(module, hero, sliced_params, sliced_results));
       changed |= hero_changed;

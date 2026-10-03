@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/side_effect_util.h"
 
 namespace xla::gpu {
 namespace {
@@ -72,8 +72,8 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
           custom_call_target="target"
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(
       module.get(),
@@ -107,21 +107,168 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
   HloModule Module
 
   ENTRY CopyStartAndCopyDone {
-    p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
+    p0 = f32[2,3]{1,0:S(7)} parameter(0)
+    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(7)}, u32[]) copy-start(p0)
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_copy_start_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_copy_start_string));
 
   ExecutionStreamAssignment assignment(module.get());
 
-  // copy-start is a compute scope start, gets ComputationStreamId(0).
+  // D2D copy-start (neither endpoint is host memory) runs on a compute stream.
   EXPECT_THAT(
       assignment.GetExecutionStreamId(
           FindInstruction(module.get(), "copy-start")),
       absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, CopyStartD2HStreamId) {
+  // Destination is in host memory (S(5)) → device-to-host → kMemcpyD2HStreamId.
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY main {
+    p0 = f32[1024]{0} parameter(0)
+    copy-start = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[1024]{0:S(5)} copy-done(copy-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "copy-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyD2HStreamId)));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, CopyStartH2DStreamId) {
+  // Source is in host memory (S(5)) → host-to-device → kMemcpyH2DStreamId.
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY main {
+    p0 = f32[1024]{0:S(5)} parameter(0)
+    copy-start = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[1024]{0} copy-done(copy-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "copy-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyH2DStreamId)));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, AsyncDusToHostMemory) {
+  // async-start wrapping a DUS whose output is in host memory → D2H.
+  const char* const hlo = R"(
+  HloModule Module
+
+  dus_computation {
+    base = f32[4]{0:S(5)} parameter(0)
+    update = f32[1]{0} parameter(1)
+    idx = s32[] parameter(2)
+    ROOT result = f32[4]{0:S(5)} dynamic-update-slice(base, update, idx)
+  }
+
+  ENTRY main {
+    p0 = f32[4]{0:S(5)} parameter(0)
+    p1 = f32[1]{0} parameter(1)
+    p2 = s32[] parameter(2)
+    start = ((f32[4]{0:S(5)}, f32[1]{0}, s32[]), f32[4]{0:S(5)}, u32[]) async-start(p0, p1, p2), calls=dus_computation
+    ROOT done = f32[4]{0:S(5)} async-done(start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyD2HStreamId)));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "done")),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, AsyncFusedDusToHostMemory) {
+  // async-start wrapping a kLoop fusion whose output is in host memory (the
+  // post-StreamAttributeAnnotator form of a D2H host-memory DUS).
+  const char* const hlo = R"(
+  HloModule Module
+
+  wrapped_dus_computation {
+    base = f32[4]{0:S(5)} parameter(0)
+    update = f32[1]{0} parameter(1)
+    idx = s32[] parameter(2)
+    ROOT dus = f32[4]{0:S(5)} dynamic-update-slice(base, update, idx)
+  }
+
+  fused_dus_async {
+    p0 = f32[4]{0:S(5)} parameter(0)
+    p1 = f32[1]{0} parameter(1)
+    p2 = s32[] parameter(2)
+    ROOT fused = f32[4]{0:S(5)} fusion(p0, p1, p2), kind=kLoop,
+        calls=wrapped_dus_computation
+  }
+
+  ENTRY main {
+    p0 = f32[4]{0:S(5)} parameter(0)
+    p1 = f32[1]{0} parameter(1)
+    p2 = s32[] parameter(2)
+    start = ((f32[4]{0:S(5)}, f32[1]{0}, s32[]), f32[4]{0:S(5)}, u32[]) async-start(p0, p1, p2), calls=fused_dus_async
+    ROOT done = f32[4]{0:S(5)} async-done(start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyD2HStreamId)));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, AsyncDsFromHostMemory) {
+  // async-start wrapping a DS whose first operand is in host memory → H2D.
+  const char* const hlo = R"(
+  HloModule Module
+
+  ds_computation {
+    src = f32[4]{0:S(5)} parameter(0)
+    idx = s32[] parameter(1)
+    ROOT result = f32[1]{0} dynamic-slice(src, idx), dynamic_slice_sizes={1}
+  }
+
+  ENTRY main {
+    p0 = f32[4]{0:S(5)} parameter(0)
+    p1 = s32[] parameter(1)
+    start = ((f32[4]{0:S(5)}, s32[]), f32[1]{0}, u32[]) async-start(p0, p1), calls=ds_computation
+    ROOT done = f32[1]{0} async-done(start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyH2DStreamId)));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "done")),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
@@ -145,8 +292,8 @@ TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
       ROOT done = f32[] fusion(p0), kind=kLoop, calls=fusion
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(module.get());
 
@@ -174,8 +321,8 @@ TEST_F(ExecutionStreamAssignmentTest, UnreachableComputation) {
       ROOT add = f32[2,2] add(p0, p0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(module.get());
 
@@ -213,8 +360,8 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
     ROOT %call-done-2 = f32[2048,2048]{1,0} call-done(((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) %call-start.2)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(
       module.get(),
@@ -258,8 +405,8 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
       ROOT _ = (f32[], f32[1], f32[2]) tuple(ar-done, rs-done, add.0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // With 4 compute streams and 2 collective streams, ar-start and rs-start
   // get CommunicationStreamId(0) and CommunicationStreamId(1).
@@ -292,6 +439,130 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
   EXPECT_THAT(
       assignment.GetExecutionStreamId(FindInstruction(module.get(), "ar-done")),
       absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, CollectiveDomainRoundRobin) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  reduce {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT sum = f32[] add(x, y)
+  }
+
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    p1 = f32[2] parameter(1)
+    ar-start = f32[] all-reduce-start(p0), to_apply=reduce
+    rs-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    rs1-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    rs2-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    rs3-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    rs4-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    ar-done = f32[] all-reduce-done(ar-start)
+    rs-done = f32[1] reduce-scatter-done(rs-start)
+    rs1-done = f32[1] reduce-scatter-done(rs1-start)
+    rs2-done = f32[1] reduce-scatter-done(rs2-start)
+    rs3-done = f32[1] reduce-scatter-done(rs3-start)
+    rs4-done = f32[1] reduce-scatter-done(rs4-start)
+    ROOT result = (f32[], f32[1], f32[1], f32[1], f32[1], f32[1])
+      tuple(ar-done, rs-done, rs1-done, rs2-done, rs3-done, rs4-done)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  GpuBackendConfig scale_up_fabric_config;
+  scale_up_fabric_config.mutable_collective_backend_config()
+      ->set_communication_domain(kScaleUpFabricCollectiveDomain);
+  for (absl::string_view name : {"ar-start", "rs1-start", "rs3-start"}) {
+    HloInstruction* start = FindInstruction(module.get(), name);
+    ASSERT_OK(start->set_backend_config(scale_up_fabric_config));
+  }
+
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/4,
+                     /*number_of_communication_execution_streams=*/2});
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "ar-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(3))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  // Each domain advances independently and wraps within its own two-stream
+  // pool.
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs1-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(4))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs2-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs3-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(3))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs4-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       ExplicitCollectivesGroupUsesCommunicationStream) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  comms {
+    p0 = f32[1] parameter(0)
+    ag = f32[1] all-gather(p0), dimensions={0}
+    cp = f32[1] collective-permute(p0), source_target_pairs={{0,1}}
+    ROOT result = (f32[1], f32[1]) tuple(ag, cp)
+  }
+
+  ENTRY main {
+    p0 = f32[1] parameter(0)
+    group-start = ((f32[1]), (f32[1], f32[1])) async-start(p0),
+      calls=comms, frontend_attributes={_collectives_group=""}
+    ROOT group-done = (f32[1], f32[1]) async-done(group-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ExecutionStreamAssignment assignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "group-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+
+  HloInstruction* group_start = FindInstruction(module.get(), "group-start");
+  GpuBackendConfig config;
+  config.mutable_collective_backend_config()->set_communication_domain(
+      kScaleUpFabricCollectiveDomain);
+  ASSERT_OK(group_start->set_backend_config(config));
+  assignment = ExecutionStreamAssignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(group_start),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(3))));
+
+  group_start->set_frontend_attribute(kXlaStreamAnnotationAttr, "7");
+  assignment = ExecutionStreamAssignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(group_start),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(7))));
+  EXPECT_THAT(assignment.GetExecutionStreamId(
+                  FindInstruction(module.get(), "group-done")),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, PipelinedSendRecv) {
@@ -349,8 +620,8 @@ TEST_F(ExecutionStreamAssignmentTest, PipelinedSendRecv) {
       ROOT data_ = get-tuple-element(recv_done), index=0
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(
       module.get(), ExecutionStreamAssignment::Options{4, 4});

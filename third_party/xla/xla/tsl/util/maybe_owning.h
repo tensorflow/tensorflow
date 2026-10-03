@@ -20,7 +20,10 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
+
+namespace tsl {
 
 // A unique_ptr like class which may or may not have ownership of its pointer.
 // Uses least significant bit of the pointer to indicate ownership.
@@ -45,7 +48,7 @@ class MaybeOwning final {
 
   MaybeOwning<T>& operator=(std::unique_ptr<T> unique) {
     MaybeDeleteOwned();
-    ptr_and_owning_bit_ = TakeUnique(std::move(std::move(unique)));
+    ptr_and_owning_bit_ = TakeUnique(std::move(unique));
     return *this;
   }
 
@@ -76,6 +79,17 @@ class MaybeOwning final {
   }
 
   bool OwnsPtr() const { return kOwningBitMask & ptr_and_owning_bit_; }
+
+  // Returns a unique_ptr to the pointer if it is owned, otherwise returns
+  // nullptr. The pointee is not changed regardless of change of ownership.
+  std::unique_ptr<T> ReleaseOwning() {
+    if (!OwnsPtr()) {
+      return nullptr;
+    }
+    T* ptr = get_mutable();
+    ptr_and_owning_bit_ &= kPointerMask;
+    return std::unique_ptr<T>(ptr);
+  }
 
   friend bool operator==(const MaybeOwning& mo, std::nullptr_t) {
     // A MaybeOwning is considered null if its internal pointer is null.
@@ -134,5 +148,7 @@ class MaybeOwning final {
 
   intptr_t ptr_and_owning_bit_ = 0;
 };
+
+}  // namespace tsl
 
 #endif  // XLA_TSL_UTIL_MAYBE_OWNING_H_

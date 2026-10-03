@@ -1,0 +1,1371 @@
+HloModule jit_mass_matrix_35, entry_computation_layout={(f32[35]{0})->f32[35,35]{1,0}}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true}
+
+FileNames
+1 "<embedded module \'_launcher\'>"
+2 "jax_tests/example_a.py"
+3 "third_party/py/absl/app.py"
+
+FunctionNames
+1 "run_filename_as_main"
+2 "_run_code_in_main"
+3 "<module>"
+4 "run"
+5 "_run_main"
+6 "main"
+7 "mass_matrix_35"
+8 "mass_matrix"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=153 end_line=153 column=2 end_column=31}
+2 {file_name_id=1 function_name_id=2 line=35 end_line=35 column=2 end_column=24}
+3 {file_name_id=2 function_name_id=3 line=26 end_line=26 column=4 end_column=17}
+4 {file_name_id=3 function_name_id=4 line=609 end_line=609 column=6 end_column=27}
+5 {file_name_id=3 function_name_id=5 line=529 end_line=529 column=13 end_column=23}
+6 {file_name_id=2 function_name_id=6 line=22 end_line=22 column=8 end_column=25}
+7 {file_name_id=2 function_name_id=7 line=17 end_line=17 column=11 end_column=25}
+8 {file_name_id=2 function_name_id=8 line=7 end_line=7 column=8 end_column=25}
+9 {file_name_id=2 function_name_id=8 line=9 end_line=9 column=35 end_column=39}
+10 {file_name_id=2 function_name_id=8 line=9 end_line=9 column=27 end_column=40}
+11 {file_name_id=2 function_name_id=8 line=9 end_line=9 column=12 end_column=47}
+12 {file_name_id=2 function_name_id=8 line=11 end_line=11 column=41 end_column=45}
+13 {file_name_id=2 function_name_id=8 line=11 end_line=11 column=48 end_column=54}
+14 {file_name_id=2 function_name_id=8 line=11 end_line=11 column=33 end_column=55}
+15 {file_name_id=2 function_name_id=8 line=11 end_line=11 column=16 end_column=56}
+16 {file_name_id=2 function_name_id=8 line=12 end_line=12 column=41 end_column=45}
+17 {file_name_id=2 function_name_id=8 line=12 end_line=12 column=48 end_column=54}
+18 {file_name_id=2 function_name_id=8 line=12 end_line=12 column=33 end_column=55}
+19 {file_name_id=2 function_name_id=8 line=12 end_line=12 column=16 end_column=56}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=2}
+3 {file_location_id=3 parent_frame_id=3}
+4 {file_location_id=4 parent_frame_id=4}
+5 {file_location_id=5 parent_frame_id=5}
+6 {file_location_id=6 parent_frame_id=6}
+7 {file_location_id=7 parent_frame_id=7}
+8 {file_location_id=8 parent_frame_id=8}
+9 {file_location_id=9 parent_frame_id=8}
+10 {file_location_id=10 parent_frame_id=8}
+11 {file_location_id=11 parent_frame_id=8}
+12 {file_location_id=12 parent_frame_id=8}
+13 {file_location_id=13 parent_frame_id=8}
+14 {file_location_id=14 parent_frame_id=8}
+15 {file_location_id=15 parent_frame_id=8}
+16 {file_location_id=16 parent_frame_id=8}
+17 {file_location_id=17 parent_frame_id=8}
+18 {file_location_id=18 parent_frame_id=8}
+19 {file_location_id=19 parent_frame_id=8}
+
+
+%region_0.1 (scatter.2: f32[], scatter.3: f32[]) -> f32[] {
+  %scatter.2 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.3 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_1.2 (scatter.7: f32[], scatter.8: f32[]) -> f32[] {
+  %scatter.7 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.8 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_2.3 (scatter.12: f32[], scatter.13: f32[]) -> f32[] {
+  %scatter.12 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.13 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_3.4 (scatter.17: f32[], scatter.18: f32[]) -> f32[] {
+  %scatter.17 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.18 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_4.5 (scatter.22: f32[], scatter.23: f32[]) -> f32[] {
+  %scatter.22 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.23 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_5.6 (scatter.27: f32[], scatter.28: f32[]) -> f32[] {
+  %scatter.27 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.28 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_6.7 (scatter.32: f32[], scatter.33: f32[]) -> f32[] {
+  %scatter.32 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.33 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_7.8 (scatter.37: f32[], scatter.38: f32[]) -> f32[] {
+  %scatter.37 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.38 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_8.9 (scatter.42: f32[], scatter.43: f32[]) -> f32[] {
+  %scatter.42 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.43 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_9.10 (scatter.47: f32[], scatter.48: f32[]) -> f32[] {
+  %scatter.47 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.48 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_10.11 (scatter.52: f32[], scatter.53: f32[]) -> f32[] {
+  %scatter.52 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.53 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_11.12 (scatter.57: f32[], scatter.58: f32[]) -> f32[] {
+  %scatter.57 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.58 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_12.13 (scatter.62: f32[], scatter.63: f32[]) -> f32[] {
+  %scatter.62 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.63 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_13.14 (scatter.67: f32[], scatter.68: f32[]) -> f32[] {
+  %scatter.67 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.68 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_14.15 (scatter.72: f32[], scatter.73: f32[]) -> f32[] {
+  %scatter.72 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.73 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_15.16 (scatter.77: f32[], scatter.78: f32[]) -> f32[] {
+  %scatter.77 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.78 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_16.17 (scatter.82: f32[], scatter.83: f32[]) -> f32[] {
+  %scatter.82 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.83 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_17.18 (scatter.87: f32[], scatter.88: f32[]) -> f32[] {
+  %scatter.87 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.88 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_18.19 (scatter.92: f32[], scatter.93: f32[]) -> f32[] {
+  %scatter.92 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.93 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_19.20 (scatter.97: f32[], scatter.98: f32[]) -> f32[] {
+  %scatter.97 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.98 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_20.21 (scatter.102: f32[], scatter.103: f32[]) -> f32[] {
+  %scatter.102 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.103 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_21.22 (scatter.107: f32[], scatter.108: f32[]) -> f32[] {
+  %scatter.107 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.108 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_22.23 (scatter.112: f32[], scatter.113: f32[]) -> f32[] {
+  %scatter.112 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.113 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_23.24 (scatter.117: f32[], scatter.118: f32[]) -> f32[] {
+  %scatter.117 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.118 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_24.25 (scatter.122: f32[], scatter.123: f32[]) -> f32[] {
+  %scatter.122 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.123 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_25.26 (scatter.127: f32[], scatter.128: f32[]) -> f32[] {
+  %scatter.127 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.128 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_26.27 (scatter.132: f32[], scatter.133: f32[]) -> f32[] {
+  %scatter.132 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.133 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_27.28 (scatter.137: f32[], scatter.138: f32[]) -> f32[] {
+  %scatter.137 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.138 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_28.29 (scatter.142: f32[], scatter.143: f32[]) -> f32[] {
+  %scatter.142 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.143 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_29.30 (scatter.147: f32[], scatter.148: f32[]) -> f32[] {
+  %scatter.147 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.148 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_30.31 (scatter.152: f32[], scatter.153: f32[]) -> f32[] {
+  %scatter.152 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.153 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_31.32 (scatter.157: f32[], scatter.158: f32[]) -> f32[] {
+  %scatter.157 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.158 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_32.33 (scatter.162: f32[], scatter.163: f32[]) -> f32[] {
+  %scatter.162 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.163 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_33.34 (scatter.167: f32[], scatter.168: f32[]) -> f32[] {
+  %scatter.167 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.168 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_34.35 (scatter.172: f32[], scatter.173: f32[]) -> f32[] {
+  %scatter.172 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.173 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_35.36 (scatter.177: f32[], scatter.178: f32[]) -> f32[] {
+  %scatter.177 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.178 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_36.37 (scatter.182: f32[], scatter.183: f32[]) -> f32[] {
+  %scatter.182 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.183 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_37.38 (scatter.187: f32[], scatter.188: f32[]) -> f32[] {
+  %scatter.187 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.188 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_38.39 (scatter.192: f32[], scatter.193: f32[]) -> f32[] {
+  %scatter.192 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.193 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_39.40 (scatter.197: f32[], scatter.198: f32[]) -> f32[] {
+  %scatter.197 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.198 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_40.41 (scatter.202: f32[], scatter.203: f32[]) -> f32[] {
+  %scatter.202 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.203 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_41.42 (scatter.207: f32[], scatter.208: f32[]) -> f32[] {
+  %scatter.207 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.208 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_42.43 (scatter.212: f32[], scatter.213: f32[]) -> f32[] {
+  %scatter.212 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.213 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_43.44 (scatter.217: f32[], scatter.218: f32[]) -> f32[] {
+  %scatter.217 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.218 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_44.45 (scatter.222: f32[], scatter.223: f32[]) -> f32[] {
+  %scatter.222 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.223 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_45.46 (scatter.227: f32[], scatter.228: f32[]) -> f32[] {
+  %scatter.227 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.228 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_46.47 (scatter.232: f32[], scatter.233: f32[]) -> f32[] {
+  %scatter.232 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.233 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_47.48 (scatter.237: f32[], scatter.238: f32[]) -> f32[] {
+  %scatter.237 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.238 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_48.49 (scatter.242: f32[], scatter.243: f32[]) -> f32[] {
+  %scatter.242 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.243 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_49.50 (scatter.247: f32[], scatter.248: f32[]) -> f32[] {
+  %scatter.247 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.248 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_50.51 (scatter.252: f32[], scatter.253: f32[]) -> f32[] {
+  %scatter.252 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.253 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_51.52 (scatter.257: f32[], scatter.258: f32[]) -> f32[] {
+  %scatter.257 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.258 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_52.53 (scatter.262: f32[], scatter.263: f32[]) -> f32[] {
+  %scatter.262 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.263 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_53.54 (scatter.267: f32[], scatter.268: f32[]) -> f32[] {
+  %scatter.267 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.268 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_54.55 (scatter.272: f32[], scatter.273: f32[]) -> f32[] {
+  %scatter.272 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.273 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_55.56 (scatter.277: f32[], scatter.278: f32[]) -> f32[] {
+  %scatter.277 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.278 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_56.57 (scatter.282: f32[], scatter.283: f32[]) -> f32[] {
+  %scatter.282 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.283 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_57.58 (scatter.287: f32[], scatter.288: f32[]) -> f32[] {
+  %scatter.287 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.288 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_58.59 (scatter.292: f32[], scatter.293: f32[]) -> f32[] {
+  %scatter.292 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.293 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_59.60 (scatter.297: f32[], scatter.298: f32[]) -> f32[] {
+  %scatter.297 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.298 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_60.61 (scatter.302: f32[], scatter.303: f32[]) -> f32[] {
+  %scatter.302 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.303 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_61.62 (scatter.307: f32[], scatter.308: f32[]) -> f32[] {
+  %scatter.307 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.308 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_62.63 (scatter.312: f32[], scatter.313: f32[]) -> f32[] {
+  %scatter.312 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.313 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_63.64 (scatter.317: f32[], scatter.318: f32[]) -> f32[] {
+  %scatter.317 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.318 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_64.65 (scatter.322: f32[], scatter.323: f32[]) -> f32[] {
+  %scatter.322 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.323 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_65.66 (scatter.327: f32[], scatter.328: f32[]) -> f32[] {
+  %scatter.327 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.328 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_66.67 (scatter.332: f32[], scatter.333: f32[]) -> f32[] {
+  %scatter.332 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.333 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_67.68 (scatter.337: f32[], scatter.338: f32[]) -> f32[] {
+  %scatter.337 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.338 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_68.69 (scatter.342: f32[], scatter.343: f32[]) -> f32[] {
+  %scatter.342 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.343 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_69.70 (scatter.347: f32[], scatter.348: f32[]) -> f32[] {
+  %scatter.347 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.348 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_70.71 (scatter.352: f32[], scatter.353: f32[]) -> f32[] {
+  %scatter.352 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.353 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_71.72 (scatter.357: f32[], scatter.358: f32[]) -> f32[] {
+  %scatter.357 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.358 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_72.73 (scatter.362: f32[], scatter.363: f32[]) -> f32[] {
+  %scatter.362 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.363 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_73.74 (scatter.367: f32[], scatter.368: f32[]) -> f32[] {
+  %scatter.367 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.368 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_74.75 (scatter.372: f32[], scatter.373: f32[]) -> f32[] {
+  %scatter.372 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.373 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_75.76 (scatter.377: f32[], scatter.378: f32[]) -> f32[] {
+  %scatter.377 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.378 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_76.77 (scatter.382: f32[], scatter.383: f32[]) -> f32[] {
+  %scatter.382 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.383 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_77.78 (scatter.387: f32[], scatter.388: f32[]) -> f32[] {
+  %scatter.387 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.388 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_78.79 (scatter.392: f32[], scatter.393: f32[]) -> f32[] {
+  %scatter.392 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.393 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_79.80 (scatter.397: f32[], scatter.398: f32[]) -> f32[] {
+  %scatter.397 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.398 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_80.81 (scatter.402: f32[], scatter.403: f32[]) -> f32[] {
+  %scatter.402 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.403 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_81.82 (scatter.407: f32[], scatter.408: f32[]) -> f32[] {
+  %scatter.407 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.408 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_82.83 (scatter.412: f32[], scatter.413: f32[]) -> f32[] {
+  %scatter.412 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.413 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_83.84 (scatter.417: f32[], scatter.418: f32[]) -> f32[] {
+  %scatter.417 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.418 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_84.85 (scatter.422: f32[], scatter.423: f32[]) -> f32[] {
+  %scatter.422 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.423 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_85.86 (scatter.427: f32[], scatter.428: f32[]) -> f32[] {
+  %scatter.427 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.428 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_86.87 (scatter.432: f32[], scatter.433: f32[]) -> f32[] {
+  %scatter.432 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.433 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_87.88 (scatter.437: f32[], scatter.438: f32[]) -> f32[] {
+  %scatter.437 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.438 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_88.89 (scatter.442: f32[], scatter.443: f32[]) -> f32[] {
+  %scatter.442 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.443 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_89.90 (scatter.447: f32[], scatter.448: f32[]) -> f32[] {
+  %scatter.447 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.448 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_90.91 (scatter.452: f32[], scatter.453: f32[]) -> f32[] {
+  %scatter.452 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.453 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_91.92 (scatter.457: f32[], scatter.458: f32[]) -> f32[] {
+  %scatter.457 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.458 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_92.93 (scatter.462: f32[], scatter.463: f32[]) -> f32[] {
+  %scatter.462 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.463 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_93.94 (scatter.467: f32[], scatter.468: f32[]) -> f32[] {
+  %scatter.467 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.468 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_94.95 (scatter.472: f32[], scatter.473: f32[]) -> f32[] {
+  %scatter.472 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.473 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_95.96 (scatter.477: f32[], scatter.478: f32[]) -> f32[] {
+  %scatter.477 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.478 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_96.97 (scatter.482: f32[], scatter.483: f32[]) -> f32[] {
+  %scatter.482 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.483 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_97.98 (scatter.487: f32[], scatter.488: f32[]) -> f32[] {
+  %scatter.487 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.488 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_98.99 (scatter.492: f32[], scatter.493: f32[]) -> f32[] {
+  %scatter.492 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.493 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_99.100 (scatter.497: f32[], scatter.498: f32[]) -> f32[] {
+  %scatter.497 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.498 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_100.101 (scatter.502: f32[], scatter.503: f32[]) -> f32[] {
+  %scatter.502 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.503 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_101.102 (scatter.507: f32[], scatter.508: f32[]) -> f32[] {
+  %scatter.507 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.508 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+%region_102.103 (scatter.512: f32[], scatter.513: f32[]) -> f32[] {
+  %scatter.512 = f32[] parameter(0), metadata={op_name="scatter"}
+  ROOT %scatter.513 = f32[] parameter(1), metadata={op_name="scatter"}
+}
+
+ENTRY %main.104 (q.1: f32[35]) -> f32[35,35] {
+  %constant.209 = f32[] constant(0)
+  %broadcast_in_dim.1 = f32[35,35]{1,0} broadcast(%constant.209), dimensions={}, metadata={op_name="jit(mass_matrix_35)/broadcast_in_dim" stack_frame_id=8}
+  %constant.207 = s32[] constant(0)
+  %broadcast.69 = s32[2]{0} broadcast(%constant.207), dimensions={}
+  %q.1 = f32[35]{0} parameter(0), metadata={op_name="q"}
+  %slice.171 = f32[1]{0} slice(%q.1), slice={[0:1]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.171 = f32[] reshape(%slice.171), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.35 = f32[] cosine(%squeeze.171), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %constant.208 = f32[] constant(2)
+  %add.103 = f32[] add(%cos.35, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.515 = f32[35,35]{1,0} scatter(%broadcast_in_dim.1, %broadcast.69, %add.103), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_0.1, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.206 = s32[] constant(1)
+  %broadcast.68 = s32[2]{0} broadcast(%constant.206), dimensions={}
+  %slice.172 = f32[1]{0} slice(%q.1), slice={[1:2]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.172 = f32[] reshape(%slice.172), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.36 = f32[] cosine(%squeeze.172), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.104 = f32[] add(%cos.36, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.516 = f32[35,35]{1,0} scatter(%scatter.515, %broadcast.68, %add.104), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_1.2, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.205 = s32[2]{0} constant({1, 0})
+  %slice.173 = f32[1]{0} slice(%q.1), slice={[1:2]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.173 = f32[] reshape(%slice.173), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.174 = f32[1]{0} slice(%q.1), slice={[0:1]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.174 = f32[] reshape(%slice.174), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.105 = f32[] add(%squeeze.173, %squeeze.174), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.68 = f32[] sine(%add.105), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.517 = f32[35,35]{1,0} scatter(%scatter.516, %constant.205, %sin.68), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_2.3, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.204 = s32[2]{0} constant({0, 1})
+  %slice.175 = f32[1]{0} slice(%q.1), slice={[1:2]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.175 = f32[] reshape(%slice.175), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.176 = f32[1]{0} slice(%q.1), slice={[0:1]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.176 = f32[] reshape(%slice.176), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.106 = f32[] add(%squeeze.175, %squeeze.176), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.69 = f32[] sine(%add.106), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.518 = f32[35,35]{1,0} scatter(%scatter.517, %constant.204, %sin.69), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_3.4, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.203 = s32[] constant(2)
+  %broadcast.67 = s32[2]{0} broadcast(%constant.203), dimensions={}
+  %slice.177 = f32[1]{0} slice(%q.1), slice={[2:3]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.177 = f32[] reshape(%slice.177), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.37 = f32[] cosine(%squeeze.177), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.107 = f32[] add(%cos.37, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.519 = f32[35,35]{1,0} scatter(%scatter.518, %broadcast.67, %add.107), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_4.5, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.202 = s32[2]{0} constant({2, 1})
+  %slice.178 = f32[1]{0} slice(%q.1), slice={[2:3]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.178 = f32[] reshape(%slice.178), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.179 = f32[1]{0} slice(%q.1), slice={[1:2]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.179 = f32[] reshape(%slice.179), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.108 = f32[] add(%squeeze.178, %squeeze.179), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.70 = f32[] sine(%add.108), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.520 = f32[35,35]{1,0} scatter(%scatter.519, %constant.202, %sin.70), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_5.6, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.201 = s32[2]{0} constant({1, 2})
+  %slice.180 = f32[1]{0} slice(%q.1), slice={[2:3]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.180 = f32[] reshape(%slice.180), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.181 = f32[1]{0} slice(%q.1), slice={[1:2]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.181 = f32[] reshape(%slice.181), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.109 = f32[] add(%squeeze.180, %squeeze.181), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.71 = f32[] sine(%add.109), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.521 = f32[35,35]{1,0} scatter(%scatter.520, %constant.201, %sin.71), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_6.7, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.200 = s32[] constant(3)
+  %broadcast.66 = s32[2]{0} broadcast(%constant.200), dimensions={}
+  %slice.182 = f32[1]{0} slice(%q.1), slice={[3:4]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.182 = f32[] reshape(%slice.182), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.38 = f32[] cosine(%squeeze.182), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.110 = f32[] add(%cos.38, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.522 = f32[35,35]{1,0} scatter(%scatter.521, %broadcast.66, %add.110), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_7.8, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.199 = s32[2]{0} constant({3, 2})
+  %slice.183 = f32[1]{0} slice(%q.1), slice={[3:4]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.183 = f32[] reshape(%slice.183), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.184 = f32[1]{0} slice(%q.1), slice={[2:3]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.184 = f32[] reshape(%slice.184), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.111 = f32[] add(%squeeze.183, %squeeze.184), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.72 = f32[] sine(%add.111), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.523 = f32[35,35]{1,0} scatter(%scatter.522, %constant.199, %sin.72), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_8.9, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.198 = s32[2]{0} constant({2, 3})
+  %slice.185 = f32[1]{0} slice(%q.1), slice={[3:4]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.185 = f32[] reshape(%slice.185), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.186 = f32[1]{0} slice(%q.1), slice={[2:3]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.186 = f32[] reshape(%slice.186), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.112 = f32[] add(%squeeze.185, %squeeze.186), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.73 = f32[] sine(%add.112), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.524 = f32[35,35]{1,0} scatter(%scatter.523, %constant.198, %sin.73), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_9.10, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.197 = s32[] constant(4)
+  %broadcast.65 = s32[2]{0} broadcast(%constant.197), dimensions={}
+  %slice.187 = f32[1]{0} slice(%q.1), slice={[4:5]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.187 = f32[] reshape(%slice.187), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.39 = f32[] cosine(%squeeze.187), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.113 = f32[] add(%cos.39, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.525 = f32[35,35]{1,0} scatter(%scatter.524, %broadcast.65, %add.113), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_10.11, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.196 = s32[2]{0} constant({4, 3})
+  %slice.188 = f32[1]{0} slice(%q.1), slice={[4:5]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.188 = f32[] reshape(%slice.188), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.189 = f32[1]{0} slice(%q.1), slice={[3:4]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.189 = f32[] reshape(%slice.189), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.114 = f32[] add(%squeeze.188, %squeeze.189), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.74 = f32[] sine(%add.114), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.526 = f32[35,35]{1,0} scatter(%scatter.525, %constant.196, %sin.74), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_11.12, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.195 = s32[2]{0} constant({3, 4})
+  %slice.190 = f32[1]{0} slice(%q.1), slice={[4:5]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.190 = f32[] reshape(%slice.190), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.191 = f32[1]{0} slice(%q.1), slice={[3:4]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.191 = f32[] reshape(%slice.191), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.115 = f32[] add(%squeeze.190, %squeeze.191), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.75 = f32[] sine(%add.115), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.527 = f32[35,35]{1,0} scatter(%scatter.526, %constant.195, %sin.75), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_12.13, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.194 = s32[] constant(5)
+  %broadcast.64 = s32[2]{0} broadcast(%constant.194), dimensions={}
+  %slice.192 = f32[1]{0} slice(%q.1), slice={[5:6]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.192 = f32[] reshape(%slice.192), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.40 = f32[] cosine(%squeeze.192), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.116 = f32[] add(%cos.40, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.528 = f32[35,35]{1,0} scatter(%scatter.527, %broadcast.64, %add.116), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_13.14, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.193 = s32[2]{0} constant({5, 4})
+  %slice.193 = f32[1]{0} slice(%q.1), slice={[5:6]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.193 = f32[] reshape(%slice.193), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.194 = f32[1]{0} slice(%q.1), slice={[4:5]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.194 = f32[] reshape(%slice.194), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.117 = f32[] add(%squeeze.193, %squeeze.194), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.76 = f32[] sine(%add.117), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.529 = f32[35,35]{1,0} scatter(%scatter.528, %constant.193, %sin.76), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_14.15, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.192 = s32[2]{0} constant({4, 5})
+  %slice.195 = f32[1]{0} slice(%q.1), slice={[5:6]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.195 = f32[] reshape(%slice.195), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.196 = f32[1]{0} slice(%q.1), slice={[4:5]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.196 = f32[] reshape(%slice.196), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.118 = f32[] add(%squeeze.195, %squeeze.196), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.77 = f32[] sine(%add.118), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.530 = f32[35,35]{1,0} scatter(%scatter.529, %constant.192, %sin.77), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_15.16, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.191 = s32[] constant(6)
+  %broadcast.63 = s32[2]{0} broadcast(%constant.191), dimensions={}
+  %slice.197 = f32[1]{0} slice(%q.1), slice={[6:7]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.197 = f32[] reshape(%slice.197), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.41 = f32[] cosine(%squeeze.197), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.119 = f32[] add(%cos.41, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.531 = f32[35,35]{1,0} scatter(%scatter.530, %broadcast.63, %add.119), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_16.17, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.190 = s32[2]{0} constant({6, 5})
+  %slice.198 = f32[1]{0} slice(%q.1), slice={[6:7]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.198 = f32[] reshape(%slice.198), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.199 = f32[1]{0} slice(%q.1), slice={[5:6]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.199 = f32[] reshape(%slice.199), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.120 = f32[] add(%squeeze.198, %squeeze.199), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.78 = f32[] sine(%add.120), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.532 = f32[35,35]{1,0} scatter(%scatter.531, %constant.190, %sin.78), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_17.18, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.189 = s32[2]{0} constant({5, 6})
+  %slice.200 = f32[1]{0} slice(%q.1), slice={[6:7]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.200 = f32[] reshape(%slice.200), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.201 = f32[1]{0} slice(%q.1), slice={[5:6]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.201 = f32[] reshape(%slice.201), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.121 = f32[] add(%squeeze.200, %squeeze.201), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.79 = f32[] sine(%add.121), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.533 = f32[35,35]{1,0} scatter(%scatter.532, %constant.189, %sin.79), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_18.19, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.188 = s32[] constant(7)
+  %broadcast.62 = s32[2]{0} broadcast(%constant.188), dimensions={}
+  %slice.202 = f32[1]{0} slice(%q.1), slice={[7:8]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.202 = f32[] reshape(%slice.202), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.42 = f32[] cosine(%squeeze.202), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.122 = f32[] add(%cos.42, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.534 = f32[35,35]{1,0} scatter(%scatter.533, %broadcast.62, %add.122), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_19.20, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.187 = s32[2]{0} constant({7, 6})
+  %slice.203 = f32[1]{0} slice(%q.1), slice={[7:8]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.203 = f32[] reshape(%slice.203), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.204 = f32[1]{0} slice(%q.1), slice={[6:7]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.204 = f32[] reshape(%slice.204), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.123 = f32[] add(%squeeze.203, %squeeze.204), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.80 = f32[] sine(%add.123), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.535 = f32[35,35]{1,0} scatter(%scatter.534, %constant.187, %sin.80), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_20.21, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.186 = s32[2]{0} constant({6, 7})
+  %slice.205 = f32[1]{0} slice(%q.1), slice={[7:8]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.205 = f32[] reshape(%slice.205), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.206 = f32[1]{0} slice(%q.1), slice={[6:7]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.206 = f32[] reshape(%slice.206), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.124 = f32[] add(%squeeze.205, %squeeze.206), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.81 = f32[] sine(%add.124), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.536 = f32[35,35]{1,0} scatter(%scatter.535, %constant.186, %sin.81), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_21.22, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.185 = s32[] constant(8)
+  %broadcast.61 = s32[2]{0} broadcast(%constant.185), dimensions={}
+  %slice.207 = f32[1]{0} slice(%q.1), slice={[8:9]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.207 = f32[] reshape(%slice.207), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.43 = f32[] cosine(%squeeze.207), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.125 = f32[] add(%cos.43, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.537 = f32[35,35]{1,0} scatter(%scatter.536, %broadcast.61, %add.125), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_22.23, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.184 = s32[2]{0} constant({8, 7})
+  %slice.208 = f32[1]{0} slice(%q.1), slice={[8:9]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.208 = f32[] reshape(%slice.208), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.209 = f32[1]{0} slice(%q.1), slice={[7:8]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.209 = f32[] reshape(%slice.209), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.126 = f32[] add(%squeeze.208, %squeeze.209), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.82 = f32[] sine(%add.126), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.538 = f32[35,35]{1,0} scatter(%scatter.537, %constant.184, %sin.82), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_23.24, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.183 = s32[2]{0} constant({7, 8})
+  %slice.210 = f32[1]{0} slice(%q.1), slice={[8:9]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.210 = f32[] reshape(%slice.210), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.211 = f32[1]{0} slice(%q.1), slice={[7:8]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.211 = f32[] reshape(%slice.211), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.127 = f32[] add(%squeeze.210, %squeeze.211), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.83 = f32[] sine(%add.127), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.539 = f32[35,35]{1,0} scatter(%scatter.538, %constant.183, %sin.83), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_24.25, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.182 = s32[] constant(9)
+  %broadcast.60 = s32[2]{0} broadcast(%constant.182), dimensions={}
+  %slice.212 = f32[1]{0} slice(%q.1), slice={[9:10]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.212 = f32[] reshape(%slice.212), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.44 = f32[] cosine(%squeeze.212), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.128 = f32[] add(%cos.44, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.540 = f32[35,35]{1,0} scatter(%scatter.539, %broadcast.60, %add.128), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_25.26, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.181 = s32[2]{0} constant({9, 8})
+  %slice.213 = f32[1]{0} slice(%q.1), slice={[9:10]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.213 = f32[] reshape(%slice.213), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.214 = f32[1]{0} slice(%q.1), slice={[8:9]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.214 = f32[] reshape(%slice.214), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.129 = f32[] add(%squeeze.213, %squeeze.214), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.84 = f32[] sine(%add.129), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.541 = f32[35,35]{1,0} scatter(%scatter.540, %constant.181, %sin.84), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_26.27, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.180 = s32[2]{0} constant({8, 9})
+  %slice.215 = f32[1]{0} slice(%q.1), slice={[9:10]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.215 = f32[] reshape(%slice.215), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.216 = f32[1]{0} slice(%q.1), slice={[8:9]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.216 = f32[] reshape(%slice.216), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.130 = f32[] add(%squeeze.215, %squeeze.216), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.85 = f32[] sine(%add.130), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.542 = f32[35,35]{1,0} scatter(%scatter.541, %constant.180, %sin.85), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_27.28, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.179 = s32[] constant(10)
+  %broadcast.59 = s32[2]{0} broadcast(%constant.179), dimensions={}
+  %slice.217 = f32[1]{0} slice(%q.1), slice={[10:11]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.217 = f32[] reshape(%slice.217), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.45 = f32[] cosine(%squeeze.217), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.131 = f32[] add(%cos.45, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.543 = f32[35,35]{1,0} scatter(%scatter.542, %broadcast.59, %add.131), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_28.29, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.178 = s32[2]{0} constant({10, 9})
+  %slice.218 = f32[1]{0} slice(%q.1), slice={[10:11]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.218 = f32[] reshape(%slice.218), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.219 = f32[1]{0} slice(%q.1), slice={[9:10]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.219 = f32[] reshape(%slice.219), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.132 = f32[] add(%squeeze.218, %squeeze.219), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.86 = f32[] sine(%add.132), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.544 = f32[35,35]{1,0} scatter(%scatter.543, %constant.178, %sin.86), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_29.30, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.177 = s32[2]{0} constant({9, 10})
+  %slice.220 = f32[1]{0} slice(%q.1), slice={[10:11]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.220 = f32[] reshape(%slice.220), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.221 = f32[1]{0} slice(%q.1), slice={[9:10]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.221 = f32[] reshape(%slice.221), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.133 = f32[] add(%squeeze.220, %squeeze.221), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.87 = f32[] sine(%add.133), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.545 = f32[35,35]{1,0} scatter(%scatter.544, %constant.177, %sin.87), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_30.31, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.176 = s32[] constant(11)
+  %broadcast.58 = s32[2]{0} broadcast(%constant.176), dimensions={}
+  %slice.222 = f32[1]{0} slice(%q.1), slice={[11:12]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.222 = f32[] reshape(%slice.222), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.46 = f32[] cosine(%squeeze.222), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.134 = f32[] add(%cos.46, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.546 = f32[35,35]{1,0} scatter(%scatter.545, %broadcast.58, %add.134), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_31.32, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.175 = s32[2]{0} constant({11, 10})
+  %slice.223 = f32[1]{0} slice(%q.1), slice={[11:12]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.223 = f32[] reshape(%slice.223), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.224 = f32[1]{0} slice(%q.1), slice={[10:11]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.224 = f32[] reshape(%slice.224), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.135 = f32[] add(%squeeze.223, %squeeze.224), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.88 = f32[] sine(%add.135), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.547 = f32[35,35]{1,0} scatter(%scatter.546, %constant.175, %sin.88), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_32.33, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.174 = s32[2]{0} constant({10, 11})
+  %slice.225 = f32[1]{0} slice(%q.1), slice={[11:12]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.225 = f32[] reshape(%slice.225), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.226 = f32[1]{0} slice(%q.1), slice={[10:11]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.226 = f32[] reshape(%slice.226), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.136 = f32[] add(%squeeze.225, %squeeze.226), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.89 = f32[] sine(%add.136), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.548 = f32[35,35]{1,0} scatter(%scatter.547, %constant.174, %sin.89), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_33.34, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.173 = s32[] constant(12)
+  %broadcast.57 = s32[2]{0} broadcast(%constant.173), dimensions={}
+  %slice.227 = f32[1]{0} slice(%q.1), slice={[12:13]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.227 = f32[] reshape(%slice.227), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.47 = f32[] cosine(%squeeze.227), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.137 = f32[] add(%cos.47, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.549 = f32[35,35]{1,0} scatter(%scatter.548, %broadcast.57, %add.137), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_34.35, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.172 = s32[2]{0} constant({12, 11})
+  %slice.228 = f32[1]{0} slice(%q.1), slice={[12:13]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.228 = f32[] reshape(%slice.228), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.229 = f32[1]{0} slice(%q.1), slice={[11:12]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.229 = f32[] reshape(%slice.229), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.138 = f32[] add(%squeeze.228, %squeeze.229), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.90 = f32[] sine(%add.138), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.550 = f32[35,35]{1,0} scatter(%scatter.549, %constant.172, %sin.90), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_35.36, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.171 = s32[2]{0} constant({11, 12})
+  %slice.230 = f32[1]{0} slice(%q.1), slice={[12:13]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.230 = f32[] reshape(%slice.230), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.231 = f32[1]{0} slice(%q.1), slice={[11:12]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.231 = f32[] reshape(%slice.231), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.139 = f32[] add(%squeeze.230, %squeeze.231), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.91 = f32[] sine(%add.139), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.551 = f32[35,35]{1,0} scatter(%scatter.550, %constant.171, %sin.91), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_36.37, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.170 = s32[] constant(13)
+  %broadcast.56 = s32[2]{0} broadcast(%constant.170), dimensions={}
+  %slice.232 = f32[1]{0} slice(%q.1), slice={[13:14]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.232 = f32[] reshape(%slice.232), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.48 = f32[] cosine(%squeeze.232), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.140 = f32[] add(%cos.48, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.552 = f32[35,35]{1,0} scatter(%scatter.551, %broadcast.56, %add.140), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_37.38, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.169 = s32[2]{0} constant({13, 12})
+  %slice.233 = f32[1]{0} slice(%q.1), slice={[13:14]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.233 = f32[] reshape(%slice.233), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.234 = f32[1]{0} slice(%q.1), slice={[12:13]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.234 = f32[] reshape(%slice.234), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.141 = f32[] add(%squeeze.233, %squeeze.234), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.92 = f32[] sine(%add.141), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.553 = f32[35,35]{1,0} scatter(%scatter.552, %constant.169, %sin.92), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_38.39, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.168 = s32[2]{0} constant({12, 13})
+  %slice.235 = f32[1]{0} slice(%q.1), slice={[13:14]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.235 = f32[] reshape(%slice.235), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.236 = f32[1]{0} slice(%q.1), slice={[12:13]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.236 = f32[] reshape(%slice.236), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.142 = f32[] add(%squeeze.235, %squeeze.236), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.93 = f32[] sine(%add.142), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.554 = f32[35,35]{1,0} scatter(%scatter.553, %constant.168, %sin.93), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_39.40, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.167 = s32[] constant(14)
+  %broadcast.55 = s32[2]{0} broadcast(%constant.167), dimensions={}
+  %slice.237 = f32[1]{0} slice(%q.1), slice={[14:15]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.237 = f32[] reshape(%slice.237), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.49 = f32[] cosine(%squeeze.237), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.143 = f32[] add(%cos.49, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.555 = f32[35,35]{1,0} scatter(%scatter.554, %broadcast.55, %add.143), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_40.41, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.166 = s32[2]{0} constant({14, 13})
+  %slice.238 = f32[1]{0} slice(%q.1), slice={[14:15]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.238 = f32[] reshape(%slice.238), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.239 = f32[1]{0} slice(%q.1), slice={[13:14]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.239 = f32[] reshape(%slice.239), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.144 = f32[] add(%squeeze.238, %squeeze.239), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.94 = f32[] sine(%add.144), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.556 = f32[35,35]{1,0} scatter(%scatter.555, %constant.166, %sin.94), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_41.42, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.165 = s32[2]{0} constant({13, 14})
+  %slice.240 = f32[1]{0} slice(%q.1), slice={[14:15]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.240 = f32[] reshape(%slice.240), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.241 = f32[1]{0} slice(%q.1), slice={[13:14]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.241 = f32[] reshape(%slice.241), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.145 = f32[] add(%squeeze.240, %squeeze.241), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.95 = f32[] sine(%add.145), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.557 = f32[35,35]{1,0} scatter(%scatter.556, %constant.165, %sin.95), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_42.43, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.164 = s32[] constant(15)
+  %broadcast.54 = s32[2]{0} broadcast(%constant.164), dimensions={}
+  %slice.242 = f32[1]{0} slice(%q.1), slice={[15:16]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.242 = f32[] reshape(%slice.242), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.50 = f32[] cosine(%squeeze.242), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.146 = f32[] add(%cos.50, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.558 = f32[35,35]{1,0} scatter(%scatter.557, %broadcast.54, %add.146), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_43.44, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.163 = s32[2]{0} constant({15, 14})
+  %slice.243 = f32[1]{0} slice(%q.1), slice={[15:16]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.243 = f32[] reshape(%slice.243), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.244 = f32[1]{0} slice(%q.1), slice={[14:15]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.244 = f32[] reshape(%slice.244), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.147 = f32[] add(%squeeze.243, %squeeze.244), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.96 = f32[] sine(%add.147), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.559 = f32[35,35]{1,0} scatter(%scatter.558, %constant.163, %sin.96), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_44.45, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.162 = s32[2]{0} constant({14, 15})
+  %slice.245 = f32[1]{0} slice(%q.1), slice={[15:16]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.245 = f32[] reshape(%slice.245), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.246 = f32[1]{0} slice(%q.1), slice={[14:15]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.246 = f32[] reshape(%slice.246), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.148 = f32[] add(%squeeze.245, %squeeze.246), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.97 = f32[] sine(%add.148), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.560 = f32[35,35]{1,0} scatter(%scatter.559, %constant.162, %sin.97), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_45.46, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.161 = s32[] constant(16)
+  %broadcast.53 = s32[2]{0} broadcast(%constant.161), dimensions={}
+  %slice.247 = f32[1]{0} slice(%q.1), slice={[16:17]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.247 = f32[] reshape(%slice.247), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.51 = f32[] cosine(%squeeze.247), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.149 = f32[] add(%cos.51, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.561 = f32[35,35]{1,0} scatter(%scatter.560, %broadcast.53, %add.149), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_46.47, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.160 = s32[2]{0} constant({16, 15})
+  %slice.248 = f32[1]{0} slice(%q.1), slice={[16:17]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.248 = f32[] reshape(%slice.248), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.249 = f32[1]{0} slice(%q.1), slice={[15:16]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.249 = f32[] reshape(%slice.249), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.150 = f32[] add(%squeeze.248, %squeeze.249), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.98 = f32[] sine(%add.150), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.562 = f32[35,35]{1,0} scatter(%scatter.561, %constant.160, %sin.98), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_47.48, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.159 = s32[2]{0} constant({15, 16})
+  %slice.250 = f32[1]{0} slice(%q.1), slice={[16:17]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.250 = f32[] reshape(%slice.250), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.251 = f32[1]{0} slice(%q.1), slice={[15:16]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.251 = f32[] reshape(%slice.251), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.151 = f32[] add(%squeeze.250, %squeeze.251), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.99 = f32[] sine(%add.151), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.563 = f32[35,35]{1,0} scatter(%scatter.562, %constant.159, %sin.99), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_48.49, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.158 = s32[] constant(17)
+  %broadcast.52 = s32[2]{0} broadcast(%constant.158), dimensions={}
+  %slice.252 = f32[1]{0} slice(%q.1), slice={[17:18]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.252 = f32[] reshape(%slice.252), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.52 = f32[] cosine(%squeeze.252), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.152 = f32[] add(%cos.52, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.564 = f32[35,35]{1,0} scatter(%scatter.563, %broadcast.52, %add.152), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_49.50, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.157 = s32[2]{0} constant({17, 16})
+  %slice.253 = f32[1]{0} slice(%q.1), slice={[17:18]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.253 = f32[] reshape(%slice.253), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.254 = f32[1]{0} slice(%q.1), slice={[16:17]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.254 = f32[] reshape(%slice.254), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.153 = f32[] add(%squeeze.253, %squeeze.254), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.100 = f32[] sine(%add.153), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.565 = f32[35,35]{1,0} scatter(%scatter.564, %constant.157, %sin.100), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_50.51, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.156 = s32[2]{0} constant({16, 17})
+  %slice.255 = f32[1]{0} slice(%q.1), slice={[17:18]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.255 = f32[] reshape(%slice.255), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.256 = f32[1]{0} slice(%q.1), slice={[16:17]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.256 = f32[] reshape(%slice.256), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.154 = f32[] add(%squeeze.255, %squeeze.256), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.101 = f32[] sine(%add.154), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.566 = f32[35,35]{1,0} scatter(%scatter.565, %constant.156, %sin.101), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_51.52, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.155 = s32[] constant(18)
+  %broadcast.51 = s32[2]{0} broadcast(%constant.155), dimensions={}
+  %slice.257 = f32[1]{0} slice(%q.1), slice={[18:19]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.257 = f32[] reshape(%slice.257), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.53 = f32[] cosine(%squeeze.257), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.155 = f32[] add(%cos.53, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.567 = f32[35,35]{1,0} scatter(%scatter.566, %broadcast.51, %add.155), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_52.53, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.154 = s32[2]{0} constant({18, 17})
+  %slice.258 = f32[1]{0} slice(%q.1), slice={[18:19]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.258 = f32[] reshape(%slice.258), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.259 = f32[1]{0} slice(%q.1), slice={[17:18]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.259 = f32[] reshape(%slice.259), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.156 = f32[] add(%squeeze.258, %squeeze.259), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.102 = f32[] sine(%add.156), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.568 = f32[35,35]{1,0} scatter(%scatter.567, %constant.154, %sin.102), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_53.54, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.153 = s32[2]{0} constant({17, 18})
+  %slice.260 = f32[1]{0} slice(%q.1), slice={[18:19]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.260 = f32[] reshape(%slice.260), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.261 = f32[1]{0} slice(%q.1), slice={[17:18]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.261 = f32[] reshape(%slice.261), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.157 = f32[] add(%squeeze.260, %squeeze.261), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.103 = f32[] sine(%add.157), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.569 = f32[35,35]{1,0} scatter(%scatter.568, %constant.153, %sin.103), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_54.55, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.152 = s32[] constant(19)
+  %broadcast.50 = s32[2]{0} broadcast(%constant.152), dimensions={}
+  %slice.262 = f32[1]{0} slice(%q.1), slice={[19:20]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.262 = f32[] reshape(%slice.262), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.54 = f32[] cosine(%squeeze.262), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.158 = f32[] add(%cos.54, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.570 = f32[35,35]{1,0} scatter(%scatter.569, %broadcast.50, %add.158), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_55.56, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.151 = s32[2]{0} constant({19, 18})
+  %slice.263 = f32[1]{0} slice(%q.1), slice={[19:20]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.263 = f32[] reshape(%slice.263), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.264 = f32[1]{0} slice(%q.1), slice={[18:19]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.264 = f32[] reshape(%slice.264), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.159 = f32[] add(%squeeze.263, %squeeze.264), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.104 = f32[] sine(%add.159), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.571 = f32[35,35]{1,0} scatter(%scatter.570, %constant.151, %sin.104), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_56.57, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.150 = s32[2]{0} constant({18, 19})
+  %slice.265 = f32[1]{0} slice(%q.1), slice={[19:20]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.265 = f32[] reshape(%slice.265), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.266 = f32[1]{0} slice(%q.1), slice={[18:19]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.266 = f32[] reshape(%slice.266), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.160 = f32[] add(%squeeze.265, %squeeze.266), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.105 = f32[] sine(%add.160), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.572 = f32[35,35]{1,0} scatter(%scatter.571, %constant.150, %sin.105), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_57.58, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.149 = s32[] constant(20)
+  %broadcast.49 = s32[2]{0} broadcast(%constant.149), dimensions={}
+  %slice.267 = f32[1]{0} slice(%q.1), slice={[20:21]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.267 = f32[] reshape(%slice.267), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.55 = f32[] cosine(%squeeze.267), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.161 = f32[] add(%cos.55, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.573 = f32[35,35]{1,0} scatter(%scatter.572, %broadcast.49, %add.161), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_58.59, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.148 = s32[2]{0} constant({20, 19})
+  %slice.268 = f32[1]{0} slice(%q.1), slice={[20:21]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.268 = f32[] reshape(%slice.268), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.269 = f32[1]{0} slice(%q.1), slice={[19:20]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.269 = f32[] reshape(%slice.269), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.162 = f32[] add(%squeeze.268, %squeeze.269), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.106 = f32[] sine(%add.162), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.574 = f32[35,35]{1,0} scatter(%scatter.573, %constant.148, %sin.106), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_59.60, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.147 = s32[2]{0} constant({19, 20})
+  %slice.270 = f32[1]{0} slice(%q.1), slice={[20:21]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.270 = f32[] reshape(%slice.270), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.271 = f32[1]{0} slice(%q.1), slice={[19:20]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.271 = f32[] reshape(%slice.271), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.163 = f32[] add(%squeeze.270, %squeeze.271), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.107 = f32[] sine(%add.163), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.575 = f32[35,35]{1,0} scatter(%scatter.574, %constant.147, %sin.107), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_60.61, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.146 = s32[] constant(21)
+  %broadcast.48 = s32[2]{0} broadcast(%constant.146), dimensions={}
+  %slice.272 = f32[1]{0} slice(%q.1), slice={[21:22]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.272 = f32[] reshape(%slice.272), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.56 = f32[] cosine(%squeeze.272), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.164 = f32[] add(%cos.56, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.576 = f32[35,35]{1,0} scatter(%scatter.575, %broadcast.48, %add.164), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_61.62, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.145 = s32[2]{0} constant({21, 20})
+  %slice.273 = f32[1]{0} slice(%q.1), slice={[21:22]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.273 = f32[] reshape(%slice.273), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.274 = f32[1]{0} slice(%q.1), slice={[20:21]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.274 = f32[] reshape(%slice.274), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.165 = f32[] add(%squeeze.273, %squeeze.274), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.108 = f32[] sine(%add.165), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.577 = f32[35,35]{1,0} scatter(%scatter.576, %constant.145, %sin.108), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_62.63, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.144 = s32[2]{0} constant({20, 21})
+  %slice.275 = f32[1]{0} slice(%q.1), slice={[21:22]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.275 = f32[] reshape(%slice.275), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.276 = f32[1]{0} slice(%q.1), slice={[20:21]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.276 = f32[] reshape(%slice.276), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.166 = f32[] add(%squeeze.275, %squeeze.276), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.109 = f32[] sine(%add.166), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.578 = f32[35,35]{1,0} scatter(%scatter.577, %constant.144, %sin.109), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_63.64, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.143 = s32[] constant(22)
+  %broadcast.47 = s32[2]{0} broadcast(%constant.143), dimensions={}
+  %slice.277 = f32[1]{0} slice(%q.1), slice={[22:23]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.277 = f32[] reshape(%slice.277), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.57 = f32[] cosine(%squeeze.277), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.167 = f32[] add(%cos.57, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.579 = f32[35,35]{1,0} scatter(%scatter.578, %broadcast.47, %add.167), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_64.65, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.142 = s32[2]{0} constant({22, 21})
+  %slice.278 = f32[1]{0} slice(%q.1), slice={[22:23]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.278 = f32[] reshape(%slice.278), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.279 = f32[1]{0} slice(%q.1), slice={[21:22]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.279 = f32[] reshape(%slice.279), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.168 = f32[] add(%squeeze.278, %squeeze.279), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.110 = f32[] sine(%add.168), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.580 = f32[35,35]{1,0} scatter(%scatter.579, %constant.142, %sin.110), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_65.66, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.141 = s32[2]{0} constant({21, 22})
+  %slice.280 = f32[1]{0} slice(%q.1), slice={[22:23]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.280 = f32[] reshape(%slice.280), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.281 = f32[1]{0} slice(%q.1), slice={[21:22]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.281 = f32[] reshape(%slice.281), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.169 = f32[] add(%squeeze.280, %squeeze.281), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.111 = f32[] sine(%add.169), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.581 = f32[35,35]{1,0} scatter(%scatter.580, %constant.141, %sin.111), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_66.67, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.140 = s32[] constant(23)
+  %broadcast.46 = s32[2]{0} broadcast(%constant.140), dimensions={}
+  %slice.282 = f32[1]{0} slice(%q.1), slice={[23:24]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.282 = f32[] reshape(%slice.282), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.58 = f32[] cosine(%squeeze.282), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.170 = f32[] add(%cos.58, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.582 = f32[35,35]{1,0} scatter(%scatter.581, %broadcast.46, %add.170), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_67.68, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.139 = s32[2]{0} constant({23, 22})
+  %slice.283 = f32[1]{0} slice(%q.1), slice={[23:24]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.283 = f32[] reshape(%slice.283), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.284 = f32[1]{0} slice(%q.1), slice={[22:23]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.284 = f32[] reshape(%slice.284), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.171 = f32[] add(%squeeze.283, %squeeze.284), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.112 = f32[] sine(%add.171), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.583 = f32[35,35]{1,0} scatter(%scatter.582, %constant.139, %sin.112), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_68.69, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.138 = s32[2]{0} constant({22, 23})
+  %slice.285 = f32[1]{0} slice(%q.1), slice={[23:24]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.285 = f32[] reshape(%slice.285), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.286 = f32[1]{0} slice(%q.1), slice={[22:23]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.286 = f32[] reshape(%slice.286), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.172 = f32[] add(%squeeze.285, %squeeze.286), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.113 = f32[] sine(%add.172), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.584 = f32[35,35]{1,0} scatter(%scatter.583, %constant.138, %sin.113), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_69.70, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.137 = s32[] constant(24)
+  %broadcast.45 = s32[2]{0} broadcast(%constant.137), dimensions={}
+  %slice.287 = f32[1]{0} slice(%q.1), slice={[24:25]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.287 = f32[] reshape(%slice.287), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.59 = f32[] cosine(%squeeze.287), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.173 = f32[] add(%cos.59, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.585 = f32[35,35]{1,0} scatter(%scatter.584, %broadcast.45, %add.173), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_70.71, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.136 = s32[2]{0} constant({24, 23})
+  %slice.288 = f32[1]{0} slice(%q.1), slice={[24:25]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.288 = f32[] reshape(%slice.288), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.289 = f32[1]{0} slice(%q.1), slice={[23:24]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.289 = f32[] reshape(%slice.289), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.174 = f32[] add(%squeeze.288, %squeeze.289), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.114 = f32[] sine(%add.174), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.586 = f32[35,35]{1,0} scatter(%scatter.585, %constant.136, %sin.114), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_71.72, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.135 = s32[2]{0} constant({23, 24})
+  %slice.290 = f32[1]{0} slice(%q.1), slice={[24:25]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.290 = f32[] reshape(%slice.290), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.291 = f32[1]{0} slice(%q.1), slice={[23:24]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.291 = f32[] reshape(%slice.291), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.175 = f32[] add(%squeeze.290, %squeeze.291), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.115 = f32[] sine(%add.175), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.587 = f32[35,35]{1,0} scatter(%scatter.586, %constant.135, %sin.115), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_72.73, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.134 = s32[] constant(25)
+  %broadcast.44 = s32[2]{0} broadcast(%constant.134), dimensions={}
+  %slice.292 = f32[1]{0} slice(%q.1), slice={[25:26]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.292 = f32[] reshape(%slice.292), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.60 = f32[] cosine(%squeeze.292), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.176 = f32[] add(%cos.60, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.588 = f32[35,35]{1,0} scatter(%scatter.587, %broadcast.44, %add.176), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_73.74, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.133 = s32[2]{0} constant({25, 24})
+  %slice.293 = f32[1]{0} slice(%q.1), slice={[25:26]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.293 = f32[] reshape(%slice.293), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.294 = f32[1]{0} slice(%q.1), slice={[24:25]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.294 = f32[] reshape(%slice.294), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.177 = f32[] add(%squeeze.293, %squeeze.294), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.116 = f32[] sine(%add.177), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.589 = f32[35,35]{1,0} scatter(%scatter.588, %constant.133, %sin.116), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_74.75, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.132 = s32[2]{0} constant({24, 25})
+  %slice.295 = f32[1]{0} slice(%q.1), slice={[25:26]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.295 = f32[] reshape(%slice.295), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.296 = f32[1]{0} slice(%q.1), slice={[24:25]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.296 = f32[] reshape(%slice.296), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.178 = f32[] add(%squeeze.295, %squeeze.296), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.117 = f32[] sine(%add.178), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.590 = f32[35,35]{1,0} scatter(%scatter.589, %constant.132, %sin.117), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_75.76, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.131 = s32[] constant(26)
+  %broadcast.43 = s32[2]{0} broadcast(%constant.131), dimensions={}
+  %slice.297 = f32[1]{0} slice(%q.1), slice={[26:27]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.297 = f32[] reshape(%slice.297), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.61 = f32[] cosine(%squeeze.297), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.179 = f32[] add(%cos.61, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.591 = f32[35,35]{1,0} scatter(%scatter.590, %broadcast.43, %add.179), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_76.77, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.130 = s32[2]{0} constant({26, 25})
+  %slice.298 = f32[1]{0} slice(%q.1), slice={[26:27]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.298 = f32[] reshape(%slice.298), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.299 = f32[1]{0} slice(%q.1), slice={[25:26]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.299 = f32[] reshape(%slice.299), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.180 = f32[] add(%squeeze.298, %squeeze.299), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.118 = f32[] sine(%add.180), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.592 = f32[35,35]{1,0} scatter(%scatter.591, %constant.130, %sin.118), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_77.78, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.129 = s32[2]{0} constant({25, 26})
+  %slice.300 = f32[1]{0} slice(%q.1), slice={[26:27]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.300 = f32[] reshape(%slice.300), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.301 = f32[1]{0} slice(%q.1), slice={[25:26]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.301 = f32[] reshape(%slice.301), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.181 = f32[] add(%squeeze.300, %squeeze.301), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.119 = f32[] sine(%add.181), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.593 = f32[35,35]{1,0} scatter(%scatter.592, %constant.129, %sin.119), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_78.79, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.128 = s32[] constant(27)
+  %broadcast.42 = s32[2]{0} broadcast(%constant.128), dimensions={}
+  %slice.302 = f32[1]{0} slice(%q.1), slice={[27:28]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.302 = f32[] reshape(%slice.302), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.62 = f32[] cosine(%squeeze.302), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.182 = f32[] add(%cos.62, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.594 = f32[35,35]{1,0} scatter(%scatter.593, %broadcast.42, %add.182), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_79.80, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.127 = s32[2]{0} constant({27, 26})
+  %slice.303 = f32[1]{0} slice(%q.1), slice={[27:28]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.303 = f32[] reshape(%slice.303), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.304 = f32[1]{0} slice(%q.1), slice={[26:27]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.304 = f32[] reshape(%slice.304), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.183 = f32[] add(%squeeze.303, %squeeze.304), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.120 = f32[] sine(%add.183), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.595 = f32[35,35]{1,0} scatter(%scatter.594, %constant.127, %sin.120), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_80.81, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.126 = s32[2]{0} constant({26, 27})
+  %slice.305 = f32[1]{0} slice(%q.1), slice={[27:28]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.305 = f32[] reshape(%slice.305), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.306 = f32[1]{0} slice(%q.1), slice={[26:27]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.306 = f32[] reshape(%slice.306), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.184 = f32[] add(%squeeze.305, %squeeze.306), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.121 = f32[] sine(%add.184), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.596 = f32[35,35]{1,0} scatter(%scatter.595, %constant.126, %sin.121), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_81.82, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.125 = s32[] constant(28)
+  %broadcast.41 = s32[2]{0} broadcast(%constant.125), dimensions={}
+  %slice.307 = f32[1]{0} slice(%q.1), slice={[28:29]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.307 = f32[] reshape(%slice.307), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.63 = f32[] cosine(%squeeze.307), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.185 = f32[] add(%cos.63, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.597 = f32[35,35]{1,0} scatter(%scatter.596, %broadcast.41, %add.185), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_82.83, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.124 = s32[2]{0} constant({28, 27})
+  %slice.308 = f32[1]{0} slice(%q.1), slice={[28:29]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.308 = f32[] reshape(%slice.308), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.309 = f32[1]{0} slice(%q.1), slice={[27:28]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.309 = f32[] reshape(%slice.309), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.186 = f32[] add(%squeeze.308, %squeeze.309), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.122 = f32[] sine(%add.186), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.598 = f32[35,35]{1,0} scatter(%scatter.597, %constant.124, %sin.122), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_83.84, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.123 = s32[2]{0} constant({27, 28})
+  %slice.310 = f32[1]{0} slice(%q.1), slice={[28:29]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.310 = f32[] reshape(%slice.310), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.311 = f32[1]{0} slice(%q.1), slice={[27:28]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.311 = f32[] reshape(%slice.311), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.187 = f32[] add(%squeeze.310, %squeeze.311), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.123 = f32[] sine(%add.187), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.599 = f32[35,35]{1,0} scatter(%scatter.598, %constant.123, %sin.123), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_84.85, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.122 = s32[] constant(29)
+  %broadcast.40 = s32[2]{0} broadcast(%constant.122), dimensions={}
+  %slice.312 = f32[1]{0} slice(%q.1), slice={[29:30]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.312 = f32[] reshape(%slice.312), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.64 = f32[] cosine(%squeeze.312), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.188 = f32[] add(%cos.64, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.600 = f32[35,35]{1,0} scatter(%scatter.599, %broadcast.40, %add.188), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_85.86, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.121 = s32[2]{0} constant({29, 28})
+  %slice.313 = f32[1]{0} slice(%q.1), slice={[29:30]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.313 = f32[] reshape(%slice.313), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.314 = f32[1]{0} slice(%q.1), slice={[28:29]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.314 = f32[] reshape(%slice.314), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.189 = f32[] add(%squeeze.313, %squeeze.314), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.124 = f32[] sine(%add.189), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.601 = f32[35,35]{1,0} scatter(%scatter.600, %constant.121, %sin.124), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_86.87, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.120 = s32[2]{0} constant({28, 29})
+  %slice.315 = f32[1]{0} slice(%q.1), slice={[29:30]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.315 = f32[] reshape(%slice.315), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.316 = f32[1]{0} slice(%q.1), slice={[28:29]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.316 = f32[] reshape(%slice.316), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.190 = f32[] add(%squeeze.315, %squeeze.316), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.125 = f32[] sine(%add.190), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.602 = f32[35,35]{1,0} scatter(%scatter.601, %constant.120, %sin.125), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_87.88, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.119 = s32[] constant(30)
+  %broadcast.39 = s32[2]{0} broadcast(%constant.119), dimensions={}
+  %slice.317 = f32[1]{0} slice(%q.1), slice={[30:31]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.317 = f32[] reshape(%slice.317), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.65 = f32[] cosine(%squeeze.317), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.191 = f32[] add(%cos.65, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.603 = f32[35,35]{1,0} scatter(%scatter.602, %broadcast.39, %add.191), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_88.89, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.118 = s32[2]{0} constant({30, 29})
+  %slice.318 = f32[1]{0} slice(%q.1), slice={[30:31]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.318 = f32[] reshape(%slice.318), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.319 = f32[1]{0} slice(%q.1), slice={[29:30]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.319 = f32[] reshape(%slice.319), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.192 = f32[] add(%squeeze.318, %squeeze.319), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.126 = f32[] sine(%add.192), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.604 = f32[35,35]{1,0} scatter(%scatter.603, %constant.118, %sin.126), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_89.90, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.117 = s32[2]{0} constant({29, 30})
+  %slice.320 = f32[1]{0} slice(%q.1), slice={[30:31]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.320 = f32[] reshape(%slice.320), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.321 = f32[1]{0} slice(%q.1), slice={[29:30]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.321 = f32[] reshape(%slice.321), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.193 = f32[] add(%squeeze.320, %squeeze.321), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.127 = f32[] sine(%add.193), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.605 = f32[35,35]{1,0} scatter(%scatter.604, %constant.117, %sin.127), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_90.91, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.116 = s32[] constant(31)
+  %broadcast.38 = s32[2]{0} broadcast(%constant.116), dimensions={}
+  %slice.322 = f32[1]{0} slice(%q.1), slice={[31:32]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.322 = f32[] reshape(%slice.322), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.66 = f32[] cosine(%squeeze.322), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.194 = f32[] add(%cos.66, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.606 = f32[35,35]{1,0} scatter(%scatter.605, %broadcast.38, %add.194), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_91.92, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.115 = s32[2]{0} constant({31, 30})
+  %slice.323 = f32[1]{0} slice(%q.1), slice={[31:32]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.323 = f32[] reshape(%slice.323), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.324 = f32[1]{0} slice(%q.1), slice={[30:31]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.324 = f32[] reshape(%slice.324), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.195 = f32[] add(%squeeze.323, %squeeze.324), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.128 = f32[] sine(%add.195), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.607 = f32[35,35]{1,0} scatter(%scatter.606, %constant.115, %sin.128), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_92.93, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.114 = s32[2]{0} constant({30, 31})
+  %slice.325 = f32[1]{0} slice(%q.1), slice={[31:32]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.325 = f32[] reshape(%slice.325), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.326 = f32[1]{0} slice(%q.1), slice={[30:31]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.326 = f32[] reshape(%slice.326), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.196 = f32[] add(%squeeze.325, %squeeze.326), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.129 = f32[] sine(%add.196), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.608 = f32[35,35]{1,0} scatter(%scatter.607, %constant.114, %sin.129), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_93.94, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.113 = s32[] constant(32)
+  %broadcast.37 = s32[2]{0} broadcast(%constant.113), dimensions={}
+  %slice.327 = f32[1]{0} slice(%q.1), slice={[32:33]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.327 = f32[] reshape(%slice.327), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.67 = f32[] cosine(%squeeze.327), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.197 = f32[] add(%cos.67, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.609 = f32[35,35]{1,0} scatter(%scatter.608, %broadcast.37, %add.197), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_94.95, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.112 = s32[2]{0} constant({32, 31})
+  %slice.328 = f32[1]{0} slice(%q.1), slice={[32:33]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.328 = f32[] reshape(%slice.328), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.329 = f32[1]{0} slice(%q.1), slice={[31:32]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.329 = f32[] reshape(%slice.329), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.198 = f32[] add(%squeeze.328, %squeeze.329), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.130 = f32[] sine(%add.198), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.610 = f32[35,35]{1,0} scatter(%scatter.609, %constant.112, %sin.130), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_95.96, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.111 = s32[2]{0} constant({31, 32})
+  %slice.330 = f32[1]{0} slice(%q.1), slice={[32:33]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.330 = f32[] reshape(%slice.330), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.331 = f32[1]{0} slice(%q.1), slice={[31:32]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.331 = f32[] reshape(%slice.331), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.199 = f32[] add(%squeeze.330, %squeeze.331), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.131 = f32[] sine(%add.199), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.611 = f32[35,35]{1,0} scatter(%scatter.610, %constant.111, %sin.131), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_96.97, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.110 = s32[] constant(33)
+  %broadcast.36 = s32[2]{0} broadcast(%constant.110), dimensions={}
+  %slice.332 = f32[1]{0} slice(%q.1), slice={[33:34]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.332 = f32[] reshape(%slice.332), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.68 = f32[] cosine(%squeeze.332), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.200 = f32[] add(%cos.68, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.612 = f32[35,35]{1,0} scatter(%scatter.611, %broadcast.36, %add.200), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_97.98, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.109 = s32[2]{0} constant({33, 32})
+  %slice.333 = f32[1]{0} slice(%q.1), slice={[33:34]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.333 = f32[] reshape(%slice.333), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.334 = f32[1]{0} slice(%q.1), slice={[32:33]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.334 = f32[] reshape(%slice.334), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.201 = f32[] add(%squeeze.333, %squeeze.334), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.132 = f32[] sine(%add.201), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.613 = f32[35,35]{1,0} scatter(%scatter.612, %constant.109, %sin.132), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_98.99, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.108 = s32[2]{0} constant({32, 33})
+  %slice.335 = f32[1]{0} slice(%q.1), slice={[33:34]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.335 = f32[] reshape(%slice.335), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.336 = f32[1]{0} slice(%q.1), slice={[32:33]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.336 = f32[] reshape(%slice.336), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.202 = f32[] add(%squeeze.335, %squeeze.336), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.133 = f32[] sine(%add.202), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  %scatter.614 = f32[35,35]{1,0} scatter(%scatter.613, %constant.108, %sin.133), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_99.100, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+  %constant.107 = s32[] constant(34)
+  %broadcast.35 = s32[2]{0} broadcast(%constant.107), dimensions={}
+  %slice.337 = f32[1]{0} slice(%q.1), slice={[34:35]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=9}
+  %squeeze.337 = f32[] reshape(%slice.337), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=9}
+  %cos.69 = f32[] cosine(%squeeze.337), metadata={op_name="jit(mass_matrix_35)/cos" stack_frame_id=10}
+  %add.203 = f32[] add(%cos.69, %constant.208), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=10}
+  %scatter.615 = f32[35,35]{1,0} scatter(%scatter.614, %broadcast.35, %add.203), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_100.101, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=11}
+  %constant.106 = s32[2]{0} constant({34, 33})
+  %slice.338 = f32[1]{0} slice(%q.1), slice={[34:35]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=12}
+  %squeeze.338 = f32[] reshape(%slice.338), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=12}
+  %slice.339 = f32[1]{0} slice(%q.1), slice={[33:34]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=13}
+  %squeeze.339 = f32[] reshape(%slice.339), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=13}
+  %add.204 = f32[] add(%squeeze.338, %squeeze.339), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=12}
+  %sin.134 = f32[] sine(%add.204), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=14}
+  %scatter.616 = f32[35,35]{1,0} scatter(%scatter.615, %constant.106, %sin.134), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_101.102, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=15}
+  %constant.105 = s32[2]{0} constant({33, 34})
+  %slice.340 = f32[1]{0} slice(%q.1), slice={[34:35]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=16}
+  %squeeze.340 = f32[] reshape(%slice.340), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=16}
+  %slice.341 = f32[1]{0} slice(%q.1), slice={[33:34]}, metadata={op_name="jit(mass_matrix_35)/slice" stack_frame_id=17}
+  %squeeze.341 = f32[] reshape(%slice.341), metadata={op_name="jit(mass_matrix_35)/squeeze" stack_frame_id=17}
+  %add.205 = f32[] add(%squeeze.340, %squeeze.341), metadata={op_name="jit(mass_matrix_35)/add" stack_frame_id=16}
+  %sin.135 = f32[] sine(%add.205), metadata={op_name="jit(mass_matrix_35)/sin" stack_frame_id=18}
+  ROOT %scatter.617 = f32[35,35]{1,0} scatter(%scatter.616, %constant.105, %sin.135), update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=0, indices_are_sorted=true, unique_indices=true, to_apply=%region_102.103, metadata={op_name="jit(mass_matrix_35)/scatter" stack_frame_id=19}
+}
+

@@ -21,10 +21,10 @@ limitations under the License.
 #include "google/protobuf/duration.pb.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
@@ -88,7 +88,7 @@ absl::StatusOr<std::string> LegacyCache::Serialize(
   }
 
   AutotuneResults results;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       AutotunerCache::SerializeAutotuneResults(&results, keys_to_send));
   return AutotuneResultsToString(results, true);
 }

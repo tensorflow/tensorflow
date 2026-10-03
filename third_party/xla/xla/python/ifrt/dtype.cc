@@ -38,6 +38,8 @@ std::optional<int> DType::byte_size() const {
     case kS4:
     case kU4:
     case kF4E2M1FN:
+    case kF6E2M3FN:
+    case kF6E3M2FN:
       // Smaller than a byte.
       return std::nullopt;
     case kPred:
@@ -89,6 +91,9 @@ std::optional<int> DType::bit_size() const {
     case kU4:
     case kF4E2M1FN:
       return 4;
+    case kF6E2M3FN:
+    case kF6E3M2FN:
+      return 6;
     case kPred:
     case kS8:
     case kU8:
@@ -174,6 +179,8 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
       CASE(F8E5M2FNUZ);
       CASE(F8E8M0FNU);
       CASE(F4E2M1FN);
+      CASE(F6E2M3FN);
+      CASE(F6E3M2FN);
 #undef CASE
     case DTypeProto::KIND_STRING:
       return DType(DType::Kind::kString);
@@ -235,6 +242,8 @@ void DType::ToProto(DTypeProto& dtype_proto, SerDesVersion version) const {
       CASE(F8E5M2FNUZ);
       CASE(F8E8M0FNU);
       CASE(F4E2M1FN);
+      CASE(F6E2M3FN);
+      CASE(F6E3M2FN);
 #undef CASE
     case DType::Kind::kString:
       dtype_proto.set_kind(DTypeProto::KIND_STRING);
@@ -297,6 +306,10 @@ std::string DType::DebugString() const {
       return "OPAQUE";
     case kF4E2M1FN:
       return "F4E2M1FN";
+    case kF6E2M3FN:
+      return "F6E2M3FN";
+    case kF6E3M2FN:
+      return "F6E3M2FN";
     case kF8E3M4:
       return "F8E3M4";
     case kF8E4M3:

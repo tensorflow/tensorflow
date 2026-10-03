@@ -123,6 +123,11 @@ class MklDnnConvUtil {
   } while (0)
 
     DCHECK(input_dims);
+    OP_REQUIRES(context_, input_shape.dims() == strides_.size(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    (strides_.size() == 4) ? "input must be 4-dimensional: "
+                                           : "input must be 5-dimensional: ",
+                    input_shape.DebugString())));
 
     // Input channel
     int64 input_depth_raw = GetTensorDim(input_shape, data_format_, 'C');

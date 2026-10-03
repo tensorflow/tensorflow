@@ -218,12 +218,14 @@ class RaggedFeature(
         f"{type(partition)}"
     )
 
-  def __new__(cls,
-              dtype,
-              value_key=None,
-              partitions=(),
-              row_splits_dtype=dtypes.int32,
-              validate=False):
+  def __new__(
+      cls,
+      dtype,
+      value_key=None,
+      partitions=(),
+      row_splits_dtype=dtypes.int32,
+      validate=False,
+  ):
     if value_key is not None:
       if not isinstance(value_key, str):
         raise ValueError(
@@ -334,8 +336,9 @@ class SparseFeature(
   """
 
   def __new__(cls, index_key, value_key, dtype, size, already_sorted=False):
-    return super(SparseFeature, cls).__new__(
-        cls, index_key, value_key, dtype, size, already_sorted)
+    return super().__new__(
+        cls, index_key, value_key, dtype, size, already_sorted
+    )
 
 
 @tf_export("io.FixedLenFeature", v1=["io.FixedLenFeature", "FixedLenFeature"])
@@ -354,8 +357,7 @@ class FixedLenFeature(collections.namedtuple(
   """
 
   def __new__(cls, shape, dtype, default_value=None):
-    return super(FixedLenFeature, cls).__new__(
-        cls, shape, dtype, default_value)
+    return super().__new__(cls, shape, dtype, default_value)
 
 
 @tf_export("io.FixedLenSequenceFeature",
@@ -389,8 +391,17 @@ class FixedLenSequenceFeature(collections.namedtuple(
   """
 
   def __new__(cls, shape, dtype, allow_missing=False, default_value=None):
-    return super(FixedLenSequenceFeature, cls).__new__(
-        cls, shape, dtype, allow_missing, default_value)
+    try:
+      feature_shape = tensor_shape.as_shape(shape)
+    except Exception as e:
+      raise ValueError(f"Invalid shape: {shape}. Error: {e}") from e
+    for i, dim in enumerate(feature_shape.dims):
+      if dim.value is not None and dim.value < 1:
+        raise ValueError(
+            "All shape dimensions must be positive, but "
+            f"dimension {i} is {dim.value}. Got shape={shape}"
+        )
+    return super().__new__(cls, shape, dtype, allow_missing, default_value)
 
 
 class _ParseOpParams:
@@ -535,7 +546,7 @@ class _ParseOpParams:
         # Reshape to a scalar to ensure user gets an error if they
         # provide a tensor that's not intended to be a padding value
         # (0 or 2+ elements).
-        key_name = "padding_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        key_name = "padding_" + re.sub(r"[^A-Za-z0-9_.\-/]", "_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)
         default_value = array_ops.reshape(default_value, [])
@@ -543,7 +554,7 @@ class _ParseOpParams:
       if default_value is None:
         default_value = constant_op.constant([], dtype=dtype)
       elif not isinstance(default_value, tensor.Tensor):
-        key_name = "key_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        key_name = "key_" + re.sub(r"[^A-Za-z0-9_.\-/]", "_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)
         default_value = array_ops.reshape(default_value, shape)
@@ -937,6 +948,16 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
           message="Feature %s: values and partitions are not aligned"
           % feature_key))
     partition_t = partition_t.values
+
+  if validate and isinstance(partition, RaggedFeature.RowLengths):
+    checks.append(
+        check_ops.assert_equal(
+            ragged_math_ops.reduce_sum(partition_t, axis=1),
+            rt.row_lengths(),
+            message="Feature %s: values and partitions are not aligned"
+            % feature_key,
+        )
+    )
 
   with ops.control_dependencies(checks):
     if isinstance(partition, (RaggedFeature.RowSplits,

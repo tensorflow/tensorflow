@@ -53,7 +53,7 @@ class AbstractTensorInterface {
   virtual std::string SummarizeValue() const = 0;
 
  protected:
-  virtual ~AbstractTensorInterface() {}
+  virtual ~AbstractTensorInterface() = default;
 };
 
 namespace internal {

@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -106,7 +105,7 @@ class MergeDensify : public NodeTransformation {
 }  // namespace
 
 std::unique_ptr<NodeTransformation> NewMergeDensify() {
-  return absl::make_unique<MergeDensify>();
+  return std::make_unique<MergeDensify>();
 }
 
 }  // namespace gpu

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
@@ -69,8 +70,8 @@ class GpuKernelTest : public ::testing::Test {
   }
 
   void RunAddI32Kernel(const KernelLoaderSpec& spec) {
-    TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
-    TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor_, spec));
+    ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+    ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor_, spec));
 
     int64_t length = 4;
     int64_t byte_length = sizeof(int32_t) * length;
@@ -80,9 +81,9 @@ class GpuKernelTest : public ::testing::Test {
     DeviceAddress<int32_t> b = executor_->AllocateArray<int32_t>(length, 0);
     DeviceAddress<int32_t> c = executor_->AllocateArray<int32_t>(length, 0);
 
-    TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
-    TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
-    TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+    ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+    ASSERT_OK(stream->Memset32(&b, 2, byte_length));
+    ASSERT_OK(stream->MemZero(&c, byte_length));
 
     // Launch kernel.
     ASSERT_TRUE(
@@ -90,7 +91,7 @@ class GpuKernelTest : public ::testing::Test {
 
     // Copy data back to host.
     std::vector<int32_t> dst(4, 42);
-    TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+    ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
 
     std::vector<int32_t> expected = {3, 3, 3, 3};
     ASSERT_EQ(dst, expected);
@@ -109,7 +110,7 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromPtx) {
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto binary, GetGpuTestKernelsFatbin(executor_->GetPlatform()->Name()));
   KernelLoaderSpec spec =
       KernelLoaderSpec::CreateCudaCubinInMemorySpec(binary, "AddI32", 3);
@@ -117,9 +118,8 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbol) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelLoaderSpec spec,
-      GetAddI32TestKernelSpec(executor_->GetPlatform()->id()));
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
+                       GetAddI32TestKernelSpec(executor_->GetPlatform()->id()));
   RunAddI32Kernel(spec);
 }
 
@@ -133,34 +133,34 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbolWithCustomArgsPacking) {
   DeviceAddress<int32_t> out =
       executor_->AllocateArray<int32_t>(kArraySize, /*memory_space=*/0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                          executor_->CreateStream());
-  TF_ASSERT_OK(stream->Memset32(&in, 10, kArraySizeBytes));
-  TF_ASSERT_OK(stream->MemZero(&out, kArraySizeBytes));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor_->CreateStream());
+  ASSERT_OK(stream->Memset32(&in, 10, kArraySizeBytes));
+  ASSERT_OK(stream->MemZero(&out, kArraySizeBytes));
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
-                          GetIncrementBy5I32TestKernelSpecWithCustomArgsPacking(
-                              executor_->GetPlatform()->id()));
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel, executor_->LoadKernel(spec));
-  TF_ASSERT_OK(kernel->Launch(
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
+                       GetIncrementBy5I32TestKernelSpecWithCustomArgsPacking(
+                           executor_->GetPlatform()->id()));
+  ASSERT_OK_AND_ASSIGN(auto kernel, executor_->LoadKernel(spec));
+  ASSERT_OK(kernel->Launch(
       ThreadDim(), BlockDim(4),
       /*cluster_dims=*/std::nullopt, stream.get(),
       KernelArgsDeviceAddressArray({in, out}, /*shared_memory_bytes=*/0)));
 
   // Copy data back to host and verify that the output is 5 + 10 = 15.
   std::vector<int32_t> dst(4, 0);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, kArraySizeBytes));
+  ASSERT_OK(stream->Memcpy(dst.data(), out, kArraySizeBytes));
   EXPECT_THAT(dst, Each(15));
 }
 
 TEST_F(GpuKernelTest, ArrayArgByValue) {
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel, LoadCopyTestKernel(executor_));
+  ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto kernel, LoadCopyTestKernel(executor_));
 
   constexpr int64_t kLength = 16;
 
   DeviceAddress<char> dst = executor_->AllocateArray<char>(kLength, 0);
-  TF_ASSERT_OK(stream->MemZero(&dst, kLength));
+  ASSERT_OK(stream->MemZero(&dst, kLength));
 
   std::array<std::byte, 16> storage;
   int i = 0;
@@ -170,12 +170,12 @@ TEST_F(GpuKernelTest, ArrayArgByValue) {
 
   // Launch kernel.
   auto args = stream_executor::PackKernelArgs(/*shmem_bytes=*/0, dst, storage);
-  TF_ASSERT_OK(kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *args));
+  ASSERT_OK(kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *args));
 
   // Copy data back to host.
   std::byte dst_host[16] = {};
-  TF_ASSERT_OK(stream->Memcpy(dst_host, dst, kLength));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->Memcpy(dst_host, dst, kLength));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   EXPECT_THAT(dst_host, ::testing::ElementsAreArray(storage));
 }
@@ -185,9 +185,9 @@ TEST_F(GpuKernelTest, TmaLoadAndRunKernelFromPtx) {
     GTEST_SKIP() << "TMA is not supported on this platform.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto tma_kernel,
-                          TmaKernel::Create(executor_, GetTmaPtxKernelSpec()));
+  ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto tma_kernel,
+                       TmaKernel::Create(executor_, GetTmaPtxKernelSpec()));
 
   auto get_tma_descriptor_from_proto =
       [](absl::string_view proto) -> absl::StatusOr<TmaDescriptor> {
@@ -195,69 +195,69 @@ TEST_F(GpuKernelTest, TmaLoadAndRunKernelFromPtx) {
         ParseTextProtoOrDie<TmaDescriptorProto>(proto));
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(TmaDescriptor arg0_desc,
-                          get_tma_descriptor_from_proto(
-                              R"pb(
-                                element_size: 2
-                                global_dims: 512
-                                global_dims: 1024
-                                global_strides: 1024
-                                box_dims: 64
-                                box_dims: 16
-                                element_strides: 1
-                                element_strides: 1
-                                swizzle: SWIZZLE_BYTES128
-                                l2_promotion: L2_PROMOTION_BYTES128
-                              )pb"));
+  ASSERT_OK_AND_ASSIGN(TmaDescriptor arg0_desc, get_tma_descriptor_from_proto(
+                                                    R"pb(
+                                                      element_size: 2
+                                                      global_dims: 512
+                                                      global_dims: 1024
+                                                      global_strides: 1024
+                                                      box_dims: 64
+                                                      box_dims: 16
+                                                      element_strides: 1
+                                                      element_strides: 1
+                                                      swizzle: SWIZZLE_BYTES128
+                                                      l2_promotion:
+                                                          L2_PROMOTION_BYTES128
+                                                    )pb"));
 
-  TF_ASSERT_OK_AND_ASSIGN(TmaDescriptor arg1_desc,
-                          get_tma_descriptor_from_proto(
-                              R"pb(
-                                element_size: 2
-                                global_dims: 1024
-                                global_dims: 512
-                                global_strides: 2048
-                                box_dims: 16
-                                box_dims: 128
-                                element_strides: 1
-                                element_strides: 1
-                                swizzle: SWIZZLE_BYTES32
-                                l2_promotion: L2_PROMOTION_BYTES128
-                              )pb"));
+  ASSERT_OK_AND_ASSIGN(TmaDescriptor arg1_desc, get_tma_descriptor_from_proto(
+                                                    R"pb(
+                                                      element_size: 2
+                                                      global_dims: 1024
+                                                      global_dims: 512
+                                                      global_strides: 2048
+                                                      box_dims: 16
+                                                      box_dims: 128
+                                                      element_strides: 1
+                                                      element_strides: 1
+                                                      swizzle: SWIZZLE_BYTES32
+                                                      l2_promotion:
+                                                          L2_PROMOTION_BYTES128
+                                                    )pb"));
 
-  TF_ASSERT_OK_AND_ASSIGN(TmaDescriptor arg2_desc,
-                          get_tma_descriptor_from_proto(
-                              R"pb(
-                                element_size: 4
-                                global_dims: 1024
-                                global_dims: 1024
-                                global_strides: 4096
-                                box_dims: 16
-                                box_dims: 16
-                                element_strides: 1
-                                element_strides: 1
-                                swizzle: SWIZZLE_BYTES64
-                                l2_promotion: L2_PROMOTION_BYTES128
-                              )pb"));
+  ASSERT_OK_AND_ASSIGN(TmaDescriptor arg2_desc, get_tma_descriptor_from_proto(
+                                                    R"pb(
+                                                      element_size: 4
+                                                      global_dims: 1024
+                                                      global_dims: 1024
+                                                      global_strides: 4096
+                                                      box_dims: 16
+                                                      box_dims: 16
+                                                      element_strides: 1
+                                                      element_strides: 1
+                                                      swizzle: SWIZZLE_BYTES64
+                                                      l2_promotion:
+                                                          L2_PROMOTION_BYTES128
+                                                    )pb"));
 
   DeviceAddress<int16_t> mem0 = executor_->AllocateArray<int16_t>(512 * 1024);
   DeviceAddress<int16_t> mem1 = executor_->AllocateArray<int16_t>(1024 * 512);
   DeviceAddress<int32_t> mem2 = executor_->AllocateArray<int32_t>(1024 * 1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto tma0,
-                          executor_->CreateTensorMap(arg0_desc, mem0.opaque()));
-  TF_ASSERT_OK_AND_ASSIGN(auto tma1,
-                          executor_->CreateTensorMap(arg1_desc, mem1.opaque()));
-  TF_ASSERT_OK_AND_ASSIGN(auto tma2,
-                          executor_->CreateTensorMap(arg2_desc, mem2.opaque()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto tma0,
+                       executor_->CreateTensorMap(arg0_desc, mem0.opaque()));
+  ASSERT_OK_AND_ASSIGN(auto tma1,
+                       executor_->CreateTensorMap(arg1_desc, mem1.opaque()));
+  ASSERT_OK_AND_ASSIGN(auto tma2,
+                       executor_->CreateTensorMap(arg2_desc, mem2.opaque()));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<KernelArgs> packed_args,
       stream_executor::PackKernelArgs(
           absl::Span<const stream_executor::KernelArg>({tma0, tma1, tma2}),
           tma_kernel->metadata()));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tma_kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *packed_args));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 }  // namespace

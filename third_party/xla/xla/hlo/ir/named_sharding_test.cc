@@ -272,7 +272,7 @@ TEST(NamedShardingTest, ToStringUnreducedEnum) {
   Mesh mesh({2, 8, 4}, {"a", "b", "c"});
   std::vector<AxisRef> unreduced_axes = {AxisRef(0), AxisRef(1, {4, 2})};
   NamedSharding sharding(mesh, {}, {}, unreduced_axes, {}, {},
-                         NamedSharding::ReductionOp::kMax);
+                         ReductionOp::kMax);
   EXPECT_EQ(sharding.ToString(),
             "{mesh['a'=2,'b'=8,'c'=4], [], unreduced=max{'a', 'b':(4)2}}");
 

@@ -21,9 +21,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -50,7 +50,7 @@ class AllGatherDynamicSliceSimplifierTest
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
     AllGatherDynamicSliceSimplifier::Config pass_config;
     pass_config.allow_multiple_users = allow_multiple_users;
@@ -83,10 +83,10 @@ TEST_F(AllGatherDynamicSliceSimplifierTest, AllPartitions) {
       dynamic_slice_sizes={32,8,128}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Parameter(0));
 }
@@ -111,10 +111,10 @@ TEST_F(AllGatherDynamicSliceSimplifierTest, AllReplicasWithReshape) {
       dynamic_slice_sizes={32,8,64,2}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Reshape(op::Parameter(0)));
 }
@@ -139,10 +139,10 @@ TEST_F(AllGatherDynamicSliceSimplifierTest,
       dynamic_slice_sizes={256,128}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/false));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(
                   op::Reshape(op::AllGather(op::Parameter(0))),
@@ -166,10 +166,10 @@ TEST_F(AllGatherDynamicSliceSimplifierTest, NoAllGather) {
       dynamic_slice_sizes={32,8,128}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/1,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/1,
+                                            /*expect_change=*/false));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(
                   op::Parameter(0),
@@ -195,10 +195,10 @@ TEST_F(AllGatherDynamicSliceSimplifierTest, IncorrectAllGatherDimension) {
       dynamic_slice_sizes={32,8,128}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*expect_change=*/false));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(
                   op::AllGather(op::Parameter(0)), op::Constant(),
@@ -223,10 +223,10 @@ TEST_F(AllGatherDynamicSliceSimplifierTest,
       dynamic_slice_sizes={16,2}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/false));
 }
 
 // Test cancellation of all-gather followed by dynamic-slice across all replicas
@@ -251,11 +251,11 @@ TEST_F(AllGatherDynamicSliceSimplifierTest,
     ROOT %tuple = (f32[32,8,64,2]{3,2,1,0}, f32[256,8,128]{2,1,0}) tuple(%ds, %ag)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true,
-                                               /*allow_multiple_users=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true,
+                                            /*allow_multiple_users=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Reshape(op::Parameter(0)),
                         op::AllGather(op::Parameter(0))));

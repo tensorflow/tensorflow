@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -162,7 +163,8 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     IfrtIrAtomProgramProto* atom_program_proto = atom_programs_->Add();
     atom_program_proto->set_name(atom_program_name);
     atom_program_proto->set_version(vhlo_target_version_);
-    llvm::raw_string_ostream os(*atom_program_proto->mutable_program());
+    std::string serialized;
+    llvm::raw_string_ostream os(serialized);
     // We need to pass `allowOtherDialects=true` if
     // `stablehlo_version >= 1.11.0`, since the lowered module from JAX can
     // have a mix of StableHLO and Shardy dialects.
@@ -192,6 +194,9 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
       stablehlo_module->emitOpError() << "failed to serialize to VHLO";
       return mlir::WalkResult::interrupt();
     }
+    // OSS requires explicit string conversion
+    // NOLINTNEXTLINE(*-redundant-string-conversions)
+    atom_program_proto->set_program(absl::Cord(std::move(serialized)));
     return mlir::WalkResult::advance();
   });
   if (result.wasInterrupted()) {

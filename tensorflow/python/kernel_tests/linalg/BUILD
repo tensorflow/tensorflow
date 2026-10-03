@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # Tests of TensorFlow linalg kernels written using the Python API.
 
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
@@ -22,6 +37,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:linalg_ops_gen",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/ops:variables",
@@ -41,6 +57,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:linalg_ops_gen",
@@ -187,7 +204,7 @@ cuda_py_strict_test(
     name = "linear_operator_block_diag_test",
     size = "medium",
     srcs = ["linear_operator_block_diag_test.py"],
-    shard_count = 8,
+    shard_count = 16,
     tags = ["optonly"],
     deps = [
         "//tensorflow/python/eager:backprop",
@@ -639,8 +656,10 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:linalg_ops_gen",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
@@ -708,6 +727,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:linalg_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:benchmark",
@@ -735,8 +755,9 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "matrix_triangular_solve_op_test",
     size = "medium",
+    timeout = "long",
     srcs = ["matrix_triangular_solve_op_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     deps = [
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -797,6 +818,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:linalg_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:benchmark",

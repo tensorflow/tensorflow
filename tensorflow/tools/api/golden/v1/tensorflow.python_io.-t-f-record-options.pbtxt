@@ -13,5 +13,6 @@ tf_class {
   member_method {
     name: "get_compression_type_string"
     argspec: "args=[\'cls\', \'options\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
 }

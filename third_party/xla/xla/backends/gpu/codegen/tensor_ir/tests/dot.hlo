@@ -1,0 +1,132 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_dot_no_batch
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x32xf32>, %[[ARG1:.*]]: tensor<32x16xf32>
+// CHECK: %[[OUT:.*]] = matmul(%[[ARG0]], %[[ARG1]]) : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_no_batch {
+  %p0 = f32[8,32] parameter(0)
+  %p1 = f32[32,16] parameter(1)
+  %out = f32[8,16] dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+// -----
+
+// CHECK-LABEL: @test_dot_with_batch
+// CHECK-SAME: %[[ARG0:.*]]: tensor<4x8x32xf32>, %[[ARG1:.*]]: tensor<4x32x16xf32>
+// CHECK: %[[OUT:.*]] = matmul(%[[ARG0]], %[[ARG1]]) : (tensor<4x8x32xf32>, tensor<4x32x16xf32>) -> tensor<4x8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_with_batch {
+  %p0 = f32[4,8,32] parameter(0)
+  %p1 = f32[4,32,16] parameter(1)
+  %out = f32[4,8,16] dot(%p0, %p1), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+// -----
+
+// CHECK-LABEL: @test_dot_transpose_lhs
+// CHECK-SAME: %[[ARG0:.*]]: tensor<32x4x8xf32>, %[[ARG1:.*]]: tensor<4x32x16xf32>
+// CHECK: %[[LHS:.*]] = transpose %[[ARG0]] permutation = [1, 2, 0] : tensor<32x4x8xf32> -> tensor<4x8x32xf32>
+// CHECK: %[[OUT:.*]] = matmul(%[[LHS]], %[[ARG1]]) : (tensor<4x8x32xf32>, tensor<4x32x16xf32>) -> tensor<4x8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_transpose_lhs {
+  %p0 = f32[32,4,8] parameter(0)
+  %p1 = f32[4,32,16] parameter(1)
+  %out = f32[4,8,16] dot(%p0, %p1), lhs_contracting_dims={0}, rhs_contracting_dims={1}, lhs_batch_dims={1}, rhs_batch_dims={0}
+}
+
+// -----
+
+// CHECK-LABEL: @test_dot_transpose_rhs
+// CHECK-SAME: %[[ARG0:.*]]: tensor<4x8x32xf32>, %[[ARG1:.*]]: tensor<32x4x16xf32>
+// CHECK: %[[RHS:.*]] = transpose %[[ARG1]] permutation = [1, 0, 2] : tensor<32x4x16xf32> -> tensor<4x32x16xf32>
+// CHECK: %[[OUT:.*]] = matmul(%[[ARG0]], %[[RHS]]) : (tensor<4x8x32xf32>, tensor<4x32x16xf32>) -> tensor<4x8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_transpose_rhs {
+  %p0 = f32[4,8,32] parameter(0)
+  %p1 = f32[32,4,16] parameter(1)
+  %out = f32[4,8,16] dot(%p0, %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, lhs_batch_dims={0}, rhs_batch_dims={1}
+}
+
+// -----
+
+// CHECK-LABEL: @test_dot_reshape_batch
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x4x8x32xf32>, %[[ARG1:.*]]: tensor<2x4x32x16xf32>
+// CHECK: %[[LHS:.*]] = reshape %[[ARG0]] : tensor<2x4x8x32xf32> -> tensor<8x8x32xf32>
+// CHECK: %[[RHS:.*]] = reshape %[[ARG1]] : tensor<2x4x32x16xf32> -> tensor<8x32x16xf32>
+// CHECK: %[[MATMUL:.*]] = matmul(%[[LHS]], %[[RHS]]) : (tensor<8x8x32xf32>, tensor<8x32x16xf32>) -> tensor<8x8x16xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[MATMUL]] : tensor<8x8x16xf32> -> tensor<2x4x8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_reshape_batch {
+  %p0 = f32[2,4,8,32] parameter(0)
+  %p1 = f32[2,4,32,16] parameter(1)
+  %out = f32[2,4,8,16] dot(%p0, %p1), lhs_contracting_dims={3}, rhs_contracting_dims={2}, lhs_batch_dims={0,1}, rhs_batch_dims={0,1}
+}
+
+// -----
+
+// CHECK-LABEL: @test_dot_reshape_contracting
+// CHECK-SAME: %[[ARG0:.*]]: tensor<4x8x32x2xf32>, %[[ARG1:.*]]: tensor<4x32x2x16xf32>
+// CHECK: %[[LHS:.*]] = reshape %[[ARG0]] : tensor<4x8x32x2xf32> -> tensor<4x8x64xf32>
+// CHECK: %[[RHS:.*]] = reshape %[[ARG1]] : tensor<4x32x2x16xf32> -> tensor<4x64x16xf32>
+// CHECK: %[[OUT:.*]] = matmul(%[[LHS]], %[[RHS]]) : (tensor<4x8x64xf32>, tensor<4x64x16xf32>) -> tensor<4x8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_reshape_contracting {
+  %p0 = f32[4,8,32,2] parameter(0)
+  %p1 = f32[4,32,2,16] parameter(1)
+  %out = f32[4,8,16] dot(%p0, %p1), lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+// -----
+
+// CHECK-LABEL: @test_dot_reshape_lhs_noncontracting
+// CHECK-SAME: %[[ARG0:.*]]: tensor<4x8x8x32xf32>, %[[ARG1:.*]]: tensor<4x32x16xf32>
+// CHECK: %[[LHS:.*]] = reshape %[[ARG0]] : tensor<4x8x8x32xf32> -> tensor<4x64x32xf32>
+// CHECK: %[[MATMUL:.*]] = matmul(%[[LHS]], %[[ARG1]]) : (tensor<4x64x32xf32>, tensor<4x32x16xf32>) -> tensor<4x64x16xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[MATMUL]] : tensor<4x64x16xf32> -> tensor<4x8x8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_reshape_lhs_noncontracting {
+  %p0 = f32[4,8,8,32] parameter(0)
+  %p1 = f32[4,32,16] parameter(1)
+  %out = f32[4,8,8,16] dot(%p0, %p1), lhs_contracting_dims={3}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+// -----
+
+// CHECK-LABEL: @test_dot_reshape_rhs_noncontracting
+// CHECK-SAME: %[[ARG0:.*]]: tensor<4x8x32xf32>, %[[ARG1:.*]]: tensor<4x32x16x16xf32>
+// CHECK: %[[RHS:.*]] = reshape %[[ARG1]] : tensor<4x32x16x16xf32> -> tensor<4x32x256xf32>
+// CHECK: %[[MATMUL:.*]] = matmul(%[[ARG0]], %[[RHS]]) : (tensor<4x8x32xf32>, tensor<4x32x256xf32>) -> tensor<4x8x256xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[MATMUL]] : tensor<4x8x256xf32> -> tensor<4x8x16x16xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_reshape_rhs_noncontracting {
+  %p0 = f32[4,8,32] parameter(0)
+  %p1 = f32[4,32,16,16] parameter(1)
+  %out = f32[4,8,16,16] dot(%p0, %p1), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+// -----
+
+// CHECK-LABEL: @test_dot_transpose_reshape_all
+// CHECK-SAME: %[[ARG0:.*]]: tensor<9x8x5x4x3x2xf32>, %[[ARG1:.*]]: tensor<2x6x8x3x7x9xf32>
+// CHECK: %[[T1:.*]] = transpose %[[ARG0]] permutation = [5, 4, 2, 3, 1, 0] : tensor<9x8x5x4x3x2xf32> -> tensor<2x3x5x4x8x9xf32>
+// CHECK: %[[LHS:.*]] = reshape %[[T1]] : tensor<2x3x5x4x8x9xf32> -> tensor<6x20x72xf32>
+// CHECK: %[[T2:.*]] = transpose %[[ARG1]] permutation = [0, 3, 2, 5, 1, 4] : tensor<2x6x8x3x7x9xf32> -> tensor<2x3x8x9x6x7xf32>
+// CHECK: %[[RHS:.*]] = reshape %[[T2]] : tensor<2x3x8x9x6x7xf32> -> tensor<6x72x42xf32>
+// CHECK: %[[MATMUL:.*]] = matmul(%[[LHS]], %[[RHS]]) : (tensor<6x20x72xf32>, tensor<6x72x42xf32>) -> tensor<6x20x42xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[MATMUL]] : tensor<6x20x42xf32> -> tensor<2x3x5x4x6x7xf32>
+// CHECK: results %[[OUT]]
+
+test_dot_transpose_reshape_all {
+  %p0 = f32[9,8,5,4,3,2] parameter(0)
+  %p1 = f32[2,6,8,3,7,9] parameter(1)
+  %out = f32[2,3,5,4,6,7] dot(%p0, %p1), lhs_contracting_dims={1,0}, rhs_contracting_dims={2,5}, lhs_batch_dims={5,4}, rhs_batch_dims={0,3}
+}

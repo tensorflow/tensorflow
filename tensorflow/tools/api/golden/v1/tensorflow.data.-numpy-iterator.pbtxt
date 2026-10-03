@@ -8,6 +8,14 @@ tf_class {
     argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "__iter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__next__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "next"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

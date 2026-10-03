@@ -41,6 +41,7 @@ enum class InputFormat {
                                     // setting the flag xla_dump_hlo_snapshots
                                     // in conjunction with xla_dump_as_text.
   kSerializedPjRtExecutable,        // Serialized PJRT executable.
+  kStableHlo,                       // MLIR text
 };
 
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,

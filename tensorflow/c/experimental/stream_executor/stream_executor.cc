@@ -255,12 +255,12 @@ class CStreamExecutor : public StreamExecutorCommon {
     TF_Bool has_stats =
         stream_executor_->get_allocator_stats(&device_, &c_stats);
     if (!has_stats) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     absl::Status status = ValidateSPAllocatorStats(c_stats);
     if (!status.ok()) {
       LOG(ERROR) << status.message();
-      return absl::nullopt;
+      return std::nullopt;
     }
     ::stream_executor::AllocatorStats stats;
     stats.num_allocs = c_stats.num_allocs;

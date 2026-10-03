@@ -17,17 +17,17 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_concat_op.h"
 
-#include <algorithm>
 #include <numeric>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -221,7 +221,11 @@ class SparseConcatOp : public OpKernel {
 
     int64_t output_nnz = 0;
     for (int i = 0; i < N; ++i) {
-      output_nnz += inds[i].dim_size(0);
+      int64_t next_output_nnz =
+          AddWithoutOverflow(output_nnz, inds[i].dim_size(0));
+      OP_REQUIRES(context, next_output_nnz >= 0,
+                  absl::InvalidArgumentError("output_nnz overflowed"));
+      output_nnz = next_output_nnz;
     }
     if (output_nnz == 0) {
       Tensor* output_inds = nullptr;

@@ -197,6 +197,51 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
     self.assertEqual(1, self.evaluate(counter))
 
 
+class TupleTestCase(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedTupleRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    c = constant_op.constant(3.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple(((a, b), c))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedListRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple([[a, b]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDictElementRaisesTypeError(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.tuple([{"x": a}, b])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFlatSequenceSucceeds(self):
+    a = constant_op.constant(1.0)
+    b = constant_op.constant(2.0)
+    res = control_flow_ops.tuple([a, b])
+    self.assertLen(res, 2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRepeatedVariableUnderTFFunction(self):
+    v = variables.Variable([10.0, 20.0])
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def compute():
+      return control_flow_ops.tuple([v, v, v])
+
+    result = self.evaluate(compute())
+    for t in result:
+      self.assertAllClose(t, [10.0, 20.0])
+
+
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
@@ -459,6 +504,40 @@ class CondTest(test_util.TensorFlowTestCase):
     self.assertEqual(3. * 2. * 5., self.evaluate(grads_false[1]))
     self.assertEqual(None if context.executing_eagerly() else 0.,
                      self.evaluate(grads_false[0]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCondEagerConstantValidation(self):
+    if not context.executing_eagerly():
+      return
+
+    x = constant_op.constant(1.0, dtype=dtypes.float32)
+
+    def true_fn():
+      return constant_op.constant(5.0)
+
+    def false_fn():
+      # Type mismatch: adding a float32 tensor and an int32 tensor. Only fails
+      # when false_fn is actually traced/executed.
+      return math_ops.add(x, constant_op.constant(1, dtype=dtypes.int32))
+
+    # By default the inactive branch is not validated, so the bug in false_fn is
+    # not surfaced when the constant predicate selects true_fn.
+    self.assertEqual(
+        5.0,
+        self.evaluate(
+            tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
+        ),
+    )
+
+    # With validation opted in, both branches are traced up front, so the error
+    # in the inactive branch is raised even though true_fn is selected.
+    validation_was_enabled = tf_cond._VALIDATE_INACTIVE_BRANCH
+    tf_cond._VALIDATE_INACTIVE_BRANCH = True
+    try:
+      with self.assertRaises((TypeError, ValueError)):
+        tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
+    finally:
+      tf_cond._VALIDATE_INACTIVE_BRANCH = validation_was_enabled
 
   def testCondWithGroupAndSummaries(self):
     with ops.Graph().as_default():
@@ -1581,6 +1660,60 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     r = while_loop.while_loop(
         c, b, [i], return_same_structure=True, maximum_iterations=50)
     self.assertEqual(self.evaluate(r), [10])
+
+  @test_util.run_v2_only
+  def testEagerWhileLoopSingleLoopVarBareTensorBodyPreservesShape(self):
+    x = array_ops.ones([1, 28, 28, 1])
+    shapes_seen = []
+
+    def cond(a):
+      shapes_seen.append(a.shape.as_list())
+      return math_ops.logical_and(
+          array_ops.shape(a)[0] < 10, math_ops.reduce_max(a) < 4.0
+      )
+
+    def body(a):
+      return a + 1.0
+
+    r = while_loop.while_loop(cond, body, [x], return_same_structure=True)
+    self.assertAllEqual(shapes_seen, [[1, 28, 28, 1]] * 4)
+    self.assertIsInstance(r, list)
+    self.assertLen(r, 1)
+    self.assertEqual(r[0].shape.as_list(), [1, 28, 28, 1])
+    self.assertAllClose(
+        self.evaluate(r[0]), array_ops.ones([1, 28, 28, 1]) * 4.0
+    )
+
+    shapes_seen.clear()
+    r_max = while_loop.while_loop(
+        cond, body, [x], return_same_structure=True, maximum_iterations=3
+    )
+    self.assertAllEqual(shapes_seen, [[1, 28, 28, 1]] * 4)
+    self.assertIsInstance(r_max, list)
+    self.assertLen(r_max, 1)
+    self.assertEqual(r_max[0].shape.as_list(), [1, 28, 28, 1])
+    self.assertAllClose(self.evaluate(r_max[0]), self.evaluate(r[0]))
+
+  @test_util.run_v2_only
+  def testEagerWhileLoopMultiVarBareTensorBodyRaisesValueError(self):
+    x = array_ops.ones([1, 28, 28, 1])
+    for max_iters in (None, 2):
+      with self.assertRaises(ValueError):
+        while_loop.while_loop(
+            lambda a, b: array_ops.shape(a)[0] < 10,
+            lambda a, b: array_ops.ones([2, 28, 28, 1]),
+            [x, x],
+            return_same_structure=True,
+            maximum_iterations=max_iters,
+        )
+      with self.assertRaises(ValueError):
+        while_loop.while_loop(
+            lambda d: d["a"] < 3,
+            lambda d: {"a": d["a"] + 1},
+            [{"a": constant_op.constant(0)}],
+            return_same_structure=True,
+            maximum_iterations=max_iters,
+        )
 
   @test_util.enable_control_flow_v2
   @test_util.run_in_graph_and_eager_modes

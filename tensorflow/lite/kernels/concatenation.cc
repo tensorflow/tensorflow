@@ -141,13 +141,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  axis < t0->dims->size || (t0->dims->size == 0 && axis == 0));
 
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
-  TF_LITE_ENSURE(context,
-                 input_type == kTfLiteFloat32 || input_type == kTfLiteFloat16 ||
-                     input_type == kTfLiteBFloat16 ||
-                     input_type == kTfLiteUInt8 || input_type == kTfLiteInt8 ||
-                     input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
-                     input_type == kTfLiteInt64 || input_type == kTfLiteBool ||
-                     input_type == kTfLiteUInt32 || input_type == kTfLiteInt4);
+  bool is_supported_type =
+      input_type == kTfLiteFloat32 || input_type == kTfLiteFloat16 ||
+      input_type == kTfLiteBFloat16 || input_type == kTfLiteUInt8 ||
+      input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
+      input_type == kTfLiteInt32 || input_type == kTfLiteInt64 ||
+      input_type == kTfLiteBool || input_type == kTfLiteUInt32 ||
+      input_type == kTfLiteInt4;
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+  is_supported_type = is_supported_type || input_type == kTfLiteFloat8E4M3FN ||
+                      input_type == kTfLiteFloat8E5M2;
+#endif
+  TF_LITE_ENSURE(context, is_supported_type);
 
   // Check to see if we can calculate the output now.
   bool all_inputs_at_prepare = true;

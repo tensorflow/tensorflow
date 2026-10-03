@@ -53,7 +53,8 @@ class TensorID {
 // API is experimental and subject to change.
 class GraphBuilder {
  public:
-  explicit GraphBuilder(int coreml_version) : coreml_version_(coreml_version) {}
+  explicit GraphBuilder(int coreml_version);
+  ~GraphBuilder();
 
   // Returns pointer to the created builder. Ownership still belongs
   // to the GraphBuilder.

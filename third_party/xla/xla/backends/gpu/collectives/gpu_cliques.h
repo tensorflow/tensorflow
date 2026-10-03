@@ -90,7 +90,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
     absl::Span<const std::vector<GlobalDeviceId>> device_groups,
     const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
     const AcquiredCliquesMap& acquired_cliques, int64_t max_nchannels = 0,
-    bool use_minimal_resource = false);
+    bool use_minimal_resource = false, bool use_gxl = false);
 
 // Returns a non-ok status if the provided clique key is "stale". A clique key
 // is stale if its incarnations don't match the latest incarnations or if any of
@@ -102,6 +102,12 @@ absl::Status CheckCliqueIsNotStale(const GpuCliqueKey& clique_key);
 // incarnations that have become stale.
 absl::Status UpdateGlobalProcessInfo(
     absl::Span<xla::coordination::TaskInfo> infos);
+
+// Aborts local GPU collectives by driving the official AbortOnFailure path with
+// a task-failure state. Safe to call from the HangWatchdog thread; execution
+// threads unwind via CancellationToken.
+absl::Status AbortCollectivesOnTaskFailure(int failed_task_id,
+                                           const absl::Status& error);
 
 namespace internal {
 // Destroys all cliques that were acquired for the given process. This is

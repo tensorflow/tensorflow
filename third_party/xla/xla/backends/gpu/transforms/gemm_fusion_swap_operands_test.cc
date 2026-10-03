@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
@@ -26,6 +31,8 @@ namespace gpu {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 class SwapOperandsTest : public HloHardwareIndependentTestBase {};
 
@@ -90,10 +97,10 @@ CHECK-NEXT: bf16[73728,448]{1,0} bitcast)"),
               IsOkAndHolds(true));
 }
 
-TEST_F(SwapOperandsTest, MultipleNoncontractingWithoutReshapeIsKeptInLhs) {
-  // In cases where the non-contracting dimension is split, we cant reshape it
-  // into a a single non-contracting dimension and therefore cannot emit it in
-  // Triton.
+// In cases where the non-contracting dimension is split, we can still swap the
+// operands since the Triton emitter can now handle multiple non-contracting
+// dimensions.
+TEST_F(SwapOperandsTest, MultipleNoncontractingIsSwapped) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule DotLayout
 
@@ -115,7 +122,7 @@ ENTRY main {
     kind=kCustom, calls=fcomp,
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })"));
-  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(false));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
 }
 
 TEST_F(SwapOperandsTest, DoNotSwapSmallRhsNoncontracting) {
@@ -243,6 +250,96 @@ ENTRY main {
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })"));
   ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, MultipleLhsNonContractingDims) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule MultipleLhsNonContractingDims
+
+%fused_computation (param_0: bf16[4,8,2048,1,1], param_1.3: s8[2048,12288], param_2: s8[2048,12288]) -> bf16[4,8,1,1,24576] {
+  %param_0 = bf16[4,8,2048,1,1]{4,3,2,1,0} parameter(0)
+  %param_1.3 = s8[2048,12288]{1,0} parameter(1)
+  %param_2 = s8[2048,12288]{1,0} parameter(2)
+  %concatenate.0 = s8[2048,24576]{1,0} concatenate(%param_1.3, %param_2), dimensions={1}
+  %bitcast.1358 = s8[24576,2048]{0,1} bitcast(%concatenate.0)
+  %convert.130 = bf16[24576,2048]{0,1} convert(%bitcast.1358)
+  ROOT %dot.0 = bf16[4,8,1,1,24576]{4,3,2,1,0} dot(%param_0, %convert.130), lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  p0 = bf16[4,8,2048,1,1]{4,3,2,1,0} parameter(0)
+  p1 = s8[2048,12288]{1,0} parameter(1)
+  p2 = s8[2048,12288]{1,0} parameter(2)
+  ROOT %fusion = bf16[4,8,1,1,24576]{4,3,2,1,0} fusion(p0, p1, p2), kind=kCustom, calls=%fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+})"));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+}
+
+std::string HloWithOperandPrecision(absl::string_view operand_precision) {
+  return absl::StrFormat(R"(
+HloModule SwapOperandPrecision
+
+fcomp {
+  lhs = f32[32,64]{1,0} parameter(0)
+  rhs = f32[128,64]{1,0} parameter(1)
+  ROOT dot = f32[32,128]{1,0} dot(lhs, rhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      operand_precision={%s}
+}
+
+ENTRY main {
+  lhs = f32[32,64]{1,0} parameter(0)
+  rhs = f32[128,64]{1,0} parameter(1)
+  ROOT fusion = f32[32,128]{1,0} fusion(lhs, rhs), kind=kCustom,
+      calls=fcomp,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+}
+)",
+                         operand_precision);
+}
+
+TEST_F(SwapOperandsTest, SwapsPerOperandPrecision) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(HloWithOperandPrecision("high,highest")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, operand_precision={highest,high}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, SwapsSinglePerOperandPrecision) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        HloWithOperandPrecision("high")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, operand_precision={default,high}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, SwapsOperandsWithEmptyPrecisionConfig) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(HloWithOperandPrecision("")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}{{$}}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, RejectsTooManyOperandPrecisionEntries) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           HloWithOperandPrecision("high,default,high")));
+  EXPECT_THAT(
+      GemmFusionSwapOperands().Run(module.get()),
+      StatusIs(
+          absl::StatusCode::kInternal,
+          HasSubstr(
+              "Dot has 3 operand precision entries; expected at most 2.")));
 }
 
 }  // namespace

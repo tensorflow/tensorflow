@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
@@ -33,9 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -69,6 +68,12 @@ struct MaskFor<::xla::bfloat16> {
   static constexpr type kStartBits = 0x3C00;  // bfloat16: 1/128
 };
 
+template <>
+struct MaskFor<uint64_t> {
+  using type = uint64_t;
+  static constexpr type kStartBits = 1000;  // uint64_t: arbitrary point
+};
+
 // Fills vector with unique values using bit patterns starting from kStartBits
 template <typename T>
 void append_unique_numbers(size_t count, std::vector<T>& arr) {
@@ -88,7 +93,7 @@ void append_unique_numbers(size_t count, std::vector<T>& arr) {
 template <typename T>
 void RunSelectKTest() {
   se::StreamExecutor* stream_executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
   int device_ordinal = stream_executor->device_ordinal();
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
 
@@ -120,22 +125,24 @@ void RunSelectKTest() {
       stream_executor->AllocateArray<T>(batch * k, 0);
   se::DeviceAddress<uint32_t> d_indices_out =
       stream_executor->AllocateArray<uint32_t>(batch * k, 0);
+  se::DeviceAddress<uint8_t> d_scratch =
+      stream_executor->AllocateArray<uint8_t>(32 * 1024 * 1024, 0);
 
   // Copy host to device
-  TF_ASSERT_OK(stream->MemcpyH2D(absl::Span<const T>(h_data_in), &d_data_in));
+  ASSERT_OK(stream->MemcpyH2D(absl::Span<const T>(h_data_in), &d_data_in));
 
   // Run raft select_k
-  TF_ASSERT_OK(select_k_exec<T>(device_ordinal, &allocator, stream.get(),
-                                d_data_in, d_data_out, d_indices_out, batch, n,
-                                k));
+  ASSERT_OK(select_k_exec<T>(device_ordinal, &allocator, stream.get(),
+                             d_data_in, d_data_out, d_indices_out, batch, n, k,
+                             d_scratch));
 
   // Copy results back to host
   std::vector<T> h_data_out(batch * k);
   std::vector<uint32_t> h_indices_out(batch * k);
-  TF_ASSERT_OK(stream->MemcpyD2H(d_data_out, absl::Span<T>(h_data_out)));
-  TF_ASSERT_OK(
+  ASSERT_OK(stream->MemcpyD2H(d_data_out, absl::Span<T>(h_data_out)));
+  ASSERT_OK(
       stream->MemcpyD2H(d_indices_out, absl::Span<uint32_t>(h_indices_out)));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   // Verify Top-K values and corresponding indices
   for (int j = 0; j < batch; ++j) {
@@ -152,5 +159,7 @@ TEST(RaftSelectKExecTest, SelectKFloat) { RunSelectKTest<float>(); }
 TEST(RaftSelectKExecTest, SelectKBFloat16) {
   RunSelectKTest<::xla::bfloat16>();
 }
+
+TEST(RaftSelectKExecTest, SelectKUint64) { RunSelectKTest<uint64_t>(); }
 
 }  // namespace xla::gpu

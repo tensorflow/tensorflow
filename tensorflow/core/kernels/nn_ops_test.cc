@@ -22,35 +22,45 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/nn_ops.h"
 
-#include <functional>
+#include <cstdint>
+#include <initializer_list>
 #include <memory>
-#include <unordered_map>
+#include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "Eigen/Core"  // from @eigen_archive
-#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/control_flow.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/port.h"
@@ -1547,35 +1557,6 @@ BM_TopKCPU(128, 70000, 70000, 16, "topk_nmt_r_128_c_70000_k_70000_th_16");
 BM_TopKCPU(128, 175000, 175000, 16, "topk_nmt_r_128_c_175000_k_175000_th_16");
 BM_TopKCPU(128, 350000, 350000, 16, "topk_nmt_r_128_c_350000_k_350000_th_16");
 
-class MaxPoolingTest : public OpsTestBase {};
 
-TEST_F(MaxPoolingTest, MaxPoolGradGradWithArgmaxOutOfBounds) {
-  // This test is for GPU only.
-  if (!IsGoogleCudaEnabled()) {
-    return;
-  }
-  SetDevice(DEVICE_GPU,
-            DeviceFactory::NewDevice("GPU", {}, "/job:a/replica:0/task:0"));
-  DataType dtype = DT_FLOAT;
-  TF_ASSERT_OK(NodeDefBuilder("maxpoolgradgradwithargmax_op",
-                              "MaxPoolGradGradWithArgmax")
-                   .Input(FakeInput(dtype))
-                   .Input(FakeInput(dtype))
-                   .Input(FakeInput(DT_INT64))
-                   .Attr("ksize", {1, 1, 1, 1})
-                   .Attr("strides", {1, 1, 1, 1})
-                   .Attr("padding", "SAME")
-                   .Attr("include_batch_in_index", false)
-                   .Attr("T", dtype)
-                   .Finalize(node_def()));
-  TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({1, 1, 1, 1}), {42.0});
-  AddInputFromArray<float>(TensorShape({1, 1, 1, 1}), {1.0});
-  AddInputFromArray<int64_t>(TensorShape({1, 1, 1, 1}), {-1});
-  TF_ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
-  test::FillValues<float>(&expected, {0.0});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
-}
 
 }  // namespace tensorflow

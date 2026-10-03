@@ -26,12 +26,11 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -102,6 +101,10 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
   }
   // Packed arrays are unpacked on host and packed on device.
   if (primitive_util::IsSubByteNonPredType(type)) {
+    return false;
+  }
+  if (shape.has_layout() &&
+      !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
     return false;
   }
 

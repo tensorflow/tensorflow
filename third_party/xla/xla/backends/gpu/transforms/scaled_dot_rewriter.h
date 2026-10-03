@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCALED_DOT_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_SCALED_DOT_REWRITER_H_
 
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -30,6 +33,12 @@ namespace gpu {
 // instructions, including Convert, Broadcast, Reshape, Multiply, and Dot.
 class ScaledDotRewriter : public HloModulePass {
  public:
+  // If `extra_filter` is provided, only ScaledDot instructions for which
+  // `extra_filter(instr)` returns `true` are rewritten. Instructions for which
+  // it returns `false` are preserved as ScaledDot.
+  explicit ScaledDotRewriter(HloPredicate extra_filter = nullptr)
+      : extra_filter_(std::move(extra_filter)) {}
+
   absl::string_view name() const override { return "scaled-dot-rewriter"; }
 
   absl::StatusOr<bool> RewriteComputation(HloComputation* computation);
@@ -38,6 +47,9 @@ class ScaledDotRewriter : public HloModulePass {
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  HloPredicate extra_filter_;
 };
 
 }  // namespace gpu

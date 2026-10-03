@@ -83,6 +83,13 @@ class ComputationLayout {
   // Returns true if any layouts (parameters and result) have been set.
   bool AnyLayoutSet() const;
 
+  // Returns true if all layouts (parameters and result) have a minor_to_major
+  // set in their layout.
+  bool MinorToMajorInLayoutIsSet() const;
+  // Returns true if any layouts (parameters and result) have a minor_to_major
+  // set in their layout.
+  bool AnyMinorToMajorInLayoutIsSet() const;
+
   // Returns a list of each parameter's layout. If the parameters are tupled,
   // returns an untupled list. Must only be called if all parameters have
   // layouts set (check with LayoutIsSet()).

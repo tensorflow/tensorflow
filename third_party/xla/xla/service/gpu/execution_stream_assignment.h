@@ -36,9 +36,12 @@ class ExecutionStreamAssignment {
     // Number of additional compute execution streams for round-robin
     // assignment of async compute operations.
     int number_of_compute_execution_streams = 4;
-    // Number of additional communication execution streams for round-robin
-    // assignment of async communication operations.
+    // Number of additional communication execution streams in each
+    // collective-domain pool for round-robin assignment.
     int number_of_communication_execution_streams = 1;
+    // Whether to assign dedicated D2H and H2D streams for host<->device memory
+    // copies instead of compute streams.
+    bool enable_dedicated_memcpy_streams = true;
   };
 
   // The `HloModule` must be flat. In other words, there must be a one-to-one

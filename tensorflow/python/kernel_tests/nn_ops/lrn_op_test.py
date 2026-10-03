@@ -18,6 +18,7 @@ import copy
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -190,6 +191,63 @@ class LRNOpTest(test.TestCase):
       # Enable when LRN supports tf.float16 on GPU.
       if not test.is_gpu_available():
         self._RunAndVerifyGradients(dtypes.float16)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testZeroSizeInput(self) -> None:
+    for shape in [
+        [0, 0, 0, 0],
+        [2, 0, 4, 3],
+        [0, 3, 3, 2],
+        [1, 2, 0, 3],
+        [1, 2, 3, 0],
+    ]:
+      x = array_ops.zeros(shape, dtype=dtypes.float32)
+      y = nn.local_response_normalization(
+          x, depth_radius=2, bias=1.0, alpha=1.0, beta=0.5
+      )
+      result = self.evaluate(y)
+      self.assertEqual(result.shape, tuple(shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testZeroSizeGradInput(self) -> None:
+    for shape in [
+        [0, 0, 0, 0],
+        [2, 0, 4, 3],
+        [0, 3, 3, 2],
+        [1, 2, 0, 3],
+        [1, 2, 3, 0],
+    ]:
+      x = array_ops.zeros(shape, dtype=dtypes.float32)
+      y = nn.lrn_grad(
+          input_grads=x,
+          input_image=x,
+          output_image=x,
+          depth_radius=2,
+          bias=1.0,
+          alpha=1.0,
+          beta=0.5,
+      )
+      result = self.evaluate(y)
+      self.assertEqual(result.shape, tuple(shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testZeroSizeAutodiff(self) -> None:
+    for shape in [
+        [0, 0, 0, 0],
+        [2, 0, 4, 3],
+        [0, 3, 3, 2],
+        [1, 2, 0, 3],
+        [1, 2, 3, 0],
+    ]:
+      x = array_ops.zeros(shape, dtype=dtypes.float32)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = nn.local_response_normalization(
+            x, depth_radius=2, bias=1.0, alpha=1.0, beta=0.5
+        )
+      grad = tape.gradient(y, x)
+      result = self.evaluate(grad)
+      self.assertEqual(result.shape, tuple(shape))
 
 
 if __name__ == "__main__":

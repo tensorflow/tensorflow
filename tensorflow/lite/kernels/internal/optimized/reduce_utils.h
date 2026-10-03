@@ -20,6 +20,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 
+#include "tensorflow/lite/util.h"
+
 namespace tflite {
 namespace reduce_utils {
 
@@ -106,7 +108,12 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
       // true if the current index is present in axis_out.
       bool current_here = j >= 0 ? (axis_out[j] == i) : false;
       if (current_here == previous_here) {
-        shape_out[i] *= shape_out[i + 1];
+        ::tflite::CheckedInt<int> flattened_dim(shape_out[i]);
+        flattened_dim *= shape_out[i + 1];
+        if (flattened_dim.Overflow()) {
+          return false;
+        }
+        shape_out[i] = flattened_dim.Value();
         for (int64_t k = i + 1; k + 1 < out_num_dims; ++k) {
           shape_out[k] = shape_out[k + 1];
         }

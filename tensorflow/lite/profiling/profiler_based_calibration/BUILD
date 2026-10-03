@@ -54,6 +54,7 @@ cc_test(
 cc_test(
     name = "tfl_calibration_utils_test",
     srcs = ["tfl_calibration_utils_test.cc"],
+    tags = ["nohwasan"],
     deps = [
         ":tfl_calibration_utils",
         "//tensorflow/lite:framework",

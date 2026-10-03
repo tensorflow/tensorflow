@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -38,7 +38,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
     bool emit_stablehlo) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ConvertHloToMlirHlo(*module, hlo_module, import_all_computations,
                           flatten_computation_args_result, emit_stablehlo));
   return module;
@@ -72,7 +72,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
     bool emit_stablehlo) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ConvertHloToMlirHlo(*module, hlo_module, import_all_computations,
                           flatten_computation_args_result, emit_stablehlo));
   return module;

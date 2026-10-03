@@ -14,15 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
-#include "absl/strings/string_view.h"
-#include "xla/python/ifrt/test_util.h"
 
 int main(int argc, char** argv) {
-  static constexpr absl::string_view kFilter =
-      // PjRt CPU does not support custom layouts.
-      "-*/XlaArrayImplHashTest.HashValuesDifferentLayouts/*";
-  xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
-
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

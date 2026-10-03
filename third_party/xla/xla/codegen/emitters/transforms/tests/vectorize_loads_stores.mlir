@@ -24,6 +24,10 @@
 // RUN: -xla-vectorize-loads-stores="gpu_device_info='cuda_compute_capability {major: 9}'" -cse -canonicalize \
 // RUN: | FileCheck %s --check-prefix=CHECK-HOPPER
 
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: -xla-vectorize-loads-stores="gpu_device_info='oneapi_compute_capability {architecture: \"bmg\"}'" -cse -canonicalize \
+// RUN: | FileCheck %s --check-prefix=CHECK-ONEAPI
+
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
   "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
@@ -708,6 +712,12 @@ func.func @vectorize_i4_x32(%arg0: tensor<1024xi4>) -> (i4) {
 // CHECK-NEXT:      vector.extract %[[V]][%[[J]]]
 // CHECK-NEXT:      addi
 
+// Sub-byte (i4) loads are packed and cannot be vectorized on oneAPI, so the
+// loop must remain scalar with no vector.transfer_read.
+// CHECK-ONEAPI-LABEL: @vectorize_i4_x32
+// CHECK-ONEAPI-NOT:   vector.transfer_read
+// CHECK-ONEAPI:       tensor.extract
+
 // -----
 
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 16 + s0),"
@@ -731,3 +741,36 @@ func.func @too_many_bits_for_vectorize(%arg0: tensor<1024xf32>) -> (f32) {
 }
 // CHECK-LABEL: @too_many_bits_for_vectorize
 // CHECK-NOT: vector.transfer_read
+
+// -----
+
+// Tests with an intermediate arith.andi between the extract and
+// the sub-byte trunc. InstCombine can sink the truncation through the andi, so
+// the transitive walk must still disable vectorization on oneAPI.
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 32 + s0),"
+  "domain: d0 in [0, 31], s0 in [0, 31]">
+func.func @no_vectorize_trunc_through_intermediate_op(%arg0: tensor<1024xi8>)
+    -> (i2) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c32 = arith.constant 32 : index
+  %mask = arith.constant 3 : i8
+  %cst = arith.constant 0 : i2
+  %outer = scf.for %i = %c0 to %c32 step %c1 iter_args(%iter = %cst) -> i2 {
+    %inner = scf.for %j = %c0 to %c32 step %c1 iter_args(%iter1 = %iter) -> i2 {
+      %idx = xla.apply_indexing #map(%i)[%j]
+      %extracted = tensor.extract %arg0[%idx] : tensor<1024xi8>
+      %masked = arith.andi %extracted, %mask : i8
+      %trunc = arith.trunci %masked : i8 to i2
+      %added = arith.addi %iter1, %trunc : i2
+      scf.yield %added : i2
+    }
+    scf.yield %inner : i2
+  }
+  return %outer : i2
+}
+// CHECK-LABEL: @no_vectorize_trunc_through_intermediate_op
+// CHECK:       vector.transfer_read
+// CHECK-ONEAPI-LABEL: @no_vectorize_trunc_through_intermediate_op
+// CHECK-ONEAPI-NOT:   vector.transfer_read
+// CHECK-ONEAPI:       tensor.extract

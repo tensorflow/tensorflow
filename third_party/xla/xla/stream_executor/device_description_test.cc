@@ -138,6 +138,13 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_tdm_support());
   EXPECT_FALSE(RocmComputeCapability{"gfx942"}.has_tdm_support());
   EXPECT_FALSE(RocmComputeCapability{"gfx1201"}.has_tdm_support());
+
+  EXPECT_TRUE(RocmComputeCapability{"gfx942"}.has_peer_visible_atomics());
+  EXPECT_TRUE(RocmComputeCapability{"gfx950"}.has_peer_visible_atomics());
+  EXPECT_FALSE(RocmComputeCapability{"gfx90a"}.has_peer_visible_atomics());
+  EXPECT_FALSE(RocmComputeCapability{"gfx908"}.has_peer_visible_atomics());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1201"}.has_peer_visible_atomics());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_peer_visible_atomics());
 }
 
 TEST(GpuComputeCapability, ProtoConversion) {
@@ -179,6 +186,17 @@ TEST(DeviceDescription, ExecutionUnitDescriptionProtoConversion) {
               Pointee(Eq(*desc.scalar_unit_description())));
   EXPECT_THAT(from_proto.matrix_unit_description(),
               Pointee(Eq(*desc.matrix_unit_description())));
+}
+
+TEST(DeviceDescription, OversizedSharedMemoryPerBlockProtoConversion) {
+  DeviceDescription desc;
+  desc.set_oversized_shared_memory_per_block(123456);
+
+  ASSERT_OK_AND_ASSIGN(DeviceDescription from_proto,
+                       DeviceDescription::FromProto(desc.ToProto()));
+
+  EXPECT_EQ(from_proto.oversized_shared_memory_per_block(),
+            desc.oversized_shared_memory_per_block());
 }
 
 TEST(DeviceDescription, ProtoConversion) {

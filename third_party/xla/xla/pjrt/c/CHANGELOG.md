@@ -1,5 +1,18 @@
 # PJRT C API changelog
 
+## 0.116
+
+*   Added `custom_options` and `num_custom_options` fields to
+    `PJRT_ExecuteOptions`.
+
+## 0.115
+
+* Deprecated ``PJRT_Triton_Extension``.
+
+## 0.114
+
+*   Added types F6E2M3FN and F6E3M2FN.
+
 ## 0.113
 
 *   Added `peak_allocated_bytes` and `peak_allocated_bytes_is_set` to `PJRT_Device_MemoryStats_Args`.

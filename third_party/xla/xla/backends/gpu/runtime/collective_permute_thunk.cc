@@ -30,11 +30,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -127,9 +127,9 @@ absl::Status CollectivePermuteThunk::PrepareCollective(
     // can overlap at boundaries, causing FindAllocationIndex to return the
     // wrong allocation.
     for (const Buffer& buffer : buffers()) {
-      RETURN_IF_ERROR(mem_requests.RequestSymmetricAllocation(
+      ABSL_RETURN_IF_ERROR(mem_requests.RequestSymmetricAllocation(
           clique_key, buffer.source_buffer.slice.index()));
-      RETURN_IF_ERROR(mem_requests.RequestSymmetricAllocation(
+      ABSL_RETURN_IF_ERROR(mem_requests.RequestSymmetricAllocation(
           clique_key, buffer.destination_buffer.slice.index()));
     }
   }
@@ -138,7 +138,7 @@ absl::Status CollectivePermuteThunk::PrepareCollective(
     // Request peer memory exchange for destination buffers so that senders
     // can look up the target's destination address via FindPeerAddress.
     for (const Buffer& buffer : buffers()) {
-      RETURN_IF_ERROR(mem_requests.RequestPeerAllocation(
+      ABSL_RETURN_IF_ERROR(mem_requests.RequestPeerAllocation(
           clique_key, buffer.destination_buffer.slice.index()));
     }
   }
@@ -230,7 +230,7 @@ CollectivePermuteThunk::FromProto(
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CollectiveThunk::Buffer buffer,
         CollectiveThunk::Buffer::FromProto(proto, buffer_allocations));
     buffers.push_back(buffer);
@@ -261,7 +261,7 @@ absl::StatusOr<ThunkProto> CollectivePermuteThunk::ToProto() const {
       proto.mutable_collective_permute_thunk();
 
   for (const Buffer& buffer : buffers()) {
-    ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
   *thunk_proto->mutable_collective_config() = config_.config.ToProto();
@@ -281,12 +281,12 @@ absl::Status CollectivePermuteThunk::RunCollective(
     se::Stream& stream, Communicator& comm) {
   int device_ordinal = stream.parent()->device_ordinal();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params.buffer_allocations,
                              std::vector<CollectiveThunk::Buffer>(buffers()),
                              config_.config.operand_element_type));
-  ASSIGN_OR_RETURN(int64_t current_id,
+  ABSL_ASSIGN_OR_RETURN(int64_t current_id,
                    GetCollectiveCurrentId(params.collective_params, config_));
   std::string device_string = GetDeviceString(*params.collective_params);
 
@@ -294,7 +294,7 @@ absl::Status CollectivePermuteThunk::RunCollective(
       P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
   // Remap source/target to clique-local ranks.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       P2PConfig::SourceTargetRanks source_target_ranks,
       RemapSourceTargetToCliqueRanks(
           source_target, clique_key, *params.collective_params->device_assn,
@@ -313,7 +313,7 @@ absl::Status CollectivePermuteThunk::RunCollective(
 
   // Peer-access mode: use D2D memcpy with event-based synchronization.
   if (use_peer_memory() && clique_key.is_local()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool use_p2p_memcpy,
         params.collective_cliques->peer_access_enabled(clique_key));
     if (use_p2p_memcpy) {
@@ -370,7 +370,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
       auto future = comm.CollectivePermute(
           src, dst, buf.element_type, buf.element_count, source_target.source,
           target_ranks, GpuCollectives::On(stream));
-      RETURN_IF_ERROR(future.Await());
+      ABSL_RETURN_IF_ERROR(future.Await());
     }
   } else {
     auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
@@ -379,13 +379,13 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
         se::DeviceAddressBase src = src_addrs.at(idx);
         se::DeviceAddressBase dst = dest_addrs.at(idx);
         const DeviceBufferPair& buf = buffers.at(idx);
-        RETURN_IF_ERROR(gpu_comm->LaunchCollectivePermute(
+        ABSL_RETURN_IF_ERROR(gpu_comm->LaunchCollectivePermute(
             src, dst, buf.element_type, buf.element_count, source_target.source,
             target_ranks, GpuCollectives::On(stream)));
       }
       return absl::OkStatus();
     });
-    RETURN_IF_ERROR(future.Await());
+    ABSL_RETURN_IF_ERROR(future.Await());
   }
 
   if (!source_target.source) {
@@ -394,7 +394,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
     VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
                                   device_string);
     for (se::DeviceAddressBase& dest_addr : dest_addrs) {
-      RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
+      ABSL_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
     }
   }
 
@@ -421,8 +421,8 @@ static absl::Status RunPeerAccessPermute(
 
   // Borrow a "ready" event and record it on our stream to signal that all
   // prior work on this rank's buffers is complete.
-  ASSIGN_OR_RETURN(EventPool::Event ready, pool->GetOrCreateEvent());
-  RETURN_IF_ERROR(stream.RecordEvent(ready->get()));
+  ABSL_ASSIGN_OR_RETURN(EventPool::Event ready, pool->GetOrCreateEvent());
+  ABSL_RETURN_IF_ERROR(stream.RecordEvent(ready->get()));
 
   // Create promise/future pair for the "done" event that the sender will
   // set after completing the memcpy.
@@ -430,7 +430,7 @@ static absl::Status RunPeerAccessPermute(
 
   // Join the rendezvous, exchanging Events with all other ranks.
   Events my_events{std::move(ready), std::move(done_future)};
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto rendezvous,
       GpuCliqueRendezvous::Join(clique_key, *rank, std::move(my_events)));
 
@@ -439,9 +439,9 @@ static absl::Status RunPeerAccessPermute(
     RankId target = *source_target.target;
 
     // Wait for target's stream to be ready before writing to its buffers.
-    ASSIGN_OR_RETURN(const Events& target_events,
+    ABSL_ASSIGN_OR_RETURN(const Events& target_events,
                      rendezvous->at<Events>(target));
-    RETURN_IF_ERROR(stream.WaitFor(target_events.ready->get()));
+    ABSL_RETURN_IF_ERROR(stream.WaitFor(target_events.ready->get()));
 
     // Perform D2D copies from our source to target's destination.
     for (const auto& buf : device_buffers) {
@@ -451,18 +451,18 @@ static absl::Status RunPeerAccessPermute(
         return Internal("Peer address not found for target rank %d",
                         target.value());
       }
-      RETURN_IF_ERROR(stream.MemcpyD2D(&*dst_addr, buf.source_buffer,
+      ABSL_RETURN_IF_ERROR(stream.MemcpyD2D(&*dst_addr, buf.source_buffer,
                                        buf.source_buffer.size()));
     }
 
     // Record a "done" event and fulfill the promise so the target knows
     // the copy is complete.
-    ASSIGN_OR_RETURN(EventPool::Event done, pool->GetOrCreateEvent());
-    RETURN_IF_ERROR(stream.RecordEvent(done->get()));
+    ABSL_ASSIGN_OR_RETURN(EventPool::Event done, pool->GetOrCreateEvent());
+    ABSL_RETURN_IF_ERROR(stream.RecordEvent(done->get()));
     done_promise.Set(std::move(done));
   } else {
     // Not a sender — fulfill promise with a dummy event.
-    ASSIGN_OR_RETURN(EventPool::Event done, pool->GetOrCreateEvent());
+    ABSL_ASSIGN_OR_RETURN(EventPool::Event done, pool->GetOrCreateEvent());
     done_promise.Set(std::move(done));
   }
 
@@ -470,21 +470,21 @@ static absl::Status RunPeerAccessPermute(
   if (!source_target.source) {
     for (const auto& buf : device_buffers) {
       auto dest = buf.destination_buffer;
-      RETURN_IF_ERROR(stream.MemZero(&dest, dest.size()));
+      ABSL_RETURN_IF_ERROR(stream.MemZero(&dest, dest.size()));
     }
   }
 
   // Receiver: wait for source's memcpy to complete.
   if (source_target.source) {
     RankId source = *source_target.source;
-    ASSIGN_OR_RETURN(const Events& source_events,
+    ABSL_ASSIGN_OR_RETURN(const Events& source_events,
                      rendezvous->at<Events>(source));
 
     // Await the source's done future (blocks until sender sets promise).
     const absl::StatusOr<EventPool::Event>& done_result =
         source_events.done.Await();
     if (!done_result.ok()) return done_result.status();
-    RETURN_IF_ERROR(stream.WaitFor((*done_result)->get()));
+    ABSL_RETURN_IF_ERROR(stream.WaitFor((*done_result)->get()));
   }
 
   return absl::OkStatus();
@@ -518,7 +518,7 @@ static absl::Status RunOneSidedPermute(
     RankId source = *source_target.source;
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "OneSidedPermute: Signal peer " << source << " recv buffer ready";
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         comm.Signal(source, signal_desc, GpuCollectives::On(stream)).Await());
   }
 
@@ -529,7 +529,7 @@ static absl::Status RunOneSidedPermute(
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "OneSidedPermute: WaitSignal from peer " << target
         << " (recv buffer ready)";
-    RETURN_IF_ERROR(comm.WaitSignal(target, /*op_cnt=*/1, signal_desc,
+    ABSL_RETURN_IF_ERROR(comm.WaitSignal(target, /*op_cnt=*/1, signal_desc,
                                     GpuCollectives::On(stream))
                         .Await());
 
@@ -554,14 +554,14 @@ static absl::Status RunOneSidedPermute(
             << "OneSidedPermute: Put " << buf.source_buffer.size()
             << " bytes to peer " << target << " at offset " << offset;
 
-        RETURN_IF_ERROR(gpu_comm->LaunchPut(buf.source_buffer, sym_mem, offset,
+        ABSL_RETURN_IF_ERROR(gpu_comm->LaunchPut(buf.source_buffer, sym_mem, offset,
                                             buf.source_buffer.size(), target,
                                             GpuCollectives::On(stream)));
       }
       return absl::OkStatus();
     };
 
-    RETURN_IF_ERROR(gpu_comm->GroupExecute(put_all).Await());
+    ABSL_RETURN_IF_ERROR(gpu_comm->GroupExecute(put_all).Await());
   }
 
   // No source: zero out destination buffers.
@@ -570,7 +570,7 @@ static absl::Status RunOneSidedPermute(
         << "OneSidedPermute: no source, zeroing destination buffers";
     for (const auto& buf : device_buffers) {
       auto dest = buf.destination_buffer;
-      RETURN_IF_ERROR(stream.MemZero(&dest, dest.size()));
+      ABSL_RETURN_IF_ERROR(stream.MemZero(&dest, dest.size()));
     }
   }
 
@@ -581,7 +581,7 @@ static absl::Status RunOneSidedPermute(
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "OneSidedPermute: WaitSignal from peer " << source
         << " op_cnt=" << device_buffers.size() << " (data written)";
-    RETURN_IF_ERROR(comm.WaitSignal(source, /*op_cnt=*/device_buffers.size(),
+    ABSL_RETURN_IF_ERROR(comm.WaitSignal(source, /*op_cnt=*/device_buffers.size(),
                                     signal_desc, GpuCollectives::On(stream))
                         .Await());
   }
@@ -633,7 +633,7 @@ absl::StatusOr<P2PConfig::SourceTargetRanks> RemapSourceTargetToCliqueRanks(
     const P2PConfig::SourceTargetMapEntry& source_target,
     const GpuCliqueKey& clique_key, const DeviceAssignment& device_assn,
     CollectiveOpGroupMode group_mode, GlobalDeviceId global_device_id) {
-  ASSIGN_OR_RETURN(auto logical_id,
+  ABSL_ASSIGN_OR_RETURN(auto logical_id,
                    device_assn.LogicalIdForDevice(global_device_id));
 
   // Map a logical ID (partition or replica) to its GlobalDeviceId.

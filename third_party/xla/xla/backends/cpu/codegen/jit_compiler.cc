@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
@@ -76,16 +76,6 @@ class UnsupportedExecutorProcessControl
     llvm_unreachable("Unsupported");
   }
 
-  llvm::Expected<int32_t> runAsVoidFunction(
-      llvm::orc::ExecutorAddr VoidFnAddr) override {
-    llvm_unreachable("Unsupported");
-  }
-
-  llvm::Expected<int32_t> runAsIntFunction(llvm::orc::ExecutorAddr IntFnAddr,
-                                           int Arg) override {
-    llvm_unreachable("Unsupported");
-  }
-
   void callWrapperAsync(llvm::orc::ExecutorAddr WrapperFnAddr,
                         IncomingWFRHandler OnComplete,
                         llvm::ArrayRef<char> ArgBuffer) override {
@@ -118,7 +108,7 @@ using tsl::profiler::TraceMeEncode;
 absl::StatusOr<JitCompiler> JitCompiler::Create(
     Options options, std::unique_ptr<IrCompiler> ir_compiler,
     TaskRunner task_runner) {
-  ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                    ir_compiler->build_target_machine());
 
   // Dispatch compilation tasks using the provided task runner.
@@ -190,7 +180,7 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
   });
 
   // Add module to the selected dynamic library.
-  ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
+  ABSL_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
                    execution_engine_->dylib(dylib_index));
   if (auto err = compile_layer_->add(*dylib, std::move(module))) {
     return Internal("Failed to add module to dylib %d: %s", dylib_index,
@@ -214,7 +204,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
   // the function, to make sure we don't get use-after-free errors.
   task_dispatcher_->shutdown();
 
-  RETURN_IF_ERROR(symbol_map.status());
+  ABSL_RETURN_IF_ERROR(symbol_map.status());
   return std::move(object_loader)
       .CreateFunctionLibrary(std::move(symbols), *symbol_map);
 }

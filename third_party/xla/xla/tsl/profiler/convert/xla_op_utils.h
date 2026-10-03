@@ -120,9 +120,12 @@ inline bool IsHloRematerialization(absl::string_view hlo_expression) {
   return absl::StrContains(hlo_expression, ".remat");
 }
 
-// Return true if framework_op is a remat.
+// Return true if framework_op is a remat. The "rematted_computation"
+// name-stack scope is normally delimited by '/', but under jax_remat3 it may be
+// wrapped in autodiff transform names, e.g. "jvp(rematted_computation)", so we
+// match the scope anywhere in the name.
 inline bool IsFrameworkRematerialization(absl::string_view framework_op_name) {
-  return absl::StrContains(framework_op_name, "/rematted_computation/");
+  return absl::StrContains(framework_op_name, "rematted_computation");
 }
 
 // Return true if hlo_expression is a remat.

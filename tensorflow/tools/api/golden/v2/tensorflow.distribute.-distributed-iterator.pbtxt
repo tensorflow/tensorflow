@@ -11,6 +11,14 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__iter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__next__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_next"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

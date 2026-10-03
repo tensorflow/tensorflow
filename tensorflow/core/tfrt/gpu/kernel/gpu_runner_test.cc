@@ -166,24 +166,20 @@ TEST_F(GpuRunnerTest, Basic) {
   // Construct GpuRunInputs.
   GpuRunInputs run_inputs;
 
-  llvm::SmallVector<tfrt_stub::FallbackTensor> args;
   Tensor tensor1 = CreateTensor<int32>(TensorShape({1, 2}), {1, 2});
   Tensor tensor2 = CreateTensor<int32>(TensorShape({1, 2}), {3, 4});
-  args.push_back(tfrt_stub::FallbackTensor(tensor1));
-  args.push_back(tfrt_stub::FallbackTensor(tensor2));
-  run_inputs.args = &args;
+  run_inputs.args.push_back(tfrt_stub::FallbackTensor(tensor1));
+  run_inputs.args.push_back(tfrt_stub::FallbackTensor(tensor2));
 
   run_inputs.num_outputs = 1;
-  run_inputs.resource_indices = tfrt::ArrayRef<int64_t>(0);
-  run_inputs.used_output_indices = tfrt::ArrayRef<int64_t>(0);
+  run_inputs.resource_indices = {0};
+  run_inputs.used_output_indices = {0};
   run_inputs.func_name = kFunctionName;
 
-  absl::flat_hash_map<int, Device*> gpu_devices;
   ASSERT_OK(GetDevices(fallback_request_state_.get(), &run_inputs.cpu_device,
-                       gpu_devices));
-  run_inputs.gpu_devices = &gpu_devices;
+                       run_inputs.gpu_devices));
   run_inputs.fallback_request_state = fallback_request_state_.get();
-  run_inputs.exec_ctx = exec_ctx_.get();
+  run_inputs.host_ctx = exec_ctx_->host();
 
   // Run the input.
   TF_ASSERT_OK_AND_ASSIGN(

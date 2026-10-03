@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/xla.pb.h"
 
@@ -84,7 +86,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
           .value();
 
   auto expected_ir = R"(
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
                                MakePlatformSpecificLlvm(expected_ir),
@@ -110,7 +112,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-NOT: call void BARRIER()
+; CHECK-NOT: call BARRIER()
 )";
   EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
                                MakePlatformSpecificLlvm(expected_ir),
@@ -130,7 +132,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeC128TypeRun) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
                                MakePlatformSpecificLlvm(expected_ir),
@@ -161,7 +163,7 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   // Check that a call to llvm.nvvm.barrier0 is generated.
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 ; CHECK: }
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -197,7 +199,7 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
           .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 ; CHECK: }
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -229,7 +231,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
           .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK-NOT: call void BARRIER()
+; CHECK-NOT: call BARRIER()
 ; CHECK: }
 )";
   EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -258,7 +260,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
           .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK-NOT: call void BARRIER()
+; CHECK-NOT: call BARRIER()
 ; CHECK: }
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -295,7 +297,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
           .value();
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
-; CHECK: call void BARRIER()
+; CHECK: call BARRIER()
 ; CHECK: }
 )";
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
@@ -519,17 +521,32 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   absl::Status status =
       CompileToExecutable(std::move(hlo_module), true).status();
 
-  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
-    EXPECT_THAT(
-        status.message(),
-        ::testing::ContainsRegex(
-            "Kernel '.*' launch needs more blocks [(]4294967296, 65536[)] "
-            "than allowed by hardware [(]2147483647, 65536[)]"));
+  std::string platform_name =
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value();
+  if (platform_name == "sycl") {
+    EXPECT_OK(status);
   } else {
-    EXPECT_THAT(status.message(),
-                ::testing::ContainsRegex(
-                    "Kernel '.*' launch needs more blocks [(].*, 65535[)] "
-                    "than allowed by hardware [(]2147483647, 65535[)]"));
+    auto* platform =
+        se::PlatformManager::PlatformWithName(platform_name).value();
+    auto* se = platform->ExecutorForDevice(0).value();
+    const auto& device_description = se->GetDeviceDescription();
+    const auto* rocm_cc =
+        device_description.gpu_compute_capability().rocm_compute_capability();
+    const bool isRocm713AndBelow =
+        rocm_cc != nullptr && device_description.runtime_version() <
+                                  stream_executor::SemanticVersion(7, 13, 0);
+    if (isRocm713AndBelow) {
+      EXPECT_THAT(
+          status.message(),
+          ::testing::ContainsRegex(
+              "Kernel '.*' launch needs more blocks [(]4294967296, 65536[)] "
+              "than allowed by hardware [(]2147483647, 65536[)]"));
+    } else {
+      EXPECT_THAT(status.message(),
+                  ::testing::ContainsRegex(
+                      "Kernel '.*' launch needs more blocks [(].*, 65535[)] "
+                      "than allowed by hardware [(]2147483647, 65535[)]"));
+    }
   }
 }
 

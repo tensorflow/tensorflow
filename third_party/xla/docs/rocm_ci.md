@@ -47,7 +47,7 @@ The ROCm jobs use a self-hosted GitHub Actions runner labelled
 `linux-x86-64-1gpu-amd`. This is a Linux x86_64 host with a single AMD Instinct
 GPU attached, currently targeting `gfx950`. The label links to the AMD-owned RBE
 runner fleet, where the build and tests run. The status of this cluster can be
-monitored on (this dashboard)[https://wardite.cluster.engflow.com/].
+monitored on [this dashboard](https://wardite.cluster.engflow.com/).
 
 ### Docker image
 

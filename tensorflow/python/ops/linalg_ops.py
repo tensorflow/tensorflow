@@ -353,17 +353,60 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
       matrix_shape = matrix.get_shape()[-2:]
       if matrix_shape.is_fully_defined():
         if matrix_shape[-2] >= matrix_shape[-1]:
-          return _overdetermined(matrix, rhs, l2_regularizer)
+          solution = _overdetermined(matrix, rhs, l2_regularizer)
         else:
-          return _underdetermined(matrix, rhs, l2_regularizer)
+          solution = _underdetermined(matrix, rhs, l2_regularizer)
       else:
         # We have to defer determining the shape to runtime and use
         # conditional execution of the appropriate graph.
         matrix_shape = array_ops.shape(matrix)[-2:]
-        return cond.cond(
+        solution = cond.cond(
             matrix_shape[-2] >= matrix_shape[-1],
             lambda: _overdetermined(matrix, rhs, l2_regularizer),
-            lambda: _underdetermined(matrix, rhs, l2_regularizer))
+            lambda: _underdetermined(matrix, rhs, l2_regularizer),
+        )
+      # The composite implementation is built on a Cholesky factorization of
+      # the Gramian, which does not exist for singular matrices; the
+      # factorization then fails and its output is filled with NaN. The QR
+      # based kernel does handle those systems, so fall back to it when the
+      # factorization failed. Inputs that already contain NaN also produce NaN
+      # here, and the fallback returns NaN for them as well, so there is no
+      # need to inspect the inputs.
+      # `is_nan` is not defined for complex types, so check the real and
+      # imaginary parts separately in that case.
+      if solution.dtype.is_complex:
+        factorization_failed = math_ops.reduce_any(
+            math_ops.logical_or(
+                math_ops.is_nan(math_ops.real(solution)),
+                math_ops.is_nan(math_ops.imag(solution)),
+            )
+        )
+      else:
+        factorization_failed = math_ops.reduce_any(math_ops.is_nan(solution))
+
+      def fallback_fn():
+        # The QR-based fallback kernel (fast=False) has no custom backward
+        # pass, so stop gradients from propagating up this path to avoid
+        # breaking tf.GradientTape on graph control flow.
+        return array_ops.stop_gradient(
+            gen_linalg_ops.matrix_solve_ls(
+                matrix, rhs, l2_regularizer, fast=False
+            )
+        )
+
+      from tensorflow.python.eager import context
+
+      if context.executing_eagerly():
+        if factorization_failed.numpy():
+          return fallback_fn()
+        else:
+          return solution
+
+      from tensorflow.python.ops import cond_v2
+
+      return cond_v2.cond_v2(
+          factorization_failed, fallback_fn, lambda: solution
+      )
 
   matrix = ops.convert_to_tensor(matrix, name='matrix')
   if matrix.dtype == dtypes.complex128 and l2_regularizer != 0:
@@ -407,6 +450,11 @@ def eig(tensor, name=None):
     out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
     out_dtype = dtypes.complex128
+  else:
+    raise ValueError(
+        "'tensor' must have dtype float32, float64, complex64, or "
+        f'complex128, got {tensor.dtype}'
+    )
   e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
   return e, v
 
@@ -434,6 +482,11 @@ def eigvals(tensor, name=None):
     out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
     out_dtype = dtypes.complex128
+  else:
+    raise ValueError(
+        "'tensor' must have dtype float32, float64, complex64, or "
+        f'complex128, got {tensor.dtype}'
+    )
   e, _ = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=False, name=name)
   return e
 
@@ -731,6 +784,17 @@ def norm(tensor,
   with ops.name_scope(name, 'norm', [tensor]):
     tensor = ops.convert_to_tensor(tensor)
 
+    # Match np.linalg.norm: out-of-bounds axes raise a clear AxisError
+    # (a ValueError) instead of an opaque backend kernel failure.
+    if axis is not None and tensor.shape.rank is not None:
+      for ax in axis:
+        normalized = ax + tensor.shape.rank if ax < 0 else ax
+        if normalized < 0 or normalized >= tensor.shape.rank:
+          raise ValueError(
+              f'axis {ax} is out of bounds for tensor of rank '
+              f'{tensor.shape.rank}'
+          )
+
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
         rank = array_ops.rank(tensor)
@@ -763,9 +827,31 @@ def norm(tensor,
         # NOTE: we unfortunately cannot use tf.math.reduce_euclidean_norm, since
         # this introduces a new op that is not supported in XLA, and breaks
         # many existing TPU workloads (e.g. ResNet).
-        result = math_ops.sqrt(
-            math_ops.reduce_sum(
-                tensor * math_ops.conj(tensor), axis, keepdims=True))
+        sum_squares = math_ops.reduce_sum(
+            tensor * math_ops.conj(tensor), axis, keepdims=True
+        )
+        # Use a safe sqrt to avoid NaN/inf gradients when sum_squares is zero.
+        # maximum(sum_squares, tiny) ensures the sqrt gradient denominator is
+        # never zero, and the where mask preserves exact zero forward output.
+        real_dtype = tensor.dtype.real_dtype
+        tiny_dtype = (
+            np.float32
+            if real_dtype == dtypes.bfloat16
+            else (real_dtype.as_numpy_dtype)
+        )
+        tiny = np.finfo(tiny_dtype).tiny
+        if tensor.dtype.is_complex:
+          real_sum = math_ops.real(sum_squares)
+          safe_sum = math_ops.complex(
+              math_ops.maximum(real_sum, tiny), array_ops.zeros_like(real_sum)
+          )
+        else:
+          safe_sum = math_ops.maximum(sum_squares, tiny)
+        result = array_ops.where(
+            math_ops.equal(sum_squares, 0),
+            array_ops.zeros_like(safe_sum),
+            math_ops.sqrt(safe_sum),
+        )
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

@@ -56,7 +56,7 @@ namespace xla {
 namespace {
 
 class DynamicSliceTest : public ClientLibraryTestRunnerMixin<
-                             HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+                             HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   template <typename IndexT, typename DataT>
   void TestR1() {
@@ -319,9 +319,8 @@ TEST_F(DynamicSliceTest, Int32R3Pred) {
   // clang-format on
 }
 
-class DynamicUpdateSliceTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
+class DynamicUpdateSliceTest : public ClientLibraryTestRunnerMixin<
+                                   HloInterpreterReferenceMixin<HloTestBase>> {
  protected:
   template <typename IndexT, typename DataT>
   void TestR0() {
@@ -753,7 +752,7 @@ TEST_F(DynamicUpdateSliceTest, R3ContiguousLargerBF16) {
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/7, /*size=*/1);
 }
 
-using DynamicOpsTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using DynamicOpsTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 // This test that buffer assignment does not alias constants with the output of
 // dynamic update slice.
@@ -771,6 +770,30 @@ TEST_F(DynamicOpsTest, AddOfDUS) {
   }
   )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+TEST_F(DynamicOpsTest, NestedDynamicUpdateSliceOfDynamicSliceOutOfBounds) {
+  const char* hlo_string = R"(
+  HloModule m
+  ENTRY test {
+    x = s32[6] parameter(0)
+    c = s32[1] parameter(1)
+    i = s32[] parameter(2)
+    j = s32[] parameter(3)
+    w0 = s32[3] dynamic-slice(x, i), dynamic_slice_sizes={3}
+    w1 = s32[3] dynamic-update-slice(w0, c, j)
+    ROOT out = s32[6] dynamic-update-slice(x, w1, i)
+  }
+  )";
+  Literal x = LiteralUtil::CreateR1<int32_t>({0, 10, 20, 30, 40, 50});
+  Literal c = LiteralUtil::CreateR1<int32_t>({7});
+  Literal i = LiteralUtil::CreateR0<int32_t>(5);
+  Literal j = LiteralUtil::CreateR0<int32_t>(0);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          Execute(std::move(module), {&x, &c, &i, &j}));
+  EXPECT_EQ(result, LiteralUtil::CreateR1<int32_t>({0, 10, 20, 7, 40, 50}));
 }
 
 // These tests are known to fail for backends other than GPU, so we are

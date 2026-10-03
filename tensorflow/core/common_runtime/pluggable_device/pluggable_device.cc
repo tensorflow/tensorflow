@@ -351,10 +351,10 @@ void PluggableDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
 }
 
-// Based on the semantics of Device::Sync, this call should wait for
-// all streams not just the current one.
 absl::Status PluggableDevice::Sync() {
-  return PluggableDeviceUtil::SyncAll(this);
+  // PluggabeDevice tracks completion of h2d, d2h, and d2d streams using the
+  // done callbacks. This call syncs the compute stream only.
+  return PluggableDeviceUtil::Sync(this);
 }
 
 void PluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,

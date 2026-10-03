@@ -77,6 +77,53 @@ ENTRY main {
       xla::testing::opcode_matchers::Shape("s32[1,1024,1024,1]{3,2,1,0}"));
 }
 
+TEST_F(ConvolutionTypeCanonicalizerTest, RaggedDotBf16ToS32) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY main {
+  p0 = bf16[11,5]{1,0} parameter(0)
+  p1 = bf16[3,5,7]{2,1,0} parameter(1)
+  p2 = s32[3]{0} parameter(2)
+  ROOT ragged_dot = s32[11,7]{1,0} ragged-dot(p0, p1, p2), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConvolutionTypeCanonicalizer pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Convert(op::RaggedDot(op::Parameter(0), op::Parameter(1),
+                                        op::Parameter(2))));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              xla::testing::opcode_matchers::Shape("s32[11,7]{1,0}"));
+}
+
+TEST_F(ConvolutionTypeCanonicalizerTest, ScaledDotBf16ToS32) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f8e4m3fn[2,10]{1,0} parameter(0)
+  p1 = f8e4m3fn[10,2]{1,0} parameter(1)
+  p2 = f32[2,2]{1,0} parameter(2)
+  p3 = f32[2,2]{1,0} parameter(3)
+  ROOT scaled_dot = s32[2,2]{1,0} scaled-dot(p0, p1, p2, p3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConvolutionTypeCanonicalizer pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Convert(op::ScaledDot(op::Parameter(0), op::Parameter(1),
+                                        op::Parameter(2), op::Parameter(3))));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              xla::testing::opcode_matchers::Shape("s32[2,2]{1,0}"));
+}
+
 TEST_F(ConvolutionTypeCanonicalizerTest, NoChangeNeeded) {
   absl::string_view hlo_string = R"(
 HloModule module

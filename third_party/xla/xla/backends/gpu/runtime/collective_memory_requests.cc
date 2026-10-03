@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -66,7 +66,7 @@ absl::Status CollectiveMemoryRequests::RequestSymmetricAllocationSlices(
     const GpuCliqueKey& clique,
     absl::Span<const BufferAllocation::Slice> slices) {
   for (const BufferAllocation::Slice& slice : slices) {
-    RETURN_IF_ERROR(RequestSymmetricAllocationSlice(clique, slice));
+    ABSL_RETURN_IF_ERROR(RequestSymmetricAllocationSlice(clique, slice));
   }
   return absl::OkStatus();
 }
@@ -85,7 +85,7 @@ absl::Status CollectiveMemoryRequests::RequestSymmetricAddress(
 absl::Status CollectiveMemoryRequests::RequestSymmetricAddresses(
     const GpuCliqueKey& clique, absl::Span<const se::DeviceAddressBase> addrs) {
   for (const se::DeviceAddressBase& addr : addrs) {
-    RETURN_IF_ERROR(RequestSymmetricAddress(clique, addr));
+    ABSL_RETURN_IF_ERROR(RequestSymmetricAddress(clique, addr));
   }
   return absl::OkStatus();
 }

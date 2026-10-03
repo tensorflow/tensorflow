@@ -23,13 +23,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_runtime_abi_version.h"
@@ -50,6 +51,7 @@ static absl::Status InternalInitialize() {
   }
 
   LOG(ERROR) << "failed call to hipInit: " << ToString(res);
+  rocm::LogDiagnosticInformation();
   return absl::AbortedError(
       absl::StrCat("failed call to hipInit: ", ToString(res)));
 }
@@ -90,12 +92,12 @@ const std::string& ROCmPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
-  RETURN_IF_ERROR(PlatformInitialize());
+  ABSL_RETURN_IF_ERROR(PlatformInitialize());
   return RocmExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
-  RETURN_IF_ERROR(PlatformInitialize());
+  ABSL_RETURN_IF_ERROR(PlatformInitialize());
   return executor_cache_.GetOrCreate(
       ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
@@ -107,7 +109,7 @@ absl::StatusOr<StreamExecutor*> ROCmPlatform::FindExisting(int ordinal) {
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(int ordinal) {
   auto executor = std::make_unique<RocmExecutor>(this, ordinal);
-  RETURN_IF_ERROR(executor->Init());
+  ABSL_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }
 

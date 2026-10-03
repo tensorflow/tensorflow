@@ -19,17 +19,20 @@ import itertools
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test as test_lib
 
 
 class BinaryOpsTest(xla_test.XLATestCase):
@@ -1254,6 +1257,77 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7], [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  def testPadWithPaddingAboveInt32Max(self):
+    # Zero elements, so the padded shape can exceed int32 without allocating.
+    for pad in (
+        array_ops.pad,
+        lambda x, y: array_ops.pad(x, y, constant_values=7),
+    ):
+      self._testBinary(
+          pad,
+          np.zeros([0, 2], dtype=np.float32),
+          np.array([[0, 0], [2**32 + 1, 0]], dtype=np.int64),
+          expected=np.zeros([0, 2**32 + 3], dtype=np.float32),
+      )
+
+  def testPadRejectsOverflowingPaddedShape(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Padded size of dimension 1 overflows int64",
+    ):
+      self._testBinary(
+          array_ops.pad,
+          np.ones([1, 2], dtype=np.float32),
+          np.array([[0, 0], [2**62, 2**62]], dtype=np.int64),
+          expected=None,
+      )
+
+    # Zero elements, but the size in bytes overflows int64.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"overflow in static extent product: "
+        r"dimensions=\[2147483648, 2147483648, 0\]",
+    ):
+      self._testBinary(
+          array_ops.pad,
+          np.zeros([1, 1, 0], dtype=np.float32),
+          np.array([[2**31 - 1, 0], [2**31 - 1, 0], [0, 0]], dtype=np.int64),
+          expected=None,
+      )
+
+  def testPadDynamicHighPaddingAboveInt32Max(self):
+
+    def pad_selected_indices(low, high):
+
+      @def_function.function(jit_compile=True)
+      def f(mask):
+        # The size of `indices` is dynamic, so the high padding is too.
+        indices = array_ops.where_v2(mask)[:, 0]
+        n = array_ops.shape(indices, out_type=dtypes.int64)[0]
+        paddings = array_ops.concat(
+            [
+                constant_op.constant([[low]], dtype=dtypes.int64),
+                array_ops.reshape(high - n, [1, 1]),
+            ],
+            axis=1,
+        )
+        return array_ops.pad(indices, paddings)
+
+      return f
+
+    with self.session():
+      with self.test_scope():
+        mask = constant_op.constant([True, False, True, True])
+        self.assertAllEqual(
+            self.evaluate(pad_selected_indices(1, 8)(mask)),
+            [0, 0, 2, 3, 0, 0, 0, 0, 0],
+        )
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            "must fit in int32 when its high padding is dynamic",
+        ):
+          self.evaluate(pad_selected_indices(0, 2**31)(mask))
+
   def testSymmetricMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
     for dtype in self.numeric_types:
@@ -1527,6 +1601,18 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[1, 2], [3, 4]], dtype=dtype),
           np.array([1, 0], dtype=np.int32),
           expected=np.array([[1, 3], [2, 4]], dtype=dtype))
+      self._testBinary(
+          array_ops.transpose,
+          np.array([[1, 2], [3, 4]], dtype=dtype),
+          np.array([-1, 0], dtype=np.int32),
+          expected=np.array([[1, 3], [2, 4]], dtype=dtype),
+      )
+      self._testBinary(
+          array_ops.transpose,
+          np.zeros(shape=[1, 0, 4], dtype=dtype),
+          np.array([-2, -1, -3], dtype=np.int32),
+          expected=np.zeros(shape=[0, 4, 1], dtype=dtype),
+      )
 
   def testConjugateTranspose(self):
     for dtype in self.complex_types:
@@ -1544,7 +1630,14 @@ class BinaryOpsTest(xla_test.XLATestCase):
           array_ops.conjugate_transpose,
           np.array([[1 - 1j, 2 + 2j], [3 - 3j, 4 + 4j]], dtype=dtype),
           np.array([1, 0], dtype=np.int32),
-          expected=np.array([[1 + 1j, 3 + 3j], [2 - 2j, 4 - 4j]], dtype=dtype))
+          expected=np.array([[1 + 1j, 3 + 3j], [2 - 2j, 4 - 4j]], dtype=dtype),
+      )
+      self._testBinary(
+          array_ops.conjugate_transpose,
+          np.array([[1 - 1j, 2 + 2j], [3 - 3j, 4 + 4j]], dtype=dtype),
+          np.array([-1, 0], dtype=np.int32),
+          expected=np.array([[1 + 1j, 3 + 3j], [2 - 2j, 4 - 4j]], dtype=dtype),
+      )
 
   def testCross(self):
     for dtype in self.float_types:
@@ -1667,6 +1760,32 @@ class BinaryOpsTest(xla_test.XLATestCase):
           x,
           np.array((3, 7, 8, 9), dtype=np.int32),
           expected=np.tile(x, (1, 7, 8, 9)))
+
+  def testMulGradientOnBoundedDynamicDimension(self):
+    # tf.slice(x, [0], [n]), where n is itself only known at runtime, has an
+    # output size that's bounded by x's static shape but not statically
+    # known. Multiplying that result against a differently-shaped static
+    # tensor and differentiating used to fail XLA compilation in
+    # BroadcastGradientArgs, which resolved the dynamic dimension to its
+    # upper bound and rejected it as incompatible with the static side even
+    # though the two are equal at runtime (see GitHub issue #119382).
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.float32, shape=[5])
+        mask = array_ops.placeholder(dtypes.bool, shape=[3])
+        weights = constant_op.constant([1.0, -2.0], dtype=dtypes.float32)
+        n = math_ops.reduce_sum(math_ops.cast(mask, dtypes.int32))
+        sliced = array_ops.slice(x, [0], [n])
+        out = math_ops.reduce_sum(sliced * weights)
+        grad = gradients_impl.gradients(out, x)[0]
+      result = sess.run(
+          grad,
+          feed_dict={
+              x: [-2.0, -1.0, 0.0, 1.0, 2.0],
+              mask: [True, False, True],
+          },
+      )
+    self.assertAllClose(result, [1.0, -2.0, 0.0, 0.0, 0.0])
 
 
 if __name__ == "__main__":

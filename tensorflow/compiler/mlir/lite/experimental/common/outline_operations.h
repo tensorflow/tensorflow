@@ -115,13 +115,13 @@ struct OpsAdded {
 
 // Given a `Subgraph` containing a sequence of adjacent `Operations` from
 // the `module`, raise these `Operations` (and any ops contained nested within)
-// to the body of a new seperate root level function. Replace in their current
+// to the body of a new separate root level function. Replace in their current
 // location with a `CallOp` which invokes said `FuncOp`. The inputs to
 // this new functions are taken to be the `Values` that appear as operands
 // to ops in the subgraph, which are not self-contained within the subgraph.
 // The outputs of this function are taken to be the results of ops in the
 // subgraph which are referenced as operands outside of the subgraph.
-// Also refer to documention of `AccumulateOperandsDefinedAbove` &
+// Also refer to documentation of `AccumulateOperandsDefinedAbove` &
 // `AccumulateResultsDefinedWithin`.
 void ExtractSubgraphToFunc(const Subgraph& subgraph, OpBuilder& builder,
                            ModuleOp& module, OpsAdded& ops_added);

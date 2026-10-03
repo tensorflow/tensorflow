@@ -22,8 +22,24 @@ tf_class {
     mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
   }
   member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'_fields\', \'_ragged_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__validate__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "cast"
@@ -36,10 +52,12 @@ tf_class {
   member_method {
     name: "experimental_from_proto"
     argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "experimental_type_proto"
     argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "flatten"
@@ -52,6 +70,7 @@ tf_class {
   member_method {
     name: "from_value"
     argspec: "args=[\'cls\', \'value\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "is_compatible_with"

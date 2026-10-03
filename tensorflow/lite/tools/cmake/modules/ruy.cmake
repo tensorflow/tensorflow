@@ -37,4 +37,5 @@ set(RUY_SOURCE_DIR "${ruy_SOURCE_DIR}" CACHE PATH "RUY source directory")
 add_subdirectory(
   "${ruy_SOURCE_DIR}"
   "${ruy_BINARY_DIR}"
+  EXCLUDE_FROM_ALL
 )

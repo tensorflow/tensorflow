@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -359,7 +359,9 @@ bool IsBF16Operation(const HloInstruction* ragged_dot) {
          (ragged_dot->operand(1)->shape().element_type() == BF16);
 }
 
-bool CanBeHandledByCuDNNFusion(const HloInstruction* instruction) {
+bool CanBeHandledByCuDNNFusion(
+    const HloInstruction* instruction,
+    stream_executor::dnn::VersionInfo cudnn_version) {
   const HloRaggedDotInstruction* ragged_dot =
       DynCast<HloRaggedDotInstruction>(instruction);
   const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
@@ -371,6 +373,11 @@ bool CanBeHandledByCuDNNFusion(const HloInstruction* instruction) {
   int lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
   RaggedDotMode mode =
       GetRaggedDotMode(lhs_ragged_dim, ragged_dims.dot_dimension_numbers());
+  if (mode == RaggedDotMode::kRaggedContracting) {
+    // Wgrad: needs cuDNN's moe_grouped_matmul_bwd, gated separately since it
+    // requires a newer cuDNN than the forward ragged-dot fusion.
+    return cudnn_version >= kMinCudnnVersionForRaggedDotWgradFusion;
+  }
   return mode == RaggedDotMode::kRaggedNonContracting;
 }
 
@@ -417,17 +424,16 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
       cudnn_version_ >= kMinCudnnVersionForRaggedDotFusion &&
       cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
 
-  // Gather all Ragged Dot operations.
+  // Gather all Ragged Dot operations that need to be expanded into regular
+  // dots. Ragged-dots that can be lowered through Gpublaslt GroupGemm or
+  // cuDNN fusion are left as-is for those later passes to handle.
   std::vector<HloRaggedDotInstruction*> ragged_dots;
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kRaggedDot) {
-        // Only ragged-dot that cannot be lowered through Gpublaslt
-        // GroupGemm or cuDNN fusion are added to the list of operations to
-        // rewrite in regular dot.
         if (ragged_dot_fusion_enabled &&
-            CanBeHandledByCuDNNFusion(instruction)) {
+            CanBeHandledByCuDNNFusion(instruction, cudnn_version_)) {
           continue;
         }
         if (has_grouped_gemm && CanBeHandledByGpublasltGroupGemm(
@@ -439,14 +445,16 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
     }
   }
 
+  bool changed = !ragged_dots.empty();
+
   for (auto* ragged_dot : ragged_dots) {
-    ASSIGN_OR_RETURN(auto general_dot, RaggedToGeneral(ragged_dot));
+    ABSL_ASSIGN_OR_RETURN(auto general_dot, RaggedToGeneral(ragged_dot));
     general_dot->set_metadata(ragged_dot->metadata());
-    RETURN_IF_ERROR(ragged_dot->parent()->ReplaceWithNewInstruction(
+    ABSL_RETURN_IF_ERROR(ragged_dot->parent()->ReplaceWithNewInstruction(
         ragged_dot, std::move(general_dot)));
   }
 
-  return !ragged_dots.empty();
+  return changed;
 }
 
 }  // namespace xla

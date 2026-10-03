@@ -21,11 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -47,10 +47,10 @@ absl::StatusOr<std::unique_ptr<DotThunk>> DotThunk::Create(
     BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
     BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
     BufferAllocation::Slice out_buffer, Shape out_shape) {
-  ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+  ABSL_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
                                                    rhs_shape, out_shape));
 
-  ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+  ABSL_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                    GetDotCanonicalDims(dot_dimensions, dot_shape));
 
   DotSlices dot_slices{lhs_buffer, std::move(lhs_shape),
@@ -73,15 +73,15 @@ DotThunk::DotThunk(Info info, DotDimensionNumbers dot_dimensions,
 
 tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::DeviceAddressBase lhs_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.lhs_buffer));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::DeviceAddressBase rhs_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.rhs_buffer));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::DeviceAddressBase out_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.out_buffer));
 

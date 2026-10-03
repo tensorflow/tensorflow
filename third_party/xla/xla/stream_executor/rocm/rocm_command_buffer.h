@@ -107,6 +107,23 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                                    DeviceAddressBase source,
                                    uint64_t size) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateMemcpyD2HNode(
+      absl::Span<const GraphNodeHandle> dependencies, void* destination,
+      DeviceAddressBase source, uint64_t size) override;
+
+  absl::Status UpdateMemcpyD2HNode(GraphNodeHandle node_handle,
+                                   void* destination, DeviceAddressBase source,
+                                   uint64_t size) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateMemcpyH2DNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      DeviceAddressBase destination, const void* source,
+      uint64_t size) override;
+
+  absl::Status UpdateMemcpyH2DNode(GraphNodeHandle node_handle,
+                                   DeviceAddressBase destination,
+                                   const void* source, uint64_t size) override;
+
   absl::Status PopulateDnnGraphNode(
       dnn::DnnGraph&, Stream&,
       absl::Span<DeviceAddressBase> operands) override {
@@ -130,14 +147,36 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::Status UpdateClonedChildNode(GraphNodeHandle node_handle,
                                      const CommandBuffer& nested) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateHostNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      absl::AnyInvocable<void()> callback) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
-      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateKernelNode(
+      absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
       const KernelArgsPackedArrayBase& args) override;
 
   absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
                                 const ThreadDim& threads,
-                                const BlockDim& blocks, const Kernel& kernel,
+                                const BlockDim& blocks,
+                                const std::optional<ClusterDim>& cluster_dims,
+                                const Kernel& kernel,
+                                const KernelArgsPackedArrayBase& args) override;
+
+  absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
+                                const ThreadDim& threads,
+                                const BlockDim& blocks,
+                                const std::optional<ClusterDim>& cluster_dims,
+                                const NativeKernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
   absl::StatusOr<GraphNodeHandle> CreateEmptyNode(

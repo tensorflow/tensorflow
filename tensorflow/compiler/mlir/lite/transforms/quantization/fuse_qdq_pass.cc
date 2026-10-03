@@ -78,6 +78,14 @@ LogicalResult IsDrqTensor(mlir::Value value, mlir::Value& fq_input) {
       return success();
     }
   }
+  if (auto custom_call_op = llvm::dyn_cast_or_null<stablehlo::CustomCallOp>(
+          value.getDefiningOp())) {
+    if (IsDrqFakeQuant(custom_call_op)) {
+      int num_operands = custom_call_op.getNumOperands();
+      fq_input = custom_call_op.getOperand(num_operands - 1);
+      return success();
+    }
+  }
   return failure();
 }
 
@@ -368,6 +376,21 @@ class RemoveUnusedFQ : public OpRewritePattern<stablehlo::CompositeOp> {
   }
 };
 
+class RemoveUnusedCustomCallFQ
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
+  using OpRewritePattern<stablehlo::CustomCallOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                PatternRewriter& rewriter) const final {
+    if (IsDrqFakeQuant(op) && op->getUses().empty()) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+    return rewriter.notifyMatchFailure(
+        op, "is not a drq fake quant custom call with no uses.");
+  }
+};
+
 // Pushes a drq fake quant op forward through a pad op.
 // This is to allow DRQ FQ to be fused into the DRQ op.
 // drq_fake_quant(input) -> pad -> output
@@ -404,19 +427,45 @@ class PushForwardDrqFQ : public OpRewritePattern<stablehlo::CompositeOp> {
         TFL::PadOp::create(rewriter, pad_op.getLoc(), pad_op.getType(),
                            float_input, pad_op.getPadding());
 
-    // Create a new drq fake quant op.
-    // Operands are the same, except for the last one.
-    SmallVector<mlir::Value> new_drq_operands;
-    for (mlir::Value operand : drq_fq_op.getOperands().drop_back()) {
-      new_drq_operands.push_back(operand);
+    Operation* new_drq_fq_op = rewriter.clone(*drq_fq_op.getOperation());
+    new_drq_fq_op->setOperand(new_drq_fq_op->getNumOperands() - 1,
+                              new_pad_op.getResult());
+
+    rewriter.replaceOp(pad_op, new_drq_fq_op->getResult(0));
+    return success();
+  }
+};
+
+// Fixes keep_num_dims option of FC if output dims is different from input dims
+// though keep_num_dims is true. It happens when FC's input has changed after
+// quantization, e.g. by IsDrqTensor().
+// Sets keep_num_dims to false if that's the case. Otherwise, it's not
+// compatible with GPU. See CheckGpuDelegateCompatibility() in
+// third_party/tensorflow/lite/tools/versioning/gpu_compatibility.cc.
+// Note that if FC is followed by Reshape, the keep_num_dims will be set to true
+// with a correct shape later by EnableFullyConnectedKeepNumDimsBeforeReshape()
+// in optimize pass.
+struct FixFullyConnectedKeepNumDims
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  explicit FixFullyConnectedKeepNumDims(MLIRContext* context)
+      : OpRewritePattern<TFL::FullyConnectedOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc,
+                                PatternRewriter& rewriter) const override {
+    if (!fc.getKeepNumDims()) return failure();
+
+    auto input_ty =
+        mlir::dyn_cast_or_null<RankedTensorType>(fc.getInput().getType());
+    auto fc_ty = mlir::dyn_cast_or_null<RankedTensorType>(fc.getType(0));
+    if (!input_ty || !fc_ty) return failure();
+
+    auto input_shape = input_ty.getShape();
+    auto fc_shape = fc_ty.getShape();
+    if (input_shape.size() == fc_shape.size()) {
+      return failure();
     }
-    new_drq_operands.push_back(new_pad_op.getResult());
 
-    auto new_drq_fq_op = stablehlo::CompositeOp::create(
-        rewriter, drq_fq_op.getLoc(), pad_op.getType(), new_drq_operands,
-        drq_fq_op->getAttrs());
-
-    rewriter.replaceOp(pad_op, new_drq_fq_op.getResult(0));
+    rewriter.modifyOpInPlace(fc, [&]() { fc.setKeepNumDims(false); });
     return success();
   }
 };
@@ -484,7 +533,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
       : OpRewritePattern<QuantizeOp>(context) {}
   LogicalResult matchAndRewrite(QuantizeOp op,
                                 PatternRewriter& rewriter) const override {
-    DenseFPElementsAttr attr;
+    ElementsAttr attr;
     if (matchPattern(op.getInput(), m_Constant(&attr))) {
       auto qtype = op.getQtypeAttr();
       Attribute quantized_attr = mlir::TFL::Quantize(attr, qtype.getValue());
@@ -524,8 +573,10 @@ void FuseQDQPass::runOnOperation() {
   mlir::ModuleOp module = getOperation();
 
   RewritePatternSet patterns(ctx);
-  patterns.add<FuseQDQ, PushForwardDrqFQ, RemoveUnusedFQ, QuantizeConstPattern,
-               FuseDqQToRequant, FuseQQToRequant, RemoveNoOpQ>(ctx);
+  patterns
+      .add<FuseQDQ, PushForwardDrqFQ, RemoveUnusedFQ, RemoveUnusedCustomCallFQ,
+           FixFullyConnectedKeepNumDims, QuantizeConstPattern, FuseDqQToRequant,
+           FuseQQToRequant, RemoveNoOpQ>(ctx);
 
   // Configure the greedy pattern rewrite driver.
   GreedyRewriteConfig greedy_config;

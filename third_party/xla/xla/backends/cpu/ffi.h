@@ -43,7 +43,7 @@ struct CtxDecoding<IntraOpThreadPool> {
   using Type = const Eigen::ThreadPoolDevice*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_InvokeContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     return internal::DecodeInternalCtx<Type>(
         api, ctx, diagnostic,

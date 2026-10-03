@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """
 A rule to compile a C++ file to a header containing LLVM IR.
 //third_party/tensorflow/compiler/xla/service/cpu/tests
@@ -113,6 +128,8 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-fno-profile-instr-generate",
         "-fno-coverage-mapping",
         "-fno-profile-generate",
+        "-fno-profile-arcs",
+        "-fno-test-coverage",
     ] + copts
 
     # Disabled features to avoid instrumentations in the IR. ALL sanitizers must be disabled.
@@ -161,7 +178,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     variable_name = "k{}Ir".format(to_camel_case(base_name))
     embed_bitcode_tool = "//xla/codegen/intrinsic/cpp:embed_bitcode"
 
-    # Generate an empty bitcode file for MacOS and Windows.
+    # Generate an empty bitcode file for Windows.
     native.genrule(
         name = name + "_empty_bc",
         outs = [name + "_empty.bc"],
@@ -174,7 +191,6 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         selects.config_setting_group(
             name = "empty_bitcode",
             match_any = [
-                "//xla/tsl:macos",
                 "//xla/tsl:windows",
             ],
         )

@@ -65,11 +65,11 @@ class CudaStreamTest : public ::testing::Test {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                            stream_executor::PlatformManager::PlatformWithId(
-                                stream_executor::cuda::kCudaPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(Platform * platform,
+                         stream_executor::PlatformManager::PlatformWithId(
+                             stream_executor::cuda::kCudaPlatformId));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(0));
     executor_ = reinterpret_cast<CudaExecutor*>(executor);
   }
 };
@@ -79,9 +79,9 @@ TEST_F(CudaStreamTest, Memset32) {
   DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   // Should fail due to the invalid size parameter.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
@@ -112,9 +112,9 @@ TEST_F(CudaStreamTest, MemZero) {
   DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
@@ -144,9 +144,9 @@ TEST_F(CudaStreamTest, MemcpyHostToDeviceAndBack) {
   DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   std::array<uint32_t, kBufferNumElements> src_buffer;
   std::generate(src_buffer.begin(), src_buffer.end(),
@@ -169,9 +169,9 @@ TEST_F(CudaStreamTest, MemcpyDeviceToDevice) {
   DeviceAddress<uint32_t> buffer2 =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   EXPECT_THAT(stream->Memset32(&buffer1, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
@@ -189,9 +189,9 @@ TEST_F(CudaStreamTest, MemcpyDeviceToDevice) {
 }
 
 TEST_F(CudaStreamTest, DoHostCallback) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   int callback_call_counter = 0;
   EXPECT_THAT(stream->DoHostCallback(
@@ -203,10 +203,10 @@ TEST_F(CudaStreamTest, DoHostCallback) {
 }
 
 TEST_F(CudaStreamTest, LaunchKernel) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
-  TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor_));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
@@ -230,9 +230,9 @@ TEST_F(CudaStreamTest, LaunchKernel) {
 }
 
 TEST_F(CudaStreamTest, SetName) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   constexpr absl::string_view kStreamName = "Test stream";
   stream->SetName(std::string(kStreamName));
@@ -240,12 +240,12 @@ TEST_F(CudaStreamTest, SetName) {
 }
 
 TEST_F(CudaStreamTest, WaitForEvent) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
-  TF_ASSERT_OK_AND_ASSIGN(CudaEvent event,
-                          CudaEvent::Create(executor_, /*allow_timing=*/false));
+  ASSERT_OK_AND_ASSIGN(CudaEvent event,
+                       CudaEvent::Create(executor_, /*allow_timing=*/false));
 
   EXPECT_THAT(stream->WaitFor(&event), IsOk());
 
@@ -260,15 +260,15 @@ TEST_F(CudaStreamTest, WaitForEvent) {
 }
 
 TEST_F(CudaStreamTest, WaitForOtherStream) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream1,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream2,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream1,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream2,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
-  TF_ASSERT_OK_AND_ASSIGN(CudaEvent event,
-                          CudaEvent::Create(executor_, /*allow_timing=*/false));
+  ASSERT_OK_AND_ASSIGN(CudaEvent event,
+                       CudaEvent::Create(executor_, /*allow_timing=*/false));
 
   enum class ExecutionStage {
     kBeforeWaitForEvent,
@@ -312,9 +312,9 @@ TEST_F(CudaStreamTest, WaitForOtherStream) {
 }
 
 TEST_F(CudaStreamTest, DoHostCallbackWithStatusSuccess) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   bool callback_called = false;
   bool error_callback_called = false;
@@ -335,9 +335,9 @@ TEST_F(CudaStreamTest, DoHostCallbackWithStatusSuccess) {
 }
 
 TEST_F(CudaStreamTest, DoHostCallbackWithStatusError) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   bool error_callback_called = false;
   absl::Status callback_status;
@@ -356,9 +356,9 @@ TEST_F(CudaStreamTest, DoHostCallbackWithStatusError) {
 }
 
 TEST_F(CudaStreamTest, CaptureStreamIsolation) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   absl::Notification capture_started;
   absl::Notification main_thread_done;
@@ -401,20 +401,20 @@ TEST_F(CudaStreamTest, CaptureStreamIsolation) {
 }
 
 TEST_F(CudaStreamTest, NestedCaptureFails) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(executor_,
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                       CudaStream::Create(executor_,
+                                          /*priority=*/std::nullopt));
 
   CUgraph graph;
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
   ASSERT_EQ(cuGraphCreate(&graph, 0), CUDA_SUCCESS);
   absl::Cleanup cleanup_graph = [graph] { cuGraphDestroy(graph); };
 
-  TF_ASSERT_OK_AND_ASSIGN(auto handle1,
-                          stream->BeginCapture(graph, /*dependencies=*/nullptr,
-                                               /*dependency_data=*/nullptr,
-                                               /*num_dependencies=*/0,
-                                               CU_STREAM_CAPTURE_MODE_GLOBAL));
+  ASSERT_OK_AND_ASSIGN(auto handle1,
+                       stream->BeginCapture(graph, /*dependencies=*/nullptr,
+                                            /*dependency_data=*/nullptr,
+                                            /*num_dependencies=*/0,
+                                            CU_STREAM_CAPTURE_MODE_GLOBAL));
 
   CUgraph graph2;
   ASSERT_EQ(cuGraphCreate(&graph2, 0), CUDA_SUCCESS);

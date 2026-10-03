@@ -28,7 +28,7 @@ struct DeterminantFromPivotedLUFunctor {
   void operator()(const Device& device,
                   typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
-                  int* info);
+                  const int* info);
 };
 
 // Helper functor to compute sign and log of the absolute value of the
@@ -38,7 +38,8 @@ struct LogDeterminantFromPivotedLUFunctor {
   void operator()(const Device& device,
                   typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor sign,
-                  typename TTypes<Scalar, 1>::Tensor log_abs_det);
+                  typename TTypes<Scalar, 1>::Tensor log_abs_det,
+                  const int* info);
 };
 
 }  // namespace functor

@@ -22,14 +22,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/lock_free_kernel_cache.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -167,10 +165,8 @@ class KernelThunk : public Command {
   // Programmatic Dependent Launch.
   bool use_pdl_;
 
-  // Loaded kernels for each `StreamExecutor`.
-  mutable absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
-      kernel_cache_ ABSL_GUARDED_BY(mutex_);
+  // Lock-free cache of loaded kernels for each `StreamExecutor`.
+  LockFreeKernelCache kernel_cache_;
 };
 
 }  // namespace gpu

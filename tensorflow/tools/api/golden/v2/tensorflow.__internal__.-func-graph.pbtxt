@@ -90,6 +90,15 @@ tf_class {
   }
   member_method {
     name: "Dismantle"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\'], varargs=args, keywords=None, defaults=None"
   }
   member_method {
     name: "__init__"
@@ -181,6 +190,7 @@ tf_class {
   }
   member_method {
     name: "get_operations"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_tensor_by_name"
@@ -208,9 +218,11 @@ tf_class {
   }
   member_method {
     name: "new_operations"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "num_operations"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "op_def_for_type"

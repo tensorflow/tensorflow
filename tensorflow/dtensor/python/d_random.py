@@ -105,7 +105,7 @@ def _old_tf_random_stateless_uniform(
   with ops.name_scope(
       name, "stateless_random_uniform", [shape, seed, minval, maxval]
   ) as name:
-    seed = ops.convert_to_tensor(seed, dtype_hint=dtypes.int32, name="seed")
+    seed = ops.convert_to_tensor(seed, dtype=dtypes.int32, name="seed")
 
     if dtype.is_integer and minval is None and maxval is None:
       result = api.call_with_layout(
@@ -120,7 +120,7 @@ def _old_tf_random_stateless_uniform(
       if not dtype.is_integer and maxval is None:
         maxval = 1
       val_range = ops.convert_to_tensor(
-          maxval - minval, dtype=dtype, name="range"
+          maxval - minval, dtype=dtype, name="range"  # pyrefly: ignore[unsupported-operation]
       )
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       if dtype.is_integer:
@@ -267,7 +267,7 @@ def stateless_split(seed, num=2, mesh=None):
 
 
 def _get_noise_shape(x, noise_shape):
-  """Noisve shape util copied from tf nn_ops."""
+  """Noise shape util copied from tf nn_ops."""
   # If noise_shape is none return immediately.
   if noise_shape is None:
     return array_ops.shape(x)

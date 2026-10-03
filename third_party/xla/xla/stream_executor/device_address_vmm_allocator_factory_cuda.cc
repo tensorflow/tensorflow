@@ -18,9 +18,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -34,7 +34,7 @@ DeviceAddressVmmAllocator::Create(
     const Platform* platform, double memory_fraction,
     std::optional<int64_t> gpu_system_memory_size,
     absl::Span<const std::pair<StreamExecutor*, Stream*>> devices) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<gpu::CudaDeviceAddressVmmAllocator> allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(
           platform, memory_fraction, gpu_system_memory_size, devices));

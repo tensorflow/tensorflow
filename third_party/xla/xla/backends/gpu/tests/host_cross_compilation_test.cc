@@ -22,11 +22,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/target_config/target_config.h"
@@ -46,9 +46,24 @@ namespace {
 using ::absl_testing::StatusIs;
 
 absl::StatusOr<std::unique_ptr<Compiler>> GetGpuCompiler() {
-  ASSIGN_OR_RETURN(stream_executor::PlatformId platform_id,
-                   PlatformUtil::GetPlatformIdFromCanonicalName("CUDA"));
+  ABSL_ASSIGN_OR_RETURN(std::string platform_name,
+                   PlatformUtil::CanonicalPlatformName("gpu"));
+  ABSL_ASSIGN_OR_RETURN(stream_executor::PlatformId platform_id,
+                   PlatformUtil::GetPlatformIdFromCanonicalName(platform_name));
   return Compiler::GetForPlatform(platform_id);
+}
+
+absl::StatusOr<GpuModel> GetTestTargetGpuModel() {
+  ABSL_ASSIGN_OR_RETURN(std::string platform_name,
+                   PlatformUtil::CanonicalPlatformName("gpu"));
+  if (platform_name == "cuda") {
+    return GpuModel::A6000;
+  }
+  if (platform_name == "rocm") {
+    return GpuModel::MI200;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported GPU platform: ", platform_name));
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> GetHloModule() {
@@ -63,7 +78,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetHloModule() {
     )"};
   auto hlo_module = std::make_unique<VerifiedHloModule>("m", HloModuleConfig(),
                                                         false, false, nullptr);
-  RETURN_IF_ERROR(hlo_module->ParseHloStringAndVerifyModule(hlo_text));
+  ABSL_RETURN_IF_ERROR(hlo_module->ParseHloStringAndVerifyModule(hlo_text));
   return hlo_module;
 }
 
@@ -111,6 +126,12 @@ XLA_FFI_REGISTER_HANDLER(
      kVerifyCpuTargetMachineOptionsExecute},
     static_cast<uint32_t>(ffi::Traits::kCmdBufferCompatible));
 
+XLA_FFI_REGISTER_HANDLER(
+    ffi::GetXlaFfiApi(), kVerifyCpuTargetMachineOptionsCustomCallName, "ROCM",
+    {kVerifyCpuTargetMachineOptionsInstantiate, nullptr, nullptr,
+     kVerifyCpuTargetMachineOptionsExecute},
+    static_cast<uint32_t>(ffi::Traits::kCmdBufferCompatible));
+
 // We have 4 versions to test:
 // 1. Compile
 // 1a. TargetMachineOptions passed in CompileOptions
@@ -130,9 +151,11 @@ TEST(HostCrossCompilationTest,
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
 
+  ASSERT_OK_AND_ASSIGN(GpuModel gpu_model, GetTestTargetGpuModel());
+
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::A6000));
+      GetGpuTargetConfig(gpu_model));
   ASSERT_OK_AND_ASSIGN(
       gpu::GpuTargetConfig gpu_target_config,
       gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
@@ -158,9 +181,11 @@ TEST(HostCrossCompilationTest,
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
 
+  ASSERT_OK_AND_ASSIGN(GpuModel gpu_model, GetTestTargetGpuModel());
+
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::A6000));
+      GetGpuTargetConfig(gpu_model));
   ASSERT_OK_AND_ASSIGN(
       gpu::GpuTargetConfig gpu_target_config,
       gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
@@ -187,9 +212,11 @@ TEST(HostCrossCompilationTest,
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
 
+  ASSERT_OK_AND_ASSIGN(GpuModel gpu_model, GetTestTargetGpuModel());
+
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::A6000));
+      GetGpuTargetConfig(gpu_model));
   ASSERT_OK_AND_ASSIGN(
       gpu::GpuTargetConfig gpu_target_config,
       gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
@@ -215,9 +242,11 @@ TEST(HostCrossCompilationTest,
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
 
+  ASSERT_OK_AND_ASSIGN(GpuModel gpu_model, GetTestTargetGpuModel());
+
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::A6000));
+      GetGpuTargetConfig(gpu_model));
   ASSERT_OK_AND_ASSIGN(
       gpu::GpuTargetConfig gpu_target_config,
       gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
@@ -242,9 +271,11 @@ TEST(HostCrossCompilationTest,
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
 
+  ASSERT_OK_AND_ASSIGN(GpuModel gpu_model, GetTestTargetGpuModel());
+
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::A6000));
+      GetGpuTargetConfig(gpu_model));
   ASSERT_OK_AND_ASSIGN(
       gpu::GpuTargetConfig gpu_target_config,
       gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
@@ -269,9 +300,12 @@ TEST(HostCrossCompilationTest,
   passes_cpu_target_machine_options_instantiate_called = false;
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
+
+  ASSERT_OK_AND_ASSIGN(GpuModel gpu_model, GetTestTargetGpuModel());
+
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::A6000));
+      GetGpuTargetConfig(gpu_model));
   ASSERT_OK_AND_ASSIGN(
       gpu::GpuTargetConfig gpu_target_config,
       gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
@@ -295,9 +329,12 @@ TEST(HostCrossCompilationTest,
   passes_cpu_target_machine_options_instantiate_called = false;
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
+
+  ASSERT_OK_AND_ASSIGN(GpuModel gpu_model, GetTestTargetGpuModel());
+
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::A6000));
+      GetGpuTargetConfig(gpu_model));
   ASSERT_OK_AND_ASSIGN(
       gpu::GpuTargetConfig gpu_target_config,
       gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));

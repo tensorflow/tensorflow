@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dot_operand_converter.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
@@ -70,7 +70,7 @@ absl::StatusOr<HloInstruction*> DotOperandConverter::ExpandInstruction(
   upcast_shape.set_element_type(desired_type);
   auto* convert_inst = instruction->AddInstruction(
       HloInstruction::CreateConvert(upcast_shape, inst_to_replace));
-  RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(operand_index,
+  ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(operand_index,
                                                                 convert_inst));
   return nullptr;
 }

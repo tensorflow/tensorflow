@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/transforms/conv_canonicalizer.h"
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
@@ -28,14 +29,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
@@ -49,7 +54,7 @@ HloPassPipeline FusionPipeline(
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
     const se::DeviceDescription& gpu_device_info,
-    mlir::MLIRContext* mlir_context) {
+    mlir::MLIRContext* mlir_context, MlirContextPool* mlir_context_pool) {
   HloPassPipeline fusion("fusion");
   // We try to split variadic ops with many parameters into several such ops
   // to avoid exceeding the parameter space.
@@ -66,7 +71,25 @@ HloPassPipeline FusionPipeline(
   // Rewrite convs into conv fusions.
   if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
       debug_options.xla_gpu_experimental_enable_conv_fusion()) {
-    fusion.AddPass<ConvFusionRewriter>();
+    HloConstantFolding::Options constant_folding_options;
+    constant_folding_options.is_layout_sensitive = true;
+    constant_folding_options.can_fold_shape = [](const Shape& shape) {
+      return ShapeUtil::IsEffectiveScalar(shape);
+    };
+    fusion.AddPass<HloConstantFolding>(constant_folding_options);
+    fusion.AddPass<ConvCanonicalizer>();
+    fusion.AddPass<ConvFusionRewriter>(gpu_device_info);
+  }
+
+  // RaggedDotFusionRewriter converts ragged dots into cuDNN fusions, which is
+  // only supported on NVIDIA/CUDA devices. On AMD ROCm, ragged dots are
+  // handled by hipBLASLt GroupedMatMul via GemmRewriter instead. Runs before
+  // PriorityFusion so it sees a raw ragged-dot rather than one PriorityFusion
+  // has already started fusing neighbors around.
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      debug_options.xla_gpu_experimental_use_ragged_dot_fusion() &&
+      gpu_device_info.gpu_compute_capability().IsCuda()) {
+    fusion.AddPass<RaggedDotFusionRewriter>();
   }
 
   GpuHloCostAnalysis::Options cost_analysis_options{
@@ -75,8 +98,8 @@ HloPassPipeline FusionPipeline(
       /*min_latencies_seconds=*/{},
       /*count_multiple_input_accesses=*/true};
   fusion.AddPass<PriorityFusion>(thread_pool, gpu_device_info, alias_info,
-                                 std::move(cost_analysis_options),
-                                 mlir_context);
+                                 std::move(cost_analysis_options), mlir_context,
+                                 mlir_context_pool);
 
   // Running CSE affects how many users an op has. This plays a role in what
   // we detect as a tiled transpose fusion.

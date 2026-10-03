@@ -877,6 +877,32 @@ class ResizeBilinearNonAlignCornersTest(xla_test.XLATestCase):
         out = sess.run(resized, {image: input_image[:, :, :, np.newaxis]})
         self.assertAllClose(expected[:, :, :, np.newaxis], out)
 
+  def testResizeBilinearNanPropagation(self):
+    # 2x2 image, 3 channels. One NaN at [0, 0, 1, 0] (row=0, col=1, channel=0)
+    input_data = [[
+        [[1.0, 2.0, 3.0], [float("nan"), 5.0, 6.0]],
+        [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+    ]]
+    cases = [
+        # (half_pixel_centers, align_corners, expected_nan_count)
+        (True, False, 9),
+        (False, False, 6),
+        (False, True, 9),
+    ]
+    for half_pixel_centers, align_corners, expected_nan_count in cases:
+      with self.session() as sess, self.test_scope():
+        image = array_ops.placeholder(np.float32)
+        resized = gen_image_ops.resize_bilinear(
+            image,
+            [4, 4],
+            half_pixel_centers=half_pixel_centers,
+            align_corners=align_corners,
+        )
+        out = sess.run(resized, {image: np.array(input_data, dtype=np.float32)})
+        self.assertEqual(np.isnan(out[0, :, :, 0]).sum(), expected_nan_count)
+        self.assertEqual(np.isnan(out[0, :, :, 1]).sum(), 0)
+        self.assertEqual(np.isnan(out[0, :, :, 2]).sum(), 0)
+
 
 class ResizeBilinearGradHalfPixelCentersTest(
     parameterized.TestCase, xla_test.XLATestCase
@@ -995,6 +1021,71 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
 
       self.assertEqual(indices_tf.size, 3)
       self.assertAllClose(indices_tf[:3], [3, 0, 5])
+
+  def testNMSV3EmptyInput(self):
+    # Regression test for #117245: with no boxes the suppression loop was
+    # built from zero-sized dimensions and segfaulted the compiler. The
+    # non-XLA kernels return an empty selection here.
+    boxes_np = np.zeros([0, 4], dtype=np.float32)
+    scores_np = np.zeros([0], dtype=np.float32)
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(
+          iou_threshold_np.dtype, iou_threshold_np.shape
+      )
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_v3(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=5,
+            iou_threshold=iou_threshold,
+            score_threshold=float("-inf"),
+        )
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np,
+      }
+      indices_tf = sess.run(selected_indices, feed_dict=inputs_feed)
+
+      self.assertEqual(indices_tf.size, 0)
+
+  def testNMSV4EmptyInput(self):
+    # As above, but covering the pad_to_max_output_size path. The non-XLA
+    # kernel pads the selection with zeros and reports valid_outputs == 0.
+    boxes_np = np.zeros([0, 4], dtype=np.float32)
+    scores_np = np.zeros([0], dtype=np.float32)
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    max_output_size = 5
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(
+          iou_threshold_np.dtype, iou_threshold_np.shape
+      )
+      with self.test_scope():
+        selected_indices, valid_outputs = gen_image_ops.non_max_suppression_v4(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=float("-inf"),
+            pad_to_max_output_size=True,
+        )
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np,
+      }
+      indices_tf, valid_outputs_tf = sess.run(
+          [selected_indices, valid_outputs], feed_dict=inputs_feed
+      )
+
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertAllEqual(indices_tf, np.zeros([max_output_size], np.int32))
+      self.assertEqual(valid_outputs_tf, 0)
 
   def testNMS128From1024(self):
     num_boxes = 1024

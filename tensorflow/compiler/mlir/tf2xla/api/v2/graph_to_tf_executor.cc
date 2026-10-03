@@ -2421,7 +2421,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
       };
     }
 
-    return llvm::make_scope_exit(std::move(cleanup));
+    return llvm::scope_exit(std::move(cleanup));
   }();
 
   VLOG(2) << "Importing: "

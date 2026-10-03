@@ -590,7 +590,11 @@ std::string ToString(const SymbolicMap& symbolic_map,
                      absl::Span<const std::string> range_names,
                      absl::Span<const std::string> rt_names) {
   CHECK_EQ(dim_names.size(), symbolic_map.GetNumDims());
-  CHECK_EQ(range_names.size() + rt_names.size(), symbolic_map.GetNumSymbols());
+  CHECK_EQ(range_names.size() + rt_names.size(), symbolic_map.GetNumSymbols())
+      << absl::StrCat("range_names size (", range_names.size(),
+                      ") + rt_names size (", rt_names.size(),
+                      ") != num_symbols in symbolic map (",
+                      symbolic_map.GetNumSymbols(), ")");
 
   std::string s;
   llvm::raw_string_ostream ss(s);

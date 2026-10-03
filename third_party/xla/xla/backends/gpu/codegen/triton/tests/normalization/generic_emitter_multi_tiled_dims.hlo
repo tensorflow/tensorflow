@@ -1,6 +1,6 @@
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
 // RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
 // RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
 
 max {
@@ -27,7 +27,7 @@ fusion {
 // CHECK-NEW:    #[[MAP:.*]] = #xla.indexing_map<"(pid) -> (pid / 125), domain: pid in [0, 1249]">
 // CHECK-NEW:    #[[MAP1:.*]] = #xla.indexing_map<"(pid) -> (pid mod 125), domain: pid in [0, 1249]">
 // CHECK:        xtile.entry_func @triton_fn
-// CHECK-SAME:      (%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[P2:.*]]: {{.*}}, %[[P3:.*]]: {{.*}}, %[[TID:.*]]: index)
+// CHECK-SAME:      (%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[P2:.*]]: {{.*}}, %[[P3:.*]]: {{.*}}, %[[TID:.*]]: index{{( \{xla.range = \[0 : index, 1249 : index\]\})?}})
 // CHECK-DAG:        %[[C_0:.*]] = arith.constant 0 : index
 // CHECK-DAG:        %[[ROW_INDEX:.*]] = xla.apply_indexing #[[MAP]](%[[TID]]
 // CHECK-DAG:        %[[COL_INDEX:.*]] = xla.apply_indexing #[[MAP1]](%[[TID]]

@@ -33,8 +33,8 @@ namespace ynnpack {
 // ==============================================================================
 
 TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
-                                const TfLiteNode* node,
-                                TfLiteContext* context) {
+                                const TfLiteNode* node, TfLiteContext* context,
+                                const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 1);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
@@ -64,7 +64,7 @@ TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
 
   if (op == ynn_unary_convert) {
     // Reject constant inputs to allow TFLite caching optimization.
-    TF_LITE_ENSURE_MSG(context, input.allocation_type != kTfLiteMmapRo,
+    TF_LITE_ENSURE_MSG(context, !IsConstant(input, options.static_shape),
                        "Constant input for convert is not supported");
     // YNNPACK convert to integer uses rounding, but TFLite Cast expects
     // truncation. Reject all float-to-integer conversions.
@@ -107,12 +107,8 @@ TfLiteStatus DefineUnaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
 
         switch (node.builtin_code) {
           case kTfLiteBuiltinGelu: {
-            TfLiteNode* tflite_node;
-            TfLiteRegistration* reg;
-            TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-                context, node.node_index, &tflite_node, &reg));
             const auto* params =
-                static_cast<const TfLiteGeluParams*>(tflite_node->builtin_data);
+                static_cast<const TfLiteGeluParams*>(node.builtin_data);
             bool approximate = params && params->approximate;
             if (approximate) {
               TF_LITE_ENSURE_YNN_STATUS(
@@ -128,12 +124,8 @@ TfLiteStatus DefineUnaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                 ynn::define_elu(subgraph, input_id, 1.0f, output_id));
             return kTfLiteOk;
           case kTfLiteBuiltinLeakyRelu: {
-            TfLiteNode* tflite_node;
-            TfLiteRegistration* reg;
-            TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-                context, node.node_index, &tflite_node, &reg));
-            const auto* params = static_cast<const TfLiteLeakyReluParams*>(
-                tflite_node->builtin_data);
+            const auto* params =
+                static_cast<const TfLiteLeakyReluParams*>(node.builtin_data);
             float alpha = params ? params->alpha : 0.2f;
             TF_LITE_ENSURE_YNN_STATUS(
                 ynn::define_leaky_relu(subgraph, input_id, alpha, output_id));

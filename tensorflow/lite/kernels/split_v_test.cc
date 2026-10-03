@@ -15,11 +15,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -86,6 +87,42 @@ class SplitVOpModel : public SingleOpModel {
   int axis_;
   std::vector<int> outputs_;
 };
+
+class PrepareOnlySplitVOpModel : public SingleOpModel {
+ public:
+  explicit PrepareOnlySplitVOpModel(const std::vector<int>& input_shape,
+                                    int axis) {
+    input_ = AddInput({TensorType_FLOAT32, input_shape});
+    size_splits_ = AddConstInput(TensorType_INT32, {1}, {1});
+    axis_ = AddConstInput(TensorType_INT32, {axis}, {1});
+    AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(BuiltinOperator_SPLIT_V, BuiltinOptions_SplitVOptions,
+                 CreateSplitVOptions(builder_, /*num_splits=*/1).Union());
+    BuildInterpreter({GetShape(input_), {}, {}}, /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input_;
+  int size_splits_;
+  int axis_;
+};
+
+TEST(SplitVAxisRangeTest, RejectsAxisOutsideInt16Range) {
+  constexpr int kAxis = std::numeric_limits<int16_t>::max() + 1;
+  const std::vector<int> input_shape(kAxis + 1, 1);
+  PrepareOnlySplitVOpModel const_axis_model(input_shape, kAxis);
+  EXPECT_EQ(const_axis_model.AllocateTensors(), kTfLiteError);
+
+  SplitVOpModel dynamic_axis_model({TensorType_FLOAT32, input_shape},
+                                   {TensorType_INT32, {1}},
+                                   /*num_splits=*/1, kAxisIsATensor, {});
+  dynamic_axis_model.SetSizeSplits({1});
+  dynamic_axis_model.SetAxis(/*axis=*/-1);
+  EXPECT_EQ(dynamic_axis_model.Invoke(), kTfLiteError);
+}
 
 template <typename T>
 void Check(TestType test_type, int axis, std::initializer_list<int> input_shape,
@@ -236,6 +273,23 @@ TYPED_SPLIT_V_TEST(SplitVOpTypedTest, NegativeAxis) {
                        {9, 10, 11, 12, 13, 14, 15, 16},
                    });
 }
+
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+void TestFloat8SplitV(TensorType tensor_type) {
+  SplitVOpModel model({tensor_type, {4}}, {TensorType_INT32, {2}},
+                      /*num_splits=*/2, /*axis=*/0,
+                      /*size_splits_data=*/{2, 2});
+  model.SetInput<uint8_t>({0x00, 0x38, 0xbc, 0x7e});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput<uint8_t>(0), ElementsAreArray({0x00, 0x38}));
+  EXPECT_THAT(model.GetOutput<uint8_t>(1), ElementsAreArray({0xbc, 0x7e}));
+}
+
+TEST(SplitVOpTest, Float8) {
+  TestFloat8SplitV(TensorType_FLOAT8_E4M3FN);
+  TestFloat8SplitV(TensorType_FLOAT8_E5M2);
+}
+#endif
 
 }  // namespace
 }  // namespace tflite

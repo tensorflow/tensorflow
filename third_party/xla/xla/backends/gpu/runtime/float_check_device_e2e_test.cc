@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdlib>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -23,10 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -54,7 +51,7 @@ class FloatCheckDeviceE2eTest : public ::testing::Test {
 TEST_F(FloatCheckDeviceE2eTest, NanInDumpModeShouldDumpAndReproduce) {
   std::string tmp_dir;
   ASSERT_TRUE(env_->LocalTempFilename(&tmp_dir));
-  TF_ASSERT_OK(env_->RecursivelyCreateDir(tmp_dir));
+  ASSERT_OK(env_->RecursivelyCreateDir(tmp_dir));
 
   // Set up a test HLO module that produces NaNs depending on a particular set
   // of inputs, to prevent the compiler from optimizing it out to a constant.
@@ -70,7 +67,7 @@ ENTRY main {
 }
 )";
   std::string hlo_path = tsl::io::JoinPath(tmp_dir, "crashing_module.hlo");
-  TF_ASSERT_OK(tsl::WriteStringToFile(env_, hlo_path, hlo_string));
+  ASSERT_OK(tsl::WriteStringToFile(env_, hlo_path, hlo_string));
 
   std::string inputs_pbtxt = R"(iterations {
   arguments {
@@ -83,7 +80,7 @@ ENTRY main {
 }
 )";
   std::string inputs_path = tsl::io::JoinPath(tmp_dir, "inputs.pbtxt");
-  TF_ASSERT_OK(tsl::WriteStringToFile(env_, inputs_path, inputs_pbtxt));
+  ASSERT_OK(tsl::WriteStringToFile(env_, inputs_path, inputs_pbtxt));
 
   // Run run_hlo_module under DETECTION_MODE_DUMP (dump) on GPU (CUDA).
   // We expect it to terminate with a non-zero exit code due to LOG(FATAL).
@@ -120,7 +117,7 @@ ENTRY main {
   // Verify that crash dump snapshot artifact was created.
   std::string crash_dump_dir = tsl::io::JoinPath(tmp_dir, "crash_dump");
   std::vector<std::string> files;
-  TF_ASSERT_OK(env_->GetChildren(crash_dump_dir, &files));
+  ASSERT_OK(env_->GetChildren(crash_dump_dir, &files));
 
   std::string snapshot_file;
   for (const auto& file : files) {
@@ -133,7 +130,7 @@ ENTRY main {
       << "No snapshot file found in " << crash_dump_dir;
 
   uint64_t file_size = 0;
-  TF_ASSERT_OK(env_->GetFileSize(snapshot_file, &file_size));
+  ASSERT_OK(env_->GetFileSize(snapshot_file, &file_size));
   EXPECT_GT(file_size, 0);
 
   // Verify the crash dump artifacts can be used to reproduce the crash.

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
+#include <utility>
+#include <vector>
 
 #define EIGEN_USE_THREADS
 

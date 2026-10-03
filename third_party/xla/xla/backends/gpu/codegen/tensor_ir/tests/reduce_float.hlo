@@ -1,0 +1,188 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_reduce_add
+// CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <add>> : tensor<16x64xf32> -> tensor<16x1xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
+// CHECK: results %[[OUT]]
+
+body_add {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %agg = f32[] add(%lhs, %rhs)
+}
+
+test_reduce_add {
+  %p0 = f32[16,64] parameter(0)
+  %c0 = f32[] constant(0.0)
+  ROOT %out = f32[16] reduce(%p0, %c0), dimensions={1}, to_apply=body_add
+}
+
+// -----
+
+// CHECK-LABEL: @test_reduce_mul
+// CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <mul>> : tensor<16x64xf32> -> tensor<16x1xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
+// CHECK: results %[[OUT]]
+
+body_mul {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %agg = f32[] multiply(%lhs, %rhs)
+}
+
+test_reduce_mul {
+  %p0 = f32[16,64] parameter(0)
+  %c1 = f32[] constant(1.0)
+  ROOT %out = f32[16] reduce(%p0, %c1), dimensions={1}, to_apply=body_mul
+}
+
+// -----
+
+// CHECK-LABEL: @test_reduce_add_flip
+// CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
+// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [0.000000e+00 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
+// CHECK: %[[RESULT:.*]] = arith.addf %[[RHS]], %[[LHS]] : f32
+// CHECK: yield %[[RESULT]]
+// CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
+// CHECK: results %[[OUT]]
+
+body_add_flip {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %agg = f32[] add(%rhs, %lhs)
+}
+
+test_reduce_add_flip {
+  %p0 = f32[16,64] parameter(0)
+  %c0 = f32[] constant(0.0)
+  ROOT %out = f32[16] reduce(%p0, %c0), dimensions={1}, to_apply=body_add_flip
+}
+
+// -----
+
+// CHECK-LABEL: @test_reduce_mul_flip
+// CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
+// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [1.000000e+00 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
+// CHECK: %[[RESULT:.*]] = arith.mulf %[[RHS]], %[[LHS]] : f32
+// CHECK: yield %[[RESULT]]
+// CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
+// CHECK: results %[[OUT]]
+
+body_mul_flip {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %agg = f32[] multiply(%rhs, %lhs)
+}
+
+test_reduce_mul_flip {
+  %p0 = f32[16,64] parameter(0)
+  %c1 = f32[] constant(1.0)
+  ROOT %out = f32[16] reduce(%p0, %c1), dimensions={1}, to_apply=body_mul_flip
+}
+
+// -----
+
+// CHECK-LABEL: @test_reduce_min
+// CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
+// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [0x7F800000 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
+// CHECK: %[[RESULT:.*]] = arith.minimumf %[[LHS]], %[[RHS]] : f32
+// CHECK: yield %[[RESULT]]
+// CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
+// CHECK: results %[[OUT]]
+
+body_min {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %agg = f32[] minimum(%lhs, %rhs)
+}
+
+test_reduce_min {
+  %p0 = f32[16,64] parameter(0)
+  %c0 = f32[] constant(inf)
+  ROOT %out = f32[16] reduce(%p0, %c0), dimensions={1}, to_apply=body_min
+}
+
+// -----
+
+// CHECK-LABEL: @test_reduce_max
+// CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
+// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [0xFF800000 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
+// CHECK: %[[RESULT:.*]] = arith.maximumf %[[LHS]], %[[RHS]] : f32
+// CHECK: yield %[[RESULT]]
+// CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
+// CHECK: results %[[OUT]]
+
+body_max {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %agg = f32[] maximum(%lhs, %rhs)
+}
+
+test_reduce_max {
+  %p0 = f32[16,64] parameter(0)
+  %c0 = f32[] constant(-inf)
+  ROOT %out = f32[16] reduce(%p0, %c0), dimensions={1}, to_apply=body_max
+}
+
+// -----
+
+// CHECK-LABEL: @test_reduce_clamp
+// CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
+// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [0.000000e+00 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
+// CHECK-DAG: %[[LOWER:.*]] = arith.constant -1.000000e+06 : f32
+// CHECK-DAG: %[[UPPER:.*]] = arith.constant 1.000000e+06 : f32
+// CHECK-DAG: %[[ADD:.*]] = arith.addf %[[LHS]], %[[RHS]] : f32
+// CHECK: %[[TEMP:.*]] = arith.maximumf %[[LOWER]], %[[ADD]] : f32
+// CHECK: %[[RESULT:.*]] = arith.minimumf %[[UPPER]], %[[TEMP]] : f32
+// CHECK: yield %[[RESULT]]
+// CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
+// CHECK: results %[[OUT]]
+
+body_clamp {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %add = f32[] add(%lhs, %rhs)
+  %min = f32[] constant(-1e6)
+  %max = f32[] constant(1e6)
+  ROOT %agg = f32[] clamp(%min, %add, %max)
+}
+
+test_reduce_clamp {
+  %p0 = f32[16,64] parameter(0)
+  %c0 = f32[] constant(0.0)
+  ROOT %out = f32[16] reduce(%p0, %c0), dimensions={1}, to_apply=body_clamp
+}
+
+// -----
+
+// CHECK-LABEL: @test_reduce_compare_select
+// CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xf32>
+// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [1.000000e+00 : f32]> (%[[LHS:.*]]: f32, %[[RHS:.*]]: f32) {
+// CHECK: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK: %[[LHS_IS_ZERO:.*]] = arith.cmpf oeq, %[[LHS]], %[[ZERO]] : f32
+// CHECK: %[[RHS_IS_ZERO:.*]] = arith.cmpf oeq, %[[RHS]], %[[ZERO]] : f32
+// CHECK: %[[ANY_IS_ZERO:.*]] = arith.ori %[[LHS_IS_ZERO]], %[[RHS_IS_ZERO]] : i1
+// CHECK: %[[ONE:.*]] = arith.constant 1.000000e+00 : f32
+// CHECK: %[[RESULT:.*]] = arith.select %[[ANY_IS_ZERO]], %[[ZERO]], %[[ONE]] : f32
+// CHECK: yield %[[RESULT]]
+// CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xf32> -> tensor<16xf32>
+// CHECK: results %[[OUT]]
+
+body_compare_select {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %zero = f32[] constant(0.0)
+  %lhs_is_zero = pred[] compare(%lhs, %zero), direction=EQ
+  %rhs_is_zero = pred[] compare(%rhs, %zero), direction=EQ
+  %any_is_zero = pred[] or(%lhs_is_zero, %rhs_is_zero)
+  %one = f32[] constant(1.0)
+  ROOT %agg = f32[] select(%any_is_zero, %zero, %one)
+}
+
+test_reduce_compare_select {
+  %p0 = f32[16,64] parameter(0)
+  %c1 = f32[] constant(1.0)
+  ROOT %out = f32[16] reduce(%p0, %c1), dimensions={1}, to_apply=body_compare_select
+}

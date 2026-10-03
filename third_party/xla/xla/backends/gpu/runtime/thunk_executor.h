@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -32,7 +33,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/event_pool.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
@@ -44,7 +47,32 @@ namespace xla::gpu {
 // interpreter that executes thunks and optionally can track execution progress.
 class ThunkExecutor {
  public:
-  // Forward declaration. See definition below.
+  // Maps thunks to allocations whose final use they schedule. After scheduling
+  // a mapped thunk, ThunkExecutor invokes the definition callback for each
+  // allocation.
+  using DefinitionPlan =
+      absl::flat_hash_map<const Thunk*, std::vector<BufferAllocation::Index>>;
+
+  // Builds a buffer definition plan for `executor` and its nested thunks.
+  static DefinitionPlan BuildDefinitionPlan(const ThunkExecutor& executor);
+
+  // Callback invoked immediately after all work touching the buffer allocations
+  // at `indices` has been scheduled. `stream` is ordered after that work and
+  // can be used to record one definition event for all the allocations. For
+  // work nested in an async thunk, it can be the auxiliary stream on which that
+  // work was scheduled.
+  //
+  // This is a best-effort notification. The callback is not invoked when the
+  // executor cannot identify a single final use and a stream ordered after it.
+  // Callers can use an executable-wide event as a fallback for allocations that
+  // do not receive a callback. This lets other allocations become available to
+  // downstream consumers before the entire executable finishes.
+  using DefinitionCallback = absl::FunctionRef<absl::Status(
+      se::Stream*, absl::Span<const BufferAllocation::Index>)>;
+
+  // Forward declarations. See definitions below.
+  class ScopedDefinitionTracker;
+  class ProgressTracker;
   class ScopedProgressTracker;
 
   explicit ThunkExecutor(ThunkSequence thunks);
@@ -63,6 +91,46 @@ class ThunkExecutor {
  private:
   ThunkSequence thunks_;
 };
+
+//===----------------------------------------------------------------------===//
+// Tracking buffer definitions.
+//===----------------------------------------------------------------------===//
+
+// Scoped state installed by InstallDefinitionTracker.
+class ThunkExecutor::ScopedDefinitionTracker {
+ public:
+  ~ScopedDefinitionTracker();
+
+  ScopedDefinitionTracker(ScopedDefinitionTracker&&) = default;
+  ScopedDefinitionTracker& operator=(ScopedDefinitionTracker&&) = default;
+
+ private:
+  friend class ThunkExecutor;
+  friend absl::StatusOr<ScopedDefinitionTracker> InstallDefinitionTracker(
+      const DefinitionPlan&, DefinitionCallback);
+
+  ScopedDefinitionTracker(const DefinitionPlan& plan,
+                          DefinitionCallback callback);
+
+  struct DefinitionTracker {
+    DefinitionTracker(const DefinitionPlan& plan, DefinitionCallback callback)
+        : plan(plan), callback(callback) {}
+
+    const DefinitionPlan& plan;
+    DefinitionCallback callback;
+  };
+
+  static thread_local DefinitionTracker* installed;
+
+  std::unique_ptr<DefinitionTracker> tracker_;
+};
+
+// Installs a buffer definition tracker for the current thread. Nested thunk
+// executors automatically use the installed plan and callback. Installing more
+// than one tracker on the same thread is an error.
+absl::StatusOr<ThunkExecutor::ScopedDefinitionTracker> InstallDefinitionTracker(
+    const ThunkExecutor::DefinitionPlan& plan,
+    ThunkExecutor::DefinitionCallback callback);
 
 //===----------------------------------------------------------------------===//
 // Tracking Thunk execution progress.
@@ -84,7 +152,7 @@ class ThunkExecutor {
 // which is installed for the current thread using a thread-local mechanism, and
 // it is guaranteed to work, because thunk sequence recording is
 // single-threaded.
-class ThunkExecutor::ScopedProgressTracker {
+class ThunkExecutor::ProgressTracker {
  public:
   // We use global indexing across all nested thunks in a sequence, not only the
   // top-level thunks executed by `ThunkExecutor`. The index is assigned by DFS
@@ -112,14 +180,12 @@ class ThunkExecutor::ScopedProgressTracker {
     std::vector<WhileLoopState> loop_nest;
   };
 
-  ~ScopedProgressTracker();
-
-  ScopedProgressTracker(ScopedProgressTracker&&) = default;
-  ScopedProgressTracker& operator=(ScopedProgressTracker&&) = default;
+  ProgressTracker(ThunkIndexing indexing, EventPool* event_pool)
+      : indexing_(std::move(indexing)), event_pool_(event_pool) {}
 
   // Returns the number of unique thunks in the tracked thunk sequence. This
   // includes all thunks nested inside others.
-  size_t num_thunks() const { return tracker_->indexing.size(); }
+  size_t num_thunks() const { return indexing_.size(); }
 
   // Returns the total number of thunk executions (launches). This can exceed
   // num_thunks() when thunks are executed multiple times inside while loops.
@@ -146,8 +212,7 @@ class ThunkExecutor::ScopedProgressTracker {
 
  private:
   friend class ThunkExecutor;
-  friend absl::StatusOr<ScopedProgressTracker> InstallProgressTracker(
-      se::StreamExecutor*, ThunkExecutor&);
+  friend class ScopedProgressTracker;
 
   // An event recorded for every thunk execution. The same thunk can be executed
   // 0 to N times during XLA program execution: it can be in a not-taken
@@ -164,26 +229,6 @@ class ThunkExecutor::ScopedProgressTracker {
     std::vector<WhileLoopState> loop_nest;  // enclosing loop state snapshot
   };
 
-  // Mutable state shared between the ScopedProgressTracker and the
-  // ThunkExecutor via thread-local pointer. Holds thunk indexing (immutable),
-  // the event pool, and a growing log of execution events.
-  struct ProgressTracker {
-    ProgressTracker(ThunkIndexing indexing, EventPool* event_pool)
-        : indexing(std::move(indexing)), event_pool(event_pool) {}
-
-    ThunkIndexing indexing;
-    EventPool* event_pool;
-
-    absl::Mutex mu;
-    std::vector<ThunkExecutionEvent> events ABSL_GUARDED_BY(mu);
-  };
-
-  // Each thread can have at most one progress tracker installed and it is
-  // automatically removed when the scoped progress tracker goes out of scope.
-  static thread_local ProgressTracker* installed_progress_tracker;
-
-  explicit ScopedProgressTracker(EventPool* event_pool, ThunkIndexing indexing);
-
   // Collects up to `n` thunks matching `status`, sorted by executed time.
   // If `most_recent_first` is true, returns most recently executed thunks
   // first (descending order); otherwise returns earliest executed thunks first
@@ -191,7 +236,51 @@ class ThunkExecutor::ScopedProgressTracker {
   std::vector<ThunkExecution> CollectThunks(se::Event::Status status,
                                             bool most_recent_first, size_t n);
 
-  std::unique_ptr<ProgressTracker> tracker_;
+  ThunkIndexing indexing_;
+  EventPool* event_pool_;
+
+  mutable absl::Mutex mu_;
+  std::vector<ThunkExecutionEvent> events_ ABSL_GUARDED_BY(mu_);
+};
+
+class ThunkExecutor::ScopedProgressTracker {
+ public:
+  using ThunkIndexing = ProgressTracker::ThunkIndexing;
+  using ThunkExecution = ProgressTracker::ThunkExecution;
+
+  ~ScopedProgressTracker();
+
+  ScopedProgressTracker(ScopedProgressTracker&&) = default;
+  ScopedProgressTracker& operator=(ScopedProgressTracker&&) = default;
+
+  std::shared_ptr<ProgressTracker> tracker() const { return tracker_; }
+
+  size_t num_thunks() const { return tracker_->num_thunks(); }
+  size_t num_executions() const { return tracker_->num_executions(); }
+  size_t NumCompletedThunks() { return tracker_->NumCompletedThunks(); }
+  size_t NumPendingThunks() { return tracker_->NumPendingThunks(); }
+  std::vector<ThunkExecution> LastCompletedThunks(size_t n) {
+    return tracker_->LastCompletedThunks(n);
+  }
+  std::vector<ThunkExecution> FirstPendingThunks(size_t n) {
+    return tracker_->FirstPendingThunks(n);
+  }
+  std::vector<ThunkExecution> LastPendingThunks(size_t n) {
+    return tracker_->LastPendingThunks(n);
+  }
+
+ private:
+  friend class ThunkExecutor;
+  friend absl::StatusOr<ScopedProgressTracker> InstallProgressTracker(
+      se::StreamExecutor*, ThunkExecutor&);
+
+  // Each thread can have at most one progress tracker installed and it is
+  // automatically removed when the scoped progress tracker goes out of scope.
+  static thread_local ProgressTracker* installed;
+
+  explicit ScopedProgressTracker(EventPool* event_pool, ThunkIndexing indexing);
+
+  std::shared_ptr<ProgressTracker> tracker_;
 };
 
 // Installs a progress tracker for the given sequential thunk in the current

@@ -448,10 +448,10 @@ class StagingMap : public ResourceBase {
 
     auto it = map_.begin();
 
+    *key = it->first;
+
     TF_RETURN_IF_ERROR(
         copy_or_move_tensors(&it->second, *key, *indices, tuple));
-
-    *key = it->first;
 
     // Remove entry if all the values have been consumed
     if (!std::any_of(

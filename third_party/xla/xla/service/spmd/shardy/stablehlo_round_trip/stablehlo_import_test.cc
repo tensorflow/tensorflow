@@ -27,6 +27,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
@@ -249,6 +250,80 @@ TEST(StablehloImportTest, ConvertOpShardingMaximal) {
       xla::sdy::convertToSdySharding(opSharding, shape, /*openDims=*/false,
                                      /*inlineMesh=*/true),
       "#sdy.sharding_per_value<[<mesh<[], device_ids=[42]>, []>]>");
+}
+
+TEST(StablehloImportTest, UnreducedMaxSharding) {
+  MLIRContext context;
+  loadAllRequiredDialects(&context);
+  SmallVector<sdy::MeshAxisAttr> axes;
+  axes.emplace_back(mlir::sdy::MeshAxisAttr::get(&context, "x", 2));
+  axes.emplace_back(mlir::sdy::MeshAxisAttr::get(&context, "y", 2));
+  auto mesh = sdy::MeshAttr::get(&context, axes);
+
+  xla::HloSharding hloSharding =
+      xla::ParseSharding("{mesh['x'=2, 'y'=2], [{}, {}], unreduced=max{'x'}}")
+          .value();
+
+  TensorShardingAttr sharding = xla::sdy::convertToSdySharding(
+      hloSharding, mesh, llvm::SmallDenseMap<int64_t, mlir::StringRef>(),
+      /*rank=*/2,
+      /*openDims=*/true);
+  EXPECT_EQ(attributeToString(sharding),
+            "#sdy.sharding<@mesh, [{}, {}], unreduced=max{\"x\"}>");
+}
+
+TEST(StablehloImportTest, UnreducedMinSharding) {
+  MLIRContext context;
+  loadAllRequiredDialects(&context);
+  SmallVector<sdy::MeshAxisAttr> axes;
+  axes.emplace_back(mlir::sdy::MeshAxisAttr::get(&context, "x", 2));
+  axes.emplace_back(mlir::sdy::MeshAxisAttr::get(&context, "y", 2));
+  auto mesh = sdy::MeshAttr::get(&context, axes);
+
+  xla::HloSharding hloSharding =
+      xla::ParseSharding("{mesh['x'=2, 'y'=2], [{}, {}], unreduced=min{'x'}}")
+          .value();
+
+  TensorShardingAttr sharding = xla::sdy::convertToSdySharding(
+      hloSharding, mesh, llvm::SmallDenseMap<int64_t, mlir::StringRef>(),
+      /*rank=*/2,
+      /*openDims=*/true);
+  EXPECT_EQ(attributeToString(sharding),
+            "#sdy.sharding<@mesh, [{}, {}], unreduced=min{\"x\"}>");
+}
+
+TEST(StablehloImportTest, NamedShardingEmptyDimShardings) {
+  MLIRContext context;
+  loadAllRequiredDialects(&context);
+  SmallVector<sdy::MeshAxisAttr> axes;
+  axes.emplace_back(mlir::sdy::MeshAxisAttr::get(&context, "x", 2));
+  axes.emplace_back(mlir::sdy::MeshAxisAttr::get(&context, "y", 2));
+  auto mesh = sdy::MeshAttr::get(&context, axes);
+  llvm::SmallDenseMap<int64_t, mlir::StringRef> emptyMaximalMap;
+
+  xla::HloSharding replicated =
+      xla::ParseSharding("{mesh[], replicated}").value();
+  EXPECT_EQ(
+      attributeToString(xla::sdy::convertToSdySharding(
+          replicated, mesh, emptyMaximalMap, /*rank=*/2, /*openDims=*/false)),
+      "#sdy.sharding<@mesh, [{}, {}]>");
+  EXPECT_EQ(
+      attributeToString(xla::sdy::convertToSdySharding(
+          replicated, mesh, emptyMaximalMap, /*rank=*/2, /*openDims=*/true)),
+      "#sdy.sharding<@mesh, [{?}, {?}]>");
+
+  xla::HloSharding manual =
+      xla::ParseSharding("{mesh['x'=2, 'y'=2], manual}").value();
+  EXPECT_EQ(attributeToString(xla::sdy::convertToSdySharding(
+                manual, mesh, emptyMaximalMap, /*rank=*/2, /*openDims=*/false)),
+            "#sdy.sharding<@mesh, [{}, {}]>");
+
+  xla::HloSharding unreduced =
+      xla::ParseSharding("{mesh['x'=2, 'y'=2], unreduced}").value();
+  EXPECT_EQ(
+      attributeToString(xla::sdy::convertToSdySharding(
+          unreduced, mesh, emptyMaximalMap, /*rank=*/2, /*openDims=*/false)),
+      "#sdy.sharding<@mesh, [{}, {}], unreduced={\"x\", \"y\"}>");
 }
 
 }  // namespace

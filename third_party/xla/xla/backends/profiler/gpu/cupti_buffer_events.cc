@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/backends/profiler/gpu/cuda_version_variants.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_marker_data_parser.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
@@ -113,23 +115,6 @@ constexpr int kCuptiActivityMarkerVersion = 2;
 using CuptiActivityMarkerTy = CUpti_ActivityMarker;
 constexpr int kCuptiActivityMarkerVersion = 1;
 #endif  // CUDA_VERSION >= 11070
-
-// Maps an OverheadKind enum to a const string.
-const char *getActivityOverheadKindString(CUpti_ActivityOverheadKind kind) {
-  switch (kind) {
-    case CUPTI_ACTIVITY_OVERHEAD_DRIVER_COMPILER:
-      return "COMPILER";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_BUFFER_FLUSH:
-      return "BUFFER_FLUSH";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_INSTRUMENTATION:
-      return "INSTRUMENTATION";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_RESOURCE:
-      return "RESOURCE";
-    default:
-      break;
-  }
-  return "<UNKNOWN>";
-}
 
 const char *getActivityUnifiedMemoryKindString(
     CUpti_ActivityUnifiedMemoryCounterKind kind) {
@@ -420,7 +405,7 @@ void AddCuptiOverheadActivityEvent(CuptiEventCollectorDelegate &collector,
                                    const CUpti_ActivityOverhead *overhead) {
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Overhead;
-  event.name = getActivityOverheadKindString(overhead->overheadKind);
+  event.name = GetActivityOverheadKindString(overhead->overheadKind);
   event.source = CuptiTracerEventSource::Activity;
   event.start_time_ns = overhead->start;
   event.end_time_ns = overhead->end;
@@ -532,6 +517,11 @@ void AddMemsetActivityEvent(CuptiEventCollectorDelegate &collector,
   event.context_id = memset->contextId;
   event.stream_id = memset->streamId;
   SetEventGraphId(event, memset);
+  AnnotationMap::AnnotationInfo info =
+      collector.annotation_map.LookUp(event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
+  event.nvtx_range = info.nvtx_range;
+  event.scope_range_id = info.scope_range_id;
   event.memset_info.num_bytes = memset->bytes;
   event.memset_info.mem_kind = mem_kind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
@@ -576,14 +566,20 @@ void AddSynchronizationActivityEvent(
 }
 
 static absl::Status ConvertActivityBuffer(
-    CuptiEventCollectorDelegate &collector, uint8_t *buffer, const size_t size,
-    const size_t max_activity_event_count, size_t &total_activity_event_count,
-    size_t &dropped_activity_event_count) {
-  CuptiInterface *cupti_interface = GetCuptiInterface();
+    CuptiEventCollectorDelegate& collector,
+    const CuptiActivityBufferManager::CachedActivityBufferBatch& cached_buffers,
+    const CuptiActivityBufferManager::ActivityBufferAndSize& buffer_and_size,
+    const size_t max_activity_event_count, size_t& total_activity_event_count,
+    size_t& dropped_activity_event_count, CuptiInterface* cupti_interface) {
+  uint8_t* buffer = buffer_and_size.buffer.get();
+  const size_t size = buffer_and_size.size;
   CUpti_Activity *record = nullptr;
   while (true) {
     CUptiResult status =
-        cupti_interface->ActivityGetNextRecord(buffer, size, &record);
+        cached_buffers.use_v2_records
+            ? cupti_interface->ActivityGetNextRecordV2(
+                  cached_buffers.subscriber, buffer, size, &record)
+            : cupti_interface->ActivityGetNextRecord(buffer, size, &record);
     if (status == CUPTI_SUCCESS) {
       if (total_activity_event_count >= max_activity_event_count) {
         dropped_activity_event_count++;
@@ -723,15 +719,6 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
   }
 }
 
-absl::string_view StringDeduper::Dedup(absl::string_view str,
-                                       size_t max_unique_count) {
-  if (str.empty()) return absl::string_view();
-  auto it = strings_.find(str);
-  if (it != strings_.end()) return *it;
-  if (max_unique_count == 0 || strings_.size() < max_unique_count)
-    return *strings_.emplace(str).first;
-  return absl::string_view();
-}
 
 absl::string_view AnnotationMap::Add(uint32_t device_id,
                                      uint32_t correlation_id,
@@ -753,7 +740,7 @@ absl::string_view AnnotationMap::Add(uint32_t device_id,
       return info.annotation;
     }
   }
-  return "";
+  return absl::string_view();
 }
 
 AnnotationMap::AnnotationInfo AnnotationMap::LookUp(
@@ -774,19 +761,18 @@ CuptiActivityBufferManager::ActivityBufferAndSize::ActivityBufferAndSize(
       size(sz) {}
 
 void AddActivityBufferListEventsTo(
-    CuptiEventCollectorDelegate &collector,
-    std::list<CuptiActivityBufferManager::ActivityBufferAndSize> &buffer_list,
-    size_t max_activity_event_count, size_t &dropped_activity_event_count) {
+    CuptiEventCollectorDelegate& collector,
+    CuptiActivityBufferManager::CachedActivityBufferBatch& cached_buffers,
+    size_t max_activity_event_count, size_t& dropped_activity_event_count) {
   dropped_activity_event_count = 0;
   size_t total_activity_event_count = 0;
-  while (!buffer_list.empty()) {
+  while (!cached_buffers.buffers.empty()) {
     CuptiActivityBufferManager::ActivityBufferAndSize buffer_and_size(
-        std::move(buffer_list.front()));
-    buffer_list.pop_front();
-    ConvertActivityBuffer(collector, buffer_and_size.buffer.get(),
-                          buffer_and_size.size, max_activity_event_count,
-                          total_activity_event_count,
-                          dropped_activity_event_count)
+        std::move(cached_buffers.buffers.front()));
+    cached_buffers.buffers.pop_front();
+    ConvertActivityBuffer(collector, cached_buffers, buffer_and_size,
+                          max_activity_event_count, total_activity_event_count,
+                          dropped_activity_event_count, GetCuptiInterface())
         .IgnoreError();
   }
 }
@@ -835,6 +821,26 @@ absl::string_view GetMemoryKindName(int8_t memory_kind) {
     case CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN:
     default:
       return "unknown";
+  }
+}
+
+std::string GetActivityOverheadKindString(CUpti_ActivityOverheadKind kind) {
+  switch (kind) {
+    case CUPTI_ACTIVITY_OVERHEAD_DRIVER_COMPILER:
+      return "COMPILER";
+    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_BUFFER_FLUSH:
+      return "BUFFER_FLUSH";
+    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_INSTRUMENTATION:
+      return "INSTRUMENTATION";
+    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_RESOURCE:
+      return "RESOURCE";
+    default:
+      if (absl::string_view extra_str =
+              cuda_versions::GetExtraActivityOverheadKindString12080(kind);
+          !extra_str.empty()) {
+        return std::string(extra_str);
+      }
+      return absl::StrCat("Overhead::UNKNOWN:", static_cast<int>(kind));
   }
 }
 

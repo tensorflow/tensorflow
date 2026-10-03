@@ -128,6 +128,8 @@ class ReduceScatterThunk : public AllReduceReduceScatterThunkBase {
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
                              Communicator& comm) override;
+
+  bool CanUseSymmetricBuffer() const override { return true; }
 };
 
 // -----------------------------------------------------------------------------

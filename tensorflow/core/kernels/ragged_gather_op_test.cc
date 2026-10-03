@@ -233,6 +233,22 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsTooBig) {
             RunOpKernel().message());
 }
 
+TEST_F(RaggedGatherOpTest, InvalidInnerSplitsPointPastNextLevel) {
+  // The last value of the outer splits (3) equals the length of the inner
+  // splits tensor. Since outer split values index into the inner splits tensor,
+  // the largest legal value is one less, so this must be rejected before
+  // MakeSplits reads one element past the inner splits buffer.
+  BuildRaggedGatherGraph<float, int32_t>(
+      TensorShape({1}),     // indices.shape
+      {0},                  // indices
+      {{0, 3}, {0, 2, 3}},  // params_nested_splits
+      TensorShape({3}),     // params_dense_values.shape
+      {.1, .2, .3}          // params_dense_values
+  );
+  EXPECT_EQ("Ragged splits must not point past values",
+            RunOpKernel().message());
+}
+
 TEST_F(RaggedGatherOpTest, BadValuesShape) {
   BuildRaggedGatherGraph<float, int32_t>(
       TensorShape({0}),  // indices.shape

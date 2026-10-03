@@ -82,6 +82,43 @@ class SessionTest(test_util.TensorFlowTestCase):
     super(SessionTest, self).setUp()
     warnings.simplefilter('always')
 
+  @test_util.run_v1_only('Session is a v1 feature')
+  def testSessionNoneRaisesRuntimeError(self):
+    with ops.Graph().as_default():
+      sess = session.Session()
+      c = constant_op.constant(42.0)
+      sess._session = None
+      with self.assertRaisesRegex(RuntimeError, 'Session is not available'):
+        sess.run(c)
+
+  @test_util.run_v1_only('Session is a v1 feature')
+  def testPartialRunSetupSessionNoneRaisesRuntimeError(self):
+    with ops.Graph().as_default():
+      sess = session.Session()
+      c = constant_op.constant(42.0)
+      sess._session = None
+      with self.assertRaisesRegex(RuntimeError, 'Session is not available'):
+        sess.partial_run_setup([c], [])
+
+  @test_util.run_v1_only('Session is a v1 feature')
+  def testPartialRunSessionNoneRaisesRuntimeError(self):
+    with ops.Graph().as_default():
+      sess = session.Session()
+      c = constant_op.constant(42.0)
+      handle = sess.partial_run_setup([c], [])
+      sess._session = None
+      with self.assertRaisesRegex(RuntimeError, 'Session is not available'):
+        sess.partial_run(handle, c)
+
+  @test_util.run_v1_only('Session is a v1 feature')
+  def testMakeCallableSessionNoneRaisesRuntimeError(self):
+    with ops.Graph().as_default():
+      sess = session.Session()
+      c = constant_op.constant(42.0)
+      sess._session = None
+      with self.assertRaisesRegex(RuntimeError, 'Session is not available'):
+        sess.make_callable(c)
+
   def testUseExistingGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -2111,6 +2148,21 @@ class SessionTest(test_util.TensorFlowTestCase):
       sess = session.Session()
       self.assertEqual(
           sess._config.graph_options.rewrite_options.min_graph_nodes, -1)
+
+  @test_util.run_v1_only('b/120545219')
+  def testNegativeIntraOpParallelismThreadsRaisesError(self):
+    with ops.Graph().as_default():
+      config_pb = config_pb2.ConfigProto(intra_op_parallelism_threads=-1)
+      with self.assertRaisesRegex(
+          ValueError, r'config\.intra_op_parallelism_threads.*must be >= 0.*-1'
+      ):
+        session.Session(config=config_pb)
+
+  @test_util.run_v1_only('b/120545219')
+  def testNegativeInterOpParallelismThreadsIsAllowed(self):
+    with ops.Graph().as_default():
+      config_pb = config_pb2.ConfigProto(inter_op_parallelism_threads=-1)
+      session.Session(config=config_pb).close()
 
 
 if __name__ == '__main__':

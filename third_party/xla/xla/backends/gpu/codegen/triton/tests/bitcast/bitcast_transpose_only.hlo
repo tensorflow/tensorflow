@@ -1,7 +1,7 @@
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
 // RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
 
-// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {
@@ -17,7 +17,7 @@ fusion {
 // CHECK-LABEL:   xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:.*]]: memref<42x5xi8, #xtile.layout<[0, 1]>>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<5x42xi8>,
-// CHECK-SAME:      %[[PID:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-SAME:      %[[PID:.*]]: index{{( \{xla.range = \[0 : index, 83 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 
 // CHECK:           %[[OFFSET0:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[PID]])
 // CHECK:           %[[OFFSET1:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[PID]])

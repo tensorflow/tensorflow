@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -134,7 +134,7 @@ namespace xla {
       // If the subshape is still a tuple, recurse and pass a new shape index
       // for the one level deeper.
       if (subshape.IsTuple()) {
-        ASSIGN_OR_RETURN(tuple_args[i],
+        ABSL_ASSIGN_OR_RETURN(tuple_args[i],
                          ReplaceTupleWith(new_instruction, get_operand(),
                                           ShapeIndex(shape_index.begin() + 1,
                                                      shape_index.end())));

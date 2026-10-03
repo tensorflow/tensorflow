@@ -76,13 +76,13 @@ absl::StatusOr<const char**> ConvertPjRtPartialProgramProtosToCharBuffers(
     const xla::PjRtPartialProgramProto& partial_program = partial_programs[i];
     size_t buffer_size = partial_program.ByteSizeLong();
     char* buffer = new char[buffer_size];
+    char_buffers[i] = buffer;
+    buffer_sizes[i] = buffer_size;
     bool success = partial_program.SerializeToArray(buffer, buffer_size);
     if (!success) {
       return absl::InvalidArgumentError(
           "Failed to serialize PjRtPartialProgramProto");
     }
-    char_buffers[i] = buffer;
-    buffer_sizes[i] = buffer_size;
   }
   char_buffer_sizes = buffer_sizes;
 

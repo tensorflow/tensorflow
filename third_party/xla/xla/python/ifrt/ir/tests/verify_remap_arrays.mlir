@@ -26,7 +26,7 @@ func.func @remap_from_two_to_one_array(
   %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
-      {donated=true}
+      <donated=true>
       : (!array0, !array1) -> (!array2)
   return
 }

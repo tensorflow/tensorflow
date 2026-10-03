@@ -90,7 +90,7 @@ absl::Status DemangleDataType(absl::string_view str, DataType* proto) {
   absl::string_view pbtxt;
   TF_RETURN_IF_ERROR(ConsumePrefix(str, kDataTypePrefix, &pbtxt));
   if (!DataType_Parse(pbtxt, proto)) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Could not parse TFDataType mangled proto");
   }
   return absl::OkStatus();

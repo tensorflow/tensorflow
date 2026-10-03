@@ -23,6 +23,14 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__del__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__getitem__"
+    argspec: "args=[\'self\', \'keys\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'key_dtype\', \'value_dtype\', \'default_value\', \'name\', \'checkpoint\', \'experimental_is_anonymous\'], varargs=None, keywords=None, defaults=[\'MutableHashTable\', \'True\', \'False\'], "
   }

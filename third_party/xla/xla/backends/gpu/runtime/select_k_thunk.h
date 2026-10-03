@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -36,8 +37,11 @@ namespace xla::gpu {
 // SelectKThunk
 //===----------------------------------------------------------------------===//
 
-// SelectKThunk executes the select_k operation on the provided inputs
-class SelectKThunk : public Thunk {
+// SelectKThunk executes the select_k operation on the provided inputs.
+// Implements TracedCommand so it can participate in CUDA Graph capture
+// and replay in CommandBuffer. The default Record() inherited from
+// TracedCommand traces ExecuteOnStream on the trace stream.
+class SelectKThunk : public TracedCommand {
  public:
   // Constructor.
   // Parameters:

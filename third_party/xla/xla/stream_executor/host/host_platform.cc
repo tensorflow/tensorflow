@@ -36,7 +36,7 @@ namespace host {
 
 HostPlatform::HostPlatform() : name_(kHostPlatformId->ToName()) {}
 
-HostPlatform::~HostPlatform() {}
+HostPlatform::~HostPlatform() = default;
 
 Platform::Id HostPlatform::id() const { return kHostPlatformId; }
 

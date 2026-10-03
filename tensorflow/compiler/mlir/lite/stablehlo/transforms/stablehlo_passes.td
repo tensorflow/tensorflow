@@ -186,3 +186,15 @@ def StablehloUnfuseBatchNormPass : Pass<"stablehlo-unfuse-batch-norm", "mlir::fu
 def StablehloFuseConvolutionPass : Pass<"stablehlo-fuse-convolution", "mlir::func::FuncOp"> {
   let summary = "Fuses stablehlo.convolution and binary element-wise ops.";
 }
+
+def DropShapeAssertionsPass : Pass<"drop-shape-assertions", "ModuleOp"> {
+  let summary = "Drops vhlo/stablehlo custom calls targeting 'shape_assertion'.";
+  let constructor = "mlir::odml::CreateDropShapeAssertionsPass()";
+  let dependentDialects = ["mlir::vhlo::VhloDialect", "mlir::stablehlo::StablehloDialect"];
+}
+
+def LegalizeVhloQuantCustomCallsPass : Pass<"legalize-vhlo-quant-custom-calls", "ModuleOp"> {
+  let summary = "Legalizes vhlo custom calls for quantization ops to stablehlo.custom_call.";
+  let constructor = "mlir::odml::CreateLegalizeVhloQuantCustomCallsPass()";
+  let dependentDialects = ["mlir::vhlo::VhloDialect", "mlir::stablehlo::StablehloDialect"];
+}

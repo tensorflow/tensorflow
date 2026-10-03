@@ -59,7 +59,7 @@ class RecvBufCall : public CancellableCall {
     req_.set_request_id(GetUniqueRequestId());
   }
 
-  ~RecvBufCall() override {}
+  ~RecvBufCall() override = default;
 
   void IssueCall(const StatusCallback& done) override {
     wi_->RecvBufAsync(&opts_, &req_, &resp_, done);

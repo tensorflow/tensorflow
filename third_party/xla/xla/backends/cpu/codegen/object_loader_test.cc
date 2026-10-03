@@ -26,11 +26,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
@@ -130,10 +130,10 @@ TEST_P(ObjectLoaderTest, Load) {
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
-    ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
+    ABSL_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
                      ParseModule(tsc, ir, name));
     SetModuleMemoryRegionName(*tsm.getModuleUnlocked(), "object_loader_test");
-    RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
+    ABSL_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };
 

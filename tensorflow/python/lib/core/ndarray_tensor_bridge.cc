@@ -118,6 +118,16 @@ PyTypeObject TensorReleaserType = {
 };
 // clang-format on
 
+// Readies `TensorReleaserType` once, in a thread-safe way.
+//
+// `PyType_Ready()` modifies the type object. Calling it on every conversion
+// races with other threads under free-threaded (no-GIL) Python. A
+// function-local static runs the initialization only once, so there is no race.
+static bool EnsureTensorReleaserTypeReady() {
+  static const bool is_ready = PyType_Ready(&TensorReleaserType) != -1;
+  return is_ready;
+}
+
 absl::Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
                                          int* out_pyarray_type) {
   const tsl::ml_dtypes::NumpyDtypes& custom_dtypes =
@@ -207,6 +217,9 @@ absl::Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_FLOAT8_E5M2FNUZ:
       *out_pyarray_type = custom_dtypes.float8_e5m2fnuz;
       break;
+    case TF_FLOAT8_E8M0FNU:
+      *out_pyarray_type = custom_dtypes.float8_e8m0fnu;
+      break;
     case TF_FLOAT4_E2M1FN:
       *out_pyarray_type = custom_dtypes.float4_e2m1fn;
       break;
@@ -267,7 +280,7 @@ absl::Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data,
   }
 
   PyArray_CLEARFLAGS(np_array, NPY_ARRAY_OWNDATA);
-  if (PyType_Ready(&TensorReleaserType) == -1) {
+  if (!EnsureTensorReleaserTypeReady()) {
     return absl::UnknownError("Python type initialization failed.");
   }
   auto* releaser = reinterpret_cast<TensorReleaser*>(

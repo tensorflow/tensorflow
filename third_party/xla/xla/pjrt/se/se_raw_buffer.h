@@ -39,7 +39,7 @@ namespace xla {
 
 class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
  public:
-  PjRtStreamExecutorDeviceEventPromise(PjRtStreamExecutorClient* client,
+  PjRtStreamExecutorDeviceEventPromise(PjRtStreamExecutorRawClient* client,
                                        LocalDeviceState* local_device,
                                        AsyncWorkRunner* async_work_runner);
 
@@ -62,7 +62,7 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
   tsl::RCReference<tsl::IndirectAsyncValue>& av() { return av_; }
 
  private:
-  PjRtStreamExecutorClient* client_;
+  PjRtStreamExecutorRawClient* client_;
   LocalDeviceState* local_device_;
   tsl::RCReference<tsl::IndirectAsyncValue> av_;
   tsl::AsyncValueRef<BufferSequencingEvent> event_;
@@ -71,7 +71,7 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
 class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
  public:
   PjRtStreamExecutorRawBuffer(
-      PjRtStreamExecutorClient* client, PjRtMemorySpace* memory_space,
+      PjRtStreamExecutorRawClient* client, PjRtMemorySpace* memory_space,
       LocalDeviceState* local_device,
       tsl::AsyncValueRef<RawSEDeviceMemory> device_buffer, size_t buffer_size)
       : client_(client),
@@ -132,7 +132,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
   void DecrefAfter(PjRtDeviceEventRefVector avs) override { DropRef(); }
 
  private:
-  PjRtStreamExecutorClient* client_;
+  PjRtStreamExecutorRawClient* client_;
   PjRtMemorySpace* memory_space_;
   LocalDeviceState* local_device_;
   tsl::AsyncValueRef<RawSEDeviceMemory> device_buffer_;

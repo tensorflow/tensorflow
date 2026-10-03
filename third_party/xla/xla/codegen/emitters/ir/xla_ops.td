@@ -122,7 +122,7 @@ def XLA_PureCallOp : XLA_Op<"pure_call",
     }
 
     void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+      (*this)->setAttr("callee", ::llvm::cast<mlir::SymbolRefAttr>(callee));
     }
     mlir::Attribute removeArgAttrsAttr() { return nullptr; }
     mlir::Attribute removeResAttrsAttr() { return nullptr; }

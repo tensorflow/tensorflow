@@ -40,7 +40,8 @@ class Version {
     // v0.2.0 - 2026-03-26
     // v0.3.0 - 2026-05-07
     // v0.4.0 - 2026-05-21
-    return Version(0, 4, 0);
+    // v0.5.0 - 2026-07-24
+    return Version(0, 5, 0);
   }
 
   /// Returns a Version representing the minimum supported IFRT IR version.

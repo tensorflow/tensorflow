@@ -32,7 +32,8 @@ static const FixedOptionSetFlagParser<InputFormat>& GetInputFormatParser() {
         InputFormat::kUnoptimizedSnapshotProtoBinary},
        {"unoptimized_snapshot_proto_text",
         InputFormat::kUnoptimizedSnapshotProtoText},
-       {"serialized_pjrt_executable", InputFormat::kSerializedPjRtExecutable}});
+       {"serialized_pjrt_executable", InputFormat::kSerializedPjRtExecutable},
+       {"stablehlo", InputFormat::kStableHlo}});
   return parser;
 }
 

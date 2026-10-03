@@ -166,6 +166,88 @@ TEST_F(ScaledDotRewriterElementSizeTest, Fp4OperandDropsSubByteElementSize) {
   }
 }
 
+TEST_F(ScaledDotRewriterElementSizeTest, FilterCallbackBehavior) {
+  const std::string hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      lhs = f8e4m3fn[1024,512] parameter(0)
+      rhs = f8e4m3fn[64,512] parameter(1)
+      lhs_scale = bf16[1024,16] parameter(2)
+      rhs_scale = bf16[64,16] parameter(3)
+      ROOT dot = f32[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={1}
+    }
+  )";
+
+  // Filter callback returning false: skip rewriting.
+  ScaledDotRewriter rewriter_skip(
+      [](const HloInstruction* instr) { return false; });
+  ASSERT_OK_AND_ASSIGN(auto module_skip,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed_skip, rewriter_skip.Run(module_skip.get()));
+  EXPECT_FALSE(changed_skip);
+
+  // Filter callback returning true: perform rewriting.
+  ScaledDotRewriter rewriter_apply(
+      [](const HloInstruction* instr) { return true; });
+  ASSERT_OK_AND_ASSIGN(auto module_apply,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed_apply,
+                       rewriter_apply.Run(module_apply.get()));
+  EXPECT_TRUE(changed_apply);
+}
+
+TEST_F(ScaledDotRewriterElementSizeTest, SelectiveFilterCallbackBehavior) {
+  const std::string hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      lhs1 = f8e4m3fn[1024,512] parameter(0)
+      rhs1 = f8e4m3fn[64,512] parameter(1)
+      lhs_scale1 = f8e8m0fnu[1024,16] parameter(2)
+      rhs_scale1 = f8e8m0fnu[64,16] parameter(3)
+      dot1 = f32[1024,64] scaled-dot(lhs1, rhs1, lhs_scale1, rhs_scale1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={1}
+
+      lhs2 = f8e4m3fn[1024,512] parameter(4)
+      rhs2 = f8e4m3fn[64,512] parameter(5)
+      lhs_scale2 = bf16[1024,16] parameter(6)
+      rhs_scale2 = bf16[64,16] parameter(7)
+      dot2 = f32[1024,64] scaled-dot(lhs2, rhs2, lhs_scale2, rhs_scale2),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={1}
+
+      ROOT add = f32[1024,64] add(dot1, dot2)
+    }
+  )";
+
+  // Filter that returns false for f8e8m0fnu scale (do not rewrite)
+  // and true for bf16 scale (rewrite).
+  ScaledDotRewriter rewriter([](const HloInstruction* instr) {
+    return instr->operand(2)->shape().element_type() !=
+           PrimitiveType::F8E8M0FNU;
+  });
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  int scaled_dot_count = 0;
+  int dot_count = 0;
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kScaledDot) {
+      ++scaled_dot_count;
+    } else if (instruction->opcode() == HloOpcode::kDot) {
+      ++dot_count;
+    }
+  }
+
+  EXPECT_EQ(scaled_dot_count, 1);
+  EXPECT_EQ(dot_count, 1);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ScaledDotRewriterTests, ScaledDotRewriterTestFixture,
     ::testing::ValuesIn<ScaledDotRewriterTestCase>({

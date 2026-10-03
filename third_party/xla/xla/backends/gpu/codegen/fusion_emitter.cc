@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Argument.h"
@@ -186,7 +186,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
                              unique_kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
-  RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+  ABSL_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
       gpu_device_info, launch_dimensions, kernel, llvm_module));
 
   // Update the insert point to the entry basic block.

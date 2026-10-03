@@ -27,9 +27,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -38,13 +40,17 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/execution_graph.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla::gpu {
+namespace {
 
 using ::testing::AllOf;
 using ::testing::ElementsAre;
@@ -105,11 +111,9 @@ TEST_F(CommandBufferCmdEmitterTest, ConcurrentAndSequentialExecutionGraphs) {
 
   ThunkSequence thunks;
   BufferAllocation::Slice slice_a(&allocation, /*offset=*/0, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("a"), slice_a));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("a"), slice_a);
   BufferAllocation::Slice slice_b(&allocation, /*offset=*/1024, /*size=*/2048);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("b"), slice_b));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("b"), slice_b);
 
   ConvertToCommandsOptions options;
   {
@@ -152,21 +156,17 @@ TEST_F(CommandBufferCmdEmitterTest,
   ThunkSequence thunks;
 
   BufferAllocation::Slice slice_a(&allocation, /*offset=*/0, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("a"), slice_a));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("a"), slice_a);
 
   BufferAllocation::Slice slice_b(&allocation, /*offset=*/2 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("b"), slice_b));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("b"), slice_b);
 
   BufferAllocation::Slice slice_c(&allocation, /*offset=*/0, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("c"), slice_c));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("c"), slice_c);
 
   BufferAllocation::Slice slice_d(&allocation, /*offset=*/1024, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("d"), slice_d));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("d"), slice_d);
 
   ConvertToCommandsOptions options;
   // In kConcurrent mode, there are 3 source nodes (a, b, d) and 3 sink nodes
@@ -217,21 +217,17 @@ TEST_F(CommandBufferCmdEmitterTest, ConcurrentRegionsExecutesOutOfOrder) {
   ThunkSequence thunks;
 
   BufferAllocation::Slice slice_a(&allocation, /*offset=*/0, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("a"), slice_a));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("a"), slice_a);
 
   BufferAllocation::Slice slice_b(&allocation, /*offset=*/0,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("b"), slice_b));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("b"), slice_b);
 
   BufferAllocation::Slice slice_c(&allocation, /*offset=*/1024, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("c"), slice_c));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("c"), slice_c);
 
   BufferAllocation::Slice slice_d(&allocation, /*offset=*/1024, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("d"), slice_d));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("d"), slice_d);
 
   ConvertToCommandsOptions options;
   options.synchronization_mode =
@@ -269,31 +265,26 @@ TEST_F(CommandBufferCmdEmitterTest,
   ThunkSequence thunks;
 
   BufferAllocation::Slice slice_a(&allocation, /*offset=*/0, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("a"), slice_a));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("a"), slice_a);
   thunks.back()->set_concurrent_region_id(42);
 
   BufferAllocation::Slice slice_b(&allocation, /*offset=*/1024, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("b"), slice_b));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("b"), slice_b);
   thunks.back()->set_concurrent_region_id(42);
 
   BufferAllocation::Slice slice_c(&allocation, /*offset=*/2 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("c"), slice_c));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("c"), slice_c);
   thunks.back()->set_concurrent_region_id(43);
 
   BufferAllocation::Slice slice_d(&allocation, /*offset=*/3 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("d"), slice_d));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("d"), slice_d);
   thunks.back()->set_concurrent_region_id(43);
 
   BufferAllocation::Slice slice_e(&allocation, /*offset=*/4 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("e"), slice_e));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("e"), slice_e);
   thunks.back()->set_concurrent_region_id(44);
 
   ConvertToCommandsOptions options;
@@ -323,31 +314,26 @@ TEST_F(CommandBufferCmdEmitterTest,
   ThunkSequence thunks;
 
   BufferAllocation::Slice slice_a(&allocation, /*offset=*/0, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("a"), slice_a));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("a"), slice_a);
   thunks.back()->set_concurrent_region_id(42);
 
   BufferAllocation::Slice slice_b(&allocation, /*offset=*/1024, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("b"), slice_b));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("b"), slice_b);
   thunks.back()->set_concurrent_region_id(42);
 
   BufferAllocation::Slice slice_c(&allocation, /*offset=*/2 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("c"), slice_c));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("c"), slice_c);
   thunks.back()->set_concurrent_region_id(42);
 
   BufferAllocation::Slice slice_d(&allocation, /*offset=*/3 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("d"), slice_d));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("d"), slice_d);
   thunks.back()->set_concurrent_region_id(43);
 
   BufferAllocation::Slice slice_e(&allocation, /*offset=*/4 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("e"), slice_e));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("e"), slice_e);
   thunks.back()->set_concurrent_region_id(43);
 
   ConvertToCommandsOptions options;
@@ -372,26 +358,21 @@ TEST_F(CommandBufferCmdEmitterTest, ConcurrentRegionsScheduleHasLaneAffinity) {
   ThunkSequence thunks;
 
   BufferAllocation::Slice slice_a(&allocation, /*offset=*/0, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("a"), slice_a));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("a"), slice_a);
 
   BufferAllocation::Slice slice_b(&allocation, /*offset=*/1024, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("b"), slice_b));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("b"), slice_b);
 
   BufferAllocation::Slice slice_c(&allocation, /*offset=*/2 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("c"), slice_c));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("c"), slice_c);
 
   BufferAllocation::Slice slice_d(&allocation, /*offset=*/3 * 1024,
                                   /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("d"), slice_d));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("d"), slice_d);
 
   BufferAllocation::Slice slice_e(&allocation, /*offset=*/0, /*size=*/1024);
-  thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("e"), slice_e));
+  thunks.Emplace<FakeKernelThunk>(NextThunkInfo("e"), slice_e);
   for (auto& thunk : thunks) {
     thunk->set_concurrent_region_id(44);
   }
@@ -429,13 +410,11 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkToCommand) {
   BufferAllocation::Slice branch1_slice(&data_alloc, /*offset=*/1024,
                                         /*size=*/1024);
 
-  ThunkSequence branch0;
-  branch0.push_back(std::make_unique<FakeKernelThunk>(NextThunkInfo("branch0"),
-                                                      branch0_slice));
+  ThunkSequence branch0 = ThunkSequence::Of<FakeKernelThunk>(
+      NextThunkInfo("branch0"), branch0_slice);
 
-  ThunkSequence branch1;
-  branch1.push_back(std::make_unique<FakeKernelThunk>(NextThunkInfo("branch1"),
-                                                      branch1_slice));
+  ThunkSequence branch1 = ThunkSequence::Of<FakeKernelThunk>(
+      NextThunkInfo("branch1"), branch1_slice);
 
   std::vector<ThunkSequence> branches;
   branches.push_back(std::move(branch0));
@@ -474,13 +453,11 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsWhileThunkToCommand) {
   BufferAllocation::Slice body_slice(&data_alloc, /*offset=*/1024,
                                      /*size=*/1024);
 
-  ThunkSequence cond_thunks;
-  cond_thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("cond"), cond_slice));
+  ThunkSequence cond_thunks =
+      ThunkSequence::Of<FakeKernelThunk>(NextThunkInfo("cond"), cond_slice);
 
-  ThunkSequence body_thunks;
-  body_thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("body"), body_slice));
+  ThunkSequence body_thunks =
+      ThunkSequence::Of<FakeKernelThunk>(NextThunkInfo("body"), body_slice);
 
   auto while_thunk = std::make_unique<WhileThunk>(
       NextThunkInfo("while"), pred_slice, std::move(cond_thunks),
@@ -514,18 +491,15 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsWhileThunkRepeatedly) {
   BufferAllocation::Slice body_slice(&data_alloc, /*offset=*/1024,
                                      /*size=*/1024);
 
-  ThunkSequence cond_thunks;
-  cond_thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("cond"), cond_slice));
+  ThunkSequence cond_thunks =
+      ThunkSequence::Of<FakeKernelThunk>(NextThunkInfo("cond"), cond_slice);
 
-  ThunkSequence body_thunks;
-  body_thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("body"), body_slice));
+  ThunkSequence body_thunks =
+      ThunkSequence::Of<FakeKernelThunk>(NextThunkInfo("body"), body_slice);
 
-  ThunkSequence thunks;
-  thunks.push_back(std::make_unique<WhileThunk>(
+  ThunkSequence thunks = ThunkSequence::Of<WhileThunk>(
       NextThunkInfo("while"), pred_slice, std::move(cond_thunks),
-      std::move(body_thunks)));
+      std::move(body_thunks));
 
   auto collect_command_names = [](CommandExecutor& commands) {
     std::vector<std::string> command_names;
@@ -563,23 +537,20 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkRepeatedly) {
   BufferAllocation::Slice branch1_slice(&data_alloc, /*offset=*/1024,
                                         /*size=*/1024);
 
-  ThunkSequence branch0;
-  branch0.push_back(std::make_unique<FakeKernelThunk>(NextThunkInfo("branch0"),
-                                                      branch0_slice));
+  ThunkSequence branch0 = ThunkSequence::Of<FakeKernelThunk>(
+      NextThunkInfo("branch0"), branch0_slice);
 
-  ThunkSequence branch1;
-  branch1.push_back(std::make_unique<FakeKernelThunk>(NextThunkInfo("branch1"),
-                                                      branch1_slice));
+  ThunkSequence branch1 = ThunkSequence::Of<FakeKernelThunk>(
+      NextThunkInfo("branch1"), branch1_slice);
 
   std::vector<ThunkSequence> branches;
   branches.push_back(std::move(branch0));
   branches.push_back(std::move(branch1));
 
-  ThunkSequence thunks;
-  thunks.push_back(std::make_unique<ConditionalThunk>(
+  ThunkSequence thunks = ThunkSequence::Of<ConditionalThunk>(
       NextThunkInfo("conditional"),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
-      std::move(branches)));
+      std::move(branches));
 
   auto collect_command_names = [](CommandExecutor& commands) {
     std::vector<std::string> command_names;
@@ -617,23 +588,20 @@ TEST_F(CommandBufferCmdEmitterTest,
   BufferAllocation::Slice true_slice(&data_alloc, /*offset=*/1024,
                                      /*size=*/1024);
 
-  ThunkSequence false_branch;
-  false_branch.push_back(std::make_unique<FakeKernelThunk>(
-      NextThunkInfo("false_branch"), false_slice));
+  ThunkSequence false_branch = ThunkSequence::Of<FakeKernelThunk>(
+      NextThunkInfo("false_branch"), false_slice);
 
-  ThunkSequence true_branch;
-  true_branch.push_back(std::make_unique<FakeKernelThunk>(
-      NextThunkInfo("true_branch"), true_slice));
+  ThunkSequence true_branch = ThunkSequence::Of<FakeKernelThunk>(
+      NextThunkInfo("true_branch"), true_slice);
 
   std::vector<ThunkSequence> branches;
   branches.push_back(std::move(false_branch));
   branches.push_back(std::move(true_branch));
 
-  ThunkSequence thunks;
-  thunks.push_back(std::make_unique<ConditionalThunk>(
+  ThunkSequence thunks = ThunkSequence::Of<ConditionalThunk>(
       NextThunkInfo("conditional"),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(PRED, {})},
-      std::move(branches)));
+      std::move(branches));
 
   ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
                        ConvertToCommands(thunks, ConvertToCommandsOptions()));
@@ -651,9 +619,8 @@ TEST_F(CommandBufferCmdEmitterTest, ConcurrentRegionsNestedThunk) {
   BufferAllocation allocation(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice(&allocation, /*offset=*/0, /*size=*/1024);
 
-  ThunkSequence nested_thunks;
-  nested_thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("nested_kernel"), slice));
+  ThunkSequence nested_thunks =
+      ThunkSequence::Of<FakeKernelThunk>(NextThunkInfo("nested_kernel"), slice);
   auto seq_thunk = std::make_unique<SequentialThunk>(NextThunkInfo("seq_thunk"),
                                                      std::move(nested_thunks));
   seq_thunk->set_concurrent_region_id(42);
@@ -700,19 +667,15 @@ TEST_F(CommandBufferCmdEmitterTest, ConcurrentRegionsNestedThunksMultiple) {
   BufferAllocation::Slice slice(&allocation, /*offset=*/0, /*size=*/1024);
 
   ThunkSequence nested_thunks_1;
-  nested_thunks_1.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("k1"), slice));
-  nested_thunks_1.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("k2"), slice));
+  nested_thunks_1.Emplace<FakeKernelThunk>(NextThunkInfo("k1"), slice);
+  nested_thunks_1.Emplace<FakeKernelThunk>(NextThunkInfo("k2"), slice);
   auto seq_thunk_1 = std::make_unique<SequentialThunk>(
       NextThunkInfo("seq1"), std::move(nested_thunks_1));
   seq_thunk_1->set_concurrent_region_id(42);
 
   ThunkSequence nested_thunks_2;
-  nested_thunks_2.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("k3"), slice));
-  nested_thunks_2.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("k4"), slice));
+  nested_thunks_2.Emplace<FakeKernelThunk>(NextThunkInfo("k3"), slice);
+  nested_thunks_2.Emplace<FakeKernelThunk>(NextThunkInfo("k4"), slice);
   auto seq_thunk_2 = std::make_unique<SequentialThunk>(
       NextThunkInfo("seq2"), std::move(nested_thunks_2));
   seq_thunk_2->set_concurrent_region_id(42);
@@ -818,10 +781,8 @@ TEST_F(CommandBufferCmdEmitterTest,
   thunks.push_back(std::move(k1));
   // seq_thunk (42) contains k2 (slice_b, 42) and k3 (slice_c, 42)
   ThunkSequence nested_thunks;
-  nested_thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("k2"), slice_b));
-  nested_thunks.push_back(
-      std::make_unique<FakeKernelThunk>(NextThunkInfo("k3"), slice_c));
+  nested_thunks.Emplace<FakeKernelThunk>(NextThunkInfo("k2"), slice_b);
+  nested_thunks.Emplace<FakeKernelThunk>(NextThunkInfo("k3"), slice_c);
   auto seq_thunk = std::make_unique<SequentialThunk>(NextThunkInfo("seq"),
                                                      std::move(nested_thunks));
   seq_thunk->set_concurrent_region_id(42);
@@ -900,4 +861,104 @@ TEST_F(CommandBufferCmdEmitterTest, ConcurrentRegionsForwardDependencies) {
   EXPECT_THAT(nodes[name_to_ids["d"]].out_edges, IsEmpty());
 }
 
+class AsyncCommandBufferCmdEmitterTest : public CommandBufferCmdEmitterTest {
+ protected:
+  void Kernel(ThunkSequence& thunks, absl::string_view name, int64_t slot) {
+    thunks.Emplace<FakeKernelThunk>(
+        NextThunkInfo(name),
+        BufferAllocation::Slice(&allocation_, slot * 1024, 1024));
+  }
+
+  AsyncStartThunk* Start(ThunkSequence& thunks, ExecutionStreamId stream,
+                         ThunkSequence body) {
+    auto start = std::make_unique<AsyncStartThunk>(NextThunkInfo("start"),
+                                                   stream, std::move(body));
+    AsyncStartThunk* result = start.get();
+    thunks.push_back(std::move(start));
+    return result;
+  }
+
+  void Done(ThunkSequence& thunks, const AsyncStartThunk* start,
+            absl::string_view name) {
+    thunks.Emplace<AsyncDoneThunk>(NextThunkInfo(name),
+                                   start->async_execution());
+  }
+
+  // Check reachability rather than direct edges: graph construction can remove
+  // redundant edges without changing the execution order.
+  bool HappensBefore(CommandExecutor& commands, const std::string& before,
+                     const std::string& after) {
+    auto ids = NamesToNodeIds(commands);
+    if (ids.find(before) == ids.end() || ids.find(after) == ids.end()) {
+      return false;
+    }
+    auto graph = commands.execution_graph();
+    std::vector<bool> reachable(commands.size(), false);
+    reachable[ids.at(before)] = true;
+    for (int64_t i = ids.at(before); i < static_cast<int64_t>(commands.size());
+         ++i) {
+      if (!reachable[i]) {
+        continue;
+      }
+      for (const auto& edge : graph->nodes_defs()[i].out_edges) {
+        reachable[edge.id] = true;
+      }
+    }
+    return reachable[ids.at(after)];
+  }
+
+  const ConvertToCommandsOptions options_ = {
+      CommandExecutor::SynchronizationMode::kLHS};
+
+ private:
+  BufferAllocation allocation_{0, 16 * 1024, 0};
+};
+
+TEST_F(AsyncCommandBufferCmdEmitterTest, KeepsOrdinaryCommandsOrdered) {
+  ThunkSequence thunks;
+  Kernel(thunks, "first", 0);
+  ThunkSequence nested;
+  Kernel(nested, "second", 1);
+  thunks.Emplace<SequentialThunk>(NextThunkInfo("sequential"),
+                                  std::move(nested));
+  Kernel(thunks, "third", 2);
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
+                       ConvertToCommands(thunks, options_));
+  ASSERT_EQ(commands.size(), 3);
+  EXPECT_TRUE(commands.execution_graph()->is_sequential());
+  EXPECT_TRUE(HappensBefore(commands, "first", "second"));
+  EXPECT_TRUE(HappensBefore(commands, "second", "third"));
+}
+
+TEST_F(AsyncCommandBufferCmdEmitterTest, PreservesFlattenedAsyncOrder) {
+  ThunkSequence thunks;
+  Kernel(thunks, "before", 0);
+  ThunkSequence body;
+  Kernel(body, "async_a", 1);
+  ThunkSequence nested;
+  Kernel(nested, "async_b", 2);
+  body.Emplace<SequentialThunk>(NextThunkInfo("sequential"), std::move(nested));
+  AsyncStartThunk* start =
+      Start(thunks, CommunicationStreamId(0), std::move(body));
+  Kernel(thunks, "main_a", 3);
+  Kernel(thunks, "main_b", 4);
+  Done(thunks, start, "done");
+  Kernel(thunks, "after", 5);
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
+                       ConvertToCommands(thunks, options_));
+  EXPECT_EQ(commands.size(), 6);
+  EXPECT_FALSE(commands.execution_graph()->is_sequential());
+  EXPECT_TRUE(HappensBefore(commands, "before", "async_a"));
+  EXPECT_TRUE(HappensBefore(commands, "before", "main_a"));
+  EXPECT_TRUE(HappensBefore(commands, "async_a", "async_b"));
+  EXPECT_TRUE(HappensBefore(commands, "main_a", "main_b"));
+  EXPECT_TRUE(HappensBefore(commands, "async_b", "after"));
+  EXPECT_TRUE(HappensBefore(commands, "main_b", "after"));
+  EXPECT_FALSE(HappensBefore(commands, "async_b", "main_a"));
+  EXPECT_FALSE(HappensBefore(commands, "main_b", "async_a"));
+}
+
+}  // namespace
 }  // namespace xla::gpu

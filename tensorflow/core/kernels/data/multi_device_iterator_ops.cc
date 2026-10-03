@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/context.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -312,13 +313,11 @@ class MultiDeviceIterator : public ResourceBase {
       if (!background_thread_) {
         IteratorContext::Params params(ctx);
         params.cancellation_manager = &cancellation_manager_;
-        background_thread_ =
-            parent_->unbounded_thread_pool_.get_thread_factory()->StartThread(
-                "tf_data_multi_device_iterator",
-                std::bind(
-                    &MultiDeviceIterator::MultiDeviceBuffer::BackgroundThread,
-                    this,
-                    std::make_shared<IteratorContext>(std::move(params))));
+        background_thread_.reset(Env::Default()->StartThread(
+            /*thread_options=*/{}, "tf_data_multi_device_iterator",
+            tsl::WithCurrentContext(std::bind(
+                &MultiDeviceIterator::MultiDeviceBuffer::BackgroundThread, this,
+                std::make_shared<IteratorContext>(std::move(params))))));
       }
     }
 

@@ -269,7 +269,13 @@ std::vector<IntrinsicAccuracyTestParam> GetAccuracyTestParams() {
       {"cosine", F64, accuracy::kGoldenCos, accuracy::kCosF64Budget},
 
       {"erf", F32, accuracy::kGoldenErf, accuracy::kErfF32Budget},
-      {"erf", F64, accuracy::kGoldenErf, accuracy::kErfF64Budget}};
+      {"erf", F64, accuracy::kGoldenErf, accuracy::kErfF64Budget},
+
+      {"tan", F32, accuracy::kGoldenTan, accuracy::kTanF32Budget},
+      {"tan", F64, accuracy::kGoldenTan, accuracy::kTanF64Budget},
+
+      {"cbrt", F32, accuracy::kGoldenCbrt, accuracy::kCbrtF32Budget},
+      {"cbrt", F64, accuracy::kGoldenCbrt, accuracy::kCbrtF64Budget}};
   return params;
 }
 
@@ -366,11 +372,11 @@ class HloIntrinsicAccuracyParamTest
 
     std::string hlo =
         MakeUnaryHloModule(param.hlo_op_name, param.primitive_type, count);
-    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
     module->mutable_config().set_debug_options(GetDebugOptionsForTest());
 
-    TF_ASSERT_OK_AND_ASSIGN(auto result,
-                            Execute(std::move(module), {&input_literal}));
+    ASSERT_OK_AND_ASSIGN(auto result,
+                         Execute(std::move(module), {&input_literal}));
 
     auto result_data = result.template data<T>();
     auto report = ComputeAccuracyReport<T>(golden, result_data.data(),

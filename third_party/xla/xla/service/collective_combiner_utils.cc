@@ -77,10 +77,7 @@ FrontendAttributes MergeFrontendAttributes(
   return merged;
 }
 
-namespace {
-
-// Returns the longest common prefix of all strings, trimmed to the last '/'.
-std::string CommonPrefix(absl::Span<const std::string> names) {
+std::string CommonOpNamePrefix(absl::Span<const std::string> names) {
   if (names.empty()) return "";
   absl::string_view prefix = names.front();
   for (int64_t i = 1; i < names.size(); ++i) {
@@ -94,13 +91,15 @@ std::string CommonPrefix(absl::Span<const std::string> names) {
   return "";
 }
 
+namespace {
+
 // Formats op_names as "common_prefix/(suffix1:suffix2:suffix3)".
 // If all names are identical, returns the name as-is.
 std::string MergeOpNames(absl::Span<const std::string> names) {
   if (names.empty()) return "";
   if (names.size() == 1) return names.front();
 
-  std::string prefix = CommonPrefix(names);
+  std::string prefix = CommonOpNamePrefix(names);
   std::vector<std::string> suffixes;
   suffixes.reserve(names.size());
   for (const auto& name : names) {

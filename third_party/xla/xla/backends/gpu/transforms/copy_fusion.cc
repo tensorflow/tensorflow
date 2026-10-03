@@ -24,11 +24,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -53,7 +54,9 @@ bool OnlyElementwiseOpsReachableFromParams(HloComputation* fused_computation) {
     for (auto user : hlo->users()) {
       if ((!user->IsElementwiseOnOperand(user->operand_index(hlo)) ||
            HloPredicateIsOp<HloOpcode::kCopy>(user)) &&
-          HloPredicateIsNotOp<HloOpcode::kBitcast, HloOpcode::kTuple>(user)) {
+          !(HloPredicateIsOp<HloOpcode::kBitcast>(user) &&
+            hlo_instruction_utils::KeepsBitwidth(*user)) &&
+          HloPredicateIsNotOp<HloOpcode::kTuple>(user)) {
         return false;
       }
       if (visited.insert(user).second) {
@@ -101,9 +104,10 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(
         }
         copy_user = copy_user->users()[0];
       }
-      // Skip bitcast ops.
+      // Skip bitcast ops that keep the bitwidth.
       if (HloPredicateIsOp<HloOpcode::kBitcast>(copy_user) &&
-          copy_user->user_count() == 1) {
+          copy_user->user_count() == 1 &&
+          hlo_instruction_utils::KeepsBitwidth(*copy_user)) {
         copy_user = copy_user->users()[0];
       }
       if (HloPredicateIsOp<HloOpcode::kCopy>(copy_user) &&
@@ -197,17 +201,17 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(
     }
 
     if (HloPredicateIsOp<HloOpcode::kTuple>(root)) {
-      RETURN_IF_ERROR(fused_computation->RemoveInstruction(root));
+      ABSL_RETURN_IF_ERROR(fused_computation->RemoveInstruction(root));
     } else {
       auto get_tuple_element_root = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(hlo, 0));
-      RETURN_IF_ERROR(hlo->ReplaceAllUsesWithDifferentShape(
+      ABSL_RETURN_IF_ERROR(hlo->ReplaceAllUsesWithDifferentShape(
           other_users, get_tuple_element_root));
     }
     for (int64_t i = 0; i < copies.size(); ++i) {
       auto get_tuple_element = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(hlo, num_outputs + i));
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           computation->ReplaceInstruction(copies[i], get_tuple_element));
     }
   }

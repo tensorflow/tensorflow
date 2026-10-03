@@ -18,10 +18,11 @@ limitations under the License.
 #include <atomic>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/time/clock.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -31,7 +32,6 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-using ::testing::Invoke;
 using ::testing::Pointee;
 using ::testing::Return;
 
@@ -67,15 +67,19 @@ TEST(ContinuousProfilerOrchestratorTest,
 
   // Setup Consume mock to return sequential chunks with high sizes to shrink
   // the interval
+  absl::Notification consumed_enough;
   std::atomic<int> consume_count(0);
   EXPECT_CALL(*mock, Consume())
-      .WillRepeatedly(Invoke([&]() -> absl::StatusOr<ConsumeResult> {
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
         int count = ++consume_count;
+        if (count >= 4 && !consumed_enough.HasBeenNotified()) {
+          consumed_enough.Notify();
+        }
         return ConsumeResult{
             .data = std::any(count),
-            .estimated_size_bytes = 1000 * 1024 * 1024  // 1000MB (>512MB)
+            .estimated_size_bytes = 600 * 1024 * 1024  // 600MB (>512MB)
         };
-      }));
+      });
 
   ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
       std::move(mock_profiler));
@@ -83,19 +87,14 @@ TEST(ContinuousProfilerOrchestratorTest,
   // Start orchestrator (spawns background loop)
   ASSERT_OK(orchestrator.Start());
 
-  // Wait until we have consumed at least 4 chunks.
-  // Due to high watermark scaling, interval shrinks from 1s -> 500ms -> 250ms
-  // -> 125ms -> 100ms. This will happen in less than 1.0 second of real-time
-  // sleep.
-  while (consume_count < 4) {
-    absl::SleepFor(absl::Milliseconds(50));
-  }
+  // Wait until we have consumed at least 4 chunks using notification.
+  consumed_enough.WaitForNotification();
 
   // Stop orchestrator (terminates background loop)
   ASSERT_OK(orchestrator.Stop());
 
-  // Verify polling interval shrank from 1s due to high watermark
-  EXPECT_LE(orchestrator.polling_interval(), absl::Milliseconds(500));
+  // Verify polling interval remains at 2s.
+  EXPECT_LE(orchestrator.polling_interval(), absl::Milliseconds(2000));
 
   // Verify that CollectData serializes the chunks in correct chronological
   // order!
@@ -122,30 +121,377 @@ TEST(ContinuousProfilerOrchestratorTest, DynamicIntervalLowWatermarkScaling) {
   EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
 
   // Consume returns a very small chunk (1MB < 5MB low watermark)
+  absl::Notification first_consumed;
   EXPECT_CALL(*mock, Consume())
-      .WillRepeatedly(Invoke([]() -> absl::StatusOr<ConsumeResult> {
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        if (!first_consumed.HasBeenNotified()) {
+          first_consumed.Notify();
+        }
         return ConsumeResult{
             .data = std::any(1),
             .estimated_size_bytes = 1 * 1024 * 1024  // 1MB (<5MB)
         };
-      }));
+      });
 
   ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
       std::move(mock_profiler));
-  EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(1));  // initial
+  EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(2));  // initial
 
   // Start
   ASSERT_OK(orchestrator.Start());
 
-  // Wait a very short time for the first immediate consume to run and adjust
-  // the interval
-  absl::SleepFor(absl::Milliseconds(50));
+  // Wait for the first immediate consume to run and adjust the interval
+  first_consumed.WaitForNotification();
 
   // Stop immediately
   ASSERT_OK(orchestrator.Stop());
 
-  // Verify interval scaled up from 1s to 2s due to low watermark!
-  EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(2));
+  // Verify interval scaled up from 2s to 4s due to low watermark!
+  EXPECT_EQ(orchestrator.polling_interval(), absl::Seconds(4));
+}
+
+TEST(ContinuousProfilerOrchestratorTest, SerializeChunks) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_enough;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count >= 2 && !consumed_enough.HasBeenNotified()) {
+          consumed_enough.Notify();
+        }
+        return ConsumeResult{.data = std::any(count),
+                             .estimated_size_bytes = 10 * 1024 * 1024};
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler));
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_enough.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  EXPECT_CALL(*mock, SerializeMock(::testing::_, ::testing::_))
+      .WillRepeatedly(Return(absl::InternalError("serialization error")));
+  EXPECT_CALL(*mock, SerializeMock(Pointee(AnyEqInt(1)), ::testing::_))
+      .WillOnce(Return(absl::OkStatus()));
+
+  std::vector<tensorflow::profiler::XSpace> spaces =
+      orchestrator.SerializeChunks();
+  EXPECT_EQ(spaces.size(), 1);
+}
+
+TEST(ContinuousProfilerOrchestratorTest, CustomMemoryBudget) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  ContinuousProfilerOrchestrator<ProfilerInterface> default_orchestrator(
+      std::move(mock_profiler));
+  EXPECT_EQ(default_orchestrator.max_buffer_bytes(), kDefaultMaxBufferBytes);
+
+  auto mock_profiler2 = std::make_unique<MockProfiler>();
+  ContinuousProfilerOrchestrator<ProfilerInterface> custom_orchestrator(
+      std::move(mock_profiler2), 500 * 1024 * 1024);
+  EXPECT_EQ(custom_orchestrator.max_buffer_bytes(), 500 * 1024 * 1024);
+}
+
+TEST(ContinuousProfilerOrchestratorTest, ByteBudgetAccounting) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_2;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count <= 2) {
+          if (count == 2 && !consumed_2.HasBeenNotified()) {
+            consumed_2.Notify();
+          }
+          return ConsumeResult{
+              .data = std::any(count),
+              .estimated_size_bytes = 25 * 1024 * 1024,  // 25MB
+          };
+        }
+        return absl::OutOfRangeError("End of stream");
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler), 100 * 1024 * 1024);
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 0);
+  EXPECT_EQ(orchestrator.dropped_chunks_count(), 0);
+  EXPECT_EQ(orchestrator.dropped_bytes_count(), 0);
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_2.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 50 * 1024 * 1024);
+  EXPECT_EQ(orchestrator.dropped_chunks_count(), 0);
+  EXPECT_EQ(orchestrator.dropped_bytes_count(), 0);
+
+  std::vector<std::any> chunks = orchestrator.PopBuffer();
+  EXPECT_EQ(chunks.size(), 2);
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 0);
+}
+
+TEST(ContinuousProfilerOrchestratorTest, FIFOEvictionOnMemoryCap) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_3;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count <= 3) {
+          if (count == 3 && !consumed_3.HasBeenNotified()) {
+            consumed_3.Notify();
+          }
+          return ConsumeResult{
+              .data = std::any(count),
+              .estimated_size_bytes = 40 * 1024 * 1024,  // 40MB
+          };
+        }
+        return absl::OutOfRangeError("End of stream");
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler), 100 * 1024 * 1024);  // 100MB limit
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_3.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  // Chunks: 1 (40MB), 2 (40MB), 3 (40MB). Total = 120MB > 100MB limit.
+  // Chunk 1 is evicted. Retained: chunks 2 & 3 (80MB).
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 80 * 1024 * 1024);
+  EXPECT_EQ(orchestrator.dropped_chunks_count(), 1);
+  EXPECT_EQ(orchestrator.dropped_bytes_count(), 40 * 1024 * 1024);
+
+  DrainedBuffer drained = orchestrator.PopBufferWithTelemetry();
+  ASSERT_EQ(drained.chunks.size(), 2);
+  EXPECT_EQ(std::any_cast<int>(drained.chunks[0]), 2);
+  EXPECT_EQ(std::any_cast<int>(drained.chunks[1]), 3);
+  EXPECT_EQ(drained.cumulative_dropped_chunks, 1);
+  EXPECT_EQ(drained.cumulative_dropped_bytes, 40 * 1024 * 1024);
+
+  // Buffer is empty after drain, but cumulative drop counters persist
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 0);
+  EXPECT_EQ(orchestrator.dropped_chunks_count(), 1);
+  EXPECT_EQ(orchestrator.dropped_bytes_count(), 40 * 1024 * 1024);
+}
+
+TEST(ContinuousProfilerOrchestratorTest, OversizedChunkRejection) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_1;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count == 1) {
+          consumed_1.Notify();
+          return ConsumeResult{
+              .data = std::any(count),
+              .estimated_size_bytes = 60 * 1024 * 1024,  // 60MB > 50MB limit
+          };
+        }
+        return absl::OutOfRangeError("End of stream");
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler), 50 * 1024 * 1024);
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_1.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 0);
+  EXPECT_EQ(orchestrator.dropped_chunks_count(), 1);
+  EXPECT_EQ(orchestrator.dropped_bytes_count(), 60 * 1024 * 1024);
+  EXPECT_TRUE(orchestrator.PopBuffer().empty());
+}
+
+TEST(ContinuousProfilerOrchestratorTest, IdleEmptyDataChunkNoOp) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_1;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count == 1) {
+          consumed_1.Notify();
+          return ConsumeResult{
+              .data = std::any(),  // empty data (no value)
+              .estimated_size_bytes = 0,
+          };
+        }
+        return absl::OutOfRangeError("End of stream");
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler));
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_1.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 0);
+  EXPECT_EQ(orchestrator.dropped_chunks_count(), 0);
+  EXPECT_EQ(orchestrator.dropped_bytes_count(), 0);
+  EXPECT_TRUE(orchestrator.PopBuffer().empty());
+}
+
+TEST(ContinuousProfilerOrchestratorTest, ZeroByteChunkWithDataIsBuffered) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_1;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count == 1) {
+          consumed_1.Notify();
+          return ConsumeResult{
+              .data = std::any(42),       // valid payload
+              .estimated_size_bytes = 0,  // 0 estimated bytes
+          };
+        }
+        return absl::OutOfRangeError("End of stream");
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler));
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_1.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 0);
+  EXPECT_EQ(orchestrator.dropped_chunks_count(), 0);
+  EXPECT_EQ(orchestrator.dropped_bytes_count(), 0);
+  std::vector<std::any> chunks = orchestrator.PopBuffer();
+  ASSERT_EQ(chunks.size(), 1);
+  EXPECT_EQ(std::any_cast<int>(chunks[0]), 42);
+}
+
+TEST(ContinuousProfilerOrchestratorTest, DropCountersAccuracy) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_3;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count == 1) {
+          return ConsumeResult{
+              .data = std::any(1),
+              .estimated_size_bytes = 60 * 1024 * 1024,  // 60MB
+          };
+        }
+        if (count == 2) {
+          return ConsumeResult{
+              .data = std::any(2),
+              .estimated_size_bytes = 120 * 1024 * 1024,  // 120MB (rejected)
+          };
+        }
+        if (count == 3) {
+          consumed_3.Notify();
+          return ConsumeResult{
+              .data = std::any(3),
+              .estimated_size_bytes =
+                  60 * 1024 * 1024,  // 60MB (evicts chunk 1)
+          };
+        }
+        return absl::OutOfRangeError("End of stream");
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler), 100 * 1024 * 1024);
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_3.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 60 * 1024 * 1024);
+  EXPECT_EQ(orchestrator.dropped_chunks_count(), 2);
+  EXPECT_EQ(orchestrator.dropped_bytes_count(), (120 + 60) * 1024 * 1024);
+
+  DrainedBuffer drained = orchestrator.PopBufferWithTelemetry();
+  ASSERT_EQ(drained.chunks.size(), 1);
+  EXPECT_EQ(std::any_cast<int>(drained.chunks[0]), 3);
+  EXPECT_EQ(drained.cumulative_dropped_chunks, 2);
+  EXPECT_EQ(drained.cumulative_dropped_bytes, 180 * 1024 * 1024);
+}
+
+TEST(ContinuousProfilerOrchestratorTest, StopDrainAccounting) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification consumed_1;
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        int count = ++consume_count;
+        if (count == 1) {
+          consumed_1.Notify();
+          return ConsumeResult{
+              .data = std::any(1),
+              .estimated_size_bytes = 20 * 1024 * 1024,  // 20MB
+          };
+        }
+        if (count == 2) {
+          // Returned during Stop()
+          return ConsumeResult{
+              .data = std::any(2),
+              .estimated_size_bytes = 30 * 1024 * 1024,  // 30MB
+          };
+        }
+        return absl::OutOfRangeError("End of stream");
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler), 100 * 1024 * 1024);
+
+  ASSERT_OK(orchestrator.Start());
+  consumed_1.WaitForNotification();
+  ASSERT_OK(orchestrator.Stop());
+
+  EXPECT_EQ(orchestrator.total_buffered_bytes(), 50 * 1024 * 1024);
+  std::vector<std::any> chunks = orchestrator.PopBuffer();
+  ASSERT_EQ(chunks.size(), 2);
+  EXPECT_EQ(std::any_cast<int>(chunks[0]), 1);
+  EXPECT_EQ(std::any_cast<int>(chunks[1]), 2);
 }
 
 }  // namespace

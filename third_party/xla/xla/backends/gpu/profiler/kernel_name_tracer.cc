@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/profiler/kernel_name_tracer_factory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
@@ -29,7 +29,7 @@ namespace xla::gpu {
 absl::StatusOr<std::unique_ptr<KernelNameTracer>> KernelNameTracer::Create(
     const stream_executor::Platform::Id& platform_id) {
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-  ASSIGN_OR_RETURN(KernelNameTracerFactory::Type func,
+  ABSL_ASSIGN_OR_RETURN(KernelNameTracerFactory::Type func,
                    registry.FindObject<KernelNameTracerFactory>(platform_id));
   return func();
 }

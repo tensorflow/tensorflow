@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_finder.h"
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/stream_executor/mock_platform.h"
 #include "xla/stream_executor/mock_stream.h"
@@ -58,7 +59,7 @@ TEST(StreamFinderTest, FindStreamSucceeds) {
       .WillOnce(Return(nullptr));
   EXPECT_CALL(stream_executor1, FindAllocatedStream(gpu_stream))
       .WillOnce(Return(&stream));
-  TF_ASSERT_OK_AND_ASSIGN(auto found_stream, FindStream(&platform, gpu_stream));
+  ASSERT_OK_AND_ASSIGN(auto found_stream, FindStream(&platform, gpu_stream));
   EXPECT_EQ(found_stream, &stream);
 }
 
@@ -73,7 +74,7 @@ TEST(StreamFinderTest, OnlyExecutor1Exists) {
   MockStream stream;
   EXPECT_CALL(stream_executor1, FindAllocatedStream(gpu_stream))
       .WillOnce(Return(&stream));
-  TF_ASSERT_OK_AND_ASSIGN(auto found_stream, FindStream(&platform, gpu_stream));
+  ASSERT_OK_AND_ASSIGN(auto found_stream, FindStream(&platform, gpu_stream));
   EXPECT_EQ(found_stream, &stream);
 }
 }  // namespace

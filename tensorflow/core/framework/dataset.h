@@ -959,11 +959,11 @@ class IteratorContext {
       // is an instance of `thread::ThreadPoolInterface`). Notably, the
       // ownership of `params_.thread_pool` is *not* transferred onto the newly
       // created `ThreadPool` instance.
-      return absl::make_unique<thread::ThreadPool>(params_.thread_pool);
+      return std::make_unique<thread::ThreadPool>(params_.thread_pool);
     } else {
-      return absl::make_unique<thread::ThreadPool>(params_.env, ThreadOptions(),
-                                                   name, num_threads,
-                                                   /*low_latency_hint=*/false);
+      return std::make_unique<thread::ThreadPool>(params_.env, ThreadOptions(),
+                                                  name, num_threads,
+                                                  /*low_latency_hint=*/false);
     }
   }
 

@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
@@ -95,7 +95,7 @@ absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
   for (HloComputationProto& computation : *module->mutable_computations()) {
     for (HloInstructionProto& instruction :
          *computation.mutable_instructions()) {
-      ASSIGN_OR_RETURN(std::string backend_config_str,
+      ABSL_ASSIGN_OR_RETURN(std::string backend_config_str,
                        GetBackendConfigString(instruction, module));
 
       absl::StatusOr<std::string> normalized_or = SortJson(backend_config_str);
@@ -122,6 +122,23 @@ absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
       } else if (!instruction.backend_config().empty()) {
         instruction.set_backend_config(std::move(backend_config_str));
       }
+
+      // The payload table is shared with metadata payloads, so they must be
+      // re-mapped into the new table as well, otherwise their IDs would dangle.
+      if (instruction.has_metadata() &&
+          instruction.metadata().has_metadata_payload()) {
+        Payload* payload =
+            instruction.mutable_metadata()->mutable_metadata_payload();
+        if (payload->has_id()) {
+          const int64_t id = payload->id();
+          if (id < 0 || id >= module->payloads_size()) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Invalid metadata payload id ", id,
+                             " with payloads size ", module->payloads_size()));
+          }
+          payload->set_id(get_new_payload_id(module->payloads(id)));
+        }
+      }
     }
   }
   module->mutable_payloads()->Assign(
@@ -136,7 +153,7 @@ absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
 absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
                                      std::unique_ptr<riegeli::Writer> writer) {
   riegeli::RecordWriter record_writer(std::move(writer),
-                                      GetSplitProtoRiegeliOptions());
+                                      GetGpuSplitProtoOptions());
   SplitProtoManifest manifest = BuildManifest(executable.constants_size());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       WriteRecord(record_writer, manifest),

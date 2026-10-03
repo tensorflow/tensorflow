@@ -22,13 +22,13 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
@@ -45,7 +45,7 @@ using BundleRef = tsl::RCReference<Bundle>;
 // A runtime-managed data structure that represents an ordered list of
 // `ValueRef`s.
 class Bundle : public tsl::ReferenceCounted<Bundle>,
-               public llvm::RTTIExtends<Bundle, llvm::RTTIRoot> {
+               public RTTIExtends<Bundle, RTTIRoot> {
  public:
   Bundle() = default;
 

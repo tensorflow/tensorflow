@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 
@@ -32,6 +34,11 @@ class PjRtStagingBuffer {
   virtual absl::Span<uint8_t> data() = 0;
 
   virtual absl::Span<const uint8_t> const_data() const = 0;
+
+  // Creates a PjRtStagingBuffer that wraps an already allocated memory span,
+  // and runs `on_done` when the buffer is destroyed.
+  static tsl::AsyncValueRef<PjRtStagingBuffer> Create(
+      absl::Span<uint8_t> span, absl::AnyInvocable<void() &&> on_done);
 };
 
 }  // namespace xla

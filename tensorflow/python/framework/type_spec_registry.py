@@ -16,8 +16,8 @@
 
 import re
 
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import internal
-
 
 _TYPE_SPEC_TO_NAME = {}
 _NAME_TO_TYPE_SPEC = {}
@@ -52,17 +52,48 @@ def register(name):
   def decorator_fn(cls):
     if not (isinstance(cls, type) and issubclass(cls, internal.TypeSpec)):
       raise TypeError("Expected `cls` to be a TypeSpec; got %r" % (cls,))
-    if cls in _TYPE_SPEC_TO_NAME:
-      raise ValueError("Class %s.%s has already been registered with name %s." %
-                       (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls]))
+
+    # Check cls's own identity first. A given TypeSpec class must map to at
+    # most one name. This must run before the name-based branch below so
+    # that re-registering cls under a different name always raises here,
+    # even if that other name happens to be occupied by a compatible
+    # (same module/qualname) class. Otherwise the reverse mapping for cls's
+    # original name would get silently overwritten, leaving the two dicts
+    # inconsistent with each other.
+    if cls in _TYPE_SPEC_TO_NAME and _TYPE_SPEC_TO_NAME[cls] != name:
+      raise ValueError(
+          "Class %s.%s has already been registered with name %s."
+          % (cls.__module__, cls.__name__, _TYPE_SPEC_TO_NAME[cls])
+      )
+
     if name in _NAME_TO_TYPE_SPEC:
-      raise ValueError("Name %s has already been registered for class %s.%s." %
-                       (name, _NAME_TO_TYPE_SPEC[name].__module__,
-                        _NAME_TO_TYPE_SPEC[name].__name__))
+      existing_cls = _NAME_TO_TYPE_SPEC[name]
+      if existing_cls is cls:
+        return cls
+      elif (
+          existing_cls.__module__ == cls.__module__
+          and existing_cls.__name__ == cls.__name__
+      ):
+        logging.warning(
+            "Re-registering class %s.%s for name %s.",
+            cls.__module__,
+            cls.__name__,
+            name,
+        )
+        # Clear out old mappings in reverse lookup
+        _TYPE_SPEC_TO_NAME.pop(existing_cls, None)
+        _TYPE_SPEC_TO_NAME[cls] = name
+        _NAME_TO_TYPE_SPEC[name] = cls
+        return cls
+      else:
+        raise ValueError(
+            "Name %s has already been registered for class %s.%s."
+            % (name, existing_cls.__module__, existing_cls.__name__)
+        )
+
     _TYPE_SPEC_TO_NAME[cls] = name
     _NAME_TO_TYPE_SPEC[name] = cls
     return cls
-
   return decorator_fn
 
 

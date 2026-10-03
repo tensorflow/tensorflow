@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/SmallVector.h"

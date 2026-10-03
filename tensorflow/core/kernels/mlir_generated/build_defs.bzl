@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Generates cubin headers for TF dialect ops."""
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
@@ -166,9 +181,9 @@ def _gen_kernel_bin_impl(ctx):
             "--arch=%s" % ",".join(ctx.attr.gpu_archs),
             "--input=%s" % ctx.file.mlir_op.path,
             "--output=%s" % gpu_bin.path,
-            "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
-            "--jit_i64_indexed_for_large_tensors=%s" % ctx.attr.jit_i64_indexed_for_large_tensors,
-            "--jit=%s" % ctx.attr.jit,
+            "--enable_ftz=%s" % ("true" if ctx.attr.data_type == "f32" else "false"),
+            "--jit_i64_indexed_for_large_tensors=%s" % ("true" if ctx.attr.jit_i64_indexed_for_large_tensors else "false"),
+            "--jit=%s" % ("true" if ctx.attr.jit else "false"),
         ],
         use_default_shell_env = True,
         mnemonic = "compile",
@@ -391,8 +406,8 @@ def _gen_kernel_library(
                 ),
                 "--arch={}".format(gpu_arch_option),
                 "--tile_sizes=%s" % typed_tile_size,
-                "--jit_i64_indexed_for_large_tensors=%s" % jit_i64_indexed_for_large_tensors,
-                "--enable_ftz=%s" % (type == "f32"),
+                "--jit_i64_indexed_for_large_tensors=%s" % ("true" if jit_i64_indexed_for_large_tensors else "false"),
+                "--enable_ftz=%s" % ("true" if type == "f32" else "false"),
             ]
             if typed_unroll_factors:
                 test_args.append("--unroll_factors=%s" % typed_unroll_factors)

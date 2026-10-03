@@ -495,6 +495,16 @@ std::string AvoidCPPKeywords(absl::string_view name) {
   return std::string(name);
 }
 
+std::string SafeRenameTo(absl::string_view name, absl::string_view rename_to) {
+  if (tensorflow::IsValidAttrOrArgName(rename_to)) {
+    return std::string(rename_to);
+  }
+  if (tensorflow::IsValidAttrOrArgName(name)) {
+    return std::string(name);
+  }
+  return tensorflow::SanitizeToIdentifier(name);
+}
+
 void InferArgAttributes(
     const OpDef::ArgDef& arg,
     std::unordered_map<std::string, std::string>* inferred_attrs) {
@@ -567,14 +577,24 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     const auto& api_def_arg = *FindInputArg(api_def.arg_order(i), api_def);
     arg_types.push_back(
         absl::StrCat("::tensorflow::", ArgIsList(arg) ? "InputList" : "Input"));
-    arg_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
+    // rename_to() comes from ApiDef, a separate message from the OpDef
+    // arg/attr names. Both are spliced as a raw C++ identifier (parameter
+    // name) below: prefer rename_to() when it's a safe identifier, fall
+    // back to the original arg name when THAT is safe, and only sanitize
+    // as a last resort, since IsValidAttrOrArgName is not enforced at
+    // OpDef registration and a legitimately-registered op's argument name
+    // is not guaranteed to already be a safe identifier (e.g.
+    // TFLite_Detection_PostProcess's "raw_outputs/box_encodings").
+    const std::string safe_input_name =
+        SafeRenameTo(arg.name(), api_def_arg.rename_to());
+    arg_names.push_back(AvoidCPPKeywords(safe_input_name));
 
     // TODO(keveman): Include input type information.
     absl::string_view description = api_def_arg.description();
     if (!description.empty()) {
       ConsumeEquals(&description);
-      absl::StrAppend(&comment, "* ", AvoidCPPKeywords(api_def_arg.rename_to()),
-                      ": ", api_def_arg.description(), "\n");
+      absl::StrAppend(&comment, "* ", AvoidCPPKeywords(safe_input_name), ": ",
+                      api_def_arg.description(), "\n");
     }
   }
 
@@ -593,7 +613,14 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
-    std::string attr_name = AvoidCPPKeywords(api_def_attr.rename_to());
+    // See the safe_input_name comment above: rename_to() and the original
+    // attr name are both unvalidated at OpDef-registration time and both
+    // get spliced as a raw C++ identifier here, so prefer rename_to() when
+    // safe, fall back to the original name when THAT is safe, and only
+    // sanitize as a last resort.
+    const std::string safe_attr_name =
+        SafeRenameTo(attr.name(), api_def_attr.rename_to());
+    std::string attr_name = AvoidCPPKeywords(safe_attr_name);
 
     std::string attr_comment;
     if (!api_def_attr.description().empty()) {
@@ -630,7 +657,10 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     bool is_list = ArgIsList(arg);
     output_types.push_back(
         absl::StrCat("::tensorflow::", is_list ? "OutputList" : "Output"));
-    output_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
+    // See the safe_input_name comment above: the output arg's name and
+    // rename_to() need the same three-tier fallback as the input case.
+    output_names.push_back(
+        AvoidCPPKeywords(SafeRenameTo(arg.name(), api_def_arg.rename_to())));
     is_list_output.push_back(is_list);
   }
 
@@ -694,7 +724,15 @@ std::string OpInfo::GetOpAttrStruct() const {
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
-    const std::string camel_case_name = ToCamelCase(api_def_attr.rename_to());
+    // See the safe_input_name comment in OpInfo::OpInfo: attr.name() and
+    // api_def_attr.rename_to() are both unvalidated at OpDef-registration
+    // time, and both are spliced as a raw C++ identifier multiple times
+    // below (the setter name, the field access, the static defaults
+    // function name, and the field declaration) -- computed once here so
+    // every splice site below agrees on the same identifier.
+    const std::string safe_attr_name =
+        SafeRenameTo(attr.name(), api_def_attr.rename_to());
+    const std::string camel_case_name = ToCamelCase(safe_attr_name);
     const std::string suffix =
         (camel_case_name == op_name || camel_case_name == "Attrs") ? "_" : "";
     const std::string attr_func_def =
@@ -713,8 +751,7 @@ std::string OpInfo::GetOpAttrStruct() const {
     absl::StrAppend(&setters, "    TF_MUST_USE_RESULT Attrs ", attr_func_def,
                     " x) {\n");
     absl::StrAppend(&setters, "      Attrs ret = *this;\n");
-    absl::StrAppend(&setters, "      ret.", api_def_attr.rename_to(),
-                    "_ = x;\n");
+    absl::StrAppend(&setters, "      ret.", safe_attr_name, "_ = x;\n");
     absl::StrAppend(&setters, "      return ret;\n    }\n\n");
 
     std::string field_initiliazer;
@@ -724,7 +761,7 @@ std::string OpInfo::GetOpAttrStruct() const {
       // Non-empty lists need static storage for their defaults. Define a
       // function with static local variable that stores the array.
       absl::StrAppend(&defaults_static_storage, "    static ", attr_type_name,
-                      " Default_", api_def_attr.rename_to(), "() {\n");
+                      " Default_", safe_attr_name, "() {\n");
       absl::StrAppend(
           &defaults_static_storage, "      static const ",
           ListElementTypeName(attr.type()), " kStorage[] = ",
@@ -733,14 +770,13 @@ std::string OpInfo::GetOpAttrStruct() const {
       absl::StrAppend(&defaults_static_storage, "      return ", attr_type_name,
                       "(kStorage);\n    }\n");
       // Set the field_initializer to call the defined function.
-      absl::StrAppend(&field_initiliazer, "Default_", api_def_attr.rename_to(),
-                      "()");
+      absl::StrAppend(&field_initiliazer, "Default_", safe_attr_name, "()");
     } else {
       field_initiliazer =
           PrintAttrValue(graph_op_def.name(), api_def_attr.default_value());
     }
-    absl::StrAppend(&struct_fields, "    ", attr_type_name, " ",
-                    api_def_attr.rename_to(), "_ = ", field_initiliazer, ";\n");
+    absl::StrAppend(&struct_fields, "    ", attr_type_name, " ", safe_attr_name,
+                    "_ = ", field_initiliazer, ";\n");
   }
 
   if (struct_fields.empty()) {

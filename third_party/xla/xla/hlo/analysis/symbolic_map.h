@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/types/span.h"

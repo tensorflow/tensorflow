@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for the buffer and DTensor conversion helpers."""
 
+from unittest import mock
+
 import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
@@ -130,6 +132,35 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
 
     with self.assertRaisesRegex(ValueError, 'not evenly divisible'):
       numpy_util.unpack(value, layout)
+
+  def _remote_mesh_layout(self):
+    mock_mesh = mock.Mock()
+    mock_mesh.is_remote.return_value = True
+    mock_layout = mock.Mock()
+    mock_layout.mesh = mock_mesh
+    return mock_layout
+
+  def test_to_numpy_remote_mesh_warns_by_default(self):
+    # Without the opt-in env var the call soft-deprecates: it warns and falls
+    # back to the historical placeholder so the internal import stays green.
+    with mock.patch.object(
+        numpy_util.api, 'fetch_layout', return_value=self._remote_mesh_layout()
+    ):
+      with mock.patch.dict('os.environ', {'TF_DTENSOR_RAISE_ON_REMOTE': '0'}):
+        with self.assertWarnsRegex(DeprecationWarning, 'remote mesh'):
+          result = numpy_util.to_numpy(mock.Mock())
+    self.assertEqual(result.tolist(), [None])
+
+  def test_to_numpy_remote_mesh_raises_when_env_set(self):
+    with mock.patch.object(
+        numpy_util.api, 'fetch_layout', return_value=self._remote_mesh_layout()
+    ):
+      with mock.patch.dict('os.environ', {'TF_DTENSOR_RAISE_ON_REMOTE': '1'}):
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            'to_numpy\\(\\) is not supported on a remote mesh',
+        ):
+          numpy_util.to_numpy(mock.Mock())
 
 
 if __name__ == '__main__':

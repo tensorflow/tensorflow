@@ -19,12 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/dot_handler.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
@@ -58,15 +59,21 @@ class CreateShardedScaledDotFunctor final
     HloInstruction* r = rr.operand().hlo();
     HloInstruction* l_scale = ll.scale().hlo();
     HloInstruction* r_scale = rr.scale().hlo();
-    ASSIGN_OR_RETURN(Shape sharded_scaled_dot_shape,
+    ABSL_ASSIGN_OR_RETURN(Shape sharded_scaled_dot_shape,
                      ShapeInference::InferDotOpShape(
                          l->shape(), r->shape(), dimension_numbers_,
                          /*preferred_element_type=*/
                          block_scaled_dot_->shape().element_type()));
 
-    return b->AddInstruction(HloInstruction::CreateCustomCall(
-        sharded_scaled_dot_shape, {l, r, l_scale, r_scale},
-        "__op$block_scaled_dot", ""));
+    HloInstruction* sharded_dot =
+        b->AddInstruction(HloInstruction::CreateCustomCall(
+            sharded_scaled_dot_shape, {l, r, l_scale, r_scale},
+            "__op$block_scaled_dot", ""));
+    if (block_scaled_dot_->frontend_attributes().map().contains(
+            sdy::kHasUnreducedAxes)) {
+      sharded_dot->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+    }
+    return sharded_dot;
   }
 
  private:

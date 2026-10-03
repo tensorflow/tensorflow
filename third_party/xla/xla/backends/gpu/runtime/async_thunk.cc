@@ -23,10 +23,10 @@ limitations under the License.
 #include <variant>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command.h"
@@ -74,7 +74,7 @@ absl::Status AsyncStartThunk::Prepare(const PrepareParams& params) {
 }
 
 absl::Status AsyncStartThunk::Initialize(const InitializeParams& params) {
-  RETURN_IF_ERROR(executor_.Initialize(params));
+  ABSL_RETURN_IF_ERROR(executor_.Initialize(params));
   return async_execution_->Initialize(params.execution_scoped_state,
                                       params.executor);
 }
@@ -91,11 +91,25 @@ absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
       }
       return params.additional_compute_streams[idx];
     }
+    if (execution_stream_id_.is_memcpy()) {
+      MemcpyStreamId id = execution_stream_id_.memcpy_id();
+      if (id != kMemcpyD2HStreamId && id != kMemcpyH2DStreamId) {
+        return InvalidArgument("Invalid memcpy stream id: %d", id.value());
+      }
+      bool is_d2h = id == kMemcpyD2HStreamId;
+      se::Stream* stream =
+          is_d2h ? params.device_to_host_stream : params.host_to_device_stream;
+      if (stream == nullptr) {
+        return Internal("%s stream is not available for async execution",
+                        is_d2h ? "device_to_host" : "host_to_device");
+      }
+      return stream;
+    }
     return params.collective_params->async_streams.at(
         execution_stream_id_.communication_id().value());
   };
 
-  ASSIGN_OR_RETURN(se::Stream * async_stream, std::invoke(get_async_stream));
+  ABSL_ASSIGN_OR_RETURN(se::Stream * async_stream, std::invoke(get_async_stream));
   XLA_VLOG_DEVICE(1, async_stream->parent()->device_ordinal())
       << absl::StreamFormat("Execute async for `%s`: stream_id=%v, stream=%p",
                             profile_annotation(), execution_stream_id_,
@@ -103,14 +117,14 @@ absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Execute the nested thunks on the async stream. The guard will record the
   // completion event when it goes out of scope.
-  ASSIGN_OR_RETURN(auto guard,
+  ABSL_ASSIGN_OR_RETURN(auto guard,
                    async_execution_->Start(params.execution_scoped_state,
                                            params.stream, async_stream));
   return executor_.ExecuteOnStream(params.WithComputeStream(async_stream));
 }
 
-absl::Status AsyncStartThunk::WalkNested(Walker callback) {
-  return executor_.thunks().WalkNested(callback);
+absl::Status AsyncStartThunk::WalkNested(Walker pre_order, Walker post_order) {
+  return executor_.thunks().WalkNested(pre_order, post_order);
 }
 
 absl::Status AsyncStartThunk::TransformNested(Transformer callback) {
@@ -178,6 +192,8 @@ absl::StatusOr<ThunkProto> AsyncStartThunk::ToProto() const {
   if (execution_stream_id_.is_computation()) {
     start_proto->set_computation_stream_id(
         execution_stream_id_.computation_id().value());
+  } else if (execution_stream_id_.is_memcpy()) {
+    start_proto->set_memcpy_stream_id(execution_stream_id_.memcpy_id().value());
   } else {
     start_proto->set_communication_stream_id(
         execution_stream_id_.communication_id().value());
@@ -185,7 +201,7 @@ absl::StatusOr<ThunkProto> AsyncStartThunk::ToProto() const {
 
   start_proto->mutable_thunks();
   for (const auto& thunk : executor_.thunks()) {
-    ASSIGN_OR_RETURN(*start_proto->mutable_thunks()->add_thunks(),
+    ABSL_ASSIGN_OR_RETURN(*start_proto->mutable_thunks()->add_thunks(),
                      thunk->ToProto());
   }
   return proto;
@@ -200,15 +216,23 @@ absl::StatusOr<std::unique_ptr<AsyncStartThunk>> AsyncStartThunk::FromProto(
         return ComputationStreamId(proto.computation_stream_id());
       case AsyncStartThunkProto::kCommunicationStreamId:
         return CommunicationStreamId(proto.communication_stream_id());
+      case AsyncStartThunkProto::kMemcpyStreamId: {
+        MemcpyStreamId id(proto.memcpy_stream_id());
+        if (id != kMemcpyD2HStreamId && id != kMemcpyH2DStreamId) {
+          return InvalidArgument(
+              "Invalid memcpy stream id in AsyncStartThunk: %d", id.value());
+        }
+        return id;
+      }
       default:
         return Internal("Unknown execution stream id type in AsyncStartThunk");
     }
   };
-  ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id, make_stream_id());
+  ABSL_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id, make_stream_id());
 
   ThunkSequence nested;
   for (const auto& thunk_proto : proto.thunks().thunks()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(thunk_proto));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(thunk_proto));
     nested.push_back(std::move(thunk));
   }
 

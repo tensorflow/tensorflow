@@ -21,14 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "grpcpp/channel.h"
-#include "grpcpp/create_channel.h"
 #include "grpcpp/generic/generic_stub.h"
-#include "grpcpp/impl/codegen/client_context.h"
-#include "grpcpp/impl/codegen/server_context.h"
-#include "grpcpp/impl/codegen/status.h"
+#include "grpcpp/grpcpp.h"
 #include "grpcpp/security/credentials.h"
-#include "grpcpp/server_builder.h"
+#include "grpcpp/security/server_credentials.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -39,37 +35,37 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/resource_base.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/distribute/experimental/rpc/kernels/grpc_credentials.h"
-#include "tensorflow/distribute/experimental/rpc/kernels/grpc_rpc_service.h"
+#include "tensorflow/distribute/experimental/rpc/proto/tf_rpc_service.grpc.pb.h"
 #include "tensorflow/distribute/experimental/rpc/proto/tf_rpc_service.pb.h"
 
 namespace tensorflow {
@@ -229,7 +225,8 @@ class FunctionRegistry {
     return absl::OkStatus();
   }
 
-  const gtl::FlatMap<std::string, FunctionMetadata>& List() const {
+  gtl::FlatMap<std::string, FunctionMetadata> List() const {
+    mutex_lock l(mu_);
     return registered_methods_;
   }
 
@@ -600,29 +597,28 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     return;
   }
   auto* response = new ListResponse();
-  client->ListAsync(
-      response, [ctx, response, done](const absl::Status& status) {
-        if (!status.ok()) {
-          ctx->SetStatus(status);
-        } else {
-          Tensor* method_output_signatures_t;
-          auto method_output_shape = TensorShape(
-              {static_cast<int64_t>(response->registered_methods_size())});
-          OP_REQUIRES_OK_ASYNC(
-              ctx,
-              ctx->allocate_output(1, method_output_shape,
-                                   &method_output_signatures_t),
-              done);
-          auto method_output_signatures =
-              method_output_signatures_t->vec<tstring>();
-          for (int i = 0; i < response->registered_methods_size(); ++i) {
-            method_output_signatures(i) =
-                response->registered_methods(i).SerializeAsString();
-          }
-        }
-        delete response;
-        done();
-      });
+  client->ListAsync(response, [ctx, response,
+                               done](const absl::Status& status) {
+    std::unique_ptr<ListResponse> safe_response(response);
+    if (!status.ok()) {
+      ctx->SetStatus(status);
+    } else {
+      Tensor* method_output_signatures_t;
+      auto method_output_shape = TensorShape(
+          {static_cast<int64_t>(response->registered_methods_size())});
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           ctx->allocate_output(1, method_output_shape,
+                                                &method_output_signatures_t),
+                           done);
+      auto method_output_signatures =
+          method_output_signatures_t->vec<tstring>();
+      for (int i = 0; i < response->registered_methods_size(); ++i) {
+        method_output_signatures(i) =
+            response->registered_methods(i).SerializeAsString();
+      }
+    }
+    done();
+  });
 }
 
 RpcServerStartOp::RpcServerStartOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -826,30 +822,36 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     }
   }
 
-  future_resource->AddDoneCallback(
-      [ctx, done, handle](const absl::Status& status,
-                          const CallResponse& response) {
-        if (!status.ok()) {
-          ctx->SetStatus(status);
-        } else {
-          if (ctx->num_outputs() != response.output_tensors().size()) {
-            ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
-                "Incorrect number of output types specified.",
-                ctx->num_outputs(), " ", response.output_tensors().size())));
-          } else {
-            int i = 0;
-            for (const auto& t_proto : response.output_tensors()) {
-              Tensor t;
-              if (!t.FromProto(t_proto)) {
-                ctx->SetStatus(absl::InternalError(
-                    "Invalid Tensor Proto response returned."));
-              }
-              ctx->set_output(i++, std::move(t));
-            }
-          }
+  future_resource->AddDoneCallback([ctx, done, handle](
+                                       const absl::Status& status,
+                                       const CallResponse& response) {
+    if (!status.ok()) {
+      ctx->SetStatus(status);
+    } else {
+      if (ctx->num_outputs() != response.output_tensors().size()) {
+        ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+            "Incorrect number of output types specified.", ctx->num_outputs(),
+            " ", response.output_tensors().size())));
+      } else {
+        int i = 0;
+        for (const auto& t_proto : response.output_tensors()) {
+          Tensor t;
+          OP_REQUIRES_ASYNC(
+              ctx, t.FromProto(t_proto),
+              absl::InternalError("Invalid Tensor Proto response returned."),
+              done);
+          OP_REQUIRES_ASYNC(ctx, t.dtype() == ctx->expected_output_dtype(i),
+                            absl::InvalidArgumentError(absl::StrCat(
+                                "Type mismatch for output tensor. Expected: ",
+                                DataTypeString(ctx->expected_output_dtype(i)),
+                                " but got: ", DataTypeString(t.dtype()))),
+                            done);
+          ctx->set_output(i++, std::move(t));
         }
-        done();
-      });
+      }
+    }
+    done();
+  });
 }
 
 REGISTER_KERNEL_BUILDER(Name("RpcServer").Device(DEVICE_CPU), RpcServerOp);

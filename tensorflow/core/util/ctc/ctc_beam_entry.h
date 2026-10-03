@@ -63,7 +63,7 @@ struct BeamEntry {
   // BeamRoot<CTCBeamState>::AddEntry() serves as the factory method.
   friend BeamEntry<T, CTCBeamState>* BeamRoot<T, CTCBeamState>::AddEntry(
       BeamEntry<T, CTCBeamState>* p, int l);
-  inline bool Active() const { return newp.total != kLogZero<T>(); }
+  bool Active() const { return newp.total != kLogZero<T>(); }
   // Return the child at the given index, or construct a new one in-place if
   // none was found.
   BeamEntry<T, CTCBeamState>& GetChild(int ind) {
@@ -139,8 +139,8 @@ template <class T, class CTCBeamState = EmptyBeamState>
 class BeamComparer {
  public:
   virtual ~BeamComparer() {}
-  virtual bool inline operator()(const BeamEntry<T, CTCBeamState>* a,
-                                 const BeamEntry<T, CTCBeamState>* b) const {
+  virtual bool operator()(const BeamEntry<T, CTCBeamState>* a,
+                          const BeamEntry<T, CTCBeamState>* b) const {
     return a->newp.total > b->newp.total;
   }
 };

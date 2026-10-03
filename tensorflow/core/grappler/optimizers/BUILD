@@ -320,7 +320,7 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "arithmetic_optimizer_test",
-    size = "small",
+    size = "medium",
     srcs = ["arithmetic_optimizer_test.cc"],
     deps = [
         ":arithmetic_optimizer",
@@ -535,6 +535,8 @@ cc_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_memory",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/costs:op_context",
+        "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:utils",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",

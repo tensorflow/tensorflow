@@ -1,6 +1,22 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # TPU Kernel Implementations
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
@@ -33,7 +49,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -103,8 +119,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@com_google_highway//:hwy",
-        "@com_google_highway//hwy/contrib/sort:vqsort",
+        "@highway//:hwy",
+        "@highway//hwy/contrib/sort:vqsort",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:util",
         "@xla//xla/tpu:tpu_api",
@@ -127,11 +143,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@xla//xla:literal_util",
@@ -318,10 +334,10 @@ cc_library(
     name = "tpu_compile_op_support",
     srcs = ["tpu_compile_op_support.cc"],
     hdrs = ["tpu_compile_op_support.h"],
-    visibility = [
+    visibility = internal_visibility([
         ":friends",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-    ],
+    ]),
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
@@ -863,8 +879,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:flags",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -872,6 +887,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder:xla_computation",
         "@xla//xla/tpu:status_helper",
@@ -941,8 +957,10 @@ tf_cc_test(
     srcs = ["sparse_core_ops_utils_test.cc"],
     deps = [
         ":sparse_core_ops_utils",
-        "//tensorflow/core:portable_gif_internal",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/tsl/platform:status_matchers",
     ],
 )
 

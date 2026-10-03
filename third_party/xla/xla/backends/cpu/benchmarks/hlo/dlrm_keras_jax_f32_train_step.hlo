@@ -1,0 +1,1610 @@
+HloModule jit_train_step, input_output_alias={ {0}: (18, {}, may-alias), {1}: (53, {}, may-alias), {2}: (0, {}, may-alias), {3}: (1, {}, may-alias), {4}: (2, {}, may-alias), {5}: (3, {}, may-alias), {6}: (4, {}, may-alias), {7}: (5, {}, may-alias), {8}: (6, {}, may-alias), {9}: (7, {}, may-alias), {10}: (8, {}, may-alias), {11}: (9, {}, may-alias), {12}: (10, {}, may-alias), {13}: (11, {}, may-alias), {14}: (12, {}, may-alias), {15}: (13, {}, may-alias), {16}: (14, {}, may-alias), {17}: (15, {}, may-alias), {18}: (16, {}, may-alias), {19}: (17, {}, may-alias), {20}: (54, {}, may-alias), {21}: (19, {}, may-alias), {22}: (20, {}, may-alias), {23}: (21, {}, may-alias), {24}: (22, {}, may-alias), {25}: (23, {}, may-alias), {26}: (24, {}, may-alias), {27}: (25, {}, may-alias), {28}: (26, {}, may-alias), {29}: (27, {}, may-alias), {30}: (28, {}, may-alias), {31}: (29, {}, may-alias), {32}: (30, {}, may-alias), {33}: (31, {}, may-alias), {34}: (32, {}, may-alias), {35}: (33, {}, may-alias), {36}: (34, {}, may-alias), {37}: (35, {}, may-alias), {38}: (36, {}, may-alias), {39}: (37, {}, may-alias), {40}: (38, {}, may-alias), {41}: (39, {}, may-alias), {42}: (40, {}, may-alias), {43}: (41, {}, may-alias), {44}: (42, {}, may-alias), {45}: (43, {}, may-alias), {46}: (44, {}, may-alias), {47}: (45, {}, may-alias), {48}: (46, {}, may-alias), {49}: (47, {}, may-alias), {50}: (48, {}, may-alias), {51}: (49, {}, may-alias), {52}: (50, {}, may-alias), {53}: (51, {}, may-alias), {54}: (52, {}, may-alias), {55}: (55, {}, may-alias), {56}: (56, {}, may-alias) }, entry_computation_layout={(f32[3,8]{1,0}, f32[796,8]{1,0}, f32[22,8]{1,0}, f32[1683,8]{1,0}, f32[944,8]{1,0}, /*index=5*/f32[5,8]{1,0}, f32[8]{0}, f32[8,8]{1,0}, f32[8]{0}, f32[15,192]{1,0}, /*index=10*/f32[192]{0}, f32[192,192]{1,0}, f32[192]{0}, f32[192,192]{1,0}, f32[192]{0}, /*index=15*/f32[192,1]{1,0}, f32[1]{0}, s32[], f32[], f32[3,8]{1,0}, /*index=20*/f32[3,8]{1,0}, f32[796,8]{1,0}, f32[796,8]{1,0}, f32[22,8]{1,0}, f32[22,8]{1,0}, /*index=25*/f32[1683,8]{1,0}, f32[1683,8]{1,0}, f32[944,8]{1,0}, f32[944,8]{1,0}, f32[5,8]{1,0}, /*index=30*/f32[5,8]{1,0}, f32[8]{0}, f32[8]{0}, f32[8,8]{1,0}, f32[8,8]{1,0}, /*index=35*/f32[8]{0}, f32[8]{0}, f32[15,192]{1,0}, f32[15,192]{1,0}, f32[192]{0}, /*index=40*/f32[192]{0}, f32[192,192]{1,0}, f32[192,192]{1,0}, f32[192]{0}, f32[192]{0}, /*index=45*/f32[192,192]{1,0}, f32[192,192]{1,0}, f32[192]{0}, f32[192]{0}, f32[192,1]{1,0}, /*index=50*/f32[192,1]{1,0}, f32[1]{0}, f32[1]{0}, f32[], f32[], /*index=55*/f32[], f32[], f32[6272,1]{1,0}, f32[6272,1]{1,0}, f32[6272,1]{1,0}, /*index=60*/f32[6272,1]{1,0}, s32[6272]{0}, f32[6272,1]{1,0}, s32[6272]{0}, s32[6272]{0}, /*index=65*/s32[6272]{0}, s32[6272]{0}, f32[6272]{0})->(f32[], f32[], f32[3,8]{1,0}, f32[796,8]{1,0}, f32[22,8]{1,0}, /*index=5*/f32[1683,8]{1,0}, f32[944,8]{1,0}, f32[5,8]{1,0}, f32[8]{0}, f32[8,8]{1,0}, /*index=10*/f32[8]{0}, f32[15,192]{1,0}, f32[192]{0}, f32[192,192]{1,0}, f32[192]{0}, /*index=15*/f32[192,192]{1,0}, f32[192]{0}, f32[192,1]{1,0}, f32[1]{0}, s32[], /*index=20*/f32[], f32[3,8]{1,0}, f32[3,8]{1,0}, f32[796,8]{1,0}, f32[796,8]{1,0}, /*index=25*/f32[22,8]{1,0}, f32[22,8]{1,0}, f32[1683,8]{1,0}, f32[1683,8]{1,0}, f32[944,8]{1,0}, /*index=30*/f32[944,8]{1,0}, f32[5,8]{1,0}, f32[5,8]{1,0}, f32[8]{0}, f32[8]{0}, /*index=35*/f32[8,8]{1,0}, f32[8,8]{1,0}, f32[8]{0}, f32[8]{0}, f32[15,192]{1,0}, /*index=40*/f32[15,192]{1,0}, f32[192]{0}, f32[192]{0}, f32[192,192]{1,0}, f32[192,192]{1,0}, /*index=45*/f32[192]{0}, f32[192]{0}, f32[192,192]{1,0}, f32[192,192]{1,0}, f32[192]{0}, /*index=50*/f32[192]{0}, f32[192,1]{1,0}, f32[192,1]{1,0}, f32[1]{0}, f32[1]{0}, /*index=55*/f32[], f32[], f32[], f32[])}, allow_spmd_sharding_propagation_to_parameters={true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true}
+
+%_where.1 (Arg_0.2: pred[6272], Arg_1.2: s32[6272], Arg_2.1: s32[6272]) -> s32[6272] {
+  %Arg_0.2 = pred[6272]{0} parameter(0)
+  %Arg_1.2 = s32[6272]{0} parameter(1)
+  %Arg_2.1 = s32[6272]{0} parameter(2)
+  ROOT %select_n.1 = s32[6272]{0} select(%Arg_0.2, %Arg_1.2, %Arg_2.1), metadata={op_name="select_n"}
+}
+
+%region_0.2 (reduce_and.3: pred[], reduce_and.4: pred[]) -> pred[] {
+  %reduce_and.3 = pred[] parameter(0), metadata={op_name="reduce_and"}
+  %reduce_and.4 = pred[] parameter(1), metadata={op_name="reduce_and"}
+  ROOT %reduce_and.5 = pred[] and(%reduce_and.3, %reduce_and.4), metadata={op_name="reduce_and"}
+}
+
+%_take.3 (Arg_0.3: f32[3,8], Arg_1.3: s32[6272]) -> (f32[6272,8], s32[6272,1]) {
+  %Arg_1.3 = s32[6272]{0} parameter(1)
+  %constant.80 = s32[] constant(0)
+  %lt.2 = s32[6272]{0} broadcast(%constant.80), dimensions={}, metadata={op_name="lt"}
+  %lt.3 = pred[6272]{0} compare(%Arg_1.3, %lt.2), direction=LT, metadata={op_name="lt"}
+  %constant.78 = s32[] constant(3)
+  %add.10 = s32[6272]{0} broadcast(%constant.78), dimensions={}, metadata={op_name="add"}
+  %add.11 = s32[6272]{0} add(%Arg_1.3, %add.10), metadata={op_name="add"}
+  %jit__where_.1 = s32[6272]{0} call(%lt.3, %add.11, %Arg_1.3), to_apply=%_where.1, metadata={op_name="jit(_where)"}
+  %broadcast_in_dim.4 = s32[6272,1]{1,0} reshape(%jit__where_.1), metadata={op_name="broadcast_in_dim"}
+  %constant.77 = s32[] constant(0)
+  %ge.2 = s32[6272,1]{1,0} broadcast(%constant.77), dimensions={}, metadata={op_name="ge"}
+  %ge.3 = pred[6272,1]{1,0} compare(%broadcast_in_dim.4, %ge.2), direction=GE, metadata={op_name="ge"}
+  %constant.76 = s32[] constant(2)
+  %le.2 = s32[6272,1]{1,0} broadcast(%constant.76), dimensions={}, metadata={op_name="le"}
+  %le.3 = pred[6272,1]{1,0} compare(%broadcast_in_dim.4, %le.2), direction=LE, metadata={op_name="le"}
+  %and.1 = pred[6272,1]{1,0} and(%ge.3, %le.3), metadata={op_name="and"}
+  %constant.79 = pred[] constant(true)
+  %reduce_and.7 = pred[6272]{0} reduce(%and.1, %constant.79), dimensions={1}, to_apply=%region_0.2, metadata={op_name="reduce_and"}
+  %broadcast_in_dim.5 = pred[6272,8]{1,0} broadcast(%reduce_and.7), dimensions={0}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.3 = f32[3,8]{1,0} parameter(0)
+  %gather.1 = f32[6272,8]{1,0} gather(%Arg_0.3, %broadcast_in_dim.4), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,8}, metadata={op_name="gather"}
+  %constant.75 = f32[] constant(nan)
+  %broadcast_in_dim.3 = f32[6272,8]{1,0} broadcast(%constant.75), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %select_n.3 = f32[6272,8]{1,0} select(%broadcast_in_dim.5, %gather.1, %broadcast_in_dim.3), metadata={op_name="select_n"}
+  ROOT %tuple.1 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) tuple(%select_n.3, %broadcast_in_dim.4)
+}
+
+%region_1.4 (reduce_and.11: pred[], reduce_and.12: pred[]) -> pred[] {
+  %reduce_and.11 = pred[] parameter(0), metadata={op_name="reduce_and"}
+  %reduce_and.12 = pred[] parameter(1), metadata={op_name="reduce_and"}
+  ROOT %reduce_and.13 = pred[] and(%reduce_and.11, %reduce_and.12), metadata={op_name="reduce_and"}
+}
+
+%_take_5.5 (Arg_0.5: f32[796,8], Arg_1.5: s32[6272]) -> (f32[6272,8], s32[6272,1]) {
+  %Arg_1.5 = s32[6272]{0} parameter(1)
+  %constant.92 = s32[] constant(0)
+  %lt.6 = s32[6272]{0} broadcast(%constant.92), dimensions={}, metadata={op_name="lt"}
+  %lt.7 = pred[6272]{0} compare(%Arg_1.5, %lt.6), direction=LT, metadata={op_name="lt"}
+  %constant.90 = s32[] constant(796)
+  %add.14 = s32[6272]{0} broadcast(%constant.90), dimensions={}, metadata={op_name="add"}
+  %add.15 = s32[6272]{0} add(%Arg_1.5, %add.14), metadata={op_name="add"}
+  %jit__where_.3 = s32[6272]{0} call(%lt.7, %add.15, %Arg_1.5), to_apply=%_where.1, metadata={op_name="jit(_where)"}
+  %broadcast_in_dim.10 = s32[6272,1]{1,0} reshape(%jit__where_.3), metadata={op_name="broadcast_in_dim"}
+  %constant.89 = s32[] constant(0)
+  %ge.6 = s32[6272,1]{1,0} broadcast(%constant.89), dimensions={}, metadata={op_name="ge"}
+  %ge.7 = pred[6272,1]{1,0} compare(%broadcast_in_dim.10, %ge.6), direction=GE, metadata={op_name="ge"}
+  %constant.88 = s32[] constant(795)
+  %le.6 = s32[6272,1]{1,0} broadcast(%constant.88), dimensions={}, metadata={op_name="le"}
+  %le.7 = pred[6272,1]{1,0} compare(%broadcast_in_dim.10, %le.6), direction=LE, metadata={op_name="le"}
+  %and.3 = pred[6272,1]{1,0} and(%ge.7, %le.7), metadata={op_name="and"}
+  %constant.91 = pred[] constant(true)
+  %reduce_and.15 = pred[6272]{0} reduce(%and.3, %constant.91), dimensions={1}, to_apply=%region_1.4, metadata={op_name="reduce_and"}
+  %broadcast_in_dim.11 = pred[6272,8]{1,0} broadcast(%reduce_and.15), dimensions={0}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.5 = f32[796,8]{1,0} parameter(0)
+  %gather.3 = f32[6272,8]{1,0} gather(%Arg_0.5, %broadcast_in_dim.10), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,8}, metadata={op_name="gather"}
+  %constant.87 = f32[] constant(nan)
+  %broadcast_in_dim.9 = f32[6272,8]{1,0} broadcast(%constant.87), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %select_n.5 = f32[6272,8]{1,0} select(%broadcast_in_dim.11, %gather.3, %broadcast_in_dim.9), metadata={op_name="select_n"}
+  ROOT %tuple.3 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) tuple(%select_n.5, %broadcast_in_dim.10)
+}
+
+%region_2.6 (reduce_and.19: pred[], reduce_and.20: pred[]) -> pred[] {
+  %reduce_and.19 = pred[] parameter(0), metadata={op_name="reduce_and"}
+  %reduce_and.20 = pred[] parameter(1), metadata={op_name="reduce_and"}
+  ROOT %reduce_and.21 = pred[] and(%reduce_and.19, %reduce_and.20), metadata={op_name="reduce_and"}
+}
+
+%_take_8.7 (Arg_0.7: f32[22,8], Arg_1.7: s32[6272]) -> (f32[6272,8], s32[6272,1]) {
+  %Arg_1.7 = s32[6272]{0} parameter(1)
+  %constant.104 = s32[] constant(0)
+  %lt.10 = s32[6272]{0} broadcast(%constant.104), dimensions={}, metadata={op_name="lt"}
+  %lt.11 = pred[6272]{0} compare(%Arg_1.7, %lt.10), direction=LT, metadata={op_name="lt"}
+  %constant.102 = s32[] constant(22)
+  %add.18 = s32[6272]{0} broadcast(%constant.102), dimensions={}, metadata={op_name="add"}
+  %add.19 = s32[6272]{0} add(%Arg_1.7, %add.18), metadata={op_name="add"}
+  %jit__where_.5 = s32[6272]{0} call(%lt.11, %add.19, %Arg_1.7), to_apply=%_where.1, metadata={op_name="jit(_where)"}
+  %broadcast_in_dim.16 = s32[6272,1]{1,0} reshape(%jit__where_.5), metadata={op_name="broadcast_in_dim"}
+  %constant.101 = s32[] constant(0)
+  %ge.10 = s32[6272,1]{1,0} broadcast(%constant.101), dimensions={}, metadata={op_name="ge"}
+  %ge.11 = pred[6272,1]{1,0} compare(%broadcast_in_dim.16, %ge.10), direction=GE, metadata={op_name="ge"}
+  %constant.100 = s32[] constant(21)
+  %le.10 = s32[6272,1]{1,0} broadcast(%constant.100), dimensions={}, metadata={op_name="le"}
+  %le.11 = pred[6272,1]{1,0} compare(%broadcast_in_dim.16, %le.10), direction=LE, metadata={op_name="le"}
+  %and.5 = pred[6272,1]{1,0} and(%ge.11, %le.11), metadata={op_name="and"}
+  %constant.103 = pred[] constant(true)
+  %reduce_and.23 = pred[6272]{0} reduce(%and.5, %constant.103), dimensions={1}, to_apply=%region_2.6, metadata={op_name="reduce_and"}
+  %broadcast_in_dim.17 = pred[6272,8]{1,0} broadcast(%reduce_and.23), dimensions={0}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.7 = f32[22,8]{1,0} parameter(0)
+  %gather.5 = f32[6272,8]{1,0} gather(%Arg_0.7, %broadcast_in_dim.16), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,8}, metadata={op_name="gather"}
+  %constant.99 = f32[] constant(nan)
+  %broadcast_in_dim.15 = f32[6272,8]{1,0} broadcast(%constant.99), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %select_n.7 = f32[6272,8]{1,0} select(%broadcast_in_dim.17, %gather.5, %broadcast_in_dim.15), metadata={op_name="select_n"}
+  ROOT %tuple.5 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) tuple(%select_n.7, %broadcast_in_dim.16)
+}
+
+%region_3.8 (reduce_and.27: pred[], reduce_and.28: pred[]) -> pred[] {
+  %reduce_and.27 = pred[] parameter(0), metadata={op_name="reduce_and"}
+  %reduce_and.28 = pred[] parameter(1), metadata={op_name="reduce_and"}
+  ROOT %reduce_and.29 = pred[] and(%reduce_and.27, %reduce_and.28), metadata={op_name="reduce_and"}
+}
+
+%_take_11.9 (Arg_0.9: f32[1683,8], Arg_1.9: s32[6272]) -> (f32[6272,8], s32[6272,1]) {
+  %Arg_1.9 = s32[6272]{0} parameter(1)
+  %constant.116 = s32[] constant(0)
+  %lt.14 = s32[6272]{0} broadcast(%constant.116), dimensions={}, metadata={op_name="lt"}
+  %lt.15 = pred[6272]{0} compare(%Arg_1.9, %lt.14), direction=LT, metadata={op_name="lt"}
+  %constant.114 = s32[] constant(1683)
+  %add.22 = s32[6272]{0} broadcast(%constant.114), dimensions={}, metadata={op_name="add"}
+  %add.23 = s32[6272]{0} add(%Arg_1.9, %add.22), metadata={op_name="add"}
+  %jit__where_.7 = s32[6272]{0} call(%lt.15, %add.23, %Arg_1.9), to_apply=%_where.1, metadata={op_name="jit(_where)"}
+  %broadcast_in_dim.22 = s32[6272,1]{1,0} reshape(%jit__where_.7), metadata={op_name="broadcast_in_dim"}
+  %constant.113 = s32[] constant(0)
+  %ge.14 = s32[6272,1]{1,0} broadcast(%constant.113), dimensions={}, metadata={op_name="ge"}
+  %ge.15 = pred[6272,1]{1,0} compare(%broadcast_in_dim.22, %ge.14), direction=GE, metadata={op_name="ge"}
+  %constant.112 = s32[] constant(1682)
+  %le.14 = s32[6272,1]{1,0} broadcast(%constant.112), dimensions={}, metadata={op_name="le"}
+  %le.15 = pred[6272,1]{1,0} compare(%broadcast_in_dim.22, %le.14), direction=LE, metadata={op_name="le"}
+  %and.7 = pred[6272,1]{1,0} and(%ge.15, %le.15), metadata={op_name="and"}
+  %constant.115 = pred[] constant(true)
+  %reduce_and.31 = pred[6272]{0} reduce(%and.7, %constant.115), dimensions={1}, to_apply=%region_3.8, metadata={op_name="reduce_and"}
+  %broadcast_in_dim.23 = pred[6272,8]{1,0} broadcast(%reduce_and.31), dimensions={0}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.9 = f32[1683,8]{1,0} parameter(0)
+  %gather.7 = f32[6272,8]{1,0} gather(%Arg_0.9, %broadcast_in_dim.22), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,8}, metadata={op_name="gather"}
+  %constant.111 = f32[] constant(nan)
+  %broadcast_in_dim.21 = f32[6272,8]{1,0} broadcast(%constant.111), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %select_n.9 = f32[6272,8]{1,0} select(%broadcast_in_dim.23, %gather.7, %broadcast_in_dim.21), metadata={op_name="select_n"}
+  ROOT %tuple.7 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) tuple(%select_n.9, %broadcast_in_dim.22)
+}
+
+%region_4.10 (reduce_and.35: pred[], reduce_and.36: pred[]) -> pred[] {
+  %reduce_and.35 = pred[] parameter(0), metadata={op_name="reduce_and"}
+  %reduce_and.36 = pred[] parameter(1), metadata={op_name="reduce_and"}
+  ROOT %reduce_and.37 = pred[] and(%reduce_and.35, %reduce_and.36), metadata={op_name="reduce_and"}
+}
+
+%_take_14.11 (Arg_0.11: f32[944,8], Arg_1.11: s32[6272]) -> (f32[6272,8], s32[6272,1]) {
+  %Arg_1.11 = s32[6272]{0} parameter(1)
+  %constant.128 = s32[] constant(0)
+  %lt.18 = s32[6272]{0} broadcast(%constant.128), dimensions={}, metadata={op_name="lt"}
+  %lt.19 = pred[6272]{0} compare(%Arg_1.11, %lt.18), direction=LT, metadata={op_name="lt"}
+  %constant.126 = s32[] constant(944)
+  %add.26 = s32[6272]{0} broadcast(%constant.126), dimensions={}, metadata={op_name="add"}
+  %add.27 = s32[6272]{0} add(%Arg_1.11, %add.26), metadata={op_name="add"}
+  %jit__where_.9 = s32[6272]{0} call(%lt.19, %add.27, %Arg_1.11), to_apply=%_where.1, metadata={op_name="jit(_where)"}
+  %broadcast_in_dim.28 = s32[6272,1]{1,0} reshape(%jit__where_.9), metadata={op_name="broadcast_in_dim"}
+  %constant.125 = s32[] constant(0)
+  %ge.18 = s32[6272,1]{1,0} broadcast(%constant.125), dimensions={}, metadata={op_name="ge"}
+  %ge.19 = pred[6272,1]{1,0} compare(%broadcast_in_dim.28, %ge.18), direction=GE, metadata={op_name="ge"}
+  %constant.124 = s32[] constant(943)
+  %le.18 = s32[6272,1]{1,0} broadcast(%constant.124), dimensions={}, metadata={op_name="le"}
+  %le.19 = pred[6272,1]{1,0} compare(%broadcast_in_dim.28, %le.18), direction=LE, metadata={op_name="le"}
+  %and.9 = pred[6272,1]{1,0} and(%ge.19, %le.19), metadata={op_name="and"}
+  %constant.127 = pred[] constant(true)
+  %reduce_and.39 = pred[6272]{0} reduce(%and.9, %constant.127), dimensions={1}, to_apply=%region_4.10, metadata={op_name="reduce_and"}
+  %broadcast_in_dim.29 = pred[6272,8]{1,0} broadcast(%reduce_and.39), dimensions={0}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.11 = f32[944,8]{1,0} parameter(0)
+  %gather.9 = f32[6272,8]{1,0} gather(%Arg_0.11, %broadcast_in_dim.28), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,8}, metadata={op_name="gather"}
+  %constant.123 = f32[] constant(nan)
+  %broadcast_in_dim.27 = f32[6272,8]{1,0} broadcast(%constant.123), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %select_n.11 = f32[6272,8]{1,0} select(%broadcast_in_dim.29, %gather.9, %broadcast_in_dim.27), metadata={op_name="select_n"}
+  ROOT %tuple.9 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) tuple(%select_n.11, %broadcast_in_dim.28)
+}
+
+%relu.12 (Arg_0.13: f32[6272,8]) -> f32[6272,8] {
+  %Arg_0.13 = f32[6272,8]{1,0} parameter(0)
+  %constant.130 = f32[] constant(0)
+  %max.2 = f32[6272,8]{1,0} broadcast(%constant.130), dimensions={}, metadata={op_name="max"}
+  ROOT %max.3 = f32[6272,8]{1,0} maximum(%Arg_0.13, %max.2), metadata={op_name="max"}
+}
+
+%_where_26.13 (Arg_0.16: pred[15], Arg_1.14: s32[15], Arg_2.3: s32[15]) -> s32[15] {
+  %Arg_0.16 = pred[15]{0} parameter(0)
+  %Arg_1.14 = s32[15]{0} parameter(1)
+  %Arg_2.3 = s32[15]{0} parameter(2)
+  ROOT %select_n.13 = s32[15]{0} select(%Arg_0.16, %Arg_1.14, %Arg_2.3), metadata={op_name="select_n"}
+}
+
+%region_5.14 (reduce_and.43: pred[], reduce_and.44: pred[]) -> pred[] {
+  %reduce_and.43 = pred[] parameter(0), metadata={op_name="reduce_and"}
+  %reduce_and.44 = pred[] parameter(1), metadata={op_name="reduce_and"}
+  ROOT %reduce_and.45 = pred[] and(%reduce_and.43, %reduce_and.44), metadata={op_name="reduce_and"}
+}
+
+%_take_23.15 (Arg_0.17: f32[6272,36], Arg_1.15: s32[15]) -> (f32[6272,15], s32[15,1]) {
+  %Arg_1.15 = s32[15]{0} parameter(1)
+  %constant.142 = s32[] constant(0)
+  %broadcast.26 = s32[15]{0} broadcast(%constant.142), dimensions={}
+  %lt.21 = pred[15]{0} compare(%Arg_1.15, %broadcast.26), direction=LT, metadata={op_name="lt"}
+  %constant.140 = s32[] constant(36)
+  %broadcast.25 = s32[15]{0} broadcast(%constant.140), dimensions={}
+  %add.37 = s32[15]{0} add(%Arg_1.15, %broadcast.25), metadata={op_name="add"}
+  %jit__where_.11 = s32[15]{0} call(%lt.21, %add.37, %Arg_1.15), to_apply=%_where_26.13, metadata={op_name="jit(_where)"}
+  %broadcast_in_dim.42 = s32[15,1]{1,0} reshape(%jit__where_.11), metadata={op_name="broadcast_in_dim"}
+  %constant.139 = s32[] constant(0)
+  %broadcast.24 = s32[15,1]{1,0} broadcast(%constant.139), dimensions={}
+  %ge.21 = pred[15,1]{1,0} compare(%broadcast_in_dim.42, %broadcast.24), direction=GE, metadata={op_name="ge"}
+  %constant.138 = s32[] constant(35)
+  %broadcast.23 = s32[15,1]{1,0} broadcast(%constant.138), dimensions={}
+  %le.21 = pred[15,1]{1,0} compare(%broadcast_in_dim.42, %broadcast.23), direction=LE, metadata={op_name="le"}
+  %and.11 = pred[15,1]{1,0} and(%ge.21, %le.21), metadata={op_name="and"}
+  %constant.141 = pred[] constant(true)
+  %reduce_and.47 = pred[15]{0} reduce(%and.11, %constant.141), dimensions={1}, to_apply=%region_5.14, metadata={op_name="reduce_and"}
+  %broadcast_in_dim.43 = pred[6272,15]{1,0} broadcast(%reduce_and.47), dimensions={1}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.17 = f32[6272,36]{1,0} parameter(0)
+  %gather.11 = f32[6272,15]{1,0} gather(%Arg_0.17, %broadcast_in_dim.42), offset_dims={0}, collapsed_slice_dims={1}, start_index_map={1}, index_vector_dim=1, slice_sizes={6272,1}, metadata={op_name="gather"}
+  %constant.137 = f32[] constant(nan)
+  %broadcast_in_dim.41 = f32[6272,15]{1,0} broadcast(%constant.137), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %select_n.15 = f32[6272,15]{1,0} select(%broadcast_in_dim.43, %gather.11, %broadcast_in_dim.41), metadata={op_name="select_n"}
+  ROOT %tuple.11 = (f32[6272,15]{1,0}, s32[15,1]{1,0}) tuple(%select_n.15, %broadcast_in_dim.42)
+}
+
+%relu_42.16 (Arg_0.19: f32[6272,192]) -> f32[6272,192] {
+  %Arg_0.19 = f32[6272,192]{1,0} parameter(0)
+  %constant.144 = f32[] constant(0)
+  %max.6 = f32[6272,192]{1,0} broadcast(%constant.144), dimensions={}, metadata={op_name="max"}
+  ROOT %max.7 = f32[6272,192]{1,0} maximum(%Arg_0.19, %max.6), metadata={op_name="max"}
+}
+
+%region_6.17 (reduce_sum.3: f32[], reduce_sum.4: f32[]) -> f32[] {
+  %reduce_sum.3 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.4 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.5 = f32[] add(%reduce_sum.3, %reduce_sum.4), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/reduce_sum" stack_frame_id=10}
+}
+
+%region_7.18 (reduce_sum.10: f32[], reduce_sum.11: f32[]) -> f32[] {
+  %reduce_sum.10 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.11 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.12 = f32[] add(%reduce_sum.10, %reduce_sum.11), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/reduce_sum" stack_frame_id=15}
+}
+
+%region_8.19 (reduce_prod.3: s32[], reduce_prod.4: s32[]) -> s32[] {
+  %reduce_prod.3 = s32[] parameter(0), metadata={op_name="reduce_prod"}
+  %reduce_prod.4 = s32[] parameter(1), metadata={op_name="reduce_prod"}
+  ROOT %reduce_prod.5 = s32[] multiply(%reduce_prod.3, %reduce_prod.4), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/reduce_prod" stack_frame_id=18}
+}
+
+%_where_53.20 (Arg_0.21: pred[], Arg_1.17: s32[], Arg_2.5: f32[]) -> f32[] {
+  %Arg_0.21 = pred[] parameter(0)
+  %Arg_1.17 = s32[] parameter(1)
+  %convert_element_type.2 = f32[] convert(%Arg_1.17), metadata={op_name="convert_element_type"}
+  %Arg_2.5 = f32[] parameter(2)
+  ROOT %select_n.17 = f32[] select(%Arg_0.21, %convert_element_type.2, %Arg_2.5), metadata={op_name="select_n"}
+}
+
+%_where_57.21 (Arg_0.23: pred[], Arg_1.19: s32[], Arg_2.7: f32[]) -> f32[] {
+  %Arg_0.23 = pred[] parameter(0)
+  %Arg_1.19 = s32[] parameter(1)
+  %convert_element_type.4 = f32[] convert(%Arg_1.19), metadata={op_name="convert_element_type"}
+  %Arg_2.7 = f32[] parameter(2)
+  ROOT %select_n.19 = f32[] select(%Arg_0.23, %convert_element_type.4, %Arg_2.7), metadata={op_name="select_n"}
+}
+
+%_where_58.22 (Arg_0.25: pred[], Arg_1.21: f32[]) -> f32[] {
+  %Arg_0.25 = pred[] parameter(0)
+  %constant.146 = f32[] constant(0)
+  %Arg_1.21 = f32[] parameter(1)
+  ROOT %select_n.21 = f32[] select(%Arg_0.25, %constant.146, %Arg_1.21), metadata={op_name="select_n"}
+}
+
+%region_9.23 (reduce_sum.17: f32[], reduce_sum.18: f32[]) -> f32[] {
+  %reduce_sum.17 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.18 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.19 = f32[] add(%reduce_sum.17, %reduce_sum.18), metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/reduce_sum" stack_frame_id=28}
+}
+
+%region_10.24 (reduce_sum.24: f32[], reduce_sum.25: f32[]) -> f32[] {
+  %reduce_sum.24 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.25 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.26 = f32[] add(%reduce_sum.24, %reduce_sum.25), metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/reduce_sum" stack_frame_id=28}
+}
+
+%region_11.25 (reduce_sum.31: f32[], reduce_sum.32: f32[]) -> f32[] {
+  %reduce_sum.31 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.32 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.33 = f32[] add(%reduce_sum.31, %reduce_sum.32), metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/reduce_sum" stack_frame_id=38}
+}
+
+%region_12.26 (reduce_sum.38: f32[], reduce_sum.39: f32[]) -> f32[] {
+  %reduce_sum.38 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.39 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.40 = f32[] add(%reduce_sum.38, %reduce_sum.39), metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/reduce_sum" stack_frame_id=38}
+}
+
+%region_13.27 (reduce_sum.45: f32[], reduce_sum.46: f32[]) -> f32[] {
+  %reduce_sum.45 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.46 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.47 = f32[] add(%reduce_sum.45, %reduce_sum.46), metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/reduce_sum" stack_frame_id=38}
+}
+
+%region_14.28 (reduce_sum.52: f32[], reduce_sum.53: f32[]) -> f32[] {
+  %reduce_sum.52 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.53 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.54 = f32[] add(%reduce_sum.52, %reduce_sum.53), metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/reduce_sum" stack_frame_id=38}
+}
+
+%region_15.29 (reduce_sum.59: f32[], reduce_sum.60: f32[]) -> f32[] {
+  %reduce_sum.59 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.60 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.61 = f32[] add(%reduce_sum.59, %reduce_sum.60), metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/reduce_sum" stack_frame_id=38}
+}
+
+%region_16.30 (reduce_sum.66: f32[], reduce_sum.67: f32[]) -> f32[] {
+  %reduce_sum.66 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.67 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.68 = f32[] add(%reduce_sum.66, %reduce_sum.67), metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/reduce_sum" stack_frame_id=38}
+}
+
+%region_17.31 (scatter-add.2: f32[], scatter-add.3: f32[]) -> f32[] {
+  %scatter-add.2 = f32[] parameter(0), metadata={op_name="scatter-add"}
+  %scatter-add.3 = f32[] parameter(1), metadata={op_name="scatter-add"}
+  ROOT %add.55 = f32[] add(%scatter-add.2, %scatter-add.3), metadata={op_name="add"}
+}
+
+%_take_79.32 (Arg_0.27: s32[15,1], Arg_1.23: f32[6272,15]) -> f32[6272,36] {
+  %constant.148 = f32[] constant(0)
+  %broadcast_in_dim.53 = f32[6272,36]{1,0} broadcast(%constant.148), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.27 = s32[15,1]{1,0} parameter(0)
+  %Arg_1.23 = f32[6272,15]{1,0} parameter(1)
+  ROOT %scatter-add.5 = f32[6272,36]{1,0} scatter(%broadcast_in_dim.53, %Arg_0.27, %Arg_1.23), update_window_dims={0}, inserted_window_dims={1}, scatter_dims_to_operand_dims={1}, index_vector_dim=1, to_apply=%region_17.31, metadata={op_name="scatter-add"}
+}
+
+%region_18.33 (reduce_sum.73: f32[], reduce_sum.74: f32[]) -> f32[] {
+  %reduce_sum.73 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.74 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.75 = f32[] add(%reduce_sum.73, %reduce_sum.74), metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+}
+
+%region_19.34 (reduce_sum.80: f32[], reduce_sum.81: f32[]) -> f32[] {
+  %reduce_sum.80 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.81 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.82 = f32[] add(%reduce_sum.80, %reduce_sum.81), metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+}
+
+%region_20.35 (reduce_sum.87: f32[], reduce_sum.88: f32[]) -> f32[] {
+  %reduce_sum.87 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.88 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.89 = f32[] add(%reduce_sum.87, %reduce_sum.88), metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+}
+
+%region_21.36 (reduce_sum.94: f32[], reduce_sum.95: f32[]) -> f32[] {
+  %reduce_sum.94 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.95 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.96 = f32[] add(%reduce_sum.94, %reduce_sum.95), metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+}
+
+%region_22.37 (reduce_sum.101: f32[], reduce_sum.102: f32[]) -> f32[] {
+  %reduce_sum.101 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.102 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.103 = f32[] add(%reduce_sum.101, %reduce_sum.102), metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+}
+
+%region_23.38 (reduce_sum.108: f32[], reduce_sum.109: f32[]) -> f32[] {
+  %reduce_sum.108 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.109 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.110 = f32[] add(%reduce_sum.108, %reduce_sum.109), metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+}
+
+%region_24.39 (reduce_sum.115: f32[], reduce_sum.116: f32[]) -> f32[] {
+  %reduce_sum.115 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.116 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.117 = f32[] add(%reduce_sum.115, %reduce_sum.116), metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense_1/reduce_sum" stack_frame_id=58}
+}
+
+%region_25.40 (reduce_sum.122: f32[], reduce_sum.123: f32[]) -> f32[] {
+  %reduce_sum.122 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.123 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.124 = f32[] add(%reduce_sum.122, %reduce_sum.123), metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense_1/reduce_sum" stack_frame_id=58}
+}
+
+%region_26.41 (reduce_sum.129: f32[], reduce_sum.130: f32[]) -> f32[] {
+  %reduce_sum.129 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.130 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.131 = f32[] add(%reduce_sum.129, %reduce_sum.130), metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense/reduce_sum" stack_frame_id=58}
+}
+
+%region_27.42 (reduce_sum.136: f32[], reduce_sum.137: f32[]) -> f32[] {
+  %reduce_sum.136 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.137 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.138 = f32[] add(%reduce_sum.136, %reduce_sum.137), metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense/reduce_sum" stack_frame_id=58}
+}
+
+%region_28.43 (scatter-add.8: f32[], scatter-add.9: f32[]) -> f32[] {
+  %scatter-add.8 = f32[] parameter(0), metadata={op_name="scatter-add"}
+  %scatter-add.9 = f32[] parameter(1), metadata={op_name="scatter-add"}
+  ROOT %add.57 = f32[] add(%scatter-add.8, %scatter-add.9), metadata={op_name="add"}
+}
+
+%_take_95.44 (Arg_0.29: s32[6272,1], Arg_1.25: f32[6272,8]) -> f32[944,8] {
+  %constant.150 = f32[] constant(0)
+  %broadcast_in_dim.55 = f32[944,8]{1,0} broadcast(%constant.150), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.29 = s32[6272,1]{1,0} parameter(0)
+  %Arg_1.25 = f32[6272,8]{1,0} parameter(1)
+  ROOT %scatter-add.11 = f32[944,8]{1,0} scatter(%broadcast_in_dim.55, %Arg_0.29, %Arg_1.25), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%region_28.43, metadata={op_name="scatter-add"}
+}
+
+%region_29.45 (scatter-add.14: f32[], scatter-add.15: f32[]) -> f32[] {
+  %scatter-add.14 = f32[] parameter(0), metadata={op_name="scatter-add"}
+  %scatter-add.15 = f32[] parameter(1), metadata={op_name="scatter-add"}
+  ROOT %add.59 = f32[] add(%scatter-add.14, %scatter-add.15), metadata={op_name="add"}
+}
+
+%_take_98.46 (Arg_0.31: s32[6272,1], Arg_1.27: f32[6272,8]) -> f32[1683,8] {
+  %constant.152 = f32[] constant(0)
+  %broadcast_in_dim.57 = f32[1683,8]{1,0} broadcast(%constant.152), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.31 = s32[6272,1]{1,0} parameter(0)
+  %Arg_1.27 = f32[6272,8]{1,0} parameter(1)
+  ROOT %scatter-add.17 = f32[1683,8]{1,0} scatter(%broadcast_in_dim.57, %Arg_0.31, %Arg_1.27), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%region_29.45, metadata={op_name="scatter-add"}
+}
+
+%region_30.47 (scatter-add.20: f32[], scatter-add.21: f32[]) -> f32[] {
+  %scatter-add.20 = f32[] parameter(0), metadata={op_name="scatter-add"}
+  %scatter-add.21 = f32[] parameter(1), metadata={op_name="scatter-add"}
+  ROOT %add.61 = f32[] add(%scatter-add.20, %scatter-add.21), metadata={op_name="add"}
+}
+
+%_take_101.48 (Arg_0.33: s32[6272,1], Arg_1.29: f32[6272,8]) -> f32[22,8] {
+  %constant.154 = f32[] constant(0)
+  %broadcast_in_dim.59 = f32[22,8]{1,0} broadcast(%constant.154), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.33 = s32[6272,1]{1,0} parameter(0)
+  %Arg_1.29 = f32[6272,8]{1,0} parameter(1)
+  ROOT %scatter-add.23 = f32[22,8]{1,0} scatter(%broadcast_in_dim.59, %Arg_0.33, %Arg_1.29), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%region_30.47, metadata={op_name="scatter-add"}
+}
+
+%region_31.49 (scatter-add.26: f32[], scatter-add.27: f32[]) -> f32[] {
+  %scatter-add.26 = f32[] parameter(0), metadata={op_name="scatter-add"}
+  %scatter-add.27 = f32[] parameter(1), metadata={op_name="scatter-add"}
+  ROOT %add.63 = f32[] add(%scatter-add.26, %scatter-add.27), metadata={op_name="add"}
+}
+
+%_take_104.50 (Arg_0.35: s32[6272,1], Arg_1.31: f32[6272,8]) -> f32[796,8] {
+  %constant.156 = f32[] constant(0)
+  %broadcast_in_dim.61 = f32[796,8]{1,0} broadcast(%constant.156), dimensions={}, metadata={op_name="broadcast_in_dim"}
+  %Arg_0.35 = s32[6272,1]{1,0} parameter(0)
+  %Arg_1.31 = f32[6272,8]{1,0} parameter(1)
+  ROOT %scatter-add.29 = f32[796,8]{1,0} scatter(%broadcast_in_dim.61, %Arg_0.35, %Arg_1.31), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%region_31.49, metadata={op_name="scatter-add"}
+}
+
+%region_32.51 (scatter-add.32: f32[], scatter-add.33: f32[]) -> f32[] {
+  %scatter-add.32 = f32[] parameter(0), metadata={op_name="scatter-add"}
+  %scatter-add.33 = f32[] parameter(1), metadata={op_name="scatter-add"}
+  ROOT %add.65 = f32[] add(%scatter-add.32, %scatter-add.33), metadata={op_name="add"}
+}
+
+%_take_107.52 (Arg_0.37: s32[6272,1], Arg_1.33: f32[6272,8]) -> f32[3,8] {
+  %constant.158 = f32[] constant(0)
+  %broadcast.28 = f32[3,8]{1,0} broadcast(%constant.158), dimensions={}
+  %Arg_0.37 = s32[6272,1]{1,0} parameter(0)
+  %Arg_1.33 = f32[6272,8]{1,0} parameter(1)
+  ROOT %scatter-add.35 = f32[3,8]{1,0} scatter(%broadcast.28, %Arg_0.37, %Arg_1.33), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%region_32.51, metadata={op_name="scatter-add"}
+}
+
+%region_33.53 (reduce_sum.143: f32[], reduce_sum.144: f32[]) -> f32[] {
+  %reduce_sum.143 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.144 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.145 = f32[] add(%reduce_sum.143, %reduce_sum.144), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%_where_114.54 (Arg_0.39: pred[1,1], Arg_1.35: f32[1,1], Arg_2.9: f32[1,1]) -> f32[1,1] {
+  %Arg_0.39 = pred[1,1]{1,0} parameter(0)
+  %Arg_1.35 = f32[1,1]{1,0} parameter(1)
+  %Arg_2.9 = f32[1,1]{1,0} parameter(2)
+  ROOT %select_n.27 = f32[1,1]{1,0} select(%Arg_0.39, %Arg_1.35, %Arg_2.9), metadata={op_name="select_n"}
+}
+
+%region_34.55 (reduce_sum.150: f32[], reduce_sum.151: f32[]) -> f32[] {
+  %reduce_sum.150 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.151 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.152 = f32[] add(%reduce_sum.150, %reduce_sum.151), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_35.56 (reduce_sum.157: f32[], reduce_sum.158: f32[]) -> f32[] {
+  %reduce_sum.157 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.158 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.159 = f32[] add(%reduce_sum.157, %reduce_sum.158), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_36.57 (reduce_sum.164: f32[], reduce_sum.165: f32[]) -> f32[] {
+  %reduce_sum.164 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.165 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.166 = f32[] add(%reduce_sum.164, %reduce_sum.165), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_37.58 (reduce_sum.171: f32[], reduce_sum.172: f32[]) -> f32[] {
+  %reduce_sum.171 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.172 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.173 = f32[] add(%reduce_sum.171, %reduce_sum.172), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_38.59 (reduce_sum.178: f32[], reduce_sum.179: f32[]) -> f32[] {
+  %reduce_sum.178 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.179 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.180 = f32[] add(%reduce_sum.178, %reduce_sum.179), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_39.60 (reduce_sum.185: f32[], reduce_sum.186: f32[]) -> f32[] {
+  %reduce_sum.185 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.186 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.187 = f32[] add(%reduce_sum.185, %reduce_sum.186), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%_where_142.61 (Arg_0.41: pred[1], Arg_1.37: f32[1], Arg_2.11: f32[1]) -> f32[1] {
+  %Arg_0.41 = pred[1]{0} parameter(0)
+  %Arg_1.37 = f32[1]{0} parameter(1)
+  %Arg_2.11 = f32[1]{0} parameter(2)
+  ROOT %select_n.29 = f32[1]{0} select(%Arg_0.41, %Arg_1.37, %Arg_2.11), metadata={op_name="select_n"}
+}
+
+%region_40.62 (reduce_sum.192: f32[], reduce_sum.193: f32[]) -> f32[] {
+  %reduce_sum.192 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.193 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.194 = f32[] add(%reduce_sum.192, %reduce_sum.193), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_41.63 (reduce_sum.199: f32[], reduce_sum.200: f32[]) -> f32[] {
+  %reduce_sum.199 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.200 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.201 = f32[] add(%reduce_sum.199, %reduce_sum.200), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_42.64 (reduce_sum.206: f32[], reduce_sum.207: f32[]) -> f32[] {
+  %reduce_sum.206 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.207 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.208 = f32[] add(%reduce_sum.206, %reduce_sum.207), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_43.65 (reduce_sum.213: f32[], reduce_sum.214: f32[]) -> f32[] {
+  %reduce_sum.213 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.214 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.215 = f32[] add(%reduce_sum.213, %reduce_sum.214), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_44.66 (reduce_sum.220: f32[], reduce_sum.221: f32[]) -> f32[] {
+  %reduce_sum.220 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.221 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.222 = f32[] add(%reduce_sum.220, %reduce_sum.221), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_45.67 (reduce_sum.227: f32[], reduce_sum.228: f32[]) -> f32[] {
+  %reduce_sum.227 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.228 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.229 = f32[] add(%reduce_sum.227, %reduce_sum.228), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_46.68 (reduce_sum.234: f32[], reduce_sum.235: f32[]) -> f32[] {
+  %reduce_sum.234 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.235 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.236 = f32[] add(%reduce_sum.234, %reduce_sum.235), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_47.69 (reduce_sum.241: f32[], reduce_sum.242: f32[]) -> f32[] {
+  %reduce_sum.241 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.242 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.243 = f32[] add(%reduce_sum.241, %reduce_sum.242), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_48.70 (reduce_sum.248: f32[], reduce_sum.249: f32[]) -> f32[] {
+  %reduce_sum.248 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.249 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.250 = f32[] add(%reduce_sum.248, %reduce_sum.249), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_49.71 (reduce_sum.255: f32[], reduce_sum.256: f32[]) -> f32[] {
+  %reduce_sum.255 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.256 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.257 = f32[] add(%reduce_sum.255, %reduce_sum.256), metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+}
+
+%region_50.72 (reduce_sum.262: f32[], reduce_sum.263: f32[]) -> f32[] {
+  %reduce_sum.262 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.263 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.264 = f32[] add(%reduce_sum.262, %reduce_sum.263), metadata={op_name="jit(train_step)/reduce_sum" stack_frame_id=78}
+}
+
+%region_51.73 (reduce_sum.269: f32[], reduce_sum.270: f32[]) -> f32[] {
+  %reduce_sum.269 = f32[] parameter(0), metadata={op_name="reduce_sum"}
+  %reduce_sum.270 = f32[] parameter(1), metadata={op_name="reduce_sum"}
+  ROOT %reduce_sum.271 = f32[] add(%reduce_sum.269, %reduce_sum.270), metadata={op_name="jit(train_step)/reduce_sum" stack_frame_id=88}
+}
+
+ENTRY %main.74 (state_0__0_.1: f32[3,8], state_0__1_.1: f32[796,8], state_0__2_.1: f32[22,8], state_0__3_.1: f32[1683,8], state_0__4_.1: f32[944,8], state_0__5_.1: f32[5,8], state_0__6_.1: f32[8], state_0__7_.1: f32[8,8], state_0__8_.1: f32[8], state_0__9_.1: f32[15,192], state_0__10_.1: f32[192], state_0__11_.1: f32[192,192], state_0__12_.1: f32[192], state_0__13_.1: f32[192,192], state_0__14_.1: f32[192], state_0__15_.1: f32[192,1], state_0__16_.1: f32[1], state_2__0_.1: s32[], state_2__1_.1: f32[], state_2__2_.1: f32[3,8], state_2__3_.1: f32[3,8], state_2__4_.1: f32[796,8], state_2__5_.1: f32[796,8], state_2__6_.1: f32[22,8], state_2__7_.1: f32[22,8], state_2__8_.1: f32[1683,8], state_2__9_.1: f32[1683,8], state_2__10_.1: f32[944,8], state_2__11_.1: f32[944,8], state_2__12_.1: f32[5,8], state_2__13_.1: f32[5,8], state_2__14_.1: f32[8], state_2__15_.1: f32[8], state_2__16_.1: f32[8,8], state_2__17_.1: f32[8,8], state_2__18_.1: f32[8], state_2__19_.1: f32[8], state_2__20_.1: f32[15,192], state_2__21_.1: f32[15,192], state_2__22_.1: f32[192], state_2__23_.1: f32[192], state_2__24_.1: f32[192,192], state_2__25_.1: f32[192,192], state_2__26_.1: f32[192], state_2__27_.1: f32[192], state_2__28_.1: f32[192,192], state_2__29_.1: f32[192,192], state_2__30_.1: f32[192], state_2__31_.1: f32[192], state_2__32_.1: f32[192,1], state_2__33_.1: f32[192,1], state_2__34_.1: f32[1], state_2__35_.1: f32[1], state_3__0_.1: f32[], state_3__1_.1: f32[], state_3__2_.1: f32[], state_3__3_.1: f32[], data_0___hour_of_day_cos__.1: f32[6272,1], data_0___hour_of_day_sin__.1: f32[6272,1], data_0___hour_of_week_cos__.1: f32[6272,1], data_0___hour_of_week_sin__.1: f32[6272,1], data_0___movie_id__.1: s32[6272], data_0___raw_user_age__.1: f32[6272,1], data_0___user_gender__.1: s32[6272], data_0___user_id__.1: s32[6272], data_0___user_occupation_text__.1: s32[6272], data_0___user_zip_code__.1: s32[6272], data_1_.1: f32[6272]) -> (f32[], f32[], f32[3,8], f32[796,8], f32[22,8], /*index=5*/f32[1683,8], f32[944,8], f32[5,8], f32[8], f32[8,8], /*index=10*/f32[8], f32[15,192], f32[192], f32[192,192], f32[192], /*index=15*/f32[192,192], f32[192], f32[192,1], f32[1], s32[], /*index=20*/f32[], f32[3,8], f32[3,8], f32[796,8], f32[796,8], /*index=25*/f32[22,8], f32[22,8], f32[1683,8], f32[1683,8], f32[944,8], /*index=30*/f32[944,8], f32[5,8], f32[5,8], f32[8], f32[8], /*index=35*/f32[8,8], f32[8,8], f32[8], f32[8], f32[15,192], /*index=40*/f32[15,192], f32[192], f32[192], f32[192,192], f32[192,192], /*index=45*/f32[192], f32[192], f32[192,192], f32[192,192], f32[192], /*index=50*/f32[192], f32[192,1], f32[192,1], f32[1], f32[1], /*index=55*/f32[], f32[], f32[], f32[]) {
+  %state_3__1_.1 = f32[] parameter(54), metadata={op_name="state[3][1]"}
+  %constant.219 = f32[] constant(6272)
+  %add.241 = f32[] add(%state_3__1_.1, %constant.219), metadata={op_name="jit(train_step)/add" stack_frame_id=362}
+  %constant.225 = f32[] constant(0)
+  %eq.9 = pred[] compare(%add.241, %constant.225), direction=EQ, metadata={op_name="jit(train_step)/eq" stack_frame_id=403}
+  %constant.222 = s32[] constant(0)
+  %state_3__0_.1 = f32[] parameter(53), metadata={op_name="state[3][0]"}
+  %constant.227 = s32[1]{0} constant({6272})
+  %constant.223 = s32[] constant(1)
+  %reduce_prod.7 = s32[] reduce(%constant.227, %constant.223), dimensions={0}, to_apply=%region_8.19, metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/reduce_prod" stack_frame_id=18}
+  %convert_element_type.22 = f32[] convert(%reduce_prod.7), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/convert_element_type" stack_frame_id=215}
+  %eq.7 = pred[] compare(%convert_element_type.22, %constant.225), direction=EQ, metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/eq" stack_frame_id=220}
+  %data_1_.1 = f32[6272]{0} parameter(67), metadata={op_name="data[1]"}
+  %broadcast_in_dim.92 = f32[6272,1]{1,0} reshape(%data_1_.1), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/broadcast_in_dim" stack_frame_id=199}
+  %state_0__0_.1 = f32[3,8]{1,0} parameter(0), metadata={op_name="state[0][0]"}
+  %data_0___user_gender__.1 = s32[6272]{0} parameter(63), metadata={op_name="data[0][\'user_gender\']"}
+  %jit__take_.24 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) call(%state_0__0_.1, %data_0___user_gender__.1), to_apply=%_take.3, metadata={op_name="jit(train_step)/jvp(embedding)/jit(_take)" stack_frame_id=134}
+  %jit__take_.25 = f32[6272,8]{1,0} get-tuple-element(%jit__take_.24), index=0, metadata={op_name="jit(train_step)/jvp(embedding)/jit(_take)" stack_frame_id=134}
+  %broadcast_in_dim.82 = f32[6272,1,8]{2,1,0} reshape(%jit__take_.25), metadata={op_name="jit(train_step)/jvp(dot_interaction)/broadcast_in_dim" stack_frame_id=48}
+  %state_0__1_.1 = f32[796,8]{1,0} parameter(1), metadata={op_name="state[0][1]"}
+  %data_0___user_zip_code__.1 = s32[6272]{0} parameter(66), metadata={op_name="data[0][\'user_zip_code\']"}
+  %jit__take_.27 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) call(%state_0__1_.1, %data_0___user_zip_code__.1), to_apply=%_take_5.5, metadata={op_name="jit(train_step)/jvp(embedding_1)/jit(_take)" stack_frame_id=134}
+  %jit__take_.28 = f32[6272,8]{1,0} get-tuple-element(%jit__take_.27), index=0, metadata={op_name="jit(train_step)/jvp(embedding_1)/jit(_take)" stack_frame_id=134}
+  %broadcast_in_dim.83 = f32[6272,1,8]{2,1,0} reshape(%jit__take_.28), metadata={op_name="jit(train_step)/jvp(dot_interaction)/broadcast_in_dim" stack_frame_id=48}
+  %state_0__2_.1 = f32[22,8]{1,0} parameter(2), metadata={op_name="state[0][2]"}
+  %data_0___user_occupation_text__.1 = s32[6272]{0} parameter(65), metadata={op_name="data[0][\'user_occupation_text\']"}
+  %jit__take_.30 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) call(%state_0__2_.1, %data_0___user_occupation_text__.1), to_apply=%_take_8.7, metadata={op_name="jit(train_step)/jvp(embedding_2)/jit(_take)" stack_frame_id=134}
+  %jit__take_.31 = f32[6272,8]{1,0} get-tuple-element(%jit__take_.30), index=0, metadata={op_name="jit(train_step)/jvp(embedding_2)/jit(_take)" stack_frame_id=134}
+  %broadcast_in_dim.84 = f32[6272,1,8]{2,1,0} reshape(%jit__take_.31), metadata={op_name="jit(train_step)/jvp(dot_interaction)/broadcast_in_dim" stack_frame_id=48}
+  %state_0__3_.1 = f32[1683,8]{1,0} parameter(3), metadata={op_name="state[0][3]"}
+  %data_0___movie_id__.1 = s32[6272]{0} parameter(61), metadata={op_name="data[0][\'movie_id\']"}
+  %jit__take_.33 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) call(%state_0__3_.1, %data_0___movie_id__.1), to_apply=%_take_11.9, metadata={op_name="jit(train_step)/jvp(embedding_3)/jit(_take)" stack_frame_id=134}
+  %jit__take_.34 = f32[6272,8]{1,0} get-tuple-element(%jit__take_.33), index=0, metadata={op_name="jit(train_step)/jvp(embedding_3)/jit(_take)" stack_frame_id=134}
+  %broadcast_in_dim.85 = f32[6272,1,8]{2,1,0} reshape(%jit__take_.34), metadata={op_name="jit(train_step)/jvp(dot_interaction)/broadcast_in_dim" stack_frame_id=48}
+  %state_0__4_.1 = f32[944,8]{1,0} parameter(4), metadata={op_name="state[0][4]"}
+  %data_0___user_id__.1 = s32[6272]{0} parameter(64), metadata={op_name="data[0][\'user_id\']"}
+  %jit__take_.36 = (f32[6272,8]{1,0}, s32[6272,1]{1,0}) call(%state_0__4_.1, %data_0___user_id__.1), to_apply=%_take_14.11, metadata={op_name="jit(train_step)/jvp(embedding_4)/jit(_take)" stack_frame_id=134}
+  %jit__take_.37 = f32[6272,8]{1,0} get-tuple-element(%jit__take_.36), index=0, metadata={op_name="jit(train_step)/jvp(embedding_4)/jit(_take)" stack_frame_id=134}
+  %broadcast_in_dim.86 = f32[6272,1,8]{2,1,0} reshape(%jit__take_.37), metadata={op_name="jit(train_step)/jvp(dot_interaction)/broadcast_in_dim" stack_frame_id=48}
+  %data_0___raw_user_age__.1 = f32[6272,1]{1,0} parameter(62), metadata={op_name="data[0][\'raw_user_age\']"}
+  %data_0___hour_of_day_sin__.1 = f32[6272,1]{1,0} parameter(58), metadata={op_name="data[0][\'hour_of_day_sin\']"}
+  %data_0___hour_of_day_cos__.1 = f32[6272,1]{1,0} parameter(57), metadata={op_name="data[0][\'hour_of_day_cos\']"}
+  %data_0___hour_of_week_sin__.1 = f32[6272,1]{1,0} parameter(60), metadata={op_name="data[0][\'hour_of_week_sin\']"}
+  %data_0___hour_of_week_cos__.1 = f32[6272,1]{1,0} parameter(59), metadata={op_name="data[0][\'hour_of_week_cos\']"}
+  %concatenate.2 = f32[6272,5]{1,0} concatenate(%data_0___raw_user_age__.1, %data_0___hour_of_day_sin__.1, %data_0___hour_of_day_cos__.1, %data_0___hour_of_week_sin__.1, %data_0___hour_of_week_cos__.1), dimensions={1}, metadata={op_name="jit(train_step)/jvp()/concatenate" stack_frame_id=141}
+  %state_0__5_.1 = f32[5,8]{1,0} parameter(5), metadata={op_name="state[0][5]"}
+  %dot_general.20 = f32[6272,8]{1,0} dot(%concatenate.2, %state_0__5_.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/jvp(sequential)/dense/dot_general" stack_frame_id=151}
+  %state_0__6_.1 = f32[8]{0} parameter(6), metadata={op_name="state[0][6]"}
+  %broadcast_in_dim.80 = f32[1,8]{1,0} reshape(%state_0__6_.1), metadata={op_name="jit(train_step)/jvp(sequential)/dense/broadcast_in_dim" stack_frame_id=58}
+  %add.147 = f32[1,8]{1,0} broadcast(%broadcast_in_dim.80), dimensions={0,1}, metadata={op_name="jit(train_step)/jvp(sequential)/dense/add" stack_frame_id=58}
+  %add.148 = f32[8]{0} reshape(%add.147), metadata={op_name="jit(train_step)/jvp(sequential)/dense/add" stack_frame_id=58}
+  %add.149 = f32[6272,8]{1,0} broadcast(%add.148), dimensions={1}, metadata={op_name="jit(train_step)/jvp(sequential)/dense/add" stack_frame_id=58}
+  %add.150 = f32[6272,8]{1,0} add(%dot_general.20, %add.149), metadata={op_name="jit(train_step)/jvp(sequential)/dense/add" stack_frame_id=58}
+  %jit_relu_.4 = f32[6272,8]{1,0} call(%add.150), to_apply=%relu.12, metadata={op_name="jit(train_step)/jvp(sequential)/dense/jit(relu)" stack_frame_id=155}
+  %state_0__7_.1 = f32[8,8]{1,0} parameter(7), metadata={op_name="state[0][7]"}
+  %dot_general.21 = f32[6272,8]{1,0} dot(%jit_relu_.4, %state_0__7_.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/jvp(sequential)/dense_1/dot_general" stack_frame_id=151}
+  %state_0__8_.1 = f32[8]{0} parameter(8), metadata={op_name="state[0][8]"}
+  %broadcast_in_dim.81 = f32[1,8]{1,0} reshape(%state_0__8_.1), metadata={op_name="jit(train_step)/jvp(sequential)/dense_1/broadcast_in_dim" stack_frame_id=58}
+  %add.151 = f32[1,8]{1,0} broadcast(%broadcast_in_dim.81), dimensions={0,1}, metadata={op_name="jit(train_step)/jvp(sequential)/dense_1/add" stack_frame_id=58}
+  %add.152 = f32[8]{0} reshape(%add.151), metadata={op_name="jit(train_step)/jvp(sequential)/dense_1/add" stack_frame_id=58}
+  %add.153 = f32[6272,8]{1,0} broadcast(%add.152), dimensions={1}, metadata={op_name="jit(train_step)/jvp(sequential)/dense_1/add" stack_frame_id=58}
+  %add.154 = f32[6272,8]{1,0} add(%dot_general.21, %add.153), metadata={op_name="jit(train_step)/jvp(sequential)/dense_1/add" stack_frame_id=58}
+  %broadcast_in_dim.87 = f32[6272,1,8]{2,1,0} reshape(%add.154), metadata={op_name="jit(train_step)/jvp(dot_interaction)/broadcast_in_dim" stack_frame_id=48}
+  %concatenate.3 = f32[6272,6,8]{2,1,0} concatenate(%broadcast_in_dim.82, %broadcast_in_dim.83, %broadcast_in_dim.84, %broadcast_in_dim.85, %broadcast_in_dim.86, /*index=5*/%broadcast_in_dim.87), dimensions={1}, metadata={op_name="jit(train_step)/jvp(dot_interaction)/concatenate" stack_frame_id=48}
+  %transpose.7 = f32[6272,8,6]{1,2,0} transpose(%concatenate.3), dimensions={0,2,1}, metadata={op_name="jit(train_step)/jvp(dot_interaction)/transpose" stack_frame_id=158}
+  %dot_general.22 = f32[6272,6,6]{2,1,0} dot(%concatenate.3, %transpose.7), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, metadata={op_name="jit(train_step)/jvp(dot_interaction)/dot_general" stack_frame_id=161}
+  %reshape.8 = f32[6272,36]{1,0} reshape(%dot_general.22), metadata={op_name="jit(train_step)/jvp(dot_interaction)/reshape" stack_frame_id=164}
+  %constant.226 = s32[15]{0} constant({...})
+  %jit__take_.39 = (f32[6272,15]{1,0}, s32[15,1]{1,0}) call(%reshape.8, %constant.226), to_apply=%_take_23.15, metadata={op_name="jit(train_step)/jvp(dot_interaction)/jit(_take)" stack_frame_id=167}
+  %jit__take_.40 = f32[6272,15]{1,0} get-tuple-element(%jit__take_.39), index=0, metadata={op_name="jit(train_step)/jvp(dot_interaction)/jit(_take)" stack_frame_id=167}
+  %state_0__9_.1 = f32[15,192]{1,0} parameter(9), metadata={op_name="state[0][9]"}
+  %dot_general.23 = f32[6272,192]{1,0} dot(%jit__take_.40, %state_0__9_.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/jvp(dense_2)/dot_general" stack_frame_id=176}
+  %state_0__10_.1 = f32[192]{0} parameter(10), metadata={op_name="state[0][10]"}
+  %broadcast_in_dim.88 = f32[1,192]{1,0} reshape(%state_0__10_.1), metadata={op_name="jit(train_step)/jvp(dense_2)/broadcast_in_dim" stack_frame_id=38}
+  %add.155 = f32[1,192]{1,0} broadcast(%broadcast_in_dim.88), dimensions={0,1}, metadata={op_name="jit(train_step)/jvp(dense_2)/add" stack_frame_id=38}
+  %add.156 = f32[192]{0} reshape(%add.155), metadata={op_name="jit(train_step)/jvp(dense_2)/add" stack_frame_id=38}
+  %add.157 = f32[6272,192]{1,0} broadcast(%add.156), dimensions={1}, metadata={op_name="jit(train_step)/jvp(dense_2)/add" stack_frame_id=38}
+  %add.158 = f32[6272,192]{1,0} add(%dot_general.23, %add.157), metadata={op_name="jit(train_step)/jvp(dense_2)/add" stack_frame_id=38}
+  %jit_relu_.5 = f32[6272,192]{1,0} call(%add.158), to_apply=%relu_42.16, metadata={op_name="jit(train_step)/jvp(dense_2)/jit(relu)" stack_frame_id=180}
+  %state_0__11_.1 = f32[192,192]{1,0} parameter(11), metadata={op_name="state[0][11]"}
+  %dot_general.24 = f32[6272,192]{1,0} dot(%jit_relu_.5, %state_0__11_.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/jvp(dense_3)/dot_general" stack_frame_id=176}
+  %state_0__12_.1 = f32[192]{0} parameter(12), metadata={op_name="state[0][12]"}
+  %broadcast_in_dim.89 = f32[1,192]{1,0} reshape(%state_0__12_.1), metadata={op_name="jit(train_step)/jvp(dense_3)/broadcast_in_dim" stack_frame_id=38}
+  %add.159 = f32[1,192]{1,0} broadcast(%broadcast_in_dim.89), dimensions={0,1}, metadata={op_name="jit(train_step)/jvp(dense_3)/add" stack_frame_id=38}
+  %add.160 = f32[192]{0} reshape(%add.159), metadata={op_name="jit(train_step)/jvp(dense_3)/add" stack_frame_id=38}
+  %add.161 = f32[6272,192]{1,0} broadcast(%add.160), dimensions={1}, metadata={op_name="jit(train_step)/jvp(dense_3)/add" stack_frame_id=38}
+  %add.162 = f32[6272,192]{1,0} add(%dot_general.24, %add.161), metadata={op_name="jit(train_step)/jvp(dense_3)/add" stack_frame_id=38}
+  %jit_relu_.6 = f32[6272,192]{1,0} call(%add.162), to_apply=%relu_42.16, metadata={op_name="jit(train_step)/jvp(dense_3)/jit(relu)" stack_frame_id=180}
+  %state_0__13_.1 = f32[192,192]{1,0} parameter(13), metadata={op_name="state[0][13]"}
+  %dot_general.25 = f32[6272,192]{1,0} dot(%jit_relu_.6, %state_0__13_.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/jvp(dense_4)/dot_general" stack_frame_id=176}
+  %state_0__14_.1 = f32[192]{0} parameter(14), metadata={op_name="state[0][14]"}
+  %broadcast_in_dim.90 = f32[1,192]{1,0} reshape(%state_0__14_.1), metadata={op_name="jit(train_step)/jvp(dense_4)/broadcast_in_dim" stack_frame_id=38}
+  %add.163 = f32[1,192]{1,0} broadcast(%broadcast_in_dim.90), dimensions={0,1}, metadata={op_name="jit(train_step)/jvp(dense_4)/add" stack_frame_id=38}
+  %add.164 = f32[192]{0} reshape(%add.163), metadata={op_name="jit(train_step)/jvp(dense_4)/add" stack_frame_id=38}
+  %add.165 = f32[6272,192]{1,0} broadcast(%add.164), dimensions={1}, metadata={op_name="jit(train_step)/jvp(dense_4)/add" stack_frame_id=38}
+  %add.166 = f32[6272,192]{1,0} add(%dot_general.25, %add.165), metadata={op_name="jit(train_step)/jvp(dense_4)/add" stack_frame_id=38}
+  %jit_relu_.7 = f32[6272,192]{1,0} call(%add.166), to_apply=%relu_42.16, metadata={op_name="jit(train_step)/jvp(dense_4)/jit(relu)" stack_frame_id=180}
+  %state_0__15_.1 = f32[192,1]{1,0} parameter(15), metadata={op_name="state[0][15]"}
+  %dot_general.26 = f32[6272,1]{1,0} dot(%jit_relu_.7, %state_0__15_.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/jvp(dense_5)/dot_general" stack_frame_id=189}
+  %state_0__16_.1 = f32[1]{0} parameter(16), metadata={op_name="state[0][16]"}
+  %broadcast_in_dim.91 = f32[1,1]{1,0} reshape(%state_0__16_.1), metadata={op_name="jit(train_step)/jvp(dense_5)/broadcast_in_dim" stack_frame_id=28}
+  %add.167 = f32[1,1]{1,0} broadcast(%broadcast_in_dim.91), dimensions={0,1}, metadata={op_name="jit(train_step)/jvp(dense_5)/add" stack_frame_id=28}
+  %add.168 = f32[1]{0} reshape(%add.167), metadata={op_name="jit(train_step)/jvp(dense_5)/add" stack_frame_id=28}
+  %add.169 = f32[6272,1]{1,0} broadcast(%add.168), dimensions={1}, metadata={op_name="jit(train_step)/jvp(dense_5)/add" stack_frame_id=28}
+  %add.170 = f32[6272,1]{1,0} add(%dot_general.26, %add.169), metadata={op_name="jit(train_step)/jvp(dense_5)/add" stack_frame_id=28}
+  %sub.104 = f32[6272,1]{1,0} subtract(%broadcast_in_dim.92, %add.170), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/sub" stack_frame_id=209}
+  %square.36 = f32[6272,1]{1,0} multiply(%sub.104, %sub.104), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/square" stack_frame_id=125}
+  %reduce_sum.273 = f32[6272]{0} reduce(%square.36, %constant.225), dimensions={1}, to_apply=%region_6.17, metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/reduce_sum" stack_frame_id=10}
+  %constant.215 = f32[] constant(1)
+  %broadcast.45 = f32[6272]{0} broadcast(%constant.215), dimensions={}
+  %div.106 = f32[6272]{0} divide(%reduce_sum.273, %broadcast.45), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/div" stack_frame_id=10}
+  %reduce_sum.274 = f32[] reduce(%div.106, %constant.225), dimensions={0}, to_apply=%region_7.18, metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/reduce_sum" stack_frame_id=15}
+  %eq.6 = pred[] compare(%convert_element_type.22, %constant.225), direction=EQ, metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/eq" stack_frame_id=218}
+  %jit__where_.53 = f32[] call(%eq.6, %constant.223, %convert_element_type.22), to_apply=%_where_53.20, metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/jit(_where)" stack_frame_id=219}
+  %div.107 = f32[] divide(%reduce_sum.274, %jit__where_.53), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/div" stack_frame_id=221}
+  %jit__where_.54 = f32[] call(%eq.7, %constant.222, %div.107), to_apply=%_where_57.21, metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/jit(_where)" stack_frame_id=222}
+  %mul.327 = f32[] multiply(%jit__where_.54, %constant.219), metadata={op_name="jit(train_step)/mul" stack_frame_id=350}
+  %add.240 = f32[] add(%state_3__0_.1, %mul.327), metadata={op_name="jit(train_step)/add" stack_frame_id=357}
+  %eq.8 = pred[] compare(%add.241, %constant.225), direction=EQ, metadata={op_name="jit(train_step)/eq" stack_frame_id=397}
+  %jit__where_.90 = f32[] call(%eq.8, %constant.223, %add.241), to_apply=%_where_53.20, metadata={op_name="jit(train_step)/jit(_where)" stack_frame_id=402}
+  %div.210 = f32[] divide(%add.240, %jit__where_.90), metadata={op_name="jit(train_step)/div" stack_frame_id=404}
+  %jit__where_.91 = f32[] call(%eq.9, %constant.222, %div.210), to_apply=%_where_53.20, metadata={op_name="jit(train_step)/jit(_where)" stack_frame_id=405}
+  %state_3__3_.1 = f32[] parameter(56), metadata={op_name="state[3][3]"}
+  %add.243 = f32[] add(%state_3__3_.1, %constant.219), metadata={op_name="jit(train_step)/add" stack_frame_id=391}
+  %eq.11 = pred[] compare(%add.243, %constant.225), direction=EQ, metadata={op_name="jit(train_step)/eq" stack_frame_id=418}
+  %state_3__2_.1 = f32[] parameter(55), metadata={op_name="state[3][2]"}
+  %broadcast_in_dim.113 = f32[6272,1]{1,0} reshape(%data_1_.1), metadata={op_name="jit(train_step)/broadcast_in_dim" stack_frame_id=366}
+  %sub.207 = f32[6272,1]{1,0} subtract(%add.170, %broadcast_in_dim.113), metadata={op_name="jit(train_step)/sub" stack_frame_id=372}
+  %square.71 = f32[6272,1]{1,0} multiply(%sub.207, %sub.207), metadata={op_name="jit(train_step)/square" stack_frame_id=376}
+  %reduce_sum.310 = f32[6272]{0} reduce(%square.71, %constant.225), dimensions={1}, to_apply=%region_50.72, metadata={op_name="jit(train_step)/reduce_sum" stack_frame_id=78}
+  %div.209 = f32[6272]{0} divide(%reduce_sum.310, %broadcast.45), metadata={op_name="jit(train_step)/div" stack_frame_id=78}
+  %reduce_sum.311 = f32[] reduce(%div.209, %constant.225), dimensions={0}, to_apply=%region_51.73, metadata={op_name="jit(train_step)/reduce_sum" stack_frame_id=88}
+  %add.242 = f32[] add(%state_3__2_.1, %reduce_sum.311), metadata={op_name="jit(train_step)/add" stack_frame_id=386}
+  %eq.10 = pred[] compare(%add.243, %constant.225), direction=EQ, metadata={op_name="jit(train_step)/eq" stack_frame_id=412}
+  %jit__where_.92 = f32[] call(%eq.10, %constant.223, %add.243), to_apply=%_where_53.20, metadata={op_name="jit(train_step)/jit(_where)" stack_frame_id=417}
+  %div.211 = f32[] divide(%add.242, %jit__where_.92), metadata={op_name="jit(train_step)/div" stack_frame_id=419}
+  %jit__where_.93 = f32[] call(%eq.11, %constant.222, %div.211), to_apply=%_where_53.20, metadata={op_name="jit(train_step)/jit(_where)" stack_frame_id=420}
+  %sqrt.103 = f32[] sqrt(%jit__where_.93), metadata={op_name="jit(train_step)/sqrt" stack_frame_id=424}
+  %constant.210 = f32[] constant(0.004)
+  %broadcast.44 = f32[3,8]{1,0} broadcast(%constant.210), dimensions={}
+  %mul.191 = f32[3,8]{1,0} multiply(%state_0__0_.1, %broadcast.44), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %state_2__1_.1 = f32[] parameter(18), metadata={op_name="state[2][1]"}
+  %mul.192 = f32[3,8]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.193 = f32[3,8]{1,0} multiply(%mul.191, %mul.192), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.105 = f32[3,8]{1,0} subtract(%state_0__0_.1, %mul.193), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__2_.1 = f32[3,8]{1,0} parameter(19), metadata={op_name="state[2][2]"}
+  %jit__take_.26 = s32[6272,1]{1,0} get-tuple-element(%jit__take_.24), index=1, metadata={op_name="jit(train_step)/jvp(embedding)/jit(_take)" stack_frame_id=134}
+  %jit__take_.41 = s32[15,1]{1,0} get-tuple-element(%jit__take_.39), index=1, metadata={op_name="jit(train_step)/jvp(dot_interaction)/jit(_take)" stack_frame_id=167}
+  %constant.217 = f32[] constant(0)
+  %broadcast.46 = f32[6272,192]{1,0} broadcast(%constant.217), dimensions={}
+  %gt.22 = pred[6272,192]{1,0} compare(%add.158, %broadcast.46), direction=GT, metadata={op_name="jit(train_step)/jvp(dense_2)/gt" stack_frame_id=180}
+  %gt.23 = pred[6272,192]{1,0} compare(%add.162, %broadcast.46), direction=GT, metadata={op_name="jit(train_step)/jvp(dense_3)/gt" stack_frame_id=180}
+  %gt.24 = pred[6272,192]{1,0} compare(%add.166, %broadcast.46), direction=GT, metadata={op_name="jit(train_step)/jvp(dense_4)/gt" stack_frame_id=180}
+  %constant.224 = f32[] constant(1)
+  %jit__where_.55 = f32[] call(%eq.7, %constant.224), to_apply=%_where_58.22, metadata={op_name="jit(train_step)/transpose(jvp(compile_loss))/mean_squared_error/jit(_where)" stack_frame_id=222}
+  %div.108 = f32[] divide(%jit__where_.55, %jit__where_.53), metadata={op_name="jit(train_step)/transpose(jvp(compile_loss))/mean_squared_error/div" stack_frame_id=221}
+  %broadcast_in_dim.93 = f32[6272]{0} broadcast(%div.108), dimensions={}, metadata={op_name="jit(train_step)/transpose(jvp(compile_loss))/mean_squared_error/broadcast_in_dim" stack_frame_id=15}
+  %div.109 = f32[6272]{0} divide(%broadcast_in_dim.93, %broadcast.45), metadata={op_name="jit(train_step)/transpose(jvp(compile_loss))/mean_squared_error/div" stack_frame_id=10}
+  %broadcast_in_dim.94 = f32[6272,1]{1,0} reshape(%div.109), metadata={op_name="jit(train_step)/transpose(jvp(compile_loss))/mean_squared_error/broadcast_in_dim" stack_frame_id=10}
+  %constant.216 = f32[] constant(2)
+  %mul.188 = f32[6272,1]{1,0} broadcast(%constant.216), dimensions={}, metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/mul" stack_frame_id=125}
+  %mul.189 = f32[6272,1]{1,0} multiply(%sub.104, %mul.188), metadata={op_name="jit(train_step)/jvp(compile_loss)/mean_squared_error/mul" stack_frame_id=125}
+  %mul.190 = f32[6272,1]{1,0} multiply(%broadcast_in_dim.94, %mul.189), metadata={op_name="jit(train_step)/transpose(jvp(compile_loss))/mean_squared_error/mul" stack_frame_id=125}
+  %neg.1 = f32[6272,1]{1,0} negate(%mul.190), metadata={op_name="jit(train_step)/transpose(jvp(compile_loss))/mean_squared_error/neg" stack_frame_id=209}
+  %dot_general.28 = f32[6272,192]{1,0} dot(%neg.1, %state_0__15_.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/dot_general" stack_frame_id=189}
+  %select_n.30 = f32[6272,192]{1,0} select(%gt.24, %dot_general.28, %broadcast.46), metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/select_n" stack_frame_id=180}
+  %dot_general.30 = f32[6272,192]{1,0} dot(%select_n.30, %state_0__13_.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/dot_general" stack_frame_id=176}
+  %select_n.31 = f32[6272,192]{1,0} select(%gt.23, %dot_general.30, %broadcast.46), metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/select_n" stack_frame_id=180}
+  %dot_general.32 = f32[6272,192]{1,0} dot(%select_n.31, %state_0__11_.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/dot_general" stack_frame_id=176}
+  %select_n.32 = f32[6272,192]{1,0} select(%gt.22, %dot_general.32, %broadcast.46), metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/select_n" stack_frame_id=180}
+  %dot_general.34 = f32[6272,15]{1,0} dot(%select_n.32, %state_0__9_.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/dot_general" stack_frame_id=176}
+  %jit__take_.42 = f32[6272,36]{1,0} call(%jit__take_.41, %dot_general.34), to_apply=%_take_79.32, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/jit(_take)" stack_frame_id=167}
+  %reshape.13 = f32[6272,6,6]{2,1,0} reshape(%jit__take_.42), metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reshape" stack_frame_id=164}
+  %dot_general.36 = f32[6272,6,8]{2,1,0} dot(%reshape.13, %transpose.7), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/dot_general" stack_frame_id=161}
+  %dot_general.35 = f32[6272,6,8]{2,1,0} dot(%reshape.13, %concatenate.3), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/dot_general" stack_frame_id=161}
+  %add_any.1 = f32[6272,6,8]{2,1,0} add(%dot_general.36, %dot_general.35), metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/add_any" stack_frame_id=158}
+  %split.6 = f32[6272,1,8]{2,1,0} slice(%add_any.1), slice={[0:6272], [0:1], [0:8]}, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/split" stack_frame_id=48}
+  %reduce_sum.288 = f32[6272,8]{1,0} reduce(%split.6, %constant.225), dimensions={1}, to_apply=%region_23.38, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+  %jit__take_.47 = f32[3,8]{1,0} call(%jit__take_.26, %reduce_sum.288), to_apply=%_take_107.52, metadata={op_name="jit(train_step)/transpose(jvp(embedding))/jit(_take)" stack_frame_id=134}
+  %square.37 = f32[3,8]{1,0} multiply(%jit__take_.47, %jit__take_.47), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.293 = f32[] reduce(%square.37, %constant.225), dimensions={0,1}, to_apply=%region_33.53, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.96 = f32[1,1]{1,0} reshape(%reduce_sum.293), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %constant.214 = f32[1,1]{1,0} constant({ {0} })
+  %gt.25 = pred[1,1]{1,0} compare(%broadcast_in_dim.96, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %constant.213 = f32[1,1]{1,0} constant({ {1} })
+  %jit__where_.56 = f32[1,1]{1,0} call(%gt.25, %broadcast_in_dim.96, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.52 = f32[1,1]{1,0} sqrt(%jit__where_.56), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.57 = f32[1,1]{1,0} call(%gt.25, %sqrt.52, %broadcast_in_dim.96), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.25 = f32[1,1]{1,0} maximum(%jit__where_.57, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.110 = f32[1,1]{1,0} broadcast(%max.25), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.111 = f32[] reshape(%div.110), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.112 = f32[3,8]{1,0} broadcast(%div.111), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.113 = f32[3,8]{1,0} divide(%jit__take_.47, %div.112), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.124 = f32[3,8]{1,0} subtract(%div.113, %state_2__2_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.197 = f32[] constant(0.1)
+  %broadcast.40 = f32[3,8]{1,0} broadcast(%constant.197), dimensions={}
+  %mul.243 = f32[3,8]{1,0} multiply(%sub.124, %broadcast.40), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.172 = f32[3,8]{1,0} add(%state_2__2_.1, %mul.243), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %constant.220 = f32[] constant(0.999)
+  %state_2__0_.1 = s32[] parameter(17), metadata={op_name="state[2][0]"}
+  %add.171 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.23 = f32[] convert(%add.171), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.35 = f32[] power(%constant.220, %convert_element_type.23), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.122 = f32[] subtract(%constant.224, %pow.35), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.69 = f32[] sqrt(%sub.122), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.242 = f32[] multiply(%state_2__1_.1, %sqrt.69), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %constant.221 = f32[] constant(0.9)
+  %pow.34 = f32[] power(%constant.221, %convert_element_type.23), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.123 = f32[] subtract(%constant.224, %pow.34), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.175 = f32[] divide(%mul.242, %sub.123), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.245 = f32[3,8]{1,0} broadcast(%div.175), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.246 = f32[3,8]{1,0} multiply(%add.172, %mul.245), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__3_.1 = f32[3,8]{1,0} parameter(20), metadata={op_name="state[2][3]"}
+  %square.54 = f32[3,8]{1,0} multiply(%div.113, %div.113), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.125 = f32[3,8]{1,0} subtract(%square.54, %state_2__3_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.196 = f32[] constant(0.001)
+  %broadcast.39 = f32[3,8]{1,0} broadcast(%constant.196), dimensions={}
+  %mul.244 = f32[3,8]{1,0} multiply(%sub.125, %broadcast.39), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.173 = f32[3,8]{1,0} add(%state_2__3_.1, %mul.244), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.70 = f32[3,8]{1,0} sqrt(%add.173), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.195 = f32[] constant(1e-07)
+  %broadcast.38 = f32[3,8]{1,0} broadcast(%constant.195), dimensions={}
+  %add.174 = f32[3,8]{1,0} add(%sqrt.70, %broadcast.38), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.176 = f32[3,8]{1,0} divide(%mul.246, %add.174), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.126 = f32[3,8]{1,0} subtract(%sub.105, %div.176), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.209 = f32[] constant(0.004)
+  %mul.187 = f32[796,8]{1,0} broadcast(%constant.209), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.194 = f32[796,8]{1,0} multiply(%state_0__1_.1, %mul.187), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.195 = f32[796,8]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.196 = f32[796,8]{1,0} multiply(%mul.194, %mul.195), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.106 = f32[796,8]{1,0} subtract(%state_0__1_.1, %mul.196), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__4_.1 = f32[796,8]{1,0} parameter(21), metadata={op_name="state[2][4]"}
+  %jit__take_.29 = s32[6272,1]{1,0} get-tuple-element(%jit__take_.27), index=1, metadata={op_name="jit(train_step)/jvp(embedding_1)/jit(_take)" stack_frame_id=134}
+  %split.7 = f32[6272,1,8]{2,1,0} slice(%add_any.1), slice={[0:6272], [1:2], [0:8]}, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/split" stack_frame_id=48}
+  %reduce_sum.287 = f32[6272,8]{1,0} reduce(%split.7, %constant.225), dimensions={1}, to_apply=%region_22.37, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+  %jit__take_.46 = f32[796,8]{1,0} call(%jit__take_.29, %reduce_sum.287), to_apply=%_take_104.50, metadata={op_name="jit(train_step)/transpose(jvp(embedding_1))/jit(_take)" stack_frame_id=134}
+  %square.38 = f32[796,8]{1,0} multiply(%jit__take_.46, %jit__take_.46), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.294 = f32[] reduce(%square.38, %constant.225), dimensions={0,1}, to_apply=%region_34.55, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.97 = f32[1,1]{1,0} reshape(%reduce_sum.294), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.26 = pred[1,1]{1,0} compare(%broadcast_in_dim.97, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.58 = f32[1,1]{1,0} call(%gt.26, %broadcast_in_dim.97, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.53 = f32[1,1]{1,0} sqrt(%jit__where_.58), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.59 = f32[1,1]{1,0} call(%gt.26, %sqrt.53, %broadcast_in_dim.97), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.26 = f32[1,1]{1,0} maximum(%jit__where_.59, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.114 = f32[1,1]{1,0} broadcast(%max.26), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.115 = f32[] reshape(%div.114), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.116 = f32[796,8]{1,0} broadcast(%div.115), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.117 = f32[796,8]{1,0} divide(%jit__take_.46, %div.116), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.129 = f32[796,8]{1,0} subtract(%div.117, %state_2__4_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.194 = f32[] constant(0.1)
+  %mul.179 = f32[796,8]{1,0} broadcast(%constant.194), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %mul.248 = f32[796,8]{1,0} multiply(%sub.129, %mul.179), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.176 = f32[796,8]{1,0} add(%state_2__4_.1, %mul.248), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.175 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.24 = f32[] convert(%add.175), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.37 = f32[] power(%constant.220, %convert_element_type.24), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.127 = f32[] subtract(%constant.224, %pow.37), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.71 = f32[] sqrt(%sub.127), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.247 = f32[] multiply(%state_2__1_.1, %sqrt.71), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.36 = f32[] power(%constant.221, %convert_element_type.24), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.128 = f32[] subtract(%constant.224, %pow.36), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.177 = f32[] divide(%mul.247, %sub.128), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.250 = f32[796,8]{1,0} broadcast(%div.177), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.251 = f32[796,8]{1,0} multiply(%add.176, %mul.250), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__5_.1 = f32[796,8]{1,0} parameter(22), metadata={op_name="state[2][5]"}
+  %square.55 = f32[796,8]{1,0} multiply(%div.117, %div.117), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.130 = f32[796,8]{1,0} subtract(%square.55, %state_2__5_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.193 = f32[] constant(0.001)
+  %mul.178 = f32[796,8]{1,0} broadcast(%constant.193), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %mul.249 = f32[796,8]{1,0} multiply(%sub.130, %mul.178), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.177 = f32[796,8]{1,0} add(%state_2__5_.1, %mul.249), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.72 = f32[796,8]{1,0} sqrt(%add.177), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.192 = f32[] constant(1e-07)
+  %add.146 = f32[796,8]{1,0} broadcast(%constant.192), dimensions={}, metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %add.178 = f32[796,8]{1,0} add(%sqrt.72, %add.146), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.178 = f32[796,8]{1,0} divide(%mul.251, %add.178), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.131 = f32[796,8]{1,0} subtract(%sub.106, %div.178), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.208 = f32[] constant(0.004)
+  %mul.186 = f32[22,8]{1,0} broadcast(%constant.208), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.197 = f32[22,8]{1,0} multiply(%state_0__2_.1, %mul.186), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.198 = f32[22,8]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.199 = f32[22,8]{1,0} multiply(%mul.197, %mul.198), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.107 = f32[22,8]{1,0} subtract(%state_0__2_.1, %mul.199), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__6_.1 = f32[22,8]{1,0} parameter(23), metadata={op_name="state[2][6]"}
+  %jit__take_.32 = s32[6272,1]{1,0} get-tuple-element(%jit__take_.30), index=1, metadata={op_name="jit(train_step)/jvp(embedding_2)/jit(_take)" stack_frame_id=134}
+  %split.8 = f32[6272,1,8]{2,1,0} slice(%add_any.1), slice={[0:6272], [2:3], [0:8]}, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/split" stack_frame_id=48}
+  %reduce_sum.286 = f32[6272,8]{1,0} reduce(%split.8, %constant.225), dimensions={1}, to_apply=%region_21.36, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+  %jit__take_.45 = f32[22,8]{1,0} call(%jit__take_.32, %reduce_sum.286), to_apply=%_take_101.48, metadata={op_name="jit(train_step)/transpose(jvp(embedding_2))/jit(_take)" stack_frame_id=134}
+  %square.39 = f32[22,8]{1,0} multiply(%jit__take_.45, %jit__take_.45), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.295 = f32[] reduce(%square.39, %constant.225), dimensions={0,1}, to_apply=%region_35.56, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.98 = f32[1,1]{1,0} reshape(%reduce_sum.295), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.27 = pred[1,1]{1,0} compare(%broadcast_in_dim.98, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.60 = f32[1,1]{1,0} call(%gt.27, %broadcast_in_dim.98, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.54 = f32[1,1]{1,0} sqrt(%jit__where_.60), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.61 = f32[1,1]{1,0} call(%gt.27, %sqrt.54, %broadcast_in_dim.98), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.27 = f32[1,1]{1,0} maximum(%jit__where_.61, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.118 = f32[1,1]{1,0} broadcast(%max.27), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.119 = f32[] reshape(%div.118), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.120 = f32[22,8]{1,0} broadcast(%div.119), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.121 = f32[22,8]{1,0} divide(%jit__take_.45, %div.120), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.134 = f32[22,8]{1,0} subtract(%div.121, %state_2__6_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.191 = f32[] constant(0.1)
+  %mul.177 = f32[22,8]{1,0} broadcast(%constant.191), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %mul.253 = f32[22,8]{1,0} multiply(%sub.134, %mul.177), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.180 = f32[22,8]{1,0} add(%state_2__6_.1, %mul.253), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.179 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.25 = f32[] convert(%add.179), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.39 = f32[] power(%constant.220, %convert_element_type.25), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.132 = f32[] subtract(%constant.224, %pow.39), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.73 = f32[] sqrt(%sub.132), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.252 = f32[] multiply(%state_2__1_.1, %sqrt.73), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.38 = f32[] power(%constant.221, %convert_element_type.25), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.133 = f32[] subtract(%constant.224, %pow.38), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.179 = f32[] divide(%mul.252, %sub.133), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.255 = f32[22,8]{1,0} broadcast(%div.179), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.256 = f32[22,8]{1,0} multiply(%add.180, %mul.255), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__7_.1 = f32[22,8]{1,0} parameter(24), metadata={op_name="state[2][7]"}
+  %square.56 = f32[22,8]{1,0} multiply(%div.121, %div.121), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.135 = f32[22,8]{1,0} subtract(%square.56, %state_2__7_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.190 = f32[] constant(0.001)
+  %mul.176 = f32[22,8]{1,0} broadcast(%constant.190), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %mul.254 = f32[22,8]{1,0} multiply(%sub.135, %mul.176), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.181 = f32[22,8]{1,0} add(%state_2__7_.1, %mul.254), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.74 = f32[22,8]{1,0} sqrt(%add.181), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.189 = f32[] constant(1e-07)
+  %add.145 = f32[22,8]{1,0} broadcast(%constant.189), dimensions={}, metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %add.182 = f32[22,8]{1,0} add(%sqrt.74, %add.145), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.180 = f32[22,8]{1,0} divide(%mul.256, %add.182), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.136 = f32[22,8]{1,0} subtract(%sub.107, %div.180), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.207 = f32[] constant(0.004)
+  %mul.185 = f32[1683,8]{1,0} broadcast(%constant.207), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.200 = f32[1683,8]{1,0} multiply(%state_0__3_.1, %mul.185), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.201 = f32[1683,8]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.202 = f32[1683,8]{1,0} multiply(%mul.200, %mul.201), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.108 = f32[1683,8]{1,0} subtract(%state_0__3_.1, %mul.202), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__8_.1 = f32[1683,8]{1,0} parameter(25), metadata={op_name="state[2][8]"}
+  %jit__take_.35 = s32[6272,1]{1,0} get-tuple-element(%jit__take_.33), index=1, metadata={op_name="jit(train_step)/jvp(embedding_3)/jit(_take)" stack_frame_id=134}
+  %split.9 = f32[6272,1,8]{2,1,0} slice(%add_any.1), slice={[0:6272], [3:4], [0:8]}, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/split" stack_frame_id=48}
+  %reduce_sum.285 = f32[6272,8]{1,0} reduce(%split.9, %constant.225), dimensions={1}, to_apply=%region_20.35, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+  %jit__take_.44 = f32[1683,8]{1,0} call(%jit__take_.35, %reduce_sum.285), to_apply=%_take_98.46, metadata={op_name="jit(train_step)/transpose(jvp(embedding_3))/jit(_take)" stack_frame_id=134}
+  %square.40 = f32[1683,8]{1,0} multiply(%jit__take_.44, %jit__take_.44), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.296 = f32[] reduce(%square.40, %constant.225), dimensions={0,1}, to_apply=%region_36.57, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.99 = f32[1,1]{1,0} reshape(%reduce_sum.296), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.28 = pred[1,1]{1,0} compare(%broadcast_in_dim.99, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.62 = f32[1,1]{1,0} call(%gt.28, %broadcast_in_dim.99, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.55 = f32[1,1]{1,0} sqrt(%jit__where_.62), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.63 = f32[1,1]{1,0} call(%gt.28, %sqrt.55, %broadcast_in_dim.99), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.28 = f32[1,1]{1,0} maximum(%jit__where_.63, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.122 = f32[1,1]{1,0} broadcast(%max.28), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.123 = f32[] reshape(%div.122), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.124 = f32[1683,8]{1,0} broadcast(%div.123), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.125 = f32[1683,8]{1,0} divide(%jit__take_.44, %div.124), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.139 = f32[1683,8]{1,0} subtract(%div.125, %state_2__8_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.188 = f32[] constant(0.1)
+  %mul.175 = f32[1683,8]{1,0} broadcast(%constant.188), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %mul.258 = f32[1683,8]{1,0} multiply(%sub.139, %mul.175), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.184 = f32[1683,8]{1,0} add(%state_2__8_.1, %mul.258), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.183 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.26 = f32[] convert(%add.183), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.41 = f32[] power(%constant.220, %convert_element_type.26), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.137 = f32[] subtract(%constant.224, %pow.41), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.75 = f32[] sqrt(%sub.137), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.257 = f32[] multiply(%state_2__1_.1, %sqrt.75), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.40 = f32[] power(%constant.221, %convert_element_type.26), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.138 = f32[] subtract(%constant.224, %pow.40), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.181 = f32[] divide(%mul.257, %sub.138), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.260 = f32[1683,8]{1,0} broadcast(%div.181), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.261 = f32[1683,8]{1,0} multiply(%add.184, %mul.260), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__9_.1 = f32[1683,8]{1,0} parameter(26), metadata={op_name="state[2][9]"}
+  %square.57 = f32[1683,8]{1,0} multiply(%div.125, %div.125), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.140 = f32[1683,8]{1,0} subtract(%square.57, %state_2__9_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.187 = f32[] constant(0.001)
+  %mul.174 = f32[1683,8]{1,0} broadcast(%constant.187), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %mul.259 = f32[1683,8]{1,0} multiply(%sub.140, %mul.174), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.185 = f32[1683,8]{1,0} add(%state_2__9_.1, %mul.259), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.76 = f32[1683,8]{1,0} sqrt(%add.185), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.186 = f32[] constant(1e-07)
+  %add.144 = f32[1683,8]{1,0} broadcast(%constant.186), dimensions={}, metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %add.186 = f32[1683,8]{1,0} add(%sqrt.76, %add.144), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.182 = f32[1683,8]{1,0} divide(%mul.261, %add.186), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.141 = f32[1683,8]{1,0} subtract(%sub.108, %div.182), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.206 = f32[] constant(0.004)
+  %mul.184 = f32[944,8]{1,0} broadcast(%constant.206), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.203 = f32[944,8]{1,0} multiply(%state_0__4_.1, %mul.184), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.204 = f32[944,8]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.205 = f32[944,8]{1,0} multiply(%mul.203, %mul.204), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.109 = f32[944,8]{1,0} subtract(%state_0__4_.1, %mul.205), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__10_.1 = f32[944,8]{1,0} parameter(27), metadata={op_name="state[2][10]"}
+  %jit__take_.38 = s32[6272,1]{1,0} get-tuple-element(%jit__take_.36), index=1, metadata={op_name="jit(train_step)/jvp(embedding_4)/jit(_take)" stack_frame_id=134}
+  %split.10 = f32[6272,1,8]{2,1,0} slice(%add_any.1), slice={[0:6272], [4:5], [0:8]}, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/split" stack_frame_id=48}
+  %reduce_sum.284 = f32[6272,8]{1,0} reduce(%split.10, %constant.225), dimensions={1}, to_apply=%region_19.34, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+  %jit__take_.43 = f32[944,8]{1,0} call(%jit__take_.38, %reduce_sum.284), to_apply=%_take_95.44, metadata={op_name="jit(train_step)/transpose(jvp(embedding_4))/jit(_take)" stack_frame_id=134}
+  %square.41 = f32[944,8]{1,0} multiply(%jit__take_.43, %jit__take_.43), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.297 = f32[] reduce(%square.41, %constant.225), dimensions={0,1}, to_apply=%region_37.58, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.100 = f32[1,1]{1,0} reshape(%reduce_sum.297), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.29 = pred[1,1]{1,0} compare(%broadcast_in_dim.100, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.64 = f32[1,1]{1,0} call(%gt.29, %broadcast_in_dim.100, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.56 = f32[1,1]{1,0} sqrt(%jit__where_.64), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.65 = f32[1,1]{1,0} call(%gt.29, %sqrt.56, %broadcast_in_dim.100), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.29 = f32[1,1]{1,0} maximum(%jit__where_.65, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.126 = f32[1,1]{1,0} broadcast(%max.29), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.127 = f32[] reshape(%div.126), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.128 = f32[944,8]{1,0} broadcast(%div.127), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.129 = f32[944,8]{1,0} divide(%jit__take_.43, %div.128), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.144 = f32[944,8]{1,0} subtract(%div.129, %state_2__10_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.185 = f32[] constant(0.1)
+  %mul.173 = f32[944,8]{1,0} broadcast(%constant.185), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %mul.263 = f32[944,8]{1,0} multiply(%sub.144, %mul.173), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.188 = f32[944,8]{1,0} add(%state_2__10_.1, %mul.263), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.187 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.27 = f32[] convert(%add.187), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.43 = f32[] power(%constant.220, %convert_element_type.27), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.142 = f32[] subtract(%constant.224, %pow.43), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.77 = f32[] sqrt(%sub.142), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.262 = f32[] multiply(%state_2__1_.1, %sqrt.77), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.42 = f32[] power(%constant.221, %convert_element_type.27), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.143 = f32[] subtract(%constant.224, %pow.42), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.183 = f32[] divide(%mul.262, %sub.143), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.265 = f32[944,8]{1,0} broadcast(%div.183), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.266 = f32[944,8]{1,0} multiply(%add.188, %mul.265), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__11_.1 = f32[944,8]{1,0} parameter(28), metadata={op_name="state[2][11]"}
+  %square.58 = f32[944,8]{1,0} multiply(%div.129, %div.129), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.145 = f32[944,8]{1,0} subtract(%square.58, %state_2__11_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.184 = f32[] constant(0.001)
+  %mul.172 = f32[944,8]{1,0} broadcast(%constant.184), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %mul.264 = f32[944,8]{1,0} multiply(%sub.145, %mul.172), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.189 = f32[944,8]{1,0} add(%state_2__11_.1, %mul.264), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.78 = f32[944,8]{1,0} sqrt(%add.189), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.183 = f32[] constant(1e-07)
+  %add.143 = f32[944,8]{1,0} broadcast(%constant.183), dimensions={}, metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %add.190 = f32[944,8]{1,0} add(%sqrt.78, %add.143), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.184 = f32[944,8]{1,0} divide(%mul.266, %add.190), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.146 = f32[944,8]{1,0} subtract(%sub.109, %div.184), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.205 = f32[] constant(0.004)
+  %mul.183 = f32[5,8]{1,0} broadcast(%constant.205), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.206 = f32[5,8]{1,0} multiply(%state_0__5_.1, %mul.183), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.207 = f32[5,8]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.208 = f32[5,8]{1,0} multiply(%mul.206, %mul.207), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.110 = f32[5,8]{1,0} subtract(%state_0__5_.1, %mul.208), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__12_.1 = f32[5,8]{1,0} parameter(29), metadata={op_name="state[2][12]"}
+  %constant.218 = f32[] constant(0)
+  %broadcast.47 = f32[6272,8]{1,0} broadcast(%constant.218), dimensions={}
+  %gt.21 = pred[6272,8]{1,0} compare(%add.150, %broadcast.47), direction=GT, metadata={op_name="jit(train_step)/jvp(sequential)/dense/gt" stack_frame_id=155}
+  %split.11 = f32[6272,1,8]{2,1,0} slice(%add_any.1), slice={[0:6272], [5:6], [0:8]}, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/split" stack_frame_id=48}
+  %reduce_sum.283 = f32[6272,8]{1,0} reduce(%split.11, %constant.225), dimensions={1}, to_apply=%region_18.33, metadata={op_name="jit(train_step)/transpose(jvp(dot_interaction))/reduce_sum" stack_frame_id=48}
+  %dot_general.38 = f32[6272,8]{1,0} dot(%reduce_sum.283, %state_0__7_.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense_1/dot_general" stack_frame_id=151}
+  %select_n.33 = f32[6272,8]{1,0} select(%gt.21, %dot_general.38, %broadcast.47), metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense/select_n" stack_frame_id=155}
+  %dot_general.39 = f32[8,5]{1,0} dot(%select_n.33, %concatenate.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense/dot_general" stack_frame_id=151}
+  %transpose.13 = f32[5,8]{0,1} transpose(%dot_general.39), dimensions={1,0}, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense/transpose" stack_frame_id=151}
+  %square.42 = f32[5,8]{0,1} multiply(%transpose.13, %transpose.13), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.298 = f32[] reduce(%square.42, %constant.225), dimensions={0,1}, to_apply=%region_38.59, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.101 = f32[1,1]{1,0} reshape(%reduce_sum.298), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.30 = pred[1,1]{1,0} compare(%broadcast_in_dim.101, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.66 = f32[1,1]{1,0} call(%gt.30, %broadcast_in_dim.101, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.57 = f32[1,1]{1,0} sqrt(%jit__where_.66), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.67 = f32[1,1]{1,0} call(%gt.30, %sqrt.57, %broadcast_in_dim.101), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.30 = f32[1,1]{1,0} maximum(%jit__where_.67, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.130 = f32[1,1]{1,0} broadcast(%max.30), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.131 = f32[] reshape(%div.130), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.132 = f32[5,8]{1,0} broadcast(%div.131), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.133 = f32[5,8]{0,1} divide(%transpose.13, %div.132), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.149 = f32[5,8]{0,1} subtract(%div.133, %state_2__12_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.182 = f32[] constant(0.1)
+  %mul.171 = f32[5,8]{1,0} broadcast(%constant.182), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %mul.268 = f32[5,8]{0,1} multiply(%sub.149, %mul.171), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.192 = f32[5,8]{1,0} add(%state_2__12_.1, %mul.268), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.191 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.28 = f32[] convert(%add.191), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.45 = f32[] power(%constant.220, %convert_element_type.28), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.147 = f32[] subtract(%constant.224, %pow.45), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.79 = f32[] sqrt(%sub.147), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.267 = f32[] multiply(%state_2__1_.1, %sqrt.79), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.44 = f32[] power(%constant.221, %convert_element_type.28), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.148 = f32[] subtract(%constant.224, %pow.44), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.185 = f32[] divide(%mul.267, %sub.148), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.270 = f32[5,8]{1,0} broadcast(%div.185), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.271 = f32[5,8]{1,0} multiply(%add.192, %mul.270), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__13_.1 = f32[5,8]{1,0} parameter(30), metadata={op_name="state[2][13]"}
+  %square.59 = f32[5,8]{0,1} multiply(%div.133, %div.133), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.150 = f32[5,8]{0,1} subtract(%square.59, %state_2__13_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.181 = f32[] constant(0.001)
+  %mul.170 = f32[5,8]{1,0} broadcast(%constant.181), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %mul.269 = f32[5,8]{0,1} multiply(%sub.150, %mul.170), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.193 = f32[5,8]{1,0} add(%state_2__13_.1, %mul.269), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.80 = f32[5,8]{1,0} sqrt(%add.193), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.180 = f32[] constant(1e-07)
+  %add.142 = f32[5,8]{1,0} broadcast(%constant.180), dimensions={}, metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %add.194 = f32[5,8]{1,0} add(%sqrt.80, %add.142), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.186 = f32[5,8]{1,0} divide(%mul.271, %add.194), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.151 = f32[5,8]{1,0} subtract(%sub.110, %div.186), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.204 = f32[] constant(0.004)
+  %broadcast.43 = f32[8]{0} broadcast(%constant.204), dimensions={}
+  %mul.209 = f32[8]{0} multiply(%state_0__6_.1, %broadcast.43), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.210 = f32[8]{0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.211 = f32[8]{0} multiply(%mul.209, %mul.210), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.111 = f32[8]{0} subtract(%state_0__6_.1, %mul.211), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__14_.1 = f32[8]{0} parameter(31), metadata={op_name="state[2][14]"}
+  %reduce_sum.291 = f32[8]{0} reduce(%select_n.33, %constant.225), dimensions={0}, to_apply=%region_26.41, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense/reduce_sum" stack_frame_id=58}
+  %reshape.15 = f32[1,8]{1,0} reshape(%reduce_sum.291), metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense/reshape" stack_frame_id=58}
+  %reduce_sum.292 = f32[8]{0} reduce(%reshape.15, %constant.225), dimensions={0}, to_apply=%region_27.42, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense/reduce_sum" stack_frame_id=58}
+  %square.43 = f32[8]{0} multiply(%reduce_sum.292, %reduce_sum.292), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.299 = f32[] reduce(%square.43, %constant.225), dimensions={0}, to_apply=%region_39.60, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.102 = f32[1]{0} reshape(%reduce_sum.299), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %constant.212 = f32[1]{0} constant({0})
+  %gt.31 = pred[1]{0} compare(%broadcast_in_dim.102, %constant.212), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %constant.211 = f32[1]{0} constant({1})
+  %jit__where_.68 = f32[1]{0} call(%gt.31, %broadcast_in_dim.102, %constant.211), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.58 = f32[1]{0} sqrt(%jit__where_.68), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.69 = f32[1]{0} call(%gt.31, %sqrt.58, %broadcast_in_dim.102), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.31 = f32[1]{0} maximum(%jit__where_.69, %constant.211), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.134 = f32[1]{0} broadcast(%max.31), dimensions={0}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.135 = f32[] reshape(%div.134), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.136 = f32[8]{0} broadcast(%div.135), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.137 = f32[8]{0} divide(%reduce_sum.292, %div.136), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.154 = f32[8]{0} subtract(%div.137, %state_2__14_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.179 = f32[] constant(0.1)
+  %broadcast.37 = f32[8]{0} broadcast(%constant.179), dimensions={}
+  %mul.273 = f32[8]{0} multiply(%sub.154, %broadcast.37), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.196 = f32[8]{0} add(%state_2__14_.1, %mul.273), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.195 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.29 = f32[] convert(%add.195), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.47 = f32[] power(%constant.220, %convert_element_type.29), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.152 = f32[] subtract(%constant.224, %pow.47), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.81 = f32[] sqrt(%sub.152), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.272 = f32[] multiply(%state_2__1_.1, %sqrt.81), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.46 = f32[] power(%constant.221, %convert_element_type.29), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.153 = f32[] subtract(%constant.224, %pow.46), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.187 = f32[] divide(%mul.272, %sub.153), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.275 = f32[8]{0} broadcast(%div.187), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.276 = f32[8]{0} multiply(%add.196, %mul.275), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__15_.1 = f32[8]{0} parameter(32), metadata={op_name="state[2][15]"}
+  %square.60 = f32[8]{0} multiply(%div.137, %div.137), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.155 = f32[8]{0} subtract(%square.60, %state_2__15_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.178 = f32[] constant(0.001)
+  %broadcast.36 = f32[8]{0} broadcast(%constant.178), dimensions={}
+  %mul.274 = f32[8]{0} multiply(%sub.155, %broadcast.36), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.197 = f32[8]{0} add(%state_2__15_.1, %mul.274), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.82 = f32[8]{0} sqrt(%add.197), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.177 = f32[] constant(1e-07)
+  %broadcast.35 = f32[8]{0} broadcast(%constant.177), dimensions={}
+  %add.198 = f32[8]{0} add(%sqrt.82, %broadcast.35), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.188 = f32[8]{0} divide(%mul.276, %add.198), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.156 = f32[8]{0} subtract(%sub.111, %div.188), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.203 = f32[] constant(0.004)
+  %mul.182 = f32[8,8]{1,0} broadcast(%constant.203), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.212 = f32[8,8]{1,0} multiply(%state_0__7_.1, %mul.182), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.213 = f32[8,8]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.214 = f32[8,8]{1,0} multiply(%mul.212, %mul.213), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.112 = f32[8,8]{1,0} subtract(%state_0__7_.1, %mul.214), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__16_.1 = f32[8,8]{1,0} parameter(33), metadata={op_name="state[2][16]"}
+  %dot_general.37 = f32[8,8]{1,0} dot(%reduce_sum.283, %jit_relu_.4), lhs_contracting_dims={0}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense_1/dot_general" stack_frame_id=151}
+  %transpose.12 = f32[8,8]{0,1} transpose(%dot_general.37), dimensions={1,0}, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense_1/transpose" stack_frame_id=151}
+  %square.44 = f32[8,8]{0,1} multiply(%transpose.12, %transpose.12), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.300 = f32[] reduce(%square.44, %constant.225), dimensions={0,1}, to_apply=%region_40.62, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.103 = f32[1,1]{1,0} reshape(%reduce_sum.300), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.32 = pred[1,1]{1,0} compare(%broadcast_in_dim.103, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.70 = f32[1,1]{1,0} call(%gt.32, %broadcast_in_dim.103, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.59 = f32[1,1]{1,0} sqrt(%jit__where_.70), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.71 = f32[1,1]{1,0} call(%gt.32, %sqrt.59, %broadcast_in_dim.103), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.32 = f32[1,1]{1,0} maximum(%jit__where_.71, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.138 = f32[1,1]{1,0} broadcast(%max.32), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.139 = f32[] reshape(%div.138), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.140 = f32[8,8]{1,0} broadcast(%div.139), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.141 = f32[8,8]{0,1} divide(%transpose.12, %div.140), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.159 = f32[8,8]{0,1} subtract(%div.141, %state_2__16_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.176 = f32[] constant(0.1)
+  %mul.169 = f32[8,8]{1,0} broadcast(%constant.176), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %mul.278 = f32[8,8]{0,1} multiply(%sub.159, %mul.169), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.200 = f32[8,8]{1,0} add(%state_2__16_.1, %mul.278), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.199 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.30 = f32[] convert(%add.199), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.49 = f32[] power(%constant.220, %convert_element_type.30), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.157 = f32[] subtract(%constant.224, %pow.49), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.83 = f32[] sqrt(%sub.157), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.277 = f32[] multiply(%state_2__1_.1, %sqrt.83), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.48 = f32[] power(%constant.221, %convert_element_type.30), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.158 = f32[] subtract(%constant.224, %pow.48), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.189 = f32[] divide(%mul.277, %sub.158), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.280 = f32[8,8]{1,0} broadcast(%div.189), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.281 = f32[8,8]{1,0} multiply(%add.200, %mul.280), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__17_.1 = f32[8,8]{1,0} parameter(34), metadata={op_name="state[2][17]"}
+  %square.61 = f32[8,8]{0,1} multiply(%div.141, %div.141), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.160 = f32[8,8]{0,1} subtract(%square.61, %state_2__17_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.175 = f32[] constant(0.001)
+  %mul.168 = f32[8,8]{1,0} broadcast(%constant.175), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %mul.279 = f32[8,8]{0,1} multiply(%sub.160, %mul.168), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.201 = f32[8,8]{1,0} add(%state_2__17_.1, %mul.279), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.84 = f32[8,8]{1,0} sqrt(%add.201), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.174 = f32[] constant(1e-07)
+  %add.141 = f32[8,8]{1,0} broadcast(%constant.174), dimensions={}, metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %add.202 = f32[8,8]{1,0} add(%sqrt.84, %add.141), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.190 = f32[8,8]{1,0} divide(%mul.281, %add.202), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.161 = f32[8,8]{1,0} subtract(%sub.112, %div.190), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %mul.215 = f32[8]{0} multiply(%state_0__8_.1, %broadcast.43), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.216 = f32[8]{0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.217 = f32[8]{0} multiply(%mul.215, %mul.216), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.113 = f32[8]{0} subtract(%state_0__8_.1, %mul.217), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__18_.1 = f32[8]{0} parameter(35), metadata={op_name="state[2][18]"}
+  %reduce_sum.289 = f32[8]{0} reduce(%reduce_sum.283, %constant.225), dimensions={0}, to_apply=%region_24.39, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense_1/reduce_sum" stack_frame_id=58}
+  %reshape.14 = f32[1,8]{1,0} reshape(%reduce_sum.289), metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense_1/reshape" stack_frame_id=58}
+  %reduce_sum.290 = f32[8]{0} reduce(%reshape.14, %constant.225), dimensions={0}, to_apply=%region_25.40, metadata={op_name="jit(train_step)/transpose(jvp(sequential))/dense_1/reduce_sum" stack_frame_id=58}
+  %square.45 = f32[8]{0} multiply(%reduce_sum.290, %reduce_sum.290), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.301 = f32[] reduce(%square.45, %constant.225), dimensions={0}, to_apply=%region_41.63, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.104 = f32[1]{0} reshape(%reduce_sum.301), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.33 = pred[1]{0} compare(%broadcast_in_dim.104, %constant.212), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.72 = f32[1]{0} call(%gt.33, %broadcast_in_dim.104, %constant.211), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.60 = f32[1]{0} sqrt(%jit__where_.72), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.73 = f32[1]{0} call(%gt.33, %sqrt.60, %broadcast_in_dim.104), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.33 = f32[1]{0} maximum(%jit__where_.73, %constant.211), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.142 = f32[1]{0} broadcast(%max.33), dimensions={0}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.143 = f32[] reshape(%div.142), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.144 = f32[8]{0} broadcast(%div.143), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.145 = f32[8]{0} divide(%reduce_sum.290, %div.144), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.164 = f32[8]{0} subtract(%div.145, %state_2__18_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %mul.283 = f32[8]{0} multiply(%sub.164, %broadcast.37), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.204 = f32[8]{0} add(%state_2__18_.1, %mul.283), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.203 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.31 = f32[] convert(%add.203), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.51 = f32[] power(%constant.220, %convert_element_type.31), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.162 = f32[] subtract(%constant.224, %pow.51), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.85 = f32[] sqrt(%sub.162), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.282 = f32[] multiply(%state_2__1_.1, %sqrt.85), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.50 = f32[] power(%constant.221, %convert_element_type.31), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.163 = f32[] subtract(%constant.224, %pow.50), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.191 = f32[] divide(%mul.282, %sub.163), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.285 = f32[8]{0} broadcast(%div.191), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.286 = f32[8]{0} multiply(%add.204, %mul.285), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__19_.1 = f32[8]{0} parameter(36), metadata={op_name="state[2][19]"}
+  %square.62 = f32[8]{0} multiply(%div.145, %div.145), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.165 = f32[8]{0} subtract(%square.62, %state_2__19_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %mul.284 = f32[8]{0} multiply(%sub.165, %broadcast.36), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.205 = f32[8]{0} add(%state_2__19_.1, %mul.284), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.86 = f32[8]{0} sqrt(%add.205), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %add.206 = f32[8]{0} add(%sqrt.86, %broadcast.35), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.192 = f32[8]{0} divide(%mul.286, %add.206), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.166 = f32[8]{0} subtract(%sub.113, %div.192), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.202 = f32[] constant(0.004)
+  %mul.181 = f32[15,192]{1,0} broadcast(%constant.202), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.218 = f32[15,192]{1,0} multiply(%state_0__9_.1, %mul.181), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.219 = f32[15,192]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.220 = f32[15,192]{1,0} multiply(%mul.218, %mul.219), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.114 = f32[15,192]{1,0} subtract(%state_0__9_.1, %mul.220), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__20_.1 = f32[15,192]{1,0} parameter(37), metadata={op_name="state[2][20]"}
+  %dot_general.33 = f32[192,15]{1,0} dot(%select_n.32, %jit__take_.40), lhs_contracting_dims={0}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/dot_general" stack_frame_id=176}
+  %transpose.11 = f32[15,192]{0,1} transpose(%dot_general.33), dimensions={1,0}, metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/transpose" stack_frame_id=176}
+  %square.46 = f32[15,192]{0,1} multiply(%transpose.11, %transpose.11), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.302 = f32[] reduce(%square.46, %constant.225), dimensions={0,1}, to_apply=%region_42.64, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.105 = f32[1,1]{1,0} reshape(%reduce_sum.302), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.34 = pred[1,1]{1,0} compare(%broadcast_in_dim.105, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.74 = f32[1,1]{1,0} call(%gt.34, %broadcast_in_dim.105, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.61 = f32[1,1]{1,0} sqrt(%jit__where_.74), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.75 = f32[1,1]{1,0} call(%gt.34, %sqrt.61, %broadcast_in_dim.105), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.34 = f32[1,1]{1,0} maximum(%jit__where_.75, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.146 = f32[1,1]{1,0} broadcast(%max.34), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.147 = f32[] reshape(%div.146), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.148 = f32[15,192]{1,0} broadcast(%div.147), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.149 = f32[15,192]{0,1} divide(%transpose.11, %div.148), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.169 = f32[15,192]{0,1} subtract(%div.149, %state_2__20_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.173 = f32[] constant(0.1)
+  %mul.167 = f32[15,192]{1,0} broadcast(%constant.173), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %mul.288 = f32[15,192]{0,1} multiply(%sub.169, %mul.167), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.208 = f32[15,192]{1,0} add(%state_2__20_.1, %mul.288), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.207 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.32 = f32[] convert(%add.207), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.53 = f32[] power(%constant.220, %convert_element_type.32), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.167 = f32[] subtract(%constant.224, %pow.53), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.87 = f32[] sqrt(%sub.167), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.287 = f32[] multiply(%state_2__1_.1, %sqrt.87), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.52 = f32[] power(%constant.221, %convert_element_type.32), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.168 = f32[] subtract(%constant.224, %pow.52), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.193 = f32[] divide(%mul.287, %sub.168), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.290 = f32[15,192]{1,0} broadcast(%div.193), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.291 = f32[15,192]{1,0} multiply(%add.208, %mul.290), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__21_.1 = f32[15,192]{1,0} parameter(38), metadata={op_name="state[2][21]"}
+  %square.63 = f32[15,192]{0,1} multiply(%div.149, %div.149), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.170 = f32[15,192]{0,1} subtract(%square.63, %state_2__21_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.172 = f32[] constant(0.001)
+  %mul.166 = f32[15,192]{1,0} broadcast(%constant.172), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %mul.289 = f32[15,192]{0,1} multiply(%sub.170, %mul.166), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.209 = f32[15,192]{1,0} add(%state_2__21_.1, %mul.289), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.88 = f32[15,192]{1,0} sqrt(%add.209), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.171 = f32[] constant(1e-07)
+  %add.140 = f32[15,192]{1,0} broadcast(%constant.171), dimensions={}, metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %add.210 = f32[15,192]{1,0} add(%sqrt.88, %add.140), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.194 = f32[15,192]{1,0} divide(%mul.291, %add.210), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.171 = f32[15,192]{1,0} subtract(%sub.114, %div.194), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.201 = f32[] constant(0.004)
+  %broadcast.42 = f32[192]{0} broadcast(%constant.201), dimensions={}
+  %mul.221 = f32[192]{0} multiply(%state_0__10_.1, %broadcast.42), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.222 = f32[192]{0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.223 = f32[192]{0} multiply(%mul.221, %mul.222), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.115 = f32[192]{0} subtract(%state_0__10_.1, %mul.223), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__22_.1 = f32[192]{0} parameter(39), metadata={op_name="state[2][22]"}
+  %reduce_sum.281 = f32[192]{0} reduce(%select_n.32, %constant.225), dimensions={0}, to_apply=%region_15.29, metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/reduce_sum" stack_frame_id=38}
+  %reshape.12 = f32[1,192]{1,0} reshape(%reduce_sum.281), metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/reshape" stack_frame_id=38}
+  %reduce_sum.282 = f32[192]{0} reduce(%reshape.12, %constant.225), dimensions={0}, to_apply=%region_16.30, metadata={op_name="jit(train_step)/transpose(jvp(dense_2))/reduce_sum" stack_frame_id=38}
+  %square.47 = f32[192]{0} multiply(%reduce_sum.282, %reduce_sum.282), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.303 = f32[] reduce(%square.47, %constant.225), dimensions={0}, to_apply=%region_43.65, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.106 = f32[1]{0} reshape(%reduce_sum.303), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.35 = pred[1]{0} compare(%broadcast_in_dim.106, %constant.212), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.76 = f32[1]{0} call(%gt.35, %broadcast_in_dim.106, %constant.211), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.62 = f32[1]{0} sqrt(%jit__where_.76), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.77 = f32[1]{0} call(%gt.35, %sqrt.62, %broadcast_in_dim.106), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.35 = f32[1]{0} maximum(%jit__where_.77, %constant.211), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.150 = f32[1]{0} broadcast(%max.35), dimensions={0}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.151 = f32[] reshape(%div.150), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.152 = f32[192]{0} broadcast(%div.151), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.153 = f32[192]{0} divide(%reduce_sum.282, %div.152), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.174 = f32[192]{0} subtract(%div.153, %state_2__22_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.170 = f32[] constant(0.1)
+  %broadcast.34 = f32[192]{0} broadcast(%constant.170), dimensions={}
+  %mul.293 = f32[192]{0} multiply(%sub.174, %broadcast.34), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.212 = f32[192]{0} add(%state_2__22_.1, %mul.293), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.211 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.33 = f32[] convert(%add.211), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.55 = f32[] power(%constant.220, %convert_element_type.33), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.172 = f32[] subtract(%constant.224, %pow.55), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.89 = f32[] sqrt(%sub.172), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.292 = f32[] multiply(%state_2__1_.1, %sqrt.89), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.54 = f32[] power(%constant.221, %convert_element_type.33), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.173 = f32[] subtract(%constant.224, %pow.54), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.195 = f32[] divide(%mul.292, %sub.173), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.295 = f32[192]{0} broadcast(%div.195), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.296 = f32[192]{0} multiply(%add.212, %mul.295), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__23_.1 = f32[192]{0} parameter(40), metadata={op_name="state[2][23]"}
+  %square.64 = f32[192]{0} multiply(%div.153, %div.153), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.175 = f32[192]{0} subtract(%square.64, %state_2__23_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.169 = f32[] constant(0.001)
+  %broadcast.33 = f32[192]{0} broadcast(%constant.169), dimensions={}
+  %mul.294 = f32[192]{0} multiply(%sub.175, %broadcast.33), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.213 = f32[192]{0} add(%state_2__23_.1, %mul.294), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.90 = f32[192]{0} sqrt(%add.213), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.168 = f32[] constant(1e-07)
+  %broadcast.32 = f32[192]{0} broadcast(%constant.168), dimensions={}
+  %add.214 = f32[192]{0} add(%sqrt.90, %broadcast.32), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.196 = f32[192]{0} divide(%mul.296, %add.214), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.176 = f32[192]{0} subtract(%sub.115, %div.196), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.200 = f32[] constant(0.004)
+  %broadcast.41 = f32[192,192]{1,0} broadcast(%constant.200), dimensions={}
+  %mul.224 = f32[192,192]{1,0} multiply(%state_0__11_.1, %broadcast.41), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.225 = f32[192,192]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.226 = f32[192,192]{1,0} multiply(%mul.224, %mul.225), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.116 = f32[192,192]{1,0} subtract(%state_0__11_.1, %mul.226), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__24_.1 = f32[192,192]{1,0} parameter(41), metadata={op_name="state[2][24]"}
+  %dot_general.31 = f32[192,192]{1,0} dot(%select_n.31, %jit_relu_.5), lhs_contracting_dims={0}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/dot_general" stack_frame_id=176}
+  %transpose.10 = f32[192,192]{0,1} transpose(%dot_general.31), dimensions={1,0}, metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/transpose" stack_frame_id=176}
+  %square.48 = f32[192,192]{0,1} multiply(%transpose.10, %transpose.10), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.304 = f32[] reduce(%square.48, %constant.225), dimensions={0,1}, to_apply=%region_44.66, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.107 = f32[1,1]{1,0} reshape(%reduce_sum.304), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.36 = pred[1,1]{1,0} compare(%broadcast_in_dim.107, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.78 = f32[1,1]{1,0} call(%gt.36, %broadcast_in_dim.107, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.63 = f32[1,1]{1,0} sqrt(%jit__where_.78), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.79 = f32[1,1]{1,0} call(%gt.36, %sqrt.63, %broadcast_in_dim.107), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.36 = f32[1,1]{1,0} maximum(%jit__where_.79, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.154 = f32[1,1]{1,0} broadcast(%max.36), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.155 = f32[] reshape(%div.154), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.156 = f32[192,192]{1,0} broadcast(%div.155), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.157 = f32[192,192]{0,1} divide(%transpose.10, %div.156), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.179 = f32[192,192]{0,1} subtract(%div.157, %state_2__24_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.167 = f32[] constant(0.1)
+  %broadcast.31 = f32[192,192]{1,0} broadcast(%constant.167), dimensions={}
+  %mul.298 = f32[192,192]{0,1} multiply(%sub.179, %broadcast.31), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.216 = f32[192,192]{1,0} add(%state_2__24_.1, %mul.298), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.215 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.34 = f32[] convert(%add.215), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.57 = f32[] power(%constant.220, %convert_element_type.34), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.177 = f32[] subtract(%constant.224, %pow.57), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.91 = f32[] sqrt(%sub.177), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.297 = f32[] multiply(%state_2__1_.1, %sqrt.91), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.56 = f32[] power(%constant.221, %convert_element_type.34), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.178 = f32[] subtract(%constant.224, %pow.56), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.197 = f32[] divide(%mul.297, %sub.178), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.300 = f32[192,192]{1,0} broadcast(%div.197), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.301 = f32[192,192]{1,0} multiply(%add.216, %mul.300), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__25_.1 = f32[192,192]{1,0} parameter(42), metadata={op_name="state[2][25]"}
+  %square.65 = f32[192,192]{0,1} multiply(%div.157, %div.157), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.180 = f32[192,192]{0,1} subtract(%square.65, %state_2__25_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.166 = f32[] constant(0.001)
+  %broadcast.30 = f32[192,192]{1,0} broadcast(%constant.166), dimensions={}
+  %mul.299 = f32[192,192]{0,1} multiply(%sub.180, %broadcast.30), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.217 = f32[192,192]{1,0} add(%state_2__25_.1, %mul.299), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.92 = f32[192,192]{1,0} sqrt(%add.217), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.165 = f32[] constant(1e-07)
+  %broadcast.29 = f32[192,192]{1,0} broadcast(%constant.165), dimensions={}
+  %add.218 = f32[192,192]{1,0} add(%sqrt.92, %broadcast.29), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.198 = f32[192,192]{1,0} divide(%mul.301, %add.218), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.181 = f32[192,192]{1,0} subtract(%sub.116, %div.198), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %mul.227 = f32[192]{0} multiply(%state_0__12_.1, %broadcast.42), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.228 = f32[192]{0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.229 = f32[192]{0} multiply(%mul.227, %mul.228), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.117 = f32[192]{0} subtract(%state_0__12_.1, %mul.229), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__26_.1 = f32[192]{0} parameter(43), metadata={op_name="state[2][26]"}
+  %reduce_sum.279 = f32[192]{0} reduce(%select_n.31, %constant.225), dimensions={0}, to_apply=%region_13.27, metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/reduce_sum" stack_frame_id=38}
+  %reshape.11 = f32[1,192]{1,0} reshape(%reduce_sum.279), metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/reshape" stack_frame_id=38}
+  %reduce_sum.280 = f32[192]{0} reduce(%reshape.11, %constant.225), dimensions={0}, to_apply=%region_14.28, metadata={op_name="jit(train_step)/transpose(jvp(dense_3))/reduce_sum" stack_frame_id=38}
+  %square.49 = f32[192]{0} multiply(%reduce_sum.280, %reduce_sum.280), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.305 = f32[] reduce(%square.49, %constant.225), dimensions={0}, to_apply=%region_45.67, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.108 = f32[1]{0} reshape(%reduce_sum.305), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.37 = pred[1]{0} compare(%broadcast_in_dim.108, %constant.212), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.80 = f32[1]{0} call(%gt.37, %broadcast_in_dim.108, %constant.211), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.64 = f32[1]{0} sqrt(%jit__where_.80), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.81 = f32[1]{0} call(%gt.37, %sqrt.64, %broadcast_in_dim.108), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.37 = f32[1]{0} maximum(%jit__where_.81, %constant.211), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.158 = f32[1]{0} broadcast(%max.37), dimensions={0}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.159 = f32[] reshape(%div.158), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.160 = f32[192]{0} broadcast(%div.159), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.161 = f32[192]{0} divide(%reduce_sum.280, %div.160), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.184 = f32[192]{0} subtract(%div.161, %state_2__26_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %mul.303 = f32[192]{0} multiply(%sub.184, %broadcast.34), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.220 = f32[192]{0} add(%state_2__26_.1, %mul.303), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.219 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.35 = f32[] convert(%add.219), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.59 = f32[] power(%constant.220, %convert_element_type.35), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.182 = f32[] subtract(%constant.224, %pow.59), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.93 = f32[] sqrt(%sub.182), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.302 = f32[] multiply(%state_2__1_.1, %sqrt.93), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.58 = f32[] power(%constant.221, %convert_element_type.35), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.183 = f32[] subtract(%constant.224, %pow.58), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.199 = f32[] divide(%mul.302, %sub.183), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.305 = f32[192]{0} broadcast(%div.199), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.306 = f32[192]{0} multiply(%add.220, %mul.305), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__27_.1 = f32[192]{0} parameter(44), metadata={op_name="state[2][27]"}
+  %square.66 = f32[192]{0} multiply(%div.161, %div.161), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.185 = f32[192]{0} subtract(%square.66, %state_2__27_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %mul.304 = f32[192]{0} multiply(%sub.185, %broadcast.33), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.221 = f32[192]{0} add(%state_2__27_.1, %mul.304), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.94 = f32[192]{0} sqrt(%add.221), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %add.222 = f32[192]{0} add(%sqrt.94, %broadcast.32), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.200 = f32[192]{0} divide(%mul.306, %add.222), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.186 = f32[192]{0} subtract(%sub.117, %div.200), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %mul.230 = f32[192,192]{1,0} multiply(%state_0__13_.1, %broadcast.41), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.231 = f32[192,192]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.232 = f32[192,192]{1,0} multiply(%mul.230, %mul.231), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.118 = f32[192,192]{1,0} subtract(%state_0__13_.1, %mul.232), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__28_.1 = f32[192,192]{1,0} parameter(45), metadata={op_name="state[2][28]"}
+  %dot_general.29 = f32[192,192]{1,0} dot(%select_n.30, %jit_relu_.6), lhs_contracting_dims={0}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/dot_general" stack_frame_id=176}
+  %transpose.9 = f32[192,192]{0,1} transpose(%dot_general.29), dimensions={1,0}, metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/transpose" stack_frame_id=176}
+  %square.50 = f32[192,192]{0,1} multiply(%transpose.9, %transpose.9), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.306 = f32[] reduce(%square.50, %constant.225), dimensions={0,1}, to_apply=%region_46.68, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.109 = f32[1,1]{1,0} reshape(%reduce_sum.306), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.38 = pred[1,1]{1,0} compare(%broadcast_in_dim.109, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.82 = f32[1,1]{1,0} call(%gt.38, %broadcast_in_dim.109, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.65 = f32[1,1]{1,0} sqrt(%jit__where_.82), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.83 = f32[1,1]{1,0} call(%gt.38, %sqrt.65, %broadcast_in_dim.109), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.38 = f32[1,1]{1,0} maximum(%jit__where_.83, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.162 = f32[1,1]{1,0} broadcast(%max.38), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.163 = f32[] reshape(%div.162), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.164 = f32[192,192]{1,0} broadcast(%div.163), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.165 = f32[192,192]{0,1} divide(%transpose.9, %div.164), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.189 = f32[192,192]{0,1} subtract(%div.165, %state_2__28_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %mul.308 = f32[192,192]{0,1} multiply(%sub.189, %broadcast.31), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.224 = f32[192,192]{1,0} add(%state_2__28_.1, %mul.308), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.223 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.36 = f32[] convert(%add.223), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.61 = f32[] power(%constant.220, %convert_element_type.36), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.187 = f32[] subtract(%constant.224, %pow.61), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.95 = f32[] sqrt(%sub.187), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.307 = f32[] multiply(%state_2__1_.1, %sqrt.95), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.60 = f32[] power(%constant.221, %convert_element_type.36), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.188 = f32[] subtract(%constant.224, %pow.60), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.201 = f32[] divide(%mul.307, %sub.188), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.310 = f32[192,192]{1,0} broadcast(%div.201), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.311 = f32[192,192]{1,0} multiply(%add.224, %mul.310), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__29_.1 = f32[192,192]{1,0} parameter(46), metadata={op_name="state[2][29]"}
+  %square.67 = f32[192,192]{0,1} multiply(%div.165, %div.165), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.190 = f32[192,192]{0,1} subtract(%square.67, %state_2__29_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %mul.309 = f32[192,192]{0,1} multiply(%sub.190, %broadcast.30), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.225 = f32[192,192]{1,0} add(%state_2__29_.1, %mul.309), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.96 = f32[192,192]{1,0} sqrt(%add.225), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %add.226 = f32[192,192]{1,0} add(%sqrt.96, %broadcast.29), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.202 = f32[192,192]{1,0} divide(%mul.311, %add.226), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.191 = f32[192,192]{1,0} subtract(%sub.118, %div.202), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %mul.233 = f32[192]{0} multiply(%state_0__14_.1, %broadcast.42), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.234 = f32[192]{0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.235 = f32[192]{0} multiply(%mul.233, %mul.234), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.119 = f32[192]{0} subtract(%state_0__14_.1, %mul.235), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__30_.1 = f32[192]{0} parameter(47), metadata={op_name="state[2][30]"}
+  %reduce_sum.277 = f32[192]{0} reduce(%select_n.30, %constant.225), dimensions={0}, to_apply=%region_11.25, metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/reduce_sum" stack_frame_id=38}
+  %reshape.10 = f32[1,192]{1,0} reshape(%reduce_sum.277), metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/reshape" stack_frame_id=38}
+  %reduce_sum.278 = f32[192]{0} reduce(%reshape.10, %constant.225), dimensions={0}, to_apply=%region_12.26, metadata={op_name="jit(train_step)/transpose(jvp(dense_4))/reduce_sum" stack_frame_id=38}
+  %square.51 = f32[192]{0} multiply(%reduce_sum.278, %reduce_sum.278), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.307 = f32[] reduce(%square.51, %constant.225), dimensions={0}, to_apply=%region_47.69, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.110 = f32[1]{0} reshape(%reduce_sum.307), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.39 = pred[1]{0} compare(%broadcast_in_dim.110, %constant.212), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.84 = f32[1]{0} call(%gt.39, %broadcast_in_dim.110, %constant.211), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.66 = f32[1]{0} sqrt(%jit__where_.84), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.85 = f32[1]{0} call(%gt.39, %sqrt.66, %broadcast_in_dim.110), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.39 = f32[1]{0} maximum(%jit__where_.85, %constant.211), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.166 = f32[1]{0} broadcast(%max.39), dimensions={0}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.167 = f32[] reshape(%div.166), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.168 = f32[192]{0} broadcast(%div.167), dimensions={}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.169 = f32[192]{0} divide(%reduce_sum.278, %div.168), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.194 = f32[192]{0} subtract(%div.169, %state_2__30_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %mul.313 = f32[192]{0} multiply(%sub.194, %broadcast.34), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.228 = f32[192]{0} add(%state_2__30_.1, %mul.313), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.227 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.37 = f32[] convert(%add.227), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.63 = f32[] power(%constant.220, %convert_element_type.37), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.192 = f32[] subtract(%constant.224, %pow.63), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.97 = f32[] sqrt(%sub.192), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.312 = f32[] multiply(%state_2__1_.1, %sqrt.97), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.62 = f32[] power(%constant.221, %convert_element_type.37), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.193 = f32[] subtract(%constant.224, %pow.62), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.203 = f32[] divide(%mul.312, %sub.193), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.315 = f32[192]{0} broadcast(%div.203), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.316 = f32[192]{0} multiply(%add.228, %mul.315), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__31_.1 = f32[192]{0} parameter(48), metadata={op_name="state[2][31]"}
+  %square.68 = f32[192]{0} multiply(%div.169, %div.169), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.195 = f32[192]{0} subtract(%square.68, %state_2__31_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %mul.314 = f32[192]{0} multiply(%sub.195, %broadcast.33), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.229 = f32[192]{0} add(%state_2__31_.1, %mul.314), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.98 = f32[192]{0} sqrt(%add.229), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %add.230 = f32[192]{0} add(%sqrt.98, %broadcast.32), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.204 = f32[192]{0} divide(%mul.316, %add.230), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.196 = f32[192]{0} subtract(%sub.119, %div.204), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.199 = f32[] constant(0.004)
+  %mul.180 = f32[192,1]{1,0} broadcast(%constant.199), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.236 = f32[192,1]{1,0} multiply(%state_0__15_.1, %mul.180), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.237 = f32[192,1]{1,0} broadcast(%state_2__1_.1), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.238 = f32[192,1]{1,0} multiply(%mul.236, %mul.237), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.120 = f32[192,1]{1,0} subtract(%state_0__15_.1, %mul.238), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__32_.1 = f32[192,1]{1,0} parameter(49), metadata={op_name="state[2][32]"}
+  %dot_general.27 = f32[1,192]{1,0} dot(%neg.1, %jit_relu_.7), lhs_contracting_dims={0}, rhs_contracting_dims={0}, metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/dot_general" stack_frame_id=189}
+  %transpose.8 = f32[192,1]{1,0} reshape(%dot_general.27), metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/transpose" stack_frame_id=189}
+  %square.52 = f32[192,1]{1,0} multiply(%transpose.8, %transpose.8), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.308 = f32[] reduce(%square.52, %constant.225), dimensions={0,1}, to_apply=%region_48.70, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.111 = f32[1,1]{1,0} reshape(%reduce_sum.308), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.40 = pred[1,1]{1,0} compare(%broadcast_in_dim.111, %constant.214), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.86 = f32[1,1]{1,0} call(%gt.40, %broadcast_in_dim.111, %constant.213), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.67 = f32[1,1]{1,0} sqrt(%jit__where_.86), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.87 = f32[1,1]{1,0} call(%gt.40, %sqrt.67, %broadcast_in_dim.111), to_apply=%_where_114.54, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.40 = f32[1,1]{1,0} maximum(%jit__where_.87, %constant.213), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.170 = f32[1,1]{1,0} broadcast(%max.40), dimensions={0,1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.171 = f32[1]{0} reshape(%div.170), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.172 = f32[192,1]{1,0} broadcast(%div.171), dimensions={1}, metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %div.173 = f32[192,1]{1,0} divide(%transpose.8, %div.172), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.199 = f32[192,1]{1,0} subtract(%div.173, %state_2__32_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.164 = f32[] constant(0.1)
+  %mul.165 = f32[192,1]{1,0} broadcast(%constant.164), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %mul.318 = f32[192,1]{1,0} multiply(%sub.199, %mul.165), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.232 = f32[192,1]{1,0} add(%state_2__32_.1, %mul.318), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.231 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.38 = f32[] convert(%add.231), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.65 = f32[] power(%constant.220, %convert_element_type.38), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.197 = f32[] subtract(%constant.224, %pow.65), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.99 = f32[] sqrt(%sub.197), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.317 = f32[] multiply(%state_2__1_.1, %sqrt.99), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.64 = f32[] power(%constant.221, %convert_element_type.38), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.198 = f32[] subtract(%constant.224, %pow.64), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.205 = f32[] divide(%mul.317, %sub.198), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.320 = f32[192,1]{1,0} broadcast(%div.205), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.321 = f32[192,1]{1,0} multiply(%add.232, %mul.320), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__33_.1 = f32[192,1]{1,0} parameter(50), metadata={op_name="state[2][33]"}
+  %square.69 = f32[192,1]{1,0} multiply(%div.173, %div.173), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.200 = f32[192,1]{1,0} subtract(%square.69, %state_2__33_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.163 = f32[] constant(0.001)
+  %mul.164 = f32[192,1]{1,0} broadcast(%constant.163), dimensions={}, metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %mul.319 = f32[192,1]{1,0} multiply(%sub.200, %mul.164), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.233 = f32[192,1]{1,0} add(%state_2__33_.1, %mul.319), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.100 = f32[192,1]{1,0} sqrt(%add.233), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.162 = f32[] constant(1e-07)
+  %add.139 = f32[192,1]{1,0} broadcast(%constant.162), dimensions={}, metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %add.234 = f32[192,1]{1,0} add(%sqrt.100, %add.139), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.206 = f32[192,1]{1,0} divide(%mul.321, %add.234), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.201 = f32[192,1]{1,0} subtract(%sub.120, %div.206), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %constant.198 = f32[1]{0} constant({0.004})
+  %mul.239 = f32[1]{0} multiply(%state_0__16_.1, %constant.198), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=115}
+  %mul.240 = f32[1]{0} reshape(%state_2__1_.1), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %mul.241 = f32[1]{0} multiply(%mul.239, %mul.240), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=268}
+  %sub.121 = f32[1]{0} subtract(%state_0__16_.1, %mul.241), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=273}
+  %state_2__34_.1 = f32[1]{0} parameter(51), metadata={op_name="state[2][34]"}
+  %reduce_sum.275 = f32[1]{0} reduce(%neg.1, %constant.225), dimensions={0}, to_apply=%region_9.23, metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/reduce_sum" stack_frame_id=28}
+  %reshape.9 = f32[1,1]{1,0} reshape(%reduce_sum.275), metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/reshape" stack_frame_id=28}
+  %reduce_sum.276 = f32[] reduce(%reshape.9, %constant.225), dimensions={0,1}, to_apply=%region_10.24, metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/reduce_sum" stack_frame_id=28}
+  %broadcast_in_dim.95 = f32[1]{0} reshape(%reduce_sum.276), metadata={op_name="jit(train_step)/transpose(jvp(dense_5))/broadcast_in_dim" stack_frame_id=28}
+  %square.53 = f32[1]{0} multiply(%broadcast_in_dim.95, %broadcast_in_dim.95), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=228}
+  %reduce_sum.309 = f32[] reduce(%square.53, %constant.225), dimensions={0}, to_apply=%region_49.71, metadata={op_name="jit(train_step)/adamw/reduce_sum" stack_frame_id=68}
+  %broadcast_in_dim.112 = f32[1]{0} reshape(%reduce_sum.309), metadata={op_name="jit(train_step)/adamw/broadcast_in_dim" stack_frame_id=68}
+  %gt.41 = pred[1]{0} compare(%broadcast_in_dim.112, %constant.212), direction=GT, metadata={op_name="jit(train_step)/adamw/gt" stack_frame_id=238}
+  %jit__where_.88 = f32[1]{0} call(%gt.41, %broadcast_in_dim.112, %constant.211), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=246}
+  %sqrt.68 = f32[1]{0} sqrt(%jit__where_.88), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=250}
+  %jit__where_.89 = f32[1]{0} call(%gt.41, %sqrt.68, %broadcast_in_dim.112), to_apply=%_where_142.61, metadata={op_name="jit(train_step)/adamw/jit(_where)" stack_frame_id=253}
+  %max.41 = f32[1]{0} maximum(%jit__where_.89, %constant.211), metadata={op_name="jit(train_step)/adamw/max" stack_frame_id=257}
+  %div.174 = f32[1]{0} divide(%broadcast_in_dim.95, %max.41), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=258}
+  %sub.204 = f32[1]{0} subtract(%div.174, %state_2__34_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=300}
+  %constant.161 = f32[1]{0} constant({0.1})
+  %mul.323 = f32[1]{0} multiply(%sub.204, %constant.161), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=105}
+  %add.236 = f32[1]{0} add(%state_2__34_.1, %mul.323), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=310}
+  %add.235 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=277}
+  %convert_element_type.39 = f32[] convert(%add.235), metadata={op_name="jit(train_step)/adamw/convert_element_type" stack_frame_id=281}
+  %pow.67 = f32[] power(%constant.220, %convert_element_type.39), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=287}
+  %sub.202 = f32[] subtract(%constant.224, %pow.67), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=290}
+  %sqrt.101 = f32[] sqrt(%sub.202), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=294}
+  %mul.322 = f32[] multiply(%state_2__1_.1, %sqrt.101), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=295}
+  %pow.66 = f32[] power(%constant.221, %convert_element_type.39), metadata={op_name="jit(train_step)/adamw/pow" stack_frame_id=284}
+  %sub.203 = f32[] subtract(%constant.224, %pow.66), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=296}
+  %div.207 = f32[] divide(%mul.322, %sub.203), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=295}
+  %mul.325 = f32[1]{0} reshape(%div.207), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %mul.326 = f32[1]{0} multiply(%add.236, %mul.325), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=327}
+  %state_2__35_.1 = f32[1]{0} parameter(52), metadata={op_name="state[2][35]"}
+  %square.70 = f32[1]{0} multiply(%div.174, %div.174), metadata={op_name="jit(train_step)/adamw/square" stack_frame_id=314}
+  %sub.205 = f32[1]{0} subtract(%square.70, %state_2__35_.1), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=318}
+  %constant.160 = f32[1]{0} constant({0.001})
+  %mul.324 = f32[1]{0} multiply(%sub.205, %constant.160), metadata={op_name="jit(train_step)/adamw/mul" stack_frame_id=102}
+  %add.237 = f32[1]{0} add(%state_2__35_.1, %mul.324), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=324}
+  %sqrt.102 = f32[1]{0} sqrt(%add.237), metadata={op_name="jit(train_step)/adamw/sqrt" stack_frame_id=331}
+  %constant.159 = f32[1]{0} constant({1e-07})
+  %add.238 = f32[1]{0} add(%sqrt.102, %constant.159), metadata={op_name="jit(train_step)/adamw/add" stack_frame_id=97}
+  %div.208 = f32[1]{0} divide(%mul.326, %add.238), metadata={op_name="jit(train_step)/adamw/div" stack_frame_id=335}
+  %sub.206 = f32[1]{0} subtract(%sub.121, %div.208), metadata={op_name="jit(train_step)/adamw/sub" stack_frame_id=341}
+  %add.239 = s32[] add(%state_2__0_.1, %constant.223), metadata={op_name="jit(train_step)/add" stack_frame_id=346}
+  ROOT %tuple.13 = (f32[], f32[], f32[3,8]{1,0}, f32[796,8]{1,0}, f32[22,8]{1,0}, /*index=5*/f32[1683,8]{1,0}, f32[944,8]{1,0}, f32[5,8]{1,0}, f32[8]{0}, f32[8,8]{1,0}, /*index=10*/f32[8]{0}, f32[15,192]{1,0}, f32[192]{0}, f32[192,192]{1,0}, f32[192]{0}, /*index=15*/f32[192,192]{1,0}, f32[192]{0}, f32[192,1]{1,0}, f32[1]{0}, s32[], /*index=20*/f32[], f32[3,8]{1,0}, f32[3,8]{1,0}, f32[796,8]{1,0}, f32[796,8]{1,0}, /*index=25*/f32[22,8]{1,0}, f32[22,8]{1,0}, f32[1683,8]{1,0}, f32[1683,8]{1,0}, f32[944,8]{1,0}, /*index=30*/f32[944,8]{1,0}, f32[5,8]{1,0}, f32[5,8]{1,0}, f32[8]{0}, f32[8]{0}, /*index=35*/f32[8,8]{1,0}, f32[8,8]{1,0}, f32[8]{0}, f32[8]{0}, f32[15,192]{1,0}, /*index=40*/f32[15,192]{1,0}, f32[192]{0}, f32[192]{0}, f32[192,192]{1,0}, f32[192,192]{1,0}, /*index=45*/f32[192]{0}, f32[192]{0}, f32[192,192]{1,0}, f32[192,192]{1,0}, f32[192]{0}, /*index=50*/f32[192]{0}, f32[192,1]{1,0}, f32[192,1]{1,0}, f32[1]{0}, f32[1]{0}, /*index=55*/f32[], f32[], f32[], f32[]) tuple(%jit__where_.91, %sqrt.103, %sub.126, %sub.131, %sub.136, /*index=5*/%sub.141, %sub.146, %sub.151, %sub.156, %sub.161, /*index=10*/%sub.166, %sub.171, %sub.176, %sub.181, %sub.186, /*index=15*/%sub.191, %sub.196, %sub.201, %sub.206, %add.239, /*index=20*/%state_2__1_.1, %add.172, %add.173, %add.176, %add.177, /*index=25*/%add.180, %add.181, %add.184, %add.185, %add.188, /*index=30*/%add.189, %add.192, %add.193, %add.196, %add.197, /*index=35*/%add.200, %add.201, %add.204, %add.205, %add.208, /*index=40*/%add.209, %add.212, %add.213, %add.216, %add.217, /*index=45*/%add.220, %add.221, %add.224, %add.225, %add.228, /*index=50*/%add.229, %add.232, %add.233, %add.236, %add.237, /*index=55*/%add.240, %add.241, %add.242, %add.243)
+}
+

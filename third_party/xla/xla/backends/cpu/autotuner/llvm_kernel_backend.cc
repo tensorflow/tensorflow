@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -91,7 +91,7 @@ LlvmKernelBackend::GetDefaultConfig(const HloInstruction& instr) {
 
 absl::Status LlvmKernelBackend::ApplyConfig(HloInstruction& instr,
                                             const xla::BackendConfig& config) {
-  ASSIGN_OR_RETURN(auto backend_config,
+  ABSL_ASSIGN_OR_RETURN(auto backend_config,
                    instr.backend_config<xla::cpu::BackendConfig>());
 
   if (!config.has_llvm_kernel()) {
@@ -102,7 +102,7 @@ absl::Status LlvmKernelBackend::ApplyConfig(HloInstruction& instr,
 
   *backend_config.mutable_llvm_kernel_options() = llvm_kernel_config;
 
-  RETURN_IF_ERROR(instr.set_backend_config(backend_config));
+  ABSL_RETURN_IF_ERROR(instr.set_backend_config(backend_config));
 
   return absl::OkStatus();
 }

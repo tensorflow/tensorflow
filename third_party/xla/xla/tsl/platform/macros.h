@@ -72,7 +72,7 @@ limitations under the License.
 //
 // The expression TF_ARRAYSIZE(a) is a compile-time constant of type
 // size_t.
-#define TF_ARRAYSIZE ABSL_ARRAYSIZE
+#define TF_ARRAYSIZE std::size
 
 #if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
     (defined(_MSC_VER) && _MSC_VER >= 1900)

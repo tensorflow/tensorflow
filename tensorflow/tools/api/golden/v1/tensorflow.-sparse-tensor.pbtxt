@@ -33,8 +33,24 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__div__"
+    argspec: "args=[\'sp_x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'indices\', \'values\', \'dense_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__mul__"
+    argspec: "args=[\'sp_x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__truediv__"
+    argspec: "args=[\'sp_x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "consumers"
@@ -47,6 +63,7 @@ tf_class {
   member_method {
     name: "from_value"
     argspec: "args=[\'cls\', \'sparse_tensor_value\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "get_shape"

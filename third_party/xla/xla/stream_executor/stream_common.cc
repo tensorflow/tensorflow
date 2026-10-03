@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -98,7 +98,7 @@ absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
   }
 
   // No streams are reusable; create a new stream.
-  ASSIGN_OR_RETURN(auto stream, parent_->CreateStream());
+  ABSL_ASSIGN_OR_RETURN(auto stream, parent_->CreateStream());
   Stream *sub_stream = stream.get();
   sub_stream->SetName(absl::StrFormat("Sub-stream of %s", GetName()));
   sub_streams_.emplace_back(std::move(stream), false);

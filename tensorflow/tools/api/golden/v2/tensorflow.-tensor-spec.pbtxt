@@ -26,8 +26,20 @@ tf_class {
     mtype: "<class \'property\'>"
   }
   member_method {
+    name: "__eq__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "__ne__"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__tf_tracing_type__"
+    argspec: "args=[\'self\', \'context\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "cast"
@@ -40,10 +52,12 @@ tf_class {
   member_method {
     name: "experimental_from_proto"
     argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "experimental_type_proto"
     argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "flatten"
@@ -52,10 +66,12 @@ tf_class {
   member_method {
     name: "from_spec"
     argspec: "args=[\'cls\', \'spec\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_tensor"
     argspec: "args=[\'cls\', \'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "from_tensors"

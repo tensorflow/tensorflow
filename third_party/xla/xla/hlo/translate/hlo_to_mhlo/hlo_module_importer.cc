@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
@@ -90,50 +90,54 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
                                 flatten_computation_args_result_, builder_);
   ImportUseAutoSpmdPartitioning(hlo_module, module, builder_);
 
+  // One importer for every computation, so that they share the memo of stack
+  // frame locations.
+  HloFunctionImporter importer(symbol_table_, &function_map_, &builder_,
+                               flatten_computation_args_result_);
+
   if (!import_all_computation_) {
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
-    RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-                        *hlo_module.entry_computation(), symbol_table_,
-                        &function_map_, &builder_,
-                        /*is_main*/ true, flatten_computation_args_result_)
+    ABSL_RETURN_IF_ERROR(importer
+                        .ImportAsFunc(*hlo_module.entry_computation(),
+                                      /*is_main=*/true)
                         .status());
 
     // Convert all ops to MHLO
     LLVM_DEBUG(llvm::dbgs() << "Emit StableHLO: " << emit_stablehlo_ << "\n");
     if (!emit_stablehlo_) {
-      RETURN_IF_ERROR(ConvertToMhlo(module));
+      ABSL_RETURN_IF_ERROR(ConvertToMhlo(module));
     }
     return absl::OkStatus();
   }
 
   auto* module_entry_computation = hlo_module.entry_computation();
   for (const auto* computation : hlo_module.computations()) {
-    RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-                        *computation, symbol_table_, &function_map_, &builder_,
-                        /*is_main*/ computation == module_entry_computation,
-                        flatten_computation_args_result_)
-                        .status());
+    ABSL_RETURN_IF_ERROR(
+        importer
+            .ImportAsFunc(*computation,
+                          /*is_main=*/computation == module_entry_computation)
+            .status());
   }
 
   ImportEntryComputationLayoutAndTiles(
       hlo_module, module, flatten_computation_args_result_, builder_);
-  RETURN_IF_ERROR(ImportLayoutModes(
+  ABSL_RETURN_IF_ERROR(ImportLayoutModes(
       hlo_module, module, flatten_computation_args_result_, builder_));
 
   // Convert all ops to MHLO
   LLVM_DEBUG(llvm::dbgs() << "Emit StableHLO: " << emit_stablehlo_ << "\n");
   if (!emit_stablehlo_) {
-    RETURN_IF_ERROR(ConvertToMhlo(module));
+    ABSL_RETURN_IF_ERROR(ConvertToMhlo(module));
   }
   return absl::OkStatus();
 }
 
 absl::Status HloModuleImporter::Import(const HloModuleProto& module_proto) {
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
-  ASSIGN_OR_RETURN(auto module_config, HloModule::CreateModuleConfigFromProto(
+  ABSL_ASSIGN_OR_RETURN(auto module_config, HloModule::CreateModuleConfigFromProto(
                                            module_proto, debug_options));
-  ASSIGN_OR_RETURN(auto module,
+  ABSL_ASSIGN_OR_RETURN(auto module,
                    HloModule::CreateFromProto(module_proto, module_config));
 
   return Import(*module);

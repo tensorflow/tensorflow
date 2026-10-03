@@ -76,8 +76,10 @@ bool IsTableLookup(const HloInstruction* hlo) {
 }
 
 std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
-  CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
-  CHECK(ShapeUtil::IsEffectiveScalar(constant->shape()));
+  if (constant == nullptr || constant->opcode() != HloOpcode::kConstant ||
+      !ShapeUtil::IsEffectiveScalar(constant->shape())) {
+    return std::nullopt;
+  }
   absl::InlinedVector<int64_t, 8> multi_index(
       constant->shape().dimensions().size());
   return constant->literal().GetIntegralAsS64(multi_index);
@@ -238,8 +240,10 @@ const HloInstruction* BacktrackToBase(
     if (cur->opcode() == HloOpcode::kClamp) {
       // For some clamp ops it's possible to prove they are no-ops at compile
       // time.
-      std::optional<int64_t> lower_bound = GetScalarInt64Value(cur->operand(0));
-      std::optional<int64_t> upper_bound = GetScalarInt64Value(cur->operand(2));
+      std::optional<int64_t> lower_bound =
+          GetScalarInt64Value(BacktrackToBase(cur->operand(0), cache));
+      std::optional<int64_t> upper_bound =
+          GetScalarInt64Value(BacktrackToBase(cur->operand(2), cache));
       std::optional<std::pair<int64_t, int64_t>> range =
           GetKnownRange(cur->operand(1));
       if (lower_bound.has_value() && upper_bound.has_value() &&
@@ -297,8 +301,8 @@ std::optional<int64_t> EvaluateOffset(
     if (!inner) {
       return std::nullopt;
     }
-    auto lower = GetScalarInt64Value(expr->operand(0));
-    auto upper = GetScalarInt64Value(expr->operand(2));
+    auto lower = GetScalarInt64Value(BacktrackToBase(expr->operand(0), cache));
+    auto upper = GetScalarInt64Value(BacktrackToBase(expr->operand(2), cache));
     if (!lower || !upper) {
       return std::nullopt;
     }

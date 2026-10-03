@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/no_destructor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/IR/Constants.h"
@@ -162,6 +162,14 @@ std::vector<std::string> GetSPIRVBackendOptions(
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
   std::vector<std::string> backend_llvm_opts;
+  // Without the SPV_EXT_long_vector extension, SPIR-V supports only vectors
+  // of 2, 3, 4, 8, or 16 elements. Only newer Intel GPU drivers support the
+  // extension, so disable the vector optimizations that can produce other
+  // vector lengths.
+  // TODO(intel-tf): Remove these workarounds once the oneAPI toolchain is
+  // upgraded to 2026.3 or later.
+  backend_llvm_opts.emplace_back("-disable-vector-combine");
+  backend_llvm_opts.emplace_back("-slp-vectorize-hor=false");
 
   auto backend_extra_llvm_opts = llvm_ir::ExtractXlaBackendExtraOptions(
       debug_options.xla_backend_extra_options());
@@ -259,7 +267,7 @@ absl::StatusOr<std::string> CompileToSPIRV(
   const_cast<llvm::SPIRVSubtarget*>(sub_target->getSubtargetImpl())
       ->initAvailableExtensions(common_spirv_extensions);
 
-  RETURN_IF_ERROR(LinkAndOptimizeModule(
+  ABSL_RETURN_IF_ERROR(LinkAndOptimizeModule(
       module, gpu_version, debug_options, "", SPIRVTargetModuleLinker,
       default_target_triple, target_machine.get(), kDefaultInlineThreshold));
 

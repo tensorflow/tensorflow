@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_saver_inserter.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -951,8 +952,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
   Thunk::ThunkInfo fake_thunk_info;
   fake_thunk_info.thunk_id = kTestThunkId;
 
-  ThunkSequence thunks;
-  thunks.push_back(std::make_unique<FakeThunk>(
+  ThunkSequence thunks = ThunkSequence::Of<FakeThunk>(
       fake_thunk_info,
       Thunk::BufferUses{
           // Write is undefined on input, but defined on output.
@@ -960,7 +960,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
           // Unlike Consume, Read is supposed to preserve the contents of the
           // buffer, so we check it on input *and* output.
           BufferUse::Read(slice_io, arg_shape),
-      }));
+      });
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_dump_to("/tmp/123");

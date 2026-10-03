@@ -17,14 +17,21 @@ limitations under the License.
 #define XLA_SERVICE_COLLECTIVE_PIPELINER_H_
 
 #include <cstdint>
+#include <functional>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/collective_pipeliner_utils.h"
+#include "xla/side_effect_util.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -173,6 +180,26 @@ class CollectivePipeliner : public HloModulePass {
  private:
   Config config_;
 };
+
+// Returns a predicate matching instructions with the given opcode(s) and a
+// boolean-true is_pipelineable frontend attribute.
+template <HloOpcode op, HloOpcode... rest>
+HloPredicate HloPredicateIsPipelineableOp() {
+  const auto has_pipelineable_attr = [](const HloInstruction* hlo) {
+    if (!hlo->has_frontend_attributes()) {
+      return false;
+    }
+
+    auto value = hlo->get_frontend_attribute(kIsPipelineableAttr);
+    bool is_pipelineable = false;
+    return value && absl::SimpleAtob(*value, &is_pipelineable) &&
+           is_pipelineable;
+  };
+
+  return [has_pipelineable_attr](const HloInstruction* hlo) {
+    return HloPredicateIsOp<op, rest...>(hlo) && has_pipelineable_attr(hlo);
+  };
+}
 
 }  // namespace xla
 

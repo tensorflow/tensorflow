@@ -1291,7 +1291,7 @@ const OpRegistrationData& FunctionRecord::op_registration_data() const {
   return op_registration_data_;
 }
 
-const bool FunctionRecord::finalized() const { return finalized_; }
+bool FunctionRecord::finalized() const { return finalized_; }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)

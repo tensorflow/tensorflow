@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -127,7 +127,7 @@ tsl::Future<std::vector<uint64_t>> HashPjRtBuffers(
     // original on-device layout and avoid the delinearization cost.
     xla::Shape descending_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
         device_shape.element_type(), device_shape.dimensions());
-    ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
                      xla::Literal::MakeUnique(descending_shape));
 
     xla::Literal* literal_ptr = literal.get();

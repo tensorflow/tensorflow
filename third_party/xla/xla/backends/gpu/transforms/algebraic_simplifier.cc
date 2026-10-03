@@ -18,8 +18,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
@@ -63,14 +63,14 @@ GpuAlgebraicSimplifierVisitor::TryToSinkBroadcastOperandsOfChainedAdds(
   HloInstruction* new_bcast =
       add->AddInstruction(HloInstruction::CreateBroadcast(
           broadcast_0->shape(), new_constant_add, broadcast_0->dimensions()));
-  RETURN_IF_ERROR(ReplaceWithNewInstruction(
+  ABSL_RETURN_IF_ERROR(ReplaceWithNewInstruction(
       add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd,
                                         new_bcast, conv)));
   return true;
 }
 
 absl::Status GpuAlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
-  ASSIGN_OR_RETURN(bool replaced, TryToSinkBroadcastOperandsOfChainedAdds(add));
+  ABSL_ASSIGN_OR_RETURN(bool replaced, TryToSinkBroadcastOperandsOfChainedAdds(add));
   if (replaced) {
     return absl::OkStatus();
   }

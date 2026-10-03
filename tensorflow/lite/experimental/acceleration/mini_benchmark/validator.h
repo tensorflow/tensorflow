@@ -119,11 +119,11 @@ class Validator {
   // compute_settings_, it may or may not include the default delegate.
   std::unique_ptr<::tflite::MutableOpResolver> resolver_;
   std::unique_ptr<FlatBufferModel> model_;
+  std::unique_ptr<tflite::delegates::DelegatePluginInterface> delegate_plugin_;
   ::tflite::delegates::TfLiteDelegatePtr delegate_ =
       delegates::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
   TfLiteOpaqueDelegatePtr opaque_delegate_ =
       TfLiteOpaqueDelegatePtr(nullptr, [](TfLiteOpaqueDelegate*) {});
-  std::unique_ptr<tflite::delegates::DelegatePluginInterface> delegate_plugin_;
   // Optional. Interpreter that runs on CPU.
   std::unique_ptr<Interpreter> golden_interpreter_;
   // Interpreter that runs with delegate enabled, using the compute settings

@@ -19,33 +19,40 @@ limitations under the License.
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
+#include "tensorflow/lite/delegates/ynnpack/ynnpack_delegate.h"
 
 namespace tflite {
 namespace ynnpack {
 
 TfLiteStatus IsTransposeSupported(const TfLiteRegistration* registration,
                                   const TfLiteNode* node,
-                                  TfLiteContext* context);
+                                  TfLiteContext* context,
+                                  const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus IsSliceSupported(const TfLiteRegistration* registration,
-                              const TfLiteNode* node, TfLiteContext* context);
+                              const TfLiteNode* node, TfLiteContext* context,
+                              const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus IsExpandDimsSupported(const TfLiteRegistration* registration,
                                    const TfLiteNode* node,
-                                   TfLiteContext* context);
+                                   TfLiteContext* context,
+                                   const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus IsConcatenationSupported(const TfLiteRegistration* registration,
                                       const TfLiteNode* node,
                                       TfLiteContext* context);
 
 TfLiteStatus IsReshapeSupported(const TfLiteRegistration* registration,
-                                const TfLiteNode* node, TfLiteContext* context);
+                                const TfLiteNode* node, TfLiteContext* context,
+                                const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus IsPadSupported(const TfLiteRegistration* registration,
-                            const TfLiteNode* node, TfLiteContext* context);
+                            const TfLiteNode* node, TfLiteContext* context,
+                            const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus IsSplitSupported(const TfLiteRegistration* registration,
-                              const TfLiteNode* node, TfLiteContext* context);
+                              const TfLiteNode* node, TfLiteContext* context,
+                              const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus IsSpaceToDepthSupported(const TfLiteRegistration* registration,
                                      const TfLiteNode* node,
@@ -71,7 +78,8 @@ TfLiteStatus DefineConcatenationNode(TfLiteContext* context,
 
 TfLiteStatus DefineReshapeNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                                TensorToValueIdMap& tensor_to_value_id,
-                               const NodeInfo& node);
+                               const NodeInfo& node,
+                               const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus DefineExpandDimsNode(TfLiteContext* context,
                                   ynn_subgraph_t subgraph,
@@ -97,7 +105,8 @@ TfLiteStatus DefineDepthToSpaceNode(TfLiteContext* context,
                                     const NodeInfo& node);
 
 TfLiteStatus IsGatherSupported(const TfLiteRegistration* registration,
-                               const TfLiteNode* node, TfLiteContext* context);
+                               const TfLiteNode* node, TfLiteContext* context,
+                               const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus DefineGatherNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                               TensorToValueIdMap& tensor_to_value_id,

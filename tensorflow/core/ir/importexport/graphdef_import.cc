@@ -322,7 +322,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
   if (ctx_->isMultithreadingEnabled()) {
     ctx_->enterMultiThreadedExecution();
     auto exit =
-        llvm::make_scope_exit([this] { ctx_->exitMultiThreadedExecution(); });
+        llvm::scope_exit([this] { ctx_->exitMultiThreadedExecution(); });
 
     // Prepare the arguments to parallel for each.
     struct Argument {

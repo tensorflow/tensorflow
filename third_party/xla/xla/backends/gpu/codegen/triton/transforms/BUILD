@@ -29,6 +29,23 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "tdm_lowering_util",
+    srcs = ["tdm_lowering_util.cc"],
+    hdrs = ["tdm_lowering_util.h"],
+    deps = [
+        "//xla/backends/gpu/codegen/triton:lowering_util",
+        "//xla/service:decision",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@triton//:TritonDialects",
+    ],
+)
+
+cc_library(
     name = "passes",
     srcs = [
         "arith_fp8_conversion_to_triton.cc",
@@ -39,6 +56,7 @@ cc_library(
         "round_f32_to_tf32_for_tf32_dot_pass.cc",
         "stablehlo_lower_to_triton.cc",
         "tensor_lower_to_triton.cc",
+        "triton_xla_collapse_contiguous_minor_dims_pass.cc",
         "triton_xla_convert_unsupported_types.cc",
         "triton_xla_extract_insert_to_triton_pass.cc",
         "triton_xla_fold_reshape_around_for_loop_pass.cc",
@@ -60,7 +78,7 @@ cc_library(
     ],
     deps = [
         ":passes_inc_gen",
-        "//xla:permutation_util",
+        ":tdm_lowering_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:collective_emitter",
@@ -71,6 +89,9 @@ cc_library(
         "//xla/codegen/xtile/codegen:dot_algorithms",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
         "//xla/service:algorithm_util",
         "//xla/service/gpu:target_util",
@@ -78,11 +99,11 @@ cc_library(
         "//xla/stream_executor/gpu:collective_kernel_metadata",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

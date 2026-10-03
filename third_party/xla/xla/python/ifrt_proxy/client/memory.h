@@ -23,10 +23,10 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 
 namespace xla {
 namespace ifrt {
@@ -34,7 +34,7 @@ namespace proxy {
 
 class Client;
 
-class Memory : public llvm::RTTIExtends<Memory, xla::ifrt::Memory> {
+class Memory : public RTTIExtends<Memory, xla::ifrt::Memory> {
  public:
   Memory(int id, std::string memory_space_kind, int kind_id,
          std::string debug_string, std::string to_string)
@@ -57,6 +57,8 @@ class Memory : public llvm::RTTIExtends<Memory, xla::ifrt::Memory> {
 
   absl::string_view DebugString() const override { return debug_string_; }
   absl::string_view ToString() const override { return to_string_; }
+
+  inline static char ID = 0;  // NOLINT
 
  private:
   friend class Client;  // For `devices_` initialization.

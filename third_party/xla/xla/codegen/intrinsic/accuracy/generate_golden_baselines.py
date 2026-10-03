@@ -327,6 +327,14 @@ def main(argv: Sequence[str]):
       FunctionSpec("acosh", mpmath.acosh, _COMMON_POINTS + _EXP_POINTS),
       FunctionSpec("atanh", mpmath.atanh, _COMMON_POINTS + _EXP_POINTS),
       FunctionSpec("expm1", mpmath.expm1, _COMMON_POINTS + _EXP_POINTS),
+      FunctionSpec(
+          "cbrt",
+          #  Avoid complex numbers.
+          lambda x: -mpmath.power(-x, mpmath.fraction(1, 3))
+          if x < 0
+          else mpmath.power(x, mpmath.fraction(1, 3)),
+          _COMMON_POINTS + _LOG_POINTS,
+      ),
   ]
 
   decls = []

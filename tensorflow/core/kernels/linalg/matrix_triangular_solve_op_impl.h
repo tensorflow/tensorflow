@@ -328,7 +328,7 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
 
 #endif
 
-    auto solver = absl::make_unique<GpuSolver>(context);
+    auto solver = std::make_unique<GpuSolver>(context);
     const uint64_t leading_dim_matrix = m;
     const uint64_t leading_dim_output = n;
     const uint64_t colmajor_rows = n;

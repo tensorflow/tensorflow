@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/activate_context.h"
@@ -219,11 +219,11 @@ absl::Status CUDAFftPlan::Initialize(
     // For either multiple batches or rank higher than 3, use cufft*PlanMany*().
     if (scratch_allocator == nullptr) {
       // Downsize 64b arrays to 32b as there's no 64b version of cufftPlanMany
-      ASSIGN_OR_RETURN(auto elem_count_32b_,
+      ABSL_ASSIGN_OR_RETURN(auto elem_count_32b_,
                        Downsize64bArray(elem_count_, rank));
-      ASSIGN_OR_RETURN(auto input_embed_32b_,
+      ABSL_ASSIGN_OR_RETURN(auto input_embed_32b_,
                        Downsize64bArray(input_embed_, rank));
-      ASSIGN_OR_RETURN(auto output_embed_32b_,
+      ABSL_ASSIGN_OR_RETURN(auto output_embed_32b_,
                        Downsize64bArray(output_embed_, rank));
       auto ret = cufftPlanMany(
           &plan_, rank, elem_count_32b_.data(),

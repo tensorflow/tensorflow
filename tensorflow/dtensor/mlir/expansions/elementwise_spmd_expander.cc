@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"

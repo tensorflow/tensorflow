@@ -1428,6 +1428,19 @@ func.func @strided_slice_with_i64_constant_attributes(%arg0: tensor<10x10x10xf32
   // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 1 : i32}> : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
 }
 
+func.func @strided_slice_with_i64_limits(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %begin = arith.constant dense<-9223372036854775808> : tensor<1xi64>
+  %end = arith.constant dense<9223372036854775807> : tensor<1xi64>
+  %strides = arith.constant dense<1> : tensor<1xi64>
+  %0 = "tf.StridedSlice"(%arg0, %begin, %end, %strides) {begin_mask = 1 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<3xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+  // CHECK-LABEL: strided_slice_with_i64_limits
+  // CHECK-DAG: [[BEGIN:%.*]] = arith.constant dense<-2147483648> : tensor<1xi32>
+  // CHECK-DAG: [[END:%.*]] = arith.constant dense<2147483647> : tensor<1xi32>
+  // CHECK-DAG: [[STRIDES:%.*]] = arith.constant dense<1> : tensor<1xi32>
+  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) <{begin_mask = 1 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<3xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xf32>
+}
+
 func.func @strided_slice_non_zero_ellipsis_mask(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
   %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
   func.return %0 : tensor<1x2x2x5xf32>
@@ -2176,6 +2189,13 @@ func.func @tranpose_arg64(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi64>) -> tenso
   // CHECK: "tfl.transpose"
 }
 
+func.func @tranpose_bf16(%arg0: tensor<2x3xbf16>, %arg1: tensor<2xi32>) -> tensor<3x2xbf16> {
+  %0 = "tf.Transpose"(%arg0, %arg1): (tensor<2x3xbf16>, tensor<2xi32>) -> tensor<3x2xbf16>
+  func.return %0 : tensor<3x2xbf16>
+  // CHECK-LABEL: tranpose_bf16
+  // CHECK: "tfl.transpose"
+}
+
 func.func @cumsum(%arg0: tensor<3x3xf32>, %arg1: tensor<i32>) -> tensor<3x3xf32> {
   %0 = "tf.Cumsum"(%arg0, %arg1) {exclusive = false, reverse = false} : (tensor<3x3xf32>, tensor<i32>) -> tensor<3x3xf32>
   func.return %0 : tensor<3x3xf32>
@@ -2619,6 +2639,14 @@ func.func @dynamic_update_slice_f16_arg(%arg0: tensor<4x5xf16>, %arg1: tensor<1x
 
 // CHECK-LABEL:dynamic_update_slice_f16_arg
 // CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xf16>, tensor<1x5xf16>, tensor<2xi32>) -> tensor<4x5xf16>
+}
+
+func.func @dynamic_update_slice_bf16_arg(%arg0: tensor<4x5xbf16>, %arg1: tensor<1x5xbf16>, %arg2: tensor<2xi32>) -> tensor<4x5xbf16> {
+  %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<4x5xbf16>, tensor<1x5xbf16>, tensor<2xi32>) -> tensor<4x5xbf16>
+  func.return %0 : tensor<4x5xbf16>
+
+// CHECK-LABEL:dynamic_update_slice_bf16_arg
+// CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xbf16>, tensor<1x5xbf16>, tensor<2xi32>) -> tensor<4x5xbf16>
 }
 
 func.func @dynamic_update_slice_i16(%arg0: tensor<4x5xi16>, %arg1: tensor<1x5xi16>, %arg2: tensor<2xi32>) -> tensor<4x5xi16> {

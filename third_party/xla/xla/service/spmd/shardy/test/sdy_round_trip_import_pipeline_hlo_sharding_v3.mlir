@@ -61,6 +61,34 @@ module @module_1 {
     return %6 : tensor<16xi64>
   }
 
+  // A replicated HloShardingV1/V2 is a placeholder sharding that is ignored on
+  // import. Verify no `sdy.sharding` is added to the custom call, as opposed to
+  // one holding a null sharding.
+  // CHECK-LABEL: func @x64_combine_replicated_placeholder
+  func.func @x64_combine_replicated_placeholder(
+    %arg0: tensor<16xi64>) -> tensor<16xi64> {
+    // CHECK-NEXT: %[[SPLIT_LOW:.*]] = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[SPLIT_HIGH:.*]] = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[COMBINE:.*]] = stablehlo.custom_call @X64Combine(%[[SPLIT_LOW]], %[[SPLIT_HIGH]]) : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    // CHECK-NEXT: return %[[COMBINE]]
+    %0 = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    %1 = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    %2 = stablehlo.custom_call @X64Combine(%0, %1) {mhlo.sharding = "{replicated}"} : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    return %2 : tensor<16xi64>
+  }
+
+  // CHECK-LABEL: func @mixed_tuple_sharding_placeholder
+  func.func @mixed_tuple_sharding_placeholder(%arg0: tensor<8x8xf32>) -> tuple<tensor<8x8xf32>, tensor<8x8xf32>> {
+    // CHECK-NEXT: %[[CUSTOM_CALL:.*]]:2 = stablehlo.custom_call @xla_python_gpu_callback(%arg0)
+    // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a"}, {}]>, <@mesh_0, [{?}, {?}]>]>} : (tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>)
+    // CHECK-NEXT: %[[TUPLE:.*]] = stablehlo.tuple %[[CUSTOM_CALL]]#0, %[[CUSTOM_CALL]]#1 : tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+    // CHECK-NEXT: return %[[TUPLE]] : tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+    %0 = stablehlo.custom_call @xla_python_gpu_callback(%arg0) {
+      mhlo.sharding = "{{mesh['a'=2,'b'=2], [{'a'}, {}]}, {replicated}}"
+    } : (tensor<8x8xf32>) -> tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+    return %0 : tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+  }
+
   // CHECK-LABEL: func @while_with_free_variables
   func.func @while_with_free_variables(
       %arg0: tensor<32x96xf32>,
@@ -127,11 +155,13 @@ module @module_1 {
   // Test that inlined meshes are lifted and deduplicated.
 
   // CHECK-LABEL: func @inlined_mesh(
-  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>})
-  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>}) {
+  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>},
+  // CHECK-SAME: %arg1: tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>})
+  // CHECK-SAME: -> tensor<32xi32> {
   func.func @inlined_mesh(
-    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"}
-  ) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}) {
+    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"},
+    %arg1: tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}
+  ) -> tensor<32xi32> {
     // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh_0, [{"a", "b"}]> : tensor<32xi32>
     // CHECK-NEXT: return %[[SHARDING]]
     %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['c'=4], [{'c'}]}"} : (tensor<32xi32>) -> tensor<32xi32>
@@ -222,6 +252,30 @@ module @maximal_sharding_module {
     } : (tensor<2xi64>) -> tuple<>
     return %arg0 : tensor<2xi64>
   }
+
+  // CHECK-LABEL: @maximal_tuple_sharding_empty_tuple
+  func.func @maximal_tuple_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
+    // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+    // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
+    // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
+    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
+    // CHECK-SAME: } : (tensor<2xi64>) -> ()
+    // CHECK-NEXT: return %arg0 : tensor<2xi64>
+    %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+      api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
+      has_side_effect = true,
+      mhlo.sharding = "{{maximal_mesh[device_id=0]}}",
+      operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
+    } : (tensor<2xi64>) -> tuple<>
+    return %arg0 : tensor<2xi64>
+  }
+
+  // CHECK-LABEL: func @result_with_maximal_sharding
+  // CHECK-SAME:    (%arg0: tensor<32xi32>) -> tensor<32xi32> {
+  func.func @result_with_maximal_sharding(%arg0: tensor<32xi32>) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=0]}"}) {
+    // CHECK-NEXT: return %arg0 : tensor<32xi32>
+    return %arg0 : tensor<32xi32>
+  }
 }
 
 // -----
@@ -250,5 +304,25 @@ module @main_func_in_out_tuple_shardings attributes {mhlo.frontend_attributes = 
   func.func @non_main_func(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
     // CHECK-NEXT: return %arg0 : tensor<32xi32>
     return %arg0 : tensor<32xi32>
+  }
+}
+
+// -----
+
+// A fully manual HLO sharding omits its dimension shardings, so their number
+// is taken from the rank of the value the sharding is on. Covers all three
+// carriers: a function argument, a function result, and an op result.
+module @fully_manual_sharding_module {
+  // CHECK: sdy.mesh @mesh = <["a"=2, "b"=2]>
+  // CHECK-LABEL: func @fully_manual_sharding(
+  // CHECK-SAME:    %arg0: tensor<8x16xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}
+  // CHECK-SAME:  ) -> (tensor<8x16xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) {
+  func.func @fully_manual_sharding(
+    %arg0: tensor<8x16xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"}
+  ) -> (tensor<8x16xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"}) {
+    // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{}, {}]> : tensor<8x16xi32>
+    // CHECK-NEXT: return %[[SHARDING]]
+    %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"} : (tensor<8x16xi32>) -> tensor<8x16xi32>
+    return %0 : tensor<8x16xi32>
   }
 }

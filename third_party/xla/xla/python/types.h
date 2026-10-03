@@ -83,6 +83,8 @@ struct NumpyScalarTypes {
   nanobind::object np_uint64;
   nanobind::object np_bfloat16;
   nanobind::object np_float4_e2m1fn;
+  nanobind::object np_float6_e2m3fn;
+  nanobind::object np_float6_e3m2fn;
   nanobind::object np_float8_e3m4;
   nanobind::object np_float8_e4m3;
   nanobind::object np_float8_e4m3fn;
