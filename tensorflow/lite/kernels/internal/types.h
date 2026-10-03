@@ -711,7 +711,7 @@ struct ArithmeticParams {
   // broadcast_shape[2] = b2 = a2.
   // broadcast_shape[1] = a3; b3 = 1.
   // broadcast_shape[0] = b4 = a4.
-  int broadcast_shape[5];
+  int64_t broadcast_shape[5];
 };
 
 struct ConcatenationParams {
