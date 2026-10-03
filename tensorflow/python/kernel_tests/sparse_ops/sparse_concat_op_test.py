@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -458,6 +459,19 @@ class SparseConcatTest(test.TestCase):
         self.assertEqual(sp_concat.values.get_shape().as_list(), [None])
         self.assertEqual(sp_concat.dense_shape.get_shape(), [3])
 
+  def testSparseConcatEmptyInputList(self):
+    from tensorflow.python.ops import gen_sparse_ops
+    # With an empty input list there are no tensors to infer the 'T' attr
+    # from, so the kernel is rejected before Compute runs. Asserting that a
+    # clean InvalidArgumentError is raised (rather than a crash on
+    # shapes[0]) guards the N > 0 check in SparseConcatOp.
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_sparse_ops.sparse_concat(
+              indices=[], values=[], shapes=[], concat_dim=1
+          )
+      )
+
   def testConcatShape(self):
     # Test case for GitHub 21964.
     x = sparse_tensor.SparseTensor(
@@ -521,6 +535,32 @@ class SparseConcatTest(test.TestCase):
         concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
         self.evaluate(concat_op)
 
+  def testSparseConcatOutputVolumeOverflow(self):
+    # Individual volumes fit in int64, but the concatenated
+    # output volume overflows int64, triggering
+    # SetDimWithStatus -> RecomputeNumElements.
+    # Axis = 1, dim_x = int64_max // 11
+    # Input 1 volume: 10 * dim_x < int64_max
+    # Input 2 volume:  2 * dim_x < int64_max
+    # Output volume:  12 * dim_x > int64_max
+    int64_max = 9223372036854775807
+    dim_x = int64_max // 11
+
+    indices1 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values1 = constant_op.constant([1.0], dtype=dtypes.float32)
+    shape1 = constant_op.constant([1, 10, dim_x], dtype=dtypes.int64)
+
+    indices2 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values2 = constant_op.constant([2.0], dtype=dtypes.float32)
+    shape2 = constant_op.constant([1, 2, dim_x], dtype=dtypes.int64)
+
+    sp1 = sparse_tensor.SparseTensor(indices1, values1, shape1)
+    sp2 = sparse_tensor.SparseTensor(indices2, values2, shape2)
+
+    with self.assertRaisesOpError(
+        "results in overflow when computing number of elements"
+    ):
+      self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
 
 if __name__ == "__main__":
   test.main()
