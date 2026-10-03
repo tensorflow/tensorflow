@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/log_severity.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -37,6 +38,11 @@ namespace xla {
 
 HloReachabilityMap::HloReachabilityMap(
     absl::Span<const HloInstruction* const> instructions)
+    : HloReachabilityMap(instructions, /*should_fill_with_zeros=*/true) {}
+
+HloReachabilityMap::HloReachabilityMap(
+    absl::Span<const HloInstruction* const> instructions,
+    bool should_fill_with_zeros)
     : words_per_bitset_((instructions.size() + BitSet::kBits - 1) /
                         BitSet::kBits),
       total_words_((instructions.size() + 1 /*for tmp_bit_set_*/) *
@@ -53,8 +59,20 @@ HloReachabilityMap::HloReachabilityMap(
   while (row < total_rows) {
     const int rows_to_allocate = std::min(kRowsPerAllocation, total_rows - row);
     size_t words_to_allocate = rows_to_allocate * words_per_bitset_;
-    // make_unique initializes the array of words to 0
-    bit_storage_.push_back(std::make_unique<BitSet::Word[]>(words_to_allocate));
+    if (should_fill_with_zeros) {
+      // make_unique zero fills the words.
+      bit_storage_.push_back(
+          std::make_unique<BitSet::Word[]>(words_to_allocate));
+    } else {
+      bit_storage_.push_back(
+          std::unique_ptr<BitSet::Word[]>(new BitSet::Word[words_to_allocate]));
+      // In debug builds, poison the words so that a row read before it is
+      // written fails the tests instead of happening to read fresh zero pages.
+      if constexpr (absl::kLogDebugFatal == absl::LogSeverity::kFatal) {
+        std::memset(bit_storage_.back().get(), 0xAB,
+                    words_to_allocate * sizeof(BitSet::Word));
+      }
+    }
     row += rows_to_allocate;
   }
 
@@ -65,8 +83,14 @@ HloReachabilityMap::HloReachabilityMap(
   }
   indices_.resize(max_local_id + 1, kValueAbsent);
   for (size_t i = 0; i < instructions.size(); ++i) {
-    BitSetFromIndex(i).Set(i);  // Instructions are reachable from themselves.
     indices_[GetKey(instructions[i])] = i;
+  }
+  if (should_fill_with_zeros) {
+    for (size_t i = 0; i < instructions.size(); ++i) {
+      BitSetFromIndex(i).Set(i);  // Instructions are reachable from themselves.
+    }
+  } else {
+    tmp_bit_set_.SetToZero();
   }
 }
 
@@ -104,16 +128,25 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
 void HloReachabilityMap::SetReachabilityToUnionHelper(
     absl::Span<const Index> input_indices, Index index) {
   BitSet bit_set = BitSetFromIndex(index);
-  // If instruction is part of inputs, don't reset the bit-set.
-  if (!absl::c_linear_search(input_indices, index)) {
+  // If instruction is part of inputs, keep the bit-set and union the others
+  // in. Otherwise the first input row replaces it, so the row is written once
+  // instead of cleared and then unioned.
+  bool copied = absl::c_linear_search(input_indices, index);
+  for (Index input_index : input_indices) {
+    if (input_index == index) {
+      continue;
+    }
+    if (copied) {
+      bit_set |= BitSetFromIndex(input_index);
+    } else {
+      bit_set.CopyBitSet(BitSetFromIndex(input_index));
+      copied = true;
+    }
+  }
+  if (!copied) {
     bit_set.SetToZero();
   }
   bit_set.Set(index);
-  for (Index input_index : input_indices) {
-    if (input_index != index) {
-      bit_set |= BitSetFromIndex(input_index);
-    }
-  }
 }
 
 void HloReachabilityMap::Replace(const HloInstruction* original,
@@ -151,26 +184,47 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     const HloComputation* computation) {
   std::vector<HloInstruction*> instructions =
       computation->MakeInstructionPostOrder();
-  auto result = std::make_unique<HloReachabilityMap>(instructions);
-
-  auto get_bit_set = [&](const HloInstruction* instruction) -> BitSet {
-    return result->BitSetFromIndex(result->GetIndex(instruction));
-  };
+  // Every row is fully written below before any row reads it, so the matrix
+  // skips the zero fill of the public constructor: a whole extra pass over
+  // n^2/8 bytes for a large computation.
+  std::unique_ptr<HloReachabilityMap> result(
+      new HloReachabilityMap(instructions, /*should_fill_with_zeros=*/false));
 
   for (const HloInstruction* instruction : instructions) {
-    BitSet bit_set = get_bit_set(instruction);
-
-    auto add_dependencies = [&](const HloInstruction* instruction) {
-      for (const HloInstruction* operand : instruction->operands()) {
-        bit_set |= get_bit_set(operand);
+    const Index index = result->GetIndex(instruction);
+    BitSet bit_set = result->BitSetFromIndex(index);
+    // Post order makes every input row final here. The first input row is
+    // copied, the others are unioned in; a row without inputs is cleared.
+    bool copied = false;
+    auto add_input = [&](const HloInstruction* input) {
+      const Index input_index = result->GetIndex(input);
+      if (input_index == index) {
+        return;
       }
-      for (const HloInstruction* predecessor :
-           instruction->control_predecessors()) {
-        bit_set |= get_bit_set(predecessor);
+      DCHECK_LT(input_index, index) << "post order puts inputs first";
+      BitSet input_set = result->BitSetFromIndex(input_index);
+      if (copied) {
+        // Rows are transitively closed, so an input that is already reachable
+        // brings nothing new.
+        if (!bit_set.Get(input_index)) {
+          bit_set |= input_set;
+        }
+      } else {
+        bit_set.CopyBitSet(input_set);
+        copied = true;
       }
     };
-
-    add_dependencies(instruction);
+    for (const HloInstruction* operand : instruction->operands()) {
+      add_input(operand);
+    }
+    for (const HloInstruction* predecessor :
+         instruction->control_predecessors()) {
+      add_input(predecessor);
+    }
+    if (!copied) {
+      bit_set.SetToZero();
+    }
+    bit_set.Set(index);  // Instructions are reachable from themselves.
   }
   return result;
 }
