@@ -337,7 +337,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           ),
       )
 
-  def testQuantizeAndDequantizeV3InvalidNumBits(self):
+  def testQuantizeAndDequantizeV3NumBitsBoundaries(self):
     for signed_input, invalid_num_bits in (
         (True, (0, -1, 62, 63)),
         (False, (0, -1, 63, 64)),
