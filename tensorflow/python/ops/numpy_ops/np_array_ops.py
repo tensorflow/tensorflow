@@ -16,6 +16,7 @@
 # pylint: disable=g-direct-tensorflow-import
 
 import builtins
+import collections.abc
 import enum
 import functools
 import math
@@ -1671,6 +1672,33 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
 
   if axis is not None:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None:
+      if isinstance(axis, (int, np.integer)) and not isinstance(
+          axis, (bool, np.bool_)
+      ):
+        normalized = axis + maybe_rank if axis < 0 else axis
+        if normalized < 0 or normalized >= maybe_rank:
+          raise ValueError(
+              f'Argument `axis` (received axis={axis}) is out of bounds '
+              f'for input of rank {maybe_rank}.'
+          )
+      elif isinstance(axis, collections.abc.Iterable):
+        axes = builtins.list(axis)
+        if all(
+            isinstance(x, (int, np.integer))
+            and not isinstance(x, (bool, np.bool_))
+            for x in axes
+        ):
+          for x in axes:
+            normalized = x + maybe_rank if x < 0 else x
+            if normalized < 0 or normalized >= maybe_rank:
+              raise ValueError(
+                  f'Argument `axis` (received axis={x}) is out of bounds '
+                  f'for input of rank {maybe_rank}.'
+              )
     return manip_ops.roll(a, shift, axis)
 
   # If axis is None, the roll happens as a 1-d tensor.

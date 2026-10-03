@@ -1487,6 +1487,41 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, axis=(0, 1, 2))
     _test(a, axis=range(3))
 
+  def testRoll(self):
+    np.random.seed(0)
+    random_seed.set_seed(0)
+
+    def _test(*args, **kwargs):
+      expected = np.roll(*args, **kwargs)
+      raw_ans = np_array_ops.roll(*args, **kwargs)
+
+      self.assertAllEqual(expected, raw_ans)
+
+    a = np.random.rand(2, 3, 4)
+
+    # No axis rolls the flattened array.
+    _test(a, 1)
+    # A scalar shift on a single axis, including negative values.
+    _test(a, 1, axis=0)
+    _test(a, -1, axis=2)
+    _test(a, 2, axis=-1)
+    # A sequence of shifts across multiple axes.
+    _test(a, (1, 2, 3), axis=(0, 1, 2))
+    _test(a, [1, -2], axis=[-3, 2])
+    _test(a, np.array([0, 1]), axis=np.array([-1, 1]))
+
+    # Out-of-bounds axes raise, matching np.roll's AxisError.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.roll(a, 1, axis=3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.roll(a, 1, axis=-4)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.roll(a, (1, 2), axis=(0, 3))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.roll(a, (1, -1), axis=[0, -4])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.roll(a, range(2), axis=range(2, 4))
+
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))
     self.assertAllEqual(1, np_array_ops.ndim([1, 2]))
