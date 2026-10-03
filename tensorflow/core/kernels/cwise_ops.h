@@ -935,6 +935,36 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
+// TF-owned rsqrt functor for bfloat16.
+//
+// Eigen's default scalar_rsqrt_op uses `1 / sqrt(x)`. For bfloat16 both
+// operations cast back to bfloat16, so the scalar path double-rounds and
+// disagrees with the packet path (which converts the packet to float,
+// computes float rsqrt, and casts once). Do not specialize Eigen's
+// scalar_rsqrt_op; instead define a TensorFlow-owned functor that computes in
+// float and casts once, then wire functor::rsqrt<bfloat16> to it.
+//
+// See https://github.com/tensorflow/tensorflow/issues/123551.
+struct scalar_rsqrt_bfloat16_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bfloat16
+  operator()(const bfloat16& a) const {
+    return bfloat16(numext::rsqrt(static_cast<float>(a)));
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
+    return prsqrt(a);
+  }
+};
+
+template <>
+struct functor_traits<scalar_rsqrt_bfloat16_op> {
+  enum {
+    Cost = 5 * NumTraits<bfloat16>::MulCost,
+    PacketAccess = packet_traits<bfloat16>::HasRsqrt,
+  };
+};
+
 // igamma(a, x) = P(a, x) is defined only for a > 0, x >= 0.  Eigen's
 // scalar_igamma_op short-circuits to 0 when x == 0 before the domain check
 // fires, so a <= 0 with x == 0 silently returns 0 instead of NaN.  The
@@ -1070,6 +1100,12 @@ struct sqrt : base<T, Eigen::internal::scalar_sqrt_op<T>> {};
 
 template <typename T>
 struct rsqrt : base<T, Eigen::internal::scalar_rsqrt_op<T>> {};
+
+// Avoid Eigen's double-rounding scalar bfloat16 rsqrt path (see
+// Eigen::internal::scalar_rsqrt_bfloat16_op above).
+template <>
+struct rsqrt<bfloat16>
+    : base<bfloat16, Eigen::internal::scalar_rsqrt_bfloat16_op> {};
 
 template <typename T>
 struct exp : base<T, Eigen::internal::scalar_exp_op<T>> {};
