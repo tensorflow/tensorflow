@@ -274,7 +274,7 @@ struct CropAndResize<CPUDevice, T> {
 
         for (int y = 0; y < crop_height; ++y) {
           const float in_y = y_base + y * y_scale_factor;
-          if (in_y < 0 || in_y > image_height - 1) {
+          if (!(in_y >= 0 && in_y <= image_height - 1)) {
             for (int x = 0; x < crop_width; ++x) {
               for (int d = 0; d < depth; ++d) {
                 crops(b, y, x, d) = extrapolation_value;
@@ -289,7 +289,7 @@ struct CropAndResize<CPUDevice, T> {
 
             for (int x = 0; x < crop_width; ++x) {
               const float in_x = x_base + x * x_scale_factor;
-              if (in_x < 0 || in_x > image_width - 1) {
+              if (!(in_x >= 0 && in_x <= image_width - 1)) {
                 for (int d = 0; d < depth; ++d) {
                   crops(b, y, x, d) = extrapolation_value;
                 }
@@ -317,7 +317,7 @@ struct CropAndResize<CPUDevice, T> {
           } else {  // method == "nearest"
             for (int x = 0; x < crop_width; ++x) {
               const float in_x = x_base + x * x_scale_factor;
-              if (in_x < 0 || in_x > image_width - 1) {
+              if (!(in_x >= 0 && in_x <= image_width - 1)) {
                 for (int d = 0; d < depth; ++d) {
                   crops(b, y, x, d) = extrapolation_value;
                 }
