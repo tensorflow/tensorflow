@@ -1066,7 +1066,7 @@ class TFETest(test_util.TensorFlowTestCase):
       t.join()
 
     for error in errors_by_thread:
-      if error is not None:
+      if isinstance(error, BaseException):
         raise error
 
   def testEmptyResourceReturned(self):
