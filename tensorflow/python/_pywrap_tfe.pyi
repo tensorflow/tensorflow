@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+# Test change
 from typing import ClassVar
 
 TFE_DEVICE_PLACEMENT_EXPLICIT: TFE_ContextDevicePlacementPolicy
