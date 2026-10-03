@@ -24,6 +24,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/tstring.h"
