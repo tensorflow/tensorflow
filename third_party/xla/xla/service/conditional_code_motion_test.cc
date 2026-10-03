@@ -126,6 +126,140 @@ ENTRY main {
   ASSERT_FALSE(pass.Run(&*module).value());
 }
 
+// The outfeed check is made once per conditional. Two conditionals of the same
+// shape, one with an outfeed in a branch and one without: the memory limit
+// only applies to the first, so only the second gets its convert hoisted.
+TEST_F(ConditionalCodeMotionTest, OutfeedCheckIsPerConditional) {
+  absl::string_view hlo_string =
+      R"(
+HloModule OutfeedCheckIsPerConditional
+
+on_true_a {
+  arg_tuple.1 = (f32[2048,1024]{1,0}) parameter(0)
+  gte.1 = f32[2048,1024]{1,0} get-tuple-element(arg_tuple.1), index=0
+  token.1 = token[] after-all()
+  outfeed.1 = token[] outfeed(gte.1, token.1), outfeed_shape=f32[2048,1024]{1,0}
+  convert.1 = bf16[2048,1024]{1,0} convert(gte.1)
+  ROOT tuple.1 = (bf16[2048,1024]{1,0}) tuple(convert.1)
+}
+
+on_false_a {
+  arg_tuple.2 = (f32[2048,1024]{1,0}) parameter(0)
+  gte.2 = f32[2048,1024]{1,0} get-tuple-element(arg_tuple.2), index=0
+  convert.2 = bf16[2048,1024]{1,0} convert(gte.2)
+  ROOT tuple.2 = (bf16[2048,1024]{1,0}) tuple(convert.2)
+}
+
+on_true_b {
+  arg_tuple.3 = (f32[2048,1024]{1,0}) parameter(0)
+  gte.3 = f32[2048,1024]{1,0} get-tuple-element(arg_tuple.3), index=0
+  convert.3 = bf16[2048,1024]{1,0} convert(gte.3)
+  ROOT tuple.3 = (bf16[2048,1024]{1,0}) tuple(convert.3)
+}
+
+on_false_b {
+  arg_tuple.4 = (f32[2048,1024]{1,0}) parameter(0)
+  gte.4 = f32[2048,1024]{1,0} get-tuple-element(arg_tuple.4), index=0
+  convert.4 = bf16[2048,1024]{1,0} convert(gte.4)
+  ROOT tuple.4 = (bf16[2048,1024]{1,0}) tuple(convert.4)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_a = (f32[2048,1024]{1,0}) parameter(1)
+  arg_b = (f32[2048,1024]{1,0}) parameter(2)
+  cond_a = (bf16[2048,1024]{1,0}) conditional(pred.1, arg_a, arg_a), true_computation=on_true_a, false_computation=on_false_a
+  gte_a = bf16[2048,1024]{1,0} get-tuple-element(cond_a), index=0
+  cond_b = (bf16[2048,1024]{1,0}) conditional(pred.1, arg_b, arg_b), true_computation=on_true_b, false_computation=on_false_b
+  gte_b = bf16[2048,1024]{1,0} get-tuple-element(cond_b), index=0
+  ROOT result = (bf16[2048,1024]{1,0}, bf16[2048,1024]{1,0}) tuple(gte_a, gte_b)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  // The hoist adds 8192 units of memory in the conditional with the outfeed.
+  ConditionalCodeMotion pass(true,
+                             /*pursue_full_conditional_code_motion=*/false,
+                             /*search_config=*/0,
+                             /*memory_increase_allowance=*/5000);
+  ASSERT_TRUE(pass.Run(&*module).value());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::Tuple(op::GetTupleElement(op::Conditional()),
+                        op::Convert(op::GetTupleElement(op::Conditional()))));
+}
+
+// The count of distinct operands of a user, constants excluded, is remembered
+// while one conditional is analyzed and recounted for the next one. The
+// constant leaves cond_a together with the convert, which turns
+// add(gte_a.1, gte_b) into add(constant, gte_b). The add now has a single
+// counted operand, so cond_b may move it into its branches. A count kept from
+// the analysis of cond_a would say two and keep it outside.
+TEST_F(ConditionalCodeMotionTest, OperandCountIsRecountedPerConditional) {
+  absl::string_view hlo_string =
+      R"(
+HloModule OperandCountIsRecountedPerConditional
+
+on_true_a {
+  arg_tuple.1 = (f32[16]{0}) parameter(0)
+  gte.1 = f32[16]{0} get-tuple-element(arg_tuple.1), index=0
+  convert.1 = bf16[16]{0} convert(gte.1)
+  constant.1 = f32[] constant(1)
+  ROOT tuple.1 = (bf16[16]{0}, f32[]) tuple(convert.1, constant.1)
+}
+
+on_false_a {
+  arg_tuple.2 = (f32[16]{0}) parameter(0)
+  gte.2 = f32[16]{0} get-tuple-element(arg_tuple.2), index=0
+  convert.2 = bf16[16]{0} convert(gte.2)
+  constant.2 = f32[] constant(1)
+  ROOT tuple.2 = (bf16[16]{0}, f32[]) tuple(convert.2, constant.2)
+}
+
+on_true_b {
+  arg_tuple.3 = (f32[]) parameter(0)
+  gte.3 = f32[] get-tuple-element(arg_tuple.3), index=0
+  negate.3 = f32[] negate(gte.3)
+  ROOT tuple.3 = (f32[]) tuple(negate.3)
+}
+
+on_false_b {
+  arg_tuple.4 = (f32[]) parameter(0)
+  gte.4 = f32[] get-tuple-element(arg_tuple.4), index=0
+  exponential.4 = f32[] exponential(gte.4)
+  ROOT tuple.4 = (f32[]) tuple(exponential.4)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_a = (f32[16]{0}) parameter(1)
+  arg_b = (f32[]) parameter(2)
+  cond_a = (bf16[16]{0}, f32[]) conditional(pred.1, arg_a, arg_a), true_computation=on_true_a, false_computation=on_false_a
+  gte_a.0 = bf16[16]{0} get-tuple-element(cond_a), index=0
+  gte_a.1 = f32[] get-tuple-element(cond_a), index=1
+  cond_b = (f32[]) conditional(pred.1, arg_b, arg_b), true_computation=on_true_b, false_computation=on_false_b
+  gte_b = f32[] get-tuple-element(cond_b), index=0
+  add = f32[] add(gte_a.1, gte_b)
+  ROOT result = (bf16[16]{0}, f32[]) tuple(gte_a.0, add)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ConditionalCodeMotion pass(true,
+                             /*pursue_full_conditional_code_motion=*/false);
+  ASSERT_TRUE(pass.Run(&*module).value());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::Tuple(op::Convert(op::GetTupleElement(op::Conditional())),
+                        op::GetTupleElement(op::Conditional())));
+  const HloInstruction* cond_b = FindInstruction(module.get(), "cond_b");
+  ASSERT_NE(cond_b, nullptr);
+  EXPECT_THAT(cond_b->branch_computation(0)->root_instruction(),
+              op::Tuple(op::Add(op::Constant(), op::Negate())));
+  EXPECT_THAT(cond_b->branch_computation(1)->root_instruction(),
+              op::Tuple(op::Add(op::Constant(), op::Exp())));
+}
+
 TEST_F(ConditionalCodeMotionTest, VerifyConditionalAnalysisWithWhileTuple) {
   absl::string_view hlo_string =
       R"(
