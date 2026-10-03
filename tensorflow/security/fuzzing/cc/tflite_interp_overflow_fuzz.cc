@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // FuzzTest coverage for TFLite model load, interpreter build, and invoke.
-// Malformed models go straight to InterpreterBuilder, so anything it does with
-// attacker-controlled model metadata (the external-offset bounds checks in
-// ParseNodes and ParseTensors included) is exercised directly rather than
-// behind the verifier. The OSS-Fuzz tensorflow build has no TFLite target that
-// reaches this path.
+// Models enter through FlatBufferModel::VerifyAndBuildFromBuffer, so inputs
+// that fail the flatbuffers structural check are rejected at ingress, as they
+// would be in a deployment that verifies models. That check does not cover the
+// uint64 external-offset fields (Buffer.offset/size and
+// Operator.large_custom_options_offset/size), which point past the flatbuffer
+// into the appended data, so the bounds checks on them in
+// InterpreterBuilder::ParseNodes and ParseTensors are exercised directly. The
+// OSS-Fuzz tensorflow build has no TFLite target that reaches this path.
 
 #include <cstring>
 #include <memory>
@@ -35,8 +38,8 @@ limitations under the License.
 namespace {
 
 void FuzzModelBuildAndInvoke(const std::string& model_bytes) {
-  auto model = tflite::FlatBufferModel::BuildFromBuffer(model_bytes.data(),
-                                                        model_bytes.size());
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
+      model_bytes.data(), model_bytes.size());
   if (model == nullptr) return;
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
