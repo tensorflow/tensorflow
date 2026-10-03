@@ -1228,6 +1228,7 @@ tf_cc_test(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/cc:scope",
+        "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

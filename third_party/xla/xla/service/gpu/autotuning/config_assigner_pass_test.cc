@@ -713,6 +713,36 @@ TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {
   }
 }
 
+TEST_F(AutotunerFlagsTest,
+       GetEnabledBackendsKeepsTritonUnderDeterminismWithCostModel) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+  debug_options.set_xla_gpu_experimental_cost_model_gemm_tiling_default(true);
+
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+  GpuAliasInfo alias_info(stream_executor_->GetDeviceDescription());
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                       ConfigAssignerPass::GetEnabledBackends(
+                           stream_executor_, allocator_.get(), &target_config,
+                           &alias_info, debug_options, &mlir_context,
+                           /*shape_size_fn=*/[](const Shape&) { return 0; },
+                           &compiler_, stream_executor_->GetPlatform()->id()));
+
+  bool has_triton = false;
+  for (const auto& backend : backends) {
+    has_triton |= backend->backend() == autotuner::Backend::TRITON;
+    EXPECT_NE(backend->backend(), autotuner::Backend::NATIVE_EMITTER);
+    EXPECT_NE(backend->backend(), autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  }
+  EXPECT_TRUE(has_triton);
+  // Autotuning stays disabled, so selection comes from the static cost model.
+  EXPECT_FALSE(GetConfigAssignerOptions(debug_options).allow_autotuning);
+  EXPECT_TRUE(GetConfigAssignerOptions(debug_options).prefer_estimated_configs);
+}
+
 TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
   absl::SetVLogLevel("config_assigner*", 10);
   AutotunerCache::ClearAutotuneResults();
