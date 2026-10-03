@@ -309,7 +309,9 @@ cuda_py_strict_test(
     # b/140155706: nans in result
     xla_enable_strict_auto_jit = False,
     deps = [
+        "//tensorflow/compiler/jit",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
