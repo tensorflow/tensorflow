@@ -4509,6 +4509,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(m1.call(constant_op.constant(1)), 2)
     self.assertAllEqual(m1.call.experimental_get_tracing_count(), 1)
 
+  def test_clear_cache_releases_by_ref_captures(self):
+    value = constant_op.constant(2.0)
+
+    @polymorphic_function.function
+    def f():
+      return ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32))
+
+    self.assertAllEqual(f(), 2.0)
+    self.assertNotEmpty(f._function_captures.by_ref_external)
+    f.clear_cache()
+    self.assertEmpty(f._function_captures.by_ref_external)
+    self.assertAllEqual(f(), 2.0)
+
   def test_tensor_shape_casted_to_specific(self):
     @polymorphic_function.function(
         input_signature=[tensor_lib.TensorSpec([1])]
