@@ -876,7 +876,7 @@ void TF_SetAttrFloat(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrFloatList(TF_OperationDescription* desc, const char* attr_name,
                          const float* values, int num_values) {
   desc->node_builder.Attr(attr_name,
-                          ArraySlice<const float>(values, num_values));
+                          absl::Span<const const float>(values, num_values));
 }
 
 void TF_SetAttrBool(TF_OperationDescription* desc, const char* attr_name,
