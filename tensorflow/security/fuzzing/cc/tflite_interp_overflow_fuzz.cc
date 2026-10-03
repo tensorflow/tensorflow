@@ -26,6 +26,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/lite/c/common.h"
