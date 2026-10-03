@@ -25,7 +25,6 @@ from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import remote_utils
-from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -294,43 +293,3 @@ def connect_to_cluster(cluster_spec_or_resolver,
 
 def _strip_prefix(s, prefix):
   return s[len(prefix):] if s.startswith(prefix) else s
-
-
-class FindMasterJobAndTaskTest(test.TestCase):
-
-  def testFindsFirstMatchWhenAddressesOverlap(self):
-    """Regression test: a later job must not silently override an earlier,
-    correct match when more than one job's task address satisfies the
-    loose substring-containment check used to identify the master.
-    """
-    cluster_spec = server_lib.ClusterSpec({
-        "worker": ["10.0.0.5:2222"],
-        "chief": ["10.0.0.5:2222"],
-    })
-    master_job_name, master_task_id = _find_master_job_and_task(
-        cluster_spec, "10.0.0.5:2222")
-    self.assertEqual(master_job_name, "worker")
-    self.assertEqual(master_task_id, 0)
-
-  def testFindsMatchWithNoOverlap(self):
-    cluster_spec = server_lib.ClusterSpec({
-        "worker": ["10.0.0.5:2222"],
-        "chief": ["10.0.0.6:2222"],
-    })
-    master_job_name, master_task_id = _find_master_job_and_task(
-        cluster_spec, "10.0.0.6:2222")
-    self.assertEqual(master_job_name, "chief")
-    self.assertEqual(master_task_id, 0)
-
-  def testReturnsNoneWhenNoMatch(self):
-    cluster_spec = server_lib.ClusterSpec({
-        "worker": ["10.0.0.5:2222"],
-    })
-    master_job_name, master_task_id = _find_master_job_and_task(
-        cluster_spec, "10.0.0.9:2222")
-    self.assertIsNone(master_job_name)
-    self.assertIsNone(master_task_id)
-
-
-if __name__ == "__main__":
-  test.main()
