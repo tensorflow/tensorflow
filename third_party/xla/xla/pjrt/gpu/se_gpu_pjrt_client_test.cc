@@ -2754,6 +2754,54 @@ TEST(StreamExecutorGpuClientTest, LinkedEventPromise) {
   ASSERT_EQ(literal, *new_literal);
 }
 
+TEST(StreamExecutorGpuClientTest,
+     DeferredTransferMaterializesAllocationEventWhenScheduled) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> pjrt_client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  auto* client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
+  auto* raw_client =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                          device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      raw_client->GetLocalDeviceState(device->local_device_id()));
+  ASSERT_EQ(local_device_state->allocation_model(),
+            LocalDeviceState::kComputeSynchronized);
+
+  constexpr int64_t kSize = 16;
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtRawBufferRef raw_buffer,
+      client->AllocateRawBuffer(memory_space, kSize, /*retry_on_oom=*/true,
+                                /*allocate_after=*/{}));
+  size_t sync_point = local_device_state->GetNextComputeStreamSyncPoint();
+
+  // Schedule a transfer whose dependency is not ready yet, so the transfer
+  // itself (including `WaitForAllocation`) is deferred.
+  PjRtDeviceEventPromiseRef promise;
+  PjRtDeviceEventRef dependency;
+  TF_ASSERT_OK_AND_ASSIGN(std::tie(promise, dependency),
+                          client->CreateLinkedEventPromise(memory_space, ""));
+  std::vector<char> src(kSize, 1);
+  PjRtDeviceEventRefVector dependencies;
+  dependencies.push_back(std::move(dependency));
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtDeviceEventRef transfer_event,
+      raw_buffer->CopyRawHostToDeviceAndReturnEvent(
+          src.data(), /*offset=*/0, kSize, std::move(dependencies)));
+
+  // The allocation event is recorded when the transfer is scheduled, so it is
+  // ahead of any work enqueued on the compute stream afterwards.
+  EXPECT_EQ(local_device_state->GetNextComputeStreamSyncPoint(),
+            sync_point + 1);
+
+  promise.SetReady();
+  tsl::BlockUntilReady(transfer_event.async_value());
+  EXPECT_EQ(transfer_event.GetErrorIfPresent(), std::nullopt);
+}
+
 TEST(StreamExecutorGpuClientTest, GetAbiVersion) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions()));

@@ -816,6 +816,10 @@ void StreamExecutorGpuRawClient::ScheduleRemoteSend(
   // Keep memory alive until the event is done.
   usage_event.AndThen([raw_buffer]() {});
 
+  // `WaitForAllocation` below is deferred until the descriptor and the
+  // definition events are ready, so record the allocation event now.
+  MaterializeAllocationEvent(*raw_buffer);
+
   serialized_descriptor.OnReady(
       [this, on_done = std::move(on_done),
        definition_events = std::move(definition_events),
@@ -1008,6 +1012,9 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
           "same device");
     }
     raw_buffers.push_back(raw_buffer);
+    // `WaitForAllocation` is deferred to `async_work_runner()` below, so record
+    // the allocation event now.
+    MaterializeAllocationEvent(*raw_buffer);
   }
 
   // All buffers are on the same device.

@@ -228,6 +228,14 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   absl::Status WaitForAllocation(se::Stream* stream,
                                  const PjRtRawBufferInterface& raw_buffer);
 
+  // Records the compute stream event for `raw_buffer`'s allocation now if its
+  // memory is already available. The event is otherwise recorded lazily at the
+  // tail of the compute stream when `WaitForAllocation` runs, so callers that
+  // defer `WaitForAllocation` must call this before deferring to avoid a false
+  // dependency on executions enqueued in the meantime. Errors are ignored here
+  // and reported by `WaitForAllocation` instead.
+  void MaterializeAllocationEvent(const PjRtRawBufferInterface& raw_buffer);
+
   static bool IsOnCpu(PjRtMemorySpace* memory_space);
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(

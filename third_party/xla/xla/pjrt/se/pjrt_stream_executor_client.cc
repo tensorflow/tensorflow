@@ -493,6 +493,23 @@ absl::Status PjRtStreamExecutorRawClient::WaitForAllocation(
   return absl::OkStatus();
 }
 
+void PjRtStreamExecutorRawClient::MaterializeAllocationEvent(
+    const PjRtRawBufferInterface& raw_buffer) {
+  auto* cpp_buf = raw_buffer.down_cast<const PjRtStreamExecutorRawBuffer>();
+  if (cpp_buf == nullptr || !cpp_buf->device_buffer().IsConcrete()) {
+    return;
+  }
+  // A later `WaitForAllocation` reuses the event recorded here. If recording
+  // fails, no event is stored for the sync point, so the deferred
+  // `WaitForAllocation` records it again (still after the allocation, i.e. safe
+  // to reuse the memory) and reports the error if it fails again.
+  absl::Status status =
+      cpp_buf->device_buffer()->MaterializeDefinitionEvent(async_work_runner());
+  if (!status.ok()) {
+    VLOG(1) << "Failed to materialize allocation event: " << status;
+  }
+}
+
 bool PjRtStreamExecutorRawClient::IsOnCpu(PjRtMemorySpace* memory_space) {
   return memory_space->kind() == PinnedHostMemorySpace::kKind;
 }
