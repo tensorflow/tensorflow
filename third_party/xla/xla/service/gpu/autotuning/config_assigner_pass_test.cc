@@ -79,6 +79,13 @@ se::StreamExecutor* GpuExecutor() {
 
 class ConfigAssignerPassTest : public HloHardwareIndependentTestBase {
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    options.set_xla_gpu_autotune_level(4);
+    return options;
+  }
+
   ConfigAssignerPassTest()
       : stream_executor_(GpuExecutor()),
         allocator_(
