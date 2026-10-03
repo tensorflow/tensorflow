@@ -301,6 +301,18 @@ TEST(ImageOpsTest, ResizeNearestNeighborGrad_ShapeFn) {
   Tensor size_tensor = test::AsTensor<int32_t>({20, 30});
   op.input_tensors[1] = &size_tensor;
   INFER_OK(op, "[1,?,3,?];[2]", "[d0_0,20,30,d0_3]");
+
+  size_tensor = test::AsTensor<int32_t>({0, 3});
+  INFER_ERROR("shape_t's elements must be positive for non-empty grads", op,
+              "[1,2,3,1];[2]");
+  INFER_OK(op, "[1,0,3,1];[2]", "[d0_0,0,3,d0_3]");
+  INFER_OK(op, "[?,2,3,1];[2]", "[d0_0,0,3,d0_3]");
+
+  size_tensor = test::AsTensor<int32_t>({2, 0});
+  INFER_ERROR("shape_t's elements must be positive for non-empty grads", op,
+              "[1,2,3,1];[2]");
+  INFER_OK(op, "[1,2,0,1];[2]", "[d0_0,2,0,d0_3]");
+  INFER_OK(op, "[1,2,3,?];[2]", "[d0_0,2,0,d0_3]");
 }
 
 TEST(ImageOpsTest, CropAndResizeGradImage_ShapeFn) {
