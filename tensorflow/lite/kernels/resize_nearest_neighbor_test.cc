@@ -409,5 +409,30 @@ INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpTest,
                          ResizeNearestNeighborOpTest,
                          testing::Values(TestType::kConst, TestType::kDynamic));
 
+TEST(ResizeNearestNeighborOpTest, ModelWithZeroSpatialDimensionIsRejected) {
+#if GTEST_HAS_DEATH_TEST
+  class ResizeNearestNeighborOpModelZeroDimension : public SingleOpModel {
+   public:
+    ResizeNearestNeighborOpModelZeroDimension() {
+      input_ = AddInput({TensorType_FLOAT32, {1, 0, 2, 1}});
+      size_ = AddConstInput(TensorType_INT32, {3, 3}, {2});
+      output_ = AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+                   BuiltinOptions_ResizeNearestNeighborOptions,
+                   CreateResizeNearestNeighborOptions(builder_, false, false)
+                       .Union());
+      BuildInterpreter({GetShape(input_)});
+    }
+
+   private:
+    int input_;
+    int size_;
+    int output_;
+  };
+  EXPECT_DEATH(ResizeNearestNeighborOpModelZeroDimension(),
+               "Cannot allocate tensors");
+#endif
+}
+
 }  // namespace
 }  // namespace tflite
