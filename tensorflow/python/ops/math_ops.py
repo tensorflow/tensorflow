@@ -4643,17 +4643,19 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
   num_segments = ops.convert_to_tensor(num_segments)
   # bincount doesn't support negative indices so we use unsorted_segment_sum
   segment_ids_shape = array_ops.shape_internal(segment_ids)
-  ones_tensor = array_ops.ones(segment_ids_shape, dtype=data.dtype)
+
+  ones_tensor = array_ops.ones(segment_ids_shape, dtype=segment_ids.dtype)
   n = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
+
   # add dimensions for all non-reduced axes
   broadcastable_shape = array_ops.concat(
       [num_segments[array_ops.newaxis],
-       array_ops.ones([array_ops.rank(data)
-                       - array_ops.rank(segment_ids)],
+       array_ops.ones([array_ops.rank(data) - array_ops.rank(segment_ids)],
                       dtype=num_segments.dtype)],
       axis=0)
   n = array_ops.reshape(n, broadcastable_shape)
-  return gen_math_ops.maximum(n, 1)
+  n = gen_math_ops.maximum(n, cast(1, segment_ids.dtype))
+  return cast(n, dtype=data.dtype)
 
 
 @tf_export(
@@ -5374,7 +5376,7 @@ def tensordot(a, b, axes, name=None):
   In general, `order(c) = order(a) + order(b) - 2*len(axes[0])`.
 
   For example:
-  
+
    ```python
    import numpy as np
    import tensorflow as tf
@@ -5383,28 +5385,28 @@ def tensordot(a, b, axes, name=None):
    b = np.arange(24).reshape(4,3,2)
    c = tf.tensordot(a,b, axes=([1,0],[0,1]))
    c
-   
+
    <tf.Tensor: shape=(5, 2), dtype=int64, numpy=
    array([[4400, 4730],
        [4532, 4874],
        [4664, 5018],
        [4796, 5162],
        [4928, 5306]])>
-  
+
   # Another example
   d = tf.random.uniform((3,4,5))
   e = tf.random.uniform((5,3,2))
   f = tf.tensordot(d,e, axes=([2,0],[0,1]))
   f
-  
+
   <tf.Tensor: shape=(4, 2), dtype=float32, numpy=
   array([[4.8271146, 4.493    ],
        [5.8537536, 5.492961 ],
        [5.2579894, 5.2020206],
        [3.5817177, 4.2104754]], dtype=float32)>
-       
+
     ```
-    
+
   Args:
     a: `Tensor` of type `float32` or `float64`.
     b: `Tensor` with the same type as `a`.
