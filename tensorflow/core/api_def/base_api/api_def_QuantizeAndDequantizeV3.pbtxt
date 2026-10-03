@@ -1,5 +1,27 @@
 op {
   graph_op_name: "QuantizeAndDequantizeV3"
+  in_arg {
+    name: "input_min"
+    description: <<END
+If `range_given == True`, this specifies the minimum input value that needs to
+be represented, otherwise it is determined from the min value of the `input`
+tensor.
+
+If `axis` is specified, the shape of the minimum input tensor
+must be rank 1.
+END
+  }
+  in_arg {
+    name: "input_max"
+    description: <<END
+If `range_given == True`, this specifies the maximum input value that needs to
+be represented, otherwise it is determined from the max value of the `input`
+tensor.
+
+If `axis` is specified, the shape of the maximum input tensor
+must be rank 1.
+END
+  }
   summary: "Quantizes then dequantizes a tensor."
   description: <<END
 This is almost identical to QuantizeAndDequantizeV2, except that num_bits is a
