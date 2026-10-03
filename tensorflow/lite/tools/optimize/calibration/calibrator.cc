@@ -260,7 +260,7 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   // output tensors, which would overwrite input calibration statistics with
   // output values.
   for (int i : op_info.loggable_inputs) {
-    auto tensor = context->tensors[i];
+    const TfLiteTensor& tensor = context->tensors[i];
     if (tensor.is_variable) {
       TF_LITE_ENSURE_STATUS(
           logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,

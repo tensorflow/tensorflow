@@ -738,6 +738,12 @@ TEST(CalibratorTest, NonVariableInputsNotReLoggedPostInvocation) {
     }
   }
 
+  // Simulate memory planner buffer reuse where an output tensor shares the
+  // buffer of an input tensor.
+  ASSERT_NE(interpreter->tensor(5), nullptr);
+  char* original_output_data = interpreter->tensor(5)->data.raw;
+  interpreter->tensor(5)->data.raw = interpreter->tensor(0)->data.raw;
+
   status = interpreter->Invoke();
   ASSERT_EQ(kTfLiteOk, status);
 
@@ -752,9 +758,9 @@ TEST(CalibratorTest, NonVariableInputsNotReLoggedPostInvocation) {
     EXPECT_NEAR(it->second.min, tensor_idx + 1, eps);
     EXPECT_NEAR(it->second.max, tensor_idx + 1, eps);
   }
+  interpreter->tensor(5)->data.raw = original_output_data;
 }
 }  // namespace
-
 }  // namespace calibration
 }  // namespace optimize
 }  // namespace tflite
