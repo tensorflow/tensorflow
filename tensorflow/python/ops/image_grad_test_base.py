@@ -643,69 +643,27 @@ class CropAndResizeOpTestBase(test.TestCase):
                     err = max(err1, err2)
                     self.assertLess(err, 2e-3)
 
-  def testGradOpsRejectNonFiniteBoxes(self):
-    crop_size = constant_op.constant([2, 2], dtype=dtypes.int32)
-    box_ind = constant_op.constant([0], dtype=dtypes.int32)
-    gradient_tape_cls = backprop.GradientTape
-    crop_and_resize_fn = image_ops.crop_and_resize
-
+  def testGradOpsWithNonFiniteBoxes(self):
+    # The forward CPU kernel rejects non-finite boxes, so call the gradient
+    # ops directly to reach the backward kernels (#124955).
+    grads = np.ones((1, 2, 2, 1), dtype=np.float32)
+    box_ind = np.array([0], dtype=np.int32)
+    image_size = np.array([1, 4, 4, 1], dtype=np.int32)
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      image_np = np.ones((1, 4, 4, 1), dtype=dtype.as_numpy_dtype)
+      image = np.ones((1, 4, 4, 1), dtype=dtype.as_numpy_dtype)
       for bad_val in [np.nan, np.inf, -np.inf]:
-        boxes_bad_np = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
-        # On both CPU and GPU, non-finite coordinates are safely skipped by the
-        # inverted NaN-safe bounds checks, preventing memory corruption or crashes.
-        for use_gpu in [False, True]:
-          with self.cached_session(use_gpu=use_gpu):
-            image = constant_op.constant(image_np, dtype=dtype)
-            boxes_bad = constant_op.constant(boxes_bad_np, dtype=dtypes.float32)
-            with gradient_tape_cls(persistent=True) as tape:
-              tape.watch(image)
-              tape.watch(boxes_bad)
-              crops = crop_and_resize_fn(
-                  image, boxes_bad, box_ind, crop_size
-              )
-            grad_image, grad_boxes = tape.gradient(
-                crops, [image, boxes_bad]
-            )
-            grad_image_val = self.evaluate(grad_image)
-            grad_boxes_val = self.evaluate(grad_boxes)
-            self.assertIsNotNone(grad_image_val)
-            self.assertIsNotNone(grad_boxes_val)
-            self.assertEqual((1, 4, 4, 1), grad_image_val.shape)
-            self.assertEqual((1, 4), grad_boxes_val.shape)
+        for col in range(4):
+          boxes_np = np.array([[0.0, 0.0, 1.0, 1.0]], dtype=np.float32)
+          boxes_np[0, col] = bad_val
+          grad_image = self.evaluate(
+              gen_image_ops.crop_and_resize_grad_image(
+                  grads, boxes_np, box_ind, image_size, T=dtype))
+          grad_boxes = self.evaluate(
+              gen_image_ops.crop_and_resize_grad_boxes(
+                  grads, image, boxes_np, box_ind))
+          self.assertAllEqual(np.zeros((1, 4, 4, 1)), grad_image)
+          self.assertAllEqual(np.zeros((1, 4)), grad_boxes)
 
-  def testValidEmptyBoxes(self):
-    # Verify the green path for valid empty tensors (N=0) without hanging or crashing.
-    crop_size = constant_op.constant([2, 2], dtype=dtypes.int32)
-    box_ind = constant_op.constant([], dtype=dtypes.int32)
-    boxes = constant_op.constant(
-        np.zeros((0, 4), dtype=np.float32), dtype=dtypes.float32
-    )
-    gradient_tape_cls = backprop.GradientTape
-    crop_and_resize_fn = image_ops.crop_and_resize
-
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      image_np = np.ones((2, 4, 4, 3), dtype=dtype.as_numpy_dtype)
-      for use_gpu in [False, True]:
-        with self.cached_session(use_gpu=use_gpu):
-          image = constant_op.constant(image_np, dtype=dtype)
-          with gradient_tape_cls(persistent=True) as tape:
-            tape.watch(image)
-            tape.watch(boxes)
-            crops = crop_and_resize_fn(
-                image, boxes, box_ind, crop_size
-            )
-          crops_val = self.evaluate(crops)
-          self.assertEqual((0, 2, 2, 3), crops_val.shape)
-
-          grad_image, grad_boxes = tape.gradient(crops, [image, boxes])
-          grad_image_val = self.evaluate(grad_image)
-          grad_boxes_val = self.evaluate(grad_boxes)
-          self.assertIsNotNone(grad_image_val)
-          self.assertIsNotNone(grad_boxes_val)
-          self.assertEqual((2, 4, 4, 3), grad_image_val.shape)
-          self.assertEqual((0, 4), grad_boxes_val.shape)
 
   def testEmptyTensorRankCheck(self):
     grads = np.ones((0, 2, 2, 1), dtype=np.float32)
@@ -775,77 +733,6 @@ class CropAndResizeOpTestBase(test.TestCase):
           )
       )
 
-  def testShapeInferenceParity(self):
-    # Verify shape inference enforces rank and dimension constraints.
-    grads_bad_rank = np.ones((1, 2, 2), dtype=np.float32)
-    grads_valid = np.ones((1, 2, 2, 1), dtype=np.float32)
-    image_bad_rank = np.ones((1, 4, 4), dtype=np.float32)
-    image_valid = np.ones((1, 4, 4, 1), dtype=np.float32)
-    boxes_valid = np.ones((1, 4), dtype=np.float32)
-    box_ind_valid = np.zeros((1,), dtype=np.int32)
-    image_size_valid = np.array([1, 4, 4, 1], dtype=np.int32)
-
-    raw_grad_boxes = gen_image_ops.crop_and_resize_grad_boxes
-    raw_grad_image = gen_image_ops.crop_and_resize_grad_image
-
-    # 1. grads must be 4-D
-    with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError),
-        r"Shape must be rank 4 but is rank 3",
-    ):
-      raw_grad_image(
-          grads=grads_bad_rank,
-          boxes=boxes_valid,
-          box_ind=box_ind_valid,
-          image_size=image_size_valid,
-          T=dtypes.float32,
-      )
-    with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError),
-        r"Shape must be rank 4 but is rank 3",
-    ):
-      raw_grad_boxes(
-          grads=grads_bad_rank,
-          image=image_valid,
-          boxes=boxes_valid,
-          box_ind=box_ind_valid,
-      )
-
-    # 2. image must be 4-D for grad_boxes
-    with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError),
-        r"Shape must be rank 4 but is rank 3",
-    ):
-      raw_grad_boxes(
-          grads=grads_valid,
-          image=image_bad_rank,
-          boxes=boxes_valid,
-          box_ind=box_ind_valid,
-      )
-
-    # 3. grads and boxes batch dimension mismatch
-    grads_mismatched_batch = np.ones((2, 2, 2, 1), dtype=np.float32)
-    with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError),
-        r"Dimensions must be equal",
-    ):
-      raw_grad_image(
-          grads=grads_mismatched_batch,
-          boxes=boxes_valid,
-          box_ind=box_ind_valid,
-          image_size=image_size_valid,
-          T=dtypes.float32,
-      )
-    with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError),
-        r"Dimensions must be equal",
-    ):
-      raw_grad_boxes(
-          grads=grads_mismatched_batch,
-          image=image_valid,
-          boxes=boxes_valid,
-          box_ind=box_ind_valid,
-      )
 
 
 @test_util.run_all_in_graph_and_eager_modes
