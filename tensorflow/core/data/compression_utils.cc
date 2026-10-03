@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
@@ -159,18 +160,27 @@ absl::Status UncompressElement(const CompressedElement& compressed,
   size_t num_string_tensor_strings = 0;
   size_t total_nonmemcpyable_size = 0;
   for (const auto& metadata : compressed.component_metadata()) {
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(
+        TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
     if (metadata.dtype() == DT_STRING) {
       ++num_string_tensors;
       num_string_tensor_strings += metadata.uncompressed_bytes_size();
+    } else if (!DataTypeCanUseMemcpy(metadata.dtype())) {
+      // Non-`memcpy`able components always serialize to a non-empty
+      // `TensorProto`, even when the tensor has zero elements, so size the
+      // scratch buffer for them regardless of element count. A forged byte
+      // count is then caught by the snappy size reconciliation below.
+      if (metadata.uncompressed_bytes_size() == 0) {
+        return absl::InvalidArgumentError(
+            "Missing uncompressed_bytes metadata for non-memcpyable tensor");
+      }
+      total_nonmemcpyable_size += metadata.uncompressed_bytes(0);
     } else {
-      TensorShape shape(metadata.tensor_shape());
       int64_t num_elements = shape.num_elements();
       if (num_elements > 0 && metadata.uncompressed_bytes_size() == 0) {
         return absl::InvalidArgumentError(
             "Missing uncompressed_bytes metadata for non-empty tensor");
-      }
-      if (!DataTypeCanUseMemcpy(metadata.dtype()) && num_elements > 0) {
-        total_nonmemcpyable_size += metadata.uncompressed_bytes(0);
       }
     }
   }
@@ -187,9 +197,11 @@ absl::Status UncompressElement(const CompressedElement& compressed,
   char* nonmemcpyable_pos = nonmemcpyable.mdata();
   for (const auto& metadata : compressed.component_metadata()) {
     if (DataTypeCanUseMemcpy(metadata.dtype())) {
-      TensorShape shape(metadata.tensor_shape());
+      TensorShape shape;
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
       int64_t num_elements = shape.num_elements();
-      out->emplace_back(metadata.dtype(), metadata.tensor_shape());
+      out->emplace_back(metadata.dtype(), shape);
       TensorBuffer* buffer = DMAHelper::buffer(&out->back());
       if (buffer && num_elements > 0) {
         if (metadata.uncompressed_bytes(0) > buffer->size()) {
@@ -200,7 +212,10 @@ absl::Status UncompressElement(const CompressedElement& compressed,
         iov.Add(buffer->data(), metadata.uncompressed_bytes(0));
       }
     } else if (metadata.dtype() == DT_STRING) {
-      out->emplace_back(metadata.dtype(), metadata.tensor_shape());
+      TensorShape shape;
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
+      out->emplace_back(metadata.dtype(), shape);
       const auto& flats = out->back().unaligned_flat<tstring>();
       if (metadata.uncompressed_bytes_size() > flats.size()) {
         return absl::InvalidArgumentError(absl::StrCat(
@@ -213,13 +228,9 @@ absl::Status UncompressElement(const CompressedElement& compressed,
         iov.Add(flats.data()[i].mdata(), metadata.uncompressed_bytes(i));
       }
     } else {
-      TensorShape shape(metadata.tensor_shape());
-      int64_t num_elements = shape.num_elements();
       out->emplace_back();
-      if (num_elements > 0) {
-        iov.Add(nonmemcpyable_pos, metadata.uncompressed_bytes(0));
-        nonmemcpyable_pos += metadata.uncompressed_bytes(0);
-      }
+      iov.Add(nonmemcpyable_pos, metadata.uncompressed_bytes(0));
+      nonmemcpyable_pos += metadata.uncompressed_bytes(0);
     }
   }
 
