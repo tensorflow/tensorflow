@@ -669,7 +669,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 }
 
 std::string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
-                                                      const int& stream_id) {
+                                                      const int stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
                          " on GPU ", tf_device_id_.value(), " stream[",
                          stream_id, "]");
@@ -708,13 +708,12 @@ bool ShouldLogInputsAndOutputs(OpKernel* op_kernel) {
 Tensor BaseGPUDevice::CopyGpuTensorToHostDebugOnly(const Tensor& gpu_tensor) {
   Tensor host_tensor(gpu_tensor.dtype(), gpu_tensor.shape());
   auto stream = device_context_->stream();
-  CHECK(stream  // Crash OK
-            ->Memcpy(host_tensor.data(),
-                     stream_executor::DeviceAddressBase(
-                         gpu_tensor.data(), gpu_tensor.TotalBytes()),
-                     gpu_tensor.TotalBytes())
-            .ok());
-  CHECK(stream->BlockHostUntilDone().ok());  // Crash OK
+  CHECK_OK(stream  // Crash OK
+               ->Memcpy(host_tensor.data(),
+                        stream_executor::DeviceAddressBase(
+                            gpu_tensor.data(), gpu_tensor.TotalBytes()),
+                        gpu_tensor.TotalBytes()));
+  CHECK_OK(stream->BlockHostUntilDone());  // Crash OK
   return host_tensor;
 }
 
@@ -785,7 +784,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
             << ComputeOpKernelDebugString(*op_kernel, stream_id);
   }
 
-  if (kernel_tracker_.get()) {
+  if (kernel_tracker_) {
     context->set_record_memory_consumption(true);
     if (pending_cap_ > 0) {
       kernel_tracker_->PauseWhilePendingExceeds(pending_cap_);
