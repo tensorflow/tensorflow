@@ -37,6 +37,23 @@ def _check_penalty_number(x):
         ).format(x)
     )
 
+  # A regularization penalty coefficient is meant to *penalize* large
+  # weights, i.e. increase the loss as weights grow. A negative
+  # coefficient does the opposite: it makes the regularization term
+  # negative, which decreases the total loss as weights grow, actively
+  # rewarding larger weights instead of penalizing them. Verified this
+  # was previously silently accepted here (no sign check existed) and
+  # produced a negative "regularization" loss for e.g. L1(l1=-0.5).
+  # The current standalone `keras` package already rejects this case
+  # ("Invalid value for argument l1: expected a non-negative float.");
+  # this brings the legacy `tensorflow.python.keras` copy in line with
+  # that behavior.
+  if x < 0:
+    raise ValueError(
+        ('Value: {} is not a valid regularization penalty number, '
+         'expected a non-negative value').format(x)
+    )
+
 
 def _none_to_default(inputs, default):
   return default if inputs is None else inputs
