@@ -14,9 +14,9 @@
  #include "llvm/IR/PassManager.h"
  #include "llvm/IR/Verifier.h"
  #include "llvm/IRReader/IRReader.h"
-@@ -187,6 +189,14 @@
-   ScopedLLVMOption &operator=(const ScopedLLVMOption &) = delete;
- };
+@@ -183,6 +185,14 @@
+       ->setInitialValue(createTritonDAGScheduler);
+ }
  
 +// Marks every floating-point operation in the module as contractable.
 +void allowFPOpFusion(llvm::Module &module) {

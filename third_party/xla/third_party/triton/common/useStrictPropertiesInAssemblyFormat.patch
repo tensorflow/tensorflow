@@ -15,9 +15,9 @@ See b/567092262 for more details.
 
 --- a/include/triton/Dialect/Triton/IR/TritonDialect.td
 +++ b/include/triton/Dialect/Triton/IR/TritonDialect.td
-@@ -51,6 +51,7 @@
- 
+@@ -52,6 +52,7 @@
    let hasConstantMaterializer = 1;
+   let useDefaultAttributePrinterParser = 1;
    let useDefaultTypePrinterParser = 1;
 +  let useStrictPropertiesInAssemblyFormat = 0;
  }
