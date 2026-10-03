@@ -21,7 +21,6 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor.h"
