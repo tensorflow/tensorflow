@@ -5601,6 +5601,23 @@ tf_kernel_library(
     deps = SPARSE_DEPS,
 )
 
+tf_cc_test(
+    name = "sparse_tensors_map_ops_test",
+    size = "small",
+    srcs = ["sparse_tensors_map_ops_test.cc"],
+    deps = [
+        ":sparse_tensors_map_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:sparse_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/public:version",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 tf_cuda_cc_tests(
     name = "sparse2_tests",
     size = "small",
