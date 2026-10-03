@@ -22,19 +22,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -69,6 +71,104 @@ class ProdOp : public XlaReductionOp {
   void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
                     const xla::XlaOp& scalar_rhs) override {
     xla::Mul(scalar_lhs, scalar_rhs);
+  }
+
+  xla::XlaOp BuildFinalizer(
+      xla::XlaBuilder* builder, const xla::XlaOp& input,
+      const xla::XlaOp& reduce_output,
+      const std::vector<int64_t>& dimensions_to_reduce) override {
+    return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
+      xla::XlaOp final_output = XlaReductionOp::BuildFinalizer(
+          builder, input, reduce_output, dimensions_to_reduce);
+
+      if (xla::primitive_util::IsComplexType(xla_reduction_type_)) {
+        // For complex types (C64/C128), inspect real and imaginary parts
+        // separately since IsInf/IsNan operate on real floating-point scalars.
+        xla::XlaOp zero = xla::Zero(builder, xla_reduction_type_);
+        xla::XlaOp is_zero = xla::Eq(input, zero);
+        xla::XlaOp real = xla::Real(input);
+        xla::XlaOp imag = xla::Imag(input);
+        xla::XlaOp is_nan_or_inf = xla::Or(xla::IsNan(real), xla::IsInf(real),
+                                           xla::IsNan(imag), xla::IsInf(imag));
+
+        xla::XlaBuilder r("prod_complex_finalizer_reduction");
+        xla::Shape pred_shape = xla::ShapeUtil::MakeShape(xla::PRED, {});
+        xla::XlaOp lhs_zero = xla::Parameter(&r, 0, pred_shape, "lhs_zero");
+        xla::XlaOp lhs_nan_inf =
+            xla::Parameter(&r, 1, pred_shape, "lhs_nan_inf");
+        xla::XlaOp rhs_zero = xla::Parameter(&r, 2, pred_shape, "rhs_zero");
+        xla::XlaOp rhs_nan_inf =
+            xla::Parameter(&r, 3, pred_shape, "rhs_nan_inf");
+        xla::Tuple(&r, {xla::Or(lhs_zero, rhs_zero),
+                        xla::Or(lhs_nan_inf, rhs_nan_inf)});
+        absl::StatusOr<xla::XlaComputation> finalizer_comp = r.Build();
+        if (!finalizer_comp.ok()) {
+          return finalizer_comp.status();
+        }
+
+        xla::XlaOp false_val = xla::ConstantR0<bool>(builder, false);
+        xla::XlaOp reduced_flags = xla::Reduce(
+            builder, {is_zero, is_nan_or_inf}, {false_val, false_val},
+            *finalizer_comp, dimensions_to_reduce);
+        xla::XlaOp any_zero = xla::GetTupleElement(reduced_flags, 0);
+        xla::XlaOp any_nan_or_inf = xla::GetTupleElement(reduced_flags, 1);
+
+        xla::XlaOp out_real = xla::Real(final_output);
+        xla::XlaOp out_imag = xla::Imag(final_output);
+        xla::XlaOp output_is_nan =
+            xla::Or(xla::IsNan(out_real), xla::IsNan(out_imag));
+        xla::XlaOp should_be_zero = xla::And(
+            output_is_nan, xla::And(any_zero, xla::Not(any_nan_or_inf)));
+        return xla::Select(should_be_zero, xla::ZerosLike(final_output),
+                           final_output);
+      }
+
+      if (!xla::primitive_util::IsFloatingPointType(xla_reduction_type_)) {
+        return final_output;
+      }
+
+      xla::XlaOp zero = xla::Zero(builder, xla_reduction_type_);
+      xla::XlaOp is_zero = xla::Eq(input, zero);
+      xla::XlaOp is_nan_or_inf = xla::Or(xla::IsNan(input), xla::IsInf(input));
+      xla::XlaOp is_negative =
+          xla::Or(xla::Lt(input, zero), xla::IsNegZero(input));
+
+      xla::XlaBuilder r("prod_finalizer_reduction");
+      xla::Shape pred_shape = xla::ShapeUtil::MakeShape(xla::PRED, {});
+      xla::XlaOp lhs_zero = xla::Parameter(&r, 0, pred_shape, "lhs_zero");
+      xla::XlaOp lhs_nan_inf = xla::Parameter(&r, 1, pred_shape, "lhs_nan_inf");
+      xla::XlaOp lhs_neg = xla::Parameter(&r, 2, pred_shape, "lhs_neg");
+      xla::XlaOp rhs_zero = xla::Parameter(&r, 3, pred_shape, "rhs_zero");
+      xla::XlaOp rhs_nan_inf = xla::Parameter(&r, 4, pred_shape, "rhs_nan_inf");
+      xla::XlaOp rhs_neg = xla::Parameter(&r, 5, pred_shape, "rhs_neg");
+      xla::Tuple(
+          &r, {xla::Or(lhs_zero, rhs_zero), xla::Or(lhs_nan_inf, rhs_nan_inf),
+               xla::Xor(lhs_neg, rhs_neg)});
+      absl::StatusOr<xla::XlaComputation> finalizer_comp = r.Build();
+      if (!finalizer_comp.ok()) {
+        return finalizer_comp.status();
+      }
+
+      xla::XlaOp false_val = xla::ConstantR0<bool>(builder, false);
+      xla::XlaOp reduced_flags =
+          xla::Reduce(builder, {is_zero, is_nan_or_inf, is_negative},
+                      {false_val, false_val, false_val}, *finalizer_comp,
+                      dimensions_to_reduce);
+      xla::XlaOp any_zero = xla::GetTupleElement(reduced_flags, 0);
+      xla::XlaOp any_nan_or_inf = xla::GetTupleElement(reduced_flags, 1);
+      xla::XlaOp odd_negatives = xla::GetTupleElement(reduced_flags, 2);
+
+      xla::XlaOp output_is_nan = xla::IsNan(final_output);
+
+      xla::XlaOp should_be_zero =
+          xla::And(output_is_nan, xla::And(any_zero, xla::Not(any_nan_or_inf)));
+
+      xla::XlaOp pos_zero = xla::ZerosLike(final_output);
+      xla::XlaOp signed_zero =
+          xla::Select(odd_negatives, xla::Neg(pos_zero), pos_zero);
+
+      return xla::Select(should_be_zero, signed_zero, final_output);
+    });
   }
 };
 
