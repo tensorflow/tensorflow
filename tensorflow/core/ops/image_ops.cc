@@ -965,9 +965,31 @@ REGISTER_OP("CropAndResizeGradImage")
     .Attr("T: {float, half, double}")
     .Attr("method: {'bilinear', 'nearest'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle grads;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &grads));
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &boxes));
+      ShapeHandle box_ind;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &box_ind));
+      ShapeHandle image_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &image_size));
+
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(image_size, 0), 4, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+      DimensionHandle num_boxes;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(boxes, 0), c->Dim(box_ind, 0), &num_boxes));
+      TF_RETURN_IF_ERROR(
+          c->Merge(num_boxes, c->Dim(grads, 0), &num_boxes));
+
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(3, &out));
       TF_RETURN_IF_ERROR(c->WithRank(out, 4, &out));
+      DimensionHandle depth;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(grads, 3), c->Dim(out, 3), &depth));
+      TF_RETURN_IF_ERROR(c->ReplaceDim(out, 3, depth, &out));
       c->set_output(0, out);
       return absl::OkStatus();
     });
@@ -981,7 +1003,29 @@ REGISTER_OP("CropAndResizeGradBoxes")
     .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->input(2));
+      ShapeHandle grads;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &grads));
+      ShapeHandle image;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &image));
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &boxes));
+      ShapeHandle box_ind;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &box_ind));
+
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(image, 3), c->Dim(grads, 3), &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+      DimensionHandle num_boxes;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(boxes, 0), c->Dim(box_ind, 0), &num_boxes));
+      TF_RETURN_IF_ERROR(
+          c->Merge(num_boxes, c->Dim(grads, 0), &num_boxes));
+
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(boxes, 0, num_boxes, &output));
+      c->set_output(0, output);
       return absl::OkStatus();
     });
 

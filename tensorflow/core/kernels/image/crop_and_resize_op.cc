@@ -263,11 +263,18 @@ struct CropAndResize<CPUDevice, T> {
             (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
                              : 0;
 
+        const float y_base = (crop_height > 1)
+                                 ? y1 * (image_height - 1)
+                                 : 0.5f * (y1 + y2) * (image_height - 1);
+        const float y_scale_factor = (crop_height > 1) ? height_scale : 0.0f;
+        const float x_base = (crop_width > 1)
+                                 ? x1 * (image_width - 1)
+                                 : 0.5f * (x1 + x2) * (image_width - 1);
+        const float x_scale_factor = (crop_width > 1) ? width_scale : 0.0f;
+
         for (int y = 0; y < crop_height; ++y) {
-          const float in_y = (crop_height > 1)
-                                 ? y1 * (image_height - 1) + y * height_scale
-                                 : 0.5 * (y1 + y2) * (image_height - 1);
-          if (in_y < 0 || in_y > image_height - 1) {
+          const float in_y = y_base + y * y_scale_factor;
+          if (!(in_y >= 0 && in_y <= image_height - 1)) {
             for (int x = 0; x < crop_width; ++x) {
               for (int d = 0; d < depth; ++d) {
                 crops(b, y, x, d) = extrapolation_value;
@@ -281,10 +288,8 @@ struct CropAndResize<CPUDevice, T> {
             const float y_lerp = in_y - top_y_index;
 
             for (int x = 0; x < crop_width; ++x) {
-              const float in_x = (crop_width > 1)
-                                     ? x1 * (image_width - 1) + x * width_scale
-                                     : 0.5 * (x1 + x2) * (image_width - 1);
-              if (in_x < 0 || in_x > image_width - 1) {
+              const float in_x = x_base + x * x_scale_factor;
+              if (!(in_x >= 0 && in_x <= image_width - 1)) {
                 for (int d = 0; d < depth; ++d) {
                   crops(b, y, x, d) = extrapolation_value;
                 }
@@ -311,10 +316,8 @@ struct CropAndResize<CPUDevice, T> {
             }
           } else {  // method == "nearest"
             for (int x = 0; x < crop_width; ++x) {
-              const float in_x = (crop_width > 1)
-                                     ? x1 * (image_width - 1) + x * width_scale
-                                     : 0.5 * (x1 + x2) * (image_width - 1);
-              if (in_x < 0 || in_x > image_width - 1) {
+              const float in_x = x_base + x * x_scale_factor;
+              if (!(in_x >= 0 && in_x <= image_width - 1)) {
                 for (int d = 0; d < depth; ++d) {
                   crops(b, y, x, d) = extrapolation_value;
                 }
@@ -392,6 +395,7 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
+
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
         absl::InvalidArgumentError("boxes and grads have incompatible shape"),
@@ -504,11 +508,18 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
             (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
                              : 0;
 
+        const float y_base = (crop_height > 1)
+                                 ? y1 * (image_height - 1)
+                                 : 0.5f * (y1 + y2) * (image_height - 1);
+        const float y_scale_factor = (crop_height > 1) ? height_scale : 0.0f;
+        const float x_base = (crop_width > 1)
+                                 ? x1 * (image_width - 1)
+                                 : 0.5f * (x1 + x2) * (image_width - 1);
+        const float x_scale_factor = (crop_width > 1) ? width_scale : 0.0f;
+
         for (int y = 0; y < crop_height; ++y) {
-          const float in_y = (crop_height > 1)
-                                 ? y1 * (image_height - 1) + y * height_scale
-                                 : 0.5 * (y1 + y2) * (image_height - 1);
-          if (in_y < 0 || in_y > image_height - 1) {
+          const float in_y = y_base + y * y_scale_factor;
+          if (!(in_y >= 0 && in_y <= image_height - 1)) {
             continue;
           }
           const int top_y_index = floorf(in_y);
@@ -516,10 +527,8 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
           const float y_lerp = in_y - top_y_index;
 
           for (int x = 0; x < crop_width; ++x) {
-            const float in_x = (crop_width > 1)
-                                   ? x1 * (image_width - 1) + x * width_scale
-                                   : 0.5 * (x1 + x2) * (image_width - 1);
-            if (in_x < 0 || in_x > image_width - 1) {
+            const float in_x = x_base + x * x_scale_factor;
+            if (!(in_x >= 0 && in_x <= image_width - 1)) {
               continue;
             }
 
@@ -724,11 +733,18 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
           (crop_height > 1) ? (y2 - y1) * height_ratio : 0;
       const float width_scale = (crop_width > 1) ? (x2 - x1) * width_ratio : 0;
 
+      const float y_base = (crop_height > 1)
+                               ? y1 * (image_height - 1)
+                               : 0.5f * (y1 + y2) * (image_height - 1);
+      const float y_scale_factor = (crop_height > 1) ? height_scale : 0.0f;
+      const float x_base = (crop_width > 1)
+                               ? x1 * (image_width - 1)
+                               : 0.5f * (x1 + x2) * (image_width - 1);
+      const float x_scale_factor = (crop_width > 1) ? width_scale : 0.0f;
+
       for (int y = 0; y < crop_height; ++y) {
-        const float in_y = (crop_height > 1)
-                               ? y1 * (image_height - 1) + y * height_scale
-                               : 0.5 * (y1 + y2) * (image_height - 1);
-        if (in_y < 0 || in_y > image_height - 1) {
+        const float in_y = y_base + y * y_scale_factor;
+        if (!(in_y >= 0 && in_y <= image_height - 1)) {
           continue;
         }
         const int top_y_index = floorf(in_y);
@@ -736,10 +752,8 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
         const float y_lerp = in_y - top_y_index;
 
         for (int x = 0; x < crop_width; ++x) {
-          const float in_x = (crop_width > 1)
-                                 ? x1 * (image_width - 1) + x * width_scale
-                                 : 0.5 * (x1 + x2) * (image_width - 1);
-          if (in_x < 0 || in_x > image_width - 1) {
+          const float in_x = x_base + x * x_scale_factor;
+          if (!(in_x >= 0 && in_x <= image_width - 1)) {
             continue;
           }
           const int left_x_index = floorf(in_x);
