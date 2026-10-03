@@ -71,6 +71,10 @@ def make_identify_dilated_conv_tests(options):
         dilations=parameters["dilations"],
         padding=parameters["padding"],
         data_format=parameters["data_format"])
+    # The TFLite interpreter cannot return a zero-sized output, so count an
+    # empty output as a TF failure, as it was before TF accepted it.
+    if out.shape.num_elements() == 0:
+      raise ValueError("Zero-sized output is not supported.")
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
