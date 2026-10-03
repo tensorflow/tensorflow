@@ -830,25 +830,21 @@ def norm(tensor,
         sum_squares = math_ops.reduce_sum(
             tensor * math_ops.conj(tensor), axis, keepdims=True
         )
-        # Use a safe sqrt to avoid NaN/inf gradients when sum_squares is zero.
-        # maximum(sum_squares, tiny) ensures the sqrt gradient denominator is
-        # never zero, and the where mask preserves exact zero forward output.
-        real_dtype = tensor.dtype.real_dtype
-        tiny_dtype = (
-            np.float32
-            if real_dtype == dtypes.bfloat16
-            else (real_dtype.as_numpy_dtype)
-        )
-        tiny = np.finfo(tiny_dtype).tiny
         if tensor.dtype.is_complex:
+          # Infinite complex inputs can produce a NaN imaginary component.
           real_sum = math_ops.real(sum_squares)
-          safe_sum = math_ops.complex(
-              math_ops.maximum(real_sum, tiny), array_ops.zeros_like(real_sum)
+          sum_squares = math_ops.complex(
+              real_sum, array_ops.zeros_like(real_sum)
           )
-        else:
-          safe_sum = math_ops.maximum(sum_squares, tiny)
+        # Guard only exact zeros: clamping nonzero subnormal sums changes the
+        # norm and makes their gradients zero. Keep sqrt's gradient finite in
+        # the unselected branch, then restore the exact zero result below.
+        is_zero = math_ops.equal(sum_squares, 0)
+        safe_sum = array_ops.where(
+            is_zero, array_ops.ones_like(sum_squares), sum_squares
+        )
         result = array_ops.where(
-            math_ops.equal(sum_squares, 0),
+            is_zero,
             array_ops.zeros_like(safe_sum),
             math_ops.sqrt(safe_sum),
         )
