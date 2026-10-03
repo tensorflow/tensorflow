@@ -3013,7 +3013,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@xla//xla:shape_util",
         "@xla//xla/hlo/builder:xla_builder",
     ],
 )
