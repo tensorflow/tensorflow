@@ -109,8 +109,8 @@ FailureOr<SmallVector<int64_t>> getExpandedShape(
 FailureOr<SmallVector<int64_t>> getExpandedStrides(
     ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides);
 
-// Returns the remainder of the given value when divided by the given divisor.
-// Returns nullopt if the remainder is not known.
+// Returns the remainder of the given value when divided by the given divisor,
+// in [0, divisor). Returns nullopt if the remainder is not known.
 std::optional<int64_t> getRemainder(Value val, int64_t divisor,
                                     int64_t fuel = 128);
 
