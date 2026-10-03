@@ -80,6 +80,7 @@ limitations under the License.
 #endif
 #ifdef TF_GPU_USE_PJRT
 #include "tensorflow/compiler/jit/flags.h"
+#include "xla/client/client_library.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -95,6 +96,8 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tsl/platform/dso_loader.h"
 #ifdef TF_GPU_USE_PJRT
+#include "tensorflow/core/tfrt/common/global_state.h"
+#include "tensorflow/core/tfrt/common/pjrt_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #endif  // TF_GPU_USE_PJRT
 #include "tensorflow/core/util/device_name_utils.h"
@@ -2487,6 +2490,33 @@ int BaseGPUDevice::PendingKernels() {
 
 void BaseGPUDevice::TestOnlyReset() {
   StreamGroupFactory::Global().TestOnlyReset();
+#ifdef TF_GPU_USE_PJRT
+  // CreateDevices() builds the GPU devices' streams on a process-global PjRt
+  // GPU client, which in turn is built on the process-global XLA LocalClient
+  // for the GPU platform. Both are only rebuilt when their cached state does
+  // not match (and the LocalClient never is), so a test that changes the GPU
+  // device configuration would otherwise reuse state built for the previous
+  // configuration.
+  //
+  // Retire the PjRt GPU client. It is moved to PjRtState's unused list rather
+  // than destroyed, so buffers and executables that still refer to it stay
+  // valid; it is never used for new work.
+  ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
+  PjRtState* pjrt_state = nullptr;
+  if (rmgr->Lookup(rmgr->default_container(), kPjRtStateResourceName,
+                   &pjrt_state)
+          .ok()) {
+    core::ScopedUnref pjrt_state_ref(pjrt_state);
+    // NOT_FOUND just means no GPU client was created.
+    pjrt_state->MovePjRtClientToUnused(DeviceType(DEVICE_GPU)).IgnoreError();
+  }
+  // Destroy the GPU platform's LocalClient so the next CreateDevices() creates
+  // it with the new allowed (visible) devices. Must happen after the PjRt
+  // client is retired. Callers must ensure no session that uses a GPU device
+  // (and therefore may hold the LocalClient, e.g. via an XLA compilation
+  // cache) is still alive.
+  xla::ClientLibrary::DestroyLocalInstance(se::GPUMachineManager());
+#endif  // TF_GPU_USE_PJRT
 }
 
 uint64_t GPUKernelTracker::MaybeQueue(OpKernelContext* ctx) {
