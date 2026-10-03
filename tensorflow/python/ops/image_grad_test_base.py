@@ -17,11 +17,6 @@
 from absl.testing import parameterized
 import numpy as np
 
-try:
-  import tensorflow as tf
-except (ImportError, AttributeError):
-  tf = None
-
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
@@ -651,16 +646,8 @@ class CropAndResizeOpTestBase(test.TestCase):
   def testGradOpsRejectNonFiniteBoxes(self):
     crop_size = constant_op.constant([2, 2], dtype=dtypes.int32)
     box_ind = constant_op.constant([0], dtype=dtypes.int32)
-    gradient_tape_cls = (
-        getattr(tf, "GradientTape", backprop.GradientTape)
-        if tf is not None
-        else backprop.GradientTape
-    )
-    crop_and_resize_fn = (
-        getattr(getattr(tf, "image", None), "crop_and_resize", image_ops.crop_and_resize)
-        if tf is not None
-        else image_ops.crop_and_resize
-    )
+    gradient_tape_cls = backprop.GradientTape
+    crop_and_resize_fn = image_ops.crop_and_resize
 
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       image_np = np.ones((1, 4, 4, 1), dtype=dtype.as_numpy_dtype)
@@ -695,16 +682,8 @@ class CropAndResizeOpTestBase(test.TestCase):
     boxes = constant_op.constant(
         np.zeros((0, 4), dtype=np.float32), dtype=dtypes.float32
     )
-    gradient_tape_cls = (
-        getattr(tf, "GradientTape", backprop.GradientTape)
-        if tf is not None
-        else backprop.GradientTape
-    )
-    crop_and_resize_fn = (
-        getattr(getattr(tf, "image", None), "crop_and_resize", image_ops.crop_and_resize)
-        if tf is not None
-        else image_ops.crop_and_resize
-    )
+    gradient_tape_cls = backprop.GradientTape
+    crop_and_resize_fn = image_ops.crop_and_resize
 
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       image_np = np.ones((2, 4, 4, 3), dtype=dtype.as_numpy_dtype)
@@ -733,21 +712,8 @@ class CropAndResizeOpTestBase(test.TestCase):
     image = np.ones((1, 4, 4, 1), dtype=np.float32)
     image_size = np.array([1, 4, 4, 1], dtype=np.int32)
 
-    raw_grad_boxes = (
-        getattr(getattr(tf, "raw_ops", None), "CropAndResizeGradBoxes", None)
-        if tf is not None
-        else None
-    )
-    if raw_grad_boxes is None:
-      raw_grad_boxes = gen_image_ops.crop_and_resize_grad_boxes
-
-    raw_grad_image = (
-        getattr(getattr(tf, "raw_ops", None), "CropAndResizeGradImage", None)
-        if tf is not None
-        else None
-    )
-    if raw_grad_image is None:
-      raw_grad_image = gen_image_ops.crop_and_resize_grad_image
+    raw_grad_boxes = gen_image_ops.crop_and_resize_grad_boxes
+    raw_grad_image = gen_image_ops.crop_and_resize_grad_image
 
     # 1. 0 elements, invalid boxes columns.
     boxes_bad_cols = np.zeros((0, 5), dtype=np.float32)
@@ -819,24 +785,14 @@ class CropAndResizeOpTestBase(test.TestCase):
     box_ind_valid = np.zeros((1,), dtype=np.int32)
     image_size_valid = np.array([1, 4, 4, 1], dtype=np.int32)
 
-    raw_grad_boxes = (
-        getattr(getattr(tf, "raw_ops", None), "CropAndResizeGradBoxes", None)
-        if tf is not None
-        else None
-    )
-    if raw_grad_boxes is None:
-      raw_grad_boxes = gen_image_ops.crop_and_resize_grad_boxes
-
-    raw_grad_image = (
-        getattr(getattr(tf, "raw_ops", None), "CropAndResizeGradImage", None)
-        if tf is not None
-        else None
-    )
-    if raw_grad_image is None:
-      raw_grad_image = gen_image_ops.crop_and_resize_grad_image
+    raw_grad_boxes = gen_image_ops.crop_and_resize_grad_boxes
+    raw_grad_image = gen_image_ops.crop_and_resize_grad_image
 
     # 1. grads must be 4-D
-    with self.assertRaises((errors_impl.InvalidArgumentError, ValueError)):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        r"Shape must be rank 4 but is rank 3",
+    ):
       raw_grad_image(
           grads=grads_bad_rank,
           boxes=boxes_valid,
@@ -844,7 +800,10 @@ class CropAndResizeOpTestBase(test.TestCase):
           image_size=image_size_valid,
           T=dtypes.float32,
       )
-    with self.assertRaises((errors_impl.InvalidArgumentError, ValueError)):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        r"Shape must be rank 4 but is rank 3",
+    ):
       raw_grad_boxes(
           grads=grads_bad_rank,
           image=image_valid,
@@ -853,7 +812,10 @@ class CropAndResizeOpTestBase(test.TestCase):
       )
 
     # 2. image must be 4-D for grad_boxes
-    with self.assertRaises((errors_impl.InvalidArgumentError, ValueError)):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        r"Shape must be rank 4 but is rank 3",
+    ):
       raw_grad_boxes(
           grads=grads_valid,
           image=image_bad_rank,
@@ -863,7 +825,10 @@ class CropAndResizeOpTestBase(test.TestCase):
 
     # 3. grads and boxes batch dimension mismatch
     grads_mismatched_batch = np.ones((2, 2, 2, 1), dtype=np.float32)
-    with self.assertRaises((errors_impl.InvalidArgumentError, ValueError)):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        r"Dimensions must be equal",
+    ):
       raw_grad_image(
           grads=grads_mismatched_batch,
           boxes=boxes_valid,
@@ -871,7 +836,10 @@ class CropAndResizeOpTestBase(test.TestCase):
           image_size=image_size_valid,
           T=dtypes.float32,
       )
-    with self.assertRaises((errors_impl.InvalidArgumentError, ValueError)):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        r"Dimensions must be equal",
+    ):
       raw_grad_boxes(
           grads=grads_mismatched_batch,
           image=image_valid,
