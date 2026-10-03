@@ -293,6 +293,80 @@ class FunctionCacheTest(test.TestCase):
           "d",
       )
 
+  def testMaxCapacityInvalidRaisesValueError(self):
+    with self.assertRaises(ValueError):
+      function_cache.FunctionCache(max_capacity=0)
+    with self.assertRaises(ValueError):
+      function_cache.FunctionCache(max_capacity=-1)
+
+  def testMaxCapacitySingleton(self):
+    cache = function_cache.FunctionCache(max_capacity=1)
+    f_type1 = make_type(1)
+    f_type2 = make_type(2)
+    ctx = function_cache.FunctionContext()
+
+    cache.add(MockFunction(f_type1, "func1"), ctx)
+    self.assertIsNotNone(cache.lookup(f_type1, ctx))
+
+    cache.add(MockFunction(f_type2, "func2"), ctx)
+    self.assertIsNone(cache.lookup(f_type1, ctx))
+    self.assertIsNotNone(cache.lookup(f_type2, ctx))
+
+  def testMaxCapacityReAddExistingKeyDoesNotEvict(self):
+    cache = function_cache.FunctionCache(max_capacity=2)
+    f_type1 = make_type(1)
+    f_type2 = make_type(2)
+    ctx = function_cache.FunctionContext()
+
+    cache.add(MockFunction(f_type1, "func1"), ctx)
+    cache.add(MockFunction(f_type2, "func2"), ctx)
+
+    cache.add(MockFunction(f_type1, "func1_updated"), ctx)
+    self.assertEqual(cache.lookup(f_type1, ctx).test_string, "func1_updated")
+    self.assertIsNotNone(cache.lookup(f_type2, ctx))
+
+  def testMaxCapacityEvictionAndLRU(self):
+    cache = function_cache.FunctionCache(max_capacity=2)
+    f_type1 = make_type(1)
+    f_type2 = make_type(2)
+    f_type3 = make_type(3)
+
+    ctx = function_cache.FunctionContext()
+    cache.add(MockFunction(f_type1, "func1"), ctx)
+    cache.add(MockFunction(f_type2, "func2"), ctx)
+
+    # Access f_type1 so f_type2 becomes the LRU entry
+    cache.lookup(f_type1, ctx)
+
+    # Add f_type3, which should evict f_type2 (the LRU entry)
+    cache.add(MockFunction(f_type3, "func3"), ctx)
+
+    self.assertIsNotNone(cache.lookup(f_type1, ctx))
+    self.assertIsNone(cache.lookup(f_type2, ctx))
+    self.assertIsNotNone(cache.lookup(f_type3, ctx))
+
+  def testMaxCapacitySubtypeDispatchMarksTargetAsMRU(self):
+    cache = function_cache.FunctionCache(max_capacity=2)
+    f_type_gen = make_single_param_type(MockSubtypeOf2(2))
+    f_type_other = make_type(1)
+    f_type_new = make_type(4)
+
+    ctx = function_cache.FunctionContext()
+    cache.add(MockFunction(f_type_gen, "generalized"), ctx)
+    cache.add(MockFunction(f_type_other, "other"), ctx)
+
+    # Looking up a subtype (MockSubtypeOf2(3) is subtype of MockSubtypeOf2(2))
+    # dispatches to f_type_gen and should promote f_type_gen to MRU.
+    f_type_sub = make_single_param_type(MockSubtypeOf2(3))
+    self.assertEqual(cache.lookup(f_type_sub, ctx).test_string, "generalized")
+
+    # Adding a 3rd function should evict f_type_other (the LRU entry), NOT f_type_gen.
+    cache.add(MockFunction(f_type_new, "new"), ctx)
+
+    self.assertIsNotNone(cache.lookup(f_type_sub, ctx))
+    self.assertIsNone(cache.lookup(f_type_other, ctx))
+    self.assertIsNotNone(cache.lookup(f_type_new, ctx))
+
 
 class FunctionCacheBenchmark(test.Benchmark):
 

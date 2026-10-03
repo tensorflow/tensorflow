@@ -16,6 +16,8 @@
 
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
+* `tf.function` / `PolymorphicFunction`:
+    * Added `clear_cache()` method to `PolymorphicFunction` to explicitly clear compiled concrete functions and dispatch tables, freeing retained graph memory.
 
 ### Bug Fixes and Other Changes
 
