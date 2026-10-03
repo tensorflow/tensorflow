@@ -25,8 +25,10 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
