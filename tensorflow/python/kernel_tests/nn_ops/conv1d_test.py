@@ -19,7 +19,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -129,7 +129,7 @@ class Conv1DTest(test.TestCase):
         0.0, shape=[2, 3, 1], dtype=dtypes.float32)
 
     with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
+        (ValueError, errors_impl.InvalidArgumentError),
         "(Negative dimension size|must be at least effective_filter_size)"):
       nn_ops.conv1d(
           x,
@@ -152,7 +152,7 @@ class Conv1DTest(test.TestCase):
     # Eager execution keeps the traced dynamic shape, so only the runtime
     # kernel check can catch the invalid configuration.
     with context.eager_mode(), self.assertRaisesRegex(
-        errors.InvalidArgumentError, "must be at least effective_filter_size"
+        errors_impl.InvalidArgumentError, "must be at least effective_filter_size"
     ):
       self.evaluate(
           run_conv(
@@ -160,6 +160,17 @@ class Conv1DTest(test.TestCase):
               constant_op.constant(np.zeros([2, 3, 1], np.float32)),
           )
       )
+
+  def testEmptyInputValidPadding(self):
+    x = constant_op.constant(
+        0.0, shape=[2, 0, 3], dtype=dtypes.float32)
+    filters = constant_op.constant(
+        0.0, shape=[2, 3, 1], dtype=dtypes.float32)
+
+    output = nn_ops.conv1d(
+        x, filters, stride=1, padding="VALID")
+
+    self.assertEqual(output.shape.as_list(), [2, 0, 1])
 
 
 if __name__ == "__main__":
