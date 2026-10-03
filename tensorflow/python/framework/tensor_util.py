@@ -579,6 +579,66 @@ def _is_array_like(obj):  # pylint: disable=invalid-name
     return not isinstance(obj, bytes)
 
 
+def AssertFiniteForIntegerDtype(values, dtype):
+  """Raises a TypeError if non-finite floats are cast to an integer dtype.
+
+  `tf.constant([float("nan")], dtype=tf.int32)` raises a `TypeError` because
+  the Python-list conversion path validates every element. The NumPy-array path
+  instead relies on `ndarray.astype`, which silently maps NaN and Inf to the
+  smallest representable integer. This helper closes that gap so that both
+  input containers behave consistently.
+
+  Args:
+    values: the value being converted. Only floating-point, complex, and
+      bfloat16 `np.ndarray` / `np.generic` inputs are inspected; everything
+      else is left alone.
+    dtype: the requested `DType`, its enum value, or None. Only integer dtypes
+      are inspected.
+
+  Raises:
+    TypeError: if `dtype` is an integer dtype and `values` is a floating point,
+      complex, or bfloat16 array that contains NaN or Inf.
+  """
+  # Ordered so that the cheapest tests come first: `convert_to_eager_tensor`
+  # runs on every tensor conversion, and the common Python-list / scalar paths
+  # return before `dtypes.as_dtype` is called.
+  if dtype is None:
+    return
+  if not isinstance(values, (np.ndarray, np.generic)):
+    return
+  # Reject floating point, complex, and bfloat16 inputs (kinds "f", "c", "V");
+  # integer and other kinds are never inspected. Complex values can carry NaN
+  # or Inf in either the real or the imaginary plane; bfloat16 is stored by
+  # numpy as raw bytes (kind "V") but is a floating-point type and is checked
+  # the same way.
+  if values.dtype.kind not in ("f", "c", "V"):
+    return
+  dtype = dtypes.as_dtype(dtype)
+  if not dtype.is_integer:
+    return
+  if values.size == 0:
+    return
+  # Reject NaN/Inf with O(1)-memory extrema reductions instead of building a
+  # full boolean mask (np.isfinite(values) allocates an array the size of
+  # `values`). Complex values are not totally ordered, so the real and
+  # imaginary planes are checked independently; real floating-point and
+  # bfloat16 arrays use a single pair of min/max reductions.
+  if values.dtype.kind == "c":
+    if (np.isfinite(np.min(values.real))
+        and np.isfinite(np.max(values.real))
+        and np.isfinite(np.min(values.imag))
+        and np.isfinite(np.max(values.imag))):
+      return
+  else:
+    if np.isfinite(np.min(values)) and np.isfinite(np.max(values)):
+      return
+  raise TypeError(
+      f"Cannot convert {np.array2string(np.asarray(values), threshold=8)} to "
+      f"a tensor of dtype {dtype.name}: NaN and Inf cannot be represented as "
+      "an integer. Use a floating point dtype, or replace the non-finite "
+      "values before converting.")
+
+
 # pylint: disable=invalid-name
 @tf_export("make_tensor_proto")
 def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
@@ -659,6 +719,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
     if dtype and dtype.is_numpy_compatible:
+      AssertFiniteForIntegerDtype(values, dtype)
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
