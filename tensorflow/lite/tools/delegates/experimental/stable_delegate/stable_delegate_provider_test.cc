@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <atomic>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -89,6 +91,37 @@ TEST(StableAbiDelegateProviderTest, CreateDelegateFailedWithBlankSettingsPath) {
   auto delegates = CreateDelegates("");
 
   EXPECT_EQ(0, delegates.size());
+}
+
+TEST(StableAbiDelegateProviderTest, ConcurrentCreateDelegate) {
+  constexpr int kNumThreads = 40;
+  constexpr int kNumIterations = 500;
+  std::atomic<bool> start{false};
+  std::vector<std::thread> threads;
+  threads.reserve(kNumThreads);
+
+  for (int t = 0; t < kNumThreads; ++t) {
+    threads.emplace_back([t, &start]() {
+      while (!start.load()) {
+        std::this_thread::yield();
+      }
+      for (int i = 0; i < kNumIterations; ++i) {
+        std::string path;
+        if (t % 2 == 0) {
+          path = "shared_settings_" + std::to_string(i % 5) + ".json";
+        } else {
+          path = "unique_settings_" +
+                 std::to_string(t * kNumIterations + i) + ".json";
+        }
+        auto delegates = CreateDelegates(path);
+      }
+    });
+  }
+
+  start.store(true);
+  for (auto& t : threads) {
+    t.join();
+  }
 }
 
 }  // namespace
