@@ -67,14 +67,13 @@ def extract_object_files(archive_file: io.BufferedIOBase,
 
   # Keep the extracted file names and their content hash values, in order to
   # handle duplicate names correctly.
-  extracted_files = dict()
+  extracted_files = {}
 
   for name, file_content in _extract_next_file(archive_file):
-    digest = hashlib.md5(file_content).digest()
+    digest = hashlib.sha256(file_content).digest()
 
     # Check if the name is already used. If so, come up with a different name by
     # incrementing the number suffix until it finds an unused one.
-    # For example, if 'foo.o' is used, try 'foo_1.o', 'foo_2.o', and so on.
     for final_name in _generate_modified_filenames(name):
       if final_name not in extracted_files:
         extracted_files[final_name] = digest
@@ -85,7 +84,7 @@ def extract_object_files(archive_file: io.BufferedIOBase,
         break
 
       # Skip writing this file if the same file was already extracted.
-      elif extracted_files[final_name] == digest:
+      if extracted_files[final_name] == digest:
         break
 
 
@@ -104,7 +103,7 @@ def _generate_modified_filenames(filename: str) -> Iterator[str]:
   yield filename
 
   base, ext = os.path.splitext(filename)
-  for name_suffix in itertools.count(1, 1):
+  for name_suffix in itertools.count(1):
     yield '{}_{}{}'.format(base, name_suffix, ext)
 
 
@@ -120,6 +119,11 @@ def _check_archive_signature(archive_file: io.BufferedIOBase) -> None:
   Raises:
     RuntimeError: The archive signature is invalid.
   """
+  try:
+    archive_file.seek(0)
+  except (OSError, IOError):
+    pass
+
   signature = archive_file.read(8)
   if signature != b'!<arch>\n':
     raise RuntimeError('Invalid archive file format.')
@@ -147,31 +151,68 @@ def _extract_next_file(
     header = archive_file.read(60)
     if not header:
       return
-    elif len(header) < 60:
+    if len(header) < 60:
       raise RuntimeError('Invalid file header format.')
 
     # For the details of the file header format, see:
     # https://en.wikipedia.org/wiki/Ar_(Unix)#File_header
     # We only need the file name and the size values.
-    name, _, _, _, _, size, end = struct.unpack('=16s12s6s6s8s10s2s', header)
+    name_raw, _, _, _, _, size_bytes, end = struct.unpack(
+        '=16s12s6s6s8s10s2s', header)
     if end != b'`\n':
       raise RuntimeError('Invalid file header format.')
 
-    # Convert the bytes into more natural types.
-    name = name.decode('ascii').strip()
-    size = int(size, base=10)
-    odd_size = size % 2 == 1
+    # Parse size (ASCII numeric, possibly padded with spaces).
+    try:
+      size = int(size_bytes.decode('ascii').strip() or 0)
+    except ValueError:
+      raise RuntimeError('Invalid file size in header.')
 
-    # Handle the extended filename scheme.
-    if name.startswith('#1/'):
-      filename_size = int(name[3:])
-      name = archive_file.read(filename_size).decode('utf-8').strip(' \x00')
+    # Harden against corrupted or malicious archives with negative sizes.
+    if size < 0:
+      raise RuntimeError('Invalid file size in header.')
+
+    odd_size = (size % 2) == 1
+
+    # Handle the extended filename scheme (#1/<len>), which stores the real
+    # filename in the bytes immediately following the header.
+    name = None
+    if name_raw.startswith(b'#1/'):
+      try:
+        filename_size = int(name_raw[3:].decode('ascii').strip())
+      except ValueError:
+        raise RuntimeError('Invalid extended filename size in header.')
+
+      # Reject negative filename sizes from corrupted archives.
+      if filename_size < 0:
+        raise RuntimeError('Invalid extended filename size in header.')
+
+      raw_name_bytes = archive_file.read(filename_size)
+      if len(raw_name_bytes) < filename_size:
+        raise RuntimeError('Unexpected end of archive while reading filename.')
+      name = raw_name_bytes.decode('utf-8', errors='replace').rstrip('\x00 ')
       size -= filename_size
 
+      # Reject archives where the filename consumes more bytes than declared.
+      if size < 0:
+        raise RuntimeError('Invalid file size in header.')
+    else:
+      # Regular name field: decode and strip trailing slashes and spaces.
+      name = name_raw.decode('utf-8', errors='replace').rstrip()
+      if name.endswith('/'):
+        name = name[:-1]
+
+    # Read the file content.
     file_content = archive_file.read(size)
+    if len(file_content) < size:
+      raise RuntimeError(
+          'Unexpected end of archive while reading file content.')
+
     # The file contents are always 2 byte aligned, and 1 byte is padded at the
     # end in case the size is odd.
     if odd_size:
-      archive_file.read(1)
+      pad = archive_file.read(1)
+      if len(pad) < 1:
+        raise RuntimeError('Invalid archive padding.')
 
     yield (name, file_content)
