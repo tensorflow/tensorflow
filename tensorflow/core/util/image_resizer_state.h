@@ -67,9 +67,11 @@ struct LegacyScaler {
 };
 
 struct ImageResizerState {
-  explicit ImageResizerState(bool align_corners, bool half_pixel_centers)
+  explicit ImageResizerState(bool align_corners, bool half_pixel_centers,
+                             bool allow_empty = false)
       : align_corners_(align_corners),
-        half_pixel_centers_(half_pixel_centers) {}
+        half_pixel_centers_(half_pixel_centers),
+        allow_empty_(allow_empty) {}
 
   // ValidateAndCalculateOutputSize checks the bounds on the input tensors
   // and requested size, sets up some of the resizing state such as the
@@ -89,13 +91,16 @@ struct ImageResizerState {
                     "input must be 4-dimensional", input_shape.DebugString())));
     batch_size = input_shape.dim_size(0);
     channels = input_shape.dim_size(3);
+    const int minimum_size = allow_empty_ ? 0 : 1;
     OP_REQUIRES(
-        context, channels > 0,
+        context, channels >= minimum_size,
         absl::InvalidArgumentError("image must have at least one channel"));
 
     // Verify and assign `in_height` and `in_width`.
     OP_REQUIRES(
-        context, input_shape.dim_size(1) > 0 && input_shape.dim_size(2) > 0,
+        context,
+        input_shape.dim_size(1) >= minimum_size &&
+            input_shape.dim_size(2) >= minimum_size,
         absl::InvalidArgumentError("input image must be of non-zero size"));
     OP_REQUIRES(context,
                 FastBoundsCheck(input_shape.dim_size(1),
@@ -122,9 +127,22 @@ struct ImageResizerState {
     auto Svec = shape_t.vec<int32_t>();
     out_height = internal::SubtleMustCopy(Svec(0));
     out_width = internal::SubtleMustCopy(Svec(1));
-    OP_REQUIRES(
-        context, out_height > 0 && out_width > 0,
-        absl::InvalidArgumentError("output dimensions must be positive"));
+    OP_REQUIRES(context,
+                out_height >= minimum_size && out_width >= minimum_size,
+                absl::InvalidArgumentError(
+                    allow_empty_ ? "output dimensions must be non-negative"
+                                 : "output dimensions must be positive"));
+
+    if (allow_empty_) {
+      if (batch_size == 0 || channels == 0 || out_height == 0 ||
+          out_width == 0) {
+        height_scale = width_scale = 0;
+        return;
+      }
+      OP_REQUIRES(
+          context, in_height > 0 && in_width > 0,
+          absl::InvalidArgumentError("input image must be of non-zero size"));
+    }
 
     height_scale = CalculateResizeScale(in_height, out_height, align_corners_);
     width_scale = CalculateResizeScale(in_width, out_width, align_corners_);
@@ -170,6 +188,7 @@ struct ImageResizerState {
  private:
   bool align_corners_;
   bool half_pixel_centers_;
+  bool allow_empty_;
 };
 
 struct ImageResizerGradientState {
