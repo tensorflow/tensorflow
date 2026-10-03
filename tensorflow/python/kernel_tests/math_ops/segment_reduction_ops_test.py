@@ -176,6 +176,22 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
         result = math_ops.segment_sum(data=tf_x, segment_ids=indices).eval()
         self.assertAllEqual([[15, 18, 21, 24], [13, 14, 15, 16]], result)
 
+  @parameterized.product(
+      dtype=(dtypes_lib.float16, dtypes_lib.bfloat16, dtypes_lib.float32,
+             dtypes_lib.float64),
+      index_dtype=(dtypes_lib.int32, dtypes_lib.int64),
+  )
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testSegmentIdsInvalidOnGpu(self, dtype, index_dtype):
+    data = constant_op.constant(
+        np.zeros([9, 4], dtype=dtype.as_numpy_dtype), dtype=dtype)
+    segment_ids = constant_op.constant(
+        [32582, -21168624, 0, 0, 0, 0, 0, 32582, 0],
+        dtype=index_dtype)
+    result = math_ops.segment_sum(data=data, segment_ids=segment_ids)
+    self.evaluate(result)
+
   def testSegmentIdsGreaterThanZero(self):
     shape = [4, 4]
     for use_gpu in [True, False]:
