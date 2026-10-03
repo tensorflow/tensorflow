@@ -1839,6 +1839,22 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
+    nvmlConfComputeSystemState_t cc_state{};
+    nvmlReturn_t result = nvmlSystemGetConfComputeState(&cc_state);
+    if (result == NVML_SUCCESS) {
+      desc.set_confidential_computing_enabled(cc_state.ccFeature ==
+                                              NVML_CC_SYSTEM_FEATURE_ENABLED);
+      XLA_VLOG_DEVICE(3, device_ordinal)
+          << "NVML confidential computing feature enabled: "
+          << desc.confidential_computing_enabled();
+    } else {
+      XLA_VLOG_DEVICE(3, device_ordinal)
+          << "Failed to get confidential compute state from NVML: "
+          << nvmlErrorString(result);
+    }
+  }
+
+  {
     BlockDim block_dim_limit;
     ABSL_RETURN_IF_ERROR(FillBlockDimLimit(device, &block_dim_limit));
     desc.set_block_dim_limit(block_dim_limit);

@@ -148,7 +148,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<AsyncWorkRunner> async_work_runner,
       se::StreamExecutor* absl_nonnull executor,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
+      bool confidential_computing_enabled = false);
   ~PjRtStreamExecutorRawClient() override;
 
   LocalDeviceState* device_state(LocalDeviceId local_device_id) const {
@@ -191,6 +192,14 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
     return should_stage_host_to_device_transfers_;
   }
 
+  bool confidential_computing_enabled() const {
+    return confidential_computing_enabled_;
+  }
+
+  bool has_custom_host_memory_allocator() const {
+    return has_custom_host_memory_allocator_;
+  }
+
   void RecordMemoryStats() override;
 
   se::StreamExecutor* executor() const { return executor_; }
@@ -204,6 +213,11 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   }
 
   bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) const {
+    // In Confidential Computing VMs, transfers must always be staged onto
+    // host memory allocated via cuMemHostAlloc.
+    if (confidential_computing_enabled_) {
+      return true;
+    }
     // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
     // using a staging buffer is probably worse than not using one.
     // TODO(phawkins): add chunking for transfers.
@@ -359,6 +373,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   // allocated on host_memory_allocator_? True only on GPU, where we prefer to
   // transfer via pinned memory.
   bool should_stage_host_to_device_transfers_;
+  bool confidential_computing_enabled_ = false;
 
   se::StreamExecutor* absl_nonnull executor_;
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;

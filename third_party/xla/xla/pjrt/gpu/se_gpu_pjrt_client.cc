@@ -1971,58 +1971,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
                        xla_client->platform(), std::move(allocator_config),
                        local_device_states, preallocate_host_memory));
 
-  std::unique_ptr<HostMemoryAllocator> host_memory_allocator;
-  if (options.host_memory_allocator_factory != nullptr) {
-    if (preallocate_host_memory) {
-      // Since `GetStreamExecutorGpuDeviceAllocator()` always creates a host
-      // memory allocator, using both default host memory allocator and custom
-      // allocator is wasteful if the default allocator is configured to
-      // preallocate memory. We ask users to disable preallocation if they want
-      // to use a custom host memory allocator instead.
-      LOG(WARNING)
-          << "Ignoring the custom host memory allocator factory given to PjRt "
-             "GPU client creation since preallocation is also enabled; disable "
-             "preallocation via XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE=false if "
-             "you want to use a custom host allocator factory";
-    } else {
-      se::StreamExecutor* const stream_executor =
-          local_device_states.begin()->second->compute_stream()->parent();
-      HostMemoryAllocator::Options allocator_options;
-      allocator_options.alignment = tsl::Allocator::kAllocatorAlignment;
-      allocator_options.map_fn =
-          [stream_executor](std::optional<LocalDeviceId> local_device_id,
-                            void* data, size_t size) {
-            bool success = stream_executor->HostMemoryRegister(data, size);
-            if (!success) {
-              return absl::InternalError(absl::StrFormat(
-                  "Failed to register host memory at address: %ps", data));
-            }
-            return absl::OkStatus();
-          };
-      allocator_options.unmap_fn =
-          [stream_executor](std::optional<LocalDeviceId> local_device_id,
-                            void* data) {
-            bool success = stream_executor->HostMemoryUnregister(data);
-            if (!success) {
-              return absl::InternalError(absl::StrFormat(
-                  "Failed to unregister host memory at address: %ps", data));
-            }
-            return absl::OkStatus();
-          };
-      ABSL_ASSIGN_OR_RETURN(
-          host_memory_allocator,
-          options.host_memory_allocator_factory(std::move(allocator_options)));
-    }
-  }
-  if (host_memory_allocator == nullptr) {
-    ABSL_ASSIGN_OR_RETURN(
-        auto allocator,
-        GetGpuHostAllocator(local_device_states.begin()->second->executor(),
-                            preallocate_host_memory));
-    host_memory_allocator = std::make_unique<BasicHostMemoryAllocator>(
-        std::move(allocator), tsl::Allocator::kAllocatorAlignment);
-  }
-
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
   if (options.enable_mock_nccl) {
     gpu_run_options->set_enable_mock_collectives();
@@ -2086,11 +2034,75 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
 
   se::StreamExecutor* first_executor =
       GetFirstExecutor(devices_and_topology.local_device_states);
+
+  const bool confidential_computing_enabled =
+      devices_and_topology.topology->confidential_computing_enabled();
+  if (confidential_computing_enabled) {
+    LOG(INFO)
+        << "Confidential computing is enabled. All transfers between host and "
+           "device will use bounce buffers.";
+    if (options.host_memory_allocator_factory != nullptr) {
+      return absl::InvalidArgumentError(
+          "Custom host memory allocator is not supported when confidential "
+          "computing mode is enabled.");
+    }
+  }
+
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator;
+  if (options.host_memory_allocator_factory != nullptr) {
+    if (preallocate_host_memory) {
+      // Since `GetStreamExecutorGpuDeviceAllocator()` always creates a host
+      // memory allocator, using both default host memory allocator and custom
+      // allocator is wasteful if the default allocator is configured to
+      // preallocate memory. We ask users to disable preallocation if they
+      // want to use a custom host memory allocator instead.
+      LOG(WARNING)
+          << "Ignoring the custom host memory allocator factory given to PjRt "
+             "GPU client creation since preallocation is also enabled; disable "
+             "preallocation via XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE=false if "
+             "you want to use a custom host allocator factory";
+    } else {
+      HostMemoryAllocator::Options allocator_options;
+      allocator_options.alignment = tsl::Allocator::kAllocatorAlignment;
+      allocator_options.map_fn =
+          [first_executor](std::optional<LocalDeviceId> local_device_id,
+                           void* data, size_t size) {
+            bool success = first_executor->HostMemoryRegister(data, size);
+            if (!success) {
+              return absl::InternalError(absl::StrFormat(
+                  "Failed to register host memory at address: %ps", data));
+            }
+            return absl::OkStatus();
+          };
+      allocator_options.unmap_fn =
+          [first_executor](std::optional<LocalDeviceId> local_device_id,
+                           void* data) {
+            bool success = first_executor->HostMemoryUnregister(data);
+            if (!success) {
+              return absl::InternalError(absl::StrFormat(
+                  "Failed to unregister host memory at address: %ps", data));
+            }
+            return absl::OkStatus();
+          };
+      ABSL_ASSIGN_OR_RETURN(
+          host_memory_allocator,
+          options.host_memory_allocator_factory(std::move(allocator_options)));
+    }
+  }
+  if (host_memory_allocator == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(
+        auto allocator,
+        GetGpuHostAllocator(first_executor, preallocate_host_memory));
+    host_memory_allocator = std::make_unique<BasicHostMemoryAllocator>(
+        std::move(allocator), tsl::Allocator::kAllocatorAlignment);
+  }
+
   auto raw_client = std::make_unique<StreamExecutorGpuRawClient>(
       tsl::Fingerprint64(pjrt_platform_name),
       std::move(devices_and_topology.local_device_states), std::move(allocator),
       xla_client, std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers,
+      confidential_computing_enabled,
       /*async_work_runner=*/nullptr, first_executor, kv_store,
       preallocate_device_memory, options.abort_collectives_on_failure,
       std::move(gpu_run_options), std::move(memory_registration));
@@ -2141,6 +2153,19 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
               << "nullptr";
     }
   }
+  const bool confidential_computing_enabled =
+      devices_and_topology.topology->confidential_computing_enabled();
+  if (confidential_computing_enabled) {
+    LOG(INFO)
+        << "Confidential computing is enabled. All transfers between host and "
+           "device will use bounce buffers.";
+    if (host_memory_allocator != nullptr) {
+      return absl::InvalidArgumentError(
+          "Custom host memory allocator is not supported when confidential "
+          "computing mode is enabled.");
+    }
+  }
+
   se::StreamExecutor* first_executor =
       GetFirstExecutor(devices_and_topology.local_device_states);
   auto raw_client = std::make_unique<StreamExecutorGpuRawClient>(
@@ -2148,6 +2173,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
       std::move(devices_and_topology.local_device_states), std::move(allocator),
       local_client, std::move(host_memory_allocator),
       /*should_stage_host_to_device_transfers=*/true,
+      confidential_computing_enabled,
       /*async_work_runner=*/nullptr, first_executor, kv_store,
       /*cache_fabric_handles=*/false,
       /*abort_collectives_on_failure=*/false, std::move(gpu_run_options));

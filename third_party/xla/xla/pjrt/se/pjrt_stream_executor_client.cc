@@ -286,7 +286,8 @@ PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<AsyncWorkRunner> async_work_runner,
     se::StreamExecutor* executor,
-    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    bool confidential_computing_enabled)
     : owned_allocator_(std::move(allocator)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
@@ -295,6 +296,7 @@ PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
                                         nullptr),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
+      confidential_computing_enabled_(confidential_computing_enabled),
       executor_(executor),
       gpu_run_options_(std::move(gpu_run_options)),
       compile_thread_pool_(
@@ -559,6 +561,13 @@ PjRtStreamExecutorRawClient::CreateDeviceEvent(LocalDeviceId local_device_id,
 
 absl::Status PjRtStreamExecutorRawClient::DmaMap(void* data,
                                                  size_t buffer_size) {
+  if (confidential_computing_enabled_) {
+    // In Confidential Computing VMs, memory registration (cuMemHostRegister) is
+    // not supported because userspace host memory is private by default and
+    // inaccessible by the GPU. In this mode, transfers are always staged
+    // through host memory allocated via cuMemHostAlloc, so DmaMap is a no-op.
+    return absl::OkStatus();
+  }
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorRawClient::DmaMap");
   if (executor_ == nullptr) {
     return absl::InternalError(
@@ -575,6 +584,9 @@ absl::Status PjRtStreamExecutorRawClient::DmaMap(void* data,
 }
 
 absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
+  if (confidential_computing_enabled_) {
+    return absl::OkStatus();
+  }
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorRawClient::DmaUnmap");
   if (executor_ == nullptr) {
     return absl::InternalError(
