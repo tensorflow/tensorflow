@@ -239,7 +239,29 @@ class AudioProcessor(object):
       tf.compat.v1.logging.info(
           'Successfully downloaded {0} ({1} bytes)'.format(
               filename, statinfo.st_size))
-      tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+      with tarfile.open(filepath, 'r:gz') as archive:
+        members = []
+        abs_path = os.path.realpath(dest_directory)
+        for member in archive.getmembers():
+          abs_target = os.path.realpath(
+              os.path.join(dest_directory, member.name))
+          if os.path.commonpath([abs_path, abs_target]) != abs_path:
+            continue
+          if member.issym() or member.islnk():
+            # A link member whose target resolves outside the destination
+            # would let later members write through it and escape.
+            abs_link = os.path.realpath(
+                os.path.join(os.path.dirname(abs_target), member.linkname))
+            if os.path.commonpath([abs_path, abs_link]) != abs_path:
+              continue
+          members.append(member)
+        extractall_kwargs = {}
+        # `filter="data"` was added in Python 3.12 (backported to
+        # 3.10.12/3.11.4) and is the default from 3.14.
+        if sys.version_info < (3, 14) and hasattr(tarfile, 'data_filter'):
+          extractall_kwargs = {'filter': 'data'}
+        archive.extractall(dest_directory, members=members,
+                           **extractall_kwargs)
 
   def prepare_data_index(self, silence_percentage, unknown_percentage,
                          wanted_words, validation_percentage,
