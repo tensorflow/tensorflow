@@ -202,18 +202,21 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
 
     # _add_variable_with_custom_getter is used here to restore from checkpoint
     # at creation time. The layouts from sparse core must be restored from
-    # checkpoint and before any other tables are restored
-    setattr(
-        self,
-        tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
-        self._add_variable_with_custom_getter(
-            name=tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
-            initializer=empty_string,
-            dtype=dtypes.string,
-            getter=getter,
-            trainable=False,
-        ),
-    )
+    # checkpoint and before any other tables are restored. Wrap in a name scope
+    # so that the leading underscore in the checkpoint key is permitted as a
+    # nested scope name.
+    with ops.name_scope_v2("sparse_core_restore"):
+      setattr(
+          self,
+          tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+          self._add_variable_with_custom_getter(
+              name=tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+              initializer=empty_string,
+              dtype=dtypes.string,
+              getter=getter,
+              trainable=False,
+          ),
+      )
 
   def _get_sparse_core_table_layouts_str(self) -> bytes:
     layouts_str = getattr(
