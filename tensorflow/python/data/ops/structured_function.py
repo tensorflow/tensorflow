@@ -77,7 +77,8 @@ class StructuredFunctionWrapper():
                input_structure=None,
                add_to_graph=True,
                use_legacy_function=False,
-               defun_kwargs=None):
+               defun_kwargs=None,
+               _debug_mode=True):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
     Args:
@@ -105,6 +106,8 @@ class StructuredFunctionWrapper():
         (legacy behavior).
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
         values. If supplied, will be passed to `function` as keyword arguments.
+      _debug_mode: (Optional.) Whether to use `py_function` wrapping when debug
+        mode is enabled. Does not affect synchronous execution.
 
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
@@ -251,10 +254,10 @@ class StructuredFunctionWrapper():
     else:
       defun_kwargs.update({"func_name": func_name})
       defun_kwargs.update({"_tf_data_function": True})
-      if debug_mode.DEBUG_MODE:
+      if debug_mode.DEBUG_MODE and _debug_mode:
         fn_factory = trace_py_function(defun_kwargs)
       else:
-        if def_function.functions_run_eagerly():
+        if not debug_mode.DEBUG_MODE and def_function.functions_run_eagerly():
           warnings.warn(
               "Even though the `tf.config.experimental_run_functions_eagerly` "
               "option is set, this option does not apply to tf.data functions. "
