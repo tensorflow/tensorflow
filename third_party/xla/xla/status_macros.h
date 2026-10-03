@@ -173,6 +173,7 @@ class MakeErrorStream {
 
   // Make an error with the given code.
   MakeErrorStream(const char* file, int line, absl::StatusCode code);
+  ~MakeErrorStream();
 
   // Returns a MakeErrorStreamWithOutput as we don't require more calls to
   // operator<< on the result.
@@ -186,24 +187,15 @@ class MakeErrorStream {
   // When this message is logged, include the stack trace.
   // Returns a MakeErrorStream as we want to require at least one call to
   // operator<< on the result.
-  MakeErrorStream& with_log_stack_trace() {
-    impl_->should_log_stack_trace_ = true;
-    return *this;
-  }
+  MakeErrorStream& with_log_stack_trace();
 
   // Disables logging this message.
   // Returns a MakeErrorStream as we want to require at least one call to
   // operator<< on the result.
-  MakeErrorStream& without_logging() {
-    impl_->should_log_ = false;
-    return *this;
-  }
+  MakeErrorStream& without_logging();
 
   // Sets the log severity of this message. Default is ERROR.
-  MakeErrorStream& with_log_severity(absl::LogSeverity severity) {
-    impl_->log_severity_ = severity;
-    return *this;
-  }
+  MakeErrorStream& with_log_severity(absl::LogSeverity severity);
 
   // Adds RET_CHECK failure text to error message.
   // Returns a MakeErrorStreamWithOutput as we don't require more calls to
@@ -253,7 +245,7 @@ class MakeErrorStream {
   void CheckNotDone() const;
 
   // Returns the status. Used by MakeErrorStreamWithOutput.
-  absl::Status GetStatus() const { return impl_->GetStatus(); }
+  absl::Status GetStatus() const;
 
   // Store the actual data on the heap to reduce stack frame sizes.
   std::unique_ptr<Impl> impl_;
@@ -291,7 +283,6 @@ class StatusAdaptorForMacros {
   while (ABSL_PREDICT_FALSE(!(condition)))                                \
   return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,          \
                                              absl::StatusCode::kInternal) \
-      .with_log_stack_trace()                                             \
       .add_ret_check_failure(#condition)
 
 // Returns a Status error. The caller must stream at least one error message
