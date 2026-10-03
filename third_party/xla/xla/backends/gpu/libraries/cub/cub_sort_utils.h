@@ -30,9 +30,9 @@ namespace xla::gpu {
 inline int64_t AddSegmentedSortOffsetsToScratchSize(int64_t scratch_size,
                                                     int64_t batch_size) {
   if (batch_size > 1) {
-    // TODO(b/502873525): This adds 4 bytes even if already aligned.
-    // Fix to proper alignment in a follow-up.
-    scratch_size += sizeof(int32_t) - scratch_size % sizeof(int32_t);
+    // Align to sizeof(int32_t) boundary.
+    constexpr int64_t kAlign = sizeof(int32_t);
+    scratch_size = (scratch_size + kAlign - 1) & ~(kAlign - 1);
     scratch_size += (batch_size + 1) * sizeof(int32_t);
   }
   return scratch_size;
