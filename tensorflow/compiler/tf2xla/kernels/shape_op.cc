@@ -289,6 +289,13 @@ class ExpandDimsOp : public XlaOpKernel {
                                         " for tensor with ", input_shape.dims(),
                                         " dimensions."));
 
+    OP_REQUIRES(
+        ctx, input_shape.dims() < TensorShape::MaxDimensions(),
+        errors::InvalidArgument(
+            "Cannot expand a tensor of rank ", input_shape.dims(),
+            ": expanding would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), "."));
+
     auto existing_dims = input_shape.dim_sizes();
     // Safe - # elements in tensor dims bounded.
     const int existing_dims_size = static_cast<int>(existing_dims.size());
