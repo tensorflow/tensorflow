@@ -33,6 +33,9 @@ absl::Status PollUntilDone(ncclComm_t comm, const CancellationToken& cancel) {
     ncclResult_t state = ncclInProgress;
     while (state == ncclInProgress && !cancel.IsCancelled()) {
       XLA_RCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &state));
+      if (state == ncclInProgress) {
+        absl::SleepFor(absl::Milliseconds(10));
+      }
     }
     if (cancel.IsCancelled()) {
       return Cancelled("NcclCommunicator cancelled");
