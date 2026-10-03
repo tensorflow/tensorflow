@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/roll_op.h"
@@ -30,12 +31,12 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void RollKernel(const int32_t nthreads, const int32_t num_dims,
+__global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
                            const T* __restrict__ input, T* __restrict__ output,
                            const int32_t* __restrict__ dim_size,
                            const int32_t* __restrict__ threshold,
                            const int64_t* __restrict__ dim_range) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+  for (int64_t out_idx : GpuGridRangeX(nthreads)) {
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
       const int64_t stride = dim_range[i] / dim_size[i];
@@ -53,7 +54,7 @@ namespace functor {
 
 template <typename T>
 struct Roll<GPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64_t num_elements,
+  void operator()(OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
                   const absl::Span<const int32_t> threshold,
@@ -61,6 +62,10 @@ struct Roll<GPUDevice, T> {
                   const int64_t isd) {
     if (!num_elements) return;
     const GPUDevice& d = context->eigen_device<GPUDevice>();
+
+    absl::StatusOr<GpuLaunchConfig64> config =
+        GetGpuLaunchConfig64(num_elements, d);
+    OP_REQUIRES_OK(context, config.status());
 
     auto dim_bytes = sizeof(int32_t) * dim_size.size();
     auto dim_buf = d.allocate(dim_bytes);
@@ -75,18 +80,18 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
-    GpuLaunchConfig cfg = GetGpuLaunchConfig(num_elements, d);
-
-    TF_CHECK_OK(
-        GpuLaunchKernel(RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
-                        d.stream(), cfg.virtual_thread_count, num_dims, input,
-                        output, reinterpret_cast<const int32_t*>(dim_buf),
-                        reinterpret_cast<const int32_t*>(thres_buf),
-                        reinterpret_cast<const int64_t*>(range_buf)));
+    absl::Status launch_status = GpuLaunchKernel(
+        RollKernel<T>, config->block_count, config->thread_per_block, 0,
+        d.stream(), config->virtual_thread_count, num_dims, input, output,
+        reinterpret_cast<const int32_t*>(dim_buf),
+        reinterpret_cast<const int32_t*>(thres_buf),
+        reinterpret_cast<const int64_t*>(range_buf));
 
     d.deallocate(dim_buf);
     d.deallocate(thres_buf);
     d.deallocate(range_buf);
+
+    OP_REQUIRES_OK(context, launch_status);
   }
 };
 
