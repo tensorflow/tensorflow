@@ -639,6 +639,46 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(y, complex_sign, math_ops.sign)
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
+  @test_util.run_all_in_graph_and_eager_modes
+  def testComplexAbsSpecialValues(self):
+    # Test IEEE-754 / ISO C99 compliance for complex abs:
+    # hypot(+-inf, NaN) = +inf and hypot(NaN, +-inf) = +inf
+    for dtype in [np.complex64, np.complex128]:
+      # Extended test ranges
+      x_1d = np.array([
+          complex(np.inf, np.nan),
+          complex(-np.inf, np.nan),
+          complex(np.nan, np.inf),
+          complex(np.nan, -np.inf),
+          complex(np.inf, 1.0),
+          complex(-np.inf, 1.0),
+          complex(1.0, np.inf),
+          complex(1.0, -np.inf),
+          complex(np.inf, 0.0),
+          complex(0.0, np.inf),
+          complex(-np.inf, 0.0),
+          complex(0.0, -np.inf),
+      ], dtype=dtype)
+      self.assertAllClose(np.abs(x_1d), math_ops.abs(x_1d))
+
+      # Python built-in aliasing
+      self.assertAllClose(np.abs(x_1d), _ABS(x_1d))
+
+      # multidimensional checks
+      x_2d = x_1d.reshape((2, 6))
+      self.assertAllClose(np.abs(x_2d), math_ops.abs(x_2d))
+      self.assertAllClose(np.abs(x_2d), _ABS(x_2d))
+
+      # scalar bounds (N=1)
+      x_scalar = np.array(complex(np.inf, np.nan), dtype=dtype)
+      self.assertAllClose(np.abs(x_scalar), math_ops.abs(x_scalar))
+      self.assertAllClose(np.abs(x_scalar), _ABS(x_scalar))
+
+      # empty bounds (N=0)
+      x_empty = np.array([], dtype=dtype)
+      self.assertAllClose(np.abs(x_empty), math_ops.abs(x_empty))
+      self.assertAllClose(np.abs(x_empty), _ABS(x_empty))
+
   @test_util.run_deprecated_v1
   def testGradGrad(self):
     np.random.seed(7)
