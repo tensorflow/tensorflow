@@ -712,6 +712,32 @@ class XdivyTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class ComplexBinaryGradientTest(test.TestCase, parameterized.TestCase):
+  """Gradients of the x-masked ops must conjugate like their plain forms."""
+
+  # Away from the masked points, each op equals its plain counterpart, so the
+  # gradients have to agree element for element.
+  @parameterized.named_parameters(
+      ("Xlogy", math_ops.xlogy, lambda x, y: x * math_ops.log(y)),
+      ("Xlog1py", math_ops.xlog1py, lambda x, y: x * math_ops.log(y + 1)),
+      ("Xdivy", math_ops.xdivy, lambda x, y: x / y),
+      ("MulNoNan", math_ops.mul_no_nan, lambda x, y: x * y),
+  )
+  def testMatchesPlainOp(self, masked_op, plain_op):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([0.5 + 0.3j, -2.0 + 1.5j], dtype=dtype)
+      y = constant_op.constant([0.3 - 0.5j, 1.5 + 2.0j], dtype=dtype)
+      for wrt in [x, y]:
+        with backprop.GradientTape(persistent=True) as tape:
+          tape.watch([x, y])
+          masked = masked_op(x, y)
+          plain = plain_op(x, y)
+        self.assertAllClose(
+            tape.gradient(masked, wrt), tape.gradient(plain, wrt)
+        )
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class CumprodGradTest(test.TestCase):
 
   def _cumprod_grad(
