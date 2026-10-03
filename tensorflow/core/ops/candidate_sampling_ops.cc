@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -39,6 +42,18 @@ absl::Status CandidateSamplerShapeFn(InferenceContext* c) {
   c->set_output(1, c->Matrix(batch_size, num_true));
   c->set_output(2, num_sampled_v);
   return absl::OkStatus();
+}
+
+absl::Status UnigramCandidateSamplerShapeFn(InferenceContext* c) {
+  int64_t range_max;
+  TF_RETURN_IF_ERROR(c->GetAttr("range_max", &range_max));
+  // Match the largest power-of-two level representable by WeightedPicker.
+  constexpr int64_t kMaxUnigramRange = int64_t{1} << 30;
+  if (range_max > kMaxUnigramRange) {
+    return errors::InvalidArgument(
+        "range_max must be at most 1073741824 for unigram samplers");
+  }
+  return CandidateSamplerShapeFn(c);
 }
 
 }  // namespace
@@ -82,7 +97,7 @@ REGISTER_OP("LearnedUnigramCandidateSampler")
     .Attr("range_max: int >= 1")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .SetShapeFn(CandidateSamplerShapeFn)
+    .SetShapeFn(UnigramCandidateSamplerShapeFn)
     .SetIsStateful();
 
 REGISTER_OP("ThreadUnsafeUnigramCandidateSampler")
@@ -96,7 +111,7 @@ REGISTER_OP("ThreadUnsafeUnigramCandidateSampler")
     .Attr("range_max: int >= 1")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .SetShapeFn(CandidateSamplerShapeFn)
+    .SetShapeFn(UnigramCandidateSamplerShapeFn)
     .SetIsStateful();
 
 REGISTER_OP("FixedUnigramCandidateSampler")
