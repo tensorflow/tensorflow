@@ -952,3 +952,40 @@ func.func @preserve_mesh_in_replica_groups(%arg0: tensor<8xf32>) -> tensor<8xf32
   } : (tensor<8xf32>) -> tensor<8xf32>
   return %0 : tensor<8xf32>
 }
+
+// -----
+
+// CHECK-LABEL: module @single_output_metadata attributes
+// CHECK-V2-SAME: {mhlo.spmd_output_sharding = "{devices=[2,1,4]<=[8] last_tile_dims={unreduced} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}", mhlo.spmd_parameters_shardings = ["{devices=[2,4]<=[8]}", "{replicated}"]}
+// CHECK-V3-SAME: {mhlo.spmd_output_sharding = "{mesh['x'=2,'y'=4], [{'x'}, {}], unreduced={'y'}}", mhlo.spmd_parameters_shardings = ["{mesh['x'=2,'y'=4], [{'x'}, {'y'}]}", "{mesh['x'=2,'y'=4], [{}, {}]}"]}
+// CHECK-NOT: sdy.output_shardings
+// CHECK-NOT: sdy.parameters_shardings
+module @single_output_metadata attributes {
+  sdy.output_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {}], unreduced={"y"}>]>,
+  sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {"y"}]>, <mesh<["x"=2, "y"=4]>, [{}, {}]>]>
+} {
+  // CHECK: func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<4x32xf32>) -> tensor<4x32xf32>
+  func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<4x32xf32>) -> tensor<4x32xf32> {
+    %0 = stablehlo.dot %arg0, %arg1 : (tensor<4x4xf32>, tensor<4x32xf32>) -> tensor<4x32xf32>
+    return %0 : tensor<4x32xf32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: module @multiple_outputs_tuple_metadata attributes
+// CHECK-V2-SAME{LITERAL}: {mhlo.spmd_output_sharding = "{{devices=[2,4]<=[8]}, {replicated}}", mhlo.spmd_parameters_shardings = ["{devices=[2,4]<=[8]}", "{replicated}"]}
+// CHECK-V3-SAME{LITERAL}: {mhlo.spmd_output_sharding = "{{mesh['x'=2,'y'=4], [{'x'}, {'y'}]}, {mesh['x'=2,'y'=4], [{}, {}]}}", mhlo.spmd_parameters_shardings = ["{mesh['x'=2,'y'=4], [{'x'}, {'y'}]}", "{mesh['x'=2,'y'=4], [{}, {}]}"]}
+// CHECK-NOT: sdy.output_shardings
+// CHECK-NOT: sdy.parameters_shardings
+module @multiple_outputs_tuple_metadata attributes {
+  sdy.output_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {"y"}]>, <mesh<["x"=2, "y"=4]>, [{}, {}]>]>,
+  sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {"y"}]>, <mesh<["x"=2, "y"=4]>, [{}, {}]>]>
+} {
+  // CHECK: func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<8x32xf32>) -> (tensor<4x4xf32>, tensor<8x32xf32>)
+  func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<8x32xf32>) -> (tensor<4x4xf32>, tensor<8x32xf32>) {
+    return %arg0, %arg1 : tensor<4x4xf32>, tensor<8x32xf32>
+  }
+}
+
+
