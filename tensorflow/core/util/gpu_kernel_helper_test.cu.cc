@@ -16,13 +16,17 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+
 #include <time.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <numeric>
+#include <type_traits>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
 #define CUDA_EXPECT_SUCCESS                                 \
@@ -55,6 +59,22 @@ __global__ void Count1D(GpuLaunchConfig config, int bufsize,
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
+    atomicAdd(&outbuf[x % bufsize], 1);
+  }
+}
+__global__ void Count1DInt64(GpuLaunchConfig64 config, int bufsize,
+                             int* __restrict__ outbuf) {
+  GPU_1D_KERNEL_LOOP(x, config.virtual_thread_count, int64_t) {
+    static_assert(std::is_same<decltype(x), int64_t>::value,
+                  "Expected int64_t index");
+    atomicAdd(&outbuf[x % bufsize], 1);
+  }
+}
+__global__ void Count1DCudaInt64(GpuLaunchConfig64 config, int bufsize,
+                                 int* __restrict__ outbuf) {
+  CUDA_1D_KERNEL_LOOP(x, config.virtual_thread_count, int64_t) {
+    static_assert(std::is_same<decltype(x), int64_t>::value,
+                  "Expected int64_t index");
     atomicAdd(&outbuf[x % bufsize], 1);
   }
 }
@@ -193,7 +213,7 @@ TEST_F(GpuLaunchConfigTest, GetGpuLaunchConfig) {
   CUDA_EXPECT_SUCCESS                                                         \
   copyToHost();                                                               \
   EXPECT_EQ(work_element_count,                                               \
-            std::accumulate(outbuf_host, outbuf_host + bufsize, 0));          \
+            std::accumulate(outbuf_host, outbuf_host + bufsize, int64_t{0})); \
                                                                               \
   cfg = GetGpuLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);                  \
   TF_CHECK_OK(GpuLaunchKernel(SetOutbufZero, cfg.block_count,                 \
@@ -206,7 +226,7 @@ TEST_F(GpuLaunchConfigTest, GetGpuLaunchConfig) {
   CUDA_EXPECT_SUCCESS                                                         \
   copyToHost();                                                               \
   EXPECT_EQ(work_element_count,                                               \
-            std::accumulate(outbuf_host, outbuf_host + bufsize, 0));
+            std::accumulate(outbuf_host, outbuf_host + bufsize, int64_t{0}));
 
   TEST_LAUNCH_PARAMETER(128);
   TEST_LAUNCH_PARAMETER(129);
@@ -219,6 +239,38 @@ TEST_F(GpuLaunchConfigTest, GetGpuLaunchConfig) {
   TEST_LAUNCH_PARAMETER(123456);
   TEST_LAUNCH_PARAMETER(1 << 30);
 #undef TEST_LAUNCH_PARAMETER
+}
+
+TEST_F(GpuLaunchConfigTest, GetGpuLaunchConfig64WithTyped1DKernelLoop) {
+  for (auto kernel : {Count1DInt64, Count1DCudaInt64}) {
+    for (int64_t work_element_count :
+         {int64_t{0}, int64_t{1}, int64_t{123456}, int64_t{1} << 31}) {
+      SCOPED_TRACE(work_element_count);
+      for (bool use_occupancy : {false, true}) {
+        const GpuLaunchConfig cfg1d = GetGpuLaunchConfig(bufsize, d);
+        TF_ASSERT_OK(GpuLaunchKernel(SetOutbufZero, cfg1d.block_count,
+                                     cfg1d.thread_per_block, 0, d.stream(),
+                                     cfg1d, outbuf));
+        CUDA_ASSERT_SUCCESS
+
+        auto config_or =
+            use_occupancy
+                ? GetGpuLaunchConfig64(work_element_count, d, kernel, 0, 0)
+                : GetGpuLaunchConfig64(work_element_count, d);
+        TF_ASSERT_OK(config_or.status());
+        const GpuLaunchConfig64& cfg = *config_or;
+        // Launch one block for zero work to exercise the empty loop body.
+        TF_ASSERT_OK(GpuLaunchKernel(kernel, std::max(1, cfg.block_count),
+                                     cfg.thread_per_block, 0, d.stream(), cfg,
+                                     bufsize, outbuf));
+        CUDA_ASSERT_SUCCESS
+        copyToHost();
+        EXPECT_EQ(
+            work_element_count,
+            std::accumulate(outbuf_host, outbuf_host + bufsize, int64_t{0}));
+      }
+    }
+  }
 }
 
 bool operator==(const Gpu2DLaunchConfig& a, const Gpu2DLaunchConfig& b) {
@@ -250,7 +302,7 @@ TEST_F(GpuLaunchConfigTest, GetGpu2DLaunchConfig) {
   CUDA_EXPECT_SUCCESS                                                          \
   copyToHost();                                                                \
   EXPECT_EQ(dimx* dimy,                                                        \
-            std::accumulate(outbuf_host, outbuf_host + bufsize, 0));           \
+            std::accumulate(outbuf_host, outbuf_host + bufsize, int64_t{0}));  \
                                                                                \
   cfg1d = GetGpuLaunchConfig(bufsize, d, SetOutbufZero, 0, 0);                 \
   TF_EXPECT_OK(GpuLaunchKernel(SetOutbufZero, cfg1d.block_count,               \
@@ -262,7 +314,8 @@ TEST_F(GpuLaunchConfigTest, GetGpu2DLaunchConfig) {
                                0, d.stream(), cfg, bufsize, outbuf));          \
   CUDA_EXPECT_SUCCESS                                                          \
   copyToHost();                                                                \
-  EXPECT_EQ(dimx* dimy, std::accumulate(outbuf_host, outbuf_host + bufsize, 0))
+  EXPECT_EQ(dimx* dimy,                                                        \
+            std::accumulate(outbuf_host, outbuf_host + bufsize, int64_t{0}))
 
   TEST_LAUNCH_PARAMETER(128, 128);
   TEST_LAUNCH_PARAMETER(129, 64);
@@ -295,7 +348,7 @@ TEST_F(GpuLaunchConfigTest, GetGpu3DLaunchConfig) {
   CUDA_EXPECT_SUCCESS                                                          \
   copyToHost();                                                                \
   EXPECT_EQ(dimx* dimy* dimz,                                                  \
-            std::accumulate(outbuf_host, outbuf_host + bufsize, 0))
+            std::accumulate(outbuf_host, outbuf_host + bufsize, int64_t{0}))
 
   TEST_LAUNCH_PARAMETER(128, 128, 128);
   TEST_LAUNCH_PARAMETER(129, 64, 1024);

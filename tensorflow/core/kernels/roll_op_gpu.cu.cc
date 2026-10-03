@@ -17,11 +17,20 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <cstdint>
+#include <vector>
+
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/roll_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 
@@ -30,16 +39,16 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void RollKernel(const int32_t nthreads, const int32_t num_dims,
+__global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
                            const T* __restrict__ input, T* __restrict__ output,
                            const int32_t* __restrict__ dim_size,
-                           const int32_t* __restrict__ threshold,
-                           const int64_t* __restrict__ dim_range) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+                           const int32_t* __restrict__ shifts,
+                           const int64_t* __restrict__ strides) {
+  CUDA_1D_KERNEL_LOOP(out_idx, nthreads, int64_t) {
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
-      const int64_t stride = dim_range[i] / dim_size[i];
-      const int shift = dim_size[i] - threshold[i];
+      const int64_t stride = strides[i];
+      const int shift = shifts[i];
       const int indx = (out_idx / stride) % dim_size[i];
       const int shifted_indx = (indx + shift) % dim_size[i];
       offset += (shifted_indx - indx) * stride;
@@ -53,7 +62,7 @@ namespace functor {
 
 template <typename T>
 struct Roll<GPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64_t num_elements,
+  void operator()(OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
                   const absl::Span<const int32_t> threshold,
@@ -62,31 +71,42 @@ struct Roll<GPUDevice, T> {
     if (!num_elements) return;
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
-    auto dim_bytes = sizeof(int32_t) * dim_size.size();
-    auto dim_buf = d.allocate(dim_bytes);
+    auto config_or = GetGpuLaunchConfig64(num_elements, d);
+    OP_REQUIRES_OK(context, config_or.status());
+    const GpuLaunchConfig64& cfg = *config_or;
 
-    auto thres_bytes = sizeof(int32_t) * threshold.size();
-    auto thres_buf = d.allocate(thres_bytes);
+    std::vector<int32_t> shifts(num_dims);
+    std::vector<int64_t> strides(num_dims);
+    for (int i = 0; i < num_dims; ++i) {
+      shifts[i] = dim_size[i] - threshold[i];
+      strides[i] = dim_range[i] / dim_size[i];
+    }
 
-    auto range_bytes = sizeof(int64_t) * dim_range.size();
-    auto range_buf = d.allocate(range_bytes);
+    Tensor dim_tensor;
+    Tensor shift_tensor;
+    Tensor stride_tensor;
+    OP_REQUIRES_OK(
+        context,
+        context->allocate_temp(DT_INT32, TensorShape({num_dims}), &dim_tensor));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DT_INT32, TensorShape({num_dims}),
+                                          &shift_tensor));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DT_INT64, TensorShape({num_dims}),
+                                          &stride_tensor));
+    auto* dim_buf = dim_tensor.flat<int32_t>().data();
+    auto* shift_buf = shift_tensor.flat<int32_t>().data();
+    auto* stride_buf = stride_tensor.flat<int64_t>().data();
+    d.memcpyHostToDevice(dim_buf, dim_size.data(), dim_tensor.TotalBytes());
+    d.memcpyHostToDevice(shift_buf, shifts.data(), shift_tensor.TotalBytes());
+    d.memcpyHostToDevice(stride_buf, strides.data(),
+                         stride_tensor.TotalBytes());
 
-    d.memcpyHostToDevice(dim_buf, dim_size.data(), dim_bytes);
-    d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
-    d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
-
-    GpuLaunchConfig cfg = GetGpuLaunchConfig(num_elements, d);
-
-    TF_CHECK_OK(
+    OP_REQUIRES_OK(
+        context,
         GpuLaunchKernel(RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
                         d.stream(), cfg.virtual_thread_count, num_dims, input,
-                        output, reinterpret_cast<const int32_t*>(dim_buf),
-                        reinterpret_cast<const int32_t*>(thres_buf),
-                        reinterpret_cast<const int64_t*>(range_buf)));
-
-    d.deallocate(dim_buf);
-    d.deallocate(thres_buf);
-    d.deallocate(range_buf);
+                        output, dim_buf, shift_buf, stride_buf));
   }
 };
 

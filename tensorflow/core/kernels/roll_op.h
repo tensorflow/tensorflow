@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_ROLL_OP_H_
 #define TENSORFLOW_CORE_KERNELS_ROLL_OP_H_
 
+#include <cstdint>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -33,7 +35,7 @@ struct Roll {
   // threshold - the index for each dimension that the roll starts to wrap
   //    back to the front
   // isd - inner shift dimension
-  void operator()(const OpKernelContext* context, const int64_t num_elements,
+  void operator()(OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
                   const absl::Span<const int32_t> threshold,
