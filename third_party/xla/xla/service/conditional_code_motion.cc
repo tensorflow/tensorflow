@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -1637,6 +1638,69 @@ class GroupConnectedBoundaries {
       visited_count_.erase(boundary[0]);
     }
   }
+  // Returns the conditional output that `instruction` reads through copies and
+  // reshapes (the only forwarding instructions this pass moves in): the
+  // conditional itself or a get-tuple-element of it. Returns nullptr when it
+  // reads something else.
+  const HloInstruction* ConditionalOutputRead(
+      const HloInstruction* instruction) const {
+    const HloInstruction* source = instruction->operand(0);
+    while (source->opcode() == HloOpcode::kCopy ||
+           source->opcode() == HloOpcode::kReshape) {
+      source = source->operand(0);
+    }
+    if (source == conditional_ ||
+        (source->opcode() == HloOpcode::kGetTupleElement &&
+         source->operand(0) == conditional_)) {
+      return source;
+    }
+    return nullptr;
+  }
+  // Returns true if `convert` widens the storage element type of a conditional
+  // output that any branch produces with a custom call. The producer is looked
+  // up through one tuple level and through bitcasts, copies, reshapes and
+  // get-tuple-elements; a custom call behind a nested conditional, a while
+  // loop or an async op is not recognized.
+  //
+  // The move in estimate (ReusesBeforeBoundary) pairs the convert with the
+  // producer of branch 0 as if the two could fuse, which a custom call never
+  // does. Moved in, the convert makes every branch write the wider element and
+  // every consumer read it; outside, it fuses into its consumers. Staying out
+  // costs more only when the sole consumer cannot fuse the convert and another
+  // branch's producer could have fused it. The veto is limited to widening
+  // converts because only they grow the branch outputs; narrowing converts and
+  // other users of custom call outputs keep the estimate's decision. It lives
+  // here rather than in the reuse table because the table scores branch 0 only
+  // and also drives hoisting out.
+  bool IsWideningConvertOfCustomCallOutput(
+      const HloInstruction* convert) const {
+    if (primitive_util::StorageBitWidth(convert->shape().element_type()) <=
+        primitive_util::StorageBitWidth(
+            convert->operand(0)->shape().element_type())) {
+      return false;
+    }
+    const HloInstruction* read = ConditionalOutputRead(convert);
+    if (read == nullptr) {
+      return false;
+    }
+    const int64_t index = read == conditional_ ? -1 : read->tuple_index();
+    for (const HloComputation* branch : conditional_->branch_computations()) {
+      const HloInstruction* producer = branch->root_instruction();
+      if (index >= 0 && producer->opcode() == HloOpcode::kTuple) {
+        producer = producer->operand(index);
+      }
+      while (producer->opcode() == HloOpcode::kBitcast ||
+             producer->opcode() == HloOpcode::kCopy ||
+             producer->opcode() == HloOpcode::kReshape ||
+             producer->opcode() == HloOpcode::kGetTupleElement) {
+        producer = producer->operand(0);
+      }
+      if (producer->opcode() == HloOpcode::kCustomCall) {
+        return true;
+      }
+    }
+    return false;
+  }
   // Returns true if `instruction` is worth hoisting.
   bool WorthHoisting(const Boundary& b, int64_t index) {
     HloInstruction* instruction = b[0];
@@ -1667,6 +1731,13 @@ class GroupConnectedBoundaries {
     if (pos == Boundary::Position::kOutsideBranchUser &&
         opcode == HloOpcode::kBroadcast) {
       VLOG(1) << "Do not move broadcast into branches as a user.";
+      return false;
+    }
+    if (pos == Boundary::Position::kOutsideBranchUser &&
+        opcode == HloOpcode::kConvert &&
+        IsWideningConvertOfCustomCallOutput(instruction)) {
+      VLOG(1) << "Do not move a widening convert of a custom call output into "
+                 "branches.";
       return false;
     }
     if (opcode == HloOpcode::kTuple &&
