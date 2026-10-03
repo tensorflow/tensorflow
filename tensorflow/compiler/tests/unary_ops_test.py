@@ -353,7 +353,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           )
 
         with self.session() as sess:
-          with self.test_scope():
+          with self.device_scope():
             x = array_ops.placeholder(dtypes.float32)
             output = quantize_and_dequantize_v3(x)
           with self.assertRaisesRegex(
@@ -362,6 +362,28 @@ class UnaryOpsTest(xla_test.XLATestCase):
             sess.run(
                 output, {x: np.array([-1, -0.5, 0, 0.3], dtype=np.float32)}
             )
+
+    for signed_input, valid_num_bits in (
+        (True, (1, 61)),
+        (False, (1, 62)),
+    ):
+      for num_bits in valid_num_bits:
+
+        @def_function.function(jit_compile=True)
+        def quantize_and_dequantize_v3_valid(
+            x, num_bits=num_bits, signed_input=signed_input
+        ):
+          return array_ops.quantize_and_dequantize_v3(
+              x, -1.0, 1.0, num_bits=num_bits, signed_input=signed_input
+          )
+
+        with self.session() as sess:
+          with self.device_scope():
+            x = array_ops.placeholder(dtypes.float32)
+            output = quantize_and_dequantize_v3_valid(x)
+          sess.run(
+              output, {x: np.array([-1, -0.5, 0, 0.3], dtype=np.float32)}
+          )
 
   def testComplexOps(self):
     for dtype in self.complex_types:
