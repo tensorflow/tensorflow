@@ -137,9 +137,22 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
             abs_path = os.path.realpath(path)
             for member in archive.getmembers():
               abs_target = os.path.realpath(os.path.join(path, member.name))
-              if os.path.commonpath([abs_path, abs_target]) == abs_path:
-                members.append(member)
-            archive.extractall(path, members=members)
+              if os.path.commonpath([abs_path, abs_target]) != abs_path:
+                continue
+              if member.issym() or member.islnk():
+                # A link member whose target resolves outside `path` would
+                # let later members write through it and escape.
+                abs_link = os.path.realpath(
+                    os.path.join(os.path.dirname(abs_target), member.linkname))
+                if os.path.commonpath([abs_path, abs_link]) != abs_path:
+                  continue
+              members.append(member)
+            extractall_kwargs = {}
+            # `filter="data"` was added in Python 3.12 (backported to
+            # 3.10.12/3.11.4) and is the default from 3.14.
+            if sys.version_info < (3, 14) and hasattr(tarfile, 'data_filter'):
+              extractall_kwargs = {'filter': 'data'}
+            archive.extractall(path, members=members, **extractall_kwargs)
           else:
             # zip
             members = []
