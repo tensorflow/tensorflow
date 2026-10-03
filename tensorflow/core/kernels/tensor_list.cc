@@ -124,8 +124,35 @@ bool TensorList::Decode(const VariantTensorData& data) {
 
   TensorShapeProto element_shape_proto;
   if (!element_shape_proto.ParseFromString(iter)) return false;
-
+  // The PartialTensorShape constructor calls AddDim(), which fatally CHECKs on a
+  // malformed rank or dimension size. BuildPartialTensorShape is not a safe
+  // substitute here: for partial shapes it silently coerces any dimension below
+  // -1 to unknown instead of rejecting it. The proto is untrusted, so validate
+  // it with IsValid (which also rejects dims < -1 and excessive rank) before
+  // constructing the shape.
+  if (!PartialTensorShape::IsValid(element_shape_proto)) return false;
   const PartialTensorShape decoded_element_shape(element_shape_proto);
+
+  // Every element stored in a list must match its element_dtype and be
+  // compatible with its element_shape; the mutation paths (TensorListPushBack,
+  // TensorListSetItem) enforce this on insertion. The serialized data is
+  // untrusted, so re-establish the same invariant here. Consumers such as
+  // TensorListStack and TensorListGather skip the per-element shape check when
+  // element_shape is fully defined and then treat each element's count as the
+  // output element count, so a decoded element that does not match would
+  // overrun the output buffer.
+  for (const Tensor& t : decoded_tensors) {
+    if (t.dtype() == DT_INVALID) continue;  // Unset element placeholder.
+    // Any element reaching here is a concrete tensor, so it must match the
+    // list's dtype. If decoded_element_dtype is DT_INVALID a concrete element is
+    // itself inconsistent, so reject it rather than letting it through.
+    if (t.dtype() != decoded_element_dtype) {
+      return false;
+    }
+    if (!decoded_element_shape.IsCompatibleWith(t.shape())) {
+      return false;
+    }
+  }
 
   element_dtype = decoded_element_dtype;
   max_num_elements = decoded_max_num_elements;
