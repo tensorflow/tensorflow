@@ -57,9 +57,13 @@ void FuzzModelBuildAndInvoke(const std::string& model_bytes) {
   if (interpreter->AllocateTensors() != kTfLiteOk) return;
 
   // Zero-initialize runtime inputs so MSan does not flag uninitialized reads.
+  // An input a crafted model backs with a constant buffer is kTfLiteMmapRo and
+  // points into the read-only model mapping; it is already initialized and
+  // writing to it would fault, so leave those alone.
   for (int input_index : interpreter->inputs()) {
     TfLiteTensor* tensor = interpreter->tensor(input_index);
-    if (tensor != nullptr && tensor->data.raw != nullptr) {
+    if (tensor != nullptr && tensor->data.raw != nullptr &&
+        tensor->allocation_type != kTfLiteMmapRo) {
       std::memset(tensor->data.raw, 0, tensor->bytes);
     }
   }
