@@ -971,6 +971,29 @@ struct functor_traits<igamma_op<Scalar>> {
   };
 };
 
+// Complex reciprocal must use one division for every element.
+// scalar_inverse_op vectorizes with pdiv_complex and evaluates only the tail
+// with std::complex division. Those algorithms disagree for exact zeros
+// (packet results are NaN or inf-inf; scalar division is inf+nan), infinities,
+// and subnormals, so Reciprocal/Inv change with tensor length. This functor is
+// TensorFlow-owned and is not a specialization of scalar_inverse_op.
+template <typename RealType>
+struct scalar_inverse_complex_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
+      const std::complex<RealType>& z) const {
+    return std::complex<RealType>(RealType(1)) / z;
+  }
+};
+
+template <typename RealType>
+struct functor_traits<scalar_inverse_complex_op<RealType>> {
+  enum {
+    // Scalar complex division: a few real multiplies and one real division.
+    Cost = 8 * Eigen::NumTraits<RealType>::MulCost,
+    PacketAccess = false,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -1061,6 +1084,16 @@ struct neg : base<T, Eigen::internal::scalar_opposite_op<T>> {};
 
 template <typename T>
 struct inverse : base<T, Eigen::internal::scalar_inverse_op<T>> {};
+
+// See scalar_inverse_complex_op. Packet evaluation is disabled so every
+// element, including zeros and infinities, uses scalar complex division.
+template <>
+struct inverse<complex64>
+    : base<complex64, Eigen::internal::scalar_inverse_complex_op<float>> {};
+
+template <>
+struct inverse<complex128>
+    : base<complex128, Eigen::internal::scalar_inverse_complex_op<double>> {};
 
 template <typename T>
 struct square : base<T, Eigen::internal::scalar_square_op<T>> {};

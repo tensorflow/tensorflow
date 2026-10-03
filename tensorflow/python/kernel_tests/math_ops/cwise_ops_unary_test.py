@@ -732,6 +732,105 @@ class UnaryOpTest(test.TestCase):
         )
 
   @test_util.run_in_graph_and_eager_modes
+  def testComplexReciprocalLengthIndependent(self):
+    """Reciprocal of complex values must not depend on tensor length.
+
+    Eigen's packet reciprocal disagrees with scalar complex division for zeros,
+    infinities, and subnormals. CPU Reciprocal and Inv used that packet path,
+    so identical values changed once the length crossed a SIMD packet boundary
+    (2, 4, or 8, depending on the build). See
+    https://github.com/tensorflow/tensorflow/issues/128121.
+    """
+    # Cover scalar, SSE (2), AVX (4), AVX-512 (8), and a remainder element.
+    lengths = (0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17)
+
+    def reciprocal_of(values, op):
+      with test_util.force_cpu():
+        return self.evaluate(op(constant_op.constant(values)))
+
+    def filled(n, real, imag, dtype):
+      # Assign parts separately so a signed zero is not flushed by complex
+      # addition.
+      real_dtype = np.float32 if dtype == np.complex64 else np.float64
+      values = np.empty((n,), dtype=dtype)
+      values.real = np.full((n,), real, dtype=real_dtype)
+      values.imag = np.full((n,), imag, dtype=real_dtype)
+      return values
+
+    def matches_reference(got, ref, tol):
+      """True when every element matches ref, including inf and NaN."""
+      ref = np.resize(np.asarray(ref), got.shape)
+      return np.all(
+          np.isclose(got.real, ref.real, rtol=tol, atol=tol, equal_nan=True)
+      ) and np.all(
+          np.isclose(got.imag, ref.imag, rtol=tol, atol=tol, equal_nan=True))
+
+    for dtype in (np.complex64, np.complex128):
+      real_dtype = np.float32 if dtype == np.complex64 else np.float64
+      tol = _default_tolerance(dtype)
+
+      positive_zero = filled(1, 0.0, 0.0, dtype)
+      negative_zero = filled(1, -0.0, 0.0, dtype)
+      self.assertFalse(np.signbit(positive_zero.real[0]))
+      self.assertTrue(np.signbit(negative_zero.real[0]))
+
+      for n in lengths:
+        zeros = filled(n, 0.0, 0.0, dtype)
+        neg_zeros = filled(n, -0.0, 0.0, dtype)
+        for op in (math_ops.reciprocal, gen_math_ops.inv):
+          got = reciprocal_of(zeros, op)
+          neg = reciprocal_of(neg_zeros, op)
+          self.assertEqual(got.shape, (n,))
+          self.assertEqual(neg.shape, (n,))
+          if n == 0:
+            continue
+          # 1/(+0+0j) is +inf+nanj on every element, matching scalar division.
+          self.assertTrue(
+              np.all(np.isposinf(got.real)),
+              msg=f"{dtype.__name__} n={n} op={op.__name__}: {got}")
+          self.assertTrue(np.all(np.isnan(got.imag)))
+          # 1/(-0+0j) keeps the sign of the infinite real part.
+          self.assertTrue(
+              np.all(np.isneginf(neg.real)),
+              msg=f"{dtype.__name__} n={n} op={op.__name__}: {neg}")
+          self.assertTrue(np.all(np.isnan(neg.imag)))
+
+      finite = np.array([0.5 + 0.25j], dtype=dtype)
+      finite_ref = (np.array(1.0, dtype=real_dtype) / finite).astype(dtype)
+      tiny = np.array([1e-40j], dtype=dtype)
+      tiny_ref = reciprocal_of(tiny, math_ops.reciprocal)
+      inf_ref = reciprocal_of(
+          filled(1, np.inf, 0.0, dtype), math_ops.reciprocal)
+      for n in lengths:
+        if n == 0:
+          continue
+        got_finite = reciprocal_of(np.repeat(finite, n), math_ops.reciprocal)
+        self.assertTrue(
+            matches_reference(got_finite, finite_ref, tol),
+            msg=f"finite {dtype.__name__} n={n}: {got_finite}")
+        got_tiny = reciprocal_of(np.repeat(tiny, n), math_ops.reciprocal)
+        self.assertTrue(
+            matches_reference(got_tiny, tiny_ref, tol),
+            msg=f"tiny {dtype.__name__} n={n}: {got_tiny}")
+        got_inf = reciprocal_of(filled(n, np.inf, 0.0, dtype),
+                                math_ops.reciprocal)
+        # 1/(inf+0j) is a complex zero, not a NaN from the packet path.
+        self.assertTrue(np.all(got_inf.real == 0), msg=f"{got_inf}")
+        self.assertTrue(np.all(got_inf.imag == 0), msg=f"{got_inf}")
+        self.assertTrue(matches_reference(got_inf, inf_ref, tol))
+
+      mixed = np.array(
+          [0.0 + 0.0j, 0.5 + 0.25j, 0.0 + 0.0j, -1.0 + 2.0j, 0.0 + 0.0j],
+          dtype=dtype)
+      got_mixed = reciprocal_of(mixed, math_ops.reciprocal)
+      self.assertTrue(np.all(np.isposinf(got_mixed.real[0::2])))
+      self.assertTrue(np.all(np.isnan(got_mixed.imag[0::2])))
+      self.assertAllClose(got_mixed[1:2], finite_ref, rtol=tol, atol=tol)
+      expected_last = (np.array(1.0, dtype=real_dtype) /
+                       np.array([-1.0 + 2.0j], dtype=dtype))
+      self.assertAllClose(got_mixed[3:4], expected_last, rtol=tol, atol=tol)
+
+  @test_util.run_in_graph_and_eager_modes
   def testDigamma(self):
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
