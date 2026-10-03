@@ -22,6 +22,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -137,10 +138,10 @@ class SplitOpTest(test.TestCase):
         (i64_max, [i64_max, i64_max, i64_max, 2], dtypes.int64, "overflow"),
         # A -1 does not keep the other sizes from overflowing.
         (i64_max, [-1, i64_max, i64_max, 2], dtypes.int64, "overflow"),
-        # int32 sizes overflow at their own width in the kernel. In graph
-        # mode the shape function, which sums in int64, rejects the mismatch
-        # before the kernel runs.
-        (5, [i32_max, i32_max, 5], dtypes.int32, "overflow|can't split axis"),
+        # Narrower sizes overflow at their own width.
+        (5, [i32_max, i32_max, 5], dtypes.int32, "overflow"),
+        (5, [100, 100, 5], dtypes.int8, "overflow"),
+        (5, [-1, 100, 100], dtypes.int8, "overflow"),
     ):
       with self.subTest(size_splits=size_splits, dtype=dtype.name):
         value = array_ops.reshape(
@@ -161,19 +162,32 @@ class SplitOpTest(test.TestCase):
   def testInputSizeAboveSizeSplitsTypeRaises(self):
     # With int32 size_splits, an input size above INT32_MAX was truncated to
     # int32, so [1, 2] matched an input of size 2**32 + 3 and the split
-    # silently dropped the rest of the input. In graph mode the shape
-    # function, which compares in int64, rejects the mismatch first.
+    # silently dropped the rest of the input.
     value = array_ops.reshape(
         constant_op.constant([], dtype=dtypes.float32),
         constant_op.constant([(1 << 32) + 3, 0], dtype=dtypes.int64),
     )
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
-        r"must be <= max\(Tlen\)|can't split axis",
+        r"must be <= max\(Tlen\)",
     ):
       self.evaluate(
           array_ops.split(
               value, constant_op.constant([1, 2], dtype=dtypes.int32), axis=0
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Checks the SplitV kernel, which XLA replaces")
+  def testInputSizeAboveInt8SizeSplitsRaises(self):
+    value = array_ops.zeros([128], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"must be <= max\(Tlen\)",
+    ):
+      self.evaluate(
+          array_ops.split(
+              value, constant_op.constant([-1], dtype=dtypes.int8), axis=0
           )
       )
 
@@ -441,6 +455,90 @@ class SplitOpTest(test.TestCase):
     s0, s1 = array_ops.split([0, 1, 2], [2, -1], axis=0)
     assert s0.shape.as_list() == [2]
     assert s1.shape.as_list() == [1]
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSingleSplitWithMinusOne(self):
+    # A single -1 size takes the whole input, as in shape inference.
+    value = constant_op.constant([1, 2, 3], dtype=dtypes.int32)
+    result = array_ops.split(value, [-1], axis=0)
+    self.assertAllEqual(result[0], [1, 2, 3])
+    empty = constant_op.constant([], dtype=dtypes.int32)
+    result = array_ops.split(empty, [-1], axis=0)
+    self.assertAllEqual(result[0], [])
+    value_2d = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.int32)
+    for axis in (0, 1):
+      result = array_ops.split(value_2d, [-1], axis=axis)
+      self.assertAllEqual(result[0], [[1, 2], [3, 4]])
+
+  @test_util.run_deprecated_v1
+  def testInt8SizeSplitsShapeFunction(self):
+    value = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    splits = constant_op.constant([1, 2], dtype=dtypes.int8)
+    result = array_ops.split(value, splits, axis=0)
+    self.assertEqual(result[0].shape.as_list(), [1])
+    self.assertEqual(result[1].shape.as_list(), [2])
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA only takes int32 and int64 size_splits.")
+  def testInt8SizeSplitsExecution(self):
+    value = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    splits = constant_op.constant([1, 2], dtype=dtypes.int8)
+    result = self.evaluate(array_ops.split(value, splits, axis=0))
+    self.assertAllEqual(result[0], [1.0])
+    self.assertAllEqual(result[1], [2.0, 3.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA only takes int32 and int64 size_splits.")
+  def testInt8SizeSplitsInt32Value(self):
+    # On GPU, int32 values use a separate kernel registration.
+    with self.cached_session(use_gpu=True):
+      value = constant_op.constant([1, 2, 3], dtype=dtypes.int32)
+      splits = constant_op.constant([1, 2], dtype=dtypes.int8)
+      result = self.evaluate(array_ops.split(value, splits, axis=0))
+    self.assertAllEqual(result[0], [1])
+    self.assertAllEqual(result[1], [2, 3])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScalarSizeSplitsRaises(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"must be 1-D|must be rank 1",
+    ):
+      self.evaluate(
+          gen_array_ops.split_v(
+              value=[1, 2],
+              size_splits=constant_op.constant(2, dtype=dtypes.int64),
+              axis=0,
+              num_split=1,
+          )
+      )
+
+  @test_util.run_deprecated_v1
+  def testShapeFunctionRejectsSizeSplitsOverflow(self):
+    # The shape function summed size_splits in int64 without checks, so at
+    # graph construction these sizes wrapped around to the input size, and a
+    # large negative size next to a -1 overflowed the computed -1 size.
+    i64_max = (1 << 63) - 1
+    value = array_ops.reshape(
+        constant_op.constant([], dtype=dtypes.float32),
+        constant_op.constant([i64_max, 0], dtype=dtypes.int64),
+    )
+    with self.assertRaisesRegex(ValueError, "overflow"):
+      array_ops.split(
+          value,
+          constant_op.constant(
+              [i64_max, i64_max, i64_max, 2], dtype=dtypes.int64
+          ),
+          axis=0,
+      )
+    with self.assertRaisesRegex(
+        ValueError, "Split size at index 1 must be >= 0"
+    ):
+      array_ops.split(
+          constant_op.constant([1.0, 2.0, 3.0]),
+          constant_op.constant([-1, -(1 << 63)], dtype=dtypes.int64),
+          axis=0,
+      )
 
   @test_util.run_deprecated_v1
   def testNonexistentDimTensor(self):
