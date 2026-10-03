@@ -20,8 +20,18 @@ limitations under the License.
 #define TFLITE_IMPORT_NUMPY  // See numpy.h for explanation.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
+#include "tensorflow/lite/python/interpreter_wrapper/numpy.h"  // IWYU pragma: keep
 
+<<<<<<< dest:             a78dd7b21089 - sheepxiao: Track source_rpc for each...
+||||||| parent of source: 7176cf870ea3 - jmarko: Support buying_guides_key_fa...
+#include <memory>
+
+=======
+#include <memory>
+
+#include "tensorflow/lite/string_util.h"
+
+>>>>>>> source:           51464ec6c3f8 - huayi: Fix information leak in FillS...
 namespace tflite {
 namespace python {
 
@@ -172,6 +182,10 @@ bool FillStringBufferFromPyUnicode(PyObject* value,
 
 bool FillStringBufferFromPyString(PyObject* value,
                                   DynamicBuffer* dynamic_buffer) {
+  if (!value) {
+    PyErr_SetString(PyExc_ValueError, "Value is null.");
+    return false;
+  }
   if (PyUnicode_Check(value)) {
     return FillStringBufferFromPyUnicode(value, dynamic_buffer);
   }
@@ -200,12 +214,15 @@ bool FillStringBufferWithPyArray(PyObject* value,
     case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE: {
-      if (PyArray_NDIM(array) == 0) {
+      if (PyArray_NDIM(array) == 0 && PyArray_TYPE(array) != NPY_OBJECT) {
         dynamic_buffer->AddString(static_cast<char*>(PyArray_DATA(array)),
                                   PyArray_NBYTES(array));
         return true;
       }
       UniquePyObjectRef iter(PyArray_IterNew(value));
+      if (!iter) {
+        return false;
+      }
       while (PyArray_ITER_NOTDONE(iter.get())) {
         UniquePyObjectRef item(PyArray_GETITEM(
             array, reinterpret_cast<char*>(PyArray_ITER_DATA(iter.get()))));
