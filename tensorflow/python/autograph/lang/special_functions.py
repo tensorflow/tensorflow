@@ -54,7 +54,7 @@ def tensor_list(elements,
                 element_dtype=None,
                 element_shape=None,
                 use_tensor_array=False):
-  """Creates an tensor list and populates it with the given elements.
+  """Creates a tensor list and populates it with the given elements.
 
   This function provides a more uniform access to tensor lists and tensor
   arrays, and allows optional initialization.
