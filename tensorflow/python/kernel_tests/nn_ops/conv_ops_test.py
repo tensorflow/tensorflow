@@ -25,10 +25,12 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -676,6 +678,32 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         tol=tol,
     )
 
+  @test_util.disable_xla("Runtime check is in the standard CPU/GPU kernels")
+  def testConv2DInputSmallerThanFilterDynamic(self):
+    for padding in ["VALID", [[0, 0], [0, 0], [0, 0], [0, 0]]]:
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  shape=[1, None, 5, 1], dtype=dtypes.float32),
+              tensor_spec.TensorSpec(
+                  shape=[3, 1, 1, 1], dtype=dtypes.float32),
+          ]
+      )
+      def run_conv(x, filters, padding=padding):
+        return nn_ops.conv2d(
+            x, filters, strides=[1, 1, 1, 1], padding=padding)
+
+      with context.eager_mode(), self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "must be at least effective_filter_size"):
+        self.evaluate(
+            run_conv(
+                constant_op.constant(
+                    np.zeros([1, 2, 5, 1], np.float32)),
+                constant_op.constant(
+                    np.zeros([3, 1, 1, 1], np.float32))))
+
   @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
   def testConv2D1x1Filter(self, data_format, dtype, use_gpu, op_name):
@@ -837,6 +865,18 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         use_gpu=use_gpu,
         op_name=op_name,
     )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyInputValidPadding(self):
+    x = constant_op.constant(
+        0.0, shape=[1, 0, 3, 1], dtype=dtypes.float32)
+    filters = constant_op.constant(
+        0.0, shape=[2, 2, 1, 1], dtype=dtypes.float32)
+
+    output = nn_ops.conv2d(
+        x, filters, strides=[1, 1, 1, 1], padding="VALID")
+
+    self.assertEqual(output.shape.as_list(), [1, 0, 2, 1])
 
   @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
