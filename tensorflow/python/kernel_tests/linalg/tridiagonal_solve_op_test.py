@@ -502,11 +502,23 @@ class TridiagonalSolveOpTest(test.TestCase):
             y_placeholder: y
         })
 
+  def _testEmpty(self, diags_shape, rhs_shape):
+    for dtype in (dtypes.float32, dtypes.float64, dtypes.complex64,
+                  dtypes.complex128):
+      self._test(
+          diags=constant_op.constant(1, shape=diags_shape, dtype=dtype),
+          rhs=constant_op.constant(0, shape=rhs_shape, dtype=dtype),
+          expected=constant_op.constant(0, shape=rhs_shape, dtype=dtype))
+
+  @test_util.run_in_graph_and_eager_modes
   def testEmptyBatch(self):
-    self._test(
-        diags=constant_op.constant(0, shape=(0, 3, 4), dtype=dtypes.float32),
-        rhs=constant_op.constant(0, shape=(0, 4, 1), dtype=dtypes.float32),
-        expected=constant_op.constant(0, shape=(0, 4, 1), dtype=dtypes.float32))
+    self._testEmpty(diags_shape=(0, 3, 4), rhs_shape=(0, 4, 1))
+    self._testEmpty(diags_shape=(2, 0, 3, 4), rhs_shape=(2, 0, 4, 1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testZeroRightHandSides(self):
+    self._testEmpty(diags_shape=(2, 3, 4), rhs_shape=(2, 4, 0))
+    self._testEmpty(diags_shape=(3, 4), rhs_shape=(4, 0))
 
   # Invalid input shapes
 
@@ -555,8 +567,9 @@ class TridiagonalSolveOpTest(test.TestCase):
     # validation in TridiagonalSolveOpGpu and CPU LinearAlgebraOp.
     diags = array_ops.placeholder(dtypes.float64, shape=None)
     rhs = array_ops.placeholder(dtypes.float64, shape=None)
+    pivoting = getattr(self, "pivoting", True)
     x = linalg_impl.tridiagonal_solve(
-        diags, rhs, "compact", partial_pivoting=self.pivoting)
+        diags, rhs, "compact", partial_pivoting=pivoting)
 
     with self.cached_session(use_gpu=True) as sess:
       # 1. LHS rank < 2

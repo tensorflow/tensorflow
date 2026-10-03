@@ -293,9 +293,10 @@ class TridiagonalSolveOpGpu : public OpKernel {
       batch_size *= lhs.dim_size(i);
     }
 
-    if (batch_size == 0) {
-      Tensor* output;
-      OP_REQUIRES_OK(context, context->allocate_output(0, rhs.shape(), &output));
+    if (rhs.NumElements() == 0) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, rhs.shape(), &output));
       return;
     }
 
@@ -303,7 +304,7 @@ class TridiagonalSolveOpGpu : public OpKernel {
     // possible or desirable to use GtsvBatched.
     const bool use_linalg_op =
         pivoting_            // GtsvBatched doesn't do pivoting
-        || num_rhs > 1       // GtsvBatched doesn't support multiple rhs
+        || num_rhs != 1      // GtsvBatched needs exactly one rhs
         || matrix_size < 3   // Not supported in cuSparse, use the custom kernel
         || batch_size == 1;  // No point to use GtsvBatched
 
