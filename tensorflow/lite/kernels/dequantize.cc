@@ -71,10 +71,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #endif
   TF_LITE_ENSURE(context, is_supported_type);
 
-  if (op_context.input->type == kTfLiteInt16) {
-    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
-  }
-
   op_context.output->type = kTfLiteFloat32;
   // If the input tensor is constant, we can persist the dequantized value in
   // the output tensor. Otherwise we run dequantize upon each eval.
