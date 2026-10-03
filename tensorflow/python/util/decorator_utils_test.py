@@ -91,6 +91,12 @@ class AddNoticeToDocstringTest(test.TestCase):
     # 2 space second line indent, first line blank
     self._check("\n  Brief\n  Docstring", expected)
 
+  def test_suffix_not_duplicated_when_already_present(self):
+    expected = "Brief (suffix)\n\nWarning: Go away\nInstructions"
+    self._check("Brief (suffix)", expected)
+    self._check("Brief (suffix)   ", expected)
+    self._check("   ", "\nWarning: Go away\nInstructions")
+
 
 class ValidateCallableTest(test.TestCase):
 
