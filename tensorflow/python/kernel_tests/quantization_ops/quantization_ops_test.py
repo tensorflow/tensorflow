@@ -276,6 +276,45 @@ class QuantizedAvgPoolingOpTest(test_util.TensorFlowTestCase):
               strides=strides,
               padding=padding))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_window_attributes(self):
+    inputs = constant_op.constant(
+        np.uint8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+    for ksize, strides in (
+        ([1], [1, 1, 1, 1]),
+        ([1, 1, 1, 1], [1]),
+        ([], [1, 1, 1, 1]),
+        ([1, 1, 1, 1], []),
+    ):
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                  "ksize|stride"):
+        self.evaluate(
+            nn_ops.quantized_avg_pool(
+                input=inputs,
+                min_input=0.0,
+                max_input=1.0,
+                ksize=ksize,
+                strides=strides,
+                padding="SAME"))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_empty_tensor_input(self):
+    for empty_shape in ([0, 3, 3, 3], [1, 0, 3, 3], [1, 3, 0, 3]):
+      for ksize in ([1, 1, 1, 1], [1, 2, 2, 1]):
+        inputs = constant_op.constant(
+            [], shape=empty_shape, dtype=dtypes.quint8)
+        output, min_output, max_output = self.evaluate(
+            nn_ops.quantized_avg_pool(
+                input=inputs,
+                min_input=-0.75,
+                max_input=1.25,
+                ksize=ksize,
+                strides=[1, 1, 1, 1],
+                padding="SAME"))
+        self.assertEqual(output.shape, tuple(empty_shape))
+        self.assertEqual(min_output, -0.75)
+        self.assertEqual(max_output, 1.25)
+
 
 class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
 
@@ -308,6 +347,45 @@ class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
               ksize=ksize,
               strides=strides,
               padding=padding))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_window_attributes(self):
+    inputs = constant_op.constant(
+        np.uint8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+    for ksize, strides in (
+        ([1], [1, 1, 1, 1]),
+        ([1, 1, 1, 1], [1]),
+        ([], [1, 1, 1, 1]),
+        ([1, 1, 1, 1], []),
+    ):
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                  "ksize|stride"):
+        self.evaluate(
+            nn_ops.quantized_max_pool(
+                input=inputs,
+                min_input=0.0,
+                max_input=1.0,
+                ksize=ksize,
+                strides=strides,
+                padding="SAME"))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_empty_tensor_input(self):
+    for empty_shape in ([0, 3, 3, 3], [1, 0, 3, 3], [1, 3, 0, 3]):
+      for ksize in ([1, 1, 1, 1], [1, 2, 2, 1]):
+        inputs = constant_op.constant(
+            [], shape=empty_shape, dtype=dtypes.quint8)
+        output, min_output, max_output = self.evaluate(
+            nn_ops.quantized_max_pool(
+                input=inputs,
+                min_input=-0.75,
+                max_input=1.25,
+                ksize=ksize,
+                strides=[1, 1, 1, 1],
+                padding="SAME"))
+        self.assertEqual(output.shape, tuple(empty_shape))
+        self.assertEqual(min_output, -0.75)
+        self.assertEqual(max_output, 1.25)
 
 
 class RequantizeOpTest(test_util.TensorFlowTestCase):
