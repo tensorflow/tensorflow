@@ -141,7 +141,6 @@ tf_cc_test(
         ":calibration_statistics_collector_min_max",
         ":calibration_statistics_proto_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest_main",
     ],
 )
