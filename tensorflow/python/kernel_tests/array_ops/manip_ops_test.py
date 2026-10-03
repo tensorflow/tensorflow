@@ -100,6 +100,12 @@ class RollTest(test_util.TensorFlowTestCase):
     self._testAll(np.zeros([0, 1]), 1, 1)
     self._testAll(np.zeros([1, 0]), 1, 1)
 
+  def testRollEmptyInput(self):
+    with self.cached_session():
+      empty_tensor = array_ops.zeros([0, 5], dtype=dtypes.float32)
+      result = manip_ops.roll(empty_tensor, shift=1, axis=0)
+      self.assertEqual(self.evaluate(result).shape, (0, 5))
+
   @test_util.run_v2_only
   def testLargeInput(self):
     with test_util.force_cpu():

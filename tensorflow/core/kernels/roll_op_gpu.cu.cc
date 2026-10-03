@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -33,16 +34,16 @@ namespace {
 template <typename T>
 __global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
                            const T* __restrict__ input, T* __restrict__ output,
-                           const int32_t* __restrict__ dim_size,
-                           const int32_t* __restrict__ threshold,
+                           const int64_t* __restrict__ dim_size,
+                           const int64_t* __restrict__ threshold,
                            const int64_t* __restrict__ dim_range) {
   CUDA_1D_KERNEL_LOOP(out_idx, nthreads, int64_t) {
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
       const int64_t stride = dim_range[i] / dim_size[i];
-      const int shift = dim_size[i] - threshold[i];
-      const int indx = (out_idx / stride) % dim_size[i];
-      const int shifted_indx = (indx + shift) % dim_size[i];
+      const int64_t shift = dim_size[i] - threshold[i];
+      const int64_t indx = (out_idx / stride) % dim_size[i];
+      const int64_t shifted_indx = (indx + shift) % dim_size[i];
       offset += (shifted_indx - indx) * stride;
     }
     output[out_idx + offset] = input[out_idx];
@@ -55,9 +56,9 @@ namespace functor {
 template <typename T>
 struct Roll<GPUDevice, T> {
   void operator()(OpKernelContext* context, const int64_t num_elements,
-                  const int num_dims, const absl::Span<const int32_t> dim_size,
+                  const int num_dims, const absl::Span<const int64_t> dim_size,
                   const T* input, T* output,
-                  const absl::Span<const int32_t> threshold,
+                  const absl::Span<const int64_t> threshold,
                   const absl::Span<const int64_t> dim_range,
                   const int64_t isd) {
     if (!num_elements) return;
@@ -67,10 +68,10 @@ struct Roll<GPUDevice, T> {
     OP_REQUIRES_OK(context, config_or.status());
     const GpuLaunchConfig64& cfg = *config_or;
 
-    auto dim_bytes = sizeof(int32_t) * dim_size.size();
+    auto dim_bytes = sizeof(int64_t) * dim_size.size();
     auto dim_buf = d.allocate(dim_bytes);
 
-    auto thres_bytes = sizeof(int32_t) * threshold.size();
+    auto thres_bytes = sizeof(int64_t) * threshold.size();
     auto thres_buf = d.allocate(thres_bytes);
 
     auto range_bytes = sizeof(int64_t) * dim_range.size();
@@ -83,10 +84,9 @@ struct Roll<GPUDevice, T> {
     absl::Status launch_status = GpuLaunchKernel(
         RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
         d.stream(), cfg.virtual_thread_count, num_dims, input, output,
-        reinterpret_cast<const int32_t*>(dim_buf),
-        reinterpret_cast<const int32_t*>(thres_buf),
+        reinterpret_cast<const int64_t*>(dim_buf),
+        reinterpret_cast<const int64_t*>(thres_buf),
         reinterpret_cast<const int64_t*>(range_buf));
->>>>>>> c841948c8a2 (fix(gpu): propagate RollKernel launch errors with OP_REQUIRES_OK)
 
     d.deallocate(dim_buf);
     d.deallocate(thres_buf);
