@@ -39,8 +39,8 @@ void TransposeSimple(const CPUDevice& device, const Tensor& in,
       ComputeStride<int64_t>(in.shape());
   absl::InlinedVector<int64_t, 8UL> out_strides =
       ComputeStride<int64_t>(out->shape());
-  const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
-  T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
+  const T* p = reinterpret_cast<const T*>(in.data());
+  T* q = reinterpret_cast<T*>(out->data());
   auto transpose_fn = [=, &in_strides, &out_strides, &perm](int64_t begin,
                                                             int64_t end) {
     for (int64_t o_idx = begin; o_idx < end; ++o_idx) {
