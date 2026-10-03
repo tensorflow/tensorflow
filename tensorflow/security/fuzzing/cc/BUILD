@@ -259,6 +259,7 @@ tf_cc_fuzz_test(
     srcs = ["tflite_interp_overflow_fuzz.cc"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/tools:verifier",
     ],
