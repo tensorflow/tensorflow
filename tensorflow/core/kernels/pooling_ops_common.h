@@ -213,6 +213,12 @@ class MaxPoolingOp : public OpKernel {
           ConstEigenMatrixMap;
       typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
           EigenMatrixMap;
+      // The reduction below runs over the depth dimension, which Eigen
+      // vectorizes. `cwiseMax` defaults to Eigen::PropagateFast, which leaves
+      // NaN handling to the instruction being used, so the vectorized and the
+      // scalar implementations disagree and a depth that is not a multiple of
+      // the packet size gives its trailing channels a different result. Ask
+      // for NaN propagation explicitly, matching tf.maximum and tf.reduce_max.
 
       ConstEigenMatrixMap in_mat(tensor_in.flat<T>().data(), params.depth,
                                  params.tensor_in_cols * params.tensor_in_rows *
@@ -280,7 +286,9 @@ class MaxPoolingOp : public OpKernel {
                 for (int32_t pw = w_start; pw < w_end; ++pw) {
                   const int32_t out_offset = out_offset_base + pw;
                   out_mat.col(out_offset) =
-                      out_mat.col(out_offset).cwiseMax(in_mat.col(in_offset));
+                      out_mat.col(out_offset)
+                          .template cwiseMax<Eigen::PropagateNaN>(
+                              in_mat.col(in_offset));
                 }
               }
             }
@@ -487,6 +495,12 @@ class MaxPoolingV2Op : public OpKernel {
           ConstEigenMatrixMap;
       typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
           EigenMatrixMap;
+      // The reduction below runs over the depth dimension, which Eigen
+      // vectorizes. `cwiseMax` defaults to Eigen::PropagateFast, which leaves
+      // NaN handling to the instruction being used, so the vectorized and the
+      // scalar implementations disagree and a depth that is not a multiple of
+      // the packet size gives its trailing channels a different result. Ask
+      // for NaN propagation explicitly, matching tf.maximum and tf.reduce_max.
 
       ConstEigenMatrixMap in_mat(tensor_in.flat<T>().data(), params.depth,
                                  params.tensor_in_cols * params.tensor_in_rows *
@@ -554,7 +568,9 @@ class MaxPoolingV2Op : public OpKernel {
                 for (int32_t pw = w_start; pw < w_end; ++pw) {
                   const int32_t out_offset = out_offset_base + pw;
                   out_mat.col(out_offset) =
-                      out_mat.col(out_offset).cwiseMax(in_mat.col(in_offset));
+                      out_mat.col(out_offset)
+                          .template cwiseMax<Eigen::PropagateNaN>(
+                              in_mat.col(in_offset));
                 }
               }
             }
