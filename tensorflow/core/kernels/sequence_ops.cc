@@ -20,6 +20,8 @@ limitations under the License.
 #include <cmath>
 #include <type_traits>
 
+#include "tensorflow/core/framework/bfloat16.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -206,8 +208,17 @@ class LinSpaceOp : public OpKernel {
     auto flat = out->flat<T>();
     flat(0) = start;
     if (num > 1) {
-      const T step = (stop - start) / (num - 1);
-      for (Tnum i = 1; i < num - 1; ++i) flat(i) = start + step * i;
+      // Interpolate in a higher precision type to avoid overflow for
+      // half/bfloat16, while preserving native performance and numerical
+      // semantics for float/double.
+      using ComputeT = typename std::conditional<sizeof(T) >= sizeof(float), T,
+                                                 float>::type;
+      const ComputeT start_c = static_cast<ComputeT>(start);
+      const ComputeT stop_c = static_cast<ComputeT>(stop);
+      const ComputeT step = (stop_c - start_c) / static_cast<ComputeT>(num - 1);
+      for (Tnum i = 1; i < num - 1; ++i) {
+        flat(i) = static_cast<T>(start_c + step * static_cast<ComputeT>(i));
+      }
       // Ensure final value == stop; float arithmetic won't guarantee this.
       flat(num - 1) = stop;
     }
@@ -230,10 +241,14 @@ class LinSpaceOp : public OpKernel {
   REGISTER_KERNEL(dev, T, int64_t)
 
 #define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_CPU, T)
+TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 
 #define REGISTER_DEFAULT_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_DEFAULT, T)
+TF_CALL_half(REGISTER_DEFAULT_KERNEL);
+TF_CALL_bfloat16(REGISTER_DEFAULT_KERNEL);
 TF_CALL_float(REGISTER_DEFAULT_KERNEL);
 TF_CALL_double(REGISTER_DEFAULT_KERNEL);
 #undef REGISTER_DEFAULT_KERNEL
