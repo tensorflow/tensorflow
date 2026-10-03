@@ -55,6 +55,30 @@ TEST(HloPayloadDeduplicatorTest, DeduplicatePointer) {
   EXPECT_EQ(payloads[0], "config1");
 }
 
+// The overload taking the raw string uses it on a pointer miss and the pointer
+// map on a hit, so it interoperates with the pointer only overload.
+TEST(HloPayloadDeduplicatorTest, DeduplicatePointerWithRawString) {
+  HloPayloadDeduplicator deduplicator;
+  auto wrapper0 = std::make_shared<BackendConfigWrapper>("config1");
+  auto wrapper1 = std::make_shared<BackendConfigWrapper>("config1");
+  auto wrapper2 = std::make_shared<BackendConfigWrapper>("config2");
+
+  EXPECT_EQ(deduplicator.Deduplicate(wrapper0.get(), wrapper0->GetRawString()),
+            0);
+  EXPECT_EQ(deduplicator.Deduplicate(wrapper0.get()), 0);
+  EXPECT_EQ(deduplicator.Deduplicate(wrapper1.get(), wrapper1->GetRawString()),
+            0);
+  EXPECT_EQ(deduplicator.Deduplicate(wrapper2.get(), wrapper2->GetRawString()),
+            1);
+  // A pointer hit does not consult the string.
+  EXPECT_EQ(deduplicator.Deduplicate(wrapper2.get(), "unrelated"), 1);
+
+  auto payloads = deduplicator.TakePayloads();
+  EXPECT_EQ(payloads.size(), 2);
+  EXPECT_EQ(payloads[0], "config1");
+  EXPECT_EQ(payloads[1], "config2");
+}
+
 TEST(HloPayloadDeduplicatorTest, DeduplicateWithBaseOffset) {
   HloPayloadDeduplicator deduplicator(5);
   EXPECT_EQ(deduplicator.Deduplicate("config1"), 5);

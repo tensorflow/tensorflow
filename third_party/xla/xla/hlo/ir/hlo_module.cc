@@ -655,6 +655,13 @@ void HloModule::ToProto(HloModuleProto* proto, HloProtoOptions options) const {
     options.payload_deduplicator = &*payload_deduplicator;
   }
 
+  // Instructions holding equal backend config protos share one raw string
+  // encoding within this call.
+  BackendConfigRawStringCache raw_string_cache;
+  if (options.backend_config_raw_string_cache == nullptr) {
+    options.backend_config_raw_string_cache = &raw_string_cache;
+  }
+
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     computation->ToProto(proto->add_computations(), options);
   }
