@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,23 +24,18 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/mori_communicator.h"
-#include "xla/backends/gpu/collectives/mori_stub.h"
+#include "xla/backends/gpu/collectives/mori_kernels.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -51,27 +45,26 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
 
-namespace shmem = ::mori::shmem;
+using mori::collective::CollectivesFacade;
 
 namespace xla::gpu {
 
-#define XLA_MORI_RETURN_IF_ERROR(expr)                           \
-  do {                                                           \
-    auto status = (expr);                                        \
-    if (status != 0) {                                           \
-      return absl::InternalError(                                \
-          absl::StrFormat("MORI operation failed: %d", status)); \
-    }                                                            \
+#define XLA_MORI_RETURN_IF_ERROR(expr, message)                            \
+  do {                                                                     \
+    auto status = (expr);                                                  \
+    if (status != 0) {                                                     \
+      return absl::InternalError(absl::StrFormat(message ": %d", status)); \
+    }                                                                      \
   } while (0)
 
 MoriCollectives::~MoriCollectives() {
@@ -84,63 +77,83 @@ MoriCollectives::~MoriCollectives() {
 
 absl::StatusOr<CliqueId> MoriCollectives::CreateUniqueCliqueId() const {
   VLOG(3) << "Create MORI unique clique id";
-  shmem::mori_shmem_uniqueid_t id;
-  XLA_MORI_RETURN_IF_ERROR(shmem::ShmemGetUniqueId(&id));
-  return CliqueId(absl::string_view(reinterpret_cast<char*>(id.data()),
-                                    MORI_SHMEM_UNIQUE_ID_BYTES));
+  mori::cco::ccoUniqueId id;
+  XLA_MORI_RETURN_IF_ERROR(mori::cco::ccoGetUniqueId(&id),
+                           "Failed to get CCO unique id");
+  return CliqueId(absl::string_view(id.internal, sizeof(id.internal)));
 }
 
-static absl::StatusOr<shmem::mori_shmem_uniqueid_t> AsMoriUniqueId(
+// TODO(cco): decode the CliqueId back into a mori::cco::ccoUniqueId and feed it
+// to ccoCommCreate once the per-device comm init routine is wired up.
+static absl::StatusOr<::mori::cco::ccoUniqueId> AsMoriUniqueId(
     const CliqueId& clique_id) {
-  if (clique_id.size() != MORI_SHMEM_UNIQUE_ID_BYTES) {
-    return Internal(
-        "CliqueId size is not equal to MORI_SHMEM_UNIQUE_ID_BYTES: %d vs %d",
-        clique_id.size(), MORI_SHMEM_UNIQUE_ID_BYTES);
+  ::mori::cco::ccoUniqueId id;
+  if (clique_id.size() != sizeof(id.internal)) {
+    return absl::InternalError(
+        "CliqueId size is not equal to sizeof(ccoUniqueId).");
   }
-  shmem::mori_shmem_uniqueid_t id;
-  absl::c_copy(clique_id.data(), id.data());
+  absl::c_copy(clique_id.data(), id.internal);
   return id;
 }
 
 void MoriCollectives::Finalize() {
   VLOG(3) << "Finilizing MORI";
-  shmem::ShmemFinalize();
+  CollectivesFacade::TearDown();
 }
 
 absl::Status MoriCollectives::InitPe(size_t rank, size_t nranks,
                                      const CliqueId& clique_id,
                                      se::StreamExecutor* executor) {
-  // ShmemInitAttr keys the per-device MORI state off the calling thread's
-  // active HIP device, so we must activate `executor`'s context here.
+  // Activate `executor`'s HIP context so the per-device MORI state keys off the
+  // right device once real init is wired up.
   auto activate_context = executor->Activate();
   ABSL_ASSIGN_OR_RETURN(auto uid, AsMoriUniqueId(clique_id));
-  shmem::mori_shmem_init_attr_t init_attr;
-  XLA_MORI_RETURN_IF_ERROR(shmem::ShmemSetAttrUniqueIdArgs(
-      static_cast<int32_t>(rank), static_cast<int32_t>(nranks), &uid,
-      &init_attr));
+
+  int64_t poolSizeInMB = 2048, maxStagingInMB = 0;  // 2GB pool default.
+  tsl::ReadInt64FromEnvVar("MORI_COLLECTIVES_POOL_SIZE_IN_MB", poolSizeInMB,
+                           &poolSizeInMB)
+      .IgnoreError();
+  tsl::ReadInt64FromEnvVar("MORI_COLLECTIVES_MAX_STAGING_IN_MB", maxStagingInMB,
+                           &maxStagingInMB)
+      .IgnoreError();
+  poolSizeInMB <<= 20;    // convert to bytes
+  maxStagingInMB <<= 20;  // convert to bytes
+
+  mori::cco::ccoComm* comm = nullptr;
+  // MORI's per rank VMM size is the pool size rounded up to 4G.
   XLA_MORI_RETURN_IF_ERROR(
-      shmem::ShmemInitAttr(shmem::MORI_SHMEM_INIT_WITH_UNIQUEID, &init_attr));
+      mori::cco::ccoCommCreate(uid, nranks, rank, poolSizeInMB, &comm),
+      "Failed to create CCO comm");
+  VLOG(1) << "Created CCO comm for rank " << rank << " sz "
+          << comm->perRankSize;
+
+  // In case of failure, ccoCommDestroy is called by
+  // CollectivesFacade::TearDown.
+  XLA_MORI_RETURN_IF_ERROR(
+      CollectivesFacade::Create(comm, rank, nranks, poolSizeInMB,
+                                maxStagingInMB),
+      "Failed to create CollectivesFacade");
+
   VLOG(1) << "Initialized MORI PE rank " << rank << " of " << nranks;
   return absl::OkStatus();
 }
 
 absl::StatusOr<void*> MoriCollectives::Allocate(uint64_t bytes) {
-  void* buffer = shmem::ShmemMalloc(bytes);  // ShmemMallocAlign
+  void* buffer = CollectivesFacade::Allocate(bytes);
   if (buffer == nullptr) {
-    return absl::InternalError(
-        absl::StrFormat("Failed to allocate %s (%llu bytes) from MORI memory",
-                        tsl::strings::HumanReadableNumBytes(bytes), bytes));
+    return absl::InternalError(absl::StrFormat(
+        "Failed to allocate %llu bytes from MORI memory", bytes));
   }
-  VLOG(3) << absl::StreamFormat("Allocated %s (%llu bytes) for MORI: %p",
-                                tsl::strings::HumanReadableNumBytes(bytes),
-                                bytes, buffer);
+  VLOG(3) << absl::StreamFormat("Allocated %llu bytes for MORI: %p", bytes,
+                                buffer);
   return buffer;
 }
 
 absl::Status MoriCollectives::Deallocate(void* buffer) {
   VLOG(3) << absl::StreamFormat("Start de-allocation for MORI buffer: %p",
                                 buffer);
-  shmem::ShmemFree(buffer);
+  XLA_MORI_RETURN_IF_ERROR(CollectivesFacade::Deallocate(buffer),
+                           "Failed to deallocate MORI buffer");
   return absl::OkStatus();
 }
 

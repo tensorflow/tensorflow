@@ -14,7 +14,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_MORI_COMMUNICATOR_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,8 +35,11 @@ limitations under the License.
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
+
+namespace mori::collective {
+class CollectivesFacade;
+}  // namespace mori::collective
 
 namespace mori::collective {
 class CollectivesFacade;
@@ -205,12 +207,11 @@ class MoriCommunicator : public GpuCommunicator {
 
   // This communicator's participant set (NOT the global MORI clique). `rank_`
   // is this rank within the collective, `num_ranks_` the participant count.
+  // is this rank within the collective, `num_ranks_` the participant count.
   int rank_ = 0;
   int num_ranks_ = 0;
-  // Owns this communicator's staging buffer + group counters (created in
-  // Create(), freed by the facade dtor before ShmemFinalize). Header-only
-  // facade.
-  std::unique_ptr<::mori::collective::CollectivesFacade> facade_;
+  // Reference to the CollectivesFacade singleton for the current device.
+  mori::collective::CollectivesFacade* facade_ = nullptr;
   // Should all pending collectives cancel?
   std::shared_ptr<CancellationToken> cancel_;
   bool aborted_ = false;  // Has Abort() been called?

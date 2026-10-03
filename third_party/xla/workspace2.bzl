@@ -82,7 +82,6 @@ load("//third_party/slinky:workspace.bzl", slinky = "repo")
 load("//third_party/spdlog:workspace.bzl", spdlog = "repo")
 load("//third_party/sqlite:workspace.bzl", sqlite = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
-load("//third_party/system_libpci:workspace.bzl", system_libpci = "repo")
 load("//third_party/tensor_ir:workspace.bzl", tensor_ir = "repo")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
@@ -144,7 +143,6 @@ def _initialize_third_party():
     rmm()
     robin_map()
     rdma_core()
-    system_libpci()  # ROCm CI image's pciutils headers (used by @roc_mori//:libpci).
     roc_mori()  # MORI: hermetic Bazel build from GitHub tarball + BUILD overlays.
     rocm_device_libs()
     shardy()
