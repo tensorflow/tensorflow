@@ -99,7 +99,8 @@ class FunctionCache:
     self._dispatch_dict[context].add_target(fn.function_type)
     self._primary[key] = fn
 
-    if self._max_capacity is not None and len(self._primary) > self._max_capacity:
+    if (self._max_capacity is not None and
+        len(self._primary) > self._max_capacity):
       evicted_key, _ = self._primary.popitem(last=False)
       evicted_context, evicted_type = evicted_key
       if evicted_context in self._dispatch_dict:
