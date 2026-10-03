@@ -5836,6 +5836,7 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
     """
     if not isinstance(name, str):
       raise ValueError("name for name_scope must be a string.")
+
     self._name = name
     self._exit_fns = []
 
@@ -5857,6 +5858,12 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       # This also prevents auto-incrementing.
       old_name = ctx.scope_name
       name = self._name
+      if name and not _VALID_SCOPE_NAME_REGEX.match(name):
+        raise ValueError(
+            f"'{name}' is not a valid scope name. A scope name has to "
+            f"match the following pattern: "
+            f"{_VALID_SCOPE_NAME_REGEX.pattern}")
+
       if not name:
         scope_name = ""
       elif name[-1] == "/":
