@@ -375,9 +375,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
         init_data = reinterpret_cast<const char*>(op->custom_options()->data());
         init_data_size = op->custom_options()->size();
       } else if (op->large_custom_options_offset() > 1 && allocation_) {
-        if (op->large_custom_options_offset() +
-                op->large_custom_options_size() >
-            allocation_->bytes()) {
+        if (op->large_custom_options_offset() > allocation_->bytes() ||
+            op->large_custom_options_size() >
+                allocation_->bytes() - op->large_custom_options_offset()) {
           TF_LITE_REPORT_ERROR(
               error_reporter_,
               "Custom Option Offset for opcode_index %d is out of bound\n",
@@ -501,72 +501,16 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   if (src_quantization->details_type() ==
       QuantizationDetails_BlockwiseQuantization) {
     auto* src_quant = src_quantization->details_as_BlockwiseQuantization();
-    if (!src_quant) {
-      TF_LITE_REPORT_ERROR(error_reporter_,
-                           "Blockwise quantization details are missing.");
-      return kTfLiteError;
-    }
-    // `block_shape` supersedes `block_size`. It is only meaningful if it has
-    // exactly one entry per dimension of the tensor, so reject anything else
-    // rather than silently falling back to `block_size`, which would produce
-    // wrong values.
-    const auto* block_shape = src_quant->block_shape();
-    if (block_shape && !block_shape->empty()) {
-      if (!dims.empty() &&
-          static_cast<size_t>(block_shape->size()) != dims.size()) {
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
-            "BlockwiseQuantization block_shape must have one entry per "
-            "dimension. Expected %d entries, got %d.",
-            static_cast<int>(dims.size()), block_shape->size());
-        return kTfLiteError;
-      }
-      for (int i = 0; i < block_shape->size(); ++i) {
-        if (block_shape->Get(i) <= 0) {
-          TF_LITE_REPORT_ERROR(error_reporter_,
-                               "BlockwiseQuantization block_shape entries must "
-                               "be positive. Value %d at index %d is invalid.",
-                               block_shape->Get(i), i);
-          return kTfLiteError;
-        }
-      }
-      auto* blockwise_quantization_v2 =
-          reinterpret_cast<TfLiteBlockwiseQuantizationV2*>(
-              malloc(sizeof(TfLiteBlockwiseQuantizationV2)));
-      if (!blockwise_quantization_v2) {
-        return kTfLiteError;
-      }
-      blockwise_quantization_v2->scale = src_quant->scales();
-      blockwise_quantization_v2->zero_point = src_quant->zero_points();
-      blockwise_quantization_v2->quantized_dimension =
-          src_quantization->quantized_dimension();
-      blockwise_quantization_v2->blocksize = src_quant->block_size();
-      blockwise_quantization_v2->block_shape =
-          TfLiteIntArrayCreate(static_cast<int>(block_shape->size()));
-      if (!blockwise_quantization_v2->block_shape) {
-        free(blockwise_quantization_v2);
-        return kTfLiteError;
-      }
-      for (int i = 0; i < block_shape->size(); ++i) {
-        blockwise_quantization_v2->block_shape->data[i] = block_shape->Get(i);
-      }
-      quantization->type = kTfLiteBlockwiseQuantizationV2;
-      quantization->params = reinterpret_cast<void*>(blockwise_quantization_v2);
-      return kTfLiteOk;
-    }
-    auto* blockwise_quantization_v1 =
+    quantization->type = kTfLiteBlockwiseQuantization;
+    auto* blockwise_quantization =
         reinterpret_cast<TfLiteBlockwiseQuantization*>(
             malloc(sizeof(TfLiteBlockwiseQuantization)));
-    if (!blockwise_quantization_v1) {
-      return kTfLiteError;
-    }
-    blockwise_quantization_v1->scale = src_quant->scales();
-    blockwise_quantization_v1->zero_point = src_quant->zero_points();
-    blockwise_quantization_v1->quantized_dimension =
+    blockwise_quantization->scale = src_quant->scales();
+    blockwise_quantization->zero_point = src_quant->zero_points();
+    blockwise_quantization->quantized_dimension =
         src_quantization->quantized_dimension();
-    blockwise_quantization_v1->blocksize = src_quant->block_size();
-    quantization->type = kTfLiteBlockwiseQuantization;
-    quantization->params = reinterpret_cast<void*>(blockwise_quantization_v1);
+    blockwise_quantization->blocksize = src_quant->block_size();
+    quantization->params = reinterpret_cast<void*>(blockwise_quantization);
     return kTfLiteOk;
   }
   if (!src_quantization->scale() || src_quantization->scale()->empty()) {
@@ -729,7 +673,7 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
     const flatbuffers::Vector<flatbuffers::Offset<SignatureDef>>*
         signature_def_list,
     Interpreter* interpreter) {
-  if (signature_def_list == nullptr || signature_def_list->empty()) {
+  if (signature_def_list == nullptr || signature_def_list->size() == 0) {
     return kTfLiteOk;
   }
   std::vector<internal::SignatureDef> signature_defs;
@@ -811,7 +755,8 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
           *buffer_data = reinterpret_cast<const char*>(array->data());
           return kTfLiteOk;
         } else if (offset > 1 && allocation_) {
-          if (offset + buffer->size() > allocation_->bytes()) {
+          if (offset > allocation_->bytes() ||
+              buffer->size() > allocation_->bytes() - offset) {
             TF_LITE_REPORT_ERROR(
                 error_reporter_,
                 "Constant buffer %d specified an out of range offset.\n",
@@ -967,7 +912,7 @@ TfLiteStatus InterpreterBuilder::operator()(
   auto* subgraphs = model_->subgraphs();
   auto* buffers = model_->buffers();
 
-  if (subgraphs->empty()) {
+  if (subgraphs->size() == 0) {
     TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
     return kTfLiteError;
   }
