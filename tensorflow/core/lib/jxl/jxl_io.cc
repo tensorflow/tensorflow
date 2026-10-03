@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -68,14 +69,38 @@ bool DecodeHeader(absl::string_view encoded, int* width, int* height,
     if (JXL_DEC_SUCCESS != JxlDecoderGetBasicInfo(dec.get(), &info)) {
       return false;
     }
+    // `info.xsize`, `info.ysize` and `info.num_color_channels` are uint32_t,
+    // while the callers hold these values in `int`. Reject anything that does
+    // not fit rather than narrowing: a value above INT_MAX becomes negative,
+    // and the caller then builds a TensorShape from it, which CHECK-fails and
+    // aborts the process. The channel bound also leaves room for the alpha
+    // channel added below so that sum cannot overflow either.
+    constexpr uint32_t kMaxInt =
+        static_cast<uint32_t>(std::numeric_limits<int>::max());
+    if (info.xsize > kMaxInt || info.ysize > kMaxInt ||
+        info.num_color_channels > kMaxInt - (info.alpha_bits != 0 ? 1 : 0)) {
+      return false;
+    }
+    const uint32_t num_channels =
+        info.num_color_channels + (info.alpha_bits != 0 ? 1 : 0);
+    // TensorShape also CHECK-fails when the element count of
+    // {height, width, channels} does not fit in int64_t, so reject headers
+    // whose product would overflow. Divide rather than multiply so the check
+    // itself cannot overflow.
+    if (num_channels > 0 &&
+        static_cast<uint64_t>(info.xsize) * info.ysize >
+            static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) /
+                num_channels) {
+      return false;
+    }
     if (width != nullptr) {
-      *width = info.xsize;
+      *width = static_cast<int>(info.xsize);
     }
     if (height != nullptr) {
-      *height = info.ysize;
+      *height = static_cast<int>(info.ysize);
     }
     if (channels != nullptr) {
-      *channels = info.num_color_channels + (info.alpha_bits != 0);
+      *channels = static_cast<int>(num_channels);
     }
     if (bit_depth != nullptr) {
       *bit_depth = info.bits_per_sample;
@@ -139,6 +164,14 @@ bool DecodeImage(absl::string_view encoded, int channels, int channel_bits,
       xsize = info.xsize;
       ysize = info.ysize;
       if (xsize == 0 || ysize == 0) return false;
+      // Reject sizes whose byte count wraps around size_t, which would let an
+      // undersized output buffer pass the checks below and in
+      // JXL_DEC_NEED_IMAGE_OUT_BUFFER, which use the same product.
+      if (channels > 0 &&
+          xsize > std::numeric_limits<size_t>::max() / ysize /
+                      static_cast<size_t>(channels) / bytes_per_sample) {
+        return false;
+      }
       if (output_size_bytes < xsize * ysize * channels * bytes_per_sample) {
         return false;
       }
