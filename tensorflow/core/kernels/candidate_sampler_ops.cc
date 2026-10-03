@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/candidate_sampling_ops.cc.
-
+#include <cfloat>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -26,14 +28,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #define EIGEN_USE_THREADS
 
-#include <cfloat>
-#include <vector>
-
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/range_sampler.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
 namespace tensorflow {
@@ -52,7 +53,7 @@ class BaseCandidateSamplerOp : public OpKernel {
     const Tensor& true_classes = context->input(0);
     OP_REQUIRES(context, true_classes.dims() == 2,
                 absl::InvalidArgumentError("true_classes must be a matrix"));
-    const int32_t batch_size = true_classes.dim_size(0);
+    const int64_t batch_size = true_classes.dim_size(0);
     OP_REQUIRES(context, true_classes.dim_size(1) == num_true_,
                 absl::InvalidArgumentError(absl::StrCat(
                     "true_classes must have "
@@ -101,10 +102,10 @@ class BaseCandidateSamplerOp : public OpKernel {
     // Approximately conservatively estimate the number of samples required.
     // In cases where rejection sampling is used we may occasionally use more
     // samples than expected, which will result in reused random bits.
-    const int64_t samples32 = 2048 * num_sampled_;
+    const int64_t samples128 = 512 * static_cast<int64_t>(num_sampled_);
 
     // Pick sampled candidates.
-    auto local_gen = generator_.ReserveSamples32(samples32);
+    auto local_gen = generator_.ReserveSamples128(samples128);
     random::SimplePhilox random(&local_gen);
     sampler_->SampleBatchGetExpectedCount(&random, unique_, sampled_candidate,
                                           sampled_expected_count,
@@ -170,6 +171,12 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
+    OP_REQUIRES(context, range_max > 0,
+                absl::InvalidArgumentError("range_max must be positive."));
+    // Limit range_max to prevent OOM when constructing the weights vector.
+    OP_REQUIRES(
+        context, range_max < std::numeric_limits<int32_t>::max(),
+        absl::InvalidArgumentError("range_max exceeds safe vector limits."));
     std::string vocab_file;
     OP_REQUIRES_OK(context, context->GetAttr("vocab_file", &vocab_file));
     std::vector<float> unigrams;
@@ -185,18 +192,31 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
     int64_t num_reserved_ids;
     OP_REQUIRES_OK(context,
                    context->GetAttr("num_reserved_ids", &num_reserved_ids));
+    OP_REQUIRES(
+        context, num_reserved_ids >= 0,
+        absl::InvalidArgumentError("num_reserved_ids must be non-negative."));
+    OP_REQUIRES(
+        context, num_reserved_ids <= range_max,
+        absl::InvalidArgumentError("num_reserved_ids must be <= range_max."));
     int64_t num_shards;
     OP_REQUIRES_OK(context, context->GetAttr("num_shards", &num_shards));
     int64_t shard;
     OP_REQUIRES_OK(context, context->GetAttr("shard", &shard));
-    FixedUnigramSampler* sampler = new FixedUnigramSampler(
+    OP_REQUIRES(
+        context, num_shards > 0,
+        absl::InvalidArgumentError("num_shards must be strictly positive."));
+    OP_REQUIRES(
+        context, shard >= 0 && shard < num_shards,
+        absl::InvalidArgumentError("shard must be in [0, num_shards)."));
+    auto sampler = std::make_unique<FixedUnigramSampler>(
         range_max, distortion, num_reserved_ids, num_shards, shard);
-    if (!vocab_file.empty())
+    if (!vocab_file.empty()) {
       OP_REQUIRES_OK(
           context, sampler->SetDistributionSampler(context->env(), vocab_file));
-    else
+    } else {
       OP_REQUIRES_OK(context, sampler->SetDistributionSampler(unigrams));
-    set_sampler(sampler);
+    }
+    set_sampler(sampler.release());
   }
 };
 
@@ -220,6 +240,9 @@ class ComputeAccidentalHitsOp : public OpKernel {
                     "true_candidates must be a batch_size * num_true matrix"));
 
     const int64_t batch_size = in_true_candidates_shape.dim_size(0);
+    OP_REQUIRES(context, batch_size <= std::numeric_limits<int32_t>::max(),
+                absl::InvalidArgumentError(
+                    "batch_size exceeds maximum supported int32 limit."));
 
     const Tensor& in_sampled_candidates = context->input(1);
     OP_REQUIRES(context,
@@ -229,14 +252,17 @@ class ComputeAccidentalHitsOp : public OpKernel {
                     "an output from CandidateSampler"));
 
     const int64_t num_sampled = in_sampled_candidates.dim_size(0);
-    absl::flat_hash_map<int64_t, int> sampled_candidate_to_pos;
+    OP_REQUIRES(context, num_sampled <= std::numeric_limits<int32_t>::max(),
+                absl::InvalidArgumentError("num_sampled exceeds int32 limit."));
+    absl::flat_hash_map<int64_t, int32_t> sampled_candidate_to_pos;
     sampled_candidate_to_pos.reserve(num_sampled);
     for (int64_t i = 0; i < num_sampled; ++i) {
-      sampled_candidate_to_pos[in_sampled_candidates.vec<int64_t>()(i)] = i;
+      sampled_candidate_to_pos[in_sampled_candidates.vec<int64_t>()(i)] =
+          static_cast<int32_t>(i);
     }
 
     // Produce output in the same format as UnpackSparseFeatures.
-    std::vector<int> indices;
+    std::vector<int32_t> indices;
     std::vector<int64_t> ids;
     std::vector<float> weights;
 
@@ -246,7 +272,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
             in_true_candidates.matrix<int64_t>()(i, j);
         const auto look = sampled_candidate_to_pos.find(true_candidate);
         if (look != sampled_candidate_to_pos.end()) {
-          indices.push_back(i);
+          indices.push_back(static_cast<int32_t>(i));
           ids.push_back(look->second);
           weights.push_back(-FLT_MAX);
         }
@@ -254,19 +280,20 @@ class ComputeAccidentalHitsOp : public OpKernel {
     }
 
     Tensor* out_indices = nullptr;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(
-            0, TensorShape({static_cast<int>(indices.size())}), &out_indices));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       0, TensorShape({static_cast<int64_t>(indices.size())}),
+                       &out_indices));
     Tensor* out_ids = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(
-                     1, TensorShape({static_cast<int>(ids.size())}), &out_ids));
-    Tensor* out_weights = nullptr;
-    OP_REQUIRES_OK(
         context,
         context->allocate_output(
-            2, TensorShape({static_cast<int>(weights.size())}), &out_weights));
+            1, TensorShape({static_cast<int64_t>(ids.size())}), &out_ids));
+    Tensor* out_weights = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       2, TensorShape({static_cast<int64_t>(weights.size())}),
+                       &out_weights));
 
     for (size_t i = 0; i < indices.size(); ++i) {
       out_indices->vec<int32_t>()(i) = indices[i];
