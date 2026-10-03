@@ -114,6 +114,11 @@ class QuantizeV2Op : public OpKernel {
     const Tensor& input_min_range = ctx->input(1);
     const Tensor& input_max_range = ctx->input(2);
 
+    OP_REQUIRES(ctx, axis_ >= -1,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Axis must be at least -1, where -1 selects per-tensor "
+                    "quantization, got ", axis_)));
+
     int num_slices = 1;
     if (axis_ > -1) {
       OP_REQUIRES(
