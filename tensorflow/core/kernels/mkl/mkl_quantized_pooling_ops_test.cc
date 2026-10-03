@@ -293,7 +293,45 @@ TEST_F(QuantizedPoolingTest, KsizeLargerThanInputDimReturnsInvalidArgument) {
   AddInputFromArray<float>(TensorShape({}), {input_max});
   Status status = RunOpKernel();
   EXPECT_TRUE(absl::IsInvalidArgument(status));
-  EXPECT_TRUE(absl::StrContains(status.message(), "ksize dimension"));
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Computed output size would be negative"));
+}
+
+TEST_F(QuantizedPoolingTest, OversizedValidWindowReturnsEmptyWithMinMax) {
+  // VALID window larger than spatial input yields empty pooled output (H=0),
+  // but min/max outputs must still be allocated and pass through.
+  const int ksize_h = 3;
+  const int ksize_w = 1;
+  const int stride = 1;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_max_pool_op", "_MklQuantizedMaxPool")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("ksize", {1, ksize_h, ksize_w, 1})
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "VALID")
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  const float input_min = 0.0f;
+  const float input_max = 255.0f;
+  Tensor input_float(DT_FLOAT, {1, 2, 1, 3});
+  test::FillValues<float>(&input_float, {1, 2, 3, 4, 5, 6});
+  Tensor input_quantized =
+      FloatTensorToQuantized<quint8>(input_float, input_min, input_max);
+  AddInputFromArray<quint8>(input_quantized.shape(),
+                            input_quantized.flat<quint8>());
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  const Tensor& output = *GetOutput(0);
+  EXPECT_EQ(output.NumElements(), 0);
+  EXPECT_EQ(output.shape(), TensorShape({1, 0, 1, 3}));
+  EXPECT_EQ(GetOutput(1)->scalar<float>()(), input_min);
+  EXPECT_EQ(GetOutput(2)->scalar<float>()(), input_max);
 }
 
 }  // namespace tensorflow
