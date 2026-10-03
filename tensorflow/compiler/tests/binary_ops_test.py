@@ -1236,6 +1236,30 @@ class BinaryOpsTest(xla_test.XLATestCase):
         np.full([1, 1, 3, 5], 3., dtype=np.float32),
         expected=np.full([4, 5, 1, 2, 5], 18., dtype=np.float32))
 
+  def testBatchMatMulRejectsMismatchedInnerDimensions(self):
+    # xla::BatchDot broadcasts an inner dimension of size 1, but TensorFlow's
+    # BatchMatMul requires the inner dimensions to match. With unknown shapes,
+    # shape inference doesn't reject them first, and matmul emits
+    # BatchMatMulV2.
+    for x_shape, y_shape, adjoint_a, adjoint_b in (
+        ([1, 4], [1, 1], False, False),
+        ([2, 3, 4], [2, 1, 5], False, False),
+        ([4, 1], [1, 1], True, False),
+        ([1, 4], [2, 1], False, True),
+    ):
+      with self.subTest(x_shape=x_shape, y_shape=y_shape), self.session():
+        with self.test_scope():
+          x = array_ops.placeholder(dtypes.float32)
+          y = array_ops.placeholder(dtypes.float32)
+          output = math_ops.matmul(
+              x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "Matrix size-incompatible"):
+          output.eval({
+              x: np.ones(x_shape, dtype=np.float32),
+              y: np.ones(y_shape, dtype=np.float32)
+          })
+
   def testPad(self):
     for dtype, pad_type in itertools.product(self.numeric_types,
                                              [np.int32, np.int64]):
