@@ -41,7 +41,7 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
     InferenceContext* c, DimensionHandle input_size,
     DimensionOrConstant filter_size, int64_t dilation_rate, int64_t stride,
     Padding padding_type, int64_t padding_before, int64_t padding_after,
-    DimensionHandle* output_size);
+    DimensionHandle* output_size, bool allow_zero_output = false);
 
 // Transfers shape of input(0) to output(0).
 absl::Status UnchangedShape(shape_inference::InferenceContext* c);
@@ -127,6 +127,10 @@ absl::Status ConvShape(shape_inference::InferenceContext* c);
 
 // Shape function for Conv2D-like operations that support explicit padding.
 absl::Status Conv2DShapeWithExplicitPadding(
+    shape_inference::InferenceContext* c);
+
+// Conv2D shape function that also permits a zero-sized spatial output.
+absl::Status Conv2DShapeWithExplicitPaddingAllowZero(
     shape_inference::InferenceContext* c);
 
 // Shape function for Conv2D-like operations that do not support explicit
