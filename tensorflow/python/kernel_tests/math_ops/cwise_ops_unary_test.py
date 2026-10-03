@@ -268,6 +268,48 @@ class UnaryOpTest(test.TestCase):
     self.assertTrue(np.isnan(y[2]))
     self.assertTrue(np.isnan(y[3]))
 
+  def testDoubleErfLargeFinite(self):
+    # Regression test for GitHub issue #124773: Eigen's double erf used to
+    # return NaN for very large finite inputs (and +/-inf) because intermediate
+    # x*x overflowed. Cover scalar and packet paths against math.erf.
+    max_double = np.finfo(np.float64).max
+    positive = np.array(
+        [28.0, np.nextafter(28.0, 0.0), np.nextafter(28.0, np.inf),
+         np.sqrt(max_double), max_double, 1e200, 1e300, np.inf],
+        dtype=np.float64,
+    )
+    values = np.concatenate([positive, -positive, [0.0, -0.0, np.nan]])
+    for value in values:
+      for x in (np.array(value), np.array([value])):
+        y = self.evaluate(math_ops.erf(ops.convert_to_tensor(x)))
+        self.assertAllClose(np.vectorize(math.erf)(x), y)
+        if value == 0.0:
+          self.assertAllEqual(np.signbit(x), np.signbit(y))
+    # Interleave NaNs and ordinary values with the boundary/extreme inputs so
+    # every packet lane is exercised, including negative extremes and +/-inf.
+    nan_x = np.array(
+        [[value, np.nan, 1.0, -1.0] for value in values], dtype=np.float64
+    ).reshape(-1)
+    nan_y_vec = self.evaluate(math_ops.erf(ops.convert_to_tensor(nan_x)))
+    self.assertAllClose(np.vectorize(math.erf)(nan_x), nan_y_vec)
+    self.assertAllEqual(np.isnan(nan_x), np.isnan(nan_y_vec))
+    batched_x = nan_x.reshape(-1, 4)
+    batched_y = self.evaluate(math_ops.erf(ops.convert_to_tensor(batched_x)))
+    self.assertEqual(batched_y.shape, batched_x.shape)
+    self.assertAllClose(np.vectorize(math.erf)(batched_x), batched_y)
+    self.assertAllEqual(np.isnan(batched_x), np.isnan(batched_y))
+    # Empty inputs preserve their shape without evaluating any erf lanes.
+    for shape in ((0,), (2, 0, 3)):
+      empty_x = np.empty(shape, dtype=np.float64)
+      empty_y = self.evaluate(math_ops.erf(ops.convert_to_tensor(empty_x)))
+      self.assertEqual(empty_y.shape, shape)
+      self.assertEqual(empty_y.size, 0)
+    zero_x = np.array([0.0, -0.0] * 8, dtype=np.float64)
+    zero_y = self.evaluate(
+        math_ops.erf(ops.convert_to_tensor(zero_x))
+    )
+    self.assertAllEqual(np.signbit(zero_x), np.signbit(zero_y))
+
   @test_util.run_deprecated_v1
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
