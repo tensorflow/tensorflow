@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/message_lite.h"
 #include "riegeli/messages/serialize_message.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/util/split_proto/proto_field_size_utils.h"
