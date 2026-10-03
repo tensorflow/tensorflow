@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/tools/compare_literals/element_comparator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
 namespace xla::compare_literals {
