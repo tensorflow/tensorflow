@@ -1663,7 +1663,8 @@ def TPU_EnqueueDMAOp : TPU_Op<"enqueue_dma", [AttrSizedOperandSegments]> {
     Optional<I32>:$subcore_id,
     // Smaller number means higher priority. 0 is the highest and the default.
     DefaultValuedAttr<I32Attr, "0">:$priority,
-    DefaultValuedAttr<BoolAttr, "false">:$strict_ordering
+    DefaultValuedAttr<BoolAttr, "false">:$strict_ordering,
+    DefaultValuedOptionalAttr<I32Attr, "0">:$dma_type
   );
   let assemblyFormat = [{
     `source` `(` $source `:` type($source) `)`
