@@ -337,6 +337,7 @@ def tf_proto_library(
 
 def tf_additional_lib_hdrs():
     return [
+        clean_dep("//xla/tsl/platform/default:casts.h"),
         clean_dep("//xla/tsl/platform/default:context.h"),
         clean_dep("//xla/tsl/platform/default:criticality.h"),
         clean_dep("//xla/tsl/platform/default:stacktrace.h"),
