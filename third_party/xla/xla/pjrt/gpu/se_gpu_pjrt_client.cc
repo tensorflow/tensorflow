@@ -1883,7 +1883,7 @@ std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
   attrs.attributes["dump_on_deserialize"] = true;
   attrs.attributes["should_stage_host_to_device_transfers"] =
       raw_client->should_stage_host_to_device_transfers();
-  auto result = std::make_unique<PjRtStreamExecutorClient>(
+  auto result = std::make_unique<CommonPjRtClientImpl>(
       tsl::Fingerprint64(platform_name), platform_name, platform_version,
       process_index, std::move(topology), std::move(raw_client),
       std::move(kv_store), std::move(attrs));

@@ -364,42 +364,6 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
   }
 }
 
-// Adds necessary synchronization after a copy has been enqueued to a buffer.
-// definition_event was added when the buffer was allocated, but has not yet
-// had an event recorded.
-absl::Status AddDestinationBufferSynchronization(
-    PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
-    BufferSequencingEventRef definition_event, se::Stream* copy_stream) {
-  absl::Status status = client->raw_client()->AllocateAndRecordEvent(
-      definition_event, local_device, copy_stream,
-      "AddDestinationBufferSynchronization");
-  if (!status.ok()) {
-    StallStreamOnError(local_device, copy_stream);
-  }
-  return status;
-}
-
-// We wait for events that the compute stream didn't already wait for. Based on
-// our heuristics, for usage events, this rare case should only occur when a
-// buffer was copied to a device and then never used there. In that case we get
-// a new stream and use it to hold onto a reference to the buffer until the
-// events are complete.
-void MaybeWaitForEventOnStream(const BufferSequencingEventRef& event,
-                               LocalDeviceState* local_device_state,
-                               se::Stream*& stream) {
-  if (!event->IsPredeterminedErrorOrDefinedOn(
-          local_device_state->compute_stream()) &&
-      !event->IsComplete()) {
-    if (stream == nullptr) {
-      stream = local_device_state->GetFixedSizePoolUsageStream();
-    }
-    VLOG(2) << "Waiting for event: " << &*event
-            << "; is_predetermined_error: " << event->IsPredeterminedError()
-            << "; on stream: " << stream;
-    event->WaitForEventOnStream(stream);
-  }
-}
-
 }  // namespace
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
@@ -2060,24 +2024,6 @@ absl::Status PjRtStreamExecutorRawClient::WaitOnStream(
     std::intptr_t stream) {
   return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(
       stream);
-}
-
-bool PjRtStreamExecutorClient::ShouldDoDirectTransfer(
-    const MutableLiteralBase& literal, const Shape& shape,
-    PjRtMemorySpace* memory_space) const {
-  if (shape.IsTuple()) {
-    return false;
-  }
-  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
-    return false;
-  }
-
-  if (literal.shape().has_layout()) {
-    return Layout::Equal().IgnoreMemorySpace()(shape.layout(),
-                                               literal.shape().layout());
-  }
-
-  return LayoutUtil::HasDescendingLayout(shape.layout());
 }
 
 void PjRtStreamExecutorRawClient::ScheduleRemoteSend(

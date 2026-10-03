@@ -951,6 +951,48 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
   return event.value();
 }
 
+bool CommonPjRtClient::ShouldDoDirectTransfer(
+    const MutableLiteralBase& literal, const Shape& shape,
+    PjRtMemorySpace* memory_space) const {
+  if (shape.IsTuple()) {
+    return false;
+  }
+  if (!IsGpuId(platform_id()) && should_stage_host_to_device_transfers() &&
+      !raw_client()->IsDmaMapped(literal.untyped_data(),
+                                 literal.size_bytes())) {
+    return false;
+  }
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    return false;
+  }
+  if (!shape.layout().tiles().empty()) {
+    if (primitive_util::ByteWidth(shape.element_type()) > 4) {
+      return false;
+    }
+    if (shape.layout().tiles()[0].dimensions() !=
+        absl::Span<const int64_t>({1})) {
+      return false;
+    }
+  }
+  auto kind = GetDynamicShapeKind(memory_space->kind_id());
+  auto requirements =
+      PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
+  if (requirements.size != ShapeUtil::ByteSizeOf(shape)) {
+    return false;
+  }
+  if (literal.shape().has_layout()) {
+    return Layout::Equal()
+        .IgnoreTiles()
+        .IgnoreTailPaddingAlignmentInElements()
+        .IgnoreMemorySpace()(shape.layout(), literal.shape().layout());
+  }
+  return Layout::Equal()
+      .IgnoreTiles()
+      .IgnoreTailPaddingAlignmentInElements()
+      .IgnoreMemorySpace()(shape.layout(), LayoutUtil::MakeDescendingLayout(
+                                               shape.dimensions().size()));
+}
+
 absl::Status CommonPjRtClient::Delinearize(absl::Span<const uint8_t> input_data,
                                            const Shape& shape,
                                            MutableLiteralBase* literal,
@@ -4115,7 +4157,8 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                 return;
               }
               raw_buffer = *status_or_buffer;
-              if (common_client->ShouldDoDirectTransfer(
+              if (raw_buffer->GetHostPointer() == nullptr &&
+                  common_client->ShouldDoDirectTransfer(
                       *literal, shape, raw_buffer->memory_space())) {
                 tsl::profiler::TraceMe traceme([&] {
                   return tsl::profiler::TraceMeEncode(

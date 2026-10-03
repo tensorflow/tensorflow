@@ -388,25 +388,6 @@ class PjRtStreamExecutorExecutableLoadState : public PjRtExecutableLoadState {
   std::atomic<bool> is_deleted_{false};
 };
 
-class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
- public:
-  using CommonPjRtClientImpl::CommonPjRtClientImpl;
-  ~PjRtStreamExecutorClient() override = default;
-
-  PjRtStreamExecutorRawClient* raw_client() const override {
-    return absl::down_cast<PjRtStreamExecutorRawClient*>(
-        CommonPjRtClientImpl::raw_client());
-  }
-
-  bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
-                              const Shape& shape,
-                              PjRtMemorySpace* memory_space) const override;
-
- protected:
-  friend class PjRtStreamExecutorRawBuffer;
-  friend class PjRtStreamExecutorRawLoadedExecutable;
-};
-
 struct PjRtStreamExecutorExecutionOutput {
   // Buffers to be released after the execution is complete.
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;

@@ -85,11 +85,9 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool dump_on_deserialize() const { return false; }
   virtual bool should_stage_host_to_device_transfers() const { return false; }
   // Returns true if we should skip the staging buffer during ToLiteral.
-  virtual bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
-                                      const Shape& shape,
-                                      PjRtMemorySpace* memory_space) const {
-    return false;
-  }
+  bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
+                              const Shape& shape,
+                              PjRtMemorySpace* memory_space) const;
 
   tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space);
