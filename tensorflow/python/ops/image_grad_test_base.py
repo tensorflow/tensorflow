@@ -644,29 +644,32 @@ class CropAndResizeOpTestBase(test.TestCase):
                     self.assertLess(err, 2e-3)
 
   def testGradOpsRejectNonFiniteBoxes(self):
-    grads = np.ones((1, 2, 2, 1), dtype=np.float32)
-    image = np.ones((1, 4, 4, 1), dtype=np.float32)
     box_ind = np.array([0], dtype=np.int32)
     image_size = np.array([1, 4, 4, 1], dtype=np.int32)
-    for bad_val in [np.nan, np.inf, -np.inf]:
-      boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
-      # On both CPU and GPU, non-finite coordinates are safely skipped by the
-      # inverted NaN-safe bounds checks, preventing memory corruption or crashes.
-      grad_boxes = self.evaluate(
-          image_ops.crop_and_resize_grad_boxes(
-              grads, image, boxes_bad, box_ind
-          )
-      )
-      self.assertIsNotNone(grad_boxes)
-      grad_image = self.evaluate(
-          image_ops.crop_and_resize_grad_image(
-              grads, boxes_bad, box_ind, image_size, T=dtypes.float32
-          )
-      )
-      self.assertIsNotNone(grad_image)
+    for dtype in [np.float16, np.float32, np.float64]:
+      grads = np.ones((1, 2, 2, 1), dtype=dtype)
+      image = np.ones((1, 4, 4, 1), dtype=dtype)
+      for bad_val in [np.nan, np.inf, -np.inf]:
+        boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
+        # On both CPU and GPU, non-finite coordinates are safely skipped by the
+        # inverted NaN-safe bounds checks, preventing memory corruption or crashes.
+        for use_gpu in [False, True]:
+          with self.cached_session(use_gpu=use_gpu):
+            grad_boxes = self.evaluate(
+                gen_image_ops.crop_and_resize_grad_boxes(
+                    grads, image, boxes_bad, box_ind
+                )
+            )
+            self.assertIsNotNone(grad_boxes)
+            grad_image = self.evaluate(
+                gen_image_ops.crop_and_resize_grad_image(
+                    grads, boxes_bad, box_ind, image_size, T=dtypes.as_dtype(dtype)
+                )
+            )
+            self.assertIsNotNone(grad_image)
 
   def testEmptyTensorRankCheck(self):
-    grads = np.ones((1, 2, 2, 1), dtype=np.float32)
+    grads = np.ones((0, 2, 2, 1), dtype=np.float32)
     image = np.ones((1, 4, 4, 1), dtype=np.float32)
     image_size = np.array([1, 4, 4, 1], dtype=np.int32)
 
@@ -679,7 +682,7 @@ class CropAndResizeOpTestBase(test.TestCase):
         "boxes must have 4 columns",
     ):
       self.evaluate(
-          image_ops.crop_and_resize_grad_boxes(
+          gen_image_ops.crop_and_resize_grad_boxes(
               grads, image, boxes_bad_cols, box_ind_valid
           )
       )
@@ -688,7 +691,7 @@ class CropAndResizeOpTestBase(test.TestCase):
         "boxes must have 4 columns",
     ):
       self.evaluate(
-          image_ops.crop_and_resize_grad_image(
+          gen_image_ops.crop_and_resize_grad_image(
               grads, boxes_bad_cols, box_ind_valid, image_size, T=dtypes.float32
           )
       )
@@ -702,7 +705,7 @@ class CropAndResizeOpTestBase(test.TestCase):
         "box_index must be 1-D",
     ):
       self.evaluate(
-          image_ops.crop_and_resize_grad_boxes(
+          gen_image_ops.crop_and_resize_grad_boxes(
               grads, image, boxes_valid, box_ind_bad_rank
           )
       )
@@ -711,7 +714,7 @@ class CropAndResizeOpTestBase(test.TestCase):
         "box_index must be 1-D",
     ):
       self.evaluate(
-          image_ops.crop_and_resize_grad_image(
+          gen_image_ops.crop_and_resize_grad_image(
               grads, boxes_valid, box_ind_bad_rank, image_size, T=dtypes.float32
           )
       )

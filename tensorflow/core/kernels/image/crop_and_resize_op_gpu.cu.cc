@@ -87,7 +87,7 @@ __global__ void CropAndResizeKernel(const int32_t nthreads,
         (crop_height > 1)
             ? y1 * image_height_minus_one + y * (y2 - y1) * height_scale_factor
             : 0.5f * (y1 + y2) * image_height_minus_one;
-    if (in_y < 0 || in_y > image_height_minus_one) {
+    if (!(in_y >= 0 && in_y <= image_height_minus_one)) {
       crops_ptr[out_idx] = extrapolation_value;
       continue;
     }
@@ -96,7 +96,7 @@ __global__ void CropAndResizeKernel(const int32_t nthreads,
         (crop_width > 1)
             ? x1 * image_width_minus_one + x * (x2 - x1) * width_scale_factor
             : 0.5f * (x1 + x2) * image_width_minus_one;
-    if (in_x < 0 || in_x > image_width_minus_one) {
+    if (!(in_x >= 0 && in_x <= image_width_minus_one)) {
       crops_ptr[out_idx] = extrapolation_value;
       continue;
     }

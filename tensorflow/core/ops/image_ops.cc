@@ -965,6 +965,14 @@ REGISTER_OP("CropAndResizeGradImage")
     .Attr("T: {float, half, double}")
     .Attr("method: {'bilinear', 'nearest'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &boxes));
+      ShapeHandle box_ind;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &box_ind));
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(box_ind, 0), &unused));
+
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(3, &out));
       TF_RETURN_IF_ERROR(c->WithRank(out, 4, &out));
@@ -981,6 +989,14 @@ REGISTER_OP("CropAndResizeGradBoxes")
     .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &boxes));
+      ShapeHandle box_ind;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &box_ind));
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(box_ind, 0), &unused));
+
       c->set_output(0, c->input(2));
       return absl::OkStatus();
     });
