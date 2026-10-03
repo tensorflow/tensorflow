@@ -883,9 +883,8 @@ struct functor_traits<scalar_erfinv_op<float>> {
 };
 
 // TF-owned wrapper avoids specializing Eigen's scalar_erf_op across translation
-// units. TODO: Remove this wrapper once the Eigen pin includes 3e5a2f92 (MR
-// !2306), which fixes erf returning NaN for large double inputs (GitHub issue
-// #124773).
+// units. TODO(#124773): Remove this wrapper once the Eigen pin includes
+// 3e5a2f92 (MR !2306), which fixes erf returning NaN for large double inputs.
 template <typename Scalar>
 struct erf_op : scalar_erf_op<Scalar> {};
 

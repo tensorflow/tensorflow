@@ -293,6 +293,11 @@ class UnaryOpTest(test.TestCase):
     nan_y_vec = self.evaluate(math_ops.erf(ops.convert_to_tensor(nan_x)))
     self.assertAllClose(np.vectorize(math.erf)(nan_x), nan_y_vec)
     self.assertAllEqual(np.isnan(nan_x), np.isnan(nan_y_vec))
+    # Explicitly exercise NaN handling on the CPU path.
+    with ops.device("/device:CPU:0"):
+      nan_y_vec_cpu = self.evaluate(math_ops.erf(ops.convert_to_tensor(nan_x)))
+      self.assertAllClose(np.vectorize(math.erf)(nan_x), nan_y_vec_cpu)
+      self.assertAllEqual(np.isnan(nan_x), np.isnan(nan_y_vec_cpu))
     batched_x = nan_x.reshape(-1, 4)
     batched_y = self.evaluate(math_ops.erf(ops.convert_to_tensor(batched_x)))
     self.assertEqual(batched_y.shape, batched_x.shape)
