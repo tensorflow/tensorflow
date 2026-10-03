@@ -436,11 +436,26 @@ def nextafter(x1, x2):
 @np_utils.np_doc('heaviside')
 def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
   def f(x1, x2):
-    return array_ops.where_v2(
-        x1 < 0,
-        constant_op.constant(0, dtype=x2.dtype),
-        array_ops.where_v2(x1 > 0, constant_op.constant(1, dtype=x2.dtype), x2),
+    dtype = x2.dtype
+    zero = constant_op.constant(0, dtype=dtype)
+    one = constant_op.constant(1, dtype=dtype)
+    result = array_ops.where_v2(
+        x1 > 0,
+        one,
+        array_ops.where_v2(x1 < 0, zero, x2),
     )
+    # NumPy propagates NaN from the first argument. TensorFlow's relational
+    # operators evaluate to False for NaN inputs, so the branches above
+    # silently return `x2` (or 0/1) instead of NaN. Mask those elements out.
+    # Integer dtypes cannot represent NaN, so only apply this to floating
+    # inputs.
+    if np.issubdtype(x1.dtype.as_numpy_dtype, np.inexact):
+      # `x1` and `x2` share a promoted dtype (see `_bin_op`), so when `x1` is
+      # floating-point `result` already is too; no extra cast is required
+      # before injecting NaN.
+      nan = constant_op.constant(np.nan, dtype=result.dtype)
+      result = array_ops.where_v2(math_ops.is_nan(x1), nan, result)
+    return result
 
   y = _bin_op(f, x1, x2)
   if not np.issubdtype(y.dtype.as_numpy_dtype, np.inexact):
