@@ -46,7 +46,9 @@ struct SparseConcatFunctor<CPUDevice, T> {
                   const OpInputList& vals, const OpInputList& shapes,
                   int concat_dim) {
     const int N = inds.size();
-    const TensorShape input_shape(shapes[0].vec<int64_t>());
+    TensorShape input_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                shapes[0].vec<int64_t>(), &input_shape));
     const int input_rank = input_shape.dims();
 
     // The input and output sparse tensors are assumed to be ordered along
@@ -72,7 +74,9 @@ struct SparseConcatFunctor<CPUDevice, T> {
     std::vector<sparse::SparseTensor> sp_inputs;
     sp_inputs.reserve(N);
     for (int i = 0; i < N; ++i) {
-      const TensorShape current_shape(shapes[i].vec<int64_t>());
+      TensorShape current_shape;
+      OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                  shapes[i].vec<int64_t>(), &current_shape));
       sparse::SparseTensor tensor;
       OP_REQUIRES_OK(context,
                      sparse::SparseTensor::Create(
@@ -175,7 +179,9 @@ class SparseConcatOp : public OpKernel {
                 absl::InvalidArgumentError(
                     "Encountered overflow from large input shape."));
 
-    const TensorShape input_shape(shapes[0].vec<int64_t>());
+    TensorShape input_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                shapes[0].vec<int64_t>(), &input_shape));
     const int input_rank = input_shape.dims();
     const int concat_dim = (concat_dim_attr_ < 0)
                                ? input_rank + concat_dim_attr_
@@ -190,7 +196,9 @@ class SparseConcatOp : public OpKernel {
     // then use SetDimWithStatus so RecomputeNumElements can catch
     // output volume overflow from the enlarged shape.
     for (int i = 1; i < N; ++i) {
-      const TensorShape current_shape(shapes[i].vec<int64_t>());
+      TensorShape current_shape;
+      OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                  shapes[i].vec<int64_t>(), &current_shape));
       OP_REQUIRES(
           context, current_shape.dims() == input_rank,
           absl::InvalidArgumentError(absl::StrCat(

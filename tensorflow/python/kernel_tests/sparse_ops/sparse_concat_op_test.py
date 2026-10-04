@@ -521,6 +521,26 @@ class SparseConcatTest(test.TestCase):
         concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
         self.evaluate(concat_op)
 
+  def testSparseConcatInputVolumeOverflowCrash(self):
+    # Each input volume already exceeds int64_max. The kernel must reject it
+    # with an OpError rather than abort during TensorShape construction.
+    int64_max = 9223372036854775807
+    dim_x = int64_max // 11
+
+    indices1 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values1 = constant_op.constant([1.0], dtype=dtypes.float32)
+    shape1 = constant_op.constant([1, dim_x, dim_x], dtype=dtypes.int64)
+
+    indices2 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values2 = constant_op.constant([2.0], dtype=dtypes.float32)
+    shape2 = constant_op.constant([1, dim_x, dim_x], dtype=dtypes.int64)
+
+    sp1 = sparse_tensor.SparseTensor(indices1, values1, shape1)
+    sp2 = sparse_tensor.SparseTensor(indices2, values2, shape2)
+
+    with self.assertRaisesOpError("Encountered overflow from large input shape"):
+      self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
+
   def testSparseConcatOutputVolumeOverflow(self):
     # Individual volumes fit in int64, but the concatenated
     # output volume overflows int64, triggering
