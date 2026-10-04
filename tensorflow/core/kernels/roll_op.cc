@@ -79,8 +79,9 @@ class RollOp : public OpKernel {
                   absl::InvalidArgumentError(
                       absl::StrCat("axis ", axis, " is out of range")));
       const int64_t ds = std::max<int64_t>(input.dim_size(axis), 1);
+      // reduce the shift first so the sum cannot overflow int64_t
       const int64_t sum =
-          shift_mod_sum[axis] + static_cast<int64_t>(shift_flat(i));
+          shift_mod_sum[axis] + static_cast<int64_t>(shift_flat(i)) % ds;
       // modulo that works with negatives: ((x % y) + y) % y
       shift_mod_sum[axis] = (sum % ds + ds) % ds;
     }
