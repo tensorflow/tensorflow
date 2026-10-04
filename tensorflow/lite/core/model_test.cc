@@ -586,7 +586,12 @@ TEST(BasicFlatBufferModel, TestRejectsWrappingLargeCustomOptionsOffset) {
       builder.GetSize());
   ASSERT_TRUE(fb_model);
   std::unique_ptr<Interpreter> interpreter;
-  TrivialResolver resolver(&dummy_reg);
+  // ParseNodes keys off registration->builtin_code, so the resolved
+  // registration itself must be marked CUSTOM.
+  TfLiteRegistration custom_reg = dummy_reg;
+  custom_reg.builtin_code = tflite::BuiltinOperator_CUSTOM;
+  custom_reg.custom_name = "WRAP";
+  TrivialResolver resolver(&custom_reg);
   EXPECT_NE(InterpreterBuilder(*fb_model, resolver)(&interpreter), kTfLiteOk);
 }
 
