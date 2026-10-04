@@ -152,9 +152,9 @@ copies of the same packed weights in each instance which can cause high memory
 usage.
 
 The weights cache can be used to store these packed weights to a file to avoid
-re-packing on every run and to share share packed weights between multiple
+re-packing on every run and to share packed weights between multiple
 TFLite instances. Depending on your use case, **this can lead to significant
-intialization speed-up and memory savings**.
+initialization speed-up and memory savings**.
 
 The initialization speed-up happens because the packing operations are only done
 once and read from the cache file for subsequent runs. We are skipping the most
