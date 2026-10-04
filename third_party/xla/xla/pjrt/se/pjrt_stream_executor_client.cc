@@ -286,7 +286,8 @@ PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<AsyncWorkRunner> async_work_runner,
     se::StreamExecutor* executor,
-    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    bool confidential_computing_enabled)
     : owned_allocator_(std::move(allocator)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
@@ -295,6 +296,7 @@ PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
                                         nullptr),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
+      confidential_computing_enabled_(confidential_computing_enabled),
       executor_(executor),
       gpu_run_options_(std::move(gpu_run_options)),
       compile_thread_pool_(
@@ -361,42 +363,6 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
       // way to synchronize.
       CHECK_OK(stream->BlockHostUntilDone());
       break;
-  }
-}
-
-// Adds necessary synchronization after a copy has been enqueued to a buffer.
-// definition_event was added when the buffer was allocated, but has not yet
-// had an event recorded.
-absl::Status AddDestinationBufferSynchronization(
-    PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
-    BufferSequencingEventRef definition_event, se::Stream* copy_stream) {
-  absl::Status status = client->raw_client()->AllocateAndRecordEvent(
-      definition_event, local_device, copy_stream,
-      "AddDestinationBufferSynchronization");
-  if (!status.ok()) {
-    StallStreamOnError(local_device, copy_stream);
-  }
-  return status;
-}
-
-// We wait for events that the compute stream didn't already wait for. Based on
-// our heuristics, for usage events, this rare case should only occur when a
-// buffer was copied to a device and then never used there. In that case we get
-// a new stream and use it to hold onto a reference to the buffer until the
-// events are complete.
-void MaybeWaitForEventOnStream(const BufferSequencingEventRef& event,
-                               LocalDeviceState* local_device_state,
-                               se::Stream*& stream) {
-  if (!event->IsPredeterminedErrorOrDefinedOn(
-          local_device_state->compute_stream()) &&
-      !event->IsComplete()) {
-    if (stream == nullptr) {
-      stream = local_device_state->GetFixedSizePoolUsageStream();
-    }
-    VLOG(2) << "Waiting for event: " << &*event
-            << "; is_predetermined_error: " << event->IsPredeterminedError()
-            << "; on stream: " << stream;
-    event->WaitForEventOnStream(stream);
   }
 }
 
@@ -529,80 +495,25 @@ absl::Status PjRtStreamExecutorRawClient::WaitForAllocation(
   return absl::OkStatus();
 }
 
+void PjRtStreamExecutorRawClient::MaterializeAllocationEvent(
+    const PjRtRawBufferInterface& raw_buffer) {
+  auto* cpp_buf = raw_buffer.down_cast<const PjRtStreamExecutorRawBuffer>();
+  if (cpp_buf == nullptr || !cpp_buf->device_buffer().IsConcrete()) {
+    return;
+  }
+  // A later `WaitForAllocation` reuses the event recorded here. If recording
+  // fails, no event is stored for the sync point, so the deferred
+  // `WaitForAllocation` records it again (still after the allocation, i.e. safe
+  // to reuse the memory) and reports the error if it fails again.
+  absl::Status status =
+      cpp_buf->device_buffer()->MaterializeDefinitionEvent(async_work_runner());
+  if (!status.ok()) {
+    VLOG(1) << "Failed to materialize allocation event: " << status;
+  }
+}
+
 bool PjRtStreamExecutorRawClient::IsOnCpu(PjRtMemorySpace* memory_space) {
   return memory_space->kind() == PinnedHostMemorySpace::kKind;
-}
-
-bool PjRtStreamExecutorClient::ShouldPerformZeroCopyLinearize(
-    const void* data, const xla::Shape& device_shape, PrimitiveType type,
-    absl::Span<int64_t const> dims,
-    std::optional<absl::Span<int64_t const>> byte_strides,
-    PjRtMemorySpace* memory_space) {
-  Shape on_host_shape = ShapeUtil::MakeShape(type, dims);
-  absl::InlinedVector<int64_t, 4> tmp_strides;
-  if (!byte_strides) {
-    tmp_strides.resize(dims.size());
-    if (!ShapeUtil::UnpackedByteStrides(on_host_shape,
-                                        absl::MakeSpan(tmp_strides))
-             .ok()) {
-      return false;
-    }
-    byte_strides = tmp_strides;
-  }
-  int64_t size = ShapeUtil::ByteSizeOf(on_host_shape);
-  auto packed_size_or =
-      GetOnDeviceBytesCount(memory_space->kind_id(), device_shape);
-  if (!packed_size_or.ok()) {
-    return false;
-  }
-  int64_t packed_size = *packed_size_or;
-  absl::InlinedVector<int64_t, 4> shape_strides(
-      device_shape.dimensions().size());
-  if (!ShapeUtil::UnpackedByteStrides(device_shape,
-                                      absl::MakeSpan(shape_strides))
-           .ok()) {
-    return false;
-  }
-  bool host_and_device_strides_equal =
-      (size == 0 || *byte_strides == shape_strides);
-
-  return host_and_device_strides_equal && (packed_size == size) &&
-         !raw_client()->ShouldStageHostToDeviceTransfers(data, size);
-}
-
-absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
-PjRtStreamExecutorClient::AllocateLinearizeDest(
-    bool sync, const xla::Shape& device_shape,
-    absl::Span<const int64_t> byte_strides, PjRtRawBufferRef dest_buffer) {
-  if (dest_buffer->GetHostPointer() != nullptr) {
-    return CommonPjRtClient::AllocateLinearizeDest(sync, device_shape,
-                                                   byte_strides, dest_buffer);
-  }
-  PjRtMemorySpace* memory_space = dest_buffer->memory_space();
-  ABSL_ASSIGN_OR_RETURN(size_t size, GetOnDeviceBytesCount(memory_space->kind_id(),
-                                                      device_shape));
-
-  auto* cpp_buf = dest_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
-  LocalDeviceState* local_device = cpp_buf->local_device();
-
-  HostMemoryAllocator::AllocateOptions alloc_opts;
-  alloc_opts.numa_node = local_device->executor()->numa_node();
-  alloc_opts.local_device_id = local_device->local_device_id();
-  HostMemoryAllocator::OwnedPtr staging_buffer =
-      GetHostMemoryAllocator()->Allocate(size, alloc_opts);
-  if (size > 0 && staging_buffer == nullptr) {
-    return ResourceExhausted(
-        "Failed to allocate a %d-byte pinned host staging buffer for a "
-        "host-to-device transfer. The pinned host pool may be exhausted or "
-        "fragmented (see XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the "
-        "underlying pinned allocation failed; check earlier allocator "
-        "warnings for the root cause.",
-        size);
-  }
-
-  absl::Span<uint8_t> span(staging_buffer.get(), size);
-  return PjRtStagingBuffer::Create(
-      span, [staging_buffer = std::move(staging_buffer)]() {});
 }
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -650,6 +561,13 @@ PjRtStreamExecutorRawClient::CreateDeviceEvent(LocalDeviceId local_device_id,
 
 absl::Status PjRtStreamExecutorRawClient::DmaMap(void* data,
                                                  size_t buffer_size) {
+  if (confidential_computing_enabled_) {
+    // In Confidential Computing VMs, memory registration (cuMemHostRegister) is
+    // not supported because userspace host memory is private by default and
+    // inaccessible by the GPU. In this mode, transfers are always staged
+    // through host memory allocated via cuMemHostAlloc, so DmaMap is a no-op.
+    return absl::OkStatus();
+  }
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorRawClient::DmaMap");
   if (executor_ == nullptr) {
     return absl::InternalError(
@@ -666,6 +584,9 @@ absl::Status PjRtStreamExecutorRawClient::DmaMap(void* data,
 }
 
 absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
+  if (confidential_computing_enabled_) {
+    return absl::OkStatus();
+  }
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorRawClient::DmaUnmap");
   if (executor_ == nullptr) {
     return absl::InternalError(
@@ -2132,36 +2053,6 @@ absl::Status PjRtStreamExecutorRawClient::WaitOnStream(
     std::intptr_t stream) {
   return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(
       stream);
-}
-
-bool PjRtStreamExecutorClient::ShouldDoDirectTransfer(
-    const MutableLiteralBase& literal, const Shape& shape,
-    PjRtMemorySpace* memory_space) const {
-  if (shape.IsTuple()) {
-    return false;
-  }
-  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
-    return false;
-  }
-
-  if (literal.shape().has_layout()) {
-    return Layout::Equal().IgnoreMemorySpace()(shape.layout(),
-                                               literal.shape().layout());
-  }
-
-  return LayoutUtil::HasDescendingLayout(shape.layout());
-}
-
-tsl::AsyncValueRef<PjRtStagingBuffer>
-PjRtStreamExecutorClient::AllocateForDelinearizationAsync(
-    size_t size, PjRtMemorySpace* memory_space) {
-  void* ptr = malloc(size);
-  if (ptr == nullptr) {
-    return tsl::MakeErrorAsyncValueRef(absl::ResourceExhaustedError(
-        absl::StrCat("Failed to allocate staging buffer of size ", size)));
-  }
-  absl::Span<uint8_t> span(static_cast<uint8_t*>(ptr), size);
-  return PjRtStagingBuffer::Create(span, [ptr]() { free(ptr); });
 }
 
 void PjRtStreamExecutorRawClient::ScheduleRemoteSend(

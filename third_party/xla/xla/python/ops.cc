@@ -826,6 +826,11 @@ NB_MODULE(_ops, m) {
       static_cast<XlaOp (*)(XlaOp, const std::optional<ResultAccuracy>&)>(&Exp),
       nb::arg("operand"), nb::arg("result_accuracy") = std::nullopt);
 
+  m.def("Exp2",
+        static_cast<XlaOp (*)(XlaOp, const std::optional<ResultAccuracy>&)>(
+            &Exp2),
+        nb::arg("operand"), nb::arg("result_accuracy") = std::nullopt);
+
   m.def("Expm1",
         static_cast<XlaOp (*)(XlaOp, const std::optional<ResultAccuracy>&)>(
             &Expm1),
@@ -839,6 +844,11 @@ NB_MODULE(_ops, m) {
   m.def("Log1p",
         static_cast<XlaOp (*)(XlaOp, const std::optional<ResultAccuracy>&)>(
             &Log1p),
+        nb::arg("operand"), nb::arg("result_accuracy") = std::nullopt);
+
+  m.def("Log2",
+        static_cast<XlaOp (*)(XlaOp, const std::optional<ResultAccuracy>&)>(
+            &Log2),
         nb::arg("operand"), nb::arg("result_accuracy") = std::nullopt);
 
   m.def("Logistic",

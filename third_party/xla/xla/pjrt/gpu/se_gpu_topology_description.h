@@ -115,6 +115,17 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return target_config_;
   }
 
+  bool confidential_computing_enabled() const {
+    if (target_config_.has_value()) {
+      return target_config_->gpu_device_info().confidential_computing_enabled();
+    }
+    if (gpu_topology_ != nullptr && gpu_topology_->has_gpu_target_config()) {
+      return gpu_topology_->gpu_target_config()
+          .device_description.confidential_computing_enabled();
+    }
+    return false;
+  }
+
   // Returns vendor specific attributes about the topology.
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {

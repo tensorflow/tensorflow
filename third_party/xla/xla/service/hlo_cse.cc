@@ -112,6 +112,30 @@ absl::StatusOr<bool> CombineConstants(
   return combined > 0;
 }
 
+constexpr absl::string_view kAllocateBufferTarget = "AllocateBuffer";
+
+// Returns true if operand `operand_index` of `instruction` may be a fresh
+// output buffer.
+bool MayBeFreshRaggedAllToAllOutputBuffer(const HloInstruction* instruction,
+                                          int64_t operand_index) {
+  const HloInstruction* operand = instruction->operand(operand_index);
+  return instruction->opcode() == HloOpcode::kRaggedAllToAll &&
+         operand_index == 1 && operand->operand_count() == 0 &&
+         operand->IsCustomCall(kAllocateBufferTarget);
+}
+
+// Returns true if `instruction` is an AllocateBuffer that is only used as the
+// output buffer of a single ragged-all-to-all.
+bool IsFreshRaggedAllToAllOutputBuffer(const HloInstruction* instruction) {
+  if (instruction->user_count() != 1 || instruction->HasControlDependencies()) {
+    return false;
+  }
+  const HloInstruction* user = instruction->users().front();
+  return user->OperandIndices(instruction).size() == 1 &&
+         user->operand_index(instruction) == 1 &&
+         MayBeFreshRaggedAllToAllOutputBuffer(user, 1);
+}
+
 // This differs from "normal" HLO Instruction hashing because it takes the
 // operands of an instruction into account. For the purposes of CSEs, two
 // instructions that have different operands are never equivalent, so
@@ -162,11 +186,14 @@ struct CseKey {
         }
         h = H::combine(std::move(h), id0, id1);
       } else {
-        for (auto operand : instruction->operands()) {
-          if (operand->opcode() == HloOpcode::kIota) {
+        for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+          // Equivalent iotas and fresh output buffers may be distinct
+          // instructions (see `eq_instructions` in RunOnComputation).
+          if (instruction->operand(i)->opcode() == HloOpcode::kIota ||
+              MayBeFreshRaggedAllToAllOutputBuffer(instruction, i)) {
             continue;
           }
-          h = H::combine(std::move(h), operand->unique_id());
+          h = H::combine(std::move(h), instruction->operand(i)->unique_id());
         }
       }
     }
@@ -313,13 +340,19 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     if (a == b) {
       return true;
     }
+    const auto eq_shapes = [&] {
+      return is_layout_sensitive_
+                 ? ShapeUtil::Equal(a->shape(), b->shape())
+                 : ShapeUtil::Compatible(a->shape(), b->shape());
+    };
+    if (IsFreshRaggedAllToAllOutputBuffer(a) &&
+        IsFreshRaggedAllToAllOutputBuffer(b)) {
+      return eq_shapes();
+    }
     if (a->opcode() != b->opcode() || a->opcode() != HloOpcode::kIota) {
       return false;
     }
-    return a->dimensions(0) == b->dimensions(0) &&
-           (is_layout_sensitive_
-                ? ShapeUtil::Equal(a->shape(), b->shape())
-                : ShapeUtil::Compatible(a->shape(), b->shape()));
+    return a->dimensions(0) == b->dimensions(0) && eq_shapes();
   };
   const auto eq_computations = [](const HloComputation* lhs,
                                   const HloComputation* rhs) {

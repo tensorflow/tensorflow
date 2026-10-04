@@ -304,8 +304,7 @@ absl::StatusOr<Tiles> PropagateTileToInputForConcatenateOp(
   int64_t num_operands = concatenate.operand_count();
   Tiles tiles;
   tiles.reserve(num_operands);
-  // For concatenate, we need to adjust the offsets and the bounds in the
-  // concatenate dimension.
+  // Only tiling of the concatenate dimension is affected.
   int64_t concat_dim = concatenate.concatenate_dimension();
   auto upper_bound = output_tile.upper_bounds()[concat_dim];
   int64_t offset = 0;
@@ -314,10 +313,19 @@ absl::StatusOr<Tiles> PropagateTileToInputForConcatenateOp(
     dim_tiles[concat_dim].offset = dim_tiles[concat_dim].offset - offset;
     CHECK_LT(concat_dim, operand->shape().dimensions().size());
     int64_t operand_dim_size = operand->shape().dimensions(concat_dim);
-
     dim_tiles[concat_dim].upper_bound =
         (upper_bound - offset).min(operand_dim_size).max(0);
-    tiles.push_back(output_tile.CloneWithNewDims(std::move(dim_tiles)));
+    Tile op_tile = output_tile.CloneWithNewDims(std::move(dim_tiles));
+    // TODO(b/491092362): This constraint is only sound at the moment as
+    // VerifyConcatenateAlignment rejects non-negative tiles overlapping the
+    // start start before the operand.
+    // TODO(b/565301234): constraints should be added symmetrically
+    // independent of direction of traverse: i.e.
+    // PropagateTileToOutputForConcatenateOp should give us the same
+    // constraints. Or maybe they should be added in a third place altogether.
+    op_tile.AddConstraint(op_tile.dim_tiles()[concat_dim].offset,
+                          Interval{0, operand_dim_size - 1});
+    tiles.push_back(op_tile);
     offset += operand_dim_size;
   }
   return tiles;

@@ -184,6 +184,9 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     }
   };
 
+  // `run_transfer` may be deferred until `dependencies` are ready, so record
+  // the allocation event now.
+  client_->MaterializeAllocationEvent(*this);
   ExecuteWhenReady(dependencies, client_->async_work_runner(),
                    std::move(run_transfer));
 
@@ -266,6 +269,9 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     }
   };
 
+  // `run_transfer` may be deferred until `dependencies` are ready, so record
+  // the allocation event now.
+  client_->MaterializeAllocationEvent(*this);
   ExecuteWhenReady(dependencies, client_->async_work_runner(),
                    std::move(run_transfer));
 
@@ -440,6 +446,10 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
     PjRtDeviceEventPromiseRef src_usage_event_promise,
     absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
+    // The copy is deferred to `async_work_runner()`, so record the allocation
+    // events now.
+    client_->MaterializeAllocationEvent(*this);
+    client_->MaterializeAllocationEvent(*dst_raw_buffer);
     client_->async_work_runner()->Execute(
         [this_ref = tsl::FormRef(this),
          transfer_dependency_events = std::move(transfer_dependency_events),
@@ -469,6 +479,11 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
       BufferSequencingEvent::Create(client_->async_work_runner());
 
   PjRtDeviceEventSpan deps_span(dependencies);
+
+  // `task` may be deferred until `dependencies` are ready, so record the
+  // allocation events now.
+  client_->MaterializeAllocationEvent(*this);
+  client_->MaterializeAllocationEvent(*dst_raw_buffer);
 
   auto task = [client = client_, local_device = local_device_,
                src_buffer = device_buffer_,

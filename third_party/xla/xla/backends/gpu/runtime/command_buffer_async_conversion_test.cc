@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla::gpu {
 namespace {
@@ -419,15 +420,15 @@ TEST_F(CommandBufferAsyncConversionTest, DuplicateOutstandingStart) {
   // The runtime permits only one outstanding start per AsyncExecution, so this
   // sequence can never execute. Debug builds catch it in the pass; optimized
   // builds leave the region as thunks and still capture the trailing command.
-#ifndef NDEBUG
-  EXPECT_DEATH(Convert(thunks).IgnoreError(), "started twice");
-#else
-  ASSERT_OK_AND_ASSIGN(bool changed, Convert(thunks));
-  EXPECT_TRUE(changed);
-  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncStart,
-                                    Thunk::kAsyncDone, Thunk::kAsyncDone,
-                                    Thunk::kCommandBuffer));
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    EXPECT_DEATH(Convert(thunks).IgnoreError(), "started twice");
+  } else {
+    ASSERT_OK_AND_ASSIGN(bool changed, Convert(thunks));
+    EXPECT_TRUE(changed);
+    EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncStart,
+                                      Thunk::kAsyncDone, Thunk::kAsyncDone,
+                                      Thunk::kCommandBuffer));
+  }
 }
 
 }  // namespace

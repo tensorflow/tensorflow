@@ -220,7 +220,7 @@ void ForEachInstructionInTiledHloComputation(
       int64_t num_blocks_cur_region =
           GetNumBlocksForRegion(instruction, num_blocks_cur_hlo, i);
       for (const auto& tiled_hlo : region.instructions()) {
-        worklist.push_back({tiled_hlo.get(), num_blocks_cur_region});
+        worklist.push_back({&*tiled_hlo, num_blocks_cur_region});
       }
     }
   }

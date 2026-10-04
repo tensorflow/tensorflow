@@ -1486,7 +1486,7 @@ absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
 TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
   ASSERT_OK_AND_ASSIGN(auto pjrt_client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
-  auto* client = absl::down_cast<PjRtStreamExecutorClient*>(pjrt_client.get());
+  auto* client = absl::down_cast<CommonPjRtClientImpl*>(pjrt_client.get());
   auto* memory_space = client->memory_spaces()[0];
   auto literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   ASSERT_OK_AND_ASSIGN(
@@ -1766,10 +1766,12 @@ absl::Status InterProcessCollectiveInitTestBody(int rank_id) {
   // executor's collective memory allocator into the selected collectives
   // backend (e.g. MORI ShmemMalloc). With inert backend stubs the allocation
   // may return null; we only log the outcome and do not fail the test.
-  auto* se_client = absl::down_cast<PjRtStreamExecutorClient*>(client.get());
+  auto* se_client = absl::down_cast<CommonPjRtClientImpl*>(client.get());
   TF_RET_CHECK(se_client != nullptr);
+  auto* raw_client =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(se_client->raw_client());
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device_state,
-                   se_client->raw_client()->GetLocalDeviceState(
+                   raw_client->GetLocalDeviceState(
                        client->addressable_devices()[0]->local_device_id()));
   se::StreamExecutor* executor = local_device_state->executor();
 

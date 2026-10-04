@@ -1,0 +1,14 @@
+diff --git a/utils/bazel/linux_uapi.bzl b/utils/bazel/linux_uapi.bzl
+--- a/utils/bazel/linux_uapi.bzl
++++ b/utils/bazel/linux_uapi.bzl
+@@ -79,7 +79,9 @@ def _setup_from_libc_dev_package(repository_ctx):
+     repository_ctx.delete("data.tar.xz")
+     repository_ctx.file("BUILD.bazel", _LIBC_DEV_PACKAGE_BUILD)
+ 
+-    return repository_ctx.repo_metadata(reproducible = True)
++    if hasattr(repository_ctx, "repo_metadata"):
++        return repository_ctx.repo_metadata(reproducible = True)
++    return None
+ 
+ def _linux_uapi_setup_impl(repository_ctx):
+     """Sets up a repository of Linux UAPI headers."""

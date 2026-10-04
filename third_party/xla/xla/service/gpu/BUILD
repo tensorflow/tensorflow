@@ -808,28 +808,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "execution_watchdog",
-    srcs = ["execution_watchdog.cc"],
-    hdrs = ["execution_watchdog.h"],
-    deps = [
-        ":gpu_executable_run_options",
-        "//xla:status_macros",
-        "//xla:xla_proto_cc",
-        "//xla/runtime:hang_watchdog",
-        "//xla/stream_executor:stream",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-cc_library(
     name = "gpu_executable",
     srcs = [
         "gpu_executable.cc",
@@ -844,7 +822,6 @@ cc_library(
         ":backend_configs_cc",
         ":buffer_allocations",
         ":dense_data_intermediate",
-        ":execution_watchdog",
         ":gpu_executable_buffer_allocator",
         ":gpu_executable_proto_cc",
         ":gpu_executable_run_options",
@@ -882,12 +859,14 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/runtime:device_id",
+        "//xla/runtime:hang_watchdog",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_layout",
         "//xla/service:device_assignment",
         "//xla/service:dump",
         "//xla/service:executable",
+        "//xla/service:gpu_topology",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/service:maybe_owning_device_address",
@@ -937,7 +916,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@riegeli//riegeli/bytes:string_writer",
         "@riegeli//riegeli/bytes:writer",
-        "@tsl//tsl/platform:random",
         "@tsl//tsl/profiler/lib:scoped_annotation",
         "@tsl//tsl/profiler/lib:traceme",
     ],
@@ -952,6 +930,7 @@ tf_proto_library(
         "//xla:xla_data_proto",
         "//xla:xla_proto",
         "//xla/backends/gpu/runtime:thunk_proto",
+        "//xla/service:gpu_topology_proto",
         "//xla/service:hlo_proto",
         "//xla/service/cpu:executable_proto",
         "//xla/stream_executor:device_description_proto",
@@ -959,26 +938,10 @@ tf_proto_library(
     ],
 )
 
-xla_cc_test(
-    name = "execution_watchdog_test",
-    srcs = ["execution_watchdog_test.cc"],
-    deps = [
-        ":execution_watchdog",
-        ":gpu_executable_run_options",
-        "//xla:xla_proto_cc",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
+xla_test(
     name = "gpu_executable_test",
     srcs = ["gpu_executable_test.cc"],
+    backends = ["gpu"],
     deps = [
         ":buffer_allocations",
         ":gpu_executable",
@@ -1002,16 +965,17 @@ xla_cc_test(
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/backends/gpu/runtime:thunk_proto_cc",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/client:executable_build_options",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
+        "//xla/service:gpu_topology",
         "//xla/service:hlo_module_config",
         "//xla/service:logical_buffer",
         "//xla/service:service_executable_run_options",
@@ -1900,7 +1864,6 @@ cc_library(
         "//xla/backends/gpu/transforms:ragged_all_to_all_canonicalizer",
         "//xla/backends/gpu/transforms:ragged_all_to_all_decomposer",
         "//xla/backends/gpu/transforms:ragged_all_to_all_multi_host_decomposer",
-        "//xla/backends/gpu/transforms:ragged_dot_fusion_rewriter",
         "//xla/backends/gpu/transforms:reduce_scatter_creator",
         "//xla/backends/gpu/transforms:reduction_degenerate_dim_remover",
         "//xla/backends/gpu/transforms:reduction_dimension_grouper",
@@ -2164,6 +2127,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/bytes:string_writer",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:errors",
@@ -2394,6 +2358,7 @@ xla_cc_test(
         "//xla/pjrt:compiled_memory_stats",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
+        "//xla/service:gpu_topology",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:device_description",
@@ -3559,7 +3524,6 @@ xla_test(
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/strings",

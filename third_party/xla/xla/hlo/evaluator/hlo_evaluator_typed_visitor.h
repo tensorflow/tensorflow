@@ -326,6 +326,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
+  absl::Status HandleExp2(const HloInstruction* exp2) override {
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseUnaryOp(exp2, [](ElementwiseT elem_operand) {
+                       if constexpr (is_complex_v<ReturnT>) {
+                         return std::exp(elem_operand * ElementwiseT(M_LN2));
+                       } else {
+                         return std::exp2(elem_operand);
+                       }
+                     }));
+    parent_->SetEvaluatedLiteralFor(exp2, std::move(literal));
+    return absl::OkStatus();
+  }
+
   absl::Status HandleExpm1(const HloInstruction* expm1) override {
     if constexpr (!is_complex_v<ReturnT>) {
       ABSL_ASSIGN_OR_RETURN(Literal literal,
@@ -369,6 +382,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return absl::OkStatus();
     }
     return UnsupportedTypeError(log1p);
+  }
+
+  absl::Status HandleLog2(const HloInstruction* log2) override {
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseUnaryOp(log2, [](ElementwiseT elem_operand) {
+                       if constexpr (is_complex_v<ReturnT>) {
+                         return std::log(elem_operand) / ElementwiseT(M_LN2);
+                       } else {
+                         return std::log2(elem_operand);
+                       }
+                     }));
+    parent_->SetEvaluatedLiteralFor(log2, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleNot(const HloInstruction* not_) override {

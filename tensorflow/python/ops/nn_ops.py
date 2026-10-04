@@ -167,6 +167,7 @@ API docstring: tensorflow.nn
 
 import functools
 import numbers
+import sys
 
 import numpy as np
 
@@ -236,6 +237,13 @@ def _get_sequence(value, n, channel_index, name):
     value = [value]
   else:
     value = list(value)  # Try casting to a list.
+
+  for v in value:
+    if isinstance(v, int) and (v > sys.maxsize or v < -sys.maxsize - 1):
+      if context.executing_eagerly():
+        raise OverflowError(f"{name} value {v} exceeds 64-bit integer limit")
+      else:
+        raise ValueError(f"{name} value {v} exceeds 64-bit integer limit")
 
   len_value = len(value)
 

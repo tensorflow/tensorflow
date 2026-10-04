@@ -112,6 +112,10 @@ class ClientLibrary {
   // GetOrCreateCompileOnlyClient() invocations are not valid anymore.
   static void DestroyLocalInstances();
 
+  // Like DestroyLocalInstances(), but only clears the local instance for
+  // the given platform (e.g. GPU, etc).
+  static void DestroyLocalInstance(se::Platform* platform);
+
  private:
   // Returns the singleton instance of ClientLibrary.
   static ClientLibrary& Singleton();

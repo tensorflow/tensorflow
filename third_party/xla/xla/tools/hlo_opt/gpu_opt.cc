@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/llvm_compiler.h"
@@ -143,7 +144,9 @@ class GpuOptProvider : public CompiledOptProvider {
     auto device_description = GetDeviceDescription(&module);
     auto debug_config = module.config().debug_options();
     se::GpuComputeCapability gpu_compute_capability;
+    se::DeviceDescription device_description_or_default;
     if (device_description.ok()) {
+      device_description_or_default = *device_description;
       gpu_compute_capability = device_description->gpu_compute_capability();
       if (gpu_compute_capability.IsCuda()) {
         alias_info_ =
@@ -155,6 +158,8 @@ class GpuOptProvider : public CompiledOptProvider {
       LOG(WARNING)
           << "No compute capability specified, defaulting to Hopper. Use "
              "--xla_gpu_target_config_filename= to specify a target config.";
+      device_description_or_default =
+          gpu::TestGpuDeviceInfo::H100SXMDeviceInfo();
       gpu_compute_capability = stream_executor::CudaComputeCapability::Hopper();
     }
     static BufferValue::SizeFunction* const kSizeFunction =
@@ -178,7 +183,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::DotNormalizer>();
     RegisterPass<gpu::DotOperandConverter>();
     RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
-    RegisterPass<gpu::GemmFusion>(gpu_compute_capability);
+    RegisterPass<gpu::GemmFusion>(device_description_or_default);
     RegisterPass<gpu::ReduceScatterCreator>();
     RegisterPass<gpu::ReductionDegenerateDimRemover>();
     RegisterPass<gpu::ReductionDimensionGrouper>();

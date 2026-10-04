@@ -106,6 +106,7 @@ namespace xla {
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic)         \
   V(kErf, "erf", 1)                                                            \
   V(kExp, "exponential", 1)                                                    \
+  V(kExp2, "exp2", 1)                                                          \
   V(kExpm1, "exponential-minus-one", 1)                                        \
   V(kFft, "fft", 1)                                                            \
   V(kFloor, "floor", 1)                                                        \
@@ -119,6 +120,7 @@ namespace xla {
   V(kIsFinite, "is-finite", 1)                                                 \
   V(kLog, "log", 1)                                                            \
   V(kLog1p, "log-plus-one", 1)                                                 \
+  V(kLog2, "log2", 1)                                                          \
   V(kLogistic, "logistic", 1)                                                  \
   V(kMap, "map", kHloOpcodeIsVariadic)                                         \
   V(kMaximum, "maximum", 2)                                                    \

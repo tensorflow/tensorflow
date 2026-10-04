@@ -301,6 +301,10 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       node_info.outputs.assign(node->outputs->data,
                                node->outputs->data + node->outputs->size);
       node_info.activation = GetFusedActivation(reg, node);
+      node_info.builtin_data = node->builtin_data;
+      node_info.custom_name = reg->custom_name;
+      node_info.custom_initial_data = node->custom_initial_data;
+      node_info.custom_initial_data_size = node->custom_initial_data_size;
       if (IsRuntimeBmm(reg, node)) {
         node_info.composite_op_type = CompositeOpType::kRuntimeBmm;
       } else if (IsSdpa(reg, node)) {

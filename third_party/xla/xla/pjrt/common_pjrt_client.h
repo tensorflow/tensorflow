@@ -66,7 +66,7 @@ namespace xla {
 // A common base class for Pjrt clients based on raw buffers.
 class CommonPjRtClient : public PjRtClient {
  public:
-  using PjRtClient::PjRtClient;
+  CommonPjRtClient();
 
   // A thread pool for dispatching background work.
   // TODO(parkers): make pure virtual and update all clients.
@@ -83,14 +83,13 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool allow_fallback_for_donation() const { return false; }
   virtual bool supports_two_phase_launch() const { return true; }
   virtual bool dump_on_deserialize() const { return false; }
+  virtual bool should_stage_host_to_device_transfers() const { return false; }
   // Returns true if we should skip the staging buffer during ToLiteral.
-  virtual bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
-                                      const Shape& shape,
-                                      PjRtMemorySpace* memory_space) const {
-    return false;
-  }
+  bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
+                              const Shape& shape,
+                              PjRtMemorySpace* memory_space) const;
 
-  virtual tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
+  tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space);
 
   // Delinearizes `input_data`, which has the on-device layout of `shape`, into
@@ -141,6 +140,11 @@ class CommonPjRtClient : public PjRtClient {
                                                 const xla::Shape& shape) const {
     return GetOnDeviceBytesCount(memory_space->kind_id(), shape);
   }
+
+  // Computes the DMA transfer size for shape, omitting trailing 0-padding
+  // beyond the DMA granule boundary when supported.
+  virtual absl::StatusOr<int64_t> GetDmaByteCount(
+      const xla::Shape& shape) const;
 
   // Gets the memory_space_kind for a particular XLA layout.
   virtual absl::StatusOr<int> GetMemorySpaceKindForShape(
@@ -193,26 +197,22 @@ class CommonPjRtClient : public PjRtClient {
       HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer);
 
   // Tests if a buffer is eligible for zero copy linearization.
-  virtual bool ShouldPerformZeroCopyLinearize(
+  bool ShouldPerformZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape, PrimitiveType type,
       absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
-      PjRtMemorySpace* memory_space) {
-    return false;
-  }
+      PjRtMemorySpace* memory_space);
 
   // Creates a staging buffer directly from host data for zero copy.
-  virtual tsl::AsyncValueRef<PjRtStagingBuffer>
-  CreateStagingForZeroCopyLinearize(
+  tsl::AsyncValueRef<PjRtStagingBuffer> CreateStagingForZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape,
       PjRtMemorySpace* memory_space,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer);
 
   // Allocates a destination buffer for linearizing into.
-  virtual absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
-  AllocateLinearizeDest(bool sync, const xla::Shape& device_shape,
-                        absl::Span<const int64_t> byte_strides,
-                        PjRtRawBufferRef dest_buffer);
+  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+      bool sync, const xla::Shape& device_shape,
+      absl::Span<const int64_t> byte_strides, PjRtRawBufferRef dest_buffer);
 
   // Linearizes data into dest.
   virtual absl::Status Linearize(absl::Span<uint8_t> dest, const void* data,
@@ -1144,8 +1144,6 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
       std::unique_ptr<PjRtRawClient> raw_client,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt,
-      std::unique_ptr<PjRtHostMemoryForDeviceManager>
-          host_memory_for_device_manager = nullptr,
       std::optional<LinearizeThrottler::Options> throttler_options =
           std::nullopt);
 
@@ -1166,6 +1164,9 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
     return use_stream_based_compaction_;
   }
   bool dump_on_deserialize() const override { return dump_on_deserialize_; }
+  bool should_stage_host_to_device_transfers() const override {
+    return should_stage_host_to_device_transfers_;
+  }
 
  private:
   const PjRtPlatformId platform_id_;
@@ -1201,6 +1202,7 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   bool allows_execute_recursion_;
   bool use_stream_based_compaction_ = false;
   bool dump_on_deserialize_ = false;
+  bool should_stage_host_to_device_transfers_ = false;
 };
 
 // A common base class for PjRtDevice implementations that delegate to

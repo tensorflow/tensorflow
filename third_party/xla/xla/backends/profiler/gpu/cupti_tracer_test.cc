@@ -455,6 +455,96 @@ TEST_F(CuptiTracerTest, DisableScopeRangeTracking) {
   EXPECT_EQ(tree_plane, nullptr);
 }
 
+// A cuGraphAdd*Node API exit can reach the tracer without a preceding
+// CUPTI_CBID_RESOURCE_GRAPHNODE_CREATED callback on the same thread, e.g. when
+// graph resource callbacks are unavailable (CUDA < 12.0) or tracing starts
+// while the driver call is in flight. The per-thread graph node map is then
+// empty, and the exit handler must still record the API event without
+// dereferencing the map's begin() iterator.
+TEST_F(CuptiTracerTest, GraphNodeApiExitWithoutNodeCreatedCallback) {
+  auto* const subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+  CuptiTracerOptions options;
+  options.activities_selected = {CUPTI_ACTIVITY_KIND_KERNEL};
+  options.cbids_selected = {CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode};
+
+  ::testing::InSequence in_sequence;
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+      .WillOnce(DoAll(SetArgPointee<0>(subscriber), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(1));
+  ExpectV2ResourceCallbacks(subscriber, /*enable=*/1);
+  EXPECT_CALL(*mock_,
+              EnableCallback(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API,
+                             CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUseSystemThreadIdV2(subscriber))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUsePerThreadBufferV2())
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityRegisterCallbacksV2(subscriber, _, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              ActivityEnableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EnableProfiling(options);
+
+  // Deliver only the API exit; no resource callback has populated the graph
+  // node map on this thread. Timestamps are offsets from the collector's start
+  // time so that Export() keeps the event.
+  const uint64_t start_ns = cupti_collector_->GetProfileStartTimeNs();
+  uint64_t api_enter_timestamp = start_ns + 10;
+  CUpti_CallbackData cbdata{};
+  cbdata.callbackSite = CUPTI_API_EXIT;
+  cbdata.context = reinterpret_cast<CUcontext>(uintptr_t{1});
+  cbdata.functionName = "cuGraphAddKernelNode";
+  cbdata.correlationData = &api_enter_timestamp;
+  cbdata.correlationId = 1;
+  EXPECT_CALL(*mock_, GetDeviceId(cbdata.context, _))
+      .WillOnce(DoAll(SetArgPointee<1>(0), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(start_ns + 20));
+  EXPECT_OK(cupti_tracer_->HandleCallback(
+      CUPTI_CB_DOMAIN_DRIVER_API, CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode,
+      &cbdata));
+
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(start_ns + 30));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(start_ns + 40));
+  ExpectV2ResourceCallbacks(subscriber, /*enable=*/0);
+  EXPECT_CALL(*mock_,
+              EnableCallback(0, subscriber, CUPTI_CB_DOMAIN_DRIVER_API,
+                             CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              ActivityDisableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, Unsubscribe(subscriber)).WillOnce(Return(CUPTI_SUCCESS));
+  DisableProfiling();
+  EXPECT_FALSE(CuptiDisabled());
+
+  tensorflow::profiler::XSpace space;
+  cupti_collector_->Export(&space, /*end_gpu_ns=*/start_ns + 40);
+  const tensorflow::profiler::XPlane* host_plane =
+      tsl::profiler::FindPlaneWithName(space,
+                                       tsl::profiler::kCuptiDriverApiPlaneName);
+  ASSERT_NE(host_plane, nullptr);
+  int num_graph_node_events = 0;
+  for (const tensorflow::profiler::XLine& line : host_plane->lines()) {
+    for (const tensorflow::profiler::XEvent& event : line.events()) {
+      auto metadata_it = host_plane->event_metadata().find(event.metadata_id());
+      if (metadata_it != host_plane->event_metadata().end() &&
+          metadata_it->second.name() == "cuGraphAddKernelNode") {
+        ++num_graph_node_events;
+      }
+    }
+  }
+  EXPECT_EQ(num_graph_node_events, 1);
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace profiler
