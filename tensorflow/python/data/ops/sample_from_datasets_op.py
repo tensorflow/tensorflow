@@ -88,9 +88,12 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
             datasets, weights_to_filter)
       else:
         # Clamp non-positive and NaN weights to zero so `log` yields -inf.
-        # `not (weights > 0)` also catches NaN, matching the static path.
-        is_zero = math_ops.logical_not(
-            math_ops.greater(weights, math_ops.cast(0, weights.dtype)))
+        # `is_nan` is spelled out rather than relying on `not (weights > 0)`:
+        # Grappler's `RemoveLogicalNot` stage would rewrite that back into
+        # `less_equal`, which is False for NaN, letting NaN weights through.
+        is_zero = math_ops.logical_or(
+            math_ops.less_equal(weights, math_ops.cast(0, weights.dtype)),
+            math_ops.is_nan(weights))
         weights = array_ops.where_v2(
             is_zero, array_ops.zeros_like(weights), weights)
 
