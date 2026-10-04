@@ -40,7 +40,7 @@ __global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
   for (int64_t out_idx : GpuGridRangeX(nthreads)) {
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
-      const int64_t stride = dim_range[i] / dim_size[i];
+      const int64_t stride = i + 1 < num_dims ? dim_range[i + 1] : 1;
       const int64_t shift = dim_size[i] - threshold[i];
       const int64_t indx = (out_idx / stride) % dim_size[i];
       const int64_t shifted_indx = (indx + shift) % dim_size[i];

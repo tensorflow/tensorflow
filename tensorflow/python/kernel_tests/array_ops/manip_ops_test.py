@@ -100,11 +100,21 @@ class RollTest(test_util.TensorFlowTestCase):
     self._testAll(np.zeros([0, 1]), 1, 1)
     self._testAll(np.zeros([1, 0]), 1, 1)
 
+  @test_util.run_in_graph_and_eager_modes
   def testRollEmptyInput(self):
-    with self.cached_session():
-      empty_tensor = array_ops.zeros([0, 5], dtype=dtypes.float32)
-      result = manip_ops.roll(empty_tensor, shift=1, axis=0)
-      self.assertEqual(self.evaluate(result).shape, (0, 5))
+    empty_tensor = array_ops.zeros([0, 5], dtype=dtypes.float32)
+    result = manip_ops.roll(empty_tensor, shift=1, axis=0)
+    self.assertEqual(self.evaluate(result).shape, (0, 5))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRollLargeShiftsSameAxis(self):
+    np_input = np.arange(5, dtype=np.float32)
+    for shifts in ([1, 2**63 - 1], [2**62] * 3):
+      # Sum the shifts as Python ints, since np.roll would overflow int64.
+      expected = np.roll(np_input, sum(shifts) % 5)
+      result = manip_ops.roll(
+          np_input, np.array(shifts, dtype=np.int64), [0] * len(shifts))
+      self.assertAllEqual(self.evaluate(result), expected)
 
   @test_util.run_v2_only
   def testLargeInput(self):
