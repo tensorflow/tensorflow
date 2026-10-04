@@ -222,14 +222,14 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
     const char* padding_name =
         params.padding == Padding::VALID ? "VALID" : "EXPLICIT";
     TF_REQUIRES(
-        input_rows == 0 || padded_rows >= effective_filter_rows,
+        padded_rows == 0 || padded_rows >= effective_filter_rows,
         absl::InvalidArgumentError(absl::StrCat(
             "input_rows + padding (", padded_rows,
             ") must be at least effective_filter_size (",
             effective_filter_rows, ") for ", padding_name,
             " padding.")));
     TF_REQUIRES(
-        input_cols == 0 || padded_cols >= effective_filter_cols,
+        padded_cols == 0 || padded_cols >= effective_filter_cols,
         absl::InvalidArgumentError(absl::StrCat(
             "input_cols + padding (", padded_cols,
             ") must be at least effective_filter_size (",

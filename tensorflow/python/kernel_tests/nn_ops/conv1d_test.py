@@ -152,7 +152,8 @@ class Conv1DTest(test.TestCase):
     # Eager execution keeps the traced dynamic shape, so only the runtime
     # kernel check can catch the invalid configuration.
     with context.eager_mode(), self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, "must be at least effective_filter_size"
+        errors_impl.InvalidArgumentError,
+        "must be at least effective_filter_size",
     ):
       self.evaluate(
           run_conv(
