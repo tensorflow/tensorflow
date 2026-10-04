@@ -43,7 +43,7 @@ class SplitVOpModel : public SingleOpModel {
                 int num_splits, int axis,
                 std::initializer_list<int> size_splits_data) {
     input_ = AddInput(input);
-    if (size_splits_data.size() == 0) {
+    if (size_splits_data.empty()) {
       size_splits_ = AddInput(size_splits);
     } else {
       size_splits_ = AddConstInput(size_splits, size_splits_data);
