@@ -56,11 +56,6 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
         absl::StrCat("Dilation rate must be >= 1, but got ", dilation_rate));
   }
 
-  if (c->ValueKnown(input_size) && c->Value(input_size) == 0) {
-    *output_size = input_size;
-    return absl::OkStatus();
-  }
-
   // See also the parallel implementation in GetWindowedOutputSizeVerbose.
   switch (padding_type) {
     case Padding::VALID:
