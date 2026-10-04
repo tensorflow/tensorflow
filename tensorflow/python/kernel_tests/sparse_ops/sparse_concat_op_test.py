@@ -500,7 +500,7 @@ class SparseConcatTest(test.TestCase):
       concat_op = sparse_ops.sparse_concat(axis=0, sp_inputs=[sp1, sp2])
       self.evaluate(concat_op)
 
-  def testGPUOutputDenseElementsOverflow(self):
+  def testGPUInputVolumeOverflow(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available to run GPU functor check.")
 
@@ -519,7 +519,7 @@ class SparseConcatTest(test.TestCase):
       sp2 = sparse_tensor.SparseTensor(
           indices=[[0, 0, 0]], values=[1.0], dense_shape=shape2
       )
-      with self.assertRaisesOpError("dense_elements overflowed"):
+      with self.assertRaisesOpError("Encountered overflow when multiplying"):
         concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
         self.evaluate(concat_op)
 
