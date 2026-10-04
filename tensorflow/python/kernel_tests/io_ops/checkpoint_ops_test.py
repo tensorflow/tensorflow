@@ -308,6 +308,61 @@ class LoadAndRemapMatrixTest(test.TestCase):
           )
       )
 
+  def test_load_and_remap_invalid_num_cols_empty_col_remapping(self):
+    # self.old_num_cols is 16. Mismatched or large num_cols with empty
+    # col_remapping must raise InvalidArgumentError before attempting to
+    # allocate col_id_present memory.
+    for invalid_num_cols in [self.old_num_cols + 1, 10**12]:
+      with self.cached_session(), self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'size of its 2nd dimension is .* instead of being equal to num_cols=',
+      ):
+        self.evaluate(
+            gen_checkpoint_ops.load_and_remap_matrix(
+                ckpt_path=[self.bundle_file],
+                old_tensor_name=self.old_tensor_name,
+                row_remapping=list(range(self.old_num_rows)),
+                col_remapping=[],
+                initializing_values=[],
+                num_rows=self.old_num_rows,
+                num_cols=invalid_num_cols,
+            )
+        )
+
+  def test_load_and_remap_non_1d_col_remapping(self):
+    with self.cached_session(), self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r'The `col_remapping` tensor must be 1-D, got a tensor of shape',
+    ):
+      self.evaluate(
+          gen_checkpoint_ops.load_and_remap_matrix(
+              ckpt_path=[self.bundle_file],
+              old_tensor_name=self.old_tensor_name,
+              row_remapping=list(range(self.old_num_rows)),
+              col_remapping=[[0]],
+              initializing_values=[],
+              num_rows=self.old_num_rows,
+              num_cols=1,
+          )
+      )
+
+  def test_load_and_remap_non_1d_row_remapping(self):
+    with self.cached_session(), self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r'The `row_remapping` tensor must be 1-D, got a tensor of shape',
+    ):
+      self.evaluate(
+          gen_checkpoint_ops.load_and_remap_matrix(
+              ckpt_path=[self.bundle_file],
+              old_tensor_name=self.old_tensor_name,
+              row_remapping=[[0]],
+              col_remapping=[],
+              initializing_values=[],
+              num_rows=1,
+              num_cols=self.old_num_cols,
+          )
+      )
+
   @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_remapping(self):
     """Tests that errors are raised when an ID maps to multiple new IDs.
