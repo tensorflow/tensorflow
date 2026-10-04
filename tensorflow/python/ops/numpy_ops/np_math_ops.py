@@ -994,7 +994,14 @@ def cbrt(x):
   def f(x):
     # __pow__ can't handle negative base, so we use `abs` here.
     rt = math_ops.abs(x) ** (1.0 / 3)
-    return array_ops.where_v2(x < 0, -rt, rt)
+    if x.dtype in _SIGN_BITCAST_DTYPES:
+      # Check the IEEE-754 sign bit instead of comparing with zero, which
+      # cannot tell -0.0 from +0.0.
+      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
+      is_negative = math_ops.less(bits, 0)
+    else:
+      is_negative = x < 0
+    return array_ops.where_v2(is_negative, -rt, rt)
 
   return _scalar(f, x, True)
 

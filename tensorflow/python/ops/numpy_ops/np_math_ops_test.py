@@ -858,6 +858,28 @@ class MathTest(test.TestCase, parameterized.TestCase):
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
 
+  def testCbrt(self):
+    for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      x_np = np.array(
+          [-0.0, 0.0, -8.0, 8.0, -27.0, 27.0], dtype=dtype.as_numpy_dtype
+      )
+      x = constant_op.constant(x_np, dtype=dtype)
+      out = np_math_ops.cbrt(x)
+      self.assertAllClose(out, np.cbrt(x_np))
+      self.assertAllEqual(np.signbit(out.numpy()), np.signbit(np.cbrt(x_np)))
+
+    x_neg_zero = constant_op.constant(-0.0, dtype=dtypes.float64)
+    self.assertEqual(
+        math_ops.reciprocal(np_math_ops.cbrt(x_neg_zero)).numpy(),
+        -float('inf'),
+    )
+
+    x_bf16 = constant_op.constant([-0.0, 0.0, -8.0, 8.0], dtype=dtypes.bfloat16)
+    out_bf16 = np_math_ops.cbrt(x_bf16)
+    self.assertAllEqual(
+        np_math_ops.signbit(out_bf16), [True, False, True, False]
+    )
+
   def testSinc(self):
     for dtype in (dtypes.float32, dtypes.float64):
       x = constant_op.constant([0.0, -0.0, 0.5, 1.0, -1.5], dtype=dtype)
