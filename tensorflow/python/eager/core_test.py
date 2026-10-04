@@ -1067,7 +1067,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
     for error in errors_by_thread:
       if isinstance(error, BaseException):
-        raise error
+        raise error  # pylint: disable=raising-bad-type
 
   def testEmptyResourceReturned(self):
     with ops.device('CPU:0'):
