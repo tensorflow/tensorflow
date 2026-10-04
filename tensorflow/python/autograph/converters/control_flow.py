@@ -37,7 +37,7 @@ class _Function(object):
 
 
 class ControlFlowTransformer(converter.Base):
-  """Transforms control flow structures like loops a conditionals."""
+  """Transforms control flow structures like loops and conditionals."""
 
   def visit_Lambda(self, node):
     with self.state[_Function] as fn:
