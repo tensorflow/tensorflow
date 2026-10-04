@@ -49,9 +49,9 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -154,8 +154,7 @@ TEST_F(MlirKernelFusionTest, CreateLLVMModule) {
          const DebugOptions& opts) { return std::vector<uint8_t>{}; },
       device_info_, module->config().debug_options(), gpu_topology);
 
-  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
-      []() { return CreateMlirContext(); });
+  MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
   MlirKernelFusion emitter(std::make_unique<DummyCopyEmitter>());
   ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
                        mlir_context_pool.GetOrCreate());

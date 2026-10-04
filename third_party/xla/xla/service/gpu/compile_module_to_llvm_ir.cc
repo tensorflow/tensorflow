@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
@@ -69,6 +68,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/thunk_emitter.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/logical_buffer.h"
@@ -221,7 +221,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     KernelCompiler* compiler,
     xla::cpu::TargetMachineOptions cpu_target_machine_options,
-    ObjectPool<std::unique_ptr<mlir::MLIRContext>>* mlir_context_pool) {
+    MlirContextPool* mlir_context_pool) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
   const se::DeviceDescription& device_desc =
       gpu_topology.gpu_target_config().device_description;
