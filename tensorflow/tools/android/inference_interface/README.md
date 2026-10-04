@@ -3,12 +3,12 @@
 This directory defines components (a native `.so` library and a Java JAR)
 geared towards supporting TensorFlow on Android. This includes:
 
-- The [TensorFlow Java API](../../java/README.md)
+- The [TensorFlow Java API](../../../java/README.md)
 - A `TensorFlowInferenceInterface` class that provides a smaller API
   surface suitable for inference and summarizing performance of model execution.
 
-For example usage, see [TensorFlowImageClassifier.java](../../examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java)
-in the [TensorFlow Android Demo](../../examples/android).
+For example usage, see [TensorFlowImageClassifier.java](../test/src/org/tensorflow/demo/TensorFlowImageClassifier.java)
+in the [TensorFlow Android Demo](../test).
 
 For prebuilt libraries, see the
 [nightly Android build artifacts](https://ci.tensorflow.org/view/Nightly/job/nightly-android/)
@@ -44,7 +44,7 @@ TensorFlow operators), pick your preferred approach below:
 ### Bazel
 
 First follow the Bazel setup instructions described in
-[tensorflow/examples/android/README.md](../../examples/android/README.md)
+[tensorflow/tools/android/test/README.md](../test/README.md)
 
 Then, to build the native TF library:
 
