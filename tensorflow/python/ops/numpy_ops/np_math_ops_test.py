@@ -383,6 +383,34 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
 
+  @parameterized.parameters(
+      [np.float32, np.float64, np.complex64, np.complex128]
+  )
+  def testIsCloseInfinities(self, dtype):
+    # Regression test for GitHub issue 128480: same-sign infinities must be
+    # close and opposite-sign infinities must not be close, matching NumPy.
+    # Also covers mixed finite/infinite pairs like (1.0, inf).
+    a_vals = [np.inf, -np.inf, -np.inf, np.inf, 1.0, 1.0, np.inf]
+    b_vals = [np.inf, -np.inf, np.inf, -np.inf, 1.0, np.inf, 1.0]
+    if np.issubdtype(dtype, np.complexfloating):
+      a_vals.extend([complex(np.inf, np.inf), complex(np.inf, np.inf)])
+      b_vals.extend([complex(np.inf, 0), complex(np.inf, np.inf)])
+
+    a = np.array(a_vals, dtype)
+    b = np.array(b_vals, dtype)
+    self.match(
+        np_math_ops.isclose(a, b),
+        np.isclose(a, b),
+    )
+    self.assertEqual(
+        bool(np_math_ops.allclose([dtype(np.inf)], [dtype(np.inf)])),
+        np.allclose([dtype(np.inf)], [dtype(np.inf)]),
+    )
+    self.assertEqual(
+        bool(np_math_ops.allclose([dtype(-np.inf)], [dtype(np.inf)])),
+        np.allclose([dtype(-np.inf)], [dtype(np.inf)]),
+    )
+
   @parameterized.parameters([np.int32, np.int64])
   def testIsCloseIntegerTolerances(self, dtype):
     # Regression test for GitHub issue 108657: integer inputs used to be
