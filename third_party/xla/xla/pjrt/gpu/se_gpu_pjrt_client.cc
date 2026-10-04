@@ -818,7 +818,11 @@ void StreamExecutorGpuRawClient::ScheduleRemoteSend(
 
   // `WaitForAllocation` below is deferred until the descriptor and the
   // definition events are ready, so record the allocation event now.
-  MaterializeAllocationEvent(*raw_buffer);
+  // `raw_buffer` is null for error buffers, whose error is reported through
+  // `definition_events` below.
+  if (raw_buffer != nullptr) {
+    MaterializeAllocationEvent(*raw_buffer);
+  }
 
   serialized_descriptor.OnReady(
       [this, on_done = std::move(on_done),
