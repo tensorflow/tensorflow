@@ -137,9 +137,7 @@ class SparseConcatOp : public OpKernel {
     OP_REQUIRES(context, shapes.size() == N,
                 absl::InvalidArgumentError(absl::StrCat(
                     "Expected ", N, " input shapes, got ", shapes.size())));
-    bool overflow_occurred = false;
     for (int i = 0; i < N; i++) {
-      int64_t new_num_elements = 1;
       OP_REQUIRES(context, TensorShapeUtils::IsVector(shapes[i].shape()),
                   absl::InvalidArgumentError(absl::StrCat(
                       "Input shapes should be a vector but received shape ",
@@ -149,39 +147,19 @@ class SparseConcatOp : public OpKernel {
                       "Indices rank and shape rank must match: indices = ",
                       inds[i].dim_size(1), ", shape = ", shapes[i].dim_size(0),
                       " at position ", i)));
-      auto input_shape_vector = shapes[i].vec<int64_t>();
-      for (int j = 0; j < input_shape_vector.size(); j++) {
-        OP_REQUIRES(context, input_shape_vector(j) >= 0,
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "Input shape dimensions must be non-negative, got ",
-                        input_shape_vector(j), " for dimension ", j,
-                        " at position ", i)));
-        new_num_elements =
-            MultiplyWithoutOverflow(new_num_elements, input_shape_vector(j));
-        if (new_num_elements < 0) {
-          overflow_occurred = true;
-          break;
-        }
-      }
-
-      if (overflow_occurred) {
-        break;
-      }
-      OP_REQUIRES(context, new_num_elements > 0 || inds[i].dim_size(0) == 0,
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "SparseTensor cannot have non-zero indices if dense "
-                      "shape has zero volume: dense_shape = ",
-                      shapes[i].SummarizeValue(10), " with nnz = ",
-                      inds[i].dim_size(0), " at position ", i)));
     }
-
-    OP_REQUIRES(context, !overflow_occurred,
-                absl::InvalidArgumentError(
-                    "Encountered overflow from large input shape."));
 
     TensorShape input_shape;
     OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
                                 shapes[0].vec<int64_t>(), &input_shape));
+    OP_REQUIRES(context,
+                input_shape.num_elements() > 0 || inds[0].dim_size(0) == 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "SparseTensor cannot have non-zero indices if dense "
+                    "shape has zero volume: dense_shape = ",
+                    shapes[0].SummarizeValue(10),
+                    " with nnz = ", inds[0].dim_size(0), " at position 0")));
+
     const int input_rank = input_shape.dims();
     const int concat_dim = (concat_dim_attr_ < 0)
                                ? input_rank + concat_dim_attr_
@@ -199,6 +177,13 @@ class SparseConcatOp : public OpKernel {
       TensorShape current_shape;
       OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
                                   shapes[i].vec<int64_t>(), &current_shape));
+      OP_REQUIRES(
+          context, current_shape.num_elements() > 0 || inds[i].dim_size(0) == 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "SparseTensor cannot have non-zero indices if dense "
+              "shape has zero volume: dense_shape = ",
+              shapes[i].SummarizeValue(10), " with nnz = ", inds[i].dim_size(0),
+              " at position ", i)));
       OP_REQUIRES(
           context, current_shape.dims() == input_rank,
           absl::InvalidArgumentError(absl::StrCat(

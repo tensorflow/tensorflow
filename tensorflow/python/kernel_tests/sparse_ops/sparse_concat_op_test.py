@@ -472,18 +472,20 @@ class SparseConcatTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testDivisionByZeroMalformedShape(self):
     with self.session():
-      sp1 = sparse_tensor.SparseTensor(
-          indices=[[0, 0]], values=[1.0], dense_shape=[0, 1]
-      )
-      sp2 = sparse_tensor.SparseTensor(
-          indices=[[0, 0]], values=[2.0], dense_shape=[0, 1]
-      )
-      concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
-      with self.assertRaisesOpError(
-          "SparseTensor cannot have non-zero indices if dense shape has zero"
-          " volume"
-      ):
-        self.evaluate(concat_op)
+      for shapes in (([0, 1], [0, 1]), ([1, 1], [1, 0])):
+        with self.subTest(shapes=shapes):
+          sp1 = sparse_tensor.SparseTensor(
+              indices=[[0, 0]], values=[1.0], dense_shape=shapes[0]
+          )
+          sp2 = sparse_tensor.SparseTensor(
+              indices=[[0, 0]], values=[2.0], dense_shape=shapes[1]
+          )
+          concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
+          with self.assertRaisesOpError(
+              "SparseTensor cannot have non-zero indices if dense shape has"
+              " zero volume"
+          ):
+            self.evaluate(concat_op)
 
   def testLargeShapeOverflow(self):
     shape1 = constant_op.constant([2305843009213693952], dtype=dtypes.int64) * 2
@@ -522,24 +524,26 @@ class SparseConcatTest(test.TestCase):
         self.evaluate(concat_op)
 
   def testSparseConcatInputVolumeOverflowCrash(self):
-    # Each input volume already exceeds int64_max. The kernel must reject it
-    # with an OpError rather than abort during TensorShape construction.
+    # Reject overflowing volumes in both the first and subsequent inputs with
+    # an OpError rather than abort during TensorShape construction.
     int64_max = 9223372036854775807
     dim_x = int64_max // 11
 
     indices1 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
     values1 = constant_op.constant([1.0], dtype=dtypes.float32)
-    shape1 = constant_op.constant([1, dim_x, dim_x], dtype=dtypes.int64)
 
     indices2 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
     values2 = constant_op.constant([2.0], dtype=dtypes.float32)
     shape2 = constant_op.constant([1, dim_x, dim_x], dtype=dtypes.int64)
 
-    sp1 = sparse_tensor.SparseTensor(indices1, values1, shape1)
-    sp2 = sparse_tensor.SparseTensor(indices2, values2, shape2)
+    for first_shape in ([1, dim_x, dim_x], [1, 1, dim_x]):
+      with self.subTest(first_shape=first_shape):
+        shape1 = constant_op.constant(first_shape, dtype=dtypes.int64)
+        sp1 = sparse_tensor.SparseTensor(indices1, values1, shape1)
+        sp2 = sparse_tensor.SparseTensor(indices2, values2, shape2)
 
-    with self.assertRaisesOpError("Encountered overflow from large input shape"):
-      self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
+        with self.assertRaisesOpError("Encountered overflow when multiplying"):
+          self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
 
   def testSparseConcatOutputVolumeOverflow(self):
     # Individual volumes fit in int64, but the concatenated
