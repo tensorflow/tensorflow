@@ -1065,11 +1065,10 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
         desc.Clear();
         desc.set_buffer_index(i);
         if (mem->mem().size() > 0) {
-          ABSL_ASSIGN_OR_RETURN(
-              *desc.mutable_buffer_handle(),
-              GetOrExportFabricHandle(executor, mem->mem().opaque()));
           ABSL_ASSIGN_OR_RETURN(auto range,
                            executor->GetAllocationRange(mem->mem().opaque()));
+          ABSL_ASSIGN_OR_RETURN(*desc.mutable_buffer_handle(),
+                           GetOrExportFabricHandle(executor, range.opaque()));
           desc.set_buffer_offset(
               reinterpret_cast<intptr_t>(mem->mem().opaque()) -
               reinterpret_cast<intptr_t>(range.opaque()));
