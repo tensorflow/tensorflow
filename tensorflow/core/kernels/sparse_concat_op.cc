@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_concat_op.h"
 
+#include <limits>
 #include <numeric>
 #include <utility>
 #include <vector>
@@ -43,12 +44,11 @@ namespace functor {
 template <typename T>
 struct SparseConcatFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* context, const OpInputList& inds,
-                  const OpInputList& vals, const OpInputList& shapes,
+                  const OpInputList& vals,
+                  const absl::Span<const TensorShape>& input_shapes,
                   int concat_dim) {
     const int N = inds.size();
-    TensorShape input_shape;
-    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
-                                shapes[0].vec<int64_t>(), &input_shape));
+    const TensorShape& input_shape = input_shapes[0];
     const int input_rank = input_shape.dims();
 
     // The input and output sparse tensors are assumed to be ordered along
@@ -74,9 +74,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
     std::vector<sparse::SparseTensor> sp_inputs;
     sp_inputs.reserve(N);
     for (int i = 0; i < N; ++i) {
-      TensorShape current_shape;
-      OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
-                                  shapes[i].vec<int64_t>(), &current_shape));
+      const TensorShape& current_shape = input_shapes[i];
       sparse::SparseTensor tensor;
       OP_REQUIRES_OK(context,
                      sparse::SparseTensor::Create(
@@ -149,9 +147,13 @@ class SparseConcatOp : public OpKernel {
                       " at position ", i)));
     }
 
+    absl::InlinedVector<TensorShape, 8> input_shapes;
+    input_shapes.reserve(N);
+
     TensorShape input_shape;
     OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
                                 shapes[0].vec<int64_t>(), &input_shape));
+    input_shapes.push_back(input_shape);
     OP_REQUIRES(context,
                 input_shape.num_elements() > 0 || inds[0].dim_size(0) == 0,
                 absl::InvalidArgumentError(absl::StrCat(
@@ -177,6 +179,7 @@ class SparseConcatOp : public OpKernel {
       TensorShape current_shape;
       OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
                                   shapes[i].vec<int64_t>(), &current_shape));
+      input_shapes.push_back(current_shape);
       OP_REQUIRES(
           context, current_shape.num_elements() > 0 || inds[i].dim_size(0) == 0,
           absl::InvalidArgumentError(absl::StrCat(
@@ -224,8 +227,14 @@ class SparseConcatOp : public OpKernel {
     for (int i = 0; i < N; ++i) {
       int64_t next_output_nnz =
           AddWithoutOverflow(output_nnz, inds[i].dim_size(0));
-      OP_REQUIRES(context, next_output_nnz >= 0,
-                  absl::InvalidArgumentError("output_nnz overflowed"));
+      // SparseTensor::Concat accumulates num_entries as an int. Prevent
+      // wrapping before it constructs the output TensorShape.
+      OP_REQUIRES(
+          context,
+          next_output_nnz >= 0 &&
+              next_output_nnz <= std::numeric_limits<int>::max(),
+          absl::InvalidArgumentError(
+              "output_nnz overflowed or exceeded supported INT_MAX limit"));
       output_nnz = next_output_nnz;
     }
 
@@ -240,7 +249,7 @@ class SparseConcatOp : public OpKernel {
       return;  // No work to do
     }
 
-    functor::SparseConcatFunctor<Device, T>()(context, inds, vals, shapes,
+    functor::SparseConcatFunctor<Device, T>()(context, inds, vals, input_shapes,
                                               concat_dim);
   }
 
