@@ -21,6 +21,7 @@ import sys
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -1166,6 +1167,19 @@ class SwishTest(test_lib.TestCase, parameterized.TestCase):
         swish, [features, beta])
     self.assertAllClose(theoretical[0], numerical[0], atol=1e-4)
     self.assertAllClose(theoretical[1], numerical[1], atol=1e-4)
+
+  def testFloat16AndBfloat16Gradients(self):
+    for dtype in [dtypes.float16, dtypes.bfloat16]:
+      features = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
+      beta = constant_op.constant([0.5, 1.5], dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch([features, beta])
+        y = nn_impl.swish(features, beta)
+      g_features, g_beta = tape.gradient(y, [features, beta])
+      self.assertEqual(g_features.dtype, dtype)
+      self.assertEqual(g_beta.dtype, dtype)
+      self.assertEqual(g_features.shape.as_list(), [2, 2])
+      self.assertEqual(g_beta.shape.as_list(), [2])
 
 
 class MomentsTest(test_lib.TestCase):

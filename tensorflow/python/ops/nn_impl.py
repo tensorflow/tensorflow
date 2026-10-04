@@ -456,7 +456,8 @@ def swish(features, beta=1.0):
 
   Args:
     features: A `Tensor` representing preactivation values.
-    beta: A 'Tensor' representing value of beta hyperparameter.
+    beta: A `Tensor` representing value of beta hyperparameter, broadcastable
+      to `features`. Default value 1.0.
 
   Returns:
     The activation value.
