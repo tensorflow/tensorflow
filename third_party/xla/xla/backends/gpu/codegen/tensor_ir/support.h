@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/decision.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu::tensor_ir {
 
@@ -32,6 +33,14 @@ CodegenDecision IsSupportedFusionComputation(const HloComputation& comp);
 // TensorIR fusion emitter. If `instr` is a fusion instruction, verifies the
 // fused computation.
 CodegenDecision IsInstructionSupportedForFusion(const HloInstruction& instr);
+
+// Returns `Decision::Allow` if `cc` is an architecture the TensorIR fusion
+// emitter can target, which means CUDA and Hopper or newer. CudaTile only
+// assembles a cubin for an arch-conditional target and refuses to make one
+// arch-conditional below sm_90; all the emitter could produce there is Tile IR
+// bytecode for the driver to JIT, which is a path we neither want nor test.
+CodegenDecision IsSupportedComputeCapability(
+    const se::GpuComputeCapability& cc);
 
 }  // namespace xla::gpu::tensor_ir
 

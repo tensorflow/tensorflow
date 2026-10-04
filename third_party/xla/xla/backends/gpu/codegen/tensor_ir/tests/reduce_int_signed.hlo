@@ -1,10 +1,10 @@
 // RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
 
+// The reduction body adds its operands in the flipped order; addition is
+// commutative, so this still matches the built-in `add` reduction mode.
 // CHECK-LABEL: @test_reduce_add_flip
 // CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xsi32>
-// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [0 : si32]> (%[[LHS:.*]]: i32, %[[RHS:.*]]: i32) {
-// CHECK: %[[RESULT:.*]] = arith.addi %[[RHS]], %[[LHS]] : i32
-// CHECK: yield %[[RESULT]]
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <add>> : tensor<16x64xsi32> -> tensor<16x1xsi32>
 // CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xsi32> -> tensor<16xsi32>
 // CHECK: results %[[OUT]]
 
@@ -22,11 +22,10 @@ test_reduce_add_flip {
 
 // -----
 
+// As above, but for the commutative `mul` reduction mode.
 // CHECK-LABEL: @test_reduce_mul_flip
 // CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xsi32>
-// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [1 : si32]> (%[[LHS:.*]]: i32, %[[RHS:.*]]: i32) {
-// CHECK: %[[RESULT:.*]] = arith.muli %[[RHS]], %[[LHS]] : i32
-// CHECK: yield %[[RESULT]]
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <mul>> : tensor<16x64xsi32> -> tensor<16x1xsi32>
 // CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xsi32> -> tensor<16xsi32>
 // CHECK: results %[[OUT]]
 
@@ -46,9 +45,7 @@ test_reduce_mul_flip {
 
 // CHECK-LABEL: @test_reduce_min
 // CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xsi32>
-// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [2147483647 : si32]> (%[[LHS:.*]]: i32, %[[RHS:.*]]: i32) {
-// CHECK: %[[RESULT:.*]] = arith.minsi %[[LHS]], %[[RHS]] : i32
-// CHECK: yield %[[RESULT]]
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <min>> : tensor<16x64xsi32> -> tensor<16x1xsi32>
 // CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xsi32> -> tensor<16xsi32>
 // CHECK: results %[[OUT]]
 
@@ -68,9 +65,7 @@ test_reduce_min {
 
 // CHECK-LABEL: @test_reduce_max
 // CHECK-SAME: %[[ARG0:.*]]: tensor<16x64xsi32>
-// CHECK: %[[REDUCE:.*]] = reduce_ud(%[[ARG0]]) <dimensions = [1], identity = [-2147483648 : si32]> (%[[LHS:.*]]: i32, %[[RHS:.*]]: i32) {
-// CHECK: %[[RESULT:.*]] = arith.maxsi %[[LHS]], %[[RHS]] : i32
-// CHECK: yield %[[RESULT]]
+// CHECK: %[[REDUCE:.*]] = reduce(%[[ARG0]]) <dimensions = [1], reduction_mode = <max>> : tensor<16x64xsi32> -> tensor<16x1xsi32>
 // CHECK: %[[OUT:.*]] = reshape %[[REDUCE]] : tensor<16x1xsi32> -> tensor<16xsi32>
 // CHECK: results %[[OUT]]
 

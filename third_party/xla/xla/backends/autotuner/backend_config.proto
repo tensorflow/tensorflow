@@ -36,5 +36,6 @@ message BackendConfig {
     xla.cpu.LlvmKernelOptions llvm_kernel = 5;
     xla.gpu.NativeEmitterBackendConfig native_emitter = 6;
     xla.cpu.YnnFusionOptions ynn_fusion = 7;
+    xla.gpu.TensorIrFusionConfig tensor_ir = 8;
   }
 }

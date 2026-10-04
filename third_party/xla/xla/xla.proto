@@ -1931,7 +1931,12 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 556
+  // Lets the GPU autotuner consider the experimental TensorIR (CUDA Tile)
+  // fusion emitter as a codegen backend, so fusions may be assigned to it.
+  // Requires sm_90+ and CUDA 13.3+ (tileiras) at runtime. Off by default.
+  optional bool xla_gpu_experimental_enable_tensor_ir = 556;
+
+  // Next id: 557
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
