@@ -69,11 +69,12 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       #   statically via `tensor_util.constant_value` and remove the
       #   zero-weight datasets, so -inf logits never reach the selector.
       # - For dynamic tensors (e.g. `tf.function` arguments) the values are
-      #   unknown here. A zero-weight dataset is never sampled, so its
-      #   iterator would never reach EOF and `directed_interleave` would spin
-      #   forever. Instead, map zero-weight datasets to empty datasets and
-      #   have the selector pick each of them once up front so they are
-      #   marked exhausted.
+      #   unknown here, so the datasets cannot be pruned. Instead, map every
+      #   non-positive-weight dataset to an empty one. A zero-weight dataset
+      #   is never sampled, so its iterator would otherwise never reach EOF
+      #   and `directed_interleave` would spin forever; when it can keep
+      #   going past an empty input, the selector also picks each of them
+      #   once up front so they are marked exhausted.
       weights_to_filter = weights
       if isinstance(weights, tensor.Tensor):
         static_weights = tensor_util.constant_value(weights)
@@ -85,24 +86,29 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       if weights_to_filter is not None:
         datasets, weights = _skip_datasets_with_zero_weight(
             datasets, weights_to_filter)
-      elif not stop_on_empty_dataset:
-        # With `stop_on_empty_dataset=True` an unsampled zero-weight dataset
-        # cannot cause a hang, and selecting an empty dataset up front would
-        # end the iteration immediately.
-        # Non-positive weights are dropped, matching the static path.
-        is_zero = math_ops.less_equal(weights, math_ops.cast(0, weights.dtype))
-        # Clamp negative weights to zero so `log` yields -inf, not NaN.
+      else:
+        # Clamp non-positive and NaN weights to zero so `log` yields -inf.
+        # `not (weights > 0)` also catches NaN, matching the static path.
+        is_zero = math_ops.logical_not(
+            math_ops.greater(weights, math_ops.cast(0, weights.dtype)))
         weights = array_ops.where_v2(
             is_zero, array_ops.zeros_like(weights), weights)
-        zero_indices = math_ops.cast(
-            array_ops.squeeze(array_ops.where_v2(is_zero), axis=1),
-            dtypes.int64)
-        zero_indices_ds = dataset_ops.Dataset.from_tensor_slices(zero_indices)
+
         datasets = list(datasets)
         for i in range(len(datasets)):
           # True -> take(0), False -> take(-1) (all elements).
           datasets[i] = datasets[i].take(
               math_ops.cast(is_zero[i], dtypes.int64) - 1)
+
+        if not stop_on_empty_dataset:
+          # Pick each emptied input once up front so it is marked exhausted.
+          # With `stop_on_empty_dataset=True` that would end the iteration
+          # immediately, and an unsampled input cannot cause a hang there.
+          zero_indices = math_ops.cast(
+              array_ops.squeeze(array_ops.where_v2(is_zero), axis=1),
+              dtypes.int64)
+          zero_indices_ds = dataset_ops.Dataset.from_tensor_slices(
+              zero_indices)
 
       weights = ops.convert_to_tensor(weights, name="weights")
       if weights.dtype not in (dtypes.float32, dtypes.float64):

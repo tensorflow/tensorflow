@@ -367,6 +367,47 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEmpty(result)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testNegativeWeightDynamicTensorStopOnEmptyDataset(self):
+    d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
+
+    @def_function.function
+    def make_sampled(w):
+      return dataset_ops.Dataset.sample_from_datasets(
+          [d1, d2], weights=w, stop_on_empty_dataset=True)
+
+    ds = make_sampled(constant_op.constant([-1.0, 1.0]))
+    result = self.getDatasetOutput(ds, requires_initialization=True)
+    self.assertCountEqual(result, [4, 5, 6])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testZeroWeightDynamicTensorSingleDataset(self):
+    d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+
+    @def_function.function
+    def make_sampled(w):
+      return dataset_ops.Dataset.sample_from_datasets(
+          [d1], weights=w, stop_on_empty_dataset=True)
+
+    ds = make_sampled(constant_op.constant([0.0]))
+    result = self.getDatasetOutput(ds, requires_initialization=True)
+    self.assertEmpty(result)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNaNWeightDynamicTensor(self):
+    d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
+
+    @def_function.function
+    def make_sampled(w):
+      return dataset_ops.Dataset.sample_from_datasets(
+          [d1, d2], weights=w, stop_on_empty_dataset=False)
+
+    ds = make_sampled(constant_op.constant([np.nan, 1.0]))
+    result = self.getDatasetOutput(ds, requires_initialization=True)
+    self.assertCountEqual(result, [4, 5, 6])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testNegativeWeightDynamicTensor(self):
     d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
     d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
