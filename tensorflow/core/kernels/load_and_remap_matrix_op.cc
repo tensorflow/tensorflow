@@ -89,6 +89,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
 
     const Tensor* col_remapping_t;
     OP_REQUIRES_OK(context, context->input("col_remapping", &col_remapping_t));
+    OP_REQUIRES(context, col_remapping_t->dims() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("The `col_remapping` tensor must be 1-D, got "
+                                 "a tensor of shape ",
+                                 col_remapping_t->shape().DebugString())));
     const auto col_remapping = col_remapping_t->vec<int64_t>();
     const bool remap_cols = col_remapping.size() > 0;
     if (remap_cols) {
@@ -187,21 +192,17 @@ class LoadAndRemapMatrixOp : public OpKernel {
       OP_REQUIRES_OK(context, RemapVectorToMap(col_remapping, &col_id_present,
                                                &old_col_to_new_col_map));
     } else {
-      col_id_present.clear();
-      col_id_present.resize(num_cols_, true);
-    }
-
-    if (!remap_cols) {
       // TODO(weiho): Consider relaxing this restriction to allow partial column
       // loading (even when no column remapping is specified) if there turns out
       // to be a use case for it.
       OP_REQUIRES(context, num_cols_ == tensor_shape.dim_size(1),
-                  absl::InvalidArgumentError(strings::StrCat(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Tensor ", old_tensor_name, " has shape ",
                       tensor_shape.DebugString(),
                       ", where the size of its 2nd dimension is ",
                       tensor_shape.dim_size(1),
                       " instead of being equal to num_cols=", num_cols_)));
+      col_id_present.assign(num_cols_, true);
     }
 
     // Uses TensorSlice to potentially load the old tensor in chunks in case
@@ -228,10 +229,14 @@ class LoadAndRemapMatrixOp : public OpKernel {
     }
 
     // Allocates the output matrix.
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape({num_rows_, num_cols_},
+                                                 &output_shape));
     Tensor* output_matrix_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output("output_matrix",
-                                            TensorShape({num_rows_, num_cols_}),
+                                            output_shape,
                                             &output_matrix_t));
     auto output_matrix = output_matrix_t->matrix<float>();
 
