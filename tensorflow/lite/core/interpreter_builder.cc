@@ -554,6 +554,13 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
       quantization->params = reinterpret_cast<void*>(blockwise_quantization_v2);
       return kTfLiteOk;
     }
+    TF_LITE_ENSURE_STATUS(
+        validate_tensor_index(src_quant->scales(), "scales", false));
+    if (src_quant->zero_points() != nullptr &&
+        src_quant->zero_points()->size() > 0) {
+      TF_LITE_ENSURE_STATUS(
+          validate_tensor_index(src_quant->zero_points(), "zero_points", false));
+    }
     auto* blockwise_quantization_v1 =
         reinterpret_cast<TfLiteBlockwiseQuantization*>(
             malloc(sizeof(TfLiteBlockwiseQuantization)));

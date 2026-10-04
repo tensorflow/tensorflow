@@ -1274,6 +1274,11 @@ TfLiteStatus EvalBlockwise4Bit(
   const size_t num_blocks = input_channels / blocksize;
   const TfLiteTensor& scale = context->tensors[quantization_params->scale];
   int num_scales = NumElements(&scale);
+  TF_LITE_ENSURE_MSG(context,
+                     static_cast<uint64_t>(num_scales) >=
+                         static_cast<uint64_t>(output_channels) * num_blocks,
+                     "Fully Connected: scale tensor too small for blockwise "
+                     "quantization dimensions.");
   std::vector<float> dequantized_scale(num_scales, 0);
   const Eigen::half* half_data = reinterpret_cast<const Eigen::half*>(
       GetTensorData<TfLiteFloat16>(&scale));

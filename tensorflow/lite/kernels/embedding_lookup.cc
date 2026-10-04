@@ -270,6 +270,11 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
     return kTfLiteError;
   }
   size_t num_blocks = col_size.Value() / blocksize;
+  TF_LITE_ENSURE_MSG(context,
+                     static_cast<uint64_t>(NumElements(&scale)) >=
+                         static_cast<uint64_t>(row_size) * num_blocks,
+                     "Embedding Lookup: scale tensor too small for blockwise "
+                     "quantization dimensions.");
   for (int i = 0; i < dimension_size; i++) {
     int idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
