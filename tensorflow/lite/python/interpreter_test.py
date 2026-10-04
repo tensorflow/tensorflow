@@ -17,6 +17,7 @@ import ctypes
 import io
 import pathlib
 import sys
+import tempfile
 from unittest import mock
 
 import numpy as np
@@ -351,6 +352,30 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(ValueError,
                                 'Could not open \'totally_invalid_file_name\''):
       interpreter_wrapper.Interpreter(model_path='totally_invalid_file_name')
+
+  def _assert_invalid_model_file(self, content):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+      model_path = pathlib.Path(tmp_dir) / 'model.tflite'
+      model_path.write_bytes(content)
+      with self.assertRaisesRegex(ValueError,
+                                  'The model is not a valid Flatbuffer buffer'):
+        interpreter_wrapper.Interpreter(model_path=str(model_path))
+
+  def testTooShortModelFile(self):
+    self._assert_invalid_model_file(b'short')
+
+  def testInvalidModelFileIdentifier(self):
+    self._assert_invalid_model_file(b'wrong_identifier')
+
+  def testCorruptedModelFile(self):
+    corrupted = b'\x08\x00\x00\x00TFL3' + b'\xff' * 100
+    self._assert_invalid_model_file(corrupted)
+
+  def testCorruptedModelContent(self):
+    corrupted = b'\x08\x00\x00\x00TFL3' + b'\xff' * 100
+    with self.assertRaisesRegex(ValueError,
+                                'The model is not a valid Flatbuffer buffer'):
+      interpreter_wrapper.Interpreter(model_content=corrupted)
 
   def testInvokeBeforeReady(self):
     interpreter = interpreter_wrapper.Interpreter(

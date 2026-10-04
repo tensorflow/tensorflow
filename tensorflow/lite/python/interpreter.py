@@ -416,8 +416,10 @@ class Interpreter:
     """Constructor.
 
     Args:
-      model_path: Path to TF-Lite Flatbuffer file.
-      model_content: Content of model.
+      model_path: Path to TF-Lite Flatbuffer file. The model is verified for
+        FlatBuffer structural validity before loading.
+      model_content: Content of model. The model is verified for
+        FlatBuffer structural validity before loading.
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
         objects returned by lite.load_delegate().
