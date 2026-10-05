@@ -138,6 +138,12 @@ class PjRtExecutableLoadState
     return absl::OkStatus();
   }
 
+  virtual absl::Status SetupMultiSliceConfig(
+      PjRtExecutable* executable,
+      const MultiSliceConfig* multi_slice_config) const {
+    return absl::OkStatus();
+  }
+
   virtual absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
   LoadRawExecutable(tsl::AsyncValueRef<PjRtExecutable> executable,
                     const ExecuteOptions& options, size_t host_callback_idx,

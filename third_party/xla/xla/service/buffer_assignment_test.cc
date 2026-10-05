@@ -770,6 +770,101 @@ TEST_F(BufferAssignmentTest, OOMFallbackToDefault) {
   EXPECT_EQ(assignment_fast->GetStats().total_allocation_bytes, 408);
 }
 
+// Thread-local allocations (the buffers of embedded computations, e.g. custom
+// call callees) are alloca-style and never part of the preallocated footprint,
+// so they must not count against the memory limit that decides whether to fall
+// back from FAST_MERGE to DEFAULT.
+TEST_F(BufferAssignmentTest, OOMFallbackIgnoresThreadLocalAllocations) {
+  // Same sequentially growing chain as in OOMFallbackToDefault, except that the
+  // first custom call carries an embedded computation whose root is far larger
+  // than the whole chain.
+  Shape s0 = ShapeUtil::MakeShape(F32, {});         // 4 bytes
+  Shape s1 = ShapeUtil::MakeShape(F32, {1});        // 4 bytes
+  Shape s10 = ShapeUtil::MakeShape(F32, {10});      // 40 bytes
+  Shape s20 = ShapeUtil::MakeShape(F32, {20});      // 80 bytes
+  Shape s30 = ShapeUtil::MakeShape(F32, {30});      // 120 bytes
+  Shape s40 = ShapeUtil::MakeShape(F32, {40});      // 160 bytes
+  Shape s1000 = ShapeUtil::MakeShape(F32, {1000});  // 4000 bytes
+
+  auto module = CreateNewVerifiedModule();
+
+  auto embedded_builder = HloComputation::Builder("embedded");
+  auto embedded_param = embedded_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s0, "ep"));
+  auto embedded_root = embedded_builder.AddInstruction(
+      HloInstruction::CreateBroadcast(s1000, embedded_param, {}));
+  HloComputation* embedded =
+      module->AddEmbeddedComputation(embedded_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s0, "p1"));
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s10, {param}, embedded, "dummy"));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s20, {a}, "dummy"));
+  auto c = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s30, {b}, "dummy"));
+  auto d = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s40, {c}, "dummy"));
+  auto root = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s1, {d}, "dummy"));
+  module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(), {param, a, b, c, d, root});
+  schedule.set_sequence(embedded, {embedded_param, embedded_root});
+  CHECK_OK(module->set_schedule(schedule));
+
+  constexpr int64_t kSafetyMargin = int64_t{5} << 29;
+  auto run = [&](int64_t limit) {
+    BufferAssigner::Options opts;
+    opts.assignment_algorithm_for_computations_without_ordering =
+        buffer_assignment::
+            AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+    opts.buffer_assignment_algorithm = buffer_assignment::
+        BufferAssignmentAlgorithmProto::FAST_MERGE_WITH_FALLBACK;
+    opts.fallback_algorithm =
+        buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+    opts.color_memory_limit = [limit](LogicalBuffer::Color) {
+      return kSafetyMargin + limit;
+    };
+    return BufferAssigner::Run(
+        module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+        &BufferSizeBytes, &alias_info_, [](LogicalBuffer::Color) { return 1; },
+        std::move(opts));
+  };
+  auto allocated_bytes = [](const BufferAssignment& assignment) {
+    int64_t thread_local_bytes = 0;
+    int64_t other_bytes = 0;
+    for (const BufferAllocation& allocation : assignment.Allocations()) {
+      (allocation.is_thread_local() ? thread_local_bytes : other_bytes) +=
+          allocation.size();
+    }
+    return std::make_pair(thread_local_bytes, other_bytes);
+  };
+
+  // Run 1: the limit holds the chain under FAST_MERGE (408 bytes) but not the
+  // chain plus the embedded computation's parameter and root (4004 bytes),
+  // which are thread-local. No fallback must happen.
+  constexpr int64_t kLimit = 1000;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> assignment,
+                       run(kLimit));
+  auto [thread_local_bytes, other_bytes] = allocated_bytes(*assignment);
+  EXPECT_EQ(thread_local_bytes, 4004);
+  EXPECT_GT(thread_local_bytes, kLimit);
+  EXPECT_EQ(other_bytes, 408);
+
+  // Run 2: a limit the chain itself exceeds does trigger the fallback, which
+  // produces the tighter DEFAULT layout (288 bytes).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> assignment_fallback,
+                       run(/*limit=*/100));
+  auto [thread_local_bytes_fallback, other_bytes_fallback] =
+      allocated_bytes(*assignment_fallback);
+  EXPECT_EQ(thread_local_bytes_fallback, 4004);
+  EXPECT_EQ(other_bytes_fallback, 288);
+}
+
 MATCHER(IdEq, "") {
   auto* actual = std::get<0>(arg);
   auto* expected = std::get<1>(arg);

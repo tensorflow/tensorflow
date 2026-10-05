@@ -198,6 +198,10 @@ TEST(EigenUnaryTest, AtanIsVectorized16) {
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module =
       ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary16LlIr);
+  ASSERT_NE(module, nullptr);
+
+  EXPECT_NE(module->getFunction("xla.atan.f32"), nullptr);
+  EXPECT_NE(module->getFunction("xla.atan.f64"), nullptr);
 
   std::string v4f32_ir = GetFunctionIr(*module, "xla.atan.v4f32");
   std::string v2f64_ir = GetFunctionIr(*module, "xla.atan.v2f64");

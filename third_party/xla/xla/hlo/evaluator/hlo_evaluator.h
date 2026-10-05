@@ -769,9 +769,10 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     bool same_layout =
         LayoutUtil::Equal(operand->shape().layout(), shape.layout());
     if (same_layout) {
+      const NativeT* operand_data = operand_literal.data<NativeT>().data();
       ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int /*thread_id*/) {
-            return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
+            return unary_op(operand_data[linear_index]);
           }));
     } else {
       ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(

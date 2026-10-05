@@ -35,7 +35,6 @@ limitations under the License.*/
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
@@ -49,6 +48,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/collective_types.pb.h"
 #include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/rank_id.h"
@@ -403,46 +403,26 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
   ABSL_RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
       clique_key, device_groups));
 
-  absl::MutexLock lock(mutex_);
-  if (!per_stream_memory_.contains(params.executor)) {
-    std::vector<se::DeviceAddressHandle> scratch_allocations;
-    scratch_allocations.reserve(kernel_spec_.scratch_buffers.size());
-    for (int32_t i = 0; i < kernel_spec_.scratch_buffers.size(); ++i) {
-      const ScratchBufferSpec& buf_spec = kernel_spec_.scratch_buffers[i];
-      const int64_t total_bytes = xla::RoundUpTo<uint64_t>(
-          buf_spec.size_bytes *
-              (buf_spec.should_double_buffer ? kNumBuffers : 1),
-          kXlaAllocatedBufferAlignBytes);
-      ABSL_ASSIGN_OR_RETURN(se::DeviceAddressHandle alloc_handle,
-                       AllocateMemory(params.executor, total_bytes,
-                                      absl::StrCat("Scratch ", i)));
-      scratch_allocations.push_back(std::move(alloc_handle));
+  // If we decided to run kernel using multimem strategy we request
+  // symmetric memory for buffers that explicitly requested it.
+  for (size_t i = 0; i < kernel_spec_.codegen_config.input_buffer_specs.size();
+       ++i) {
+    if (kernel_spec_.codegen_config.input_buffer_specs[i]
+            .symmetric_memory_type ==
+        SymmetricMemoryType::kLoadStoreAccessible) {
+      ABSL_RETURN_IF_ERROR(
+          params.collective_memory_requests->RequestSymmetricAllocation(
+              clique_key, buffers_[i].source_buffer.slice.index()));
     }
-    per_stream_memory_.emplace(
-        params.executor, std::make_unique<StreamMemory>(
-                             StreamMemory{std::move(scratch_allocations)}));
-
-    // If we decided to run kernel using multimem strategy we request symmetric
-    // memory for buffers that explicitly requested it.
-    for (size_t i = 0;
-         i < kernel_spec_.codegen_config.input_buffer_specs.size(); ++i) {
-      if (kernel_spec_.codegen_config.input_buffer_specs[i]
-              .symmetric_memory_type ==
-          SymmetricMemoryType::kLoadStoreAccessible) {
-        ABSL_RETURN_IF_ERROR(
-            params.collective_memory_requests->RequestSymmetricAllocation(
-                clique_key, buffers_[i].source_buffer.slice.index()));
-      }
-    }
-    for (size_t i = 0;
-         i < kernel_spec_.codegen_config.output_buffer_specs.size(); ++i) {
-      if (kernel_spec_.codegen_config.output_buffer_specs[i]
-              .symmetric_memory_type ==
-          SymmetricMemoryType::kLoadStoreAccessible) {
-        ABSL_RETURN_IF_ERROR(
-            params.collective_memory_requests->RequestSymmetricAllocation(
-                clique_key, buffers_[i].destination_buffer.slice.index()));
-      }
+  }
+  for (size_t i = 0; i < kernel_spec_.codegen_config.output_buffer_specs.size();
+       ++i) {
+    if (kernel_spec_.codegen_config.output_buffer_specs[i]
+            .symmetric_memory_type ==
+        SymmetricMemoryType::kLoadStoreAccessible) {
+      ABSL_RETURN_IF_ERROR(
+          params.collective_memory_requests->RequestSymmetricAllocation(
+              clique_key, buffers_[i].destination_buffer.slice.index()));
     }
   }
 
@@ -465,188 +445,193 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
 
-  StreamState* state = nullptr;
-  {
-    absl::MutexLock lock(mutex_);
-    if (!per_stream_state_.contains(params.executor)) {
-      StreamMemory* memory_state = per_stream_memory_.at(params.executor).get();
-      // Step1: Zero out scratch buffers if needed.
-      for (size_t i = 0; i < kernel_spec_.scratch_buffers.size(); ++i) {
-        if (kernel_spec_.scratch_buffers[i].should_memzero) {
-          ABSL_RETURN_IF_ERROR(params.stream->MemZero(
-              memory_state->scratch_allocations[i].address_ptr(),
-              memory_state->scratch_allocations[i].address().size()));
+  return per_device_state_.GetOrCreateAndInitialize(
+      params.executor->device_ordinal(),
+      [&](StreamState* state) -> absl::Status {
+        std::vector<se::DeviceAddressHandle> scratch_allocations;
+        scratch_allocations.reserve(kernel_spec_.scratch_buffers.size());
+        for (int32_t i = 0; i < kernel_spec_.scratch_buffers.size(); ++i) {
+          const ScratchBufferSpec& buf_spec = kernel_spec_.scratch_buffers[i];
+          const int64_t total_bytes = xla::RoundUpTo<uint64_t>(
+              buf_spec.size_bytes *
+                  (buf_spec.should_double_buffer ? kNumBuffers : 1),
+              kXlaAllocatedBufferAlignBytes);
+          ABSL_ASSIGN_OR_RETURN(se::DeviceAddressHandle alloc_handle,
+                           AllocateMemory(params.executor, total_bytes,
+                                          absl::StrCat("Scratch ", i)));
+          scratch_allocations.push_back(std::move(alloc_handle));
         }
-      }
-      ABSL_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
-      TF_RET_CHECK(!kernel_name_.empty())
-          << "Kernel name must be set for collective kernel thunk.";
-      // Create kernel for execution.
-      std::unique_ptr<se::Kernel> kernel = nullptr;
-      const int32_t num_args =
-          kernel_spec_.codegen_config.argument_descriptors.size();
-      if (cubin_.has_value()) {
-        ABSL_ASSIGN_OR_RETURN(kernel, CreateKernel(kernel_name_, num_args, *cubin_,
-                                              params.executor, shmem_bytes_));
-      } else if (!params.src.binary.empty()) {
-        ABSL_ASSIGN_OR_RETURN(kernel,
-                         CreateKernel(kernel_name_, num_args, params.src.binary,
-                                      params.executor, shmem_bytes_));
-      } else {  // Use PTX.
-        ABSL_ASSIGN_OR_RETURN(kernel,
-                         CreateKernel(kernel_name_, num_args, params.src.text,
-                                      params.executor, shmem_bytes_));
-      }
-      kernel->set_use_pdl(use_pdl_);
-      // Step2: Emplace into the stream state.
-      per_stream_state_.emplace(
-          params.executor,
-          std::make_unique<StreamState>(params.executor->device_ordinal(),
-                                        rank.value(), std::move(kernel)));
-      state = per_stream_state_.at(params.executor).get();
-    }
-  }
-
-  StreamMemory* memory_state = nullptr;
-  {
-    absl::MutexLock lock(mutex_);
-    memory_state = per_stream_memory_.at(params.executor).get();
-  }
-
-  if (state != nullptr) {
-    std::vector<se::DeviceAddressBase> parameters;
-    parameters.reserve(kernel_spec_.codegen_config.argument_descriptors.size());
-    for (size_t i = 0;
-         i < kernel_spec_.codegen_config.input_buffer_specs.size(); ++i) {
-      if (kernel_spec_.codegen_config.input_buffer_specs[i].requires_multimem) {
-        parameters.push_back(params.buffer_allocations->GetDeviceAddress(
-            buffers_[i].source_buffer.slice));
-      }
-    }
-    for (size_t i = 0;
-         i < kernel_spec_.codegen_config.output_buffer_specs.size(); ++i) {
-      if (kernel_spec_.codegen_config.output_buffer_specs[i]
-              .requires_multimem) {
-        parameters.push_back(params.buffer_allocations->GetDeviceAddress(
-            buffers_[i].destination_buffer.slice));
-      }
-    }
-    for (const auto& alloc : memory_state->scratch_allocations) {
-      parameters.push_back(alloc.address());
-    }
-
-    const size_t num_parameters = parameters.size();
-    const size_t param_to_peers_ptrs_size_bytes =
-        num_parameters * clique_key.num_devices() * sizeof(uint64_t);
-    TF_RET_CHECK(params.collective_params != nullptr)
-        << "Collective params must not be null in "
-           "CollectiveKernelThunk::Initialize";
-    TF_RET_CHECK(params.collective_cliques != nullptr)
-        << "Collective cliques must not be null in "
-           "CollectiveKernelThunk::Initialize";
-    TF_RET_CHECK(params.collective_memory != nullptr)
-        << "Collective memory must not be null in "
-           "CollectiveKernelThunk::Initialize";
-
-    const bool use_symmetric_memory = absl::c_any_of(
-        kernel_spec_.scratch_buffers, [](const ScratchBufferSpec& spec) {
-          return spec.symmetric_memory_type ==
-                 SymmetricMemoryType::kLoadStoreAccessible;
-        });
-
-    if (use_symmetric_memory) {
-      ABSL_ASSIGN_OR_RETURN(GpuCommunicator * comm,
-                       params.collective_cliques->GetComm(clique_key, *rank));
-
-      if (memory_state->scratch_symmetric_memories.empty()) {
-        memory_state->scratch_symmetric_memories.reserve(
-            memory_state->scratch_allocations.size());
-        for (size_t i = 0; i < memory_state->scratch_allocations.size(); ++i) {
-          se::DeviceAddressBase addr =
-              memory_state->scratch_allocations[i].address();
-          ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symmetric_memory,
-                           comm->CreateSymmetricMemory(addr));
-          ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symmetric_memory,
-                           params.collective_cliques->Tie(
-                               clique_key, std::move(symmetric_memory)));
-          memory_state->scratch_symmetric_memories.push_back(
-              std::move(tied_symmetric_memory));
+        // Step1: Zero out scratch buffers if needed.
+        for (size_t i = 0; i < kernel_spec_.scratch_buffers.size(); ++i) {
+          if (kernel_spec_.scratch_buffers[i].should_memzero) {
+            ABSL_RETURN_IF_ERROR(params.stream->MemZero(
+                scratch_allocations[i].address_ptr(),
+                scratch_allocations[i].address().size()));
+          }
         }
-      }
-    }
-
-    std::vector<void*> multimem_addresses;
-    if (RequiresMultimem(kernel_spec_)) {
-      multimem_addresses.resize(num_parameters, nullptr);
-      for (size_t i = 0; i < num_parameters; ++i) {
-        auto [mmem, offset] = params.collective_memory->FindSymmetricMemory(
-            clique_key, parameters[i]);
-        if (mmem != nullptr) {
-          ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase mmem_addr,
-                           mmem->multimem_addr());
-          multimem_addresses[i] =
-              tsl::safe_reinterpret_cast<char*>(mmem_addr.opaque()) + offset;
+        ABSL_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+        TF_RET_CHECK(!kernel_name_.empty())
+            << "Kernel name must be set for collective kernel thunk.";
+        // Create kernel for execution.
+        std::unique_ptr<se::Kernel> kernel = nullptr;
+        const int32_t num_args =
+            kernel_spec_.codegen_config.argument_descriptors.size();
+        if (cubin_.has_value()) {
+          ABSL_ASSIGN_OR_RETURN(kernel, CreateKernel(kernel_name_, num_args, *cubin_,
+                                                params.executor, shmem_bytes_));
+        } else if (!params.src.binary.empty()) {
+          ABSL_ASSIGN_OR_RETURN(
+              kernel, CreateKernel(kernel_name_, num_args, params.src.binary,
+                                   params.executor, shmem_bytes_));
+        } else {  // Use PTX.
+          ABSL_ASSIGN_OR_RETURN(kernel,
+                           CreateKernel(kernel_name_, num_args, params.src.text,
+                                        params.executor, shmem_bytes_));
         }
-      }
-    }
+        kernel->set_use_pdl(use_pdl_);
+        // Step2: Populate the stream state.
+        *state = StreamState(params.executor->device_ordinal(), rank.value(),
+                             std::move(kernel), std::move(scratch_allocations));
 
-    std::vector<void*> param_to_peers_ptrs;
-    if (use_symmetric_memory) {
-      static constexpr auto is_multimem_buffer =
-          [](const IoBufferSpec& spec) -> bool {
-        return spec.requires_multimem;
-      };
-      int32_t scratch_buffers_index =
-          absl::c_count_if(kernel_spec_.codegen_config.input_buffer_specs,
-                           is_multimem_buffer) +
-          absl::c_count_if(kernel_spec_.codegen_config.output_buffer_specs,
-                           is_multimem_buffer);
-      param_to_peers_ptrs.resize(num_parameters * clique_key.num_devices());
-      for (size_t i = scratch_buffers_index; i < num_parameters; ++i) {
-        const size_t scratch_index = i - scratch_buffers_index;
-        auto sym_mem =
-            memory_state->scratch_symmetric_memories[scratch_index].Lock();
-        TF_RET_CHECK(sym_mem != nullptr)
-            << "Symmetric memory for scratch buffer " << scratch_index
-            << " is no longer valid";
-        const size_t parameter_offset = i * clique_key.num_devices();
-        for (int device_rank = 0; device_rank < clique_key.num_devices();
-             ++device_rank) {
-          ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_address,
-                           sym_mem->peer_addr(RankId(device_rank)));
-          param_to_peers_ptrs[parameter_offset + device_rank] =
-              peer_address.opaque();
+        std::vector<se::DeviceAddressBase> parameters;
+        parameters.reserve(
+            kernel_spec_.codegen_config.argument_descriptors.size());
+        for (size_t i = 0;
+             i < kernel_spec_.codegen_config.input_buffer_specs.size(); ++i) {
+          if (kernel_spec_.codegen_config.input_buffer_specs[i]
+                  .requires_multimem) {
+            parameters.push_back(params.buffer_allocations->GetDeviceAddress(
+                buffers_[i].source_buffer.slice));
+          }
         }
-      }
-    } else {
-      ABSL_ASSIGN_OR_RETURN(
-          param_to_peers_ptrs,
-          CollectParamToPeers(clique_key, state->rank, params.stream,
-                              std::move(parameters)));
-    }
-    const size_t multimem_size_bytes =
-        multimem_addresses.size() * sizeof(void*);
-    state->metadata = params.executor->Allocate(
-        sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes +
-            multimem_size_bytes,
-        0);
+        for (size_t i = 0;
+             i < kernel_spec_.codegen_config.output_buffer_specs.size(); ++i) {
+          if (kernel_spec_.codegen_config.output_buffer_specs[i]
+                  .requires_multimem) {
+            parameters.push_back(params.buffer_allocations->GetDeviceAddress(
+                buffers_[i].destination_buffer.slice));
+          }
+        }
+        for (const auto& alloc : state->scratch_allocations) {
+          parameters.push_back(alloc.address());
+        }
 
-    CollectiveKernelMetadata metadata;
-    metadata.rank = state->rank.value();
-    ABSL_RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
-        params.stream, metadata, param_to_peers_ptrs, multimem_addresses,
-        state->metadata));
-    if (VLOG_IS_ON(3)) {
-      XLA_VLOG_DEVICE(3, params.executor->device_ordinal())
-          << "Constructed device state {"
-          << " metadata rank: " << metadata.rank << ", param_to_peers: ("
-          << absl::StrJoin(param_to_peers_ptrs, ", ", PtrFormatter{})
-          << "), multimem_addresses: ("
-          << absl::StrJoin(multimem_addresses, ", ", PtrFormatter{}) << ")}";
-    }
-    return absl::OkStatus();
-  }
-  return absl::OkStatus();
+        const size_t num_parameters = parameters.size();
+        const size_t param_to_peers_ptrs_size_bytes =
+            num_parameters * clique_key.num_devices() * sizeof(uint64_t);
+        TF_RET_CHECK(params.collective_params != nullptr)
+            << "Collective params must not be null in "
+               "CollectiveKernelThunk::Initialize";
+        TF_RET_CHECK(params.collective_cliques != nullptr)
+            << "Collective cliques must not be null in "
+               "CollectiveKernelThunk::Initialize";
+        TF_RET_CHECK(params.collective_memory != nullptr)
+            << "Collective memory must not be null in "
+               "CollectiveKernelThunk::Initialize";
+
+        const bool use_symmetric_memory = absl::c_any_of(
+            kernel_spec_.scratch_buffers, [](const ScratchBufferSpec& spec) {
+              return spec.symmetric_memory_type ==
+                     SymmetricMemoryType::kLoadStoreAccessible;
+            });
+
+        if (use_symmetric_memory) {
+          ABSL_ASSIGN_OR_RETURN(
+              GpuCommunicator * comm,
+              params.collective_cliques->GetComm(clique_key, *rank));
+
+          if (state->scratch_symmetric_memories.empty()) {
+            state->scratch_symmetric_memories.reserve(
+                state->scratch_allocations.size());
+            for (size_t i = 0; i < state->scratch_allocations.size(); ++i) {
+              se::DeviceAddressBase addr =
+                  state->scratch_allocations[i].address();
+              ABSL_ASSIGN_OR_RETURN(
+                  std::unique_ptr<SymmetricMemory> symmetric_memory,
+                  comm->CreateSymmetricMemory(addr));
+              ABSL_ASSIGN_OR_RETURN(
+                  tsl::TiedRef<SymmetricMemory> tied_symmetric_memory,
+                  params.collective_cliques->Tie(clique_key,
+                                                 std::move(symmetric_memory)));
+              state->scratch_symmetric_memories.push_back(
+                  std::move(tied_symmetric_memory));
+            }
+          }
+        }
+
+        std::vector<void*> multimem_addresses;
+        if (RequiresMultimem(kernel_spec_)) {
+          multimem_addresses.resize(num_parameters, nullptr);
+          for (size_t i = 0; i < num_parameters; ++i) {
+            auto [mmem, offset] = params.collective_memory->FindSymmetricMemory(
+                clique_key, parameters[i]);
+            if (mmem != nullptr) {
+              ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase mmem_addr,
+                               mmem->multimem_addr());
+              multimem_addresses[i] =
+                  tsl::safe_reinterpret_cast<char*>(mmem_addr.opaque()) +
+                  offset;
+            }
+          }
+        }
+
+        std::vector<void*> param_to_peers_ptrs;
+        if (use_symmetric_memory) {
+          static constexpr auto is_multimem_buffer =
+              [](const IoBufferSpec& spec) -> bool {
+            return spec.requires_multimem;
+          };
+          int32_t scratch_buffers_index =
+              absl::c_count_if(kernel_spec_.codegen_config.input_buffer_specs,
+                               is_multimem_buffer) +
+              absl::c_count_if(kernel_spec_.codegen_config.output_buffer_specs,
+                               is_multimem_buffer);
+          param_to_peers_ptrs.resize(num_parameters * clique_key.num_devices());
+          for (size_t i = scratch_buffers_index; i < num_parameters; ++i) {
+            const size_t scratch_index = i - scratch_buffers_index;
+            auto sym_mem =
+                state->scratch_symmetric_memories[scratch_index].Lock();
+            TF_RET_CHECK(sym_mem != nullptr)
+                << "Symmetric memory for scratch buffer " << scratch_index
+                << " is no longer valid";
+            const size_t parameter_offset = i * clique_key.num_devices();
+            for (int device_rank = 0; device_rank < clique_key.num_devices();
+                 ++device_rank) {
+              ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_address,
+                               sym_mem->peer_addr(RankId(device_rank)));
+              param_to_peers_ptrs[parameter_offset + device_rank] =
+                  peer_address.opaque();
+            }
+          }
+        } else {
+          ABSL_ASSIGN_OR_RETURN(
+              param_to_peers_ptrs,
+              CollectParamToPeers(clique_key, state->rank, params.stream,
+                                  std::move(parameters)));
+        }
+        const size_t multimem_size_bytes =
+            multimem_addresses.size() * sizeof(void*);
+        state->metadata = params.executor->Allocate(
+            sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes +
+                multimem_size_bytes,
+            0);
+
+        CollectiveKernelMetadata metadata;
+        metadata.rank = state->rank.value();
+        ABSL_RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
+            params.stream, metadata, param_to_peers_ptrs, multimem_addresses,
+            state->metadata));
+        if (VLOG_IS_ON(3)) {
+          XLA_VLOG_DEVICE(3, params.executor->device_ordinal())
+              << "Constructed device state {"
+              << " metadata rank: " << metadata.rank << ", param_to_peers: ("
+              << absl::StrJoin(param_to_peers_ptrs, ", ", PtrFormatter{})
+              << "), multimem_addresses: ("
+              << absl::StrJoin(multimem_addresses, ", ", PtrFormatter{})
+              << ")}";
+        }
+        return absl::OkStatus();
+      });
 }
 
 absl::StatusOr<CollectiveKernelThunk::LaunchPlan>
@@ -662,14 +647,9 @@ CollectiveKernelThunk::PrepareLaunch(const ExecuteParams& params) {
   TF_RET_CHECK(rank.has_value())
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
-  StreamState* state = nullptr;
-  {
-    absl::MutexLock lock(mutex_);
-    auto it = per_stream_state_.find(stream->parent());
-    TF_RET_CHECK(it != per_stream_state_.end())
-        << "Stream not found in per_stream_state_";
-    state = it->second.get();
-  }
+  StreamState* state =
+      per_device_state_.Find(stream->parent()->device_ordinal());
+  TF_RET_CHECK(state != nullptr) << "Stream not found in per_device_state_";
 
   // Backward-compatibility fallback for legacy AOT-compiled kernels.
   if (!kernel_spec_.codegen_config.device_sync_count) {
@@ -700,16 +680,11 @@ CollectiveKernelThunk::PrepareLaunch(const ExecuteParams& params) {
   // before kernel launch. All ranks perform this copy, then the entry barrier
   // in the kernel waits until every rank has finished its copy.
   if (kernel_spec_.codegen_config.copy_input_to_scratch) {
-    StreamMemory* memory_state = nullptr;
-    {
-      absl::MutexLock lock(mutex_);
-      memory_state = per_stream_memory_.at(stream->parent()).get();
-    }
     // scratch_allocations[1] is the symmetric remote buffer that holds this
     // rank's input slice. scratch_allocations[0] is the signal buffer.
-    TF_RET_CHECK(memory_state->scratch_allocations.size() >= 2)
+    TF_RET_CHECK(state->scratch_allocations.size() >= 2)
         << "Expected at least 2 scratch allocations for D2D copy.";
-    plan.copy_dst = memory_state->scratch_allocations[1].address_ptr();
+    plan.copy_dst = state->scratch_allocations[1].address_ptr();
     plan.copy_src = params.buffer_allocations->GetDeviceAddress(
         buffers_[0].source_buffer.slice);
     plan.copy_size = GetInputSizeBytes();
@@ -824,7 +799,8 @@ Thunk::BufferUses CollectiveKernelThunk::buffer_uses() const {
 absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>>
 CollectiveKernelThunk::FromProto(
     ThunkInfo thunk_info, const CollectiveKernelThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
+    absl::Span<const BufferAllocation> buffer_allocations,
+    int devices_in_process) {
   CollectiveConfig collective_config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
 
@@ -959,8 +935,8 @@ CollectiveKernelThunk::FromProto(
   return std::make_unique<CollectiveKernelThunk>(
       thunk_info, collective_config, std::move(kernel_spec), std::move(buffers),
       thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
-      launch_dimensions, thunk_proto.shmem_bytes(), std::move(cubin),
-      thunk_proto.use_pdl());
+      launch_dimensions, devices_in_process, thunk_proto.shmem_bytes(),
+      std::move(cubin), thunk_proto.use_pdl());
 }
 
 absl::StatusOr<ThunkProto> CollectiveKernelThunk::ToProto() const {

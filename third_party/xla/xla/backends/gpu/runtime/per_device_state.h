@@ -41,6 +41,7 @@ class UntypedPerDeviceState {
   DeviceSlot* Find(int device_ordinal) const;
   absl::StatusOr<DeviceSlot*> GetOrCreate(int device_ordinal,
                                           DeviceSlotFactoryRef factory);
+  void ForEach(absl::FunctionRef<void(DeviceSlot&)> fn) const;
 
  private:
   class Impl;
@@ -97,6 +98,17 @@ class PerDeviceState : private UntypedPerDeviceState {
       slot->init_status = init_fn(DeviceSlot::Unwrap<T>(slot));
     });
     return slot->init_status;
+  }
+
+  // Lock-free. Calls `fn` for every state in [0, num_devices) and every state
+  // outside [0, num_devices) built before the call. States built concurrently
+  // by `GetOrCreate` may or may not be visited. Order of iteration over device
+  // states is not guaranteed. Mutating the state `T&` during iteration is not
+  // thread-safe; objects must be synchronized externally by the caller for
+  // such a use case.
+  void ForEach(absl::FunctionRef<void(T&)> fn) const {
+    UntypedPerDeviceState::ForEach(
+        [&](DeviceSlot& slot) { fn(*DeviceSlot::Unwrap<T>(&slot)); });
   }
 };
 

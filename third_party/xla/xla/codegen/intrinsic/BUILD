@@ -64,6 +64,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
