@@ -318,7 +318,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kCollectiveKernelThunk:
       return CollectiveKernelThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_kernel_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_process()
+                                   : 0);
     case ThunkProto::kAsyncStartThunk:
       return AsyncStartThunk::FromProto(std::move(thunk_info),
                                         thunk_proto.async_start_thunk(),

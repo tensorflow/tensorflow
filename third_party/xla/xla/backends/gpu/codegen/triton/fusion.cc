@@ -104,11 +104,12 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
   ABSL_ASSIGN_OR_RETURN(
       const SymmetricMemoryType scratch_memory_type,
       GetSymmetricMemoryType(ir_emitter_context.gpu_topology(), *fusion_instr));
-
+  int devices_in_process =
+      ir_emitter_context.gpu_topology().num_devices_per_process();
   TritonFusion::EmitThunk make_thunk =
       [info = std::move(info), buffers = std::move(buffers), config,
-       fusion_instr,
-       scratch_memory_type](TritonFusion::EmitResult result) mutable
+       fusion_instr, scratch_memory_type,
+       devices_in_process](TritonFusion::EmitResult result) mutable
       -> absl::StatusOr<ThunkSequence> {
     ABSL_ASSIGN_OR_RETURN(
         CollectiveKernelSpec kernel_spec,
@@ -123,8 +124,8 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
     return ThunkSequence::Of<CollectiveKernelThunk>(
         std::move(info), config, std::move(kernel_spec), std::move(buffers),
         /*is_collective_kernel_enabled=*/true, result.entry.kernel_name,
-        result.entry.launch_dimensions, result.entry.shmem_bytes,
-        std::move(cubin), result.entry.use_pdl);
+        result.entry.launch_dimensions, devices_in_process,
+        result.entry.shmem_bytes, std::move(cubin), result.entry.use_pdl);
   };
   ABSL_ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
                    GetCollectiveUnmanagedKernelArguments(fusion_instr));
