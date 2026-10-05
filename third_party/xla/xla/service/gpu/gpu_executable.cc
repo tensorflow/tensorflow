@@ -571,6 +571,29 @@ absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions& run_options,
     const DebugOptions* absl_nullable debug_options);
 
+// Returns HangWatchdog guards for the given execution timeout handlers.
+static std::vector<std::shared_ptr<HangWatchdog::Guard>> ExecutionTimeoutGuards(
+    absl::Span<ExecutionTimeoutHandler> handlers,
+    absl::string_view watchdog_name) {
+  std::vector<std::shared_ptr<HangWatchdog::Guard>> guards;
+  for (ExecutionTimeoutHandler& handler : handlers) {
+    if (!handler.callback || handler.timeout == absl::InfiniteDuration()) {
+      continue;
+    }
+
+    guards.push_back(HangWatchdog::Global().Watch(
+        watchdog_name, handler.timeout,
+        [watchdog_name = std::string(watchdog_name), timeout = handler.timeout,
+         callback = std::move(handler.callback)]() mutable {
+          LOG(ERROR) << absl::StreamFormat(
+              "%s failed to finish in %v, call execution timeout handler.",
+              watchdog_name, timeout);
+          std::move(callback)(watchdog_name, timeout);
+        }));
+  }
+  return guards;
+}
+
 absl::Status GpuExecutable::ExecuteThunksImpl(
     const DebugOptions* debug_options, const std::string& module_name,
     ModuleIdentifier module_id, ThunkExecutor& thunk_executor,
@@ -637,12 +660,28 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
     }
   }
 
+  // Timeout handlers for this execution, partitioned into host and device.
+  std::vector<ExecutionTimeoutHandler> handlers;
+  if (gpu_run_options != nullptr) {
+    handlers = gpu_run_options->execution_timeout_handlers();
+  }
+  size_t num_host =
+      absl::c_partition(handlers, ExecutionTimeoutHandler::IsHost) -
+      handlers.begin();
+  auto host_handlers = absl::MakeSpan(handlers).first(num_host);
+  auto device_handlers = absl::MakeSpan(handlers).subspan(num_host);
+
+  RunId run_id = run_options->run_options().run_id();
+
+  std::string host_watchdog_name =
+      absl::StrFormat("[%d] XLA GPU host execution `%s` (run_id=%v)",
+                      executor->device_ordinal(), module_name, run_id);
+
   // Monitors that host thread makes progress and does not get stuck.
-  std::shared_ptr<HangWatchdog::Guard> host_guard;
+  std::vector<std::shared_ptr<HangWatchdog::Guard>> host_guards =
+      ExecutionTimeoutGuards(host_handlers, host_watchdog_name);
+
   if (host_timeout < absl::InfiniteDuration()) {
-    std::string watchdog_name =
-        absl::StrFormat("[%d] XLA GPU host execution `%s`",
-                        executor->device_ordinal(), module_name);
     HangWatchdog::CancelCallback pre_abort;
     if (tracker.has_value()) {
       pre_abort = [tracker = tracker->tracker(), progress_tracking_n,
@@ -687,23 +726,10 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       };
     }
 
-    HangWatchdog::CancelCallback on_timeout;
-    if (gpu_run_options && gpu_run_options->execution_timeout_handler()) {
-      on_timeout = [handler = gpu_run_options->execution_timeout_handler(),
-                    watchdog_name, host_timeout,
-                    pre_abort = std::move(pre_abort)]() mutable {
-        if (pre_abort) {
-          std::move(pre_abort)();
-        }
-        handler(watchdog_name, host_timeout);
-      };
-    } else {
-      on_timeout = HangWatchdog::Abort(watchdog_name, host_timeout,
-                                       std::move(pre_abort));
-    }
-
-    host_guard = HangWatchdog::Global().Watch(watchdog_name, host_timeout,
-                                              std::move(on_timeout));
+    host_guards.push_back(HangWatchdog::Global().Watch(
+        host_watchdog_name, host_timeout,
+        HangWatchdog::Abort(host_watchdog_name, host_timeout,
+                            std::move(pre_abort))));
   }
 
   // Borrow stream for tracing command buffers.
@@ -874,17 +900,24 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
-  // Device monitoring is independent of host monitoring. The stream owns
-  // this guard until the empty callback runs after the enqueued device work.
+  // Device monitoring is independent of host monitoring. The stream owns these
+  // guards until the empty callback runs after the enqueued device work.
+  std::string device_watchdog_name =
+      absl::StrFormat("[%d] XLA GPU device execution `%s` (run_id=%v)",
+                      executor->device_ordinal(), module_name, run_id);
+
+  std::vector<std::shared_ptr<HangWatchdog::Guard>> device_guards =
+      ExecutionTimeoutGuards(device_handlers, device_watchdog_name);
+
   if (device_timeout < absl::InfiniteDuration()) {
-    std::string watchdog_name =
-        absl::StrFormat("[%d] XLA GPU device execution `%s`",
-                        executor->device_ordinal(), module_name);
-    auto device_guard = HangWatchdog::Global().Watch(
-        watchdog_name, device_timeout,
-        HangWatchdog::Abort(watchdog_name, device_timeout));
+    device_guards.push_back(HangWatchdog::Global().Watch(
+        device_watchdog_name, device_timeout,
+        HangWatchdog::Abort(device_watchdog_name, device_timeout)));
+  }
+
+  if (!device_guards.empty()) {
     ABSL_RETURN_IF_ERROR(
-        main_stream->DoHostCallback([guard = std::move(device_guard)] {}));
+        main_stream->DoHostCallback([guards = std::move(device_guards)] {}));
   }
 
   return MaybeSyncAndProfile(run_options, execution_timer.get(),

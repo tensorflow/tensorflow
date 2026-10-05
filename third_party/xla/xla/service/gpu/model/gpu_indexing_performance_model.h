@@ -28,12 +28,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/StorageUniquer.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/runtime/object_pool.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -46,8 +47,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-using MlirContextPool = ObjectPool<std::unique_ptr<mlir::MLIRContext>>;
 
 // Contains informations about block level parameters and run time of a fusion.
 struct TiledRunTimeData {
@@ -95,7 +94,13 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
         mlir_context_pool_(mlir_context_pool),
         use_experimental_tiling_(use_experimental_tiling),
         enable_same_shape_multi_output_fusion_(
-            enable_same_shape_multi_output_fusion) {}
+            enable_same_shape_multi_output_fusion) {
+    // TODO(b/514293537): Delete this condition once SymbolicTileAnalysis is
+    // deleted.
+    if (!use_experimental_tiling_ && mlir_context_ != nullptr) {
+      mlir_context_->getAffineUniquer().disableMultithreading(false);
+    }
+  }
 
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(

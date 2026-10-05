@@ -93,6 +93,7 @@ cc_library(
         "//xla/runtime:device_id",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
@@ -440,12 +441,12 @@ cc_library(
         ":execution_stream_assignment",
         ":gpu_executable",
         ":kernel_reuse_cache",
+        ":mlir_context_pool",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/codegen:kernel_compiler",
         "//xla/backends/gpu/runtime:host_execute_thunk",
         "//xla/backends/gpu/runtime:thunk_id",
         "//xla/hlo/ir:hlo",
-        "//xla/runtime:object_pool",
         "//xla/service:buffer_assignment",
         "//xla/service:call_inliner",
         "//xla/service:gpu_topology",
@@ -1630,6 +1631,7 @@ cc_library(
         ":ir_emitter_context",
         ":kernel_reuse_cache_proto_cc",
         ":metrics",
+        ":mlir_context_pool",
         ":thunk_emitter",
         "//xla:future",
         "//xla:shape_util",
@@ -1646,7 +1648,6 @@ cc_library(
         "//xla/codegen:llvm_kernel_source",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
-        "//xla/runtime:object_pool",
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
         "//xla/service:dump",
@@ -1705,6 +1706,7 @@ cc_library(
     hdrs = ["fusion_pipeline.h"],
     deps = [
         ":alias_info",
+        ":mlir_context_pool",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:conv_canonicalizer",
@@ -1789,6 +1791,7 @@ cc_library(
         ":launch_dimensions",
         ":matmul_utils",
         ":metrics",
+        ":mlir_context_pool",
         ":pre_scheduling_copy_insertion_pipeline",
         ":reduction_utils",
         ":stream_executor_util",
@@ -3938,5 +3941,31 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "mlir_context_pool",
+    srcs = ["mlir_context_pool.cc"],
+    hdrs = ["mlir_context_pool.h"],
+    deps = [
+        "//xla/runtime:object_pool",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "mlir_context_pool_test",
+    srcs = ["mlir_context_pool_test.cc"],
+    deps = [
+        ":mlir_context_pool",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )

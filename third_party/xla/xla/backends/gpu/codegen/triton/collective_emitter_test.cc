@@ -54,9 +54,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
@@ -380,8 +380,7 @@ TEST_P(CollectiveEmitterParameterizedTest,
   CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
                                             debug_options, *gpu_topology_);
 
-  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
-      []() { return CreateMlirContext(); });
+  MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
   ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
                        mlir_context_pool.GetOrCreate());
 

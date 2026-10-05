@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
@@ -38,9 +38,10 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -87,7 +88,7 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
   backends.push_back(std::make_unique<CudnnBackend>(
       stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<TritonBackend>(
-      debug_options, compiler, target_config, alias_info, mlir_context));
+      debug_options, compiler, target_config, alias_info, mlir_context_pool));
   backends.push_back(std::make_unique<CublasLtBackend>(
       stream_executor, debug_options, compiler, target_config, mlir_context));
   backends.push_back(std::make_unique<FissionBackend>(
@@ -95,7 +96,7 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
       std::make_unique<CublasLtBackend>(stream_executor, debug_options,
                                         compiler, target_config, mlir_context),
       GetCublasLtRewriterPipeline(target_config->device_description),
-      alias_info, mlir_context));
+      alias_info, mlir_context_pool));
   backends.push_back(std::make_unique<NativeEmitterBackend>(
       debug_options, compiler, target_config));
   backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
