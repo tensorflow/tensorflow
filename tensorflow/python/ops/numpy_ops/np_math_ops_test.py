@@ -866,12 +866,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
       x = constant_op.constant(x_np, dtype=dtype)
       out = np_math_ops.cbrt(x)
       self.assertAllClose(out, np.cbrt(x_np))
-      self.assertAllEqual(np.signbit(out.numpy()), np.signbit(np.cbrt(x_np)))
+      self.assertAllEqual(np_math_ops.signbit(out), np.signbit(np.cbrt(x_np)))
 
     x_neg_zero = constant_op.constant(-0.0, dtype=dtypes.float64)
-    self.assertEqual(
-        math_ops.reciprocal(np_math_ops.cbrt(x_neg_zero)).numpy(),
-        -float('inf'),
+    self.assertAllEqual(
+        math_ops.reciprocal(np_math_ops.cbrt(x_neg_zero)),
+        -np.inf,
     )
 
     x_bf16 = constant_op.constant([-0.0, 0.0, -8.0, 8.0], dtype=dtypes.bfloat16)
@@ -879,6 +879,19 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         np_math_ops.signbit(out_bf16), [True, False, True, False]
     )
+
+    for dtype in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.bfloat16):
+      # Verify N=0 (empty tensor) fallback.
+      x_empty = constant_op.constant([], dtype=dtype)
+      out_empty = np_math_ops.cbrt(x_empty)
+      self.assertEqual(out_empty.shape.num_elements(), 0)
+
+      # Verify NaN, +Inf, -Inf
+      x_edge = constant_op.constant([-float('inf'), float('inf'), float('nan')], dtype=dtype)
+      out_edge = np_math_ops.cbrt(x_edge)
+      # inf ** (1/3) == inf; NaN ** (1/3) == NaN
+      # Negative sign bit for -inf is preserved.
+      self.assertAllEqual(np_math_ops.signbit(out_edge[0:2]), [True, False])
 
   def testSinc(self):
     for dtype in (dtypes.float32, dtypes.float64):

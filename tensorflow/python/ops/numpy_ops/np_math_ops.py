@@ -855,20 +855,21 @@ def reciprocal(x):
   return _scalar(math_ops.reciprocal, x)
 
 
+def _signbit(x):
+  if x.dtype == dtypes.bool:
+    return array_ops.fill(array_ops.shape(x), False)
+  if x.dtype in _SIGN_BITCAST_DTYPES:
+    # Check the IEEE-754 sign bit instead of comparing with zero, which
+    # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
+    bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
+    return bits < 0
+  return x < 0
+
+
 @tf_export.tf_export('experimental.numpy.signbit', v1=[])
 @np_utils.np_doc('signbit')
 def signbit(x):
-  def f(x):
-    if x.dtype == dtypes.bool:
-      return array_ops.fill(array_ops.shape(x), False)
-    if x.dtype in _SIGN_BITCAST_DTYPES:
-      # Check the IEEE-754 sign bit instead of comparing with zero, which
-      # cannot tell -0.0 from +0.0 or a negative NaN from a positive one.
-      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
-      return math_ops.less(bits, 0)
-    return x < 0
-
-  return _scalar(f, x)
+  return _scalar(_signbit, x)
 
 
 @tf_export.tf_export('experimental.numpy.sin', v1=[])
@@ -994,14 +995,7 @@ def cbrt(x):
   def f(x):
     # __pow__ can't handle negative base, so we use `abs` here.
     rt = math_ops.abs(x) ** (1.0 / 3)
-    if x.dtype in _SIGN_BITCAST_DTYPES:
-      # Check the IEEE-754 sign bit instead of comparing with zero, which
-      # cannot tell -0.0 from +0.0.
-      bits = array_ops.bitcast(x, _SIGN_BITCAST_DTYPES[x.dtype])
-      is_negative = math_ops.less(bits, 0)
-    else:
-      is_negative = x < 0
-    return array_ops.where_v2(is_negative, -rt, rt)
+    return array_ops.where_v2(_signbit(x), -rt, rt)
 
   return _scalar(f, x, True)
 
