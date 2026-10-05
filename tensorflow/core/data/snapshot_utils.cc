@@ -993,8 +993,11 @@ absl::Status CustomReader::SnappyUncompress(
         return absl::InvalidArgumentError(
             absl::StrCat("Tensor size is negative: ", tensor_size));
       }
-      std::unique_ptr<char[]> tensor_proto_str =
-          std::make_unique<char[]>(tensor_size);
+      // Allocate without throwing so the check below is reachable: with
+      // make_unique a huge `tensor_size` from a corrupt snapshot would abort
+      // the process, since these targets are built with -fno-exceptions.
+      std::unique_ptr<char[]> tensor_proto_str(
+          new (std::nothrow) char[tensor_size]);
       if (tensor_proto_str == nullptr) {
         return absl::ResourceExhaustedError(absl::StrCat(
             "Failed to allocate memory for tensor of size ", tensor_size));
