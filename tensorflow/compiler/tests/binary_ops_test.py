@@ -1245,9 +1245,11 @@ class BinaryOpsTest(xla_test.XLATestCase):
         ([1, 4], [1, 1], False, False),
         ([2, 3, 4], [2, 1, 5], False, False),
         ([4, 1], [1, 1], True, False),
-        ([1, 4], [2, 1], False, True),
+        ([1, 4], [4, 1], False, True),
     ):
-      with self.subTest(x_shape=x_shape, y_shape=y_shape), self.session():
+      with self.subTest(
+          x_shape=x_shape, y_shape=y_shape, adjoint_a=adjoint_a,
+          adjoint_b=adjoint_b), self.session():
         with self.test_scope():
           x = array_ops.placeholder(dtypes.float32)
           y = array_ops.placeholder(dtypes.float32)
@@ -1255,6 +1257,22 @@ class BinaryOpsTest(xla_test.XLATestCase):
               x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
         with self.assertRaisesRegex(errors.InvalidArgumentError,
                                     "Matrix size-incompatible"):
+          output.eval({
+              x: np.ones(x_shape, dtype=np.float32),
+              y: np.ones(y_shape, dtype=np.float32)
+          })
+
+  def testBatchMatMulRejectsRankBelowTwo(self):
+    # With unknown shapes, shape inference can't reject rank-1 operands, so
+    # the XLA kernel has to.
+    for x_shape, y_shape in (([4], [4, 1]), ([1, 4], [4])):
+      with self.subTest(x_shape=x_shape, y_shape=y_shape), self.session():
+        with self.test_scope():
+          x = array_ops.placeholder(dtypes.float32)
+          y = array_ops.placeholder(dtypes.float32)
+          output = math_ops.matmul(x, y)
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "ndims must be >= 2"):
           output.eval({
               x: np.ones(x_shape, dtype=np.float32),
               y: np.ones(y_shape, dtype=np.float32)
