@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/escaping.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -70,14 +71,14 @@ TEST(JxlIoTest, DecodeHeaderInvalidDimensions) {
       "deb0c6db56f0d68b89028a2e1af323374f8b7e479d69e5c16c2c99153d4c95c14"
       "669b6c39b9c4f30734c4";
   std::string data;
-  data.reserve(hex_data.size() / 2);
-  for (size_t i = 0; i < hex_data.size(); i += 2) {
-    uint8_t byte = static_cast<uint8_t>(
-        std::stoul(hex_data.substr(i, 2), nullptr, 16));
-    data.push_back(static_cast<char>(byte));
-  }
+  ASSERT_TRUE(absl::HexStringToBytes(hex_data, &data));
   int width = 0, height = 0, channels = 0;
   EXPECT_FALSE(DecodeHeader(data, &width, &height, &channels));
+}
+
+TEST(JxlIoTest, DecodeHeaderEmpty) {
+  int width = 0, height = 0, channels = 0;
+  EXPECT_FALSE(DecodeHeader("", &width, &height, &channels));
 }
 
 TEST(JxlIoTest, DecodeImageUint8) {
