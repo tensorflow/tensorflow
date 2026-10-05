@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status_macros.h"
-#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
