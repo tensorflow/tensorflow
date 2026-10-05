@@ -59,6 +59,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/future.h"
@@ -92,6 +93,7 @@ limitations under the License.
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
@@ -840,6 +842,79 @@ TEST(StreamExecutorGpuClientTest, PassAttrToFfiHandler) {
                           ExtractSingleResult(result));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({3.0f, 3.0f, 3.0f, 3.0f}), *result_literal));
+}
+
+// Blocks host execution and then device execution until execution timeout
+// handlers unblock them.
+struct ExecutionTimeoutState {
+  absl::Notification host_timeout;
+  absl::Notification device_timeout;
+};
+
+static absl::Status BlockUntilTimeout(se::Stream* stream,
+                                      ffi::Result<ffi::AnyBuffer>,
+                                      ExecutionTimeoutState* state) {
+  state->host_timeout.WaitForNotification();
+  return stream->DoHostCallback(
+      [state] { state->device_timeout.WaitForNotification(); });
+}
+
+XLA_FFI_DEFINE_HANDLER(kBlockUntilTimeout, BlockUntilTimeout,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<ExecutionTimeoutState>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "BlockUntilTimeout", "CUDA",
+                         kBlockUntilTimeout);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "BlockUntilTimeout", "ROCM",
+                         kBlockUntilTimeout);
+
+TEST(StreamExecutorGpuClientTest, ExecutionTimeoutHandlers) {
+  static constexpr char const* kProgram = R"(
+    HloModule execution_timeout
+    ENTRY main {
+      ROOT %custom-call = f32[4] custom-call(),
+                          custom_call_target="BlockUntilTimeout",
+                          api_version=API_VERSION_TYPED_FFI
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executable, CompileExecutable(kProgram, *client));
+
+  ExecuteContext context;
+  ASSERT_OK(context.ffi_context().Emplace<ExecutionTimeoutState>());
+  ASSERT_OK_AND_ASSIGN(ExecutionTimeoutState * state,
+                       context.ffi_context().Lookup<ExecutionTimeoutState>());
+
+  // Execution can complete only if both timeout handlers are called.
+  gpu::GpuExecutableRunOptions* run_options =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(
+          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+          ->gpu_run_options();
+  ASSERT_NE(run_options, nullptr);
+
+  run_options->set_execution_timeout_handlers([state] {
+    std::vector<gpu::ExecutionTimeoutHandler> handlers;
+    handlers.push_back({gpu::ExecutionTimeoutHandler::Scope::kHost,
+                        absl::Milliseconds(100),
+                        [state](absl::string_view, absl::Duration) {
+                          state->host_timeout.Notify();
+                        }});
+    handlers.push_back({gpu::ExecutionTimeoutHandler::Scope::kDevice,
+                        absl::Milliseconds(100),
+                        [state](absl::string_view, absl::Duration) {
+                          state->device_timeout.Notify();
+                        }});
+    return handlers;
+  });
+
+  ExecuteOptions opts;
+  opts.context = &context;
+
+  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
+  EXPECT_OK(ExtractSingleResult(result));
 }
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
