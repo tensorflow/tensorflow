@@ -1578,7 +1578,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,428 @@
+@@ -0,0 +1,431 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1795,6 +1795,7 @@ new file mode 100644
 +    size = "large",
 +    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
++    g3_multiprocessing = True,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
 +    shard_count = 1,
@@ -1812,6 +1813,7 @@ new file mode 100644
 +    size = "large",
 +    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
++    g3_multiprocessing = True,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
 +    shard_count = 1,
@@ -1829,6 +1831,7 @@ new file mode 100644
 +    size = "large",
 +    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
++    g3_multiprocessing = True,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
 +    shard_count = 1,
