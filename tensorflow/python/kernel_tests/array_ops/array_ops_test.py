@@ -799,14 +799,10 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         constant_op.constant(0.0, dtype=dtypes.float32))
     with self.assertRaisesRegex(
         (errors.InvalidArgumentError, ValueError), "maximum supported rank"):
-      self.evaluate(
-          gen_array_ops.strided_slice(
-              value,
-              begin=array_ops.zeros([31], dtypes.int32),
-              end=array_ops.zeros([31], dtypes.int32),
-              strides=array_ops.ones([31], dtypes.int32),
-              new_axis_mask=(1 << 30) - 1,
-              ellipsis_mask=1 << 30))
+      # Public slice syntax, not the generated op wrapper. evaluate() covers
+      # graph mode, where shape inference may defer the error until execution.
+      sliced = value[tuple([array_ops.newaxis] * 30 + [Ellipsis])]
+      self.evaluate(sliced)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   @test_util.assert_no_garbage_created

@@ -20,8 +20,8 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -417,10 +417,10 @@ absl::Status ValidateStridedSliceOp(
     }
   }
   if (output_rank > TensorShape::MaxDimensions()) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return errors::InvalidArgument(
         "StridedSlice would produce a tensor of rank ", output_rank,
         ", which exceeds the maximum supported rank of ",
-        TensorShape::MaxDimensions(), "."));
+        TensorShape::MaxDimensions(), ".");
   }
 
   final_shape->Clear();
