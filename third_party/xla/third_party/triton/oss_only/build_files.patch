@@ -2211,7 +2211,7 @@ diff --git b/test/BUILD b/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/test/BUILD
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,124 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +# copybara:uncomment_begin
@@ -2248,6 +2248,11 @@ new file mode 100644
 +#         "TritonGPU/amd/amd-range-analysis.mlir",
 +#         "TritonGPU/amd/amd-schedule-hint.mlir",
 +#     ],
++#     size_override = {
++#         # Runs two full consan pipelines over ~80 split-input cases; under ASAN this
++#         # takes ~70-150s, which regularly exceeds the small-test timeout.
++#         "TritonGPU/consan.mlir": "medium",
++#     },
 +#     test_file_exts = [
 +#         "mlir",
 +#         "ll",
