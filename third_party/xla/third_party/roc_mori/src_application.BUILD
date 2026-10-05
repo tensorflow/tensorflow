@@ -33,10 +33,6 @@ cc_library(
         ],
     ),
     copts = [
-        # @local_config_rocm's rocm_headers_includes target propagates
-        # -D__HIP_DISABLE_CPP_FUNCTIONS__=1 to every consumer, which hides
-        # the templated hipMalloc(T**, size_t) overload.
-        "-U__HIP_DISABLE_CPP_FUNCTIONS__",
     ],
     linkopts = [
         "-ldl",
