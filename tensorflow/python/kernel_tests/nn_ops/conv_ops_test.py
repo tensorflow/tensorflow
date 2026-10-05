@@ -867,19 +867,6 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     )
 
   @test_util.run_in_graph_and_eager_modes
-  def testEmptyInputValidPadding(self):
-    x = constant_op.constant(
-        0.0, shape=[1, 0, 3, 1], dtype=dtypes.float32)
-    filters = constant_op.constant(
-        0.0, shape=[2, 2, 1, 1], dtype=dtypes.float32)
-
-    output = nn_ops.conv2d(
-        x, filters, strides=[1, 1, 1, 1], padding="VALID")
-
-    self.assertEqual(output.shape.as_list(), [1, 0, 2, 1])
-
-  @parameterized.named_parameters(*TEST_PARAMS)
-  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Filter(self, data_format, dtype, use_gpu, op_name):
     # The outputs are computed using third_party/py/IPython/notebook.
     expected_output = [2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0]

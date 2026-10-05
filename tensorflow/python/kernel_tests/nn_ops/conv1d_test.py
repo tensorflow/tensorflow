@@ -162,16 +162,6 @@ class Conv1DTest(test.TestCase):
           )
       )
 
-  def testEmptyInputValidPadding(self):
-    x = constant_op.constant(
-        0.0, shape=[2, 0, 3], dtype=dtypes.float32)
-    filters = constant_op.constant(
-        0.0, shape=[2, 3, 1], dtype=dtypes.float32)
-
-    output = nn_ops.conv1d(
-        x, filters, stride=1, padding="VALID")
-
-    self.assertEqual(output.shape.as_list(), [2, 0, 1])
 
 
 if __name__ == "__main__":

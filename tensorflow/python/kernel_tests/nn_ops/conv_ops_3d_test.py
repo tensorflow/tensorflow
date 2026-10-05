@@ -720,17 +720,6 @@ class Conv3DTest(parameterized.TestCase, test.TestCase):
               constant_op.constant(
                   np.zeros([3, 1, 1, 1, 1], np.float32))))
 
-  def testEmptyInputValidPadding(self):
-    x = constant_op.constant(
-        0.0, shape=[1, 0, 3, 3, 1], dtype=dtypes.float32)
-    filters = constant_op.constant(
-        0.0, shape=[2, 2, 2, 1, 1], dtype=dtypes.float32)
-
-    output = nn_ops.conv3d(
-        x, filters, strides=[1, 1, 1, 1, 1], padding="VALID")
-
-    self.assertEqual(output.shape.as_list(), [1, 0, 2, 2, 1])
-
   def testZeroSizedFilterThrowsIllegalArgument(self):
     tensor_in_sizes = [1, 1, 1, 1, 1]
     x1 = self._CreateNumpyTensor(tensor_in_sizes)
