@@ -1332,7 +1332,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   if (MultiModuleDriver::ShouldProcess(*module)) {
     VLOG(1) << "Triggering HLO module splitting for module: " << module->name();
     {
-      HloComputationDeduplicator deduplicator;
+      HloComputationDeduplicator deduplicator(
+          /*mark_fusion_duplications=*/false,
+          /*deduplicate_large_computations=*/true);
       ABSL_RETURN_IF_ERROR(deduplicator.Run(module.get()).status());
     }
     MultiModuleDriver driver(

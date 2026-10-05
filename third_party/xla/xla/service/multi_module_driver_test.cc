@@ -192,5 +192,75 @@ ENTRY entry {
   EXPECT_TRUE(MultiModuleDriver::ShouldProcess(*module));
 }
 
+TEST_F(MultiModuleDriverTest, DeduplicatesLargeXlaLateComputations) {
+  const char* hlo_string = R"(
+HloModule module
+callee1 {
+  p0 = f32[300]{0} parameter(0)
+  c = f32[] constant(1.0)
+  b = f32[300]{0} broadcast(c), dimensions={}
+  c_large = f32[10,30]{1,0} constant({
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10}
+  })
+  r = f32[300]{0} reshape(c_large)
+  a = f32[300]{0} add(p0, r)
+  ROOT out = f32[300]{0} add(a, b)
+}
+callee2 {
+  p0 = f32[300]{0} parameter(0)
+  c = f32[] constant(1.0)
+  b = f32[300]{0} broadcast(c), dimensions={}
+  c_large = f32[10,30]{1,0} constant({
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10},
+    {1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10,1,2,3,4,5,6,7,8,9,10}
+  })
+  r = f32[300]{0} reshape(c_large)
+  a = f32[300]{0} add(p0, r)
+  ROOT out = f32[300]{0} add(a, b)
+}
+ENTRY entry {
+  p0 = f32[300]{0} parameter(0)
+  call1 = f32[300]{0} call(p0), to_apply=callee1,
+    frontend_attributes={inlineable="xla_late"}
+  ROOT call2 = f32[300]{0} call(call1), to_apply=callee2,
+    frontend_attributes={inlineable="xla_late"}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  cpu::CpuCompiler compiler;
+  auto options = Compiler::CompileOptions();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(module), nullptr, options));
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                       RunFileCheck(optimized_module->ToString(), R"(
+// CHECK-NOT: callee2
+// CHECK: call(
+// CHECK: call(
+)"));
+  EXPECT_TRUE(filecheck_result);
+}
+
 }  // namespace
 }  // namespace xla
