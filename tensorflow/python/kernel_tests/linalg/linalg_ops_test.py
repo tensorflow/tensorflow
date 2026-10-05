@@ -839,6 +839,42 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(np.real(alpha), eigvals)
       self.assertAllEqual(np.eye(n, dtype=dtype), eigvectors)
 
+  @parameterized.parameters((np.float32), (np.complex64))
+  def test_select_by_value_of_trivial_matrix(self, dtype):
+    # The eigenvalue of a matrix with one row is only selected if it's in the
+    # interval.
+    alpha = np.array([3], dtype=dtype)
+    beta = np.ones([0], dtype=dtype)
+    for select_range, expected in (((0., 1.), []), ((2., 4.), [3.])):
+      eigvals, eigvectors = linalg.eigh_tridiagonal(
+          alpha,
+          beta,
+          eigvals_only=False,
+          select="v",
+          select_range=select_range)
+      self.assertAllEqual(expected, eigvals)
+      self.assertAllEqual(
+          np.eye(1, dtype=dtype)[:, :len(expected)], eigvectors)
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def test_eigenvectors_select_empty_interval(self, dtype):
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
+      return
+    # Computing the eigenvectors used to index the first eigenvalue, which
+    # fails when the interval has none.
+    n = 4
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    eigvals, eigvectors = linalg.eigh_tridiagonal(
+        alpha,
+        beta,
+        eigvals_only=False,
+        select="v",
+        select_range=(100., 200.))
+    self.assertEqual((0,), self.evaluate(eigvals).shape)
+    self.assertEqual((n, 0), self.evaluate(eigvectors).shape)
+
   @parameterized.parameters((np.float32), (np.float64), (np.complex64),
                             (np.complex128))
   def test_dynamic_length(self, dtype):

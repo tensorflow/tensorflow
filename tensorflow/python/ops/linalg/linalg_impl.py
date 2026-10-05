@@ -1533,8 +1533,9 @@ def eigh_tridiagonal(alpha,
         # eigenvalues are sorted in non-decreasing order.
         gap = eigvals[1:] - eigvals[:-1]
         eps = np.finfo(eigvals.dtype.as_numpy_dtype).eps
-        t_norm = math_ops.maximum(
-            math_ops.abs(eigvals[0]), math_ops.abs(eigvals[-1]))
+        # The eigenvalues are sorted, so this is the larger of the first and
+        # last one in magnitude, without indexing them when there are none.
+        t_norm = math_ops.reduce_max(math_ops.abs(eigvals))
         gaptol = np.sqrt(eps) * t_norm
         # Find the beginning and end of runs of eigenvectors corresponding
         # to eigenvalues closer than "gaptol", which will need to be
@@ -1639,9 +1640,17 @@ def eigh_tridiagonal(alpha,
     def _compute_trivial(alpha):
       """Handles a matrix with at most one row."""
       eigvals = math_ops.real(alpha)
+      eigvectors = eye(array_ops.size(alpha), dtype=alpha.dtype)
+      if select == 'v':
+        # Keep the eigenvalue only if it's in the interval (min, max].
+        selected = math_ops.logical_and(
+            math_ops.greater(eigvals, select_range[0]),
+            math_ops.less_equal(eigvals, select_range[1]))
+        eigvals = array_ops.boolean_mask(eigvals, selected)
+        eigvectors = array_ops.boolean_mask(eigvectors, selected, axis=1)
       if eigvals_only:
         return eigvals
-      return eigvals, eye(array_ops.size(alpha), dtype=alpha.dtype)
+      return eigvals, eigvectors
 
     def _compute(alpha, beta):
       eigvals = _compute_eigenvalues(alpha, beta)
