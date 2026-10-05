@@ -481,6 +481,19 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       self.assertIsNotNone(fft_ops.fftnd(x))
       self.assertIsNotNone(fft_ops.ifftnd(x))
 
+  def testNDOpsRejectScalarInput(self):
+    # An N-D transform of a scalar infers empty axes and an empty fft_length,
+    # which used to surface as an IndexError from the padding helper for
+    # irfftnd. rfft and irfft reject a scalar with this message, so the N-D
+    # ops now do too. Built in a graph so this does not depend on an
+    # FFTND/IFFTND kernel being registered.
+    with ops.Graph().as_default():
+      for fn in (fft_ops.fftnd, fft_ops.ifftnd):
+        with self.assertRaisesRegex(ValueError, "must have rank at least 1"):
+          fn(array_ops.ones([], dtype=dtypes.float32))
+        with self.assertRaisesRegex(ValueError, "must have rank at least 1"):
+          fn(2.0)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
@@ -543,6 +556,19 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     with ops.Graph().as_default():
       self.assertIsNotNone(fft_ops.rfftnd(x))
       self.assertIsNotNone(fft_ops.irfftnd(x))
+
+  def testNDOpsRejectScalarInput(self):
+    # An N-D transform of a scalar infers empty axes and an empty fft_length,
+    # which used to surface as an IndexError from the padding helper for
+    # irfftnd. rfft and irfft reject a scalar with this message, so the N-D
+    # ops now do too. Built in a graph so this does not depend on an
+    # RFFTND/IRFFTND kernel being registered.
+    with ops.Graph().as_default():
+      for fn in (fft_ops.rfftnd, fft_ops.irfftnd):
+        with self.assertRaisesRegex(ValueError, "must have rank at least 1"):
+          fn(array_ops.ones([], dtype=dtypes.float32))
+        with self.assertRaisesRegex(ValueError, "must have rank at least 1"):
+          fn(2.0)
 
   def _np_fftn(self, x, fft_length=None, axes=None, norm=None):
     return np.fft.rfftn(x, s=fft_length, axes=axes, norm=norm)
