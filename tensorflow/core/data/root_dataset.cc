@@ -412,8 +412,8 @@ RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
   random_indexing_compatible_ = absl::OkStatus();
   if (input_ != nullptr) {
     random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
   }
-  AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 
 RootDataset::~RootDataset() = default;
