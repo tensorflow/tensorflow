@@ -21,10 +21,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -47,7 +50,8 @@ class ShardyXLATestBase : public HloHardwareIndependentTestBase {
   void runShardyBase(
       VerifiedHloModule* module, bool stablehloImport, bool enableV3,
       xla::test_only::ShardingFormatPicker::ShardingType formatType,
-      bool runSdyShardingPropagation = true, bool expectChanged = true) {
+      bool runSdyShardingPropagation = true, bool expectChanged = true,
+      mlir::sdy::PropagationOptions propagationOptions = {}) {
     module->mutable_config()
         .mutable_debug_options()
         .set_xla_enable_hlo_sharding_v3(enableV3);
@@ -58,8 +62,9 @@ class ShardyXLATestBase : public HloHardwareIndependentTestBase {
     xla::test_only::ShardingFormatPicker formatPicker(formatType);
     ASSERT_OK_AND_ASSIGN(bool formatChanged, formatPicker.Run(module));
     (void)formatChanged;
-    ASSERT_OK_AND_ASSIGN(bool changed,
-                         ShardyXLA(runSdyShardingPropagation).Run(module));
+    ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardyXLA(runSdyShardingPropagation, propagationOptions).Run(module));
     EXPECT_EQ(changed, expectChanged);
   }
 };
@@ -93,18 +98,20 @@ class ShardyXLATest : public ShardyXLATestBase,
  protected:
   void runShardy(VerifiedHloModule* module, bool stablehloImport,
                  bool runSdyShardingPropagation = true,
-                 bool expectChanged = true) {
+                 bool expectChanged = true,
+                 mlir::sdy::PropagationOptions propagationOptions = {}) {
     bool enableV3 = GetParam() ==
                     xla::test_only::ShardingFormatPicker::ShardingType::kNamed;
     runShardyBase(module, stablehloImport, enableV3, GetParam(),
-                  runSdyShardingPropagation, expectChanged);
+                  runSdyShardingPropagation, expectChanged, propagationOptions);
   }
 
-  void runShardyWithStablehloImport(VerifiedHloModule* module,
-                                    bool runSdyShardingPropagation = true,
-                                    bool expectChanged = true) {
+  void runShardyWithStablehloImport(
+      VerifiedHloModule* module, bool runSdyShardingPropagation = true,
+      bool expectChanged = true,
+      mlir::sdy::PropagationOptions propagationOptions = {}) {
     runShardy(module, /*stablehloImport=*/true, runSdyShardingPropagation,
-              expectChanged);
+              expectChanged, propagationOptions);
   }
 
   void runShardyWithSdyImport(VerifiedHloModule* module) {
@@ -1031,6 +1038,74 @@ TEST_P(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesTrue) {
   EXPECT_TRUE(*RunFileCheck(
       module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
       expected));
+}
+
+TEST_P(ShardyXLATest, ShardyGenerateDeviceLocalCodeNotUseTupleArgs) {
+  const char* const hloString = R"(
+    HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (0, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[8,16]{1,0:T(8,128)})->f32[8,16]{1,0:T(8,128)}}, num_partitions=8
+
+    ENTRY %main (Arg_0: f32[8,16], Arg_1: f32[8,16]) -> f32[8,16] {
+      %Arg_0 = f32[8,16]{1,0} parameter(0), sharding={devices=[2,4]<=[8]}
+      %Arg_1 = f32[8,16]{1,0} parameter(1), sharding={devices=[2,1,4]<=[8] last_tile_dim_replicate}
+      ROOT %add = f32[8,16]{1,0} add(%Arg_0, %Arg_1), sharding={devices=[2,4]<=[8]}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  EXPECT_EQ(module->entry_computation()->parameter_instructions().size(), 2);
+  ASSERT_EQ(module->spmd_parameters_shardings().size(), 2);
+  EXPECT_EQ(module->spmd_parameters_shardings()[0],
+            HloSharding::IotaTile({2, 4}));
+  EXPECT_EQ(module->spmd_parameters_shardings()[1],
+            HloSharding::PartialTile(TileAssignment({2, 1, 4})));
+  EXPECT_EQ(module->spmd_output_sharding(), HloSharding::IotaTile({2, 4}));
+  EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(1, {})");
+  EXPECT_EQ(module->input_output_alias_config().ToShortString(),
+            "{}: (0, {}, must-alias)");
+  EXPECT_EQ(module->entry_computation_layout().ToString(),
+            "(f32[4,4]{1,0:T(8,128)}, "
+            "f32[4,16]{1,0:T(8,128)})->f32[4,4]{1,0:T(8,128)}");
+}
+
+TEST_P(ShardyXLATest, ShardyGenerateDeviceLocalCodeUseTupleArgs) {
+  const char* const hloString = R"(
+    HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (0, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[8,16]{1,0:T(8,128)})->f32[8,16]{1,0:T(8,128)}}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
+
+    ENTRY %main (Arg_0: f32[8,16], Arg_1: f32[8,16]) -> f32[8,16] {
+      %Arg_0 = f32[8,16]{1,0} parameter(0), sharding={devices=[2,4]<=[8]}
+      %Arg_1 = f32[8,16]{1,0} parameter(1), sharding={devices=[2,1,4]<=[8] last_tile_dim_replicate}
+      ROOT %add = f32[8,16]{1,0} add(%Arg_0, %Arg_1), sharding={devices=[2,4]<=[8]}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  EXPECT_EQ(module->entry_computation()->parameter_instructions().size(), 1);
+  ASSERT_EQ(module->spmd_parameters_shardings().size(), 1);
+  ASSERT_TRUE(module->spmd_parameters_shardings()[0].IsTuple());
+  ASSERT_EQ(module->spmd_parameters_shardings()[0].tuple_elements().size(), 2);
+  EXPECT_EQ(module->spmd_parameters_shardings()[0].tuple_elements()[0],
+            HloSharding::IotaTile({2, 4}));
+  EXPECT_EQ(module->spmd_parameters_shardings()[0].tuple_elements()[1],
+            HloSharding::PartialTile(TileAssignment({2, 1, 4})));
+  EXPECT_EQ(module->spmd_output_sharding(), HloSharding::IotaTile({2, 4}));
+  EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(0, {1})");
+  EXPECT_EQ(module->input_output_alias_config().ToShortString(),
+            "{}: (0, {0}, must-alias)");
+  EXPECT_EQ(module->entry_computation_layout().ToString(),
+            "((f32[4,4]{1,0:T(8,128)}, "
+            "f32[4,16]{1,0:T(8,128)}))->f32[4,4]{1,0:T(8,128)}");
 }
 
 TEST_P(ShardyXLATest, TestMaximalShardingNoResults) {
