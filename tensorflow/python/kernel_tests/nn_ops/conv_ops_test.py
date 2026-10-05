@@ -866,6 +866,7 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         op_name=op_name,
     )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Filter(self, data_format, dtype, use_gpu, op_name):
     # The outputs are computed using third_party/py/IPython/notebook.
