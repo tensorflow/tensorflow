@@ -45,7 +45,7 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
 
   Using the default job_name of worker, you can schedule ops to run remotely as
   follows:
-```python
+  ```python
   # When eager execution is enabled, connect to the remote host.
   tf.config.experimental_connect_to_host("exampleaddr.com:9876")
 
@@ -55,7 +55,7 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
     x1 = array_ops.ones([2, 2])
     x2 = array_ops.ones([2, 2])
     y = math_ops.matmul(x1, x2)
-```
+  ```
 
   Args:
     remote_host: a single or a list the remote server addr in host-port format.
@@ -148,7 +148,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
   For example, for a cluster set up for parameter server training, the following
   device filters might be specified:
 
-```python
+  ```python
   cdf = tf.config.experimental.ClusterDeviceFilters()
   # For any worker, only the devices on PS nodes and itself are visible
   for i in range(num_workers):
@@ -159,7 +159,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
 
   tf.config.experimental_connect_to_cluster(cluster_def,
                                             cluster_device_filters=cdf)
-```
+  ```
 
   Args:
     cluster_spec_or_resolver: A `ClusterSpec` or `ClusterResolver` describing
