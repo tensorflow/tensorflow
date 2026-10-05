@@ -647,5 +647,23 @@ TEST_F(RaggedTensorToVariantGradientKernelTest,
                   "values implied by dense_values_shape (2)"));
 }
 
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       MissingVariantMultiDimShapeOverflowError) {
+  // With a multi-dimensional dense_values_shape, setting dimension 0 of the
+  // zero piece from `row_splits` can overflow the int64 element count
+  // (16 * 2^30 * 2^30 = 2^64). That must be rejected with InvalidArgument
+  // rather than aborting in TensorShape::set_dim.
+  Variant missing;
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>({missing}, {0, 16},
+                                                     {1, 1 << 30, 1 << 30});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Shape [16,1073741824,1073741824] results in overflow when "
+                  "computing number of elements"));
+}
+
 }  // namespace
 }  // namespace tensorflow

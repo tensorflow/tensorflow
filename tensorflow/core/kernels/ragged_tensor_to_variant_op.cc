@@ -301,7 +301,10 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
                         flat_row_splits.size(), " vs required ", i + 2));
         auto piece_size = flat_row_splits(i + 1) - flat_row_splits(i);
         TensorShape zeros_shape = dense_values_shape;
-        zeros_shape.set_dim(0, piece_size);
+        // `set_dim` aborts if the resulting element count overflows int64, which
+        // a large `row_splits` interval can trigger for a multi-dimensional
+        // `dense_values_shape`. Use the status-returning variant instead.
+        OP_REQUIRES_OK(context, zeros_shape.SetDimWithStatus(0, piece_size));
         // Bound the piece against the remaining capacity before adding it to
         // `total_values` or materializing the zero tensor. Comparing against the
         // difference rather than the sum keeps a crafted `row_splits` from
