@@ -240,28 +240,27 @@ class AudioProcessor(object):
           'Successfully downloaded {0} ({1} bytes)'.format(
               filename, statinfo.st_size))
       with tarfile.open(filepath, 'r:gz') as archive:
-        members = []
-        abs_path = os.path.realpath(dest_directory)
-        for member in archive.getmembers():
-          abs_target = os.path.realpath(
-              os.path.join(dest_directory, member.name))
-          if os.path.commonpath([abs_path, abs_target]) != abs_path:
-            continue
-          if member.issym() or member.islnk():
-            # A link member whose target resolves outside the destination
-            # would let later members write through it and escape.
-            abs_link = os.path.realpath(
-                os.path.join(os.path.dirname(abs_target), member.linkname))
-            if os.path.commonpath([abs_path, abs_link]) != abs_path:
-              continue
-          members.append(member)
-        extractall_kwargs = {}
-        # `filter="data"` was added in Python 3.12 (backported to
-        # 3.10.12/3.11.4) and is the default from 3.14.
-        if sys.version_info < (3, 14) and hasattr(tarfile, 'data_filter'):
-          extractall_kwargs = {'filter': 'data'}
-        archive.extractall(dest_directory, members=members,
-                           **extractall_kwargs)
+        if hasattr(tarfile, 'data_filter'):
+          archive.extractall(dest_directory, filter='data')
+        else:
+          # Python versions without extraction filters (before 3.10.12 and
+          # 3.11.4). Members are not on disk yet, so resolving paths with
+          # realpath here cannot see symlinks from this archive. Instead,
+          # refuse absolute paths, drive prefixes and '..' components in
+          # member names and link targets: then every file, symlink and hard
+          # link stays inside dest_directory.
+          def _is_unsafe(path):
+            return (os.path.isabs(path) or bool(os.path.splitdrive(path)[0])
+                    or '..' in re.split(r'[\\/]', path))
+
+          for member in archive.getmembers():
+            if _is_unsafe(member.name) or (
+                (member.issym() or member.islnk()) and
+                _is_unsafe(member.linkname)):
+              raise ValueError(
+                  'Refusing to extract unsafe archive member: {0}'.format(
+                      member.name))
+          archive.extractall(dest_directory)
 
   def prepare_data_index(self, silence_percentage, unknown_percentage,
                          wanted_words, validation_percentage,
