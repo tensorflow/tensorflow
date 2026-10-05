@@ -880,14 +880,21 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.signbit(out_bf16), [True, False, True, False]
     )
 
-    for dtype in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.bfloat16):
+    for dtype in (
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.bfloat16,
+    ):
       # Verify N=0 (empty tensor) fallback.
       x_empty = constant_op.constant([], dtype=dtype)
       out_empty = np_math_ops.cbrt(x_empty)
       self.assertEqual(out_empty.shape.num_elements(), 0)
 
       # Verify NaN, +Inf, -Inf
-      x_edge = constant_op.constant([-float('inf'), float('inf'), float('nan')], dtype=dtype)
+      x_edge = constant_op.constant(
+          [-float('inf'), float('inf'), float('nan')], dtype=dtype
+      )
       out_edge = np_math_ops.cbrt(x_edge)
       # inf ** (1/3) == inf; NaN ** (1/3) == NaN
       # Negative sign bit for -inf is preserved.
