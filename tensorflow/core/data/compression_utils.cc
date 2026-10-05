@@ -159,8 +159,12 @@ absl::Status UncompressElement(const CompressedElement& compressed,
   size_t num_string_tensors = 0;
   size_t num_string_tensor_strings = 0;
   size_t total_nonmemcpyable_size = 0;
+  // Shapes are validated once here and reused by the second pass.
+  std::vector<TensorShape> shapes;
+  shapes.reserve(num_components);
   for (const auto& metadata : compressed.component_metadata()) {
-    TensorShape shape;
+    shapes.emplace_back();
+    TensorShape& shape = shapes.back();
     TF_RETURN_IF_ERROR(
         TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
     if (metadata.dtype() == DT_STRING) {
@@ -174,6 +178,10 @@ absl::Status UncompressElement(const CompressedElement& compressed,
       if (metadata.uncompressed_bytes_size() == 0) {
         return absl::InvalidArgumentError(
             "Missing uncompressed_bytes metadata for non-memcpyable tensor");
+      }
+      if (metadata.uncompressed_bytes(0) < 0) {
+        return absl::InvalidArgumentError(
+            "uncompressed_bytes metadata cannot be negative");
       }
       total_nonmemcpyable_size += metadata.uncompressed_bytes(0);
     } else {
@@ -195,11 +203,11 @@ absl::Status UncompressElement(const CompressedElement& compressed,
   tstring nonmemcpyable;
   nonmemcpyable.resize_uninitialized(total_nonmemcpyable_size);
   char* nonmemcpyable_pos = nonmemcpyable.mdata();
-  for (const auto& metadata : compressed.component_metadata()) {
+  for (int i = 0; i < num_components; ++i) {
+    const CompressedComponentMetadata& metadata =
+        compressed.component_metadata(i);
+    const TensorShape& shape = shapes[i];
     if (DataTypeCanUseMemcpy(metadata.dtype())) {
-      TensorShape shape;
-      TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
       int64_t num_elements = shape.num_elements();
       out->emplace_back(metadata.dtype(), shape);
       TensorBuffer* buffer = DMAHelper::buffer(&out->back());
@@ -212,9 +220,6 @@ absl::Status UncompressElement(const CompressedElement& compressed,
         iov.Add(buffer->data(), metadata.uncompressed_bytes(0));
       }
     } else if (metadata.dtype() == DT_STRING) {
-      TensorShape shape;
-      TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape(metadata.tensor_shape(), &shape));
       out->emplace_back(metadata.dtype(), shape);
       const auto& flats = out->back().unaligned_flat<tstring>();
       if (metadata.uncompressed_bytes_size() > flats.size()) {
@@ -223,9 +228,13 @@ absl::Status UncompressElement(const CompressedElement& compressed,
             ") exceeds allocated string tensor elements count (", flats.size(),
             ")"));
       }
-      for (int i = 0; i < metadata.uncompressed_bytes_size(); ++i) {
-        flats.data()[i].resize(metadata.uncompressed_bytes(i));
-        iov.Add(flats.data()[i].mdata(), metadata.uncompressed_bytes(i));
+      for (int j = 0; j < metadata.uncompressed_bytes_size(); ++j) {
+        if (metadata.uncompressed_bytes(j) < 0) {
+          return absl::InvalidArgumentError(
+              "uncompressed_bytes metadata cannot be negative");
+        }
+        flats.data()[j].resize(metadata.uncompressed_bytes(j));
+        iov.Add(flats.data()[j].mdata(), metadata.uncompressed_bytes(j));
       }
     } else {
       out->emplace_back();

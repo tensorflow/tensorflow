@@ -23,7 +23,10 @@ limitations under the License.
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -91,8 +94,10 @@ TEST(CompressionUtilsTest, MalformedTensorShape) {
   metadata->mutable_tensor_shape()->add_dim()->set_size(-1);
 
   std::vector<Tensor> element;
-  EXPECT_THAT(UncompressElement(compressed, &element),
-              absl_testing::StatusIs(error::INVALID_ARGUMENT));
+  EXPECT_THAT(
+      UncompressElement(compressed, &element),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                             HasSubstr("Expected a non-negative size")));
 }
 
 TEST(CompressionUtilsTest, MalformedTensorShapeString) {
@@ -109,8 +114,50 @@ TEST(CompressionUtilsTest, MalformedTensorShapeString) {
   metadata->mutable_tensor_shape()->add_dim()->set_size(-1);
 
   std::vector<Tensor> element;
+  EXPECT_THAT(
+      UncompressElement(compressed, &element),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                             HasSubstr("Expected a non-negative size")));
+}
+
+TEST(CompressionUtilsTest, NegativeUncompressedBytes) {
+  // `uncompressed_bytes` is a signed proto field, so a negative count on a
+  // non-memcpyable component must be rejected before it is added to the
+  // unsigned scratch buffer size.
+  std::vector<Tensor> empty_element;
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(empty_element, &compressed));
+
+  CompressedComponentMetadata* metadata =
+      compressed.mutable_component_metadata()->Add();
+  metadata->set_dtype(DT_VARIANT);
+  TensorShape empty_shape({0});
+  empty_shape.AsProto(metadata->mutable_tensor_shape());
+  metadata->add_uncompressed_bytes(-1);
+
+  std::vector<Tensor> element;
   EXPECT_THAT(UncompressElement(compressed, &element),
-              absl_testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     HasSubstr("cannot be negative")));
+}
+
+TEST(CompressionUtilsTest, NegativeUncompressedBytesString) {
+  // The same holds for the per-string byte counts of a `DT_STRING` component.
+  std::vector<Tensor> empty_element;
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(empty_element, &compressed));
+
+  CompressedComponentMetadata* metadata =
+      compressed.mutable_component_metadata()->Add();
+  metadata->set_dtype(DT_STRING);
+  TensorShape shape({1});
+  shape.AsProto(metadata->mutable_tensor_shape());
+  metadata->add_uncompressed_bytes(-1);
+
+  std::vector<Tensor> element;
+  EXPECT_THAT(UncompressElement(compressed, &element),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     HasSubstr("cannot be negative")));
 }
 
 std::vector<std::vector<Tensor>> TestCases() {
