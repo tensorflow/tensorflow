@@ -19,6 +19,7 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -971,11 +972,13 @@ struct functor_traits<igamma_op<Scalar>> {
   };
 };
 
-// Complex reciprocal must use one division for every element.
-// scalar_inverse_op vectorizes with pdiv_complex and evaluates only the tail
-// with std::complex division. Those algorithms disagree for exact zeros
-// (packet results are NaN or inf-inf; scalar division is inf+nan), infinities,
-// and subnormals, so Reciprocal/Inv change with tensor length. This functor is
+// Complex reciprocal. scalar_inverse_op vectorizes with pdiv_complex and
+// evaluates only the tail with std::complex division. Those algorithms
+// disagree for exact zeros (packet results are NaN or inf-inf; scalar
+// division is inf+nan) and for subnormals flushed under FTZ/DAZ, so
+// Reciprocal/Inv changed with tensor length. Infinite denominators already
+// agree. Finite normal values stay on the packet path; any other lane
+// recomputes the whole packet with scalar division. This functor is
 // TensorFlow-owned and is not a specialization of scalar_inverse_op.
 template <typename RealType>
 struct scalar_inverse_complex_op {
@@ -983,14 +986,43 @@ struct scalar_inverse_complex_op {
       const std::complex<RealType>& z) const {
     return std::complex<RealType>(RealType(1)) / z;
   }
+
+  // True when every real/imag component's larger magnitude is a finite
+  // normal. pmax can drop a NaN, so components are also compared to
+  // themselves: ordered comparisons are false for NaN.
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& z) const {
+    using RealPacket = typename unpacket_traits<Packet>::as_real;
+    constexpr int kSize = unpacket_traits<Packet>::size;
+    const RealPacket abs_z = pabs(z.v);
+    const RealPacket max_abs = pmax(abs_z, pcplxflip(Packet(abs_z)).v);
+    const RealPacket min_normal =
+        pset1<RealPacket>((std::numeric_limits<RealType>::min)());
+    const RealPacket infinity =
+        pset1<RealPacket>(NumTraits<RealType>::infinity());
+    const RealPacket finite_normal =
+        pand(pand(pcmp_eq(abs_z, abs_z), pcmp_le(min_normal, max_abs)),
+             pcmp_lt(max_abs, infinity));
+    if (EIGEN_PREDICT_TRUE(
+            !predux_any(pandnot(ptrue(finite_normal), finite_normal)))) {
+      return preciprocal(z);
+    }
+    EIGEN_ALIGN_MAX std::complex<RealType> buf[kSize];
+    pstore(buf, z);
+    for (int i = 0; i < kSize; ++i) {
+      buf[i] = (*this)(buf[i]);
+    }
+    return pload<Packet>(buf);
+  }
 };
 
 template <typename RealType>
 struct functor_traits<scalar_inverse_complex_op<RealType>> {
   enum {
-    // Scalar complex division: a few real multiplies and one real division.
-    Cost = 8 * Eigen::NumTraits<RealType>::MulCost,
-    PacketAccess = false,
+    Cost = functor_traits<scalar_inverse_op<std::complex<RealType>>>::Cost,
+    PacketAccess =
+        packet_traits<std::complex<RealType>>::Vectorizable &&
+        functor_traits<scalar_inverse_op<std::complex<RealType>>>::PacketAccess,
   };
 };
 
@@ -1085,8 +1117,8 @@ struct neg : base<T, Eigen::internal::scalar_opposite_op<T>> {};
 template <typename T>
 struct inverse : base<T, Eigen::internal::scalar_inverse_op<T>> {};
 
-// See scalar_inverse_complex_op. Packet evaluation is disabled so every
-// element, including zeros and infinities, uses scalar complex division.
+// See scalar_inverse_complex_op. Finite normals use the packet reciprocal.
+// Exact zeros and subnormals are recomputed with scalar complex division.
 template <>
 struct inverse<complex64>
     : base<complex64, Eigen::internal::scalar_inverse_complex_op<float>> {};

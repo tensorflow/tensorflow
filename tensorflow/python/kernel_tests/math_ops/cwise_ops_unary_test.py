@@ -735,10 +735,11 @@ class UnaryOpTest(test.TestCase):
   def testComplexReciprocalLengthIndependent(self):
     """Reciprocal of complex values must not depend on tensor length.
 
-    Eigen's packet reciprocal disagrees with scalar complex division for zeros,
-    infinities, and subnormals. CPU Reciprocal and Inv used that packet path,
-    so identical values changed once the length crossed a SIMD packet boundary
-    (2, 4, or 8, depending on the build). See
+    Eigen's packet reciprocal disagrees with scalar complex division for exact
+    zeros and for subnormals flushed under FTZ/DAZ. CPU Reciprocal and Inv used
+    that packet path, so identical values changed once the length crossed a
+    SIMD packet boundary (2, 4, or 8, depending on the build). Infinite
+    denominators already agree. See
     https://github.com/tensorflow/tensorflow/issues/128121.
     """
     # Cover scalar, SSE (2), AVX (4), AVX-512 (8), and a remainder element.
@@ -771,8 +772,12 @@ class UnaryOpTest(test.TestCase):
 
       positive_zero = filled(1, 0.0, 0.0, dtype)
       negative_zero = filled(1, -0.0, 0.0, dtype)
-      self.assertFalse(np.signbit(positive_zero.real[0]))
-      self.assertTrue(np.signbit(negative_zero.real[0]))
+      self.assertFalse(
+          np.signbit(positive_zero.real[0]),
+          msg=f"{dtype.__name__} +0 sign: {positive_zero}")
+      self.assertTrue(
+          np.signbit(negative_zero.real[0]),
+          msg=f"{dtype.__name__} -0 sign: {negative_zero}")
 
       for n in lengths:
         zeros = filled(n, 0.0, 0.0, dtype)
@@ -788,17 +793,26 @@ class UnaryOpTest(test.TestCase):
           self.assertTrue(
               np.all(np.isposinf(got.real)),
               msg=f"{dtype.__name__} n={n} op={op.__name__}: {got}")
-          self.assertTrue(np.all(np.isnan(got.imag)))
+          self.assertTrue(
+              np.all(np.isnan(got.imag)),
+              msg=f"{dtype.__name__} n={n} op={op.__name__}: {got}")
           # 1/(-0+0j) keeps the sign of the infinite real part.
           self.assertTrue(
               np.all(np.isneginf(neg.real)),
               msg=f"{dtype.__name__} n={n} op={op.__name__}: {neg}")
-          self.assertTrue(np.all(np.isnan(neg.imag)))
+          self.assertTrue(
+              np.all(np.isnan(neg.imag)),
+              msg=f"{dtype.__name__} n={n} op={op.__name__}: {neg}")
 
       finite = np.array([0.5 + 0.25j], dtype=dtype)
       finite_ref = (np.array(1.0, dtype=real_dtype) / finite).astype(dtype)
-      tiny = np.array([1e-40j], dtype=dtype)
-      tiny_ref = reciprocal_of(tiny, math_ops.reciprocal)
+      # 1e-40 is subnormal for float32 only. float64's subnormals start near
+      # 1e-308, so complex128 needs its own value.
+      if dtype == np.complex64:
+        subnormal = np.array([1e-40j], dtype=dtype)
+      else:
+        subnormal = np.array([1e-310j], dtype=dtype)
+      subnormal_ref = reciprocal_of(subnormal, math_ops.reciprocal)
       inf_ref = reciprocal_of(
           filled(1, np.inf, 0.0, dtype), math_ops.reciprocal)
       for n in lengths:
@@ -808,23 +822,42 @@ class UnaryOpTest(test.TestCase):
         self.assertTrue(
             matches_reference(got_finite, finite_ref, tol),
             msg=f"finite {dtype.__name__} n={n}: {got_finite}")
-        got_tiny = reciprocal_of(np.repeat(tiny, n), math_ops.reciprocal)
+        got_subnormal = reciprocal_of(
+            np.repeat(subnormal, n), math_ops.reciprocal)
         self.assertTrue(
-            matches_reference(got_tiny, tiny_ref, tol),
-            msg=f"tiny {dtype.__name__} n={n}: {got_tiny}")
-        got_inf = reciprocal_of(filled(n, np.inf, 0.0, dtype),
-                                math_ops.reciprocal)
-        # 1/(inf+0j) is a complex zero, not a NaN from the packet path.
-        self.assertTrue(np.all(got_inf.real == 0), msg=f"{got_inf}")
-        self.assertTrue(np.all(got_inf.imag == 0), msg=f"{got_inf}")
-        self.assertTrue(matches_reference(got_inf, inf_ref, tol))
+            matches_reference(got_subnormal, subnormal_ref, tol),
+            msg=f"subnormal {dtype.__name__} n={n}: {got_subnormal}")
+        got_nan = reciprocal_of(
+            filled(n, np.nan, 0.0, dtype), math_ops.reciprocal)
+        self.assertTrue(
+            np.all(np.isnan(got_nan.real)),
+            msg=f"nan real {dtype.__name__} n={n}: {got_nan}")
+        self.assertTrue(
+            np.all(np.isnan(got_nan.imag)),
+            msg=f"nan imag {dtype.__name__} n={n}: {got_nan}")
+        got_inf = reciprocal_of(
+            filled(n, np.inf, 0.0, dtype), math_ops.reciprocal)
+        # Scalar and packet division already agree on 1/(inf+0j).
+        self.assertTrue(
+            np.all(got_inf.real == 0),
+            msg=f"inf real {dtype.__name__} n={n}: {got_inf}")
+        self.assertTrue(
+            np.all(got_inf.imag == 0),
+            msg=f"inf imag {dtype.__name__} n={n}: {got_inf}")
+        self.assertTrue(
+            matches_reference(got_inf, inf_ref, tol),
+            msg=f"inf {dtype.__name__} n={n}: {got_inf}")
 
       mixed = np.array(
           [0.0 + 0.0j, 0.5 + 0.25j, 0.0 + 0.0j, -1.0 + 2.0j, 0.0 + 0.0j],
           dtype=dtype)
       got_mixed = reciprocal_of(mixed, math_ops.reciprocal)
-      self.assertTrue(np.all(np.isposinf(got_mixed.real[0::2])))
-      self.assertTrue(np.all(np.isnan(got_mixed.imag[0::2])))
+      self.assertTrue(
+          np.all(np.isposinf(got_mixed.real[0::2])),
+          msg=f"mixed real {dtype.__name__}: {got_mixed}")
+      self.assertTrue(
+          np.all(np.isnan(got_mixed.imag[0::2])),
+          msg=f"mixed imag {dtype.__name__}: {got_mixed}")
       self.assertAllClose(got_mixed[1:2], finite_ref, rtol=tol, atol=tol)
       expected_last = (np.array(1.0, dtype=real_dtype) /
                        np.array([-1.0 + 2.0j], dtype=dtype))
