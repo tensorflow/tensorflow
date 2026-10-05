@@ -1270,6 +1270,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
         ([2, 3, 4], [4, 5], False, False, [2, 3, 5]),
         ([2, 4, 3], [4, 5], True, False, [2, 3, 5]),
         ([2, 3, 4], [5, 4], False, True, [2, 3, 5]),
+        ([2, 4, 3], [5, 4], True, True, [2, 3, 5]),
     ):
       with self.subTest(
           x_shape=x_shape, y_shape=y_shape, adjoint_a=adjoint_a,
