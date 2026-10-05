@@ -153,8 +153,8 @@ TEST(SnapshotUtilTest, SnappyTensorSizeMismatch) {
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
 
-// Writes a snappy snapshot of two int64 tensors, then rewrites the first
-// dimension of the first tensor's metadata to `patched_dim_size`.
+// Writes a snappy snapshot of two int64 tensors, then rewrites the dimensions
+// of the first tensor's metadata to `patched_dim_sizes`.
 //
 // int64 is memcpy-able, so the tensors take the simple-tensor path in
 // CustomReader::SnappyUncompress, which is where the shape is built. Records
@@ -163,9 +163,9 @@ TEST(SnapshotUtilTest, SnappyTensorSizeMismatch) {
 // without disturbing the compressed block that follows. The tensor count is
 // left unchanged so the read reaches the shape instead of failing the earlier
 // count check.
-void WriteSnapshotWithPatchedFirstDim(int64_t patched_dim_size,
-                                      tensorflow::DataTypeVector* dtypes,
-                                      std::string* filename) {
+void WriteSnapshotWithPatchedDims(const std::vector<int64_t>& patched_dim_sizes,
+                                  tensorflow::DataTypeVector* dtypes,
+                                  std::string* filename) {
   std::vector<Tensor> tensors;
   for (int i = 0; i < 2; ++i) {
     Tensor t(DT_INT64, TensorShape({4}));
@@ -194,11 +194,11 @@ void WriteSnapshotWithPatchedFirstDim(int64_t patched_dim_size,
   ASSERT_TRUE(
       metadata.ParseFromString(contents.substr(kHeaderSize, metadata_size)));
   ASSERT_GT(metadata.tensor_metadata_size(), 0);
-  ASSERT_GT(metadata.tensor_metadata(0).tensor_shape().dim_size(), 0);
-  metadata.mutable_tensor_metadata(0)
-      ->mutable_tensor_shape()
-      ->mutable_dim(0)
-      ->set_size(patched_dim_size);
+  auto* shape = metadata.mutable_tensor_metadata(0)->mutable_tensor_shape();
+  shape->clear_dim();
+  for (int64_t dim_size : patched_dim_sizes) {
+    shape->add_dim()->set_size(dim_size);
+  }
 
   const std::string patched = metadata.SerializeAsString();
   char header[kHeaderSize];
@@ -215,8 +215,8 @@ TEST(SnapshotUtilTest, SnappyInvalidTensorShapeIsAnError) {
   // CHECK-fails instead, which aborts the process.
   std::string filename;
   tensorflow::DataTypeVector dtypes;
-  ASSERT_NO_FATAL_FAILURE(WriteSnapshotWithPatchedFirstDim(
-      /*patched_dim_size=*/-1, &dtypes, &filename));
+  ASSERT_NO_FATAL_FAILURE(WriteSnapshotWithPatchedDims(
+      /*patched_dim_sizes=*/{-1}, &dtypes, &filename));
 
   std::unique_ptr<Reader> reader;
   TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
@@ -235,8 +235,8 @@ TEST(SnapshotUtilTest, SnappyZeroTensorDimensionIsAnError) {
   // that null buffer.
   std::string filename;
   tensorflow::DataTypeVector dtypes;
-  ASSERT_NO_FATAL_FAILURE(WriteSnapshotWithPatchedFirstDim(
-      /*patched_dim_size=*/0, &dtypes, &filename));
+  ASSERT_NO_FATAL_FAILURE(WriteSnapshotWithPatchedDims(
+      /*patched_dim_sizes=*/{0}, &dtypes, &filename));
 
   std::unique_ptr<Reader> reader;
   TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
@@ -244,6 +244,54 @@ TEST(SnapshotUtilTest, SnappyZeroTensorDimensionIsAnError) {
                               &reader));
   std::vector<Tensor> read_tensors;
   EXPECT_TRUE(absl::IsInternal(reader->ReadTensors(&read_tensors)));
+
+  TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
+}
+
+TEST(SnapshotUtilTest, SnappyOverflowingTensorShapeIsAnError) {
+  // The other branch of BuildTensorShape: each dimension is non-negative, but
+  // their product does not fit in int64, which the TensorShape proto
+  // constructor would CHECK-fail on.
+  std::string filename;
+  tensorflow::DataTypeVector dtypes;
+  ASSERT_NO_FATAL_FAILURE(WriteSnapshotWithPatchedDims(
+      /*patched_dim_sizes=*/{1LL << 32, 1LL << 32}, &dtypes, &filename));
+
+  std::unique_ptr<Reader> reader;
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &reader));
+  std::vector<Tensor> read_tensors;
+  EXPECT_TRUE(absl::IsInvalidArgument(reader->ReadTensors(&read_tensors)));
+
+  TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
+}
+
+TEST(SnapshotUtilTest, SnappyZeroTensorDimensionRoundTrip) {
+  // An empty tensor is legitimate rather than corrupt, so it must survive a
+  // write and a read. Both sides hold a null buffer for it.
+  std::string filename;
+  ASSERT_TRUE(Env::Default()->LocalTempFilename(&filename));
+
+  tensorflow::DataTypeVector dtypes = {DT_INT64};
+  std::vector<Tensor> tensors;
+  tensors.emplace_back(DT_INT64, TensorShape({0}));
+
+  std::unique_ptr<Writer> writer;
+  TF_ASSERT_OK(Writer::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &writer));
+  TF_ASSERT_OK(writer->WriteTensors(tensors));
+  TF_ASSERT_OK(writer->Close());
+
+  std::unique_ptr<Reader> reader;
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &reader));
+  std::vector<Tensor> read_tensors;
+  TF_ASSERT_OK(reader->ReadTensors(&read_tensors));
+  ASSERT_EQ(read_tensors.size(), 1);
+  EXPECT_EQ(read_tensors[0].NumElements(), 0);
 
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
