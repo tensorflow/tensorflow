@@ -267,9 +267,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                                      thunk_proto.outfeed_thunk(),
                                      buffer_allocations);
     case ThunkProto::kCustomKernelThunk:
-      return CustomKernelThunk::FromProto(std::move(thunk_info),
-                                          thunk_proto.custom_kernel_thunk(),
-                                          buffer_allocations, symbol_resolver);
+      return CustomKernelThunk::FromProto(
+          std::move(thunk_info), thunk_proto.custom_kernel_thunk(),
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_process()
+                                   : 0,
+          symbol_resolver);
     case ThunkProto::kAllGatherThunk:
       return AllGatherThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.all_gather_thunk(),

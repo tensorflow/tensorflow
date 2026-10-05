@@ -200,7 +200,9 @@ AsyncThunkSequence TritonFusion::Emit(
                                           ir_emitter_context, fusion));
   } else {
     EmitThunk make_thunk =
-        [thunk_info = std::move(thunk_info)](
+        [thunk_info = std::move(thunk_info),
+         devices_in_process =
+             ir_emitter_context.gpu_topology().num_devices_per_process()](
             EmitResult result) -> absl::StatusOr<ThunkSequence> {
       ABSL_ASSIGN_OR_RETURN(
           CustomKernel custom_kernel,
@@ -213,7 +215,7 @@ AsyncThunkSequence TritonFusion::Emit(
               result.entry.shmem_bytes));
       return ThunkSequence::Of<CustomKernelThunk>(
           thunk_info, std::move(custom_kernel), result.kernel_arguments,
-          result.entry.use_pdl, std::vector<int64_t>{},
+          devices_in_process, result.entry.use_pdl, std::vector<int64_t>{},
           std::move(result.entry.tma_metadata));
     };
     emit_args = {

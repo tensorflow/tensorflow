@@ -1548,7 +1548,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
   return ThunkSequence::Of<CustomKernelThunk>(
-      std::move(info), std::move(kernel), kernel_arguments);
+      std::move(info), std::move(kernel), kernel_arguments,
+      ir_emitter_context_->gpu_topology().num_devices_per_process());
 }
 
 Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
@@ -1650,7 +1651,9 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
       instr, ir_emitter_context_->GetNextThunkId());
   return status_or_entry.Map(
       [info = std::move(info), kernel_arguments = std::move(kernel_arguments),
-       call_zeroed_outputs = std::move(call_zeroed_outputs)](
+       call_zeroed_outputs = std::move(call_zeroed_outputs),
+       devices_in_process =
+           ir_emitter_context_->gpu_topology().num_devices_per_process()](
           const KernelReuseCache::Entry& entry) mutable
           -> absl::StatusOr<ThunkSequence> {
         ABSL_ASSIGN_OR_RETURN(
@@ -1662,8 +1665,8 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                 entry.shmem_bytes));
         return ThunkSequence::Of<CustomKernelThunk>(
             std::move(info), std::move(custom_kernel),
-            std::move(kernel_arguments), entry.use_pdl, call_zeroed_outputs,
-            entry.tma_metadata);
+            std::move(kernel_arguments), devices_in_process, entry.use_pdl,
+            call_zeroed_outputs, entry.tma_metadata);
       });
 }
 
