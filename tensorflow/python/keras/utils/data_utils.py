@@ -24,7 +24,6 @@ import multiprocessing.dummy
 import os
 import queue
 import random
-import re
 import shutil
 import sys  # pylint: disable=unused-import
 import tarfile
@@ -134,28 +133,13 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
       with open_fn(file_path) as archive:
         try:
           if archive_type == 'tar':
-            if hasattr(tarfile, 'data_filter'):
-              archive.extractall(path, filter='data')
-            else:
-              # Python versions without extraction filters (before 3.10.12
-              # and 3.11.4). Members are not on disk yet, so resolving paths
-              # with realpath here cannot see symlinks from this archive.
-              # Instead, refuse absolute paths, drive prefixes and '..'
-              # components in member names and link targets: then every
-              # file, symlink and hard link stays inside `path`.
-              def _is_unsafe(member_path):
-                return (os.path.isabs(member_path)
-                        or bool(os.path.splitdrive(member_path)[0])
-                        or '..' in re.split(r'[\\/]', member_path))
-
-              for member in archive.getmembers():
-                if _is_unsafe(member.name) or (
-                    (member.issym() or member.islnk()) and
-                    _is_unsafe(member.linkname)):
-                  raise ValueError(
-                      'Refusing to extract unsafe archive member: {0}'.format(
-                          member.name))
-              archive.extractall(path)
+            members = []
+            abs_path = os.path.realpath(path)
+            for member in archive.getmembers():
+              abs_target = os.path.realpath(os.path.join(path, member.name))
+              if os.path.commonpath([abs_path, abs_target]) == abs_path:
+                members.append(member)
+            archive.extractall(path, members=members)
           else:
             # zip
             members = []
