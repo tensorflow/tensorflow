@@ -24,6 +24,16 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
+def _runtime_size(m, w):
+  # XLA compiles a size that is passed in, or computed with a reduction, as a
+  # constant, but not one computed with a matrix product. TPUs have no 64-bit
+  # integer dot, so compute the product in int32.
+  return math_ops.cast(
+      math_ops.matvec(
+          math_ops.cast(m, dtypes.int32), math_ops.cast(w, dtypes.int32)),
+      m.dtype)
+
+
 class SliceTest(xla_test.XLATestCase):
 
   def test1D(self):
@@ -78,12 +88,11 @@ class SliceTest(xla_test.XLATestCase):
     # Regression test for GitHub issue 128405. When `size` is only known at
     # run time, a size beyond the input, which eager rejects as out of range,
     # was set as the dimension size of an output that holds at most one
-    # element, which corrupted the heap on some platforms. `size` has to be
-    # computed in the function: one passed in is compiled as a constant.
+    # element, which corrupted the heap on some platforms.
 
     @def_function.function(jit_compile=True)
     def slice_size(m, w):
-      v = math_ops.matvec(m, math_ops.cast(w, m.dtype))  # [19]
+      v = _runtime_size(m, w)  # [19]
       return array_ops.shape(array_ops.slice(v, v, v))
 
     for dtype in (dtypes.int32, dtypes.int64):
@@ -100,7 +109,7 @@ class SliceTest(xla_test.XLATestCase):
 
     @def_function.function(jit_compile=True)
     def slice_from_one(x, m, w):
-      v = math_ops.matvec(m, math_ops.cast(w, m.dtype))
+      v = _runtime_size(m, w)
       return array_ops.slice(x, constant_op.constant([1], dtype=m.dtype), v)
 
     for dtype in (dtypes.int32, dtypes.int64):
