@@ -2679,6 +2679,19 @@ class OpScopeTest(test_util.TensorFlowTestCase):
         pass
 
   @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2ColonInEagerScopeName(self):
+    """Eager scope names built from tensor names may contain a colon."""
+    if not context.executing_eagerly():
+      self.skipTest("Colons are only valid in eager scope names.")
+    # Callers derive scope names from variable names, which carry an output
+    # index; e.g. TPU embedding slot creation enters "video:0_accumulators".
+    with ops.name_scope_v2("video:0_accumulators"):
+      pass
+    with ops.name_scope_v2("valid_outer"):
+      with ops.name_scope_v2("video:0_accumulators"):
+        pass
+
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2ValidNamesEager(self):
     """Valid scope names should not raise in graph or eager mode."""
     with ops.name_scope_v2("valid_scope"):
