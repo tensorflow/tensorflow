@@ -1586,6 +1586,7 @@ tf_xla_py_strict_test(
         ":xla_test",
         "//tensorflow/python/client:device_lib",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:test",

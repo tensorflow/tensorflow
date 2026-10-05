@@ -78,6 +78,11 @@ class SegmentReduce : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntScalar(
                        2, &num_segments, xla::ValueInferenceMode::kUpperBound));
+    // Reject a negative num_segments like the TensorFlow kernels, before it
+    // reaches TensorShape, which CHECK-fails on negative sizes.
+    OP_REQUIRES(ctx, num_segments >= 0,
+                errors::InvalidArgument("Input num_segments == ", num_segments,
+                                        " must not be negative."));
     OP_REQUIRES(ctx, data_shape.dims() >= indices_shape.dims(),
                 errors::InvalidArgument(type_string(),
                                         " requires that indices' rank be"

@@ -21,6 +21,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.client import device_lib
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -202,6 +203,18 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
          (self._segmentMinV2, real_types),
          (self._segmentMaxV2, real_types)),
         np.array([-1, -1], dtype=np.int32))
+
+  def testUnsortedSegmentSumNegativeNumSegments(self):
+    # Graph shape inference rejects a negative constant num_segments, so feed
+    # it to reach the XLA kernel, which used to CHECK-fail on it.
+    with self.session() as sess, self.test_scope():
+      d = array_ops.placeholder(np.float32, shape=[2, 3])
+      i = array_ops.placeholder(np.int32, shape=[2])
+      n = array_ops.placeholder(np.int32, shape=[])
+      out = math_ops.unsorted_segment_sum(d, i, n)
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "num_segments == -1 must not be negative"):
+        sess.run(out, {d: np.ones([2, 3], dtype=np.float32), i: [0, 1], n: -1})
 
   def testUnsortedSegmentSum0DIndices1DData(self):
     for dtype in self.numeric_types:
