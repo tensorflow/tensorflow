@@ -213,66 +213,36 @@ class ExtractImagePatches(test.TestCase):
   def testNegativeOrZeroAttributes(self):
     """Test for negative or zero spatial attributes."""
     image = constant_op.constant(np.ones([1, 2, 2, 1], dtype=np.float32))
-
-    # Negative or zero ksizes
-    for invalid_ksizes in [[1, -1, 2, 1], [1, 2, 0, 1], [1, -1, -2, 1]]:
+    valid = [1, 1, 1, 1]
+    for attr, value in [
+        ("ksizes", [1, -1, 2, 1]),
+        ("ksizes", [1, 2, 0, 1]),
+        ("ksizes", [1, -1, -2, 1]),
+        ("strides", [1, -1, 1, 1]),
+        ("strides", [1, 1, 0, 1]),
+        ("rates", [1, -1, 1, 1]),
+        ("rates", [1, 1, 0, 1]),
+    ]:
+      kwargs = {"ksizes": valid, "strides": valid, "rates": valid}
+      kwargs[attr] = value
+      # Graph construction runs the shape function (ValueError); eager
+      # execution runs the kernel constructor (OutOfRangeError).
       with self.assertRaisesRegex(
-          (errors_impl.InvalidArgumentError, ValueError),
-          r"ExtractImagePatches requires spatial ksizes to be positive",
+          (errors_impl.OutOfRangeError, ValueError),
+          rf"ExtractImagePatches requires spatial {attr} to be positive"
+          rf"|{attr} is out of range",
       ):
-        out = array_ops.extract_image_patches(
-            image,
-            ksizes=invalid_ksizes,
-            strides=[1, 1, 1, 1],
-            rates=[1, 1, 1, 1],
-            padding="VALID",
+        self.evaluate(
+            array_ops.extract_image_patches(image, padding="VALID", **kwargs)
         )
-        self.evaluate(out)
-
-    # Negative or zero strides
-    for invalid_strides in [[1, -1, 1, 1], [1, 1, 0, 1]]:
-      with self.assertRaisesRegex(
-          (errors_impl.InvalidArgumentError, ValueError),
-          r"ExtractImagePatches requires spatial strides to be positive",
-      ):
-        out = array_ops.extract_image_patches(
-            image,
-            ksizes=[1, 1, 1, 1],
-            strides=invalid_strides,
-            rates=[1, 1, 1, 1],
-            padding="VALID",
-        )
-        self.evaluate(out)
-
-    # Negative or zero rates
-    for invalid_rates in [[1, -1, 1, 1], [1, 1, 0, 1]]:
-      with self.assertRaisesRegex(
-          (errors_impl.InvalidArgumentError, ValueError),
-          r"ExtractImagePatches requires spatial rates to be positive",
-      ):
-        out = array_ops.extract_image_patches(
-            image,
-            ksizes=[1, 1, 1, 1],
-            strides=[1, 1, 1, 1],
-            rates=invalid_rates,
-            padding="VALID",
-        )
-        self.evaluate(out)
-
-    # Graph mode shape inference test
-    with ops.Graph().as_default():
-      image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 1, 1, 1])
-      with self.assertRaisesRegex(
-          (errors_impl.InvalidArgumentError, ValueError),
-          r"ExtractImagePatches requires spatial ksizes to be positive",
-      ):
-        array_ops.extract_image_patches(
-            image_ph,
-            ksizes=[1, -1, 2, 1],
-            strides=[1, 1, 1, 1],
-            rates=[1, 1, 1, 1],
-            padding="VALID",
-        )
+      # Shape inference must reject the same attributes.
+      with ops.Graph().as_default():
+        image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 2, 2, 1])
+        with self.assertRaisesRegex(
+            ValueError,
+            rf"ExtractImagePatches requires spatial {attr} to be positive",
+        ):
+          array_ops.extract_image_patches(image_ph, padding="VALID", **kwargs)
 
 
 if __name__ == "__main__":

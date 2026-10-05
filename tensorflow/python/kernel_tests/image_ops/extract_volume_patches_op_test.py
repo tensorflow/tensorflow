@@ -177,57 +177,36 @@ class ExtractVolumePatches(test.TestCase):
   def testNegativeOrZeroAttributes(self):
     """Test for negative or zero spatial attributes."""
     image = constant_op.constant(np.ones([1, 2, 2, 2, 1], dtype=np.float32))
-
-    # Negative or zero ksizes
-    for invalid_ksizes in [
-        [1, -1, 1, 1, 1],
-        [1, 1, 0, 1, 1],
-        [1, 1, 1, -1, 1],
-        [1, -1, -1, -1, 1],
+    valid = [1, 1, 1, 1, 1]
+    for attr, value in [
+        ("ksizes", [1, -1, 1, 1, 1]),
+        ("ksizes", [1, 1, 0, 1, 1]),
+        ("ksizes", [1, 1, 1, -1, 1]),
+        ("ksizes", [1, -1, -1, -1, 1]),
+        ("strides", [1, -1, 1, 1, 1]),
+        ("strides", [1, 1, 0, 1, 1]),
+        ("strides", [1, 1, 1, -1, 1]),
     ]:
+      kwargs = {"ksizes": valid, "strides": valid}
+      kwargs[attr] = value
+      # Graph construction runs the shape function (ValueError); eager
+      # execution runs the kernel constructor (OutOfRangeError).
       with self.assertRaisesRegex(
-          (errors_impl.InvalidArgumentError, ValueError),
-          r"ExtractVolumePatches requires spatial ksizes to be positive",
+          (errors_impl.OutOfRangeError, ValueError),
+          rf"ExtractVolumePatches requires spatial {attr} to be positive"
+          rf"|{attr} is out of range",
       ):
-        out = array_ops.extract_volume_patches(
-            image,
-            ksizes=invalid_ksizes,
-            strides=[1, 1, 1, 1, 1],
-            padding="VALID",
+        self.evaluate(
+            array_ops.extract_volume_patches(image, padding="VALID", **kwargs)
         )
-        self.evaluate(out)
-
-    # Negative or zero strides
-    for invalid_strides in [
-        [1, -1, 1, 1, 1],
-        [1, 1, 0, 1, 1],
-        [1, 1, 1, -1, 1],
-    ]:
-      with self.assertRaisesRegex(
-          (errors_impl.InvalidArgumentError, ValueError),
-          r"ExtractVolumePatches requires spatial strides to be positive",
-      ):
-        out = array_ops.extract_volume_patches(
-            image,
-            ksizes=[1, 1, 1, 1, 1],
-            strides=invalid_strides,
-            padding="VALID",
-        )
-        self.evaluate(out)
-
-    # Graph mode shape inference test
-    with ops.Graph().as_default():
-      image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 1, 1, 1, 1])
-      with self.assertRaisesRegex(
-          (errors_impl.InvalidArgumentError, ValueError),
-          r"ExtractVolumePatches requires spatial ksizes to be positive",
-      ):
-        array_ops.extract_volume_patches(
-            image_ph,
-            ksizes=[1, -1, 1, 1, 1],
-            strides=[1, 1, 1, 1, 1],
-            padding="VALID",
-        )
+      # Shape inference must reject the same attributes.
+      with ops.Graph().as_default():
+        image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 2, 2, 2, 1])
+        with self.assertRaisesRegex(
+            ValueError,
+            rf"ExtractVolumePatches requires spatial {attr} to be positive",
+        ):
+          array_ops.extract_volume_patches(image_ph, padding="VALID", **kwargs)
 
 
 if __name__ == "__main__":
