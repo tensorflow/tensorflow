@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -971,12 +972,15 @@ absl::Status CustomReader::SnappyUncompress(
       // CHECK-fails on a negative or overflowing dimension, which aborts the
       // process instead of reporting a corrupt snapshot.
       TensorShape shape;
-      TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape(tensor_metadata.tensor_shape(), &shape));
+      TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(
+          tensor_metadata.tensor_shape(), &shape));
       Tensor simple_tensor(dtypes_[i], shape);
+      // A zero dimension is a valid shape, but Tensor does not allocate a
+      // buffer for a tensor with no elements, so `buffer` is null in that case
+      // and must not be dereferenced.
       TensorBuffer* buffer = DMAHelper::buffer(&simple_tensor);
-      iov[index].iov_base = buffer->data();
-      iov[index].iov_len = buffer->size();
+      iov[index].iov_base = buffer ? buffer->data() : nullptr;
+      iov[index].iov_len = buffer ? buffer->size() : 0;
       simple_tensors->push_back(std::move(simple_tensor));
     } else {
       int64_t tensor_size = tensor_metadata.tensor_size_bytes();
