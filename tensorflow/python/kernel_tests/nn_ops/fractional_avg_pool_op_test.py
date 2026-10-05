@@ -642,5 +642,29 @@ class FractionalAvgPoolGradTest(test.TestCase):
         )
 
 
+  def testGradMismatchedBatchAndDepth(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"orig_input_tensor_shape batch \(2\) must equal "
+        r"out_backprop batch \(3\)"):
+      self.evaluate(gen_nn_ops.fractional_avg_pool_grad(
+          orig_input_tensor_shape=[2, 2, 2, 2],
+          out_backprop=array_ops.zeros([3, 2, 2, 2]),
+          row_pooling_sequence=[0, 1, 2],
+          col_pooling_sequence=[0, 1, 2],
+          overlapping=False))
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"orig_input_tensor_shape depth \(2\) must equal "
+        r"out_backprop depth \(3\)"):
+      self.evaluate(gen_nn_ops.fractional_avg_pool_grad(
+          orig_input_tensor_shape=[2, 2, 2, 2],
+          out_backprop=array_ops.zeros([2, 2, 2, 3]),
+          row_pooling_sequence=[0, 1, 2],
+          col_pooling_sequence=[0, 1, 2],
+          overlapping=False))
+
+
 if __name__ == "__main__":
   test.main()
