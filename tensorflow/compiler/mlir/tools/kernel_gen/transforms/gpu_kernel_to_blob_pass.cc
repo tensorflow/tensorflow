@@ -40,13 +40,13 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 #if GOOGLE_CUDA
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
@@ -63,13 +63,12 @@ namespace {
 
 #if GOOGLE_CUDA
 absl::StatusOr<int> GetLatestPtxIsaVersion(
-    const stream_executor::GpuAsmOpts& options) {
+    absl::string_view preferred_cuda_dir) {
   if (stream_executor::IsLibNvPtxCompilerSupported()) {
     return stream_executor::GetLatestPtxIsaVersionForNvptxCompiler();
   }
-  TF_ASSIGN_OR_RETURN(
-      std::string ptxas_path,
-      stream_executor::FindPtxAsExecutable(options.preferred_cuda_dir));
+  TF_ASSIGN_OR_RETURN(std::string ptxas_path,
+                      stream_executor::FindPtxAsExecutable(preferred_cuda_dir));
   return stream_executor::cuda::SubprocessCompilationProvider(
              std::move(ptxas_path), /*path_to_nvlink=*/"")
       .GetLatestPtxIsaVersion();
@@ -167,7 +166,8 @@ class GpuKernelToBlobPass
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;
     auto gpu_asm_opts = xla::gpu::PtxOptsFromDebugOptions(options);
-    auto ptx_isa_version = GetLatestPtxIsaVersion(gpu_asm_opts);
+    auto ptx_isa_version =
+        GetLatestPtxIsaVersion(options.xla_gpu_cuda_data_dir());
     std::optional<int> max_ptx_isa_version;
     if (ptx_isa_version.ok()) {
       max_ptx_isa_version = *ptx_isa_version;

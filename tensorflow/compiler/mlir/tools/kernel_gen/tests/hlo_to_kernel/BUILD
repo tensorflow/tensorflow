@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
+load("@xla//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
@@ -42,4 +44,23 @@ filegroup(
         "//tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel",
         "@llvm-project//mlir:run_lit.sh",
     ],
+)
+
+py_test(
+    name = "ptx_version_test",
+    size = "small",
+    srcs = ["ptx_version_test.py"],
+    args = ["$(location //tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel)"],
+    data = ["//tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel"],
+    tags = [
+        "no_rocm",
+        "no_windows",
+    ],
+    target_compatible_with = if_cuda_is_configured(
+        select({
+            "@xla//xla/stream_executor/cuda:libnvptxcompiler_support_enabled": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        }),
+        ["@platforms//:incompatible"],
+    ),
 )
