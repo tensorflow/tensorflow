@@ -589,6 +589,7 @@ cc_library(
         ":command",
         ":command_executor",
         ":command_state",
+        ":per_device_state",
         ":sequential_thunk",  # build_cleaner: keep
         ":thunk",
         ":thunk_proto_cc",
@@ -602,7 +603,6 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",

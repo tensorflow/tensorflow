@@ -175,7 +175,8 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
                            CommandExecutor::SynchronizationMode::kConcurrent));
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo());
+  CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo(),
+                           /*devices_in_process=*/1);
 
   ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(executor);

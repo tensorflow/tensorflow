@@ -295,7 +295,7 @@ static absl::Status RunThunkPasses(
     const DebugOptions& debug_options, const se::DeviceDescription& device_info,
     SequentialThunk* root_thunk, HloModule* hlo_module,
     const std::vector<ShapedSlice>& module_output_slices,
-    ThunkPassBufferAllocator& allocator) {
+    ThunkPassBufferAllocator& allocator, int devices_in_process) {
   ThunkPassPipeline pipeline("thunk-passes");
   if (debug_options.xla_gpu_experimental_enable_checksum_tracing_on_thunks() ||
       debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
@@ -327,7 +327,7 @@ static absl::Status RunThunkPasses(
     pipeline.AddPass(std::move(pass));
   }
   pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(
-      hlo_module ? hlo_module->name() : "Anonymous"));
+      hlo_module ? hlo_module->name() : "Anonymous", devices_in_process));
 
   ABSL_ASSIGN_OR_RETURN(bool changed,
                    pipeline.Run(&root_thunk->thunks(), debug_options,
@@ -426,9 +426,14 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::vector<ShapedSlice> module_output_slices,
       GetModuleOutputSlices(params.program_shape, params.output_info,
                             params.allocations));
-  ABSL_RETURN_IF_ERROR(RunThunkPasses(
-      params.debug_options, params.device_description, seq_thunk.get(),
-      params.debug_module.get(), module_output_slices, allocator));
+  const int devices_in_process =
+      params.gpu_topology.has_value()
+          ? params.gpu_topology->num_devices_per_process()
+          : 0;
+  ABSL_RETURN_IF_ERROR(
+      RunThunkPasses(params.debug_options, params.device_description,
+                     seq_thunk.get(), params.debug_module.get(),
+                     module_output_slices, allocator, devices_in_process));
   // Extract modified thunks back into a ThunkExecutor.
   auto executor =
       std::make_unique<ThunkExecutor>(std::move(seq_thunk->thunks()));
