@@ -134,5 +134,20 @@ TEST_F(VectorStorageTest, StatesAreCacheLineAligned) {
   }
 }
 
+TEST_F(VectorStorageTest, ForEachVisitsAllSlots) {
+  VectorStorage empty({});
+  int empty_visits = 0;
+  empty.ForEach([&](DeviceSlot&) { ++empty_visits; });
+  EXPECT_EQ(empty_visits, 0);
+
+  VectorStorage storage(MakeSlots<Tracked>(4));
+  std::vector<DeviceSlot*> visited;
+  storage.ForEach([&](DeviceSlot& slot) { visited.push_back(&slot); });
+  ASSERT_EQ(visited.size(), 4);
+  for (int ordinal = 0; ordinal < 4; ++ordinal) {
+    EXPECT_EQ(visited[ordinal], storage.Find(ordinal));
+  }
+}
+
 }  // namespace
 }  // namespace xla::gpu
