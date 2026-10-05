@@ -276,9 +276,10 @@ absl::Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
     tensor.shape().AsProto(tensor_metadata->mutable_tensor_shape());
     int64_t size = 0;
     if (simple_tensor_mask_[i]) {
+      // As in the reader below, a tensor with no elements has no buffer.
       auto tensor_buffer = DMAHelper::buffer(&tensor);
       tensor_buffers.push_back(tensor_buffer);
-      size = tensor_buffer->size();
+      size = tensor_buffer != nullptr ? tensor_buffer->size() : 0;
     } else {
       TensorProto proto;
       tensor.AsProtoTensorContent(&proto);
@@ -296,8 +297,12 @@ absl::Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   for (int i = 0, end = tensors.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata.tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
-      memcpy(position, tensor_buffers[buffer_index]->data(),
-             tensor_metadata.tensor_size_bytes());
+      // Skip the copy for an empty tensor: its buffer is null, and passing a
+      // null pointer to memcpy is undefined even when the length is zero.
+      if (tensor_metadata.tensor_size_bytes() > 0) {
+        memcpy(position, tensor_buffers[buffer_index]->data(),
+               tensor_metadata.tensor_size_bytes());
+      }
       buffer_index++;
     } else {
       tensor_protos[proto_index].SerializeToArray(
