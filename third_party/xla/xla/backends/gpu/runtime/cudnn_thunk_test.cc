@@ -119,10 +119,11 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
 //                      se::gpu::CudnnGraph built with
 //                      require_command_buffer=true.
 //   * implicit path  — DnnGraph falls back to RecordTracedCommand; exercised
-//                      with a test-only FakeDnnGraph that forces
-//                      SupportsExplicitCommandBufferConstruction() -> false and
-//                      whose Execute() emits a verifiable device op on the
-//                      trace stream.
+//                      with a test-only FakeDnnGraph (installed via a
+//                      CuDnnThunk subclass overriding CreateGraph()) that
+//                      forces SupportsExplicitCommandBufferConstruction() ->
+//                      false and whose Execute() emits a verifiable device op
+//                      on the trace stream.
 //
 // Each path is tested in both RecordCreate and RecordUpdate modes.
 //===----------------------------------------------------------------------===//
@@ -144,6 +145,12 @@ bool SupportsCudaGraphTracing(const se::StreamExecutor* executor) {
   return std::min(desc.driver_version(), desc.compile_time_toolkit_version()) >=
          stream_executor::SemanticVersion(12, 3, 0);
 }
+
+// Fingerprint under which the tests publish their graph in
+// `ExecutableSource::dnn_compiled_graphs`.
+constexpr char kFingerprint[] = "fingerprint";
+// Value FakeDnnGraph::Execute() writes to the output buffer.
+constexpr uint32_t kFakeSentinel = 0x12345678u;
 
 // DnnGraph that forces Record() into the traced (implicit) path.
 //
@@ -190,6 +197,32 @@ class FakeDnnGraph : public se::dnn::DnnGraph {
   uint32_t sentinel_;
 };
 
+// CuDnnThunk whose graph is a FakeDnnGraph instead of one deserialized from
+// `dnn_compiled_graphs`.
+class FakeGraphCuDnnThunk : public CuDnnThunk {
+ public:
+  using CuDnnThunk::CuDnnThunk;
+
+ private:
+  absl::StatusOr<std::unique_ptr<se::dnn::DnnGraph>> CreateGraph(
+      const InitializeParams&) override {
+    return std::make_unique<FakeDnnGraph>(kFakeSentinel);
+  }
+};
+
+absl::StatusOr<Thunk::ExecutableSource> ExecutableSourceWithGraph(
+    const se::gpu::CudnnGraph& graph) {
+  std::vector<uint8_t> bytes;
+  cudnn_frontend::error_t error = graph.Graph().serialize(bytes);
+  if (error.is_bad()) {
+    return absl::InternalError(error.get_message());
+  }
+  Thunk::ExecutableSource source;
+  source.dnn_compiled_graphs.emplace(kFingerprint,
+                                     std::string(bytes.begin(), bytes.end()));
+  return source;
+}
+
 // Fixture shared by all Record() tests.
 //
 // Matmul layout mirrors CuDnnThunkTest.CommandBuffer: A(1×32×32) INT8 * itself
@@ -201,7 +234,6 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
   static constexpr int kDimSize = 32;
   static constexpr int kTotalElements = kDimSize * kDimSize;
   static constexpr uint32_t kInitialOutput = 0xdeadbeefu;
-  static constexpr uint32_t kFakeSentinel = 0x12345678u;
 
   void SetUp() override {
     ASSERT_OK_AND_ASSIGN(executor_, GpuExecutor());
@@ -300,30 +332,25 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
 
     std::vector<bool> output_args(args_.size(), false);
     output_args.back() = true;
-    thunk_ = std::make_unique<CuDnnThunk>(
-        /*fingerprint=*/"", Thunk::ThunkInfo(), args_, std::move(output_args));
-    se::dnn::LazyDnnGraph prebuilt(
-        std::make_unique<se::gpu::CudnnGraph>(std::move(graph)));
-    thunk_->graph()->swap(prebuilt);
+    thunk_ = std::make_unique<CuDnnThunk>(kFingerprint, Thunk::ThunkInfo(),
+                                          args_, std::move(output_args));
 
-    InitializeThunk();
+    ASSERT_OK_AND_ASSIGN(Thunk::ExecutableSource source,
+                         ExecutableSourceWithGraph(graph));
+    InitializeThunk(source);
   }
 
   // Builds a CuDnnThunk backed by the FakeDnnGraph (forces the traced path).
   void BuildFakeGraphThunk() {
     std::vector<bool> output_args(args_.size(), false);
     output_args.back() = true;
-    thunk_ = std::make_unique<CuDnnThunk>(
+    thunk_ = std::make_unique<FakeGraphCuDnnThunk>(
         /*fingerprint=*/"", Thunk::ThunkInfo(), args_, std::move(output_args));
-    se::dnn::LazyDnnGraph prebuilt(
-        std::make_unique<FakeDnnGraph>(kFakeSentinel));
-    thunk_->graph()->swap(prebuilt);
 
     InitializeThunk();
   }
 
-  void InitializeThunk() {
-    Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  void InitializeThunk(const Thunk::ExecutableSource& source = {}) {
     ASSERT_OK(thunk_->Initialize({executor_, source, allocations_.get(),
                                   stream_.get(), trace_stream_.get()}));
   }
@@ -590,17 +617,13 @@ TEST(CuDnnThunkTest, CommandBuffer) {
         {slice_workspace, ShapeUtil::MakeShape(U8, {workspace_size})});
   }
 
-  // Build a CuDnnThunk that owns the prebuilt graph. CuDnnThunk is both a
-  // Thunk and a Command (via TracedCommand), so it can be borrowed directly
-  // into the CommandSequence. Its Initialize() short-circuits when the graph
-  // is already populated, so the fingerprint deserialization path is skipped.
+  // Build a CuDnnThunk for the graph. CuDnnThunk is both a Thunk and a Command
+  // (via TracedCommand), so it can be borrowed directly into the
+  // CommandSequence.
   std::vector<bool> output_args(args.size(), false);
   output_args.back() = true;
   auto cudnn_thunk = std::make_unique<CuDnnThunk>(
-      /*fingerprint=*/"", Thunk::ThunkInfo(), args, std::move(output_args));
-  auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));
-  se::dnn::LazyDnnGraph prebuilt(std::move(dnn_graph));
-  cudnn_thunk->graph()->swap(prebuilt);
+      kFingerprint, Thunk::ThunkInfo(), args, std::move(output_args));
 
   CommandSequence commands;
   commands.Append(cudnn_thunk.get());
@@ -648,7 +671,8 @@ TEST(CuDnnThunkTest, CommandBuffer) {
       /*execution_scoped_state=*/nullptr,
       /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
 
-  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  ASSERT_OK_AND_ASSIGN(Thunk::ExecutableSource source,
+                       ExecutableSourceWithGraph(graph));
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = stream_executor;
   initialize_params.src = source;
