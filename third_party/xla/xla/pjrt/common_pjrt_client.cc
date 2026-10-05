@@ -2665,32 +2665,33 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
   return res;
 }
 
-absl::StatusOr<CommonPjRtLoadedExecutable::DeviceAndAssignment>
-CommonPjRtLoadedExecutable::LookupDeviceAndAssignment(
+absl::StatusOr<PjRtExecutableLoadState::DeviceAndAssignment>
+CommonPjRtClient::LookupDeviceAndAssignment(
     const ExecuteOptions& options, int replica, int partition,
-    PjRtDevice* device) const {
-  DeviceAndAssignment result;
+    PjRtDevice* device,
+    const std::shared_ptr<DeviceAssignment>& device_assignment,
+    PjRtExecutableLoadState* load_state) const {
+  PjRtExecutableLoadState::DeviceAndAssignment result;
   if (device == nullptr) {
-    if (device_assignment_ == nullptr) {
+    if (device_assignment == nullptr) {
       return InvalidArgument(
           "device_assignment_ must be set if device is not provided.");
     }
-    const int64_t device_id = (*device_assignment_)(replica, partition);
+    const int64_t device_id = (*device_assignment)(replica, partition);
     GlobalDeviceId global_device_id(device_id);
-    ABSL_ASSIGN_OR_RETURN(device, client()->LookupDevice(global_device_id));
-    result.device_assignment = device_assignment_;
+    ABSL_ASSIGN_OR_RETURN(device, LookupDevice(global_device_id));
+    result.device_assignment = device_assignment;
   } else {
-    if (device_assignment_ != nullptr) {
+    if (device_assignment != nullptr) {
       return InvalidArgument(
           "device_assignment_ must not be set if device is provided.");
     }
     CHECK_EQ(replica, 0);
     CHECK_EQ(partition, 0);
-    CHECK(addressable_devices_.empty());
     result.device_assignment = std::make_shared<DeviceAssignment>(1, 1);
     (*result.device_assignment)(0, 0) = device->id();
   }
-  CHECK_EQ(device->process_index(), client()->process_index());
+  CHECK_EQ(device->process_index(), process_index());
   result.device = device;
   result.local_device_id = device->local_device_id();
   result.global_device_id = device->global_device_id();
@@ -2706,9 +2707,10 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
     int replica, int partition, const ExecuteOptions& options,
     size_t host_callback_idx, PjRtDevice* device, int attempt) const {
   tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecutePrepare");
-  ABSL_ASSIGN_OR_RETURN(
-      DeviceAndAssignment device_and_assign,
-      LookupDeviceAndAssignment(options, replica, partition, device));
+  ABSL_ASSIGN_OR_RETURN(DeviceAndAssignment device_and_assign,
+                   client()->LookupDeviceAndAssignment(
+                       options, replica, partition, device, device_assignment_,
+                       load_state_.get()));
   device = device_and_assign.device;
   // Fill in device to launch_args so it will be present even if ExecutePrepare
   // fails with OOM.
