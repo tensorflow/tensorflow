@@ -11,7 +11,7 @@ The TensorFlow PR Review Agent evaluates pull request diffs and modified files a
 
 ## High-Level Workflow
 
-1. **Trigger**: `.github/workflows/pr_review.yml` runs on `pull_request_target` (`types: [labeled]`) when the applied label is `Needs Review`.
+1. **Trigger**: `.github/workflows/pr_review.yml` runs on `pull_request_target` (`types: [labeled]`) when the applied label is `Agent Review`.
 2. **Reaction Status (`eyes`)**: `clear_and_set_reaction` in `agent/main.py` removes any existing `eyes` reactions on the PR issue thread and posts an `eyes` reaction while processing.
 3. **PR Metadata & Diff Retrieval**: `get_pull_request_details` queries the GitHub GraphQL API (with a REST API fallback) for the configured `PULL_REQUEST_NUMBER` metadata, up to 100 changed files, and the unified diff. The diff is annotated with explicit right-side (`[L...]`) and left-side (`[LEFT L...]`) line numbers and capped at 30,000 characters.
 4. **Labeled Commit BindingCheck**: `main.py` compares `PR_HEAD_SHA` (`github.event.pull_request.head.sha`) against the live PR `headRefOid`. If `PR_HEAD_SHA` is missing/invalid or does not match `headRefOid`, the agent logs the SHA mismatch and aborts immediately before running Pylint, invoking Gemini, or posting a review.
@@ -55,7 +55,7 @@ During execution (`agent/main.py`):
   <!-- tensorflow-pr-review-agent: commit_sha=<verified_head_sha> -->
   ```
 - **Same-Commit Idempotency**: Before running Pylint or Gemini, `has_agent_reviewed_commit` inspects `/repos/{OWNER}/{REPO}/pulls/{pr_number}/reviews?per_page=100`. A review counts only when `(review.get("user") or {}).get("login") == "github-actions[bot]"`, `commit_id == verified_head_sha`, and the exact HTML marker is present in `body`.
-- **New-Commit Re-Review & Retry**: Pushing a new commit updates `headRefOid`; re-applying the `Needs Review` label triggers a fresh review for the new commit SHA. If a previous review submission failed, no marker is persisted on GitHub and the commit remains eligible for retry.
+- **New-Commit Re-Review & Retry**: Pushing a new commit updates `headRefOid`; re-applying the `Agent Review` label triggers a fresh review for the new commit SHA. If a previous review submission failed, no marker is persisted on GitHub and the commit remains eligible for retry.
 
 ## GitHub Actions Permissions and Secrets
 

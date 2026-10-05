@@ -211,7 +211,7 @@ class TestCommitIdempotency(unittest.TestCase):
     def test_6_successful_review_repeated_label_event_skips_llm(
         self, mock_run_pr_review, mock_get_details, mock_has_reviewed, mock_react
     ):
-        """6. successful review + repeated Needs Review event -> skip LLM"""
+        """6. successful review + repeated Agent Review event -> skip LLM"""
         sha = "abcdef1234567890abcdef1234567890abcdef12"
         mock_get_details.return_value = {
             "status": "success",
@@ -223,7 +223,7 @@ class TestCommitIdempotency(unittest.TestCase):
                 "files": {"nodes": []},
             },
         }
-        # Simulate repeated Needs Review label event where commit sha already
+        # Simulate repeated Agent Review label event where commit sha already
         # has a persisted agent review on GitHub
         mock_has_reviewed.return_value = True
 

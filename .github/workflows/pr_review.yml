@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   review:
-    if: github.event.label.name == 'Needs Review'
+    if: github.event.label.name == 'Agent Review'
     runs-on: ubuntu-latest
     defaults:
       run:
