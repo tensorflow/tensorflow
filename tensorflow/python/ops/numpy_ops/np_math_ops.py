@@ -1753,8 +1753,15 @@ def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing
     a_shape = a.shape
     if a_shape.rank is not None:
       rank = len(a_shape)
-      if (axis1 == -2 or axis1 == rank - 2) and (
-          axis2 == -1 or axis2 == rank - 1
+      # Guard `rank >= 2` so the fast path never routes a rank-1 (or
+      # rank-0) input with negative axes to `math_ops.trace`/
+      # `matrix_diag_part`, which require rank >= 2: e.g. on a rank-1
+      # input, `axis1 == -2 or axis1 == rank - 2` erroneously holds for
+      # the out-of-bounds default `axis1=-2`.
+      if (
+          rank >= 2
+          and (axis1 == -2 or axis1 == rank - 2)
+          and (axis2 == -1 or axis2 == rank - 1)
       ):
         return math_ops.trace(a)
 
