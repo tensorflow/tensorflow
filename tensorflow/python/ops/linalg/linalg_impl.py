@@ -1387,6 +1387,8 @@ def eigh_tridiagonal(alpha,
           peel_is_static = isinstance(peel, int)
           unroll_cnt = peel if peel_is_static else 1
 
+          # unrolled_steps reads unroll_cnt when it is traced, so the peel loop
+          # below must be built before unroll_cnt is set to blocksize.
           def unrolled_steps(start, q, count):
             for j in range(unroll_cnt):
               q, count = sturm_step(start + j, q, count)

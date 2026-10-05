@@ -810,6 +810,8 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
     n = 8
     alpha = np.random.uniform(size=(n,)).astype(dtype)
     beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    if np.issubdtype(dtype, np.complexfloating):
+      beta += 1j * np.random.uniform(size=(n - 1,)).astype(dtype)
     matrix = np.diag(alpha) + np.diag(beta, 1) + np.diag(np.conj(beta), -1)
     eigvals_all = np.linalg.eigvalsh(matrix)
     eigvals, eigvectors = linalg.eigh_tridiagonal(
@@ -849,6 +851,11 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
     if not (test.is_gpu_available(cuda_only=True) or
             test_util.is_xla_enabled()):
       all_kwargs.append({"eigvals_only": False})
+      all_kwargs.append({
+          "eigvals_only": False,
+          "select": "i",
+          "select_range": (0, 0)
+      })
     spec = tensor.TensorSpec([None], dtype)
     for kwargs in all_kwargs:
       eigh_tridiagonal = def_function.function(
