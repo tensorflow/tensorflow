@@ -818,6 +818,20 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             padding="SAME")
         self.evaluate(t)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolNchwVectCOnCpuRaisesError(self):
+    # With oneDNN on, this MaxPool used to be rewritten to the oneDNN op, which
+    # rejects NCHW_VECT_C, and the process aborted.
+    x = array_ops.zeros([1, 2, 4, 4, 4], dtypes.float32)
+    with ops.device("/cpu:0"):
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "only supports NHWC on device type CPU"):
+        self.evaluate(
+            nn_ops.max_pool2d(
+                x, ksize=2, strides=2, padding="VALID",
+                data_format="NCHW_VECT_C"))
+
   # Tests for DepthwiseMaxPooling on CPU only.
   @parameterized.parameters(
       GetTestConfigsDicts(
