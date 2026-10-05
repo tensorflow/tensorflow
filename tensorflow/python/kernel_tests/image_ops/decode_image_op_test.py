@@ -114,6 +114,11 @@ class DecodeImageOpTest(test.TestCase):
         self.evaluate(decode)
 
   @test_util.run_in_graph_and_eager_modes
+  def testEmptyBytes(self):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(image_ops.decode_image(b""))
+
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidJxlDimensions(self):
     # JXL header declaring xsize = 0x80000000, which does not fit in int.
     data = bytes.fromhex(
