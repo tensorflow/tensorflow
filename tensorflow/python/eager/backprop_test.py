@@ -1096,6 +1096,97 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
       g.gradient(z, x, unconnected_gradients='nonsense')
 
+  @parameterized.product(
+      dtype=(
+          dtypes.float16,
+          dtypes.float32,
+          dtypes.float64,
+          dtypes.bfloat16,
+          dtypes.complex64,
+      ),
+      shape=([2, 3], [0, 3]),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def testUnconnectedGradientsVariableWithStringDtype(self, dtype, shape):
+    class VariableWithStringDtype:
+      _should_act_as_resource_variable = True
+
+      def __init__(self, variable, dtype_name=None):
+        self.variable = variable
+        self.dtype_name = dtype_name
+
+      @property
+      def dtype(self):
+        if self.dtype_name is None:
+          return self.variable.dtype.name
+        return self.dtype_name
+
+      @property
+      def handle(self):
+        return self.variable.handle
+
+      @property
+      def shape(self):
+        return self.variable.shape
+
+      def __tf_tensor__(self, dtype=None, name=None):
+        return ops.convert_to_tensor(self.variable, dtype=dtype, name=name)
+
+    x = resource_variable_ops.ResourceVariable(
+        constant_op.constant(1.0, shape=shape, dtype=dtype)
+    )
+    y = resource_variable_ops.ResourceVariable(
+        constant_op.constant(3.0, dtype=dtype)
+    )
+    self.evaluate([x.initializer, y.initializer])
+    with backprop.GradientTape(persistent=True) as tape:
+      target = y * y
+    sources = [VariableWithStringDtype(x), [x, y, VariableWithStringDtype(y)]]
+    none_gradients = tape.gradient(target, sources)
+    self.assertIsNone(none_gradients[0])
+    self.assertIsNone(none_gradients[1][0])
+    self.assertAllEqual(self.evaluate(none_gradients[1][1]), 6.0)
+    self.assertAllEqual(self.evaluate(none_gradients[1][2]), 6.0)
+    zero_gradients = tape.gradient(
+        target, sources, unconnected_gradients='zero'
+    )
+    for gradient in (zero_gradients[0], zero_gradients[1][0]):
+      self.assertEqual(gradient.dtype, dtype)
+      self.assertAllEqual(self.evaluate(gradient), np.zeros(shape))
+    self.assertAllEqual(self.evaluate(zero_gradients[1][1]), 6.0)
+    self.assertAllEqual(self.evaluate(zero_gradients[1][2]), 6.0)
+    for invalid_dtype in ('', 'invalid_dtype', 'float32\x00invalid'):
+      invalid_sources = [y, VariableWithStringDtype(x, invalid_dtype), x, y]
+      with self.assertRaisesRegex(TypeError, 'Invalid TensorFlow dtype'):
+        tape.gradient(target, invalid_sources, unconnected_gradients='zero')
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTapeQueriesRejectInvalidStringDtype(self):
+    if not context.executing_eagerly():
+      return
+    x = constant_op.constant(1.0)
+
+    class InvalidTensor:
+      _id = x._id
+
+      def __init__(self, dtype):
+        self.dtype = dtype
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      for query in (
+          pywrap_tfe.TFE_Py_TapeSetShouldRecordBackprop,
+          pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes,
+      ):
+        for dtype in ('', 'invalid_dtype', 'float32\x00invalid'):
+          for inputs in ([InvalidTensor(dtype), x], [x, InvalidTensor(dtype)]):
+            with self.subTest(query=query, dtype=dtype, inputs=inputs):
+              with self.assertRaisesRegex(
+                  TypeError, 'Invalid TensorFlow dtype'
+              ):
+                query(inputs)
+          self.assertTrue(query([x]))
+
   @test_util.run_in_graph_and_eager_modes
   def testUnconnectedGradientsNestedDefunZeros(self):
 
