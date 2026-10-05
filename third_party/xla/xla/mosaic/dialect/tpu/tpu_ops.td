@@ -1434,10 +1434,7 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
-        ::mlir::MemRefLayoutAttrInterface source_layout,
-        ::mlir::ArrayRef<int64_t> squeezed,
-        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
+    mlir::InFlightDiagnostic verifyTiling();
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
