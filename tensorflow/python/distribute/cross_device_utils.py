@@ -342,7 +342,7 @@ class CollectiveReplicaLauncher(object):
 
   def _get_ordering_token(self):
     if self._use_ordering_token():
-      return self._ordering_token.handle  # pytype: disable=attribute-error
+      return self._ordering_token.handle  # pyrefly: ignore[missing-attribute]
 
   def can_order_nccl(self):
     """Whether this launcher can order NCCL operations."""
