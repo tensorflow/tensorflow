@@ -1804,6 +1804,11 @@ class BinaryOpsTest(xla_test.XLATestCase):
         np.array([7], dtype=np.float32),
         np.array([0], dtype=np.int32),
         expected=np.zeros([0], dtype=np.float32))
+    self._testBinary(
+        array_ops.broadcast_to,
+        np.zeros([0], dtype=np.float32),
+        np.array([2, 0], dtype=np.int32),
+        expected=np.zeros([2, 0], dtype=np.float32))
 
   def testBroadcastToDynamicOutputDimension(self):
     # n is only known at run time, where it equals the input dimension 2, but
