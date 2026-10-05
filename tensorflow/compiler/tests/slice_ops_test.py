@@ -91,7 +91,28 @@ class SliceTest(xla_test.XLATestCase):
         with self.test_scope():
           m = constant_op.constant([[1, 5]], dtype=dtype)
           w = constant_op.constant([4, 3], dtype=dtypes.uint8)
-          self.assertLessEqual(self.evaluate(slice_size(m, w))[0], 1)
+          self.assertAllEqual([1], self.evaluate(slice_size(m, w)))
+
+  def testSliceWithRuntimeSizeWithinInput(self):
+    # A valid size known only at run time keeps its value, and a negative one
+    # is clamped to an empty slice. The inputs are fed through placeholders so
+    # that graph shape inference can't reject the negative size first.
+
+    @def_function.function(jit_compile=True)
+    def slice_from_one(x, m, w):
+      v = math_ops.matvec(m, math_ops.cast(w, m.dtype))
+      return array_ops.slice(x, constant_op.constant([1], dtype=m.dtype), v)
+
+    for dtype in (dtypes.int32, dtypes.int64):
+      with self.subTest(dtype=dtype.name), self.session() as sess:
+        with self.test_scope():
+          x = constant_op.constant([10., 20., 30., 40., 50.])
+          m = array_ops.placeholder(dtype, shape=[1, 2])
+          w = array_ops.placeholder(dtypes.uint8, shape=[2])
+          out = slice_from_one(x, m, w)
+        self.assertAllEqual([20., 30.], sess.run(out, {m: [[1, 1]], w: [1, 1]}))
+        self.assertEqual((0,),
+                         sess.run(out, {m: [[-5, 0]], w: [1, 1]}).shape)
 
   def test3D(self):
     for dtype in self.numeric_types:
