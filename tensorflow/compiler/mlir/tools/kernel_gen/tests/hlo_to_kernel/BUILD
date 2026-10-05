@@ -14,7 +14,6 @@
 # ==============================================================================
 
 load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
-load("@xla//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
@@ -56,11 +55,11 @@ py_test(
         "no_rocm",
         "no_windows",
     ],
-    target_compatible_with = if_cuda_is_configured(
-        select({
-            "@xla//xla/stream_executor/cuda:libnvptxcompiler_support_enabled": ["@platforms//:incompatible"],
-            "//conditions:default": [],
-        }),
-        ["@platforms//:incompatible"],
-    ),
+    target_compatible_with = select({
+        "@xla//xla/stream_executor/cuda:libnvptxcompiler_support_enabled": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:is_cuda_enabled": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
 )
