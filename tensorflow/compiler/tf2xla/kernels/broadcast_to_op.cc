@@ -55,19 +55,26 @@ class BroadcastToOp : public XlaOpKernel {
                     "Rank of input (", input_shape.dims(),
                     ") must be no greater than rank of output shape (",
                     output_shape.dims(), ")."));
-    OP_REQUIRES_VALUE(xla::Shape input_xla_shape, context,
-                      context->InputXlaShape(0));
+    // The input's XLA shape is only needed to check whether a dimension that
+    // doesn't match is dynamic, so look it up only then.
+    bool has_input_xla_shape = false;
+    xla::Shape input_xla_shape;
     const int rank_difference = output_shape.dims() - input_shape.dims();
     for (int i = 0; i < input_shape.dims(); ++i) {
       const int64_t input_size = input_shape.dim_size(i);
       const int64_t output_size = output_shape.dim_size(i + rank_difference);
-      OP_REQUIRES(context,
-                  input_size == output_size || input_size == 1 ||
-                      input_xla_shape.is_dynamic_dimension(i) ||
-                      dynamic_dims[i + rank_difference],
-                  errors::InvalidArgument(
-                      "Incompatible shapes: ", input_shape.DebugString(),
-                      " vs. ", output_shape.DebugString()));
+      if (input_size != output_size && input_size != 1 &&
+          !dynamic_dims[i + rank_difference]) {
+        if (!has_input_xla_shape) {
+          OP_REQUIRES_VALUE(input_xla_shape, context,
+                            context->InputXlaShape(0));
+          has_input_xla_shape = true;
+        }
+        OP_REQUIRES(context, input_xla_shape.is_dynamic_dimension(i),
+                    errors::InvalidArgument(
+                        "Incompatible shapes: ", input_shape.DebugString(),
+                        " vs. ", output_shape.DebugString()));
+      }
     }
 
     auto output_status_or =
