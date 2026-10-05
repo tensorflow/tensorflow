@@ -714,9 +714,9 @@ class FractionalMaxPoolGradTest(test.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       with self.cached_session():
         overlapping = False
-        orig_input = [[[[1, 1, 1, 1, 1]]]]
-        orig_output = [[[[1, 1, 1]]]]
-        out_backprop = [[[[3], [3], [6]]]]
+        orig_input = [[[[1], [1]], [[1], [1]]]]
+        orig_output = [[[[1], [1]], [[1], [1]]]]
+        out_backprop = [[[[1], [1]], [[1], [1]]]]
         row_pooling_sequence = [-0x4000000, 1, 1]
         col_pooling_sequence = [-0x4000000, 1, 1]
         t = gen_nn_ops.FractionalMaxPoolGrad(
@@ -727,6 +727,41 @@ class FractionalMaxPoolGradTest(test.TestCase):
             col_pooling_sequence=col_pooling_sequence,
             overlapping=overlapping)
         self.evaluate(t)
+
+
+  def testGradMismatchedBatchAndDepth(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"orig_input batch \(3\) must equal orig_output batch \(2\)"):
+      self.evaluate(gen_nn_ops.fractional_max_pool_grad(
+          orig_input=array_ops.zeros([3, 2, 2, 2]),
+          orig_output=array_ops.zeros([2, 2, 2, 2]),
+          out_backprop=array_ops.zeros([2, 2, 2, 2]),
+          row_pooling_sequence=[0, 1, 2],
+          col_pooling_sequence=[0, 1, 2],
+          overlapping=False))
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"orig_input depth \(3\) must equal orig_output depth \(2\)"):
+      self.evaluate(gen_nn_ops.fractional_max_pool_grad(
+          orig_input=array_ops.zeros([2, 2, 2, 3]),
+          orig_output=array_ops.zeros([2, 2, 2, 2]),
+          out_backprop=array_ops.zeros([2, 2, 2, 2]),
+          row_pooling_sequence=[0, 1, 2],
+          col_pooling_sequence=[0, 1, 2],
+          overlapping=False))
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"orig_output shape .* must equal out_backprop shape"):
+      self.evaluate(gen_nn_ops.fractional_max_pool_grad(
+          orig_input=array_ops.zeros([2, 2, 2, 2]),
+          orig_output=array_ops.zeros([2, 2, 2, 2]),
+          out_backprop=array_ops.zeros([3, 2, 2, 2]),
+          row_pooling_sequence=[0, 1, 2],
+          col_pooling_sequence=[0, 1, 2],
+          overlapping=False))
 
 
 if __name__ == "__main__":
