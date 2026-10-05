@@ -48,9 +48,9 @@ __global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
       const int64_t stride = strides[i];
-      const int shift = shifts[i];
-      const int indx = (out_idx / stride) % dim_size[i];
-      const int shifted_indx = (indx + shift) % dim_size[i];
+      const int64_t shift = shifts[i];
+      const int64_t indx = (out_idx / stride) % dim_size[i];
+      const int64_t shifted_indx = (indx + shift) % dim_size[i];
       offset += (shifted_indx - indx) * stride;
     }
     output[out_idx + offset] = input[out_idx];
