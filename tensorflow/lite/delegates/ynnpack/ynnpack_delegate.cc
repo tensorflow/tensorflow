@@ -48,14 +48,17 @@ namespace ynnpack {
 
 class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
  public:
-  explicit YNNPackDelegateKernel(const TfLiteYNNPackDelegateOptions& options,
-                                 slinky::thread_pool* thread_pool)
+  explicit YNNPackDelegateKernel(
+      const TfLiteYNNPackDelegateOptions& options,
+      std::shared_ptr<slinky::thread_pool> thread_pool)
       : options_(options),
-        thread_pool_(thread_pool),
+        thread_pool_(std::move(thread_pool)),
         subgraph_(nullptr),
         runtime_(nullptr) {}
 
   ~YNNPackDelegateKernel() override {
+    // Destroy the runtime before `thread_pool_` (members are destroyed in
+    // reverse declaration order), since the runtime references the pool.
     if (runtime_) ynn_delete_runtime(runtime_);
     if (subgraph_) ynn_delete_subgraph(subgraph_);
   }
@@ -267,7 +270,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       }
     }
 
-    ynn_threadpool_t ynn_tp = reinterpret_cast<ynn_threadpool_t>(thread_pool_);
+    ynn_threadpool_t ynn_tp =
+        reinterpret_cast<ynn_threadpool_t>(thread_pool_.get());
     TF_LITE_ENSURE_YNN_STATUS(ynn_optimize_subgraph(subgraph_, ynn_tp, 0));
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_));
@@ -436,7 +440,10 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
 
  private:
   const TfLiteYNNPackDelegateOptions options_;
-  slinky::thread_pool* thread_pool_ = nullptr;
+  // Shared with the delegate (and all other kernels created by it) so the
+  // thread pool outlives every runtime that references it, regardless of the
+  // order in which the delegate and the interpreter are destroyed.
+  std::shared_ptr<slinky::thread_pool> thread_pool_;
   ynn_subgraph_t subgraph_;
   ynn_runtime_t runtime_;
 
@@ -461,7 +468,7 @@ class YNNPackDelegate : public SimpleDelegateInterface {
       : options_(options) {
     if (options_.num_threads > 1) {
       thread_pool_ =
-          std::make_unique<slinky::thread_pool_impl>(options_.num_threads - 1);
+          std::make_shared<slinky::thread_pool_impl>(options_.num_threads - 1);
     }
   }
 
@@ -582,8 +589,7 @@ class YNNPackDelegate : public SimpleDelegateInterface {
 
   std::unique_ptr<SimpleDelegateKernelInterface> CreateDelegateKernelInterface()
       override {
-    return std::make_unique<YNNPackDelegateKernel>(options_,
-                                                   thread_pool_.get());
+    return std::make_unique<YNNPackDelegateKernel>(options_, thread_pool_);
   }
 
   SimpleDelegateInterface::Options DelegateOptions() const override {
@@ -592,7 +598,9 @@ class YNNPackDelegate : public SimpleDelegateInterface {
 
  private:
   const TfLiteYNNPackDelegateOptions options_;
-  std::unique_ptr<slinky::thread_pool_impl> thread_pool_;
+  // Shared with every kernel created by this delegate, see
+  // `YNNPackDelegateKernel::thread_pool_`.
+  std::shared_ptr<slinky::thread_pool_impl> thread_pool_;
 };
 
 }  // namespace ynnpack
