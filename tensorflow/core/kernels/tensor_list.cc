@@ -64,6 +64,10 @@ bool TensorList::Decode(const VariantTensorData& data) {
   if (!core::GetVarint64(&iter, &scratch)) return false;
   if (scratch > std::numeric_limits<size_t>::max()) return false;
   const size_t num_invalid_tensors = static_cast<size_t>(scratch);
+  // Each invalid index takes at least one byte of the remaining metadata, so a
+  // larger count is malformed. Reject it here, before storage is reserved for
+  // that many elements below.
+  if (num_invalid_tensors > iter.size()) return false;
 
   if (num_invalid_tensors >
       std::numeric_limits<size_t>::max() - data.tensors().size()) {
@@ -120,6 +124,13 @@ bool TensorList::Decode(const VariantTensorData& data) {
   } else {
     if (scratch > std::numeric_limits<int>::max()) return false;
     decoded_max_num_elements = static_cast<int>(scratch);
+  }
+  // When max_num_elements is set it caps the list size (TensorListPushBack and
+  // TensorListSetItem enforce it on insertion), so reject a list that already
+  // exceeds its own cap.
+  if (decoded_max_num_elements != -1 &&
+      total_num_tensors > static_cast<size_t>(decoded_max_num_elements)) {
+    return false;
   }
 
   TensorShapeProto element_shape_proto;

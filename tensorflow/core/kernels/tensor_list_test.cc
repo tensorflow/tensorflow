@@ -235,6 +235,37 @@ TEST(TensorListTest, DecodeRejectsEmptyTensorMismatchedShape) {
   EXPECT_FALSE(TensorList().Decode(data));
 }
 
+TEST(TensorListTest, DecodeRejectsNumInvalidTensorsLargerThanMetadata) {
+  // Each invalid index takes at least one byte of metadata, so a count far
+  // larger than the metadata itself is malformed. Decode must reject it up
+  // front instead of reserving storage for that many elements.
+  TensorShapeProto shape;
+  std::string metadata;
+  core::PutVarint64(&metadata, uint64_t{1} << 40);  // num_invalid_tensors
+  core::PutVarint64(&metadata, static_cast<uint64_t>(DT_FLOAT));
+  core::PutVarint64(&metadata, std::numeric_limits<uint64_t>::max());
+  metadata.append(shape.SerializeAsString());
+  VariantTensorData data;
+  data.set_metadata(metadata);
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsMoreElementsThanMaxNumElements) {
+  // A list filled exactly to max_num_elements is valid; one more element
+  // exceeds the list's own capacity and must be rejected.
+  TensorShapeProto shape;
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_INT32),
+      /*max_num_elements=*/2, shape.SerializeAsString()));
+  *data.add_tensors() = ScalarInt32Tensor(1);
+  *data.add_tensors() = ScalarInt32Tensor(2);
+  EXPECT_TRUE(TensorList().Decode(data));
+
+  *data.add_tensors() = ScalarInt32Tensor(3);
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
 TEST(TensorListTest, DecodeRejectsOutOfRangeMaxNumElements) {
   TensorShapeProto shape;
   VariantTensorData data;
