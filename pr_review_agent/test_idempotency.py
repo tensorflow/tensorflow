@@ -1000,6 +1000,56 @@ class TestSecurityHardening(unittest.TestCase):
             self.assertIsNone(content)
             mock_read_text.assert_not_called()
 
+    @patch("agent.utils.subprocess.run")
+    def test_low_1_git_show_subprocess_minimal_environment(
+        self, mock_subproc_run
+    ):
+        """LOW-1: git show subprocess in _fetch_file_content_at_commit receives only PATH and HOME."""
+        from pathlib import Path
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "x = 1\n"
+        mock_subproc_run.return_value = mock_proc
+
+        with patch.dict(
+            os.environ,
+            {
+                "GITHUB_TOKEN": "secret-gh-token",
+                "GEMINI_API_KEY": "secret-gemini-key",
+                "OWNER": "tensorflow",
+                "REPO": "tensorflow",
+                "PULL_REQUEST_NUMBER": "12345",
+                "PR_HEAD_SHA": "abcdef1234567890abcdef1234567890abcdef12",
+            },
+        ):
+            content = utils._fetch_file_content_at_commit(
+                Path("."),
+                "abcdef1234567890abcdef1234567890abcdef12",
+                "tensorflow/python/foo.py",
+            )
+
+        self.assertEqual(content, "x = 1\n")
+        mock_subproc_run.assert_called_once()
+        passed_env = mock_subproc_run.call_args.kwargs.get("env")
+        self.assertIsNotNone(passed_env)
+        self.assertEqual(set(passed_env.keys()), {"PATH", "HOME"})
+        for forbidden_key in (
+            "GITHUB_TOKEN",
+            "GEMINI_API_KEY",
+            "OWNER",
+            "REPO",
+            "PULL_REQUEST_NUMBER",
+            "PR_HEAD_SHA",
+        ):
+            self.assertNotIn(forbidden_key, passed_env)
+
+    def test_low_2_adk_logger_not_configured_at_debug_level(self):
+        """LOW-2: ADK logger is configured at logging.WARNING rather than logging.DEBUG."""
+        import logging
+
+        main.logs.setup_adk_logger.assert_called_with(level=logging.WARNING)
+
 
 if __name__ == "__main__":
     unittest.main()

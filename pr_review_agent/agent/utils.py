@@ -396,9 +396,14 @@ def _fetch_file_content_at_commit(
         if not re.match(r"^[0-9a-fA-F]{7,40}$", head_sha):
             return None
         try:
+            git_env = {
+                "PATH": os.environ.get("PATH", ""),
+                "HOME": os.environ.get("HOME", ""),
+            }
             res = subprocess.run(
                 ["git", "show", f"{head_sha}:{rel_path}"],
                 cwd=str(repo_root),
+                env=git_env,
                 capture_output=True,
                 text=True,
                 timeout=30,

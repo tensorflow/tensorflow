@@ -40,7 +40,7 @@ from google.genai.errors import APIError, ClientError, ServerError
 APP_NAME = "tensorflow_pr_review_app"
 USER_ID = "tensorflow_pr_review_user"
 
-logs.setup_adk_logger(level=logging.DEBUG)
+logs.setup_adk_logger(level=logging.WARNING)
 
 
 def is_fallback_eligible_error(err: Exception) -> bool:
