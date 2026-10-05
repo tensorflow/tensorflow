@@ -1811,6 +1811,9 @@ class BinaryOpsTest(xla_test.XLATestCase):
         expected=np.zeros([2, 0], dtype=np.float32))
 
   def testBroadcastToDynamicOutputDimension(self):
+    if "GPU" in self.device:
+      self.skipTest("XLA:GPU's dynamic padder doesn't support the dynamic "
+                    "select that boolean_mask produces.")
     # n is only known at run time, where it equals the input dimension 2, but
     # its bound is 4, so comparing bounds would wrongly reject this broadcast.
     # Taking n from a shape keeps XLA from compiling mask as a constant.
