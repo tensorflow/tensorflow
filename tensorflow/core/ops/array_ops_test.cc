@@ -1471,6 +1471,38 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
   set_op({1, 2, 2, 1}, {1, 1, 1, 1}, {1, 1, -1, 1}, "VALID");
   INFER_ERROR("ExtractImagePatches requires spatial rates to be positive", op,
               "[1,7,7,2]");
+
+  // Non-spatial ksizes, strides, and rates must be 1.
+  set_op({2, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractImagePatches requires the first and last elements of ksizes to "
+      "be 1",
+      op, "[1,7,7,2]");
+  set_op({1, 1, 1, 2}, {1, 1, 1, 1}, {1, 1, 1, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractImagePatches requires the first and last elements of ksizes to "
+      "be 1",
+      op, "[1,7,7,2]");
+  set_op({1, 1, 1, 1}, {2, 1, 1, 1}, {1, 1, 1, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractImagePatches requires the first and last elements of strides to "
+      "be 1",
+      op, "[1,7,7,2]");
+  set_op({1, 1, 1, 1}, {1, 1, 1, 2}, {1, 1, 1, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractImagePatches requires the first and last elements of strides to "
+      "be 1",
+      op, "[1,7,7,2]");
+  set_op({1, 1, 1, 1}, {1, 1, 1, 1}, {2, 1, 1, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractImagePatches requires the first and last elements of rates to be "
+      "1",
+      op, "[1,7,7,2]");
+  set_op({1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 2}, "VALID");
+  INFER_ERROR(
+      "ExtractImagePatches requires the first and last elements of rates to be "
+      "1",
+      op, "[1,7,7,2]");
 }
 
 TEST(ArrayOpsTest, ExtractVolumePatchesShapeTest) {
@@ -1487,6 +1519,7 @@ TEST(ArrayOpsTest, ExtractVolumePatchesShapeTest) {
   };
   set_op({1, 2, 2, 2, 1}, {1, 1, 1, 1, 1}, "VALID");
   INFER_OK(op, "[1,3,3,3,2]", "[d0_0,2,2,2,16]");
+  INFER_OK(op, "[1,?,?,?,2]", "[d0_0,?,?,?,16]");
 
   // Non-positive spatial ksizes and strides.
   set_op({1, 0, 2, 2, 1}, {1, 1, 1, 1, 1}, "VALID");
@@ -1498,6 +1531,28 @@ TEST(ArrayOpsTest, ExtractVolumePatchesShapeTest) {
   set_op({1, 2, 2, 2, 1}, {1, 1, 0, 1, 1}, "VALID");
   INFER_ERROR("ExtractVolumePatches requires spatial strides to be positive",
               op, "[1,?,?,?,2]");
+
+  // Non-spatial ksizes and strides must be 1.
+  set_op({2, 1, 1, 1, 1}, {1, 1, 1, 1, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractVolumePatches requires the first and last elements of ksizes to "
+      "be 1",
+      op, "[1,3,3,3,2]");
+  set_op({1, 1, 1, 1, 2}, {1, 1, 1, 1, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractVolumePatches requires the first and last elements of ksizes to "
+      "be 1",
+      op, "[1,3,3,3,2]");
+  set_op({1, 1, 1, 1, 1}, {2, 1, 1, 1, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractVolumePatches requires the first and last elements of strides to "
+      "be 1",
+      op, "[1,3,3,3,2]");
+  set_op({1, 1, 1, 1, 1}, {1, 1, 1, 1, 2}, "VALID");
+  INFER_ERROR(
+      "ExtractVolumePatches requires the first and last elements of strides to "
+      "be 1",
+      op, "[1,3,3,3,2]");
 }
 
 TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {

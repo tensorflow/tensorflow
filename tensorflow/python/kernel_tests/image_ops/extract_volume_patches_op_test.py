@@ -208,6 +208,49 @@ class ExtractVolumePatches(test.TestCase):
         ):
           array_ops.extract_volume_patches(image_ph, padding="VALID", **kwargs)
 
+  def testNonSpatialAttributes(self):
+    """Test for non-spatial attributes not equal to 1."""
+    image = constant_op.constant(np.ones([1, 2, 2, 2, 1], dtype=np.float32))
+    valid = [1, 1, 1, 1, 1]
+    for attr, value in [
+        ("ksizes", [2, 1, 1, 1, 1]),
+        ("ksizes", [1, 1, 1, 1, 2]),
+        ("strides", [2, 1, 1, 1, 1]),
+        ("strides", [1, 1, 1, 1, 2]),
+    ]:
+      kwargs = {"ksizes": valid, "strides": valid}
+      kwargs[attr] = value
+      with self.assertRaisesRegex(
+          (errors_impl.UnimplementedError, ValueError),
+          rf"ExtractVolumePatches requires the first and last elements of {attr} to be 1"
+          rf"|Only support {attr} across space",
+      ):
+        self.evaluate(
+            array_ops.extract_volume_patches(image, padding="VALID", **kwargs)
+        )
+      with ops.Graph().as_default():
+        image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 2, 2, 2, 1])
+        with self.assertRaisesRegex(
+            ValueError,
+            rf"ExtractVolumePatches requires the first and last elements of {attr} to be 1",
+        ):
+          array_ops.extract_volume_patches(image_ph, padding="VALID", **kwargs)
+
+  def testUnknownSpatialDimsRank(self):
+    """Test that unknown spatial dims returns rank-5 shape."""
+    with ops.Graph().as_default():
+      image_ph = array_ops.placeholder(
+          dtypes.float32, shape=[1, None, None, None, 2]
+      )
+      out = array_ops.extract_volume_patches(
+          image_ph,
+          ksizes=[1, 2, 2, 2, 1],
+          strides=[1, 1, 1, 1, 1],
+          padding="VALID",
+      )
+      self.assertEqual(out.shape.rank, 5)
+      self.assertEqual(out.shape.as_list(), [1, None, None, None, 16])
+
 
 if __name__ == "__main__":
   test.main()

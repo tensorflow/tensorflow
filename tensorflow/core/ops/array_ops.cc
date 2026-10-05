@@ -18,6 +18,7 @@ limitations under the License.
 #include <ostream>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -2680,6 +2681,25 @@ REGISTER_OP("ExtractImagePatches")
             rates.size()));
       }
 
+      if (ksizes[0] != 1 || ksizes[3] != 1) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires the first and last "
+                         "elements of ksizes to be 1, but got: [",
+                         ksizes[0], ", ", ksizes[3], "]"));
+      }
+      if (strides[0] != 1 || strides[3] != 1) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires the first and last "
+                         "elements of strides to be 1, but got: [",
+                         strides[0], ", ", strides[3], "]"));
+      }
+      if (rates[0] != 1 || rates[3] != 1) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires the first and last "
+                         "elements of rates to be 1, but got: [",
+                         rates[0], ", ", rates[3], "]"));
+      }
+
       int64_t ksize_rows = ksizes[1];
       int64_t ksize_cols = ksizes[2];
       if (ksize_rows <= 0 || ksize_cols <= 0) {
@@ -2781,6 +2801,20 @@ REGISTER_OP("ExtractVolumePatches")
             strides.size()));
       }
 
+      if (ksizes[0] != 1 || ksizes[4] != 1) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractVolumePatches requires the first and last "
+                         "elements of ksizes to be 1, but got: [",
+                         ksizes[0], ", ", ksizes[4], "]"));
+      }
+
+      if (strides[0] != 1 || strides[4] != 1) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractVolumePatches requires the first and last "
+                         "elements of strides to be 1, but got: [",
+                         strides[0], ", ", strides[4], "]"));
+      }
+
       /*
       // TODO(hsgkim): Enable rates.
       // See extract_volume_patches_op.cc for why rates are disabled now.
@@ -2799,22 +2833,20 @@ REGISTER_OP("ExtractVolumePatches")
       int64_t ksize_rows = ksizes[2];
       int64_t ksize_cols = ksizes[3];
       if (ksize_planes <= 0 || ksize_rows <= 0 || ksize_cols <= 0) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("ExtractVolumePatches requires spatial ksizes to be "
-                         "positive, but got: [",
-                         ksize_planes, ", ", ksize_rows, ", ", ksize_cols,
-                         "]"));
+        return absl::InvalidArgumentError(absl::StrCat(
+            "ExtractVolumePatches requires spatial ksizes to be "
+            "positive, but got: [",
+            ksize_planes, ", ", ksize_rows, ", ", ksize_cols, "]"));
       }
 
       int64_t stride_planes = strides[1];
       int64_t stride_rows = strides[2];
       int64_t stride_cols = strides[3];
       if (stride_planes <= 0 || stride_rows <= 0 || stride_cols <= 0) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("ExtractVolumePatches requires spatial strides to be "
-                         "positive, but got: [",
-                         stride_planes, ", ", stride_rows, ", ", stride_cols,
-                         "]"));
+        return absl::InvalidArgumentError(absl::StrCat(
+            "ExtractVolumePatches requires spatial strides to be "
+            "positive, but got: [",
+            stride_planes, ", ", stride_rows, ", ", stride_cols, "]"));
       }
 
       /*
@@ -2844,6 +2876,7 @@ REGISTER_OP("ExtractVolumePatches")
           !c->ValueKnown(in_cols_dim)) {
         ShapeHandle output_shape =
             c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
+                          InferenceContext::kUnknownDim,
                           InferenceContext::kUnknownDim, output_depth_dim});
         c->set_output(0, output_shape);
         return absl::OkStatus();
