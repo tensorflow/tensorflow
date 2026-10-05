@@ -184,6 +184,16 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(
           reduction(data, indices, 0), np.zeros([0, 3], dtype=np.float32))
 
+  def testSortedSegmentReductionV2WithZeroSegments(self):
+    # The same for the sorted V2 ops, which share the XLA kernel. The ids have
+    # to be non-empty to reach the scatter, and sorted.
+    data = np.ones([2, 3], dtype=np.float32)
+    indices = np.array([-1, -1], dtype=np.int32)
+    for reduction in (self._segmentSumV2, self._segmentProdV2,
+                      self._segmentMinV2, self._segmentMaxV2):
+      self.assertAllEqual(
+          reduction(data, indices, 0), np.zeros([0, 3], dtype=np.float32))
+
   def testUnsortedSegmentSum0DIndices1DData(self):
     for dtype in self.numeric_types:
       self.assertAllClose(
