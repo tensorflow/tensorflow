@@ -323,6 +323,22 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, err_msg):
       RaggedTensor.from_row_splits([], [])
 
+  def testFromRowSplitsStaticShapeMismatch(self):
+    values = constant_op.constant(
+        [[4.0, 5.0], [6.0, 7.0]], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        ValueError, r"Shapes \(2,\) and \(4,\) are incompatible"):
+      RaggedTensor.from_row_splits(values, [0, 2, 4])
+
+  def testFromRowSplitsStaticShapeMismatchUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      values = array_ops.reshape(x, [-1, 2])
+      return RaggedTensor.from_row_splits(values, [0, 2, 4])
+
+    with self.assertRaises(ValueError):
+      fn(constant_op.constant([4.0, 5.0, 6.0, 7.0]))
+
   def testFromRowStarts(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_starts = constant_op.constant([0, 2, 2, 5, 6], dtypes.int64)

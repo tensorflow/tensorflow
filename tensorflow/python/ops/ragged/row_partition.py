@@ -364,6 +364,22 @@ class RowPartition(composite_tensor.CompositeTensor):
       row_splits.shape.assert_has_rank(1)
 
       if validate:
+        row_splits_const = tensor_util.constant_value(row_splits)
+        if row_splits_const is not None:
+          if len(row_splits_const) == 0:
+            raise ValueError("row_splits tensor may not be empty.")
+          if row_splits_const[0] != 0:
+            raise ValueError(
+                "Arguments to from_row_splits do not form a valid "
+                f"RaggedTensor: row_splits[0] must be zero, "
+                f"got {row_splits_const[0]}")
+          for i in range(len(row_splits_const) - 1):
+            if row_splits_const[i] > row_splits_const[i + 1]:
+              raise ValueError(
+                  "Arguments to from_row_splits do not form a valid "
+                  "RaggedTensor: row_splits must be monotonic increasing, "
+                  f"but row_splits[{i}] ({row_splits_const[i]}) > "
+                  f"row_splits[{i+1}] ({row_splits_const[i+1]})")
         msg = "Arguments to from_row_splits do not form a valid RaggedTensor:"
         checks = [
             check_ops.assert_rank(row_splits, 1, message=(msg + "rank")),
@@ -886,11 +902,31 @@ class RowPartition(composite_tensor.CompositeTensor):
     if self._nvals is not None:
       nvals = tensor_util.constant_value(self._nvals)
       if nvals is not None:
-        return nvals
+        return int(nvals)
     if self._value_rowids is not None:
       nvals = tensor_shape.dimension_at_index(self._value_rowids.shape, 0)
       if nvals.value is not None:
-        return nvals.value
+        return int(nvals.value)
+    return None
+
+  def _static_nvals_or_constant(self):
+    """The number of values in this partition from shape or constant values."""
+    static_n = self.static_nvals
+    if static_n is not None:
+      return static_n
+    if self._row_splits is not None:
+      row_splits_const = tensor_util.constant_value(self._row_splits)
+      if row_splits_const is not None and len(row_splits_const) > 0:
+        return int(row_splits_const[-1])
+    if self._row_lengths is not None:
+      row_lengths_const = tensor_util.constant_value(self._row_lengths)
+      if row_lengths_const is not None:
+        return int(sum(row_lengths_const))
+    if self._uniform_row_length is not None and self._nrows is not None:
+      nrows = self.static_nrows
+      row_len = self.static_uniform_row_length
+      if nrows is not None and row_len is not None:
+        return int(nrows * row_len)
     return None
 
   @property

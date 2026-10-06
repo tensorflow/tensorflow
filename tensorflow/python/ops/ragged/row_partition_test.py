@@ -912,6 +912,26 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertIsNone(static_nrows)
     foo(array_ops.constant([0, 3, 4, 5], dtype=dtypes.int32))
 
+  def testStaticNvalsFromRowSplits(self):
+    rp = RowPartition.from_row_splits([0, 3, 4, 5])
+    self.assertEqual(5, rp._static_nvals_or_constant())
+
+  def testStaticNvalsFromRowLengths(self):
+    rp = RowPartition.from_row_lengths([3, 1, 1])
+    self.assertEqual(5, rp._static_nvals_or_constant())
+
+  def testStaticNvalsFromUniformRowLength(self):
+    rp = RowPartition.from_uniform_row_length(3, nrows=4)
+    self.assertAllEqual(12, rp.static_nvals)
+
+  def testFromRowSplitsStaticValidationNonZero(self):
+    with self.assertRaisesRegex(ValueError, r"row_splits\[0\] must be zero"):
+      RowPartition.from_row_splits([1, 2, 4])
+
+  def testFromRowSplitsStaticValidationNonMonotonic(self):
+    with self.assertRaisesRegex(ValueError, r"must be monotonic increasing"):
+      RowPartition.from_row_splits([0, 5, 2])
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RowPartitionSpecTest(test_util.TensorFlowTestCase,
