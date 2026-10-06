@@ -1226,6 +1226,24 @@ bool InstructionHasUntileableS4MinorDimension(
   return !tile_size.IsMultipleOf(2);
 }
 
+// Returns true if any instruction in `instructions`, or in any of their
+// (transitively) nested regions, has an untileable S4 minor dimension.
+bool AnyInstructionHasUntileableS4MinorDimension(
+    absl::Span<const experimental::TiledHloInstruction* const> instructions,
+    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacement_map) {
+  return absl::c_any_of(
+      instructions, [&](const experimental::TiledHloInstruction* inst) {
+        return InstructionHasUntileableS4MinorDimension(*inst,
+                                                        replacement_map) ||
+               absl::c_any_of(
+                   inst->hlo_regions(),
+                   [&](const experimental::TiledHloRegion& region) {
+                     return AnyInstructionHasUntileableS4MinorDimension(
+                         region.instructions(), replacement_map);
+                   });
+      });
+}
+
 // Most S4 parameters are okay, but there are cases where the tile size along
 // the minor-most physical dimension is not divisible by 2 (e.g. if it
 // corresponds to a batch dimension which we blindly tile to 1 at the moment, or
@@ -1257,15 +1275,13 @@ FusionDecision CanUnpackS4ParametersInFusion(
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
       BuildEvenBlockSizeReplacements(*tiled_dot, mlir_context);
 
-  // Parameters to the dot will be within its hlo_regions.
-  for (const auto& region : tiled_dot->hlo_regions()) {
-    for (const auto& inst : region.instructions()) {
-      if (InstructionHasUntileableS4MinorDimension(*inst, replacement_map)) {
-        return FusionDecision::Forbid(
-            "Cannot tile S4 parameter with minor dimension tile size not "
-            "divisible by 2.");
-      }
-    }
+  // Parameters may live at any nesting level: inside the dot's region, or
+  // hoisted out of it if their tile does not depend on the contracting loop.
+  if (AnyInstructionHasUntileableS4MinorDimension(
+          tiled_computation->instructions(), replacement_map)) {
+    return FusionDecision::Forbid(
+        "Cannot tile S4 parameter with minor dimension tile size not "
+        "divisible by 2.");
   }
   return FusionDecision::Allow();
 }

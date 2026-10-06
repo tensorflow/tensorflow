@@ -1937,6 +1937,30 @@ TEST_P(GemmFusionTestVersioned,
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_P(GemmFusionTestVersioned,
+       Int4ContractingInvariantOperandWithMinorBatchDimIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[2,4,64]{2,1,0} parameter(0)
+      lhs_converted = bf16[2,4,64]{2,1,0} convert(lhs)
+      scale = s4[2,4]{0,1} parameter(1)
+      scale_converted = bf16[2,4]{0,1} convert(scale)
+      scale_bcast = bf16[2,4,64]{2,1,0} broadcast(scale_converted),
+        dimensions={0,1}
+      lhs_scaled = bf16[2,4,64]{2,1,0} multiply(lhs_converted, scale_bcast)
+      rhs = bf16[2,64,8]{2,1,0} parameter(2)
+      ROOT dot = bf16[2,4,8]{2,1,0} dot(lhs_scaled, rhs),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={2},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
+}
+
 TEST_P(GemmFusionTestVersioned, Int4WithMinorContractingDimIsRewritten) {
   constexpr absl::string_view kInt4Dot = R"(
     ENTRY main {
