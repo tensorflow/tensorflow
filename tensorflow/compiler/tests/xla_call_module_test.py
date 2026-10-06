@@ -1590,8 +1590,7 @@ module @jit_f.0 {
         errors.InvalidArgumentError,
         'Cannot deserialize computation: .+',
     ):
-      with self.test_scope():
-        f(x)
+      f(x)
 
 
 if __name__ == '__main__':

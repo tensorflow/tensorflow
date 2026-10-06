@@ -215,6 +215,19 @@ class MathTest(test.TestCase, parameterized.TestCase):
     expected = np.hypot(x, y)
     np.testing.assert_equal(actual.tolist(), expected.tolist())
 
+  def testLogaddexpEqualInputsGradient(self):
+    # Both partial derivatives of logaddexp(x, x) are 0.5. `maximum` used to
+    # send the whole gradient to x1 there, giving 1.0 and 0.0.
+    for dtype in (dtypes.float32, dtypes.float64):
+      x1 = constant_op.constant([0.0, 1.0, -2.0, 100.0], dtype=dtype)
+      x2 = constant_op.constant([0.0, 1.0, -2.0, 100.0], dtype=dtype)
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x1)
+        tape.watch(x2)
+        y = math_ops.reduce_sum(np_math_ops.logaddexp(x1, x2))
+      for grad in tape.gradient(y, (x1, x2)):
+        self.assertAllClose(grad, [0.5, 0.5, 0.5, 0.5])
+
   def testLogaddexp(self):
     self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
     self._testBinaryOp(np_math_ops.logaddexp2, np.logaddexp2, 'logaddexp2')
@@ -822,6 +835,32 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.diff(a, axis=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.diff(a, axis=-3)
+
+  def testTrace(self):
+    a = np.arange(6).reshape(2, 3)
+    self.match(np_math_ops.trace(a), np.trace(a))
+    self.match(np_math_ops.trace(a, offset=1), np.trace(a, offset=1))
+    self.match(
+        np_math_ops.trace(a, axis1=0, axis2=-1), np.trace(a, axis1=0, axis2=-1)
+    )
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(a, axis1=0, axis2=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(a, axis1=-3, axis2=1)
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_math_ops.trace(a, axis1=1, axis2=1)
+    # Mixed-sign duplicates normalize to the same axis.
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_math_ops.trace(a, axis1=1, axis2=-1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array([1, 2, 3]))
+    # A rank-1 input has no valid trace axes: the out-of-bounds default
+    # axes (axis1=-2, axis2=-1) must raise, not silently route the input
+    # to the rank>=2-only `math_ops.trace` fast path.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array([1.0, 2.0, 3.0]), axis1=-2, axis2=-1)
 
   def testIsInf(self):
     x1 = ops.convert_to_tensor(-2147483648)

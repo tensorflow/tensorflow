@@ -1435,5 +1435,79 @@ ENTRY main {
   EXPECT_THAT(tuple_elem0_buffers, UnorderedElementsAre(&buffer0, &buffer1));
 }
 
+TEST_F(HloAliasAnalysisTest, WhileInsideEmbeddedComputationWithNestedCalls) {
+  // A while loop inside a computation called in an embedded context (the
+  // called computation of a custom-call) whose init value and body root value
+  // both come from nested kCalls. The callees are additionally called from the
+  // entry computation so that the dataflow worklist visits the nested calls
+  // before the callees' roots are complete. The nested calls used to be left
+  // with empty value sets, which made the while's value set empty at index {0}
+  // and crashed alias analysis when it looked up the while value aliased by
+  // the body parameter.
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+init_callee {
+  init_constant = f32[] constant(1.0)
+  ROOT init_tuple = (f32[]) tuple(init_constant)
+}
+
+body_callee {
+  body_constant = f32[] constant(2.0)
+  ROOT body_tuple = (f32[]) tuple(body_constant)
+}
+
+condition {
+  cond_param = (f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
+
+body {
+  body_param = (f32[]) parameter(0)
+  body_call = (f32[]) call(), to_apply=body_callee
+  body_gte = f32[] get-tuple-element(body_call), index=0
+  ROOT body_root = (f32[]) tuple(body_gte)
+}
+
+embedded_computation {
+  embedded_param = f32[] parameter(0)
+  init_call = (f32[]) call(), to_apply=init_callee
+  init_gte = f32[] get-tuple-element(init_call), index=0
+  init = (f32[]) tuple(init_gte)
+  while_loop = (f32[]) while(init), condition=condition, body=body
+  while_gte = f32[] get-tuple-element(while_loop), index=0
+  ROOT embedded_add = f32[] add(embedded_param, while_gte)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  entry_init_call = (f32[]) call(), to_apply=init_callee
+  entry_init_gte = f32[] get-tuple-element(entry_init_call), index=0
+  entry_body_call = (f32[]) call(), to_apply=body_callee
+  entry_body_gte = f32[] get-tuple-element(entry_body_call), index=0
+  ROOT custom_call = f32[] custom-call(param, entry_init_gte, entry_body_gte), custom_call_target="foo", called_computations={embedded_computation}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  const HloInstruction* init = FindInstruction(module_.get(), "init");
+  const HloInstruction* while_loop =
+      FindInstruction(module_.get(), "while_loop");
+  const HloInstruction* body_param =
+      FindInstruction(module_.get(), "body_param");
+  const HloInstruction* body_root = FindInstruction(module_.get(), "body_root");
+  ASSERT_NE(init, nullptr);
+  ASSERT_NE(while_loop, nullptr);
+  ASSERT_NE(body_param, nullptr);
+  ASSERT_NE(body_root, nullptr);
+
+  // The while's init, body parameter and body root share the while's buffer.
+  const HloBuffer& while_buffer = analysis.GetUniqueBufferAt(while_loop, {0});
+  EXPECT_EQ(analysis.GetUniqueBufferAt(init, {0}), while_buffer);
+  EXPECT_EQ(analysis.GetUniqueBufferAt(body_param, {0}), while_buffer);
+  EXPECT_EQ(analysis.GetUniqueBufferAt(body_root, {0}), while_buffer);
+}
+
 }  // namespace
 }  // namespace xla

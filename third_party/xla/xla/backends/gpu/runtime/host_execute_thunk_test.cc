@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -570,11 +571,10 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
 }
 
 TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
-#ifdef NDEBUG
-  GTEST_SKIP() << "Skipping test in optimized mode because XLA:CPU won't "
-                  "check for the alignment error.";
-  return;
-#endif
+  if constexpr (!tsl::kIsDebugBuild) {
+    GTEST_SKIP() << "Skipping test in optimized mode because XLA:CPU won't "
+                    "check for the alignment error.";
+  }
   se::StreamExecutor* stream_executor = GpuExecutor();
   ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
 

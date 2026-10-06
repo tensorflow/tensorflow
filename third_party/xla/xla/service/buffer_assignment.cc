@@ -531,6 +531,7 @@ absl::Status GatherComputationsByAllocationType(
           case HloOpcode::kCustomCall:
           case HloOpcode::kAllReduce:
           case HloOpcode::kReduceScatter:
+          case HloOpcode::kCollectiveReduce:
           case HloOpcode::kAllReduceStart:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:
@@ -3248,7 +3249,7 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
         int64_t& allocated_bytes = allocated_bytes_by_color[color];
         int64_t base = RoundUpTo(allocated_bytes, alignment);
         allocated_bytes = base + alloc.size();
-      } else {
+      } else if (!alloc.is_thread_local()) {
         allocated_bytes_by_color[color] += alloc.size();
       }
     }

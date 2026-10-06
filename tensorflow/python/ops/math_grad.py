@@ -1538,16 +1538,26 @@ def _PowGrad(op: ops.Operation, grad):
   cy = math_ops.conj(y)
   try:
     skip_input_indices = op.skip_input_indices or ()
-    if 1 in skip_input_indices and _IsScalar(y):
-      return grad * cy * math_ops.pow(cx, cy - 1), None
   except AttributeError:
     # No gradient skipping, so do the full gradient computation
     skip_input_indices = ()
 
+  def _GradCxPow(w: tensor.Tensor) -> tensor.Tensor:
+    if x.dtype.is_floating:
+      w = array_ops.where_v2(
+          math_ops.logical_and(math_ops.is_inf(w), math_ops.equal(grad, 0)),
+          math_ops.cast(0, w.dtype),
+          w,
+      )
+    return grad * cy * w
+
+  if 1 in skip_input_indices and _IsScalar(y):
+    return _GradCxPow(math_ops.pow(cx, cy - 1)), None
+
   if 0 in skip_input_indices:
     gx = None
   else:
-    gx = grad * cy * math_ops.pow(cx, cy - 1)
+    gx = _GradCxPow(math_ops.pow(cx, cy - 1))
 
   if 1 in skip_input_indices:
     gy = None
@@ -1559,9 +1569,57 @@ def _PowGrad(op: ops.Operation, grad):
     else:
       # There's no sensible real value to return if x < 0, so return 0
       mask = cx > 0
-    safe_x = array_ops.where(mask, cx, array_ops.ones_like(x))
-    log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
-    gy = grad * math_ops.conj(op.outputs[0]) * log_x
+    safe_x = array_ops.where_v2(mask, cx, math_ops.cast(1, cx.dtype))
+    log_x = array_ops.where_v2(
+        mask, math_ops.log(safe_x), math_ops.cast(0, x.dtype)
+    )
+    z = op.outputs[0]
+    if x.dtype.is_floating:
+      # Split exponent into h = x**(y / 2) if z = x**y or z * ln(x) overflows
+      # while grad * x**y * ln(x) may still be finite. Note that single halving
+      # only extends the non-overflowing exponent range by a factor of 2
+      # (i.e., if y * ln(x) > 2 * max_exponent, h itself overflows to inf).
+      z_is_inf = math_ops.is_inf(z)
+      safe_z = array_ops.where_v2(
+          z_is_inf, math_ops.cast(0, z.dtype), z
+      )
+      z_log_x = safe_z * log_x
+      raw_overflow = math_ops.logical_and(
+          mask,
+          math_ops.logical_or(z_is_inf, math_ops.is_inf(z_log_x)),
+      )
+      safe_z_log_x = array_ops.where_v2(
+          raw_overflow, math_ops.cast(0, z_log_x.dtype), z_log_x
+      )
+      use_split = math_ops.logical_and(
+          raw_overflow, math_ops.not_equal(grad, 0)
+      )
+      # Compute h = safe_x**(cy / 2) unconditionally with where_v2 rather than
+      # branching on use_split to avoid host-device synchronization in eager
+      # mode and control-flow ops in graph and XLA lowering.
+      safe_half_y = array_ops.where_v2(
+          use_split,
+          cy * math_ops.cast(0.5, cy.dtype),
+          math_ops.cast(0, cy.dtype),
+      )
+      h = math_ops.pow(safe_x, safe_half_y)
+      grad_h = grad * h
+      grad_h_inf = math_ops.is_inf(grad_h)
+      safe_grad_h = array_ops.where_v2(
+          grad_h_inf, math_ops.cast(0, grad_h.dtype), grad_h
+      )
+      # If grad * h overflows (e.g., in float16 when x is near 1), re-associate
+      # as (grad * (h * log_x)) * h; otherwise scale h by grad first via
+      # (safe_grad_h * log_x) * h to avoid h * log_x overflow or premature
+      # underflow when grad is small.
+      gy_split = array_ops.where_v2(
+          grad_h_inf,
+          (grad * (h * log_x)) * h,
+          (safe_grad_h * log_x) * h,
+      )
+      gy = array_ops.where_v2(use_split, gy_split, grad * safe_z_log_x)
+    else:
+      gy = grad * (math_ops.conj(z) * log_x)
 
   return _ReduceGradientArgs(x, y, gx, gy)
 
@@ -2042,49 +2100,32 @@ def _CumprodGrad(op: ops.Operation, grad):
 def _CumulativeLogsumexpGrad(op: ops.Operation, grad):
   x = op.inputs[0]
   axis = op.inputs[1]
+  cumulative_logsumexp = op.outputs[0]
 
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
-  cumulative_logsumexp = math_ops.cumulative_logsumexp(
-      x, axis=axis, exclusive=exclusive, reverse=reverse
-  )
 
   # Split the incoming gradient into positive and negative part
   # in order to take logs. This is required for stable results.
-  finite_lse = math_ops.is_finite(cumulative_logsumexp)
-  pos_mask = math_ops.logical_and(math_ops.greater(grad, 0), finite_lse)
-  safe_pos_grad = array_ops.where_v2(
-      pos_mask, grad, math_ops.cast(1.0, grad.dtype)
-  )
   log_grad_positive = array_ops.where_v2(
-      pos_mask,
-      math_ops.log(safe_pos_grad) - cumulative_logsumexp,
-      grad.dtype.min,
-  )
+      math_ops.greater(grad, 0),
+      math_ops.log(grad),
+      grad.dtype.min)
 
-  neg_mask = math_ops.logical_and(math_ops.less(grad, 0), finite_lse)
-  safe_neg_grad = array_ops.where_v2(
-      neg_mask, -grad, math_ops.cast(1.0, grad.dtype)
-  )
   log_grad_negative = array_ops.where_v2(
-      neg_mask,
-      math_ops.log(safe_neg_grad) - cumulative_logsumexp,
-      grad.dtype.min,
-  )
+      math_ops.less(grad, 0),
+      math_ops.log(-grad),
+      grad.dtype.min)
 
   output_pos = math_ops.exp(
       math_ops.cumulative_logsumexp(
-          log_grad_positive, axis=axis, reverse=not reverse, exclusive=exclusive
-      )
-      + x
-  )
+          log_grad_positive - cumulative_logsumexp,
+          axis=axis, reverse=not reverse, exclusive=exclusive) + x)
 
   output_neg = math_ops.exp(
       math_ops.cumulative_logsumexp(
-          log_grad_negative, axis=axis, reverse=not reverse, exclusive=exclusive
-      )
-      + x
-  )
+          log_grad_negative - cumulative_logsumexp,
+          axis=axis, reverse=not reverse, exclusive=exclusive) + x)
 
   return [output_pos - output_neg, None]
 

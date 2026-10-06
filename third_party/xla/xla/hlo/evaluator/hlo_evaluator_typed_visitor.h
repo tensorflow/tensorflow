@@ -35,6 +35,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -326,6 +327,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
+  absl::Status HandleExp2(const HloInstruction* exp2) override {
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseUnaryOp(exp2, [](ElementwiseT elem_operand) {
+                       if constexpr (is_complex_v<ReturnT>) {
+                         return std::exp(elem_operand * ElementwiseT(M_LN2));
+                       } else {
+                         return std::exp2(elem_operand);
+                       }
+                     }));
+    parent_->SetEvaluatedLiteralFor(exp2, std::move(literal));
+    return absl::OkStatus();
+  }
+
   absl::Status HandleExpm1(const HloInstruction* expm1) override {
     if constexpr (!is_complex_v<ReturnT>) {
       ABSL_ASSIGN_OR_RETURN(Literal literal,
@@ -369,6 +383,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return absl::OkStatus();
     }
     return UnsupportedTypeError(log1p);
+  }
+
+  absl::Status HandleLog2(const HloInstruction* log2) override {
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseUnaryOp(log2, [](ElementwiseT elem_operand) {
+                       if constexpr (is_complex_v<ReturnT>) {
+                         return std::log(elem_operand) / ElementwiseT(M_LN2);
+                       } else {
+                         return std::log2(elem_operand);
+                       }
+                     }));
+    parent_->SetEvaluatedLiteralFor(log2, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleNot(const HloInstruction* not_) override {
@@ -2449,7 +2476,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                              UnaryOp&& unary_op) {
     static_assert(std::is_invocable_r_v<ElementwiseT, UnaryOp, ElementwiseT>,
                   "Invalid UnaryOp signature");
+    return ElementWiseUnaryOpImpl(instruction, unary_op);
+  }
 
+  absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
+      const HloInstruction* instruction,
+      absl::FunctionRef<ElementwiseT(ElementwiseT)> unary_op) {
     const Literal& operand_literal =
         parent_->GetEvaluatedLiteralFor(instruction->operand(0));
     ABSL_ASSIGN_OR_RETURN(
@@ -2466,7 +2498,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     static_assert(std::is_invocable_r_v<ElementwiseT, BinaryOp, ElementwiseT,
                                         ElementwiseT>,
                   "Invalid BinaryOp signature");
+    return ElementWiseBinaryOpImpl(instruction, binary_op);
+  }
 
+  absl::StatusOr<Literal> ElementWiseBinaryOpImpl(
+      const HloInstruction* instruction,
+      absl::FunctionRef<ElementwiseT(ElementwiseT, ElementwiseT)> binary_op) {
     Shape shape = GetShapeWithLayout(instruction->shape());
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
@@ -2485,11 +2522,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                        LayoutUtil::Equal(lhs_layout, shape.layout());
 
     if (same_layout) {
+      const ReturnT* lhs_data = lhs_literal.data<ReturnT>().data();
+      const ReturnT* rhs_data = rhs_literal.data<ReturnT>().data();
       ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int) {
-            return ConvertBinaryFunction(binary_op)(
-                lhs_literal.GetLinear<ReturnT>(linear_index),
-                rhs_literal.GetLinear<ReturnT>(linear_index));
+            return ConvertBinaryFunction(binary_op)(lhs_data[linear_index],
+                                                    rhs_data[linear_index]);
           }));
     } else {
       ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
@@ -2510,7 +2548,14 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     static_assert(
         std::is_invocable_r_v<ReturnT, TernaryOp, LhsType, RhsType, EhsType>,
         "Invalid TernaryOp signature");
+    return ElementwiseTernaryOpImpl<LhsType, RhsType, EhsType>(instruction,
+                                                               ternary_op);
+  }
 
+  template <typename LhsType, typename RhsType, typename EhsType>
+  absl::StatusOr<Literal> ElementwiseTernaryOpImpl(
+      const HloInstruction* instruction,
+      absl::FunctionRef<ReturnT(LhsType, RhsType, EhsType)> ternary_op) {
     Shape shape = GetShapeWithLayout(instruction->shape());
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
@@ -2534,11 +2579,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                        LayoutUtil::Equal(lhs_layout, shape.layout());
 
     if (same_layout) {
+      const LhsType* lhs_data = lhs_literal.data<LhsType>().data();
+      const RhsType* rhs_data = rhs_literal.data<RhsType>().data();
+      const EhsType* ehs_data = ehs_literal.data<EhsType>().data();
       ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int) {
-            return ternary_op(lhs_literal.GetLinear<LhsType>(linear_index),
-                              rhs_literal.GetLinear<RhsType>(linear_index),
-                              ehs_literal.GetLinear<EhsType>(linear_index));
+            return ternary_op(lhs_data[linear_index], rhs_data[linear_index],
+                              ehs_data[linear_index]);
           }));
 
     } else {

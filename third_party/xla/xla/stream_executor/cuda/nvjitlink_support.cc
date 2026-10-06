@@ -24,7 +24,7 @@ bool IsLibNvJitLinkSupported() {
 #ifdef MEMORY_SANITIZER
   return false;
 #else
-  return LIBNVJITLINK_SUPPORT && CUDA_SUPPORTS_NVJITLINK;
+  return true;
 #endif
 }
 }  // namespace stream_executor

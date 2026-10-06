@@ -1199,7 +1199,7 @@ XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
   });
 }
 
-// asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
+// asin(x) = atan2(x, sqrt((1 - x) * (1 + x)))
 XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
            bool expand) {
   if (!expand) {

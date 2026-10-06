@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -55,6 +57,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
@@ -142,32 +145,80 @@ static int64_t GetWorkGroupCount(const HloFusionInstruction& fusion) {
                             std::multiplies<int64_t>());
 }
 
-WorkDimensions GetWorkDimensions(const Shape& shape,
-                                 const HloFusionInstruction& fusion) {
+// Returns the maximum number of sub-byte elements packed into a single byte
+// across all outputs of `shape` (e.g. 2 for 4-bit types, 4 for 2-bit types, or
+// 1 if there are no packed sub-byte outputs).
+static int64_t GetMaxSubByteElementsPerByte(const Shape& shape) {
+  int64_t max_elements_per_byte = 1;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex&) {
+        if (subshape.IsArray() &&
+            primitive_util::IsSubByteNonPredType(subshape.element_type())) {
+          int64_t bit_width = primitive_util::BitWidth(subshape.element_type());
+          CHECK(absl::has_single_bit(static_cast<uint64_t>(bit_width)))
+              << "Expected power-of-2 sub-byte bit width, got " << bit_width;
+          max_elements_per_byte =
+              std::max<int64_t>(max_elements_per_byte, 8 / bit_width);
+        }
+      });
+  return max_elements_per_byte;
+}
+
+// Partitions the iteration space of `shape` across workgroups along the
+// major physical dimensions so each workgroup executes a contiguous slice of
+// elements. Leading dimensions smaller than the requested workgroup count are
+// folded into the next dimension until there is enough work to split, at which
+// point we define the "split tile" size. All remaining minor dimensions are
+// kept intact in each tile.
+//
+// For packed sub-byte outputs, if allow_sub_byte_multi_work_group is:
+// - true, the split tile size is rounded up to a multiple of the
+// elements-per-byte packing factor, so that distinct workgroups never
+// share a byte.
+// - false, a single workgroup is used.
+static WorkDimensions GetWorkDimensions(
+    const Shape& shape, const HloFusionInstruction& fusion,
+    bool allow_sub_byte_multi_work_group = true) {
   if (!shape.has_layout()) {
     Shape shape_with_layout = shape;
     LayoutUtil::SetToDefaultLayout(&shape_with_layout);
-    return GetWorkDimensions(shape_with_layout, fusion);
+    return GetWorkDimensions(shape_with_layout, fusion,
+                             allow_sub_byte_multi_work_group);
   }
   auto minor_to_major = LayoutUtil::MinorToMajor(shape.layout());
-
   if (minor_to_major.empty()) {
     return WorkDimensions{};
   }
 
-  int64_t work_group_count = GetWorkGroupCount(fusion);
+  int64_t total_elements = ShapeUtil::ElementsIn(shape);
+  if (total_elements == 0) {
+    return WorkDimensions{};
+  }
+
+  int64_t sub_byte_alignment = GetMaxSubByteElementsPerByte(fusion.shape());
+  bool has_sub_byte_output = sub_byte_alignment > 1;
+  bool can_parallelize =
+      allow_sub_byte_multi_work_group || !has_sub_byte_output;
+  int64_t work_group_count =
+      can_parallelize ? std::min(GetWorkGroupCount(fusion), total_elements) : 1;
   NumWorkGroups num_work_groups{static_cast<uint64_t>(work_group_count)};
 
   WorkTileSize work_tile_size;
   int64_t folded_dims = 1;
   for (int64_t dim : llvm::reverse(minor_to_major)) {
     int64_t dim_size = ShapeUtil::GetDimension(shape, dim);
-    int64_t accumilated_dim_size = folded_dims * dim_size;
-    if (accumilated_dim_size < work_group_count) {
+    int64_t accumulated_dim_size = folded_dims * dim_size;
+    if (accumulated_dim_size < work_group_count) {
       folded_dims *= dim_size;
     } else if (work_group_count != 1) {
-      work_tile_size.dimensions.push_back(
-          CeilOfRatio(accumilated_dim_size, work_group_count));
+      // Round `split_tile` up to `sub_byte_alignment` so that
+      // `split_tile * (product of minor dims)` is a whole number of bytes.
+      int64_t split_tile =
+          RoundUpTo(CeilOfRatio(accumulated_dim_size, work_group_count),
+                    sub_byte_alignment);
+      work_tile_size.dimensions.push_back(split_tile);
+      num_work_groups = NumWorkGroups{
+          static_cast<uint64_t>(CeilOfRatio(accumulated_dim_size, split_tile))};
       work_group_count = 1;
     } else {
       work_tile_size.dimensions.push_back(dim_size);
@@ -193,7 +244,8 @@ static WorkDimensions GetConcatenateEmitterWorkDims(
   Shape indexing_shape =
       emitters::ConcatenateFusionKernelEmitter::GetIndexingShape(fusion_spec);
 
-  return GetWorkDimensions(indexing_shape, fusion);
+  return GetWorkDimensions(indexing_shape, fusion,
+                           /*allow_sub_byte_multi_work_group=*/false);
 }
 
 static WorkDimensions GetDynamicUpdateSliceEmitterWorkDims(
@@ -201,7 +253,8 @@ static WorkDimensions GetDynamicUpdateSliceEmitterWorkDims(
   Shape indexing_shape =
       emitters::DynamicUpdateSliceKernelEmitter::GetIndexingShape(fusion_spec);
 
-  return GetWorkDimensions(indexing_shape, fusion);
+  return GetWorkDimensions(indexing_shape, fusion,
+                           /*allow_sub_byte_multi_work_group=*/false);
 }
 
 static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {

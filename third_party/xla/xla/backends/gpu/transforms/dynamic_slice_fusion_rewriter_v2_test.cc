@@ -59,15 +59,15 @@ DynamicSliceConfig MakeConfig(int64_t loop_index, int64_t offset,
                               int64_t stride) {
   DynamicSliceConfig config;
   config.set_loop_index(loop_index);
-  config.set_byte_offset(offset);
-  config.set_byte_stride(stride);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(stride);
   return config;
 }
 
 DynamicSliceConfig MakeStaticConfig(int64_t offset) {
   DynamicSliceConfig config;
-  config.set_byte_offset(offset);
-  config.set_byte_stride(0);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(0);
   return config;
 }
 
@@ -1158,7 +1158,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       selected = s32[] select(is_lt, inc, dec)
       ds = f32[1,8,8] dynamic-slice(input, selected, c0_s32, c0_s32),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1235,7 +1236,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] subtract(offset_base, offset_base)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1306,7 +1308,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] add(ivar, c1)
       ROOT dus = f32[8,8,8] dynamic-update-slice(
           output, bitcast, offset, c0, c0),
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
     }
   )";
 
@@ -1455,7 +1458,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] add(index_scalar, c1)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1518,7 +1522,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] maximum(ivar, c0)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -2805,6 +2810,40 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
   )";
 
   RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       SlicedOperandsAndResultsPropagateMemorySpaceAttributes) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice0 = f32[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
+      %slice1 = f32[1,8,8]{2,1,0} slice(%p1), slice={[0:1], [0:8], [0:8]}
+      %bitcast0 = f32[8,8]{1,0} bitcast(%slice0)
+      %bitcast1 = f32[8,8]{1,0} bitcast(%slice1)
+      ROOT %hero = f32[8,8]{1,0} custom-call(%bitcast0, %bitcast1),
+        custom_call_target="fake_target",
+        frontend_attributes={operands_memory_spaces="{0:7}", results_memory_spaces="{0:7}"}
+    }
+  )";
+
+  auto fusion_checks = [&](HloModule* module) {
+    HloComputation* entry = module->entry_computation();
+    HloInstruction* root = entry->root_instruction();
+    ASSERT_EQ(root->opcode(), HloOpcode::kFusion);
+    auto operands_attr = root->get_frontend_attribute("operands_memory_spaces");
+    ASSERT_TRUE(operands_attr.has_value());
+    EXPECT_EQ(*operands_attr, "{0:7}");
+    auto results_attr = root->get_frontend_attribute("results_memory_spaces");
+    ASSERT_TRUE(results_attr.has_value());
+    EXPECT_EQ(*results_attr, "{0:7}");
+  };
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(),
+                            "; CHECK: dynamic_slice_fusion", fusion_checks);
 }
 
 }  // namespace

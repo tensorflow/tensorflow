@@ -94,6 +94,7 @@ message DebugOptions {
     DYNAMIC_SLICE_FUSION = 9;
     CONVOLUTION = 11;
     HOST_EXECUTE = 12;
+    COLLECTIVES_KERNEL = 13;
 
     reserved "DYNAMIC_SLICE_COPY_FUSION";
     reserved 10;
@@ -106,6 +107,7 @@ message DebugOptions {
     COLLECTIVE_KERNEL_INVALID = 0;
     COLLECTIVE_KERNEL_ALL_REDUCE = 1;
     COLLECTIVE_KERNEL_ALL_GATHER = 2;
+    COLLECTIVE_KERNEL_REDUCE_SCATTER = 3;
   }
 
   enum LibNvJitLinkMode {
@@ -925,19 +927,39 @@ message DebugOptions {
   // Default is 0 (disabled).
   optional int32 xla_gpu_execution_progress_tracking = 457;
 
-  // Timeout to terminate XLA:GPU execution if it doesn't complete successfully.
+  // Timeout to terminate XLA:GPU execution if host execution gets stuck.
   //
-  // If XLA:GPU executable doesn't complete it's execution within some
-  // reasonable time frame it probably means that it deadlocked in one of the
-  // GPU kernels or collective communication. It is nearly impossible to recover
-  // from such deadlock, and it is typically better to kill the current process
-  // and let the higher level job scheduling to retry the run.
+  // If host-side execution of an XLA:GPU executable does not complete within a
+  // reasonable time, it may be deadlocked. Recovering from such a deadlock is
+  // difficult, so it is typically better to terminate the current process and
+  // let the higher-level job scheduler retry the run.
   //
   // Parses a duration string consisting of a possibly signed sequence of
   // decimal numbers, each with an optional fractional part and a unit
-  // suffix. The valid suffixes are "ns", "us" "ms", "s", "m", and "h".
+  // suffix. The valid suffixes are "ns", "us", "ms", "s", "m", and "h".
   // Simple examples include "300ms", "-1.5h", and "2h45m". Default is "inf".
+  //
+  // IMPORTANT: This timeout covers only the host side of XLA:GPU execution,
+  // including thunk execution, work submission to GPU streams, and any
+  // synchronization required by host execution. The host typically runs far
+  // ahead of the device, so this does not guarantee that the GPU itself
+  // finishes execution within the configured timeout.
   optional string xla_gpu_execution_terminate_timeout = 451;
+
+  // Timeout to terminate XLA:GPU execution if device work does not complete.
+  //
+  // Similar in spirit to xla_gpu_execution_terminate_timeout, but covers device
+  // work after host dispatch. It remains active after host execution finishes
+  // and does not require the host thread to wait for device completion.
+  //
+  // Uses the same duration string format as
+  // xla_gpu_execution_terminate_timeout. Default is "inf" (disabled).
+  //
+  // IMPORTANT: The timeout measures wall time from guard creation on the host.
+  // Because the host can run ahead of the device, this includes time waiting
+  // behind previously queued work. It is not a limit on the executable's actual
+  // time running on the device.
+  optional string xla_gpu_device_execution_terminate_timeout = 553;
 
   optional bool xla_gpu_exhaustive_tiling_search = 219;
 
@@ -992,6 +1014,13 @@ message DebugOptions {
   // offsets match actual XLA-computed DS/DUS offsets. For debugging only.
   optional bool xla_gpu_experimental_dynamic_slice_fusion_verify_offsets = 484;
 
+  // Enables DynamicSliceAnnotator to represent non-linear DS/DUS offsets as a
+  // table with one entry per loop iteration.
+  //
+  // TODO(ezhulenev): Remove this flag and always enable table offsets two weeks
+  // after the runtime support has landed (GPU compatibility window).
+  optional bool xla_gpu_experimental_enable_dynamic_slice_table_offsets = 552;
+
   // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
   // This feature is still experimental and effective only
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
@@ -1031,6 +1060,13 @@ message DebugOptions {
 
   // Enable NCCL symmetric buffers.
   optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406;
+
+  // If true, XLA:GPU emits a CollectiveReduceThunk for kCollectiveReduce HLO
+  // instructions. This is guarded behind a flag to preserve the 2-week
+  // forward compatibility window between the compiler and the runtime.
+  // Need to remove this and enable by default once the 2-week
+  // window has passed.
+  optional bool xla_gpu_experimental_emit_collective_reduce = 550;
 
   // If true, the GPU latency hiding scheduler selectively overlaps async
   // device-to-device memcpys with compute-bound kernels.
@@ -1121,7 +1157,7 @@ message DebugOptions {
 
   // Experimental: filter specifying which collective operations should use
   // custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL.
-  // Accepted values: "all-reduce", "all-gather".
+  // Accepted values: "all-reduce", "all-gather", "reduce-scatter".
   // For legacy support, the deprecated
   // --xla_gpu_unsupported_use_all_reduce_one_shot_kernel flag also adds
   // all-reduce to this filter.
@@ -1133,6 +1169,10 @@ message DebugOptions {
   optional bool xla_gpu_experimental_use_ragged_dot_fusion = 401;
 
   optional bool xla_gpu_experimental_use_ragged_dot_grouped_gemm = 501;
+
+  // If true, disables CUDA Virtual Memory Management (VMM) APIs for device
+  // memory allocation and collective fusion.
+  optional bool xla_gpu_experimental_vmm_disabled = 551;
 
   // If true, PTX compilation will fail if a kernel spills registers.
   // This is meant for debugging and only applies to CUDA PTX compilation.
@@ -1867,7 +1907,7 @@ message DebugOptions {
   // for all instructions. Accepts textproto of autotuner.CandidateConfigs.
   optional string xla_candidate_configs_file = 544;
 
-  // If true, allows skipping defensive copy insertion for S(1) collective
+  // If true, allows skipping defensive copy insertion for collective
   // memory parameters that have input-output aliasing and execute on all
   // available devices in the topology.
   optional bool xla_gpu_enable_persistent_symmetric_memory = 545;
@@ -1875,7 +1915,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 550
+  // Next id: 554
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

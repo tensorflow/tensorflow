@@ -91,6 +91,7 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       LocalClient* client,
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
+      bool confidential_computing_enabled,
       std::unique_ptr<AsyncWorkRunner> async_work_runner,
       se::StreamExecutor* executor = nullptr,
       std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr,
@@ -103,7 +104,8 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
             std::move(local_device_states), std::move(allocator), client,
             std::move(host_memory_allocator),
             should_stage_host_to_device_transfers, std::move(async_work_runner),
-            executor, std::move(gpu_run_options)),
+            executor, std::move(gpu_run_options),
+            confidential_computing_enabled),
         platform_id_(platform_id),
         kv_store_(std::move(kv_store)),
         cache_fabric_handles_(cache_fabric_handles),
@@ -118,7 +120,7 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
     return kv_store_;
   }
 
-  void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+  void ScheduleRemoteSend(LocalDeviceId local_device_id, int memory_kind_id,
                           PjRtRawBufferRef raw_buffer,
                           PjRtDeviceEventRefVector definition_events,
                           PjRtDeviceEventPromiseRef usage_event_promise,

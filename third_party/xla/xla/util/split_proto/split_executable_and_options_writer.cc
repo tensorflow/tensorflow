@@ -78,8 +78,13 @@ ExecutableAndOptionsProto GetProtoWithoutSerializedExecutable(
 absl::Status WriteSplitExecutableAndOptions(
     const ExecutableAndOptionsProto& executable_and_options,
     std::unique_ptr<riegeli::Writer> writer) {
-  riegeli::RecordWriter record_writer(std::move(writer),
-                                      GetGpuSplitProtoOptions());
+  riegeli::RecordWriter record_writer(
+      std::move(writer),
+      // The bulk of this proto is `serialized_executable`, which is already a
+      // compressed split proto. Compressing it again does not reduce the size
+      // but adds a full (de)compression pass over the whole executable when
+      // serializing and when loading it.
+      GetSplitProtoRiegeliOptions(SplitProtoCompression::kNone));
   SplitProtoManifest manifest = BuildManifest();
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       WriteRecord(record_writer, manifest),

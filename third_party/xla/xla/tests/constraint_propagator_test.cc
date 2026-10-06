@@ -157,10 +157,8 @@ ENTRY main {
   auto y_int = states[module->entry_computation()->parameter_instruction(1)]
                    .GetConstraintInterval();
 
-  EXPECT_TRUE(x_int.IsPositive());
-  EXPECT_FALSE(x_int.exclude_zero);
-  EXPECT_TRUE(y_int.IsNegative());
-  EXPECT_FALSE(y_int.exclude_zero);
+  EXPECT_EQ(x_int, ConstraintInterval::Positive());
+  EXPECT_EQ(y_int, ConstraintInterval::Negative());
 }
 
 TEST_F(ConstraintPropagatorTest, SubtractNegative) {
@@ -183,10 +181,8 @@ ENTRY main {
   auto y_int = states[module->entry_computation()->parameter_instruction(1)]
                    .GetConstraintInterval();
 
-  EXPECT_TRUE(x_int.IsNegative());
-  EXPECT_FALSE(x_int.exclude_zero);
-  EXPECT_TRUE(y_int.IsPositive());
-  EXPECT_FALSE(y_int.exclude_zero);
+  EXPECT_EQ(x_int, ConstraintInterval::Negative());
+  EXPECT_EQ(y_int, ConstraintInterval::Positive());
 }
 
 TEST_F(ConstraintPropagatorTest, RsqrtMulForcedNegative) {
@@ -961,9 +957,11 @@ ENTRY main {
   auto p1_int = states[module->entry_computation()->parameter_instruction(1)]
                     .GetConstraintInterval();
   EXPECT_FALSE(p0_int.IsEmpty());
-  EXPECT_LE(p0_int.max, 0.0);
+  EXPECT_DOUBLE_EQ(p0_int.min, -4.0);
+  EXPECT_DOUBLE_EQ(p0_int.max, 0.0);
   EXPECT_FALSE(p1_int.IsEmpty());
-  EXPECT_GE(p1_int.min, 0.0);
+  EXPECT_DOUBLE_EQ(p1_int.min, 0.0);
+  EXPECT_DOUBLE_EQ(p1_int.max, 4.0);
 }
 
 // Tests that for Power(base, exp) with base in (0, 1) (decay schedule, e.g.

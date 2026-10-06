@@ -62,6 +62,7 @@ cc_library(
     visibility = internal_visibility([
         "//learning/brain/research/pjrt:__subpackages__",
         "//xla:__subpackages__",
+        "//xla:friends",
     ]),
     deps = [
         ":split_proto_cc",
@@ -74,7 +75,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
         "@riegeli//riegeli/base:any",
+        "@riegeli//riegeli/base:chain",
         "@riegeli//riegeli/bytes:reader",
+        "@riegeli//riegeli/messages:parse_message",
         "@riegeli//riegeli/records:record_position",
         "@riegeli//riegeli/records:record_reader",
     ],

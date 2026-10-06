@@ -27,13 +27,16 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tools/file_tf_mlir_translate.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v2/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/mlir/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/client/client_library.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
@@ -55,10 +58,10 @@ static constexpr char kMlirToGraphCompilationCheckName[] =
 static constexpr char kArbitraryDeviceName[] = "XLA_CPU_JIT";
 
 static Status CompileGraph(tensorflow::Graph* graph,
-                           xla::PjRtCompiler* compiler) {
-  if (!graph || !compiler) {
+                           xla::CompileOnlyClient* client) {
+  if (!graph || !client) {
     return Status(absl::StatusCode::kInvalidArgument,
-                  "Invalid graph or compiler");
+                  "Invalid graph or client");
   }
 
   tensorflow::FunctionDefLibrary flib;
@@ -67,9 +70,9 @@ static Status CompileGraph(tensorflow::Graph* graph,
 
   tensorflow::XlaCompiler::Options options;
   options.device_type = tensorflow::DeviceType(kArbitraryDeviceName);
-  options.compiler = compiler;
+  options.client = client;
   options.flib_def = flib_def.get();
-  tensorflow::XlaCompiler xla_compiler(options);
+  tensorflow::XlaCompiler compiler(options);
 
   std::unique_ptr<tensorflow::Graph> graph_copy =
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
@@ -77,9 +80,9 @@ static Status CompileGraph(tensorflow::Graph* graph,
 
   tensorflow::XlaCompiler::CompileOptions compile_options;
   tensorflow::XlaCompiler::CompilationResult result;
-  return xla_compiler.CompileGraph(compile_options,
-                                   kMlirToGraphCompilationCheckName,
-                                   std::move(graph_copy), {}, &result);
+  return compiler.CompileGraph(compile_options,
+                               kMlirToGraphCompilationCheckName,
+                               std::move(graph_copy), {}, &result);
 }
 
 static mlir::OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
@@ -120,15 +123,19 @@ static mlir::LogicalResult MlirToGraphTranslateFunction(
     return mlir::failure();
   }
 
-  auto compiler = xla::GetDefaultPjRtCompiler(xla::CpuName());
-  if (!compiler.ok()) {
+  // Use Host platform, which should always exist, to make sure graphs compile.
+  auto platform = stream_executor::PlatformManager::PlatformWithId(
+      stream_executor::host::kHostPlatformId);
+  if (!platform.ok()) {
     return mlir::failure();
   }
+  auto client =
+      xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform.value());
 
   tensorflow::XlaOpRegistry::RegisterCompilationKernels();
 
   // Verify that the resulting graph can compile.
-  if (!CompileGraph(graph.get(), compiler.value()).ok()) {
+  if (client.ok() && !CompileGraph(graph.get(), client.value()).ok()) {
     return mlir::failure();
   }
 

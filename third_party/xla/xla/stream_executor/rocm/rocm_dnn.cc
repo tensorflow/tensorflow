@@ -2966,10 +2966,11 @@ absl::Status MIOpenSupport::GetConvolveRunners(
   }
 
   std::vector<dnn::ProfileResult> profile_results;
-  if (!GetMIOpenConvolveAlgorithms(
+  if (!GetMIOpenConvolveAlgorithmsInternal(
           kind, input_type, output_type, stream, input_descriptor, input_data,
           filter_descriptor, filter_data, output_descriptor, output_data,
-          convolution_descriptor, scratch_allocator, &profile_results))
+          convolution_descriptor, scratch_allocator, &profile_results,
+          use_fallback))
     return absl::InternalError("GetMIOpenConvolveAlgorithms failure");
 
   for (const auto& profile_result : profile_results) {
@@ -3092,13 +3093,33 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     ScratchAllocator* scratch_allocator,
     std::vector<dnn::ProfileResult>* out_algorithms) {
+  return GetMIOpenConvolveAlgorithmsInternal(
+      kind, input_type, output_type, stream, input_descriptor, input_data,
+      filter_descriptor, filter_data, output_descriptor, output_data,
+      convolution_descriptor, scratch_allocator, out_algorithms,
+      /*use_fallback=*/false);
+}
+
+bool MIOpenSupport::GetMIOpenConvolveAlgorithmsInternal(
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceAddressBase input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceAddressBase filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceAddressBase output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    ScratchAllocator* scratch_allocator,
+    std::vector<dnn::ProfileResult>* out_algorithms, bool use_fallback) {
   // TODO(rocm): Create handles only once and reuse them between the methods
-  if (!PopulateMIOpenFindDb(kind, input_type, output_type, stream,
-                            input_descriptor, input_data, filter_descriptor,
-                            filter_data, output_descriptor, output_data,
-                            convolution_descriptor, scratch_allocator)
-           .ok()) {
-    return false;
+  if (!use_fallback) {
+    if (!PopulateMIOpenFindDb(kind, input_type, output_type, stream,
+                              input_descriptor, input_data, filter_descriptor,
+                              filter_data, output_descriptor, output_data,
+                              convolution_descriptor, scratch_allocator)
+             .ok()) {
+      return false;
+    }
   }
   return GetMIOpenConvolveAlgorithmsImmediateMode(
              kind, input_type, output_type, stream, input_descriptor,
@@ -3234,6 +3255,70 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
   out_algorithms->reserve(solutionCount);
   for (size_t i = 0; i < solutionCount; i++) {
     miopenConvSolution_t solution = solutions[i];
+
+    // GetSolution can report a workspace of 0 for solutions that still require
+    // one. Query the solution-specific size and use that instead.
+    if (solution.workspace_size == 0) {
+      size_t workspace_size = 0;
+      switch (kind) {
+        case dnn::ConvolutionKind::FORWARD: {
+          auto status = miopenConvolutionForwardGetSolutionWorkspaceSize(
+              miopen.handle(), filter.handle(), input_nd.handle(),
+              conv.handle(), output_nd.handle(), solution.solution_id,
+              &workspace_size);
+          if (status != miopenStatusSuccess) {
+            return absl::InternalError(
+                "call to miopenConvolutionForwardGetSolutionWorkspaceSize "
+                "failed: " +
+                ToString(status));
+          }
+          break;
+        }
+        case dnn::ConvolutionKind::BACKWARD_DATA: {
+          auto status = miopenConvolutionBackwardDataGetSolutionWorkspaceSize(
+              miopen.handle(), output_nd.handle(), filter.handle(),
+              conv.handle(), input_nd.handle(), solution.solution_id,
+              &workspace_size);
+          if (status != miopenStatusSuccess) {
+            return absl::InternalError(
+                "call to "
+                "miopenConvolutionBackwardDataGetSolutionWorkspaceSize "
+                "failed: " +
+                ToString(status));
+          }
+          break;
+        }
+        case dnn::ConvolutionKind::BACKWARD_FILTER: {
+          auto status =
+              miopenConvolutionBackwardWeightsGetSolutionWorkspaceSize(
+                  miopen.handle(), output_nd.handle(), input_nd.handle(),
+                  conv.handle(), filter.handle(), solution.solution_id,
+                  &workspace_size);
+          if (status != miopenStatusSuccess) {
+            return absl::InternalError(
+                "call to "
+                "miopenConvolutionBackwardWeightsGetSolutionWorkspaceSize "
+                "failed: " +
+                ToString(status));
+          }
+          break;
+        }
+        default: {
+          return absl::InternalError("Unexpected convolution kind " +
+                                     std::to_string(static_cast<int>(kind)));
+        }
+      }
+
+      if (solution.workspace_size != workspace_size) {
+        LOG(WARNING) << "Adjusting workspace_size from "
+                     << solution.workspace_size << " to " << workspace_size
+                     << " for solution " << i
+                     << " (time, mem, id, algo) =  " << solution.time << ", "
+                     << solution.workspace_size << ", " << solution.solution_id
+                     << ", " << ToString(solution.algorithm);
+        solution.workspace_size = workspace_size;
+      }
+    }
 
     VLOG(kConvDebugVlogLevel)
         << "solution " << i << " (time, mem, id, algo) =  " << solution.time

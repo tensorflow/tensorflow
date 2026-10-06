@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -191,9 +192,9 @@ static absl::StatusOr<DecomposedCp> DecomposeCollectivePermute(
       ABSL_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send));
       break;
     default:
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported pipeline parallelism opt level: ",
-                       pipeline_parallelism_opt_level));
+      return InvalidArgumentStrCat(
+          "Unsupported pipeline parallelism opt level: ",
+          pipeline_parallelism_opt_level);
   }
 
   if (!pipeline_decision.empty()) {

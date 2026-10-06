@@ -881,19 +881,35 @@ class TensorContractionSubMapper<
     // possible to guarantee "no padding or skipping" for non-standard packing.
     if (nonStandardPatches()) return true;
 
-    // Non zero padding before.
-    if (m_base_mapper.m_rowPaddingTop > 0) return true;
-    if (m_base_mapper.m_colPaddingLeft > 0) return true;
+    if (m_base_mapper.m_outputRows <= 0 || m_base_mapper.m_outputCols <= 0) {
+      return false;
+    }
 
-    // Non zero padding after in rows.
+    // Check row bounds.
+    const Index first_row = -m_base_mapper.m_rowPaddingTop;
+    if (first_row < 0 || first_row >= m_base_mapper.m_inputRows) {
+      return true;
+    }
+
     const Index last_row =
-        (m_base_mapper.m_outputRows - 1) * m_base_mapper.m_row_strides;
-    if (last_row + (patchRows() - 1) >= m_base_mapper.m_inputRows) return true;
+        (m_base_mapper.m_outputRows - 1) * m_base_mapper.m_row_strides -
+        m_base_mapper.m_rowPaddingTop + (patchRows() - 1);
+    if (last_row < 0 || last_row >= m_base_mapper.m_inputRows) {
+      return true;
+    }
 
-    // Non zero padding after in cols.
+    // Check col bounds.
+    const Index first_col = -m_base_mapper.m_colPaddingLeft;
+    if (first_col < 0 || first_col >= m_base_mapper.m_inputCols) {
+      return true;
+    }
+
     const Index last_col =
-        (m_base_mapper.m_outputCols - 1) * m_base_mapper.m_col_strides;
-    if (last_col + (patchCols() - 1) >= m_base_mapper.m_inputCols) return true;
+        (m_base_mapper.m_outputCols - 1) * m_base_mapper.m_col_strides -
+        m_base_mapper.m_colPaddingLeft + (patchCols() - 1);
+    if (last_col < 0 || last_col >= m_base_mapper.m_inputCols) {
+      return true;
+    }
 
     return false;
   }

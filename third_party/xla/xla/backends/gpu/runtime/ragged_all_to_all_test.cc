@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -181,14 +180,13 @@ TEST_F(RaggedAllToAllKernelTest, KernelWithArrayOfOutputPointers) {
   for (int64_t i = 0; i < num_outputs; ++i) {
     output_buffers.emplace_back(executor, executor->AllocateArray<T>(n));
     ASSERT_TRUE(!output_buffers[i].address().is_null());
-    TF_ASSERT_OK(
-        stream->MemZero(output_buffers[i].address_ptr(), n * sizeof(T)));
+    ASSERT_OK(stream->MemZero(output_buffers[i].address_ptr(), n * sizeof(T)));
   }
 
   std::vector<T> input_data(n);
   absl::c_iota(input_data, 0);
-  TF_ASSERT_OK(stream->Memcpy(input_buffer.address_ptr(), input_data.data(),
-                              n * sizeof(T)));
+  ASSERT_OK(stream->Memcpy(input_buffer.address_ptr(), input_data.data(),
+                           n * sizeof(T)));
 
   std::vector<int64_t> input_offsets = {1, 4, 0, 3};
   std::vector<int64_t> send_sizes = {2, 3, 1, 2};
@@ -206,7 +204,7 @@ TEST_F(RaggedAllToAllKernelTest, KernelWithArrayOfOutputPointers) {
     output_buffers_array[i] = output_buffers[i].address().opaque();
   }
 
-  TF_ASSERT_OK(RunRaggedAllToAllKernel(
+  ASSERT_OK(RunRaggedAllToAllKernel(
       stream.get(), primitive_util::NativeToPrimitiveType<T>(),
       input_buffer.address(), output_buffers_array,
       input_offsets_buffer.address(), send_sizes_buffer.address(),
@@ -284,15 +282,15 @@ TEST_F(RaggedAllToAllKernelTest, KernelWithSymmetricMemory) {
     se::DeviceAddressBase output_buffer_address = output_buffer->address();
     ASSERT_TRUE(!output_buffer_address.is_null());
 
-    TF_ASSERT_OK(streams[i]->MemZero(&output_buffer_address, total_bytes));
+    ASSERT_OK(streams[i]->MemZero(&output_buffer_address, total_bytes));
 
     output_buffers.push_back(std::move(output_buffer));
   }
 
   std::vector<T> input_data(n);
   absl::c_iota(input_data, 0);
-  TF_ASSERT_OK(streams[0]->Memcpy(input_buffer.address_ptr(), input_data.data(),
-                                  n * sizeof(T)));
+  ASSERT_OK(streams[0]->Memcpy(input_buffer.address_ptr(), input_data.data(),
+                               n * sizeof(T)));
 
   std::vector<int64_t> input_offsets = {1, 4, 0, 3};
   std::vector<int64_t> send_sizes = {2, 3, 1, 2};
@@ -320,7 +318,7 @@ TEST_F(RaggedAllToAllKernelTest, KernelWithSymmetricMemory) {
           output_buffers_symmetric_memory,
       CreateSymmetricMemory(exec, comms, output_buffers, executors));
 
-  TF_ASSERT_OK(RunRaggedAllToAllWithSymmetricMemoryKernel(
+  ASSERT_OK(RunRaggedAllToAllWithSymmetricMemoryKernel(
       streams[0].get(), primitive_util::NativeToPrimitiveType<T>(),
       input_buffer.address(), output_buffers_symmetric_memory[0].get(),
       output_sym_offset, input_offsets_buffer.address(),

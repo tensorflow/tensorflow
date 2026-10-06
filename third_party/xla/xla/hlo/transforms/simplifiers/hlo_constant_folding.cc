@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -47,7 +48,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -447,6 +448,84 @@ absl::StatusOr<bool> PropagateIdenticalConstantArguments(
   return changed;
 }
 
+// TODO(enver): Share CloneComputation with other passes, such as
+// FlattenCallGraph, by moving to HloModule or HloComputation.
+HloComputation* CloneComputation(HloModule* module,
+                                 HloComputation* computation) {
+  if (!module->has_schedule() ||
+      !module->schedule().is_computation_scheduled(computation)) {
+    return module->AddEmbeddedComputation(computation->Clone());
+  }
+  auto [clone, clone_sequence] = computation->CloneWithSchedule();
+  HloComputation* clone_ptr = module->AddEmbeddedComputation(std::move(clone));
+  module->schedule().set_sequence(clone_ptr, clone_sequence);
+  return clone_ptr;
+}
+
+using SpecializationKey = HloConstantFolding::SpecializationKey;
+
+absl::StatusOr<bool> SpecializeCalls(
+    HloModule* module, HloComputation* computation,
+    absl::flat_hash_map<SpecializationKey, HloComputation*>&
+        specialization_cache,
+    std::vector<HloComputation*>& computation_versions) {
+  auto caller_instructions = computation->caller_instructions();
+  if (caller_instructions.empty()) {
+    return false;
+  }
+  if (!absl::c_all_of(caller_instructions, [](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kCall;
+      })) {
+    return false;
+  }
+
+  if (caller_instructions.size() > 1) {
+    // Sort the caller instructions by their unique id to make the compilation
+    // deterministic.
+    absl::c_sort(caller_instructions,
+                 [](const HloInstruction* a, const HloInstruction* b) {
+                   return a->unique_id() < b->unique_id();
+                 });
+  }
+
+  bool changed = false;
+  bool original_computation_used = false;
+  for (HloInstruction* caller : caller_instructions) {
+    std::vector<std::optional<LiteralSlice>> arguments;
+    arguments.reserve(caller->operand_count());
+    for (const HloInstruction* operand : caller->operands()) {
+      if (operand->opcode() == HloOpcode::kConstant) {
+        arguments.push_back(LiteralSlice(operand->literal()));
+      } else {
+        arguments.push_back(std::nullopt);
+      }
+    }
+    SpecializationKey key{computation, std::move(arguments)};
+    auto it = specialization_cache.find(key);
+    HloComputation* target_comp = nullptr;
+    if (it != specialization_cache.end()) {
+      target_comp = it->second;
+    } else {
+      if (!original_computation_used) {
+        // The first argument combination for this computation uses the original
+        // computation.
+        target_comp = computation;
+        original_computation_used = true;
+      } else {
+        target_comp = CloneComputation(module, computation);
+        computation_versions.push_back(target_comp);
+      }
+      specialization_cache.emplace(key, target_comp);
+    }
+
+    if (caller->to_apply() != target_comp) {
+      caller->set_to_apply(target_comp);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> HloConstantFolding::RunOnComputation(
@@ -538,21 +617,22 @@ absl::StatusOr<bool> HloConstantFolding::RunOnComputation(
     absl::Duration slow_timeout =
         absl::Seconds(uint64_t{1} << slow_op_counter_.load());
     SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
-#if NDEBUG
-      absl::string_view explanation_msg =
-          "This isn't necessarily a bug; constant-folding is "
-          "inherently a trade-off between compilation time and speed "
-          "at runtime. XLA has some guards that attempt to keep "
-          "constant folding from taking too long, but fundamentally "
-          "you'll always be able to come up with an input program that "
-          "takes a long time.\n\n"
-          "If you'd like to file a bug, run with envvar "
-          "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.";
-#else
-      absl::string_view explanation_msg =
-          "XLA was built without compiler optimizations, which can be "
-          "slow. Try rebuilding with -c opt.";
-#endif
+      absl::string_view explanation_msg;
+      if constexpr (tsl::kIsDebugBuild) {
+        explanation_msg =
+            "XLA was built without compiler optimizations, which can be "
+            "slow. Try rebuilding with -c opt.";
+      } else {
+        explanation_msg =
+            "This isn't necessarily a bug; constant-folding is "
+            "inherently a trade-off between compilation time and speed "
+            "at runtime. XLA has some guards that attempt to keep "
+            "constant folding from taking too long, but fundamentally "
+            "you'll always be able to come up with an input program that "
+            "takes a long time.\n\n"
+            "If you'd like to file a bug, run with envvar "
+            "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.";
+      }
       return absl::StrFormat(
           "Constant folding an instruction is taking > %s:\n\n"
           "  %s\n\n"  // instruction->name() or instruction->ToString()
@@ -606,6 +686,7 @@ absl::StatusOr<bool> HloConstantFolding::RunOnComputation(
 absl::StatusOr<bool> HloConstantFolding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  specialization_cache_.clear();
   // Limit the constant folding to 0 iterations to skip folding loops in the
   // default case. This retains the behavior from before while loop support in
   // HloEvaluator and may be revised.
@@ -627,10 +708,21 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
   // arguments from callers to callees.
   for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
     HloComputation* computation = *it;
-    ABSL_ASSIGN_OR_RETURN(bool computation_changed,
-                     RunOnComputation(computation, evaluator.get(),
-                                      is_foldable_computation));
-    changed |= computation_changed;
+    // TODO(b/260601110): Early exit the computation if all callers are already
+    // constant folded.
+    std::vector<HloComputation*> computation_versions;
+    computation_versions.push_back(computation);
+    ABSL_ASSIGN_OR_RETURN(bool did_specialize,
+                     SpecializeCalls(module, computation, specialization_cache_,
+                                     computation_versions));
+    changed |= did_specialize;
+
+    for (HloComputation* computation_version : computation_versions) {
+      ABSL_ASSIGN_OR_RETURN(bool version_changed,
+                       RunOnComputation(computation_version, evaluator.get(),
+                                        is_foldable_computation));
+      changed |= version_changed;
+    }
   }
   return changed;
 }

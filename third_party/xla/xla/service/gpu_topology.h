@@ -112,6 +112,14 @@ class GpuTopology {
     return host_target_machine_options_;
   }
 
+  bool confidential_computing_enabled() const {
+    if (has_gpu_target_config()) {
+      return gpu_target_config()
+          .device_description.confidential_computing_enabled();
+    }
+    return false;
+  }
+
  private:
   std::string platform_version_;
   int32_t num_partitions_;

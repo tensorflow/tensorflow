@@ -53,7 +53,7 @@ void RunEigenMatMul(int m, int k, int n) {
   Eigen::Tensor<OutType, 2> expected =
       lhs.template cast<OutType>().contract(rhs.template cast<OutType>(), dims);
 
-  ExpectClose(out, expected);
+  ExpectClose<OutType>(out, expected);
 }
 
 struct EigenContractionKernelTestParams {
@@ -76,6 +76,11 @@ TEST_P(EigenContractionKernelTest, S8S8S32) {
   RunEigenMatMul<int8_t, int8_t, int32_t>(param.m, param.k, param.n);
 }
 
+TEST_P(EigenContractionKernelTest, Float) {
+  EigenContractionKernelTestParams param = GetParam();
+  RunEigenMatMul<float, float, float>(param.m, param.k, param.n);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     EigenContractionKernelTestSuite, EigenContractionKernelTest,
     testing::ValuesIn<EigenContractionKernelTestParams>({{10, 10, 10},
@@ -83,7 +88,13 @@ INSTANTIATE_TEST_SUITE_P(
                                                          {64, 1024, 64},
                                                          {1, 64, 64},
                                                          {256, 1, 128},
-                                                         {512, 128, 1}}),
+                                                         {512, 128, 1},
+                                                         {1, 1, 1},
+                                                         {0, 0, 0},
+                                                         {0, 10, 10},
+                                                         {10, 0, 10},
+                                                         {10, 10, 0},
+                                                         {512, 512, 512}}),
     EigenContractionKernelTest::Name);
 
 }  // namespace

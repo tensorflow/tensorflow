@@ -452,7 +452,6 @@ cc_library(
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
-        "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -691,6 +690,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",

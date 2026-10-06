@@ -20,7 +20,7 @@ fusion {
 // CHECK-NEW: xtile.entry_func @triton_fn(
 // CHECK-NEW-SAME:    %[[ARG0:.*]]: memref<64xf32>,
 // CHECK-NEW-SAME:    %[[ARG1:.*]]: memref<10xi32>,
-// CHECK-NEW-SAME:    %[[ARG2:.*]]: index)
+// CHECK-NEW-SAME:    %[[ARG2:.*]]: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}})
 // CHECK-NEW-DAG:     %[[C10:.*]] = arith.constant 10 : i32
 // CHECK-NEW-DAG:     %[[C44:.*]] = arith.constant 44 : i32
 // CHECK-NEW-DAG:     %[[C0_I32:.*]] = arith.constant 0 : i32

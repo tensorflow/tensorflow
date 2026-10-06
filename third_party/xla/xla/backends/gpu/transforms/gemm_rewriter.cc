@@ -732,13 +732,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  const_cast<HloInstruction*>(instr->operand(0)))) &&
             (b = MatchFp8Param(
                  const_cast<HloInstruction*>(instr->operand(1))))) {
-          if (gpu_version_.IsRocm() &&
-              toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0} &&
-              instr->shape().element_type() != F16 &&
-              instr->shape().element_type() != F32) {
-            ABSL_ASSIGN_OR_RETURN(instr,
-                             TurnF8DotWithUnsupportedOutputTypeIntoF32(instr));
-          }
           ABSL_ASSIGN_OR_RETURN(bool created_call,
                            CreateF8CustomCall(instr, gpu_backend_config,
                                               a.value(), b.value()));
@@ -973,8 +966,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     const auto is_rocm = gpu_version_.IsRocm();
-    if (is_rocm &&
-        toolkit_version_ >= stream_executor::SemanticVersion{7, 0, 0}) {
+    if (is_rocm) {
       // Attempt to match approximate Swish activation (including grouped
       // matmul)
       // (https://flax.readthedocs.io/en/v0.5.3/_autosummary/flax.linen.swish.html),
@@ -1265,11 +1257,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         VLOG(1) << "FP8 Custom Calls require MI300, or later architectures.";
         return false;
       }
-      if (toolkit_version_ < stream_executor::SemanticVersion{6, 0, 0}) {
-        // FP8 GEMM kernels are only available with ROCm 6.0 and above
-        VLOG(1) << "FP8 Custom Calls require ROCm 6.0 or newer.";
-        return false;
-      }
     }
 
     PrimitiveType a_type = a.fp8_input->shape().element_type();
@@ -1404,15 +1391,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
     if (gpu_version_.IsRocm()) {
-      if (toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0}) {
-        if (supported_d_types.find(d_type) == supported_d_types.end()) {
-          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-                  << " into FP8 Custom Call. For ROCm version < 6.2, output "
-                     "type must be BF16, F16 or F32, but got "
-                  << PrimitiveType_Name(d_type);
-          return false;
-        }
-      }
       ABSL_ASSIGN_OR_RETURN(auto rocm_compute_capability,
                        GetRocmComputeCapability(gpu_version_));
       if (rocm_compute_capability.has_ocp_fp8_support()) {
@@ -2717,20 +2695,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Check that the size of the non-contracting dimension is not too large.
     return gemm_config.rhs_layout.num_cols <= kMaxDimensionSize;
-  }
-
-  // Turns an F8 dot with unsupported output type into an F8 dot with F32
-  // output, and converting the F32 output to unsupported output types.
-  absl::StatusOr<HloInstruction*> TurnF8DotWithUnsupportedOutputTypeIntoF32(
-      HloInstruction* instr) {
-    Shape output_f32_shape = instr->shape();
-    output_f32_shape.set_element_type(F32);
-    HloInstruction* f32_dot =
-        instr->AddInstruction(instr->CloneWithNewShape(output_f32_shape));
-    HloInstruction* convert = instr->AddInstruction(
-        HloInstruction::CreateConvert(instr->shape(), f32_dot));
-    ABSL_RETURN_IF_ERROR(ReplaceInstruction(instr, convert));
-    return f32_dot;
   }
 
   // Turns an F8 dot into an F16 dot, converting operands to F16 (or BF16) and

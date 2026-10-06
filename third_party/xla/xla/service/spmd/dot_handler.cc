@@ -148,6 +148,10 @@ class CreateShardedDotFunctor final
                                                 const Window&) const override {
     HloInstruction* l = ll.hlo();
     HloInstruction* r = rr.hlo();
+    CHECK(!dot_->sparsity_config().has_lhs() &&
+          !dot_->sparsity_config().has_rhs());
+    CHECK(!dot_->block_scaling_config().has_lhs() &&
+          !dot_->block_scaling_config().has_rhs());
     ABSL_ASSIGN_OR_RETURN(
         auto sharded_dot_shape,
         ShapeInference::InferDotOpShape(
@@ -167,6 +171,15 @@ class CreateShardedDotFunctor final
 };
 
 absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
+  if (hlo->sharding().IsSingleDevice()) {
+    return DefaultAction(hlo);
+  }
+  // TODO(b/535773961): Support sharding for scaled / sparse dots.
+  if (hlo->block_scaling_config().has_lhs() ||
+      hlo->block_scaling_config().has_rhs() ||
+      hlo->sparsity_config().has_lhs() || hlo->sparsity_config().has_rhs()) {
+    return DefaultAction(hlo);
+  }
   if (!options_.need_resolve_conflicts &&
       !options_.enable_windowed_einsum_for_all_gather &&
       !options_.enable_windowed_einsum_for_reduce_scatter) {

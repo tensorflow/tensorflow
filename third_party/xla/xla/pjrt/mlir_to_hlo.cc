@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -343,9 +344,9 @@ absl::Status SerializeToRiegeli(mlir::ModuleOp mlir_module,
   mlir::PassManager pm(context);
   // Only enable verifier in debug builds.
   bool enableVerifier = false;
-#ifndef NDEBUG
-  enableVerifier = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    enableVerifier = true;
+  }
   pm.enableVerifier(enableVerifier);
   // Expand stablehlo complex math functions such as log_plus_one, etc.
   pm.addNestedPass<mlir::func::FuncOp>(

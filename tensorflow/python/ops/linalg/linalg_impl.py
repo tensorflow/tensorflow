@@ -1352,7 +1352,9 @@ def eigh_tridiagonal(alpha,
       def _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, x):
         """Implements the Sturm sequence recurrence."""
         with ops.name_scope('sturm'):
-          n = alpha.shape[0]
+          n = tensor_shape.dimension_value(alpha.shape[0])
+          if n is None:
+            n = array_ops.shape(alpha)[0]
           zeros = array_ops.zeros(array_ops.shape(x), dtype=dtypes.int32)
           ones = array_ops.ones(array_ops.shape(x), dtype=dtypes.int32)
 
@@ -1380,21 +1382,37 @@ def eigh_tridiagonal(alpha,
           blocksize = 16
           i = 1
           peel = (n - 1) % blocksize
-          unroll_cnt = peel
 
-          def unrolled_steps(start, q, count):
-            for j in range(unroll_cnt):
-              q, count = sturm_step(start + j, q, count)
-            return start + unroll_cnt, q, count
+          def make_unrolled_steps(unroll_cnt):
 
-          i, q, count = unrolled_steps(i, q, count)
+            def unrolled_steps(start, q, count):
+              for j in range(unroll_cnt):
+                q, count = sturm_step(start + j, q, count)
+              return start + unroll_cnt, q, count
+
+            return unrolled_steps
+
+          if isinstance(peel, int):
+            i, q, count = make_unrolled_steps(peel)(i, q, count)
+          else:
+            # n is only known at runtime, and so is the number of steps to peel
+            # off, so take them one at a time in a loop.
+            i, q, count = while_loop.while_loop(
+                lambda i, q, count: math_ops.less(i, 1 + peel),
+                make_unrolled_steps(1),
+                [i, q, count],
+                back_prop=False,
+            )
 
           # Run the remaining steps of the Sturm sequence using a partially
           # unrolled while loop.
-          unroll_cnt = blocksize
           cond = lambda i, q, count: math_ops.less(i, n)
           _, _, count = while_loop.while_loop(
-              cond, unrolled_steps, [i, q, count], back_prop=False)
+              cond,
+              make_unrolled_steps(blocksize),
+              [i, q, count],
+              back_prop=False,
+          )
           return count
 
       with ops.name_scope('compute_eigenvalues'):
@@ -1445,10 +1463,13 @@ def eigh_tridiagonal(alpha,
               message='Got empty index range in select_range.')
           target_counts = math_ops.range(select_range[0], select_range[1] + 1)
         elif select == 'v':
+          select_min = math_ops.cast(select_range[0], alpha.dtype)
+          select_max = math_ops.cast(select_range[1], alpha.dtype)
           asserts = check_ops.assert_less(
-              select_range[0],
-              select_range[1],
-              message='Got empty interval in select_range.')
+              select_min,
+              select_max,
+              message='Got empty interval in select_range.',
+          )
         else:
           raise ValueError("'select must have a value in {'a', 'i', 'v'}.")
 
@@ -1466,8 +1487,8 @@ def eigh_tridiagonal(alpha,
           upper = lambda_est_max + norm_slack + fudge * pivmin
         else:
           # Count the number of eigenvalues in the given range.
-          lower = select_range[0] - norm_slack - 2 * fudge * pivmin
-          upper = select_range[1] + norm_slack + fudge * pivmin
+          lower = select_min - norm_slack - 2 * fudge * pivmin
+          upper = select_max + norm_slack + fudge * pivmin
           first = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, lower)
           last = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, upper)
           target_counts = math_ops.range(first, last)
@@ -1520,8 +1541,9 @@ def eigh_tridiagonal(alpha,
         # eigenvalues are sorted in non-decreasing order.
         gap = eigvals[1:] - eigvals[:-1]
         eps = np.finfo(eigvals.dtype.as_numpy_dtype).eps
-        t_norm = math_ops.maximum(
-            math_ops.abs(eigvals[0]), math_ops.abs(eigvals[-1]))
+        # The eigenvalues are sorted, so this is the larger of the first and
+        # last one in magnitude, without indexing them when there are none.
+        t_norm = math_ops.reduce_max(math_ops.abs(eigvals))
         gaptol = np.sqrt(eps) * t_norm
         # Find the beginning and end of runs of eigenvectors corresponding
         # to eigenvalues closer than "gaptol", which will need to be
@@ -1547,7 +1569,7 @@ def eigh_tridiagonal(alpha,
             dtype=beta.dtype)
         nrm_v = norm(v0, axis=1)
         v0 = v0 / nrm_v[:, array_ops.newaxis]
-        zero_nrm = constant_op.constant(0, shape=nrm_v.shape, dtype=nrm_v.dtype)
+        zero_nrm = array_ops.zeros_like(nrm_v)
 
         # Replicate alpha-eigvals(ik) and beta across the k eigenvectors so we
         # can solve the k systems
@@ -1557,7 +1579,13 @@ def eigh_tridiagonal(alpha,
         alpha_shifted = (
             alpha[array_ops.newaxis, :] - eigvals_cast[:, array_ops.newaxis])
         beta = array_ops.tile(beta[array_ops.newaxis, :], [k, 1])
-        diags = [beta, alpha_shifted, math_ops.conj(beta)]
+        # Pad the off-diagonals to length n, since tridiagonal_solve only pads
+        # them itself when n is known statically.
+        diags = [
+            array_ops.pad(beta, [[0, 0], [0, 1]]),
+            alpha_shifted,
+            array_ops.pad(math_ops.conj(beta), [[0, 0], [1, 0]]),
+        ]
 
         def orthogonalize_close_eigenvectors(eigenvectors):
           # Eigenvectors corresponding to a cluster of close eigenvalues are not
@@ -1618,18 +1646,52 @@ def eigh_tridiagonal(alpha,
                                                [0, v0, nrm_v, zero_nrm])
         return transpose(v)
 
+    def _compute_trivial(alpha):
+      """Handles a matrix with at most one row."""
+      eigvals = math_ops.real(alpha)
+      if select == 'v':
+        # Keep the eigenvalue only if it's in the interval (min, max].
+        selected = math_ops.logical_and(
+            math_ops.greater(
+                eigvals, math_ops.cast(select_range[0], eigvals.dtype)
+            ),
+            math_ops.less_equal(
+                eigvals, math_ops.cast(select_range[1], eigvals.dtype)
+            ),
+        )
+        eigvals = array_ops.boolean_mask(eigvals, selected)
+      if eigvals_only:
+        return eigvals
+      num_rows = tensor_shape.dimension_value(alpha.shape[0])
+      if num_rows is None:
+        num_rows = array_ops.size(alpha)
+      eigvectors = eye(num_rows, dtype=alpha.dtype)
+      if select == 'v':
+        eigvectors = array_ops.boolean_mask(eigvectors, selected, axis=1)
+      return eigvals, eigvectors
+
+    def _compute(alpha, beta):
+      eigvals = _compute_eigenvalues(alpha, beta)
+      if eigvals_only:
+        return eigvals
+
+      eigvectors = _compute_eigenvectors(alpha, beta, eigvals)
+      return eigvals, eigvectors
+
     alpha = ops.convert_to_tensor(alpha, name='alpha')
-    n = alpha.shape[0]
-    if n <= 1:
-      return math_ops.real(alpha)
+    n = tensor_shape.dimension_value(alpha.shape[0])
+    if n is not None and n <= 1:
+      return _compute_trivial(alpha)
     beta = ops.convert_to_tensor(beta, name='beta')
 
     if alpha.dtype != beta.dtype:
       raise ValueError("'alpha' and 'beta' must have the same type.")
 
-    eigvals = _compute_eigenvalues(alpha, beta)
-    if eigvals_only:
-      return eigvals
-
-    eigvectors = _compute_eigenvectors(alpha, beta, eigvals)
-    return eigvals, eigvectors
+    if n is not None:
+      return _compute(alpha, beta)
+    # The size of the matrix is only known at runtime, e.g. in a tf.function
+    # whose input signature leaves it unknown.
+    n = array_ops.shape(alpha)[0]
+    return tf_cond.cond(
+        n <= 1, lambda: _compute_trivial(alpha), lambda: _compute(alpha, beta)
+    )

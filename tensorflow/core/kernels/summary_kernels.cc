@@ -242,9 +242,9 @@ class WriteScalarSummaryOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("value", &t));
     OP_REQUIRES(ctx, t->NumElements() == 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "value must contain exactly one element, got shape ",
-                    t->shape().DebugString()));
+                    t->shape().DebugString())));
 
     OP_REQUIRES_OK(ctx, s->WriteScalar(step, *t, tag));
   }

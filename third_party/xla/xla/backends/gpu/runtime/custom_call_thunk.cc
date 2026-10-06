@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -91,7 +90,9 @@ std::string GetSymbolName(const void* ptr) {
 }
 
 struct CustomCallRecordState : public CommandState {
-  std::vector<const XLA_FFI_Command*> commands;
+  absl::flat_hash_map<const se::CommandBuffer::Command*,
+                      absl::InlinedVector<const XLA_FFI_Command*, 1>>
+      commands;
 };
 
 // A per-execution state that holds state for prepare and initialize stages.
@@ -349,6 +350,7 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
     const CollectiveCliques* absl_nullable collective_cliques,
     const CollectiveMemory* absl_nullable collective_memory,
     const ffi::ExecutionContext* absl_nullable execution_context,
+    const CustomOptions* absl_nullable custom_options,
     absl::Span<se::Stream* const> computation_streams) {
   int32_t device_ordinal = -1;
   se::DeviceAddressAllocator* allocator = nullptr;
@@ -392,13 +394,15 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
       InvokeContext::StateContext{execution_state_.get(), prepare_state,
                                   initialize_state},
       called_computation_,
-      execution_context};
+      execution_context,
+      custom_options};
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(
     RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
     se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
     const ffi::ExecutionContext* execution_context,
+    const CustomOptions* custom_options,
     const BufferAllocations* buffer_allocations,
     const CollectiveParams* absl_nullable collective_params,
     CollectiveCliqueRequests* absl_nullable collective_clique_requests,
@@ -419,10 +423,11 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   InvokeContext context = BuildInvokeContext(
       run_id, stream, execution_scoped_state, buffer_allocations,
       collective_params, collective_clique_requests, collective_memory_requests,
-      collective_cliques, collective_memory, execution_context,
+      collective_cliques, collective_memory, execution_context, custom_options,
       computation_streams);
   GpuCollectivesState collectives_state{
-      collective_params, collective_clique_requests, collective_cliques};
+      collective_params, collective_clique_requests, collective_memory_requests,
+      collective_cliques, collective_memory};
   XLA_FFI_Collectives_Extension collectives =
       MakeCollectivesExtension(&collectives_state);
   collectives.extension_base.next = extension_start;
@@ -434,6 +439,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
     se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
     const ffi::ExecutionContext* execution_context,
+    const CustomOptions* custom_options,
     const BufferAllocations* buffer_allocations,
     const CollectiveParams* absl_nullable collective_params,
     CollectiveCliqueRequests* absl_nullable collective_clique_requests,
@@ -451,10 +457,11 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   InvokeContext context = BuildInvokeContext(
       run_id, stream, execution_scoped_state, buffer_allocations,
       collective_params, collective_clique_requests, collective_memory_requests,
-      collective_cliques, collective_memory, execution_context,
+      collective_cliques, collective_memory, execution_context, custom_options,
       computation_streams);
   GpuCollectivesState collectives_state{
-      collective_params, collective_clique_requests, collective_cliques};
+      collective_params, collective_clique_requests, collective_memory_requests,
+      collective_cliques, collective_memory};
   XLA_FFI_Collectives_Extension collectives =
       MakeCollectivesExtension(&collectives_state);
   collectives.extension_base.next = extension_start;
@@ -485,7 +492,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
         run_id, c_bundle->prepare, XLA_FFI_ExecutionStage_PREPARE,
         /*stream=*/nullptr,
         /*execution_scoped_state=*/params.execution_scoped_state,
-        /*execution_context=*/nullptr,
+        /*execution_context=*/nullptr, params.custom_options,
         /*buffer_allocations=*/params.buffer_allocations,
         /*collective_params=*/params.collective_params,
         /*collective_clique_requests=*/params.collective_clique_requests,
@@ -500,7 +507,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
         run_id, *owned_bundle->prepare, xla::ffi::ExecutionStage::kPrepare,
         /*stream=*/nullptr,
         /*execution_scoped_state=*/params.execution_scoped_state,
-        /*execution_context=*/nullptr,
+        /*execution_context=*/nullptr, params.custom_options,
         /*buffer_allocations=*/params.buffer_allocations,
         /*collective_params=*/params.collective_params,
         /*collective_clique_requests=*/params.collective_clique_requests,
@@ -535,8 +542,8 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
     return ExecuteFfiHandler(
         run_id, *c_bundle->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
         params.stream, params.execution_scoped_state,
-        params.ffi_execution_context, params.buffer_allocations,
-        params.collective_params,
+        params.ffi_execution_context, params.custom_options,
+        params.buffer_allocations, params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr, params.collective_cliques,
         params.collective_memory,
@@ -548,7 +555,8 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
         run_id, *owned_bundle->initialize,
         xla::ffi::ExecutionStage::kInitialize, params.stream,
         params.execution_scoped_state, params.ffi_execution_context,
-        params.buffer_allocations, params.collective_params,
+        params.custom_options, params.buffer_allocations,
+        params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr, params.collective_cliques,
         params.collective_memory,
@@ -567,7 +575,8 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
     return ExecuteFfiHandler(
         run_id, c_bundle->execute, XLA_FFI_ExecutionStage_EXECUTE, stream,
         params.execution_scoped_state, params.ffi_execution_context,
-        params.buffer_allocations, params.collective_params,
+        params.custom_options, params.buffer_allocations,
+        params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr, params.collective_cliques,
         params.collective_memory, params.additional_compute_streams);
@@ -579,7 +588,8 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
     return ExecuteFfiHandler(
         run_id, *owned_bundle->execute, xla::ffi::ExecutionStage::kExecute,
         stream, params.execution_scoped_state, params.ffi_execution_context,
-        params.buffer_allocations, params.collective_params,
+        params.custom_options, params.buffer_allocations,
+        params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr, params.collective_cliques,
         params.collective_memory, params.additional_compute_streams);
@@ -606,13 +616,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomCallThunk::Record(
 
   const bool is_record_create =
       std::holds_alternative<RecordCreate>(record_action);
-  const bool is_record_update =
-      std::holds_alternative<RecordUpdate>(record_action);
-  if (is_record_update) {  // Copy over commands from state to inline storage.
-    TF_RET_CHECK(state->commands.size() <= kMaxCommands)
-        << "Too many commands to fit in inline storage";
-    std::copy(state->commands.begin(), state->commands.end(), commands_storage);
-    num_commands = state->commands.size();
+  if (const auto* record_update = std::get_if<RecordUpdate>(&record_action)) {
+    if (auto it = state->commands.find(record_update->command);
+        it != state->commands.end()) {
+      TF_RET_CHECK(it->second.size() <= kMaxCommands)
+          << "Too many commands to fit in inline storage";
+      std::copy(it->second.begin(), it->second.end(), commands_storage);
+      num_commands = it->second.size();
+    }
   }
 
   XLA_FFI_RecordAction action_to_pass = is_record_create
@@ -645,8 +656,8 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomCallThunk::Record(
     return ExecuteFfiHandler(
         run_id, handler, stage, execute_params.stream,
         /*execution_scoped_state=*/nullptr,
-        execute_params.ffi_execution_context, execute_params.buffer_allocations,
-        execute_params.collective_params,
+        execute_params.ffi_execution_context, execute_params.custom_options,
+        execute_params.buffer_allocations, execute_params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr,
         execute_params.collective_cliques, execute_params.collective_memory,
@@ -679,19 +690,19 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomCallThunk::Record(
                                  command_buffer);
   }
 
-  // Save newly recorded commands to state if this is the Create action
-  // Must be done after returning from the FFI handler.
-  if (is_record_create) {
-    state->commands.assign(commands_storage, commands_storage + num_commands);
-  }
-
   // Return the last command in the chain for dependency tracking.
   // If more than one command was recorded, and they are independent, a dummy
   // node must be added to the command graph by the FFI client so that XLA
   // can track a single dependency for the entire chain.
   if (num_commands > 0 && commands_storage[num_commands - 1] != nullptr) {
-    return reinterpret_cast<const se::CommandBuffer::Command*>(
-        commands_storage[num_commands - 1]);
+    const auto* sink_command =
+        reinterpret_cast<const se::CommandBuffer::Command*>(
+            commands_storage[num_commands - 1]);
+    if (is_record_create) {
+      state->commands[sink_command].assign(commands_storage,
+                                           commands_storage + num_commands);
+    }
+    return sink_command;
   }
   // No commands were recorded.
   return nullptr;

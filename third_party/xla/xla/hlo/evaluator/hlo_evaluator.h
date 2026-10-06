@@ -18,6 +18,7 @@ limitations under the License.
 
 #define _USE_MATH_DEFINES
 
+#include <cmath>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -768,9 +769,10 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     bool same_layout =
         LayoutUtil::Equal(operand->shape().layout(), shape.layout());
     if (same_layout) {
+      const NativeT* operand_data = operand_literal.data<NativeT>().data();
       ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int /*thread_id*/) {
-            return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
+            return unary_op(operand_data[linear_index]);
           }));
     } else {
       ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
@@ -811,7 +813,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
   // Optional handler exercised when evaluating literals.
   EvalLiteralHandler eval_literal_handler_;
-
 
   // Set by EvaluateInternal and opportunistically used by the HandleXXX
   // functions. When non-empty, the HandleXXX function may evaluate the

@@ -367,9 +367,33 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   maybe_rank = a.shape.rank
   if (
       maybe_rank is not None
+      and isinstance(axis1, (int, np.integer))
+      and isinstance(axis2, (int, np.integer))
+  ):
+    norm1 = axis1 + maybe_rank if axis1 < 0 else axis1
+    norm2 = axis2 + maybe_rank if axis2 < 0 else axis2
+    if norm1 < 0 or norm1 >= maybe_rank:
+      raise ValueError(
+          f'Argument `axis1` (received axis1={axis1}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if norm2 < 0 or norm2 >= maybe_rank:
+      raise ValueError(
+          f'Argument `axis2` (received axis2={axis2}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if norm1 == norm2:
+      raise ValueError('axis1 and axis2 cannot be the same axis')
+    # Reassign after validation so the error messages above keep the
+    # original user-supplied values and the fast path below consumes
+    # normalized, non-negative axes.
+    axis1, axis2 = norm1, norm2
+
+  if (
+      maybe_rank is not None
       and offset == 0
-      and (axis1 == maybe_rank - 2 or axis1 == -2)
-      and (axis2 == maybe_rank - 1 or axis2 == -1)
+      and axis1 == maybe_rank - 2
+      and axis2 == maybe_rank - 1
   ):
     return array_ops.matrix_diag_part(a)
 
@@ -620,6 +644,30 @@ def _reduce(
   if keepdims is None:
     keepdims = False
   a = asarray(a, dtype=dtype)
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error.
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and axis is not None:
+    # Wrap scalar axes into a sequence so both ints and sequences of ints
+    # are validated; 0-d NumPy arrays cannot be iterated directly.
+    if isinstance(axis, (int, np.integer)):
+      static_axes = (axis,)
+    elif isinstance(axis, np.ndarray) and axis.ndim == 0:
+      static_axes = (int(axis),)
+    elif isinstance(axis, (list, tuple, range, np.ndarray)):
+      static_axes = axis
+    else:
+      static_axes = None
+    if static_axes is not None and builtins.all(
+        isinstance(ax, (int, np.integer)) for ax in static_axes
+    ):
+      for ax in static_axes:
+        normalized = ax + maybe_rank if ax < 0 else ax
+        if normalized < 0 or normalized >= maybe_rank:
+          raise ValueError(
+              f'Argument `axis` (received axis={ax}) is out of bounds '
+              f'for input of rank {maybe_rank}.'
+          )
   if (
       dtype == np.bool_ or preserve_bool and a.dtype == np.bool_
   ) and tf_bool_fn is not None:
@@ -843,6 +891,18 @@ def real(val):
 @np_utils.np_doc('repeat')
 def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
+  maybe_rank = a.shape.rank
+  if isinstance(axis, (int, np.integer)) and maybe_rank is not None:
+    # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
+    # 1-D of size 1), so validate against max(rank, 1).
+    validation_rank = 1 if maybe_rank < 1 else maybe_rank
+    normalized = axis + validation_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= validation_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    axis = normalized
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
@@ -933,6 +993,19 @@ def _reshape_method_wrapper(a, *newshape, **kwargs):
 @np_utils.np_doc('expand_dims')
 def expand_dims(a, axis):
   a = asarray(a)
+
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+    # Match np.expand_dims behavior: raise a ValueError at trace time for
+    # an out-of-bounds axis instead of letting the underlying op produce an
+    # opaque error deeper in the stack.
+    normalized = axis + maybe_rank + 1 if axis < 0 else axis
+    if normalized < 0 or normalized > maybe_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+
   return array_ops.expand_dims(a, axis=axis)
 
 
@@ -963,8 +1036,37 @@ def flatten(a, order='C'):
 @np_utils.np_doc('transpose')
 def transpose(a, axes=None):
   a = asarray(a)
+
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and isinstance(axes, (tuple, list)):
+    # Match np.transpose behavior: raise a ValueError at trace time for
+    # invalid `axes` instead of letting the underlying op produce an
+    # opaque error deeper in the stack. Duplicate detection uses a single
+    # integer bitmask (no intermediate list/set allocations), and only
+    # runs when the static rank and Python-int entries are known.
+    if len(axes) != maybe_rank:
+      raise ValueError(
+          f"axes don't match array. Expected {maybe_rank} axes, got "
+          f'{len(axes)}.'
+      )
+    normalized_mask = 0
+    for ax in axes:
+      if isinstance(ax, (int, np.integer)):
+        normalized = ax + maybe_rank if ax < 0 else ax
+        if normalized < 0 or normalized >= maybe_rank:
+          raise ValueError(
+              f"Argument 'axes' (received axes={ax}) is out of bounds for "
+              f'array of rank {maybe_rank}.'
+          )
+        bit = 1 << normalized
+        if normalized_mask & bit:
+          raise ValueError('repeated axis in transpose')
+        normalized_mask |= bit
+
   if axes is not None:
-    axes = asarray(axes)
+    # Specify an integer dtype explicitly: asarray([]) would otherwise
+    # infer float64, which the Transpose op's `Tperm` attr rejects.
+    axes = asarray(axes, dtype=np.int32)
   return array_ops.transpose(a=a, perm=axes)
 
 
@@ -1271,6 +1373,15 @@ def _boundaries_to_sizes(a, boundaries, axis):
 @np_utils.np_doc('split')
 def split(ary, indices_or_sections, axis=0):
   ary = asarray(ary)
+  if isinstance(axis, (int, np.integer)):
+    rank = ary.shape.rank
+    if rank is not None:
+      axis_int = int(axis)
+      if axis_int < -rank or axis_int >= rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {rank}.'
+        )
   if not isinstance(indices_or_sections, int):
     indices_or_sections = _boundaries_to_sizes(ary, indices_or_sections, axis)
   return array_ops.split(ary, indices_or_sections, axis=axis)
@@ -1607,6 +1718,41 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.rot90', v1=[])
 @np_utils.np_doc('rot90')
 def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
+  m = asarray(m)
+
+  maybe_rank = m.shape.rank
+  if isinstance(axes, (tuple, list, range, np.ndarray)):
+    # Validate the sequence length even when the static rank is unknown:
+    # otherwise invalid lengths only surface as unpacking errors further
+    # down.
+    if len(axes) != 2:
+      raise ValueError('len(axes) must be 2.')
+    if maybe_rank is not None:
+      # Direct scalar checks on the green path (no intermediate list, no
+      # generator expressions). NumPy checks for duplicate axes before
+      # out-of-range axes; `abs(ax0 - ax1) == maybe_rank` catches
+      # mixed-sign duplicates such as (0, -3) on a rank-3 array.
+      ax0, ax1 = axes[0], axes[1]
+      if isinstance(ax0, (int, np.integer)) and isinstance(
+          ax1, (int, np.integer)
+      ):
+        # Convert to Python int before arithmetic: NumPy unsigned scalars
+        # (e.g. np.uint32) perform modular subtraction, so `ax0 - ax1`
+        # would wrap around (e.g. 0 - 1 -> 4294967295) and both the
+        # duplicate check and the bounds check would misbehave.
+        ax0, ax1 = int(ax0), int(ax1)
+        if ax0 == ax1 or abs(ax0 - ax1) == maybe_rank:
+          raise ValueError('Axes must be different.')
+        if (
+            ax0 < -maybe_rank
+            or ax0 >= maybe_rank
+            or ax1 < -maybe_rank
+            or ax1 >= maybe_rank
+        ):
+          raise ValueError(
+              f'Axes={tuple(axes)} out of range for array of ndim={maybe_rank}.'
+          )
+
   m_rank = array_ops.rank(m)
   ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
 
@@ -1762,7 +1908,16 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   rank = arr.shape.rank
   if rank is None:
     rank = array_ops.rank(arr)
-  axis = axis + rank if axis < 0 else axis
+  if isinstance(rank, int):
+    normalized = axis + rank if axis < 0 else axis
+    if normalized < 0 or normalized >= rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {rank}.'
+      )
+    axis = normalized
+  else:
+    axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.

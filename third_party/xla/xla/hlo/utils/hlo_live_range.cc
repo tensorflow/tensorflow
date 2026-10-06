@@ -380,6 +380,17 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     auto async_context_it = computations_in_async_context_.find(computation);
     if (async_context_it != computations_in_async_context_.end()) {
       const HloComputation* async_context = async_context_it->second;
+      // Only the async-wrapped computation itself (not computations reached
+      // transitively through a nested kCall/kConditional/kWhile inside it)
+      // gets its start_time tightened to the first-fully-bound caller below.
+      // computations_in_async_context_ maps every computation in the async
+      // subtree to the same async_context, so without this check a value
+      // defined deep inside a nested call (e.g. reachable via kCall from the
+      // async-wrapped computation) would have its start_time forced all the
+      // way to the outer async-start/async-update's schedule time, which can
+      // land after other instructions in that same nested computation have
+      // already used the value, producing an inconsistent (too-late) start.
+      const bool is_async_wrapped_computation = computation == async_context;
       // async_context can have multiple callers when the same async-wrapped
       // computation is shared by several async-start/update instructions
       // (e.g. one outside and one inside a while loop). FlattenSchedule only
@@ -426,22 +437,18 @@ void HloLiveRange::CalculateBufferStartEndMap() {
           if (is_first_fully_bound.ok() && *is_first_fully_bound) {
             auto first_bound_it = instruction_schedule_.find(caller);
             if (first_bound_it != instruction_schedule_.end()) {
-              tightened_start_time =
-                  tightened_start_time.has_value()
-                      ? std::min(*tightened_start_time, first_bound_it->second)
-                      : first_bound_it->second;
+              tightened_start_time = std::min(
+                  first_bound_it->second,
+                  tightened_start_time.value_or(first_bound_it->second));
             }
           }
         }
       }
-      if (tightened_start_time.has_value()) {
-        // Cap by definition_end_time (computed above): for computations
-        // reached transitively through a kCall inside the async-wrapped
-        // computation, FlattenSchedule inlines their bodies even earlier
-        // than the async-wrapped computation's own instructions, so a
-        // caller's schedule time can land after such an instruction's own
-        // (already-correct) end. Capping avoids pushing start past end
-        // while still tightening whenever it's safe to do so.
+      if (is_async_wrapped_computation && tightened_start_time.has_value()) {
+        // Cap by definition_end_time (computed above) so that a late-binding
+        // caller's schedule time (e.g. an async-update) never lands past
+        // this instruction's own (already-correct) end, which would
+        // otherwise push start past end.
         start_time = std::min(*tightened_start_time, definition_end_time);
       }
       VLOG(2) << "Setting the definition end time for op in async context: "

@@ -9626,6 +9626,12 @@ a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
 satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
 If `adjoint` is `True` then each output matrix satisfies
 `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
+
+If a matrix is not invertible there is no guarantee what the op does. It
+may detect the condition and raise an exception or it may simply return a
+garbage result. In particular, under XLA compilation (e.g.
+`tf.function(jit_compile=True)`) the condition is not detected and the
+result is implementation-defined.
   }];
 
   let arguments = (ins
@@ -21464,7 +21470,8 @@ either be empty or have the same number of elements as `keys`.}]>:$alternate_key
     BoolAttr:$training,
     StrAttr:$file_path,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$write_vector_predictions,
-    DefaultValuedOptionalAttr<F32Attr, "1.0f">:$sample_rate
+    DefaultValuedOptionalAttr<F32Attr, "1.0f">:$sample_rate,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$date
   );
 
   let results = (outs);

@@ -8844,7 +8844,7 @@ TEST(EvalErrorTest, Payload) {
     DCHECK(absl::endian::native == absl::endian::big);
     error_detail = absl::byteswap(error_detail);
   }
-  (*payload.data()) = error_detail;
+  (payload[0]) = error_detail;
 
   s.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(payload));
 

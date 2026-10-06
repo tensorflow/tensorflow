@@ -86,6 +86,13 @@ bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
   return false;
 }
 
+bool IsRaggedDotWgrad(const RaggedDotDimensionNumbers& dnums) {
+  const auto& lhs_contracting_dims =
+      dnums.dot_dimension_numbers().lhs_contracting_dimensions();
+  return absl::c_linear_search(lhs_contracting_dims,
+                               dnums.lhs_ragged_dimensions(0));
+}
+
 bool IsTritonSupportedRaggedDot(
     const se::GpuComputeCapability& gpu_compute_capability,
     const HloInstruction& instr) {

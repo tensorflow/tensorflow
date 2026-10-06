@@ -123,17 +123,20 @@ auto SqueezeElements(ContainerT&& elements, ArrayRef<uint32_t> squeeze_dims) {
 
 // Returns a new tensor type with the given dimensions removed.
 RankedTensorType SqueezeTensorType(RankedTensorType type,
-                                   ArrayRef<uint32_t> squeeze_dims) {
+                                   ArrayRef<uint32_t> squeeze_dims,
+                                   Attribute dst_encoding_hint = {}) {
   SmallVector<int64_t> shape = SqueezeElements(type.getShape(), squeeze_dims);
   Attribute encoding = type.getEncoding();
   if (encoding) {
     auto inferLayoutInterface =
         cast<DialectInferLayoutInterface>(&encoding.getDialect());
+    Attribute dst_encoding = dst_encoding_hint;
     [[maybe_unused]] LogicalResult result =
         inferLayoutInterface->inferReshapeOpEncoding(
-            type.getShape(), encoding, shape, encoding, /*allowReorder=*/false,
-            /*loc=*/std::nullopt);
+            type.getShape(), encoding, shape, dst_encoding,
+            /*allowReorder=*/false, /*loc=*/std::nullopt);
     CHECK(succeeded(result));
+    encoding = dst_encoding;
   }
   return RankedTensorType::get(shape, type.getElementType(), encoding);
 }
@@ -141,11 +144,15 @@ RankedTensorType SqueezeTensorType(RankedTensorType type,
 // Returns a new tensor value with the given dimensions removed.
 // Low dimensions are squeezed first.
 Value SqueezeTensorValue(PatternRewriter& rewriter, Value value,
-                         ArrayRef<uint32_t> squeeze_dims) {
+                         ArrayRef<uint32_t> squeeze_dims,
+                         Attribute dst_encoding_hint = {}) {
   CHECK(absl::c_is_sorted(squeeze_dims));
   for (uint32_t i = 0; i < squeeze_dims.size(); ++i) {
     uint32_t dim = squeeze_dims[i] - i;
-    Type type = SqueezeTensorType(cast<RankedTensorType>(value.getType()), dim);
+    Attribute hint =
+        (i + 1 == squeeze_dims.size()) ? dst_encoding_hint : Attribute();
+    Type type =
+        SqueezeTensorType(cast<RankedTensorType>(value.getType()), dim, hint);
     value = SqueezeDimsOp::create(rewriter, value.getLoc(), type, value, dim);
   }
   return value;
@@ -197,7 +204,12 @@ LogicalResult SqueezeReshapeOperand(ReshapeOp op, PatternRewriter& rewriter) {
     return rewriter.notifyMatchFailure(op, "No unit dimensions.");
   }
 
-  Value value = SqueezeTensorValue(rewriter, op.getSrc(), squeeze_dims);
+  Attribute hint;
+  if (SqueezeElements(op.getSrc().getType().getShape(), squeeze_dims) ==
+      op.getType().getShape()) {
+    hint = op.getType().getEncoding();
+  }
+  Value value = SqueezeTensorValue(rewriter, op.getSrc(), squeeze_dims, hint);
   rewriter.modifyOpInPlace(op, [&]() { op.setOperand(value); });
   return success();
 }

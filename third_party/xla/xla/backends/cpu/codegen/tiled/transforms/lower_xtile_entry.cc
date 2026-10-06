@@ -47,7 +47,6 @@ limitations under the License.
 
 namespace xla::cpu {
 
-#define GEN_PASS_DECL_LOWERXTILEENTRYPASS
 #define GEN_PASS_DEF_LOWERXTILEENTRYPASS
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"
 
@@ -132,6 +131,13 @@ class LowerXTileEntryPass
       auto kernel_func = FuncOp::create(
           builder, kernel_name,
           builder.getFunctionType({call_frame_type}, {error_type}));
+      if (prefer_vector_width_ > 0) {
+        kernel_func->setAttr(
+            "llvm.passthrough",
+            builder.getArrayAttr({builder.getStrArrayAttr(
+                {"prefer-vector-width",
+                 absl::StrCat(prefer_vector_width_.getValue())})}));
+      }
 
       builder.setInsertionPointToStart(kernel_func.addEntryBlock());
 

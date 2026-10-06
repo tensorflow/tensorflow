@@ -95,6 +95,18 @@ KernelLoaderSpec KernelLoaderSpec::CreateSharedCudaPtxInMemorySpec(
                           std::move(kernel_name), arity, kernel_args_packing};
 }
 
+bool KernelLoaderSpec::IsSerializable() const {
+  if (std::holds_alternative<KernelArgsPackingFunc>(kernel_args_packing_) &&
+      std::get<KernelArgsPackingFunc>(kernel_args_packing_) != nullptr) {
+    return false;
+  }
+  if (has_in_process_symbol() && in_process_symbol()->persistent_name.empty()) {
+    return false;
+  }
+  return has_cuda_cubin_in_memory() || has_cuda_ptx_in_memory() ||
+         has_in_process_symbol();
+}
+
 absl::StatusOr<KernelLoaderSpecProto> KernelLoaderSpec::ToProto() const {
   if (std::holds_alternative<KernelArgsPackingFunc>(kernel_args_packing_) &&
       std::get<KernelArgsPackingFunc>(kernel_args_packing_) != nullptr) {
@@ -188,6 +200,17 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
           "been "
           "found.");
   }
+}
+
+KernelLoaderSpec KernelLoaderSpec::ToShared() && {
+  if (std::holds_alternative<OwningCudaCubinInMemory>(payload_)) {
+    payload_ = SharedCudaCubinInMemory{std::make_shared<std::vector<uint8_t>>(
+        std::move(std::get<OwningCudaCubinInMemory>(payload_).cubin_bytes))};
+  } else if (std::holds_alternative<OwningCudaPtxInMemory>(payload_)) {
+    payload_ = SharedCudaPtxInMemory{std::make_shared<std::string>(
+        std::move(std::get<OwningCudaPtxInMemory>(payload_).ptx))};
+  }
+  return std::move(*this);
 }
 
 }  // namespace stream_executor

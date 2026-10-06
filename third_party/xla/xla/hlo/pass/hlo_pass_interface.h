@@ -118,7 +118,7 @@ class HloPassInterface {
   // If an HloPassMetadata has previously been created, it adds a (key, value)
   // pair metric if none was already set or updates the existing value.
   // If an HloPassMetadata doesn't exist, it simply returns.
-  static void SetKVMetric(HloModule* module, const std::string& key,
+  static void SetKVMetric(HloModule* module, absl::string_view key,
                           int64_t value) {
     auto status = module->metadata()->set_key_value_metric(key, value);
     if (!status.ok()) {

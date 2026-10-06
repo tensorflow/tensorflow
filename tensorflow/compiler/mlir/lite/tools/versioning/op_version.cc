@@ -183,6 +183,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(fully_connected_params != nullptr);
 
+      // A non-empty `quant_spec` describes numerics that a runtime without
+      // explicit support for that spec cannot reproduce. It must be checked
+      // before the cases below, because an op carrying a `quant_spec` also
+      // matches them (an a4w2 op has int2 weights) and would otherwise be
+      // reported as a version that older runtimes accept.
+      if (fully_connected_params->quant_spec_size > 0) {
+        return 15;
+      }
+
       if (op_sig.inputs.at(1).type == kTfLiteInt2) {
         return 14;
       }

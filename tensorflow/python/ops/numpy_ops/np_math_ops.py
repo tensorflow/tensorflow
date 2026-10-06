@@ -536,12 +536,20 @@ def logaddexp(x1, x2):
       float_dtype = np_utils.result_type(float)
       x1 = math_ops.cast(x1, float_dtype)
       x2 = math_ops.cast(x2, float_dtype)
-    amax = maximum(x1, x2)
     delta = x1 - x2
+    # `maximum` sends the whole gradient to `x1` where `x1 == x2`, so the two
+    # partial derivatives (analytically 0.5 each) come out as 1.0 and 0.0.
+    # Selecting the operands through `where` instead keeps the forward values
+    # bit-for-bit identical while giving each argument its own differentiable
+    # expression, so both gradients are 0.5 at `x1 == x2`. Selecting them once
+    # also avoids evaluating `exp` and `log1p` for both branches. The exponent
+    # is always <= 0, hence this cannot overflow.
+    max_val = np_array_ops.where(x1 > x2, x1, x2)
+    min_val = np_array_ops.where(x1 > x2, x2, x1)
     return np_array_ops.where(
         isnan(delta),
         x1 + x2,  # NaNs or infinities of the same sign.
-        amax + log1p(exp(-abs(delta))),
+        max_val + log1p(exp(min_val - max_val)),
     )
 
   return _bin_op(f, x1, x2)
@@ -1745,8 +1753,15 @@ def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing
     a_shape = a.shape
     if a_shape.rank is not None:
       rank = len(a_shape)
-      if (axis1 == -2 or axis1 == rank - 2) and (
-          axis2 == -1 or axis2 == rank - 1
+      # Guard `rank >= 2` so the fast path never routes a rank-1 (or
+      # rank-0) input with negative axes to `math_ops.trace`/
+      # `matrix_diag_part`, which require rank >= 2: e.g. on a rank-1
+      # input, `axis1 == -2 or axis1 == rank - 2` erroneously holds for
+      # the out-of-bounds default `axis1=-2`.
+      if (
+          rank >= 2
+          and (axis1 == -2 or axis1 == rank - 2)
+          and (axis2 == -1 or axis2 == rank - 1)
       ):
         return math_ops.trace(a)
 

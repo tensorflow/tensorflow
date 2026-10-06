@@ -93,7 +93,7 @@ CApiMegascaleErrorAggregator::~CApiMegascaleErrorAggregator() {
 
 void CApiMegascaleErrorAggregator::AddError(
     absl::string_view worker_id,
-    const runtime::MegaScaleRuntimeErrorOverlay& error) {
+    const runtime::external::MegaScaleRuntimeError& error) {
   std::string serialized_error = error.SerializeAsString();
   PJRT_Megascale_ErrorAggregator_AddError_Args args{};
   args.struct_size = PJRT_Megascale_ErrorAggregator_AddError_Args_STRUCT_SIZE;

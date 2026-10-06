@@ -48,8 +48,8 @@ namespace xla {
 
 namespace {
 
-void RecordPassStartMetadata(HloModule& module, const std::string& pass_name,
-                             const std::string& pipeline_name) {
+void RecordPassStartMetadata(HloModule& module, absl::string_view pass_name,
+                             absl::string_view pipeline_name) {
   module.metadata()->RecordPassStart();
   // An HloPassMetadata was just created so absl::Status should always be OK.
   CHECK_OK(module.metadata()->set_current_pass_name(pass_name));
@@ -57,7 +57,7 @@ void RecordPassStartMetadata(HloModule& module, const std::string& pass_name,
 }
 
 absl::Status AttemptRecordPassEndMetadata(HloModule& module,
-                                          const std::string& pass_name,
+                                          absl::string_view pass_name,
                                           bool module_changed) {
   // Module id is set here instead of RecordPassStartMetadata because it may
   // change in the middle of the pass, and we want the final id.
@@ -69,7 +69,7 @@ absl::Status AttemptRecordPassEndMetadata(HloModule& module,
   return absl::OkStatus();
 }
 
-void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
+void RecordPassEndMetadata(HloModule& module, absl::string_view pass_name,
                            bool module_changed) {
   absl::Status status =
       AttemptRecordPassEndMetadata(module, pass_name, module_changed);

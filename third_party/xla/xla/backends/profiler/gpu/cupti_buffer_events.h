@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "xla/backends/profiler/gpu/string_deduper.h"
 #include "xla/tsl/profiler/utils/buffer_pool.h"
@@ -168,6 +169,9 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
 
 // Gets the name of the CUpti_ActivityMemoryKind value.
 absl::string_view GetMemoryKindName(int8_t memory_kind);
+
+// Maps an OverheadKind enum to a string.
+std::string GetActivityOverheadKindString(CUpti_ActivityOverheadKind kind);
 
 enum class CuptiTracerEventType {
   Unsupported = 0,

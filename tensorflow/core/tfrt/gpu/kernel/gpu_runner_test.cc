@@ -50,7 +50,7 @@ namespace {
 constexpr int kNumVirtualGpuDevices = 1;
 constexpr char kFunctionName[] = "foo";
 
-StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
+absl::StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
@@ -61,17 +61,17 @@ StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   return graph;
 }
 
-StatusOr<FunctionDef> SampleFunctionAddXY(const std::string& name) {
+absl::StatusOr<FunctionDef> SampleFunctionAddXY(const std::string& name) {
   TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph, name, &fdef));
   return fdef;
 }
 
-Status GetDevices(const tensorflow::tfd::KernelFallbackCompatRequestState*
-                      fallback_request_state,
-                  Device** cpu_device,
-                  absl::flat_hash_map<int, Device*>& gpu_devices) {
+absl::Status GetDevices(const tensorflow::tfd::KernelFallbackCompatRequestState*
+                            fallback_request_state,
+                        Device** cpu_device,
+                        absl::flat_hash_map<int, Device*>& gpu_devices) {
   *cpu_device = fallback_request_state->device_manager().HostCPU();
   if (!*cpu_device) {
     return absl::InternalError(
@@ -94,7 +94,7 @@ Status GetDevices(const tensorflow::tfd::KernelFallbackCompatRequestState*
       return absl::InternalError("Device IDs are not consecutive.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -166,24 +166,20 @@ TEST_F(GpuRunnerTest, Basic) {
   // Construct GpuRunInputs.
   GpuRunInputs run_inputs;
 
-  llvm::SmallVector<tfrt_stub::FallbackTensor> args;
   Tensor tensor1 = CreateTensor<int32>(TensorShape({1, 2}), {1, 2});
   Tensor tensor2 = CreateTensor<int32>(TensorShape({1, 2}), {3, 4});
-  args.push_back(tfrt_stub::FallbackTensor(tensor1));
-  args.push_back(tfrt_stub::FallbackTensor(tensor2));
-  run_inputs.args = &args;
+  run_inputs.args.push_back(tfrt_stub::FallbackTensor(tensor1));
+  run_inputs.args.push_back(tfrt_stub::FallbackTensor(tensor2));
 
   run_inputs.num_outputs = 1;
-  run_inputs.resource_indices = tfrt::ArrayRef<int64_t>(0);
-  run_inputs.used_output_indices = tfrt::ArrayRef<int64_t>(0);
+  run_inputs.resource_indices = {0};
+  run_inputs.used_output_indices = {0};
   run_inputs.func_name = kFunctionName;
 
-  absl::flat_hash_map<int, Device*> gpu_devices;
   ASSERT_OK(GetDevices(fallback_request_state_.get(), &run_inputs.cpu_device,
-                       gpu_devices));
-  run_inputs.gpu_devices = &gpu_devices;
+                       run_inputs.gpu_devices));
   run_inputs.fallback_request_state = fallback_request_state_.get();
-  run_inputs.exec_ctx = exec_ctx_.get();
+  run_inputs.host_ctx = exec_ctx_->host();
 
   // Run the input.
   TF_ASSERT_OK_AND_ASSIGN(

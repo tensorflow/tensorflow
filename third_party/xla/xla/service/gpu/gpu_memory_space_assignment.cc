@@ -69,6 +69,10 @@ const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
 
 absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space) {
   switch (memory_space) {
+    case 1:
+      // Legacy value for collective memory space before
+      // Layout::kCollectiveMemorySpace (7) was introduced
+      return MemorySpaceColor::kCollective;
     case static_cast<int64_t>(MemorySpaceColor::kDefault):
     case static_cast<int64_t>(MemorySpaceColor::kCollective):
     case static_cast<int64_t>(MemorySpaceColor::kTempBuffer):
@@ -76,8 +80,9 @@ absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space) {
     default:
       return InvalidArgument(
           "Invalid memory space %d. "
-          "Valid values are 0 (default), 1 (collective), 2 (temp).",
-          memory_space);
+          "Valid values are %d (default), %d (collective), %d (temp).",
+          memory_space, MemorySpaceColor::kDefault,
+          MemorySpaceColor::kCollective, MemorySpaceColor::kTempBuffer);
   }
 }
 
@@ -177,12 +182,12 @@ bool HasSymmetricMemoryInstruction(const HloValue& input_alias) {
   return RequiresCollectiveSymmetricMemorySpace(input_alias.instruction());
 }
 
-// Returns the memory space requested for the given custom call use, or
+// Returns the memory space requested for the given instruction use, or
 // MemorySpaceColor::kDefault if none is specified.
-static absl::StatusOr<MemorySpaceColor> GetCustomCallOperandMemorySpace(
+static absl::StatusOr<MemorySpaceColor> GetInstructionOperandMemorySpace(
     const HloUse& use) {
-  if (use.instruction->opcode() != HloOpcode::kCustomCall ||
-      !use.operand_index.empty()) {
+  if (!use.operand_index.empty() ||
+      !use.instruction->has_frontend_attributes()) {
     return MemorySpaceColor::kDefault;
   }
 
@@ -225,12 +230,12 @@ bool IsRaggedAllToAllCollectiveOperandOrResult(const HloValue& value) {
   return false;
 }
 
-// Returns the memory space requested for a custom call result value, or
+// Returns the memory space requested for an instruction result value, or
 // MemorySpaceColor::kDefault if none is specified.
-static absl::StatusOr<MemorySpaceColor> GetCustomCallResultMemorySpace(
+static absl::StatusOr<MemorySpaceColor> GetInstructionResultMemorySpace(
     const HloValue& value) {
   const HloInstruction* instr = value.instruction();
-  if (instr->opcode() != HloOpcode::kCustomCall) {
+  if (!instr->has_frontend_attributes()) {
     return MemorySpaceColor::kDefault;
   }
 
@@ -265,26 +270,33 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     // space from the layout.
     const HloPosition& defining_position = value->defining_position();
     if (defining_position.shape().has_layout()) {
-      const BufferValue::Color memory_space =
+      BufferValue::Color memory_space =
           defining_position.shape().layout().memory_space();
+      if (memory_space == 1) {
+        // Legacy value for collective memory space before
+        // Layout::kCollectiveMemorySpace (7) was introduced.
+        memory_space =
+            static_cast<BufferValue::Color>(MemorySpaceColor::kCollective);
+      }
+
       if (memory_space != 0) {
         candidates.push_back(memory_space);
       }
     }
 
-    // Check if this value is a custom call result with a requested memory
+    // Check if this value is an instruction result with a requested memory
     // space.
     ABSL_ASSIGN_OR_RETURN(MemorySpaceColor result_ms,
-                     GetCustomCallResultMemorySpace(*value));
+                     GetInstructionResultMemorySpace(*value));
     if (result_ms != MemorySpaceColor::kDefault) {
       candidates.push_back(static_cast<BufferValue::Color>(result_ms));
     }
 
-    // Check if any use of this alias is a custom call operand with a
+    // Check if any use of this alias is an instruction operand with a
     // requested memory space.
     for (const HloUse& use : value->GetUses()) {
       ABSL_ASSIGN_OR_RETURN(MemorySpaceColor operand_ms,
-                       GetCustomCallOperandMemorySpace(use));
+                       GetInstructionOperandMemorySpace(use));
       if (operand_ms != MemorySpaceColor::kDefault) {
         candidates.push_back(static_cast<BufferValue::Color>(operand_ms));
       }

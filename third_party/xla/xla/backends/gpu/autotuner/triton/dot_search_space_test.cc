@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -198,8 +199,86 @@ TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
   EXPECT_EQ(search_space.ToString(),
             "problem_size_BxMxNxKxE: 1x1024x1024x1024x(16->16) "
             "tile_range_MxNxK: [16-256]x[8-512]x[16-?] "
-            "desired_total_warps: 2640 occupancy_optimization: 1 "
+            "desired_total_warps: 1056 occupancy_optimization: 1 "
             "warps_per_cta: [2-?]");
+}
+
+TEST_F(DotSearchSpaceTest, ScalesDesiredWarpsWithArithmeticIntensity) {
+  // Memory-bound (128x128x128, AI ~ 42.7 FLOP/B): 5 warps/scheduler -> 2640.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mem_bound_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/128, /*rhs_parallel_dim=*/128,
+                          /*contracting_dim=*/128));
+  EXPECT_THAT(MakeSearchSpace(mem_bound_module.get()).ToString(),
+              ::testing::HasSubstr("desired_total_warps: 2640"));
+
+  // Intermediate (512x512x512, AI ~ 170.7 FLOP/B): 3 warps/scheduler -> 1584.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mid_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/512, /*rhs_parallel_dim=*/512,
+                          /*contracting_dim=*/512));
+  EXPECT_THAT(MakeSearchSpace(mid_module.get()).ToString(),
+              ::testing::HasSubstr("desired_total_warps: 1584"));
+
+  // Compute-bound (1024x1024x1024, AI ~ 341.3 FLOP/B): 2 warps/scheduler ->
+  // 1056.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> compute_bound_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
+                          /*contracting_dim=*/1024));
+  EXPECT_THAT(MakeSearchSpace(compute_bound_module.get()).ToString(),
+              ::testing::HasSubstr("desired_total_warps: 1056"));
+}
+
+TEST_F(DotSearchSpaceTest, ScalesDesiredWarpsWithHardwareDerivedRidgePoint) {
+  // Use a fully-populated H100 device description containing matrix unit and
+  // memory bandwidth specifications.
+  se::DeviceDescription h100_device = TestGpuDeviceInfo::H100SXMDeviceInfo();
+
+  // Memory-bound (128x128x128, AI ~ 42.7 FLOP/B): 5 warps/scheduler -> 2640.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mem_bound_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/128, /*rhs_parallel_dim=*/128,
+                          /*contracting_dim=*/128));
+  TritonDotFusionSearchSpace mem_space(h100_device,
+                                       GetDot(mem_bound_module.get()));
+  EXPECT_THAT(mem_space.ToString(),
+              ::testing::HasSubstr("desired_total_warps: 2640"));
+
+  // Intermediate (512x512x512, AI ~ 170.7 FLOP/B): 3 warps/scheduler -> 1584.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mid_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/512, /*rhs_parallel_dim=*/512,
+                          /*contracting_dim=*/512));
+  TritonDotFusionSearchSpace mid_space(h100_device, GetDot(mid_module.get()));
+  EXPECT_THAT(mid_space.ToString(),
+              ::testing::HasSubstr("desired_total_warps: 1584"));
+
+  // Compute-bound (1024x1024x1024, AI ~ 341.3 FLOP/B): 2 warps/scheduler ->
+  // 1056.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> compute_bound_module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
+                          /*contracting_dim=*/1024));
+  TritonDotFusionSearchSpace compute_space(h100_device,
+                                           GetDot(compute_bound_module.get()));
+  EXPECT_THAT(compute_space.ToString(),
+              ::testing::HasSubstr("desired_total_warps: 1056"));
+}
+
+TEST_F(DotSearchSpaceTest, EliminatesLowOccupancyTilesForMediumProblem) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
+                          /*contracting_dim=*/1024));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  // On 1024x1024 with 132 cores, tiles >= 128x128 yield <= 64 result tiles
+  // (< 132 cores) and should be eliminated in non-exhaustive mode.
+  EXPECT_THAT(
+      search_space.GenerateConfigs(),
+      AllOf(Not(IsEmpty()),
+            Not(Contains(AllOf(BlockMIs(Ge(128)), BlockNIs(Ge(128)))))));
 }
 
 TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {

@@ -171,11 +171,6 @@ IfrtIrLoadedExecutable::GetHumanReadableProgramText() const {
   return result;
 }
 
-int IfrtIrLoadedExecutable::num_devices() const {
-  DCHECK(this);
-  return devices_->size();
-}
-
 int64_t IfrtIrLoadedExecutable::SizeOfGeneratedCodeInBytes() const {
   // TODO(b/261226026): Implement this API or remove it from IFRT.
   return -1;
@@ -338,11 +333,6 @@ IfrtIrLoadedExecutable::GetMpmdCostAnalysis() const {
   return mpmd_cost_analysis;
 }
 
-absl::Span<Device* const> IfrtIrLoadedExecutable::addressable_devices() const {
-  DCHECK(this);
-  return devices_->devices();
-}
-
 std::optional<DeviceListRef> IfrtIrLoadedExecutable::devices() const {
   return devices_;
 }
@@ -353,7 +343,13 @@ IfrtIrLoadedExecutable::GetMpmdAddressableDevices() const {
       mpmd_addressable_devices;
   mpmd_addressable_devices.reserve(program_->atom_program_executables->size());
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    mpmd_addressable_devices.insert({name, executable->addressable_devices()});
+    if (std::optional<DeviceListRef> devices = executable->devices();
+        devices.has_value()) {
+      mpmd_addressable_devices.insert(
+          {name, (*devices)->AddressableDeviceList()->devices()});
+    } else {
+      mpmd_addressable_devices.insert({name, {}});
+    }
   }
   return mpmd_addressable_devices;
 }

@@ -24,13 +24,20 @@ limitations under the License.
 namespace xla {
 
 // Returns the parameter numbers (index0, index1) used in a simple comparator
-// (compare(param0, param1)). Returns (-1, -1) if operands are not parameters.
+// (compare(param0, param1) with PARTIAL or TOTAL order). Excludes WEAK order,
+// which is matched by MatchNumpySortComparator instead.
+// Note: TOTAL order is always used for integer comparisons, and on floats it
+// matches GPU CUB radix sort's native kDefaultOrder (IEEE-754 totalOrder).
+// Callers that map simple float comparators to NumPy order (such as CPU
+// SortThunk) must explicitly reject TOTAL order on floating-point types.
+// Returns (-1, -1) if not matched.
 std::pair<int64_t, int64_t> MatchSimpleSortComparator(
     const HloCompareInstruction* compare);
 
 // Returns the parameter numbers (index0, index1) used in a comparator for
-// NumPy sort order. Returns (-1, -1) if the comparison is not a NumPy sort
-// comparator.
+// NumPy sort order (either a direct WEAK order parameter comparison or the
+// canonicalized zero/NaN pattern). Returns (-1, -1) if the comparison is not a
+// NumPy sort comparator.
 std::pair<int64_t, int64_t> MatchNumpySortComparator(
     const HloCompareInstruction* compare);
 

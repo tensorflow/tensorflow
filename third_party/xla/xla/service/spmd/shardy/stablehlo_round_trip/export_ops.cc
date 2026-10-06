@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
 
 #include <memory>
+#include <type_traits>
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -59,6 +61,7 @@ using ::mlir::OperationPass;
 using ::mlir::Pass;
 using ::mlir::StringRef;
 using ::mlir::success;
+using ::mlir::SymbolTable;
 
 using ::mlir::sdy::AllGatherOp;
 using ::mlir::sdy::AllReduceOp;
@@ -135,25 +138,52 @@ void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
   mlir::sdy::setShardings(newOp, sharding);
 }
 
+bool isReplicatedSharding(TensorShardingAttr sharding,
+                          const SymbolTable& symbolTable) {
+  return !sharding ||
+         (sharding.isFullyReplicated() && sharding.getUnreducedAxes().empty() &&
+          !mlir::sdy::isSingleDeviceSharding(sharding, symbolTable));
+}
+
 template <class OpTy>
 class ShardingPattern : public OpConversionPattern<OpTy> {
  public:
   using OpConversionPattern<OpTy>::OpConversionPattern;
 
   explicit ShardingPattern(mlir::MLIRContext* context,
-                           bool keepHloShardingConstraints)
+                           bool keepHloShardingConstraints,
+                           const SymbolTable& symbolTable)
       : OpConversionPattern<OpTy>(context),
-        keepHloShardingConstraints(keepHloShardingConstraints) {}
+        keepHloShardingConstraints(keepHloShardingConstraints),
+        symbolTable(symbolTable) {}
 
  private:
   LogicalResult matchAndRewrite(
       OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
+    if constexpr (std::is_same_v<OpTy, ReshardOp>) {
+      auto isSingleDeviceToReplicated = [&](TensorShardingAttr s1,
+                                            TensorShardingAttr s2) {
+        return mlir::sdy::isSingleDeviceSharding(s1, symbolTable) &&
+               isReplicatedSharding(s2, symbolTable);
+      };
+      TensorShardingAttr inSharding =
+          mlir::sdy::getShardingBypassingBarriers(op.getInput());
+      TensorShardingAttr outSharding = op.getSharding();
+      if (isSingleDeviceToReplicated(inSharding, outSharding) ||
+          isSingleDeviceToReplicated(outSharding, inSharding)) {
+        // Reshard between a replicated sharding and a single-device sharding
+        // is a noop and should be erased.
+        rewriter.replaceOp(op, adaptor.getInput());
+        return success();
+      }
+    }
     rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(), rewriter,
                         keepHloShardingConstraints);
     return success();
   }
   bool keepHloShardingConstraints;
+  const SymbolTable& symbolTable;
 };
 
 template <class OpTy>
@@ -189,6 +219,7 @@ class ExportOpsPass
 
   void runOnOperation() final {
     mlir::MLIRContext& context = getContext();
+    SymbolTable symbolTable(getOperation());
     mlir::ConversionTarget target(context);
     // We do not expect to see ShardingConstraintOp in the input module.
     // ShardingConstraintOp should be replaced by ReshardOp before this pass.
@@ -211,7 +242,7 @@ class ExportOpsPass
                  CollectivePattern<ReduceScatterOp>>(&context);
     patterns
         .add<ShardingPattern<ShardingConstraintOp>, ShardingPattern<ReshardOp>>(
-            &context, keepHloShardingConstraints);
+            &context, keepHloShardingConstraints, symbolTable);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();
