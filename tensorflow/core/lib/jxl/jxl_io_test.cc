@@ -74,11 +74,36 @@ TEST(JxlIoTest, DecodeHeaderInvalidDimensions) {
   ASSERT_TRUE(absl::HexStringToBytes(hex_data, &data));
   int width = 0, height = 0, channels = 0;
   EXPECT_FALSE(DecodeHeader(data, &width, &height, &channels));
+  EXPECT_FALSE(DecodeHeader(data, nullptr, nullptr, nullptr));
 }
 
 TEST(JxlIoTest, DecodeHeaderEmpty) {
   int width = 0, height = 0, channels = 0;
   EXPECT_FALSE(DecodeHeader("", &width, &height, &channels));
+}
+
+TEST(JxlIoTest, DecodeHeaderLargestValidDimensions) {
+  // A minimal codestream header declaring 2^30 x 2^30: the largest size the
+  // libjxl bitstream can express on both axes, since ysize is encoded as
+  // U32(..., BitsOffset(30, 1)) and an explicit xsize uses the same range.
+  // It must still be accepted, so the range check does not turn away large
+  // but valid images.
+  std::string data;
+  ASSERT_TRUE(absl::HexStringToBytes("ff0afefffffff1ffffff1f", &data));
+  int width = 0, height = 0, channels = 0;
+  EXPECT_TRUE(DecodeHeader(data, &width, &height, &channels));
+  EXPECT_EQ(width, 1 << 30);
+  EXPECT_EQ(height, 1 << 30);
+}
+
+TEST(JxlIoTest, DecodeHeaderRejectsDimensionAboveIntMax) {
+  // The same header with the 2:1 aspect ratio set, which makes xsize 2^31:
+  // one above INT_MAX, and the largest xsize libjxl will ever report. Without
+  // the range check DecodeHeader returns true here with width = INT_MIN.
+  std::string data;
+  ASSERT_TRUE(absl::HexStringToBytes("ff0afeffffff1f", &data));
+  int width = 0, height = 0, channels = 0;
+  EXPECT_FALSE(DecodeHeader(data, &width, &height, &channels));
 }
 
 TEST(JxlIoTest, DecodeImageUint8) {
