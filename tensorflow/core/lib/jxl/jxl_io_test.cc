@@ -106,6 +106,23 @@ TEST(JxlIoTest, DecodeHeaderRejectsDimensionAboveIntMax) {
   EXPECT_FALSE(DecodeHeader(data, &width, &height, &channels));
 }
 
+TEST(JxlIoTest, DecodeImageRejectsByteCountOverflow) {
+  // 2^30 x 2^30 passes every check in DecodeHeader, but DecodeImage then sizes
+  // the output as xsize * ysize * channels * bytes_per_sample, which for four
+  // float channels is 2^64 exactly and so wraps to zero in size_t. The
+  // output-size comparison below the guard would accept any buffer.
+  std::string data;
+  ASSERT_TRUE(absl::HexStringToBytes("ff0afefffffff1ffffff1f", &data));
+  int width = 0, height = 0, channels = 0;
+  ASSERT_TRUE(DecodeHeader(data, &width, &height, &channels));
+  ASSERT_EQ(width, 1 << 30);
+  ASSERT_EQ(height, 1 << 30);
+
+  std::vector<float> output(16);
+  EXPECT_FALSE(DecodeImageFloat(data, /*channels=*/4, output.data(),
+                                output.size() * sizeof(float)));
+}
+
 TEST(JxlIoTest, DecodeImageUint8) {
   std::string jxl_data = ReadTestFile("random_128x96_rbg_q100.jxl");
   int width = 0, height = 0, channels = 0;
