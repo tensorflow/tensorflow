@@ -713,6 +713,63 @@ TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
   }
 }
 
+// Sub-byte types (int4/uint4: 2 elements per byte; int2: 4 elements per byte)
+// are bit-packed in the buffer. The rounding rule during verification must
+// match BytesRequired/PackedBytes in util.cc: a final byte that is only half
+// full must still be verified as a whole byte.
+TEST(VerifyModel, PackedInt4TensorBufferSize) {
+  // 5 int4 elements = 20 bits, requires 3 bytes.
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({5}, TensorType_INT4, {0x12, 0x34, 0x50}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_TRUE(builder.Verify());
+  EXPECT_EQ("", builder.GetErrorString());
+
+  // One byte short: 2 bytes cannot hold 5 elements.
+  TfLiteFlatbufferModelBuilder too_small;
+  too_small.AddTensor({5}, TensorType_INT4, {0x12, 0x34}, "input");
+  too_small.FinishModel({}, {});
+  ASSERT_FALSE(too_small.Verify());
+  EXPECT_THAT(too_small.GetErrorString(),
+              ::testing::ContainsRegex("Tensor input requires 3 bytes, but is "
+                                       "allocated with 2 bytes buffer"));
+
+  // One byte too many is also invalid: 4 elements need only 2 bytes.
+  TfLiteFlatbufferModelBuilder too_large;
+  too_large.AddTensor({4}, TensorType_INT4, {0x12, 0x34, 0x50}, "input");
+  too_large.FinishModel({}, {});
+  ASSERT_FALSE(too_large.Verify());
+  EXPECT_THAT(too_large.GetErrorString(),
+              ::testing::ContainsRegex("Tensor input requires 2 bytes, but is "
+                                       "allocated with 3 bytes buffer"));
+}
+
+TEST(VerifyModel, PackedUInt4TensorBufferSize) {
+  // 3 uint4 elements = 12 bits, rounded up to 2 bytes.
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({3}, TensorType_UINT4, {0x12, 0x30}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_TRUE(builder.Verify());
+  EXPECT_EQ("", builder.GetErrorString());
+}
+
+TEST(VerifyModel, PackedInt2TensorBufferSize) {
+  // 5 int2 elements = 10 bits, rounded up to 2 bytes.
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({5}, TensorType_INT2, {0x1B, 0x00}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_TRUE(builder.Verify());
+  EXPECT_EQ("", builder.GetErrorString());
+
+  // A non-multiple-of-4 element count must still occupy a full byte:
+  // 9 elements require 3 bytes.
+  TfLiteFlatbufferModelBuilder packed;
+  packed.AddTensor({9}, TensorType_INT2, {0x1B, 0x1B, 0x00}, "input");
+  packed.FinishModel({}, {});
+  ASSERT_TRUE(packed.Verify());
+  EXPECT_EQ("", packed.GetErrorString());
+}
+
 TEST(VerifyModel, SimpleValidSparseTensor) {
   const auto model = FlatBufferModel::BuildFromFile(
       tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());

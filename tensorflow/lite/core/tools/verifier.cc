@@ -428,14 +428,22 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_UINT32:
       bytes_required *= sizeof(uint32_t);
       break;
+    // Sub-byte types are bit-packed in the buffer; the rounding rule here
+    // must match the PackedBytes used by BytesRequired in util.cc, otherwise
+    // the "verified size" and the "size actually allocated by the
+    // interpreter" would diverge. At this point bytes_required still holds
+    // the element count, already bounded by the checks above to within
+    // UINT_MAX, so the cast to size_t does not truncate. PackedBytes rounds
+    // up via divide-remainder and, unlike `(bytes_required + 1) / 2`, does
+    // not wrap around at extreme values.
     case TensorType_INT2:
-      bytes_required = (bytes_required + 3) / 4;
-      break;
-    case TensorType_UINT4:
-      bytes_required = (bytes_required + 1) / 2;
+      bytes_required = PackedBytes(static_cast<size_t>(bytes_required),
+                                   /*bit_width=*/2);
       break;
     case TensorType_INT4:
-      bytes_required = (bytes_required + 1) / 2;
+    case TensorType_UINT4:
+      bytes_required = PackedBytes(static_cast<size_t>(bytes_required),
+                                   /*bit_width=*/4);
       break;
     case TensorType_UINT8:
       bytes_required *= sizeof(uint8_t);

@@ -75,6 +75,15 @@ size_t CombineHashes(std::initializer_list<size_t> hashes);
 
 // Populates the size in bytes of a type into `bytes`. Returns kTfLiteOk for
 // valid types, and kTfLiteError otherwise.
+//
+// Note: this writes the "unpacked" size of a single element, i.e. the number
+// of bytes a single element occupies when addressed on its own. For sub-byte
+// types kTfLiteInt4/kTfLiteUInt4 (2 elements per byte) and kTfLiteInt2
+// (4 elements per byte), the tensor buffer is tightly bit-packed, so this
+// value is not the element's actual footprint in the buffer. Multiplying it
+// by the element count overestimates the buffer size by ~2x (int4) or ~4x
+// (int2). To compute the tensor buffer size, use `BytesRequired` or
+// `PackedBytes` below.
 TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
                            size_t* bytes);
 
@@ -147,9 +156,36 @@ inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
   return tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant;
 }
 
+// Computes the number of bytes needed to bit-pack `num_elements` elements of
+// `bit_width` bits each, i.e. ceil(num_elements * bit_width / 8). Used for
+// sub-byte types:
+//   - kTfLiteInt4 / kTfLiteUInt4: bit_width = 4, 2 elements per byte;
+//   - kTfLiteInt2: bit_width = 2, 4 elements per byte.
+// `bit_width` must be in [1, 8]. The final partial byte is rounded up, so an
+// odd element count (int4) or a count that is not a multiple of 4 (int2)
+// still occupies a full byte.
+//
+// The implementation deliberately avoids `(num_elements * bit_width + 7) / 8`:
+// when num_elements is close to SIZE_MAX, the trailing addition wraps around
+// and yields 0 bytes. The divide-remainder form below does not overflow.
+constexpr size_t PackedBytes(size_t num_elements, size_t bit_width) {
+  // Every 8 elements occupy exactly `bit_width` bytes; compute whole groups
+  // first. The remainder is at most 7 elements, whose bit width is at most
+  // 56 bits, so the addition below cannot wrap around.
+  return (num_elements / 8) * bit_width +
+         ((num_elements % 8) * bit_width + 7) / 8;
+}
+
 // Compute the number of bytes required to represent a tensor with dimensions
 // specified by the array dims (of length dims_size). Returns the status code
 // and bytes.
+//
+// The return value is the actual number of bytes the buffer needs, which
+// differs in semantics from `GetSizeOfType`'s "unpacked per-element size":
+// sub-byte types are rounded up according to `PackedBytes`'s packing rule,
+// while other types are equivalent to element count times per-element size.
+// Returns kTfLiteError for unsupported types or when the byte count overflows
+// size_t.
 TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
                            size_t* bytes, TfLiteContext* context);
 

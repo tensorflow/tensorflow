@@ -213,6 +213,111 @@ TEST(FourBitTest, BytesRequiredOdd) {
   ASSERT_EQ(required_bytes_four_bit, 3);
 }
 
+TEST(FourBitTest, BytesRequiredScalar) {
+  TfLiteContext context;
+
+  int dims[] = {0};
+  size_t required_bytes_four_bit = 0;
+  // When dims_size is 0, the tensor is treated as a scalar (1 element); an
+  // int4 scalar still occupies a full byte.
+  ASSERT_EQ(tflite::BytesRequired(kTfLiteInt4, dims, /*dims_size=*/0,
+                                  &required_bytes_four_bit, &context),
+            kTfLiteOk);
+  ASSERT_EQ(required_bytes_four_bit, 1);
+}
+
+// `GetSizeOfType` returns the "unpacked" size of a single element (1 byte even
+// for sub-byte types); `PackedBytes` gives the byte count after bit-packing
+// the elements in the buffer.
+TEST(PackedBytesTest, Int4RoundsUpToWholeBytes) {
+  EXPECT_EQ(PackedBytes(/*num_elements=*/0, /*bit_width=*/4), 0);
+  // With an odd element count, the last byte is only half used but still
+  // occupies a full byte.
+  EXPECT_EQ(PackedBytes(1, 4), 1);
+  EXPECT_EQ(PackedBytes(2, 4), 1);
+  EXPECT_EQ(PackedBytes(5, 4), 3);
+  EXPECT_EQ(PackedBytes(8, 4), 4);
+  EXPECT_EQ(PackedBytes(9, 4), 5);
+}
+
+TEST(PackedBytesTest, Int2RoundsUpToWholeBytes) {
+  EXPECT_EQ(PackedBytes(0, 2), 0);
+  EXPECT_EQ(PackedBytes(1, 2), 1);
+  EXPECT_EQ(PackedBytes(4, 2), 1);
+  EXPECT_EQ(PackedBytes(5, 2), 2);
+  EXPECT_EQ(PackedBytes(9, 2), 3);
+}
+
+TEST(PackedBytesTest, ByteSizedBitWidthIsIdentity) {
+  EXPECT_EQ(PackedBytes(0, 8), 0);
+  EXPECT_EQ(PackedBytes(7, 8), 7);
+}
+
+// Regression test: expressions like `(num_elements * bit_width + 7) / 8`
+// wrap at the multiplication/addition when the element count is close to
+// SIZE_MAX and yield 0. PackedBytes must return the correctly rounded-up
+// value, otherwise a tensor buffer would be allocated with the wrong (too
+// small) byte count.
+TEST(PackedBytesTest, DoesNotWrapAtExtremeElementCounts) {
+  constexpr size_t kMaxElements = std::numeric_limits<size_t>::max();
+  EXPECT_EQ(PackedBytes(kMaxElements, 4), kMaxElements / 2 + 1);
+  EXPECT_EQ(PackedBytes(kMaxElements, 2), kMaxElements / 4 + 1);
+  EXPECT_EQ(PackedBytes(kMaxElements, 8), kMaxElements);
+}
+
+// Regression test: the product of these 7 dimensions is exactly SIZE_MAX,
+// and the element count itself does not overflow size_t. The old
+// implementation used `(*bytes + 1) / 2` for int4, which wrapped around to 0
+// at the addition, allocating 0 bytes for a tensor claiming SIZE_MAX elements.
+TEST(FourBitTest, BytesRequiredDoesNotWrapAtExtremeElementCount) {
+  if (sizeof(size_t) != 8) {
+    GTEST_SKIP() << "SIZE_MAX is the product of these 7 dimensions only on "
+                    "64-bit platforms.";
+  }
+  TfLiteContext context;
+
+  int dims[] = {3, 5, 17, 257, 641, 65537, 6700417};
+  size_t required_bytes_four_bit = 0;
+  ASSERT_EQ(tflite::BytesRequired(kTfLiteInt4, dims, /*dims_size=*/7,
+                                  &required_bytes_four_bit, &context),
+            kTfLiteOk);
+  ASSERT_EQ(required_bytes_four_bit,
+            std::numeric_limits<size_t>::max() / 2 + 1);
+}
+
+TEST(Int2Test, BytesRequiredRoundsUp) {
+  TfLiteContext context;
+
+  int dims[] = {5};
+  size_t required_bytes_int2 = 0;
+  // 5 int2 elements = 10 bits, requires 2 bytes.
+  ASSERT_EQ(tflite::BytesRequired(kTfLiteInt2, dims, /*dims_size=*/1,
+                                  &required_bytes_int2, &context),
+            kTfLiteOk);
+  ASSERT_EQ(required_bytes_int2, 2);
+}
+
+// The error path actually calls context->ReportError, so a usable callback
+// must be provided, unlike the success-path tests above that rely on an
+// uninitialized context.
+void SilentReportError(TfLiteContext* /*context*/, const char* /*msg*/, ...) {}
+
+TEST(BytesRequiredTest, RejectsByteCountOverflow) {
+  TfLiteContext context{};
+  context.ReportError = SilentReportError;
+
+  // Element count is INT_MAX * INT_MAX (~4.6e18), which does not overflow
+  // size_t; but the element count multiplied by 8 bytes (float64) does
+  // overflow, so the function must return an error rather than wrap around to
+  // a small byte count.
+  int dims[] = {std::numeric_limits<int>::max(),
+                std::numeric_limits<int>::max()};
+  size_t required_bytes = 0;
+  ASSERT_EQ(tflite::BytesRequired(kTfLiteFloat64, dims, /*dims_size=*/2,
+                                  &required_bytes, &context),
+            kTfLiteError);
+}
+
 TEST(TestMakeUniqueTensor, Valid) {
   TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2, 3}, kTfLiteDynamic);
   ASSERT_NE(t.get(), nullptr);

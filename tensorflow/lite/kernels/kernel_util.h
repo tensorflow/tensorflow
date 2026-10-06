@@ -318,6 +318,10 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         TfLiteIntArray** output_shape);
 
 // Return the size of given type in bytes. Return 0 in case of string.
+// Note: sub-byte types (kTfLiteInt4/kTfLiteUInt4/kTfLiteInt2) are not
+// whole-byte, so this also returns 0 rather than their "unpacked" 1 byte;
+// their buffer size must be computed via bit-packing, see PackedBytes /
+// BytesRequired in util.h.
 int TfLiteTypeGetSize(TfLiteType type);
 
 // Return the size of given type in bits. Returns 0 in case of string.

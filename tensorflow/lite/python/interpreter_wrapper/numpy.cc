@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace python {
@@ -259,7 +260,10 @@ PyObject* Set4BitTensor(TfLiteTensor* tensor, PyArrayObject* array,
   for (int i = 0; i < tensor->dims->size; ++i) {
     num_elements *= tensor->dims->data[i];
   }
-  size_t expected_packed_bytes = (num_elements + 1) / 2;
+  // int4/uint4 pack 2 elements per byte; use PackedBytes to stay consistent
+  // with BytesRequired in util.cc and avoid the SIZE_MAX wrap-around that
+  // `(num_elements + 1) / 2` suffers from at extreme element counts.
+  size_t expected_packed_bytes = PackedBytes(num_elements, /*bit_width=*/4);
   size_t actual_numpy_bytes = PyArray_NBYTES(array);
 
   const char* tensor_type_name = TfLiteTypeGetName(tensor->type);

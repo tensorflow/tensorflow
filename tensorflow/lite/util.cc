@@ -133,9 +133,11 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       break;
     case kTfLiteUInt4:
     case kTfLiteInt4:
-      // TODO(b/246647008): Multiplying this value by the number of elements
-      // does not yield the size of a tensor when 4-bit values are packed
-      // 2 to a byte.
+      // int4/uint4 pack 2 elements per byte in the tensor buffer; this
+      // returns the "unpacked" size of a single element. Multiplying it by
+      // the element count therefore does not equal the buffer size — it is
+      // roughly 2x the true value. Use PackedBytes/BytesRequired to compute
+      // the buffer size.
       *bytes = sizeof(int8_t);
       break;
     case kTfLiteInt2:
@@ -252,28 +254,27 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
                      "BytesRequired number of elements overflowed.\n");
   size_t type_size = 0;
   TF_LITE_ENSURE_OK(context_, GetSizeOfType(context_, type, &type_size));
-  TF_LITE_ENSURE_MSG(
-      context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
-      "BytesRequired number of bytes overflowed.\n");
 
-  // GetSizeOfType doesn't work for kTfLiteInt4 due to it having 2 values packed
-  // into 1 byte so the output of GetSizeOfType is the same as int8 aka 1 byte.
-  // Thus the required bytes must be divided by half after everything for int4.
-  if (type == kTfLiteInt4 || type == kTfLiteUInt4) {
-    *bytes = (*bytes + 1) / 2;
-  } else if (type == kTfLiteInt2) {
-    // For kTfLiteInt2, 4 elements are packed into a single byte.
-    // The '*bytes' variable at this point holds the total number of elements,
-    // because GetSizeOfType returns sizeof(int8_t) for each Int2 element.
-    // To get the actual number of bytes needed for the packed representation,
-    // we need to divide the total number of elements by 4.
-    // The expression `(*bytes + 3) / 4` implements integer division with
-    // ceiling, ensuring that we allocate enough bytes to store all elements.
-    // For example:
-    // 1 element: (1 + 3) / 4 = 1 byte
-    // 4 elements: (4 + 3) / 4 = 1 byte
-    // 5 elements: (5 + 3) / 4 = 2 bytes
-    *bytes = (*bytes + 3) / 4;
+  // Sub-byte types (int4/uint4: 2 elements per byte; int2: 4 elements per
+  // byte) are bit-packed in the buffer. The unpacked per-element size from
+  // GetSizeOfType cannot simply be multiplied by the element count, otherwise
+  // int4 would be over-estimated ~2x and int2 ~4x. Use PackedBytes here to
+  // compute the packed byte count, rounding up the final partial byte without
+  // wrapping to 0 via addition.
+  switch (type) {
+    case kTfLiteInt4:
+    case kTfLiteUInt4:
+      *bytes = PackedBytes(count, /*bit_width=*/4);
+      break;
+    case kTfLiteInt2:
+      *bytes = PackedBytes(count, /*bit_width=*/2);
+      break;
+    default:
+      TF_LITE_ENSURE_MSG(
+          context_,
+          MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
+          "BytesRequired number of bytes overflowed.\n");
+      break;
   }
 
   return kTfLiteOk;
