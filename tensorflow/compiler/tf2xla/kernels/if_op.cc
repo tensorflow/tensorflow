@@ -224,17 +224,16 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   // padded, dynamically shaped value, which ops downstream may not support.
   // Using the taken branch for both sides keeps the code below unchanged, and
   // the second compilation is a cache hit.
-  NameAttrList then_branch = then_branch_;
-  NameAttrList else_branch = else_branch_;
+  const NameAttrList* then_branch = &then_branch_;
+  const NameAttrList* else_branch = &else_branch_;
   xla::Literal cond_literal;
   if (ctx->ConstantInput(0, &cond_literal).ok() &&
-      cond_literal.shape().IsArray() &&
-      cond_literal.shape().dimensions().empty() &&
-      cond_literal.shape().element_type() == xla::PRED) {
-    const NameAttrList& taken_branch =
-        cond_literal.Get<bool>({}) ? then_branch_ : else_branch_;
+      xla::ShapeUtil::IsScalarWithElementType(cond_literal.shape(),
+                                              xla::PRED)) {
+    const NameAttrList* taken_branch =
+        cond_literal.Get<bool>({}) ? then_branch : else_branch;
     VLOG(1) << "If predicate is constant; compiling only "
-            << taken_branch.name();
+            << taken_branch->name();
     then_branch = taken_branch;
     else_branch = taken_branch;
   }
@@ -276,10 +275,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   std::vector<bool> else_branch_must_be_const_nodes;
   const FunctionBody* else_body;
   OP_REQUIRES_OK(
-      ctx, FindMustBeConstNodes(ctx, then_branch,
+      ctx, FindMustBeConstNodes(ctx, *then_branch,
                                 &then_branch_must_be_const_nodes, &then_body));
   OP_REQUIRES_OK(
-      ctx, FindMustBeConstNodes(ctx, else_branch,
+      ctx, FindMustBeConstNodes(ctx, *else_branch,
                                 &else_branch_must_be_const_nodes, &else_body));
 
   auto should_resolve_const = [&](int arg_idx) {
@@ -308,13 +307,13 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   XlaCompiler* compiler = ctx->compiler();
 
   XlaCompiler::CompilationResult then_result;
-  OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, then_branch,
+  OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, *then_branch,
                                                 arguments, &then_result));
   OP_REQUIRES_OK(
       ctx, ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
                then_result));
   XlaCompiler::CompilationResult else_result;
-  OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch,
+  OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, *else_branch,
                                                 arguments, &else_result));
   OP_REQUIRES_OK(
       ctx, ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
@@ -328,10 +327,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   // Recompile the functions to update the argument shapes for tensor arrays.
   if (*has_tensor_array_gradients) {
     then_result = {};
-    OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, then_branch,
+    OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, *then_branch,
                                                   arguments, &then_result));
     else_result = {};
-    OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch,
+    OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, *else_branch,
                                                   arguments, &else_result));
   }
 

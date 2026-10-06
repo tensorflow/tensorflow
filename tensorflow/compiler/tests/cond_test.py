@@ -326,7 +326,7 @@ class CondTest(xla_test.XLATestCase):
     # untaken branch that XLA cannot compile does not fail compilation. The
     # branch returns the unsupported op's result so that it is not pruned as
     # dead code before it reaches XLA.
-    with context.eager_mode():
+    with context.eager_mode(), self.device_scope():
 
       def uncompilable():
         return array_ops.size(
@@ -351,7 +351,7 @@ class CondTest(xla_test.XLATestCase):
     # rot90 builds nested conds over k whose branches have different static
     # shapes. Compiling every branch pads the result to a dynamic shape, which
     # the Roll in fftshift cannot slice.
-    with context.eager_mode():
+    with context.eager_mode(), self.device_scope():
       x = random_ops.random_uniform([2, 16, 3], dtype=dtypes.float64)
       for k in range(4):
 
