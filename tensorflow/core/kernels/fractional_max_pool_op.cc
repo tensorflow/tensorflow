@@ -302,6 +302,33 @@ class FractionalMaxPoolGradOp : public OpKernel {
       output_size[i] = tensor_out.dim_size(i);
     }
 
+    // Step 1 replays the forward pooling, writing one entry per visited cell
+    // into buffers sized from orig_output. The batch/depth of orig_input and
+    // the pooling-sequence lengths are independent inputs, so bind them to
+    // orig_output's dimensions; otherwise a crafted sequence or mismatched
+    // orig_input drives out_index past the output buffers.
+    OP_REQUIRES(context, input_size[0] == output_size[0],
+                absl::InvalidArgumentError(absl::StrCat(
+                    "orig_input and orig_output must have the same batch size, "
+                    "got ",
+                    input_size[0], " and ", output_size[0])));
+    OP_REQUIRES(context, input_size[3] == output_size[3],
+                absl::InvalidArgumentError(absl::StrCat(
+                    "orig_input and orig_output must have the same depth, got ",
+                    input_size[3], " and ", output_size[3])));
+    OP_REQUIRES(
+        context, height_seq_tensor.dim_size(0) == output_size[1] + 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "row_pooling_sequence must have ", output_size[1] + 1,
+            " elements to match the ", output_size[1],
+            " rows of orig_output, but got ", height_seq_tensor.dim_size(0))));
+    OP_REQUIRES(
+        context, width_seq_tensor.dim_size(0) == output_size[2] + 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "col_pooling_sequence must have ", output_size[2] + 1,
+            " elements to match the ", output_size[2],
+            " cols of orig_output, but got ", width_seq_tensor.dim_size(0))));
+
     // ---------
     // Step 1
     // ---------

@@ -728,6 +728,34 @@ class FractionalMaxPoolGradTest(test.TestCase):
             overlapping=overlapping)
         self.evaluate(t)
 
+  def testSeqLengthMismatchRaisesErrorForFractionalMaxPoolGrad(self):
+    # A long pooling sequence paired with a tiny orig_output drives out_index
+    # past the output buffers in the step-1 replay. The product-of-lengths
+    # check only bounds the sequences against orig_input, so this must be
+    # rejected by the orig_output binding instead of writing out of bounds.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "row_pooling_sequence must have"
+    ):
+      with self.cached_session():
+        orig_input = constant_op.constant(
+            1.0, shape=[1, 100, 100, 1], dtype=dtypes.float32)
+        orig_output = constant_op.constant(
+            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32)
+        out_backprop = constant_op.constant(
+            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32)
+        row_pooling_sequence = constant_op.constant(
+            0, shape=[5000], dtype=dtypes.int64)
+        col_pooling_sequence = constant_op.constant(
+            0, shape=[2], dtype=dtypes.int64)
+        t = gen_nn_ops.FractionalMaxPoolGrad(
+            orig_input=orig_input,
+            orig_output=orig_output,
+            out_backprop=out_backprop,
+            row_pooling_sequence=row_pooling_sequence,
+            col_pooling_sequence=col_pooling_sequence,
+            overlapping=True)
+        self.evaluate(t)
+
 
 if __name__ == "__main__":
   test.main()
