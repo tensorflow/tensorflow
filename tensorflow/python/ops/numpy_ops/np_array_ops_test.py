@@ -1512,25 +1512,35 @@ class ArrayMethodsTest(test.TestCase):
 
     # Out-of-bounds axes raise, checked by the backend kernel.
     with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+        (ValueError, errors_impl.InvalidArgumentError), 'out of range'
     ):
       np_array_ops.roll(a, 1, axis=3)
     with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+        (ValueError, errors_impl.InvalidArgumentError), 'out of range'
     ):
       np_array_ops.roll(a, 1, axis=-4)
     with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+        (ValueError, errors_impl.InvalidArgumentError), 'out of range'
     ):
       np_array_ops.roll(a, (1, 2), axis=(0, 3))
     with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+        (ValueError, errors_impl.InvalidArgumentError), 'out of range'
     ):
       np_array_ops.roll(a, (1, -1), axis=[0, -4])
     with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+        (ValueError, errors_impl.InvalidArgumentError), 'out of range'
     ):
       np_array_ops.roll(a, range(2), axis=range(2, 4))
+
+    # Graph-mode tracing of roll with concrete axes.
+    @def_function.function
+    def f(x, s, ax):
+      return np_array_ops.roll(x, s, axis=ax)
+
+    self.assertAllEqual(
+        np.roll(a, 1, axis=0),
+        f(a, 1, 0),
+    )
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))
