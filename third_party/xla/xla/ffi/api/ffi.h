@@ -1289,6 +1289,11 @@ struct CtxDecoding<Context> {
   }
 };
 
+// Decode per-execution custom options using the same dictionary interface.
+template <>
+struct CtxDecoding<CustomOptions>
+    : internal::CustomOptionsDecoding<Dictionary> {};
+
 //===----------------------------------------------------------------------===//
 // Error helpers
 //===----------------------------------------------------------------------===//
