@@ -260,7 +260,8 @@ class ExtractImagePatches(test.TestCase):
       kwargs[attr] = value
       with self.assertRaisesRegex(
           (errors_impl.UnimplementedError, ValueError),
-          rf"ExtractImagePatches requires the first and last elements of {attr} to be 1"
+          rf"ExtractImagePatches requires the first and last elements of "
+          rf"{attr} to be 1"
           rf"|Only support {attr} across space",
       ):
         self.evaluate(
@@ -270,7 +271,8 @@ class ExtractImagePatches(test.TestCase):
         image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 2, 2, 1])
         with self.assertRaisesRegex(
             ValueError,
-            rf"ExtractImagePatches requires the first and last elements of {attr} to be 1",
+            rf"ExtractImagePatches requires the first and last elements of "
+            rf"{attr} to be 1",
         ):
           array_ops.extract_image_patches(image_ph, padding="VALID", **kwargs)
 
