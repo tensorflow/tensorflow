@@ -145,6 +145,13 @@ GpuTopology GetSingleDeviceGpuTopology(
     const std::optional<cpu::TargetMachineOptions>&
         host_target_machine_options = std::nullopt);
 
+// Parses a `GpuTopology` from either an inline topology specification
+// (`[<platform_version>:]<num_partitions>x<num_hosts_per_partition>x<num_devices_per_host>`
+// or `[<platform_version>:]<num_hosts_per_partition>x<num_devices_per_host>`)
+// or a `GpuTopologyProto` textproto file at `topology_spec_or_filename`.
+absl::StatusOr<GpuTopology> ParseGpuTopology(
+    absl::string_view topology_spec_or_filename);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_GPU_TOPOLOGY_H_
