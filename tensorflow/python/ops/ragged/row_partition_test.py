@@ -922,7 +922,7 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testStaticNvalsFromUniformRowLength(self):
     rp = RowPartition.from_uniform_row_length(3, nrows=4)
-    self.assertAllEqual(12, rp.static_nvals)
+    self.assertEqual(12, rp._static_nvals_or_constant())
 
   def testFromRowSplitsStaticValidationNonZero(self):
     with self.assertRaisesRegex(ValueError, r"row_splits\[0\] must be zero"):
@@ -931,6 +931,39 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testFromRowSplitsStaticValidationNonMonotonic(self):
     with self.assertRaisesRegex(ValueError, r"must be monotonic increasing"):
       RowPartition.from_row_splits([0, 5, 2])
+
+  def testFromValueRowidsStaticValidationNegative(self):
+    with self.assertRaisesRegex(
+        ValueError, r"value_rowids must be non-negative"):
+      RowPartition.from_value_rowids([-1, 0, 1])
+
+  def testFromValueRowidsStaticValidationNonMonotonic(self):
+    with self.assertRaisesRegex(
+        ValueError, r"value_rowids must be monotonic increasing"):
+      RowPartition.from_value_rowids([0, 2, 1])
+
+  def testFromRowLengthsStaticValidationNegative(self):
+    with self.assertRaisesRegex(
+        ValueError, r"row_lengths must be nonnegative"):
+      RowPartition.from_row_lengths([3, -1, 2])
+
+  def testFromRowStartsStaticValidationNonZero(self):
+    with self.assertRaisesRegex(ValueError, r"row_starts\[0\] must be zero"):
+      RowPartition.from_row_starts([1, 2], nvals=3)
+
+  def testFromRowStartsStaticValidationNonMonotonic(self):
+    with self.assertRaisesRegex(
+        ValueError, r"row_starts must be monotonic increasing"):
+      RowPartition.from_row_starts([0, 3, 2], nvals=5)
+
+  def testFromRowLimitsStaticValidationNegative(self):
+    with self.assertRaisesRegex(ValueError, r"row_limits must be non-negative"):
+      RowPartition.from_row_limits([-1, 2])
+
+  def testFromRowLimitsStaticValidationNonMonotonic(self):
+    with self.assertRaisesRegex(
+        ValueError, r"row_limits must be monotonic increasing"):
+      RowPartition.from_row_limits([3, 1])
 
 
 @test_util.run_all_in_graph_and_eager_modes

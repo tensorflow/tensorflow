@@ -112,8 +112,8 @@ def squeeze(input: ragged_tensor.Ragged, axis=None, name=None):  # pylint: disab
     if remaining_row_splits and 0 in ragged_dims:
       remaining_row_splits.pop(0)
 
-    squeezed_rt = RaggedTensor.from_nested_row_splits(squeezed_rt,
-                                                      remaining_row_splits)
+    squeezed_rt = RaggedTensor.from_nested_row_splits(
+        squeezed_rt, remaining_row_splits, validate=False)
 
     # Corner case: when removing all the ragged dimensions and the output is
     # a scalar tensor e.g. ragged.squeeze(ragged.constant([[[1]]])).

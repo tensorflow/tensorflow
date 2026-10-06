@@ -336,7 +336,8 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       values = array_ops.reshape(x, [-1, 2])
       return RaggedTensor.from_row_splits(values, [0, 2, 4])
 
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegex(
+        ValueError, r"Shapes \(2,\) and \(4,\) are incompatible"):
       fn(constant_op.constant([4.0, 5.0, 6.0, 7.0]))
 
   def testFromRowStarts(self):
