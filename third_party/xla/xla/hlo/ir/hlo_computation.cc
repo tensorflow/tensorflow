@@ -2026,8 +2026,13 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     *new_instruction->mutable_metadata().mutable_metadata_payload() =
         old_instruction->metadata().metadata_payload();
   }
+  // Frontend attributes describe the replaced computation, so they must not
+  // flow backward onto an existing operand of the old instruction (e.g. when a
+  // no-op is forwarded to its operand): that operand is computed upstream and
+  // may feed other users.
   if (preserve_frontend_attributes &&
-      new_instruction->frontend_attributes().map().empty()) {
+      new_instruction->frontend_attributes().map().empty() &&
+      !absl::c_linear_search(old_instruction->operands(), new_instruction)) {
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }

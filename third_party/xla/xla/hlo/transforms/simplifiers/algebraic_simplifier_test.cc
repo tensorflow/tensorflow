@@ -14068,6 +14068,25 @@ TEST_F(AlgebraicSimplifierTest, PreserveSdySharding) {
       "#sdy.sharding<@mesh, [{\"x\"}, {}]>");
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       NoOpTransposeDoesNotPropagateFrontendAttributesToOperand) {
+  const char* kHlo = R"(
+    HloModule m
+    ENTRY main {
+      p = bf16[8,1024] parameter(0)
+      c = f32[8,1024] convert(p)
+      t = f32[8,1024] transpose(c), dimensions={0,1}, frontend_attributes={MUST_FUSE="12"}
+      ROOT n = f32[8,1024] negate(t), frontend_attributes={MUST_FUSE="12"}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Negate(m::Convert(m::Parameter(0)))));
+  EXPECT_TRUE(root->operand(0)->frontend_attributes().map().empty());
+}
+
 // Move parameter from the LHS of a dot to the RHS.
 TEST_F(AlgebraicSimplifierTest, SwapDotOperands) {
   set_verifier_layout_sensitive(false);

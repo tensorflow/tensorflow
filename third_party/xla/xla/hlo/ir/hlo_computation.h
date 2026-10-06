@@ -679,7 +679,8 @@ class HloComputation {
   // information of |old_instruction|, and function will return true. If
   // preserve_frontend_attributes is true and the new instruction does not have
   // any frontend attributes, the frontend attributes of the old instruction
-  // will be copied over.
+  // will be copied over, unless the new instruction is an operand of the old
+  // one (attributes never propagate backward onto an existing producer).
   absl::StatusOr<bool> ReplaceInstruction(
       HloInstruction* old_instruction, HloInstruction* new_instruction,
       bool preserve_sharding, bool relay_control_dependency = false,
