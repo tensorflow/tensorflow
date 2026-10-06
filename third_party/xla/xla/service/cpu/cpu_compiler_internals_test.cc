@@ -27,9 +27,12 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/cpu/cpu_compiler.h"
@@ -237,6 +240,79 @@ TEST_F(CpuCompilerInternalsTest, DisablePlatformDependentMathUnified) {
   config.mutable_debug_options().set_xla_cpu_enable_platform_dependent_math(
       true);
   EXPECT_FALSE(options::DisablePlatformDependentMath(config));
+}
+
+TEST_F(CpuCompilerInternalsTest, WeakOrderSortComparatorNotExpanded) {
+  static constexpr absl::string_view kHlo = R"(
+    compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      lhs_val = s32[] parameter(2)
+      rhs_val = s32[] parameter(3)
+      ROOT cmp = pred[] compare(lhs, rhs), direction=LT, order=WEAK
+    }
+
+    ENTRY main {
+      keys = f32[16] parameter(0)
+      vals = s32[16] parameter(1)
+      ROOT sorted = (f32[16], s32[16]) sort(keys, vals), dimensions={0}, to_apply=compare
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  CpuCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+
+  const HloInstruction* sort =
+      FindInstruction(optimized_module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort, nullptr);
+  const HloInstruction* root = sort->to_apply()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  EXPECT_EQ(root->comparison_order(), ComparisonOrder::kWeak);
+  EXPECT_TRUE(ThunkEmitter::MatchSortDirection(Cast<HloSortInstruction>(sort))
+                  .has_value());
+}
+
+TEST_F(CpuCompilerInternalsTest,
+       WeakOrderSortComparatorExpandedWhenUnsupported) {
+  static constexpr absl::string_view kHlo = R"(
+    compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      lhs_v1 = s32[] parameter(2)
+      rhs_v1 = s32[] parameter(3)
+      lhs_v2 = s32[] parameter(4)
+      rhs_v2 = s32[] parameter(5)
+      ROOT cmp = pred[] compare(lhs, rhs), direction=LT, order=WEAK
+    }
+
+    ENTRY main {
+      keys = f32[16] parameter(0)
+      v1 = s32[16] parameter(1)
+      v2 = s32[16] parameter(2)
+      ROOT sorted = (f32[16], s32[16], s32[16]) sort(keys, v1, v2), dimensions={0}, to_apply=compare
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  CpuCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+
+  const HloInstruction* sort =
+      FindInstruction(optimized_module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort, nullptr);
+  const HloInstruction* root = sort->to_apply()->root_instruction();
+  EXPECT_NE(root->opcode(), HloOpcode::kCompare);
+  EXPECT_FALSE(ThunkEmitter::MatchSortDirection(Cast<HloSortInstruction>(sort))
+                   .has_value());
 }
 
 }  // namespace

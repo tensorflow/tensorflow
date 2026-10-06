@@ -85,14 +85,14 @@ class ThunkEmitter {
 
   absl::StatusOr<std::vector<EmittedKernel>> ConsumeKernels();
 
+  static std::optional<SortThunk::SortDirection> MatchSortDirection(
+      const HloSortInstruction* sort);
+
  private:
   struct HostKernelAllocationSlices {
     std::vector<ShapedSlice> arguments;
     std::vector<ShapedSlice> results;
   };
-
-  std::optional<SortThunk::SortDirection> MatchSortDirection(
-      const HloComputation* hlo_comparator) const;
 
   // Returns the buffer allocation slice assigned to the given instruction at
   // the given shape index. Instruction must have a unique slice assigned to it!

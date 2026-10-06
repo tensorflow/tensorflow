@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -159,13 +160,17 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return param;
   };
 
-  auto match_compare = [](PrimitiveType type) {
-    auto param0 = m::Parameter(0).WithShape(m::Shape().WithElementType(type));
-    auto param1 = m::Parameter(1).WithShape(m::Shape().WithElementType(type));
-    return m::Gt(param0, param1);
+  auto not_weak_order = [](const HloInstruction* instr) {
+    return instr->comparison_order() != ComparisonOrder::kWeak;
   };
 
-  auto match_default_compare = [](PrimitiveType type) {
+  auto match_compare = [&](PrimitiveType type) {
+    auto param0 = m::Parameter(0).WithShape(m::Shape().WithElementType(type));
+    auto param1 = m::Parameter(1).WithShape(m::Shape().WithElementType(type));
+    return m::Gt(param0, param1).WithPredicate(not_weak_order);
+  };
+
+  auto match_default_compare = [&](PrimitiveType type) {
     auto params_with_type = [&](int i, PrimitiveType t) {
       return m::Parameter(i).WithShape(m::Shape().WithElementType(t));
     };
@@ -175,7 +180,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      // Indices
                      params_with_type(2, S32), params_with_type(3, S32)});
     auto const_true = m::Broadcast(m::Constant());
-    auto values_gt = m::Gt(params[0], params[1]);
+    auto values_gt = m::Gt(params[0], params[1]).WithPredicate(not_weak_order);
     return m::Select(const_true, values_gt, const_true);
   };
 
