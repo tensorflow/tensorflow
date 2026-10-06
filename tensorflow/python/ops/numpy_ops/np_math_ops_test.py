@@ -571,6 +571,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
     ):
       np_math_ops.diff(x, n=-1)
 
+  def testAverageAxisOutOfBounds(self):
+    x = np_array_ops.array(np.ones([2, 3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2, weights=np.ones([2, 3]))
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
