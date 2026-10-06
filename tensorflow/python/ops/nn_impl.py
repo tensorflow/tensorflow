@@ -470,6 +470,47 @@ def swish(features, beta=1.0):
   @custom_gradient.custom_gradient
   def swish_impl(features, beta):
 
+    @custom_gradient.custom_gradient
+    def _float64_activation_grad(logits):
+      # Evaluate the smaller sigmoid tail directly. For large positive
+      # logits, `1 - sigmoid(logits)` rounds to zero and erases finite
+      # higher-order derivatives.
+      # For large negative logits (<= -500.0), sigmoid(logits) underflows to
+      # zero, but logits * sigmoid(logits) and its derivatives are still
+      # representable as normal float64 numbers. We evaluate them via
+      # half-exponents to prevent intermediate underflow.
+      is_extreme_neg = logits <= -500.0
+      use_complement = logits >= 0.0
+      sigmoid_tail = math_ops.sigmoid(
+          array_ops.where_v2(use_complement, -logits, logits)
+      )
+      sigmoid_features = array_ops.where_v2(
+          use_complement, 1.0 - sigmoid_tail, sigmoid_tail
+      )
+      sigmoid_grad = sigmoid_tail * (1.0 - sigmoid_tail)
+      standard_act_grad = sigmoid_features + logits * sigmoid_grad
+
+      half_exp = math_ops.exp(logits / 2.0)
+      extreme_neg_act_grad = ((1.0 + logits) * half_exp) * half_exp
+      act_grad = array_ops.where_v2(
+          is_extreme_neg, extreme_neg_act_grad, standard_act_grad
+      )
+
+      def grad(d_act):
+        tail_factor = array_ops.where_v2(
+            use_complement,
+            2.0 * sigmoid_tail - 1.0,
+            1.0 - 2.0 * sigmoid_tail,
+        )
+        standard_d_act = sigmoid_grad * (2.0 + logits * tail_factor)
+        extreme_neg_d_act = ((2.0 + logits) * half_exp) * half_exp
+        d_logits = array_ops.where_v2(
+            is_extreme_neg, extreme_neg_d_act, standard_d_act
+        )
+        return d_act * d_logits
+
+      return act_grad, grad
+
     def grad(dy):
       """Gradient for the Swish activation function."""
       # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
@@ -481,25 +522,30 @@ def swish(features, beta=1.0):
       with ops.control_dependencies([dy]):
         logits = beta * features
         if features.dtype == dtypes.float64:
-          # Evaluate the smaller sigmoid tail directly. For large positive
-          # logits, `1 - sigmoid(logits)` rounds to zero and erases finite
-          # higher-order derivatives.
-          use_complement = logits >= 0
+          activation_grad = _float64_activation_grad(logits)
+
+          is_extreme_neg = logits <= -500.0
+          use_complement = logits >= 0.0
           sigmoid_tail = math_ops.sigmoid(
               array_ops.where_v2(use_complement, -logits, logits)
           )
-          sigmoid_features = array_ops.where_v2(
-              use_complement, 1.0 - sigmoid_tail, sigmoid_tail
-          )
           sigmoid_grad = sigmoid_tail * (1.0 - sigmoid_tail)
+          half_exp = math_ops.exp(logits / 2.0)
+          extreme_neg_grad = half_exp * half_exp
+          eff_sigmoid_grad = array_ops.where_v2(
+              is_extreme_neg, extreme_neg_grad, sigmoid_grad
+          )
+          beta_grad = math_ops.reduce_sum(
+              dy * math_ops.square(features) * eff_sigmoid_grad
+          )
         else:
           sigmoid_features = math_ops.sigmoid(logits)
           sigmoid_grad = sigmoid_features * (1.0 - sigmoid_features)
+          activation_grad = sigmoid_features + logits * sigmoid_grad
+          beta_grad = math_ops.reduce_sum(
+              dy * math_ops.square(features) * sigmoid_grad
+          )
 
-      activation_grad = sigmoid_features + logits * sigmoid_grad
-      beta_grad = math_ops.reduce_sum(
-          dy * math_ops.square(features) * sigmoid_grad
-      )
       return (dy * activation_grad, beta_grad)
 
     return features * math_ops.sigmoid(beta * features), grad

@@ -357,6 +357,32 @@ class SwishGradOpTest(test.TestCase):
         atol=0.0,
     )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishDoubleGradientPreservesNegativeExtreme(self):
+    features = constant_op.constant(-709.0, dtypes.float64)
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+
+    self.assertAllClose(
+        -8.614807714413834e-306,
+        self.evaluate(first_derivative),
+        rtol=1e-6,
+        atol=0.0,
+    )
+    self.assertAllClose(
+        -8.6026399069076e-306,
+        second_derivative,
+        rtol=1e-6,
+        atol=0.0,
+    )
+
 
 class SoftmaxVJPFloat64InvarianceTest(test.TestCase):
   """Regression tests for GitHub issue #126525.
