@@ -174,7 +174,19 @@ class SegmentReduce : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->ResolveInputDynamismIntoPred(2, &num_segments_is_dynamic));
 
-    buffer_dims.insert(buffer_dims.begin(), ctx->Input(2));
+    xla::XlaOp num_segments_size = ctx->Input(2);
+    if (num_segments_is_dynamic) {
+      // SetDimensionSize takes an S32 size. The check above only sees the
+      // bound of a num_segments known only at run time, so clamp a negative
+      // one at 0 rather than set it as the dimension size.
+      if (ctx->input_xla_type(2) != xla::S32) {
+        num_segments_size =
+            xla::ConvertElementType(num_segments_size, xla::S32);
+      }
+      num_segments_size =
+          xla::Max(num_segments_size, xla::Zero(builder, xla::S32));
+    }
+    buffer_dims.insert(buffer_dims.begin(), num_segments_size);
     buffer_dims_are_dynamic.insert(buffer_dims_are_dynamic.begin(),
                                    num_segments_is_dynamic);
     // Build the segment shape part.
