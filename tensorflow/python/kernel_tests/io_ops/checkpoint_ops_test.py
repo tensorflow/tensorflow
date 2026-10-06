@@ -291,6 +291,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
           )
       )
 
+  @test_util.run_deprecated_v1
   def test_load_and_remap_out_of_bounds_col_remapping(self):
     # self.old_num_cols is 16. We use 16 (out of bounds) in col_remapping.
     with self.cached_session(), self.assertRaisesRegex(
@@ -308,11 +309,16 @@ class LoadAndRemapMatrixTest(test.TestCase):
           )
       )
 
+  @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_num_cols_empty_col_remapping(self):
     # self.old_num_cols is 16. Mismatched or large num_cols with empty
     # col_remapping must raise InvalidArgumentError before attempting to
-    # allocate col_id_present memory.
-    for invalid_num_cols in [self.old_num_cols + 1, 10**12]:
+    # allocate col_id_present memory. Test both sides of the equality boundary.
+    for invalid_num_cols in [
+        self.old_num_cols - 1,
+        self.old_num_cols + 1,
+        10**12,
+    ]:
       with self.cached_session(), self.assertRaisesRegex(
           errors.InvalidArgumentError,
           'size of its 2nd dimension is .* instead of being equal to num_cols=',
@@ -329,39 +335,43 @@ class LoadAndRemapMatrixTest(test.TestCase):
             )
         )
 
+  @test_util.run_deprecated_v1
   def test_load_and_remap_non_1d_col_remapping(self):
-    with self.cached_session(), self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        r'The `col_remapping` tensor must be 1-D, got a tensor of shape',
-    ):
-      self.evaluate(
-          gen_checkpoint_ops.load_and_remap_matrix(
-              ckpt_path=[self.bundle_file],
-              old_tensor_name=self.old_tensor_name,
-              row_remapping=list(range(self.old_num_rows)),
-              col_remapping=[[0]],
-              initializing_values=[],
-              num_rows=self.old_num_rows,
-              num_cols=1,
-          )
-      )
+    for bad_col_remapping in [[[0]], 0]:
+      with self.cached_session(), self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r'The `col_remapping` tensor must be 1-D, got a tensor of shape',
+      ):
+        self.evaluate(
+            gen_checkpoint_ops.load_and_remap_matrix(
+                ckpt_path=[self.bundle_file],
+                old_tensor_name=self.old_tensor_name,
+                row_remapping=list(range(self.old_num_rows)),
+                col_remapping=bad_col_remapping,
+                initializing_values=[],
+                num_rows=self.old_num_rows,
+                num_cols=1,
+            )
+        )
 
+  @test_util.run_deprecated_v1
   def test_load_and_remap_non_1d_row_remapping(self):
-    with self.cached_session(), self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        r'The `row_remapping` tensor must be 1-D, got a tensor of shape',
-    ):
-      self.evaluate(
-          gen_checkpoint_ops.load_and_remap_matrix(
-              ckpt_path=[self.bundle_file],
-              old_tensor_name=self.old_tensor_name,
-              row_remapping=[[0]],
-              col_remapping=[],
-              initializing_values=[],
-              num_rows=1,
-              num_cols=self.old_num_cols,
-          )
-      )
+    for bad_row_remapping in [[[0]], 0]:
+      with self.cached_session(), self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r'The `row_remapping` tensor must be 1-D, got a tensor of shape',
+      ):
+        self.evaluate(
+            gen_checkpoint_ops.load_and_remap_matrix(
+                ckpt_path=[self.bundle_file],
+                old_tensor_name=self.old_tensor_name,
+                row_remapping=bad_row_remapping,
+                col_remapping=[],
+                initializing_values=[],
+                num_rows=1,
+                num_cols=self.old_num_cols,
+            )
+        )
 
   @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_remapping(self):
