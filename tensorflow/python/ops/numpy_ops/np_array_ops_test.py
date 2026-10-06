@@ -1480,6 +1480,7 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, axis=0)
     _test(a, axis=2)
     _test(a, axis=-1)
+    _test(a, axis=-3)
     # A tuple, list or range of axes, including negative values.
     _test(a, axis=(0, 1))
     _test(a, axis=(-1, -3))
@@ -1487,6 +1488,8 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, axis=(0, 1, 2))
     _test(a, axis=range(3))
     # Out-of-bounds axes raise, matching np.flip's AxisError.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.flip(np.float64(1.0), axis=0)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.flip(a, axis=3)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
