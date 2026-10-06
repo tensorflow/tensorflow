@@ -1762,6 +1762,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_constants",
+        "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:platform_id",
         "@com_google_absl//absl/algorithm:container",
