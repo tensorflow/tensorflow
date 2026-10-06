@@ -44,6 +44,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+// Upper bound on TensorList reserve/resize element count (CWE-770). Each slot
+// is a Tensor (~24-32 bytes); INT32_MAX would allocate ~48-64 GB of metadata.
+// 2^24 slots (~400 MB metadata) leaves room for large TensorArray / pfor workloads.
+constexpr int32_t kMaxTensorListElements = 1 << 24;
+}  // namespace
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 absl::Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
@@ -343,20 +350,11 @@ class TensorListReserve : public OpKernel {
                     absl::StrCat("The num_elements to reserve must be a "
                                  "non negative number, but got ",
                                  num_elements)));
-    // Upper bound guard (CWE-770).  Each reserved slot is a Tensor object
-    // (~24-32 bytes), so INT32_MAX slots would allocate ~48-64 GB of
-    // metadata alone.  1 048 576 (2^20) slots use ~24 MB, which covers
-    // all practical ML workloads (RNNs, sequences, time series).
-    // For comparison, EmptyTensorList exposes a max_num_elements input
-    // that TensorListPushBack enforces; TensorListReserve lacked any
-    // equivalent guard.
-    static constexpr int32_t kMaxReserveElements = 1 << 20;  // 1 048 576
-    OP_REQUIRES(c, num_elements <= kMaxReserveElements,
+    OP_REQUIRES(c, num_elements <= kMaxTensorListElements,
                 absl::InvalidArgumentError(absl::StrCat(
                     "TensorListReserve: num_elements (", num_elements,
-                    ") exceeds maximum allowed (", kMaxReserveElements,
-                    "). Use EmptyTensorList with TensorListPushBack "
-                    "for dynamically-sized lists.")));
+                    ") exceeds maximum allowed elements (",
+                    kMaxTensorListElements, ").")));
     TensorList output;
     output.element_shape = element_shape;
     output.element_dtype = element_dtype_;
@@ -405,13 +403,14 @@ class TensorListResize : public OpKernel {
         c, size >= 0,
         absl::InvalidArgumentError(absl::StrCat(
             "TensorListSlice expects size to be non-negative. Got: ", size)));
-    // Same upper bound as TensorListReserve (CWE-770).
-    static constexpr int32_t kMaxResizeElements = 1 << 20;  // 1 048 576
-    OP_REQUIRES(c, size <= kMaxResizeElements,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "TensorListResize: size (", size,
-                    ") exceeds maximum allowed (", kMaxResizeElements,
-                    ").")));
+    // Only growing the list allocates; shrinking must always be allowed.
+    if (size > input_list->tensors().size()) {
+      OP_REQUIRES(c, size <= kMaxTensorListElements,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "TensorListResize: requested size (", size,
+                      ") exceeds maximum allowed elements (",
+                      kMaxTensorListElements, ").")));
+    }
 
     std::unique_ptr<Tensor> maybe_result =
         c->forward_input(0, 0, DT_VARIANT, TensorShape{},
