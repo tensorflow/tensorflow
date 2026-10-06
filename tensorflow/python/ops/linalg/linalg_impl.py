@@ -1382,32 +1382,32 @@ def eigh_tridiagonal(alpha,
           blocksize = 16
           i = 1
           peel = (n - 1) % blocksize
-          # If n is only known at runtime, so is the number of steps to peel
-          # off, so take them one at a time in a loop.
-          peel_is_static = isinstance(peel, int)
-          unroll_cnt = peel if peel_is_static else 1
 
-          # unrolled_steps reads unroll_cnt when it is traced, so the peel loop
-          # below must be built before unroll_cnt is set to blocksize.
-          def unrolled_steps(start, q, count):
-            for j in range(unroll_cnt):
-              q, count = sturm_step(start + j, q, count)
-            return start + unroll_cnt, q, count
+          def make_unrolled_steps(unroll_cnt):
 
-          if peel_is_static:
-            i, q, count = unrolled_steps(i, q, count)
+            def unrolled_steps(start, q, count):
+              for j in range(unroll_cnt):
+                q, count = sturm_step(start + j, q, count)
+              return start + unroll_cnt, q, count
+
+            return unrolled_steps
+
+          if isinstance(peel, int):
+            i, q, count = make_unrolled_steps(peel)(i, q, count)
           else:
+            # n is only known at runtime, and so is the number of steps to peel
+            # off, so take them one at a time in a loop.
             i, q, count = while_loop.while_loop(
                 lambda i, q, count: math_ops.less(i, 1 + peel),
-                unrolled_steps, [i, q, count],
+                make_unrolled_steps(1), [i, q, count],
                 back_prop=False)
 
           # Run the remaining steps of the Sturm sequence using a partially
           # unrolled while loop.
-          unroll_cnt = blocksize
           cond = lambda i, q, count: math_ops.less(i, n)
           _, _, count = while_loop.while_loop(
-              cond, unrolled_steps, [i, q, count], back_prop=False)
+              cond, make_unrolled_steps(blocksize), [i, q, count],
+              back_prop=False)
           return count
 
       with ops.name_scope('compute_eigenvalues'):
@@ -1458,9 +1458,11 @@ def eigh_tridiagonal(alpha,
               message='Got empty index range in select_range.')
           target_counts = math_ops.range(select_range[0], select_range[1] + 1)
         elif select == 'v':
+          select_min = math_ops.cast(select_range[0], alpha.dtype)
+          select_max = math_ops.cast(select_range[1], alpha.dtype)
           asserts = check_ops.assert_less(
-              select_range[0],
-              select_range[1],
+              select_min,
+              select_max,
               message='Got empty interval in select_range.')
         else:
           raise ValueError("'select must have a value in {'a', 'i', 'v'}.")
@@ -1479,8 +1481,8 @@ def eigh_tridiagonal(alpha,
           upper = lambda_est_max + norm_slack + fudge * pivmin
         else:
           # Count the number of eigenvalues in the given range.
-          lower = select_range[0] - norm_slack - 2 * fudge * pivmin
-          upper = select_range[1] + norm_slack + fudge * pivmin
+          lower = select_min - norm_slack - 2 * fudge * pivmin
+          upper = select_max + norm_slack + fudge * pivmin
           first = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, lower)
           last = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, upper)
           target_counts = math_ops.range(first, last)
@@ -1640,16 +1642,22 @@ def eigh_tridiagonal(alpha,
     def _compute_trivial(alpha):
       """Handles a matrix with at most one row."""
       eigvals = math_ops.real(alpha)
-      eigvectors = eye(array_ops.size(alpha), dtype=alpha.dtype)
       if select == 'v':
         # Keep the eigenvalue only if it's in the interval (min, max].
         selected = math_ops.logical_and(
-            math_ops.greater(eigvals, select_range[0]),
-            math_ops.less_equal(eigvals, select_range[1]))
+            math_ops.greater(eigvals,
+                             math_ops.cast(select_range[0], eigvals.dtype)),
+            math_ops.less_equal(eigvals,
+                                math_ops.cast(select_range[1], eigvals.dtype)))
         eigvals = array_ops.boolean_mask(eigvals, selected)
-        eigvectors = array_ops.boolean_mask(eigvectors, selected, axis=1)
       if eigvals_only:
         return eigvals
+      num_rows = tensor_shape.dimension_value(alpha.shape[0])
+      if num_rows is None:
+        num_rows = array_ops.size(alpha)
+      eigvectors = eye(num_rows, dtype=alpha.dtype)
+      if select == 'v':
+        eigvectors = array_ops.boolean_mask(eigvectors, selected, axis=1)
       return eigvals, eigvectors
 
     def _compute(alpha, beta):

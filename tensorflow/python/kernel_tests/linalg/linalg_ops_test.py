@@ -828,7 +828,8 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
     self.check_orthogonality(eigvectors, 2 * np.sqrt(n) * eps)
     self.check_residual(matrix, eigvals, eigvectors, atol)
 
-  @parameterized.parameters((np.float32), (np.complex64))
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
   def test_eigenvectors_of_trivial_matrix(self, dtype):
     # Matrices with at most one row used to return only their eigenvalues.
     for n in [0, 1]:
@@ -839,13 +840,16 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(np.real(alpha), eigvals)
       self.assertAllEqual(np.eye(n, dtype=dtype), eigvectors)
 
-  @parameterized.parameters((np.float32), (np.complex64))
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
   def test_select_by_value_of_trivial_matrix(self, dtype):
     # The eigenvalue of a matrix with one row is only selected if it's in the
-    # interval.
-    alpha = np.array([3], dtype=dtype)
+    # interval, and a matrix with no rows has no eigenvalue to select.
     beta = np.ones([0], dtype=dtype)
-    for select_range, expected in (((0., 1.), []), ((2., 4.), [3.])):
+    for alpha, select_range, expected in (([3], (0., 1.), []),
+                                          ([3], (2., 4.), [3.]),
+                                          ([], (2., 4.), [])):
+      alpha = np.array(alpha, dtype=dtype)
       eigvals, eigvectors = linalg.eigh_tridiagonal(
           alpha,
           beta,
@@ -854,7 +858,20 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
           select_range=select_range)
       self.assertAllEqual(expected, eigvals)
       self.assertAllEqual(
-          np.eye(1, dtype=dtype)[:, :len(expected)], eigvectors)
+          np.eye(len(alpha), dtype=dtype)[:, :len(expected)], eigvectors)
+
+  def test_select_range_of_other_dtype(self):
+    # select_range can be a tensor of another floating-point type than the
+    # matrix, whatever its size.
+    select_range = constant_op.constant([2., 4.], dtype=dtypes.float32)
+    for alpha, beta, expected in (([3.], [], [3.]),
+                                  ([3., 3., 3.], [0., 0.], [3., 3., 3.])):
+      eigvals = linalg.eigh_tridiagonal(
+          np.array(alpha, dtype=np.float64),
+          np.array(beta, dtype=np.float64),
+          select="v",
+          select_range=select_range)
+      self.assertAllClose(expected, eigvals)
 
   @parameterized.parameters((np.float32), (np.float64), (np.complex64),
                             (np.complex128))
@@ -892,14 +909,20 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
           "select": "i",
           "select_range": (0, 0)
       })
+      all_kwargs.append({
+          "eigvals_only": False,
+          "select": "v",
+          "select_range": (0.25, 0.75)
+      })
     spec = tensor.TensorSpec([None], dtype)
     for kwargs in all_kwargs:
       eigh_tridiagonal = def_function.function(
           functools.partial(linalg.eigh_tridiagonal, **kwargs),
           input_signature=[spec, spec])
-      # Lengths of at most 1 are handled separately, and the others peel 1, 4
-      # and 0 steps off the unrolled loop of the Sturm sequence.
-      for n in [0, 1, 2, 5, 17]:
+      # Lengths of at most 1 are handled separately. The others peel 1, 4, 15,
+      # 0 and 1 steps off the Sturm sequence's 16-way unrolled loop, which
+      # then runs 0, 0, 0, 1 and 1 times.
+      for n in [0, 1, 2, 5, 16, 17, 18]:
         alpha = np.random.uniform(size=(n,)).astype(dtype)
         beta = np.random.uniform(size=(max(n - 1, 0),)).astype(dtype)
         if np.issubdtype(dtype, np.complexfloating):
