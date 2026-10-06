@@ -1468,6 +1468,9 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
   set_op({1, 2, 2, 1}, {1, 0, 1, 1}, {1, 1, 1, 1}, "VALID");
   INFER_ERROR("ExtractImagePatches requires spatial strides to be positive", op,
               "[1,?,?,2]");
+  set_op({1, 2, 2, 1}, {1, 1, 1, 1}, {1, 1, 0, 1}, "VALID");
+  INFER_ERROR("ExtractImagePatches requires spatial rates to be positive", op,
+              "[1,7,7,2]");
   set_op({1, 2, 2, 1}, {1, 1, 1, 1}, {1, 1, -1, 1}, "VALID");
   INFER_ERROR("ExtractImagePatches requires spatial rates to be positive", op,
               "[1,7,7,2]");
