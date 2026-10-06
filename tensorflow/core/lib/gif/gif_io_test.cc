@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/env.h"

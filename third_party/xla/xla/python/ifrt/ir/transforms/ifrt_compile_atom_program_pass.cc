@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -73,6 +74,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/random.h"
 
@@ -366,6 +369,9 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
   mlir::SymbolUserMap symbol_users(symbol_table, module_op);
 
+  mlir::Attribute sdy_meshes_round_trip_attr =
+      module_op->getAttr(kIfrtSdyMeshesRoundTripAttr);
+
   // Stash the errors in a MapVector, which maintains the order in which they
   // are encountered. We do not emit an error within the walk because atom
   // programs share a context and their compilations are dispatched in parallel.
@@ -398,6 +404,15 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
                 callee.getSymName().str(), ". Actual callee parent: ",
                 callee->getParentOp()->getName().getStringRef().str()));
         return mlir::WalkResult::advance();
+      }
+
+      // TODO(b/433244129) - remove after 6 months bwd compatibility window.
+      if (sdy_meshes_round_trip_attr) {
+        // Add the meshes roundtrip attribute to the callee module if the
+        // atom program was partitioned with sdy.
+        xla::sdy::setFrontendAttribute(callee_module,
+                                       xla::sdy::kMeshesRoundTripAttr,
+                                       sdy_meshes_round_trip_attr);
       }
 
       absl::StatusOr<AtomProgramCompileResult> compile_result =
