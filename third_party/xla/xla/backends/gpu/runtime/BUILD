@@ -1941,6 +1941,7 @@ cc_library(
         ":collective_types_proto_cc",
         ":command",
         ":command_state",
+        ":per_device_state",
         ":thunk",
         ":thunk_proto_cc",
         ":traced_command",
@@ -1969,12 +1970,10 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:trace_command_buffer_factory",
-        "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/stream_executor/gpu:collective_kernel_metadata",
         "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/log",
@@ -1984,7 +1983,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -5532,7 +5530,10 @@ cc_library(
     srcs = ["vector_storage.cc"],
     hdrs = ["vector_storage.h"],
     visibility = ["//visibility:private"],
-    deps = [":device_slot"],
+    deps = [
+        ":device_slot",
+        "@com_google_absl//absl/functional:function_ref",
+    ],
 )
 
 xla_cc_test(
@@ -5556,6 +5557,7 @@ cc_library(
         ":device_slot",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -5599,13 +5601,16 @@ xla_cc_test(
     deps = [
         ":per_device_state",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 

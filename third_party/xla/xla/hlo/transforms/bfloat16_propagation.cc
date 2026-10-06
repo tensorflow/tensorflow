@@ -371,6 +371,10 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     return false;
   }
 
+  const HloCallBoundaryOptions boundary_options(
+      /*include_calls_in=*/true, /*include_control_flow_in=*/true,
+      /*include_fusions_in=*/true, /*include_associative_scans_in=*/true,
+      &execution_threads_);
   const HloValueSet& value_set = dataflow_->GetValueSet(&hlo, index);
   for (const HloValue* value : value_set.values()) {
     if (ContainsKey(values_that_must_be_kept_as_f32_, value)) {
@@ -402,68 +406,31 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
       // necessary, e.g., the output has been changed to BF16 if it propagates
       // precision, or a called computation's parameters have been changed to
       // BF16 for fusions or whiles.
-      if (use.instruction->opcode() == HloOpcode::kFusion) {
-        auto* fused_parameter =
-            use.instruction->fused_parameter(use.operand_number);
-        if (OutputTypeAfterChange(fused_parameter, use.operand_index) != BF16) {
-          return false;
-        }
-        continue;
-      } else if (use.instruction->opcode() == HloOpcode::kWhile) {
-        auto* cond_parameter =
-            use.instruction->while_condition()->parameter_instruction(
-                use.operand_number);
-        if (OutputTypeAfterChange(cond_parameter, use.operand_index) != BF16) {
-          return false;
-        }
-        auto* body_parameter =
-            use.instruction->while_body()->parameter_instruction(
-                use.operand_number);
-        if (OutputTypeAfterChange(body_parameter, use.operand_index) != BF16) {
-          return false;
-        }
-        continue;
-      } else if (use.instruction->opcode() == HloOpcode::kConditional) {
-        auto* cond_parameter =
-            use.instruction->branch_computation(use.operand_number - 1)
-                ->parameter_instruction(0);
-        if (OutputTypeAfterChange(cond_parameter, use.operand_index) != BF16) {
-          return false;
-        }
-        continue;
-      } else if (use.instruction->opcode() == HloOpcode::kAsyncStart &&
-                 HloInstruction::IsThreadIncluded(
-                     use.instruction->async_execution_thread(),
-                     execution_threads_)) {
-        HloComputation* wrapped_comp =
-            use.instruction->async_wrapped_computation();
-        if (wrapped_comp == nullptr) {
-          return false;
-        }
-        auto* async_parameter =
-            wrapped_comp->parameter_instruction(use.operand_number);
-        if (OutputTypeAfterChange(async_parameter, use.operand_index) != BF16) {
-          return false;
-        }
-        continue;
-      } else if (use.instruction->opcode() == HloOpcode::kCall) {
-        auto* call_parameter =
-            use.instruction->to_apply()->parameter_instruction(
-                use.operand_number);
-        if (OutputTypeAfterChange(call_parameter, use.operand_index) != BF16) {
-          return false;
-        }
-        continue;
-      } else if (IsAssociativeScan(use.instruction)) {
-        auto* body_parameter =
-            use.instruction->to_apply()->parameter_instruction(
-                use.operand_number);
-        if (OutputTypeAfterChange(body_parameter, use.operand_index) != BF16) {
-          return false;
-        }
-        continue;
-      } else if (use.instruction->opcode() == HloOpcode::kAsyncDone) {
+      if (use.instruction->opcode() == HloOpcode::kAsyncDone) {
         // async-done consumes whatever async-start gives it.
+        continue;
+      }
+      if (use.instruction->opcode() == HloOpcode::kAsyncStart &&
+          HloInstruction::IsThreadIncluded(
+              use.instruction->async_execution_thread(), execution_threads_) &&
+          use.instruction->async_wrapped_computation() == nullptr) {
+        return false;
+      }
+      bool handled_by_call = false;
+      bool call_params_consume_bf16 = true;
+      HloDataflowPropagation::ForEachCalledParameter(
+          use.instruction, use.operand_number,
+          [&](HloInstruction* param) {
+            handled_by_call = true;
+            if (OutputTypeAfterChange(param, use.operand_index) != BF16) {
+              call_params_consume_bf16 = false;
+            }
+          },
+          boundary_options);
+      if (handled_by_call) {
+        if (!call_params_consume_bf16) {
+          return false;
+        }
         continue;
       }
       if (use.instruction->opcode() == HloOpcode::kBitcast &&
@@ -480,33 +447,12 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
       // supply BF16 also as the input. In the backward pass, the users shapes
       // should have already been processed.
       if (bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(
-              *use.instruction, use.operand_number)) {
-        if (use.instruction->opcode() == HloOpcode::kTuple ||
-            (use.instruction->opcode() == HloOpcode::kAllReduce &&
-             use.instruction->shape().IsTuple())) {
-          ShapeIndex use_output_index{use.operand_number};
-          for (int64_t i : use.operand_index) {
-            use_output_index.push_back(i);
-          }
-          if (OutputTypeAfterChange(use.instruction, use_output_index) ==
+              *use.instruction, use.operand_number) &&
+          OutputTypeAfterChange(
+              use.instruction,
+              HloDataflowPropagation::GetForwardedUseOutputIndex(use)) ==
               BF16) {
-            continue;
-          }
-        } else if (use.instruction->opcode() == HloOpcode::kGetTupleElement) {
-          ShapeIndex use_output_index;
-          for (int64_t i = 1; i < use.operand_index.size(); ++i) {
-            use_output_index.push_back(use.operand_index[i]);
-          }
-          if (OutputTypeAfterChange(use.instruction, use_output_index) ==
-              BF16) {
-            continue;
-          }
-        } else {
-          if (OutputTypeAfterChange(use.instruction, use.operand_index) ==
-              BF16) {
-            continue;
-          }
-        }
+        continue;
       }
       return false;
     }
@@ -751,48 +697,21 @@ void BFloat16Propagation::AddPushableRoot(HloInstruction* call_site,
 
 void BFloat16Propagation::BuildCallBoundaryPushIndex(
     absl::Span<HloComputation* const> computations) {
+  const HloCallBoundaryOptions boundary_options(
+      /*include_calls_in=*/true, /*include_control_flow_in=*/true,
+      /*include_fusions_in=*/true, /*include_associative_scans_in=*/true,
+      &execution_threads_);
   for (HloComputation* computation : computations) {
     for (HloInstruction* hlo : computation->instructions()) {
-      switch (hlo->opcode()) {
-        case HloOpcode::kFusion:
-          AddPushableParams(hlo->fused_instructions_computation(),
-                            hlo->operands());
-          AddPushableRoot(hlo, hlo->fused_instructions_computation());
-          break;
-        case HloOpcode::kWhile:
-          AddPushableParams(hlo->while_condition(), hlo->operands());
-          AddPushableParams(hlo->while_body(), hlo->operands());
-          AddPushableRoot(hlo, hlo->while_body());
-          break;
-        case HloOpcode::kScan:
-          if (IsAssociativeScan(hlo)) {
-            AddPushableParams(hlo->to_apply(), hlo->operands());
-            AddPushableRoot(hlo, hlo->to_apply());
-          }
-          break;
-        case HloOpcode::kConditional:
-          for (int64_t i = 0; i < hlo->branch_count(); ++i) {
-            AddPushableParams(hlo->branch_computation(i),
-                              {hlo->mutable_operand(i + 1)});
-            AddPushableRoot(hlo, hlo->branch_computation(i));
-          }
-          break;
-        case HloOpcode::kAsyncStart:
-          if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
-                                               execution_threads_) &&
-              hlo->async_wrapped_computation() != nullptr) {
-            AddPushableParams(hlo->async_wrapped_computation(),
-                              hlo->operands());
-            AddPushableRoot(hlo, hlo->async_wrapped_computation());
-          }
-          break;
-        case HloOpcode::kCall:
-          AddPushableParams(hlo->to_apply(), hlo->operands());
-          AddPushableRoot(hlo, hlo->to_apply());
-          break;
-        default:
-          break;
-      }
+      HloDataflowPropagation::ForEachCallBoundary(
+          hlo,
+          [&](const HloCallBoundary& boundary) {
+            AddPushableParams(boundary.callee, boundary.caller_operands);
+            if (boundary.root_feeds_callsite) {
+              AddPushableRoot(hlo, boundary.callee);
+            }
+          },
+          boundary_options);
     }
   }
 }
@@ -919,63 +838,29 @@ void BFloat16Propagation::AddEdgesForUse(const HloValue* value,
     use_edges_[HloPosition{instruction, index}].push_back(value);
   };
   // Uses of called computations read the callee parameter position.
-  bool handled = true;
-  switch (use.instruction->opcode()) {
-    case HloOpcode::kFusion:
-      add_reader(use.instruction->fused_parameter(use.operand_number),
-                 use.operand_index);
-      break;
-    case HloOpcode::kWhile:
-      add_reader(use.instruction->while_condition()->parameter_instruction(
-                     use.operand_number),
-                 use.operand_index);
-      add_reader(use.instruction->while_body()->parameter_instruction(
-                     use.operand_number),
-                 use.operand_index);
-      break;
-    case HloOpcode::kConditional:
-      if (use.operand_number > 0) {
-        add_reader(use.instruction->branch_computation(use.operand_number - 1)
-                       ->parameter_instruction(0),
-                   use.operand_index);
-      }
-      break;
-    case HloOpcode::kAsyncStart:
-      if (HloInstruction::IsThreadIncluded(
-              use.instruction->async_execution_thread(), execution_threads_)) {
-        HloComputation* wrapped_comp =
-            use.instruction->async_wrapped_computation();
-        if (wrapped_comp == nullptr) {
-          // AllUsersConsumeBF16 statically fails such uses.
-          static_f32_seed_values_.push_back(value);
-          return;
-        }
-        add_reader(wrapped_comp->parameter_instruction(use.operand_number),
-                   use.operand_index);
-      } else {
-        handled = false;
-      }
-      break;
-    case HloOpcode::kCall:
-      add_reader(use.instruction->to_apply()->parameter_instruction(
-                     use.operand_number),
-                 use.operand_index);
-      break;
-    case HloOpcode::kScan:
-      if (IsAssociativeScan(use.instruction)) {
-        add_reader(use.instruction->to_apply()->parameter_instruction(
-                       use.operand_number),
-                   use.operand_index);
-      } else {
-        handled = false;
-      }
-      break;
-    case HloOpcode::kAsyncDone:
-      break;  // async-done consumes whatever async-start gives it.
-    default:
-      handled = false;
-      break;
+  if (use.instruction->opcode() == HloOpcode::kAsyncDone) {
+    return;  // async-done consumes whatever async-start gives it.
   }
+  if (use.instruction->opcode() == HloOpcode::kAsyncStart &&
+      HloInstruction::IsThreadIncluded(
+          use.instruction->async_execution_thread(), execution_threads_) &&
+      use.instruction->async_wrapped_computation() == nullptr) {
+    // AllUsersConsumeBF16 statically fails such uses.
+    static_f32_seed_values_.push_back(value);
+    return;
+  }
+  const HloCallBoundaryOptions boundary_options(
+      /*include_calls_in=*/true, /*include_control_flow_in=*/true,
+      /*include_fusions_in=*/true, /*include_associative_scans_in=*/true,
+      &execution_threads_);
+  bool handled = false;
+  HloDataflowPropagation::ForEachCalledParameter(
+      use.instruction, use.operand_number,
+      [&](HloInstruction* param) {
+        handled = true;
+        add_reader(param, use.operand_index);
+      },
+      boundary_options);
   if (handled) {
     return;
   }
@@ -994,21 +879,8 @@ void BFloat16Propagation::AddEdgesForUse(const HloValue* value,
     return;
   }
   // Forwarding users read their own output position.
-  ShapeIndex use_output_index;
-  if (use.instruction->opcode() == HloOpcode::kTuple ||
-      (use.instruction->opcode() == HloOpcode::kAllReduce &&
-       use.instruction->shape().IsTuple())) {
-    use_output_index.push_back(use.operand_number);
-    for (int64_t i : use.operand_index) {
-      use_output_index.push_back(i);
-    }
-  } else if (use.instruction->opcode() == HloOpcode::kGetTupleElement) {
-    for (int64_t i = 1; i < use.operand_index.size(); ++i) {
-      use_output_index.push_back(use.operand_index[i]);
-    }
-  } else {
-    use_output_index = use.operand_index;
-  }
+  ShapeIndex use_output_index =
+      HloDataflowPropagation::GetForwardedUseOutputIndex(use);
   // What the user reads as depends on the read position's type. An original
   // F32 array can go either way, so it becomes an edge. A tuple (variadic
   // sort, tuple shaped collectives) or non BF16 array (widening convert) can

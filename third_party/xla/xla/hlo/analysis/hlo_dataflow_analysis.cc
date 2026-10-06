@@ -2101,4 +2101,622 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   return user->IsElementwiseOnOperand(user->operand_index(operand));
 }
 
+absl::Status HloDataflowPropagation::ForEachCallBoundaryWithStatus(
+    const HloInstruction* callsite,
+    absl::FunctionRef<absl::Status(const HloCallBoundary&)> fn,
+    const HloCallBoundaryOptions& options) {
+  if (callsite == nullptr) {
+    return absl::OkStatus();
+  }
+  auto is_thread_included = [&](absl::string_view thread) {
+    return options.execution_threads == nullptr ||
+           HloInstruction::IsThreadIncluded(thread, *options.execution_threads);
+  };
+  if (callsite->parent() != nullptr &&
+      !is_thread_included(callsite->parent()->execution_thread())) {
+    return absl::OkStatus();
+  }
+  const auto& operands = callsite->operands();
+  switch (callsite->opcode()) {
+    case HloOpcode::kCall: {
+      if (!options.include_calls) {
+        return absl::OkStatus();
+      }
+      HloComputation* callee = callsite->to_apply();
+      if (callee != nullptr && is_thread_included(callee->execution_thread())) {
+        return fn(HloCallBoundary(callsite, callee, operands,
+                                  /*first_operand_index_in=*/0,
+                                  /*root_feeds_callsite_in=*/true,
+                                  /*callsite_output_prefix_in=*/{}));
+      }
+      return absl::OkStatus();
+    }
+    case HloOpcode::kWhile: {
+      if (!options.include_control_flow) {
+        return absl::OkStatus();
+      }
+      HloComputation* condition = callsite->while_condition();
+      if (condition != nullptr &&
+          is_thread_included(condition->execution_thread())) {
+        ABSL_RETURN_IF_ERROR(fn(HloCallBoundary(callsite, condition, operands,
+                                           /*first_operand_index_in=*/0,
+                                           /*root_feeds_callsite_in=*/false,
+                                           /*callsite_output_prefix_in=*/{})));
+      }
+      HloComputation* body = callsite->while_body();
+      if (body != nullptr && is_thread_included(body->execution_thread())) {
+        ABSL_RETURN_IF_ERROR(fn(HloCallBoundary(callsite, body, operands,
+                                           /*first_operand_index_in=*/0,
+                                           /*root_feeds_callsite_in=*/true,
+                                           /*callsite_output_prefix_in=*/{})));
+      }
+      return absl::OkStatus();
+    }
+    case HloOpcode::kConditional: {
+      if (!options.include_control_flow) {
+        return absl::OkStatus();
+      }
+      const absl::Span<HloInstruction* const> all_operands(operands);
+      for (int64_t b = 0; b < callsite->branch_count(); ++b) {
+        HloComputation* branch = callsite->branch_computation(b);
+        if (branch == nullptr ||
+            !is_thread_included(branch->execution_thread())) {
+          continue;
+        }
+        const int64_t op_idx = b + 1;
+        const absl::Span<HloInstruction* const> branch_operands =
+            op_idx < static_cast<int64_t>(all_operands.size())
+                ? all_operands.subspan(op_idx, 1)
+                : absl::Span<HloInstruction* const>();
+        ABSL_RETURN_IF_ERROR(fn(HloCallBoundary(callsite, branch, branch_operands,
+                                           /*first_operand_index_in=*/op_idx,
+                                           /*root_feeds_callsite_in=*/true,
+                                           /*callsite_output_prefix_in=*/{})));
+      }
+      return absl::OkStatus();
+    }
+    case HloOpcode::kAsyncStart: {
+      if (!options.include_control_flow ||
+          !is_thread_included(callsite->async_execution_thread())) {
+        return absl::OkStatus();
+      }
+      HloComputation* wrapped = callsite->async_wrapped_computation();
+      if (wrapped != nullptr &&
+          is_thread_included(wrapped->execution_thread())) {
+        return fn(HloCallBoundary(callsite, wrapped, operands,
+                                  /*first_operand_index_in=*/0,
+                                  /*root_feeds_callsite_in=*/true,
+                                  /*callsite_output_prefix_in=*/{1}));
+      }
+      return absl::OkStatus();
+    }
+    case HloOpcode::kFusion: {
+      if (!options.include_fusions) {
+        return absl::OkStatus();
+      }
+      HloComputation* fused = callsite->fused_instructions_computation();
+      if (fused != nullptr && is_thread_included(fused->execution_thread())) {
+        return fn(HloCallBoundary(callsite, fused, operands,
+                                  /*first_operand_index_in=*/0,
+                                  /*root_feeds_callsite_in=*/true,
+                                  /*callsite_output_prefix_in=*/{}));
+      }
+      return absl::OkStatus();
+    }
+    case HloOpcode::kScan: {
+      if (!options.include_associative_scans ||
+          Cast<HloScanInstruction>(callsite)->is_associative() !=
+              TRI_STATE_TRUE) {
+        return absl::OkStatus();
+      }
+      HloComputation* body = callsite->to_apply();
+      if (body != nullptr && is_thread_included(body->execution_thread())) {
+        return fn(HloCallBoundary(callsite, body, operands,
+                                  /*first_operand_index_in=*/0,
+                                  /*root_feeds_callsite_in=*/true,
+                                  /*callsite_output_prefix_in=*/{}));
+      }
+      return absl::OkStatus();
+    }
+    default:
+      return absl::OkStatus();
+  }
+}
+
+void HloDataflowPropagation::ForEachCallBoundary(
+    const HloInstruction* callsite,
+    absl::FunctionRef<void(const HloCallBoundary&)> fn,
+    const HloCallBoundaryOptions& options) {
+  CHECK_OK(ForEachCallBoundaryWithStatus(
+      callsite,
+      [&](const HloCallBoundary& boundary) {
+        fn(boundary);
+        return absl::OkStatus();
+      },
+      options));
+}
+
+absl::Status HloDataflowPropagation::ForEachCallerBoundaryWithStatus(
+    const HloComputation* callee,
+    absl::FunctionRef<absl::Status(const HloCallBoundary&)> fn,
+    const HloCallBoundaryOptions& options) {
+  if (callee == nullptr) {
+    return absl::OkStatus();
+  }
+  for (HloInstruction* caller : callee->caller_instructions()) {
+    ABSL_RETURN_IF_ERROR(ForEachCallBoundaryWithStatus(
+        caller,
+        [&](const HloCallBoundary& boundary) -> absl::Status {
+          if (boundary.callee != callee) {
+            return absl::OkStatus();
+          }
+          return fn(boundary);
+        },
+        options));
+  }
+  return absl::OkStatus();
+}
+
+void HloDataflowPropagation::ForEachCallerBoundary(
+    const HloComputation* callee,
+    absl::FunctionRef<void(const HloCallBoundary&)> fn,
+    const HloCallBoundaryOptions& options) {
+  CHECK_OK(ForEachCallerBoundaryWithStatus(
+      callee,
+      [&](const HloCallBoundary& boundary) {
+        fn(boundary);
+        return absl::OkStatus();
+      },
+      options));
+}
+
+absl::Status HloDataflowPropagation::ForEachCalledParameterWithStatus(
+    const HloInstruction* callsite, int64_t operand_number,
+    absl::FunctionRef<absl::Status(HloInstruction*)> fn,
+    const HloCallBoundaryOptions& options) {
+  return ForEachCallBoundaryWithStatus(
+      callsite,
+      [&](const HloCallBoundary& boundary) -> absl::Status {
+        const int64_t param_no = operand_number - boundary.first_operand_index;
+        if (param_no >= 0 && param_no < boundary.num_parameters()) {
+          return fn(boundary.callee_parameter(param_no));
+        }
+        return absl::OkStatus();
+      },
+      options);
+}
+
+void HloDataflowPropagation::ForEachCalledParameter(
+    const HloInstruction* callsite, int64_t operand_number,
+    absl::FunctionRef<void(HloInstruction*)> fn,
+    const HloCallBoundaryOptions& options) {
+  CHECK_OK(ForEachCalledParameterWithStatus(
+      callsite, operand_number,
+      [&](HloInstruction* param) {
+        fn(param);
+        return absl::OkStatus();
+      },
+      options));
+}
+
+absl::Status HloDataflowPropagation::ForEachWhileBoundaryInstructionWithStatus(
+    const HloInstruction* while_inst,
+    absl::FunctionRef<absl::Status(const HloInstruction*)> fn) {
+  if (while_inst == nullptr || while_inst->opcode() != HloOpcode::kWhile) {
+    return absl::OkStatus();
+  }
+  if (while_inst->operand_count() > 0) {
+    ABSL_RETURN_IF_ERROR(fn(while_inst->operand(0)));
+  }
+  for (HloComputation* subcomp :
+       {while_inst->while_body(), while_inst->while_condition()}) {
+    if (subcomp != nullptr && subcomp->num_parameters() > 0) {
+      ABSL_RETURN_IF_ERROR(fn(subcomp->parameter_instruction(0)));
+    }
+  }
+  if (while_inst->while_body() != nullptr &&
+      while_inst->while_body()->root_instruction() != nullptr) {
+    ABSL_RETURN_IF_ERROR(fn(while_inst->while_body()->root_instruction()));
+  }
+  return fn(while_inst);
+}
+
+void HloDataflowPropagation::ForEachWhileBoundaryInstruction(
+    const HloInstruction* while_inst,
+    absl::FunctionRef<void(const HloInstruction*)> fn) {
+  CHECK_OK(ForEachWhileBoundaryInstructionWithStatus(
+      while_inst, [&](const HloInstruction* inst) {
+        fn(inst);
+        return absl::OkStatus();
+      }));
+}
+
+ShapeIndex HloDataflowPropagation::GetForwardedUseOutputIndex(
+    const HloUse& use) {
+  ShapeIndex output_index;
+  if (use.instruction->opcode() == HloOpcode::kTuple ||
+      (use.instruction->opcode() == HloOpcode::kAllReduce &&
+       use.instruction->shape().IsTuple())) {
+    output_index.push_back(use.operand_number);
+    output_index.insert(output_index.end(), use.operand_index.begin(),
+                        use.operand_index.end());
+  } else if (use.instruction->opcode() == HloOpcode::kGetTupleElement) {
+    for (int64_t i = 1; i < use.operand_index.size(); ++i) {
+      output_index.push_back(use.operand_index[i]);
+    }
+  } else {
+    output_index = use.operand_index;
+  }
+  return output_index;
+}
+
+const HloInstruction* HloDataflowPropagation::PreferredWhileBoundarySource(
+    const HloInstruction* while_inst, const ShapeIndex& index,
+    const HloInstruction* fallback_source) {
+  const HloInstruction* caller_source = nullptr;
+  if (IsComputationIncluded(while_inst->parent())) {
+    if (HasValueAt(while_inst, index)) {
+      caller_source = while_inst;
+    } else if (while_inst->operand_count() > 0 &&
+               HasValueAt(while_inst->operand(0), index)) {
+      caller_source = while_inst->operand(0);
+    }
+  }
+  if (caller_source == nullptr) {
+    caller_source = fallback_source;
+  }
+  const bool has_caller = caller_source != nullptr &&
+                          IsComputationIncluded(caller_source->parent()) &&
+                          HasValueAt(caller_source, index);
+  const HloComputation* body = while_inst->while_body();
+  if (body != nullptr && IsComputationIncluded(body)) {
+    if (body->num_parameters() > 0) {
+      const HloInstruction* body_param = body->parameter_instruction(0);
+      if (HasValueAt(body_param, index) &&
+          (!has_caller || !IsStaleWhileBodyValue(while_inst, index, body_param,
+                                                 caller_source))) {
+        return body_param;
+      }
+    }
+    const HloInstruction* body_root = body->root_instruction();
+    if (body_root != nullptr && HasValueAt(body_root, index) &&
+        (!has_caller ||
+         !IsStaleWhileBodyValue(while_inst, index, body_root, caller_source))) {
+      return body_root;
+    }
+  }
+  return caller_source;
+}
+
+absl::Status HloDataflowPropagation::ForEachConstrainedSubshape(
+    const HloInstruction* instruction,
+    absl::FunctionRef<absl::Status(const ShapeIndex&)> fn) const {
+  if (instruction == nullptr || !IsComputationIncluded(instruction->parent())) {
+    return absl::OkStatus();
+  }
+  return dataflow_analysis_->GetInstructionValueSet(instruction)
+      .ForEachElementWithStatus(
+          [&](const ShapeIndex& index, const HloValueSet&) -> absl::Status {
+            if (!HasValueAt(instruction, index)) {
+              return absl::OkStatus();
+            }
+            return fn(index);
+          });
+}
+
+absl::Status HloDataflowPropagation::FlushPending(bool* dirty, bool* changed) {
+  if (*dirty) {
+    *dirty = false;
+    *changed = true;
+    return FlushComputationPropagation();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status HloDataflowPropagation::PropagateWhileBoundary(
+    const HloInstruction* while_inst, const ShapeIndex& index,
+    const HloInstruction* fallback_source, bool allow_override, bool* changed,
+    bool check_caller_to_body) {
+  const HloInstruction* source =
+      PreferredWhileBoundarySource(while_inst, index, fallback_source);
+  if (source == nullptr || !HasValueAt(source, index)) {
+    return absl::OkStatus();
+  }
+  if (check_caller_to_body) {
+    const HloComputation* body = while_inst->while_body();
+    if (body == nullptr || !IsComputationIncluded(body) ||
+        body->num_parameters() == 0) {
+      return absl::OkStatus();
+    }
+    if (!HasValueAt(body->parameter_instruction(0), index) &&
+        !HasValueAt(body->root_instruction(), index) &&
+        !ShouldPropagateCallerToWhileBody(while_inst, index, source)) {
+      return absl::OkStatus();
+    }
+  }
+  return ForEachWhileBoundaryInstructionWithStatus(
+      while_inst, [&](const HloInstruction* boundary_inst) -> absl::Status {
+        if (!IsComputationIncluded(boundary_inst->parent())) {
+          return absl::OkStatus();
+        }
+        return PropagateAcrossEdge(source, index, boundary_inst, index,
+                                   allow_override, changed);
+      });
+}
+
+absl::Status HloDataflowPropagation::PropagateParameterToCallers(
+    const HloInstruction* param, const ShapeIndex& index, bool allow_override,
+    bool* changed) {
+  const int64_t param_no = param->parameter_number();
+  return ForEachCallerBoundaryWithStatus(
+      param->parent(),
+      [&](const HloCallBoundary& boundary) -> absl::Status {
+        const HloInstruction* caller = boundary.callsite;
+        if (!IsComputationIncluded(caller->parent()) ||
+            param_no >= boundary.num_parameters()) {
+          return absl::OkStatus();
+        }
+        if (caller->opcode() == HloOpcode::kWhile) {
+          return PropagateWhileBoundary(caller, index, param, allow_override,
+                                        changed,
+                                        /*check_caller_to_body=*/false);
+        }
+        return PropagateAcrossEdge(
+            param, index, boundary.caller_operand(param_no), index,
+            allow_override && caller->opcode() == HloOpcode::kAsyncStart,
+            changed);
+      },
+      options_);
+}
+
+absl::Status HloDataflowPropagation::PropagateRootToCallers(
+    const HloInstruction* root, const ShapeIndex& index, bool allow_override,
+    bool* changed) {
+  const HloComputation* computation = root->parent();
+  return ForEachCallerBoundaryWithStatus(
+      computation,
+      [&](const HloCallBoundary& boundary) -> absl::Status {
+        const HloInstruction* caller = boundary.callsite;
+        if (!boundary.root_feeds_callsite ||
+            !IsComputationIncluded(caller->parent())) {
+          return absl::OkStatus();
+        }
+        if (caller->opcode() == HloOpcode::kWhile) {
+          return PropagateWhileBoundary(caller, index, root, allow_override,
+                                        changed,
+                                        /*check_caller_to_body=*/false);
+        }
+        if (caller->opcode() == HloOpcode::kConditional) {
+          if (!ShouldPropagateAcrossRootBoundary(boundary)) {
+            return absl::OkStatus();
+          }
+          const HloComputation* preferred_branch =
+              PreferredConditionalBranch(caller);
+          const HloInstruction* best_root =
+              preferred_branch != nullptr &&
+                      IsComputationIncluded(preferred_branch)
+                  ? preferred_branch->root_instruction()
+                  : nullptr;
+          const bool use_best =
+              best_root != nullptr &&
+              (preferred_branch == computation || HasValueAt(best_root, index));
+          return PropagateAcrossEdge(use_best ? best_root : root, index, caller,
+                                     index, allow_override && use_best,
+                                     changed);
+        }
+        return PropagateAcrossEdge(root, index, caller,
+                                   boundary.CallerOutputIndex(index),
+                                   allow_override, changed);
+      },
+      options_);
+}
+
+absl::Status HloDataflowPropagation::PropagateCallerOutputToCallees(
+    const HloInstruction* caller, const ShapeIndex& index, bool allow_override,
+    bool* changed) {
+  if (caller->opcode() == HloOpcode::kWhile) {
+    return PropagateWhileBoundary(caller, index, caller, allow_override,
+                                  changed,
+                                  /*check_caller_to_body=*/true);
+  }
+  return ForEachCallBoundaryWithStatus(
+      caller,
+      [&](const HloCallBoundary& boundary) -> absl::Status {
+        if (!IsComputationIncluded(boundary.callee) ||
+            !ShouldPropagateAcrossRootBoundary(boundary)) {
+          return absl::OkStatus();
+        }
+        std::optional<ShapeIndex> root_index = boundary.CalleeRootIndex(index);
+        if (!root_index.has_value()) {
+          return absl::OkStatus();
+        }
+        return PropagateAcrossEdge(caller, index, boundary.callee_root(),
+                                   *root_index, /*allow_override=*/false,
+                                   changed);
+      },
+      options_);
+}
+
+absl::Status HloDataflowPropagation::PropagateCallerOperandToCallees(
+    const HloInstruction* caller, const HloInstruction* operand,
+    const ShapeIndex& index, bool allow_override, bool* changed) {
+  if (caller->opcode() == HloOpcode::kWhile) {
+    if (caller->operand_count() > 0 && caller->operand(0) == operand) {
+      return PropagateWhileBoundary(caller, index, operand, allow_override,
+                                    changed,
+                                    /*check_caller_to_body=*/true);
+    }
+    return absl::OkStatus();
+  }
+  return ForEachCallBoundaryWithStatus(
+      caller,
+      [&](const HloCallBoundary& boundary) -> absl::Status {
+        if (!IsComputationIncluded(boundary.callee)) {
+          return absl::OkStatus();
+        }
+        for (int64_t param_no = 0; param_no < boundary.num_parameters();
+             ++param_no) {
+          if (boundary.caller_operand(param_no) == operand) {
+            ABSL_RETURN_IF_ERROR(PropagateAcrossEdge(
+                operand, index, boundary.callee_parameter(param_no), index,
+                /*allow_override=*/false, changed));
+          }
+        }
+        return absl::OkStatus();
+      },
+      options_);
+}
+
+absl::Status HloDataflowPropagation::PropagateForValue(const HloValue& value) {
+  for (const HloPosition& pos : value.positions()) {
+    HloInstruction* inst = pos.instruction;
+    const ShapeIndex& index = pos.index;
+    HloComputation* computation = inst->parent();
+    if (!IsComputationIncluded(computation) || !HasValueAt(inst, index)) {
+      continue;
+    }
+    if (inst->opcode() == HloOpcode::kParameter) {
+      ABSL_RETURN_IF_ERROR(PropagateParameterToCallers(
+          inst, index, /*allow_override=*/false, /*changed=*/nullptr));
+    }
+    if (inst == computation->root_instruction()) {
+      ABSL_RETURN_IF_ERROR(PropagateRootToCallers(
+          inst, index, /*allow_override=*/false, /*changed=*/nullptr));
+    }
+    ABSL_RETURN_IF_ERROR(PropagateCallerOutputToCallees(
+        inst, index, /*allow_override=*/false, /*changed=*/nullptr));
+    for (HloInstruction* user : inst->users()) {
+      ABSL_RETURN_IF_ERROR(PropagateCallerOperandToCallees(
+          user, inst, index, /*allow_override=*/false, /*changed=*/nullptr));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status HloDataflowPropagation::PropagateCalleeToCallers(
+    HloComputation* computation, bool* changed) {
+  bool dirty = false;
+  for (HloInstruction* param : computation->parameter_instructions()) {
+    ABSL_RETURN_IF_ERROR(
+        ForEachConstrainedSubshape(param, [&](const ShapeIndex& index) {
+          return PropagateParameterToCallers(param, index,
+                                             /*allow_override=*/true, &dirty);
+        }));
+    ABSL_RETURN_IF_ERROR(FlushPending(&dirty, changed));
+  }
+
+  HloInstruction* root = computation->root_instruction();
+  ABSL_RETURN_IF_ERROR(
+      ForEachConstrainedSubshape(root, [&](const ShapeIndex& index) {
+        return PropagateRootToCallers(root, index, /*allow_override=*/true,
+                                      &dirty);
+      }));
+  return FlushPending(&dirty, changed);
+}
+
+absl::Status HloDataflowPropagation::PropagateCallerToCallees(
+    HloComputation* computation, bool* changed) {
+  auto visit_inst = [&](HloInstruction* inst) -> absl::Status {
+    bool dirty = false;
+    if (inst->opcode() == HloOpcode::kWhile) {
+      const HloInstruction* init = inst->operand(0);
+      HloComputation* body = inst->while_body();
+      bool while_changed = false;
+      for (const HloInstruction* source :
+           {static_cast<const HloInstruction*>(inst), init}) {
+        ABSL_RETURN_IF_ERROR(
+            ForEachConstrainedSubshape(source, [&](const ShapeIndex& index) {
+              return PropagateWhileBoundary(inst, index, source,
+                                            /*allow_override=*/true, &dirty,
+                                            /*check_caller_to_body=*/true);
+            }));
+        ABSL_RETURN_IF_ERROR(FlushPending(&dirty, &while_changed));
+      }
+      if (while_changed && IsComputationIncluded(body)) {
+        *changed = true;
+        ABSL_RETURN_IF_ERROR(PropagateCalleeToCallers(body, changed));
+      }
+      return absl::OkStatus();
+    }
+    return ForEachCallBoundaryWithStatus(
+        inst,
+        [&](const HloCallBoundary& boundary) -> absl::Status {
+          if (!IsComputationIncluded(boundary.callee)) {
+            return absl::OkStatus();
+          }
+          bool callee_changed = false;
+          for (int64_t param_no = 0; param_no < boundary.num_parameters();
+               ++param_no) {
+            const HloInstruction* operand = boundary.caller_operand(param_no);
+            HloInstruction* param = boundary.callee_parameter(param_no);
+            ABSL_RETURN_IF_ERROR(ForEachConstrainedSubshape(
+                operand, [&](const ShapeIndex& index) {
+                  return PropagateAcrossEdge(operand, index, param, index,
+                                             /*allow_override=*/false, &dirty);
+                }));
+          }
+          ABSL_RETURN_IF_ERROR(FlushPending(&dirty, &callee_changed));
+          if (ShouldPropagateAcrossRootBoundary(boundary)) {
+            ABSL_RETURN_IF_ERROR(
+                ForEachConstrainedSubshape(inst, [&](const ShapeIndex& index) {
+                  std::optional<ShapeIndex> root_index =
+                      boundary.CalleeRootIndex(index);
+                  if (!root_index.has_value()) {
+                    return absl::OkStatus();
+                  }
+                  return PropagateAcrossEdge(
+                      inst, index, boundary.callee_root(), *root_index,
+                      /*allow_override=*/false, &dirty);
+                }));
+          }
+          ABSL_RETURN_IF_ERROR(FlushPending(&dirty, &callee_changed));
+          if (callee_changed) {
+            *changed = true;
+            ABSL_RETURN_IF_ERROR(PropagateCalleeToCallers(boundary.callee, changed));
+          }
+          return absl::OkStatus();
+        },
+        options_);
+  };
+
+  std::vector<HloInstruction*> boundary_insts;
+  for (HloInstruction* inst : computation->instructions()) {
+    bool has_boundary = false;
+    ForEachCallBoundary(
+        inst, [&](const HloCallBoundary&) { has_boundary = true; }, options_);
+    if (has_boundary) {
+      boundary_insts.push_back(inst);
+      ABSL_RETURN_IF_ERROR(visit_inst(inst));
+    }
+  }
+  for (auto it = boundary_insts.rbegin(); it != boundary_insts.rend(); ++it) {
+    ABSL_RETURN_IF_ERROR(visit_inst(*it));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status HloDataflowPropagation::Run(
+    absl::Span<HloComputation* const> computations) {
+  ResetPropagationState();
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    // Pass 1 (bottom up): propagate from constrained callee parameters and
+    // roots to caller operands and results.
+    for (HloComputation* computation : computations) {
+      if (IsComputationIncluded(computation)) {
+        ABSL_RETURN_IF_ERROR(PropagateCalleeToCallers(computation, &changed));
+      }
+    }
+    // Pass 2 (top down): propagate from constrained caller operands and
+    // results to callee parameters and roots.
+    for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
+      if (IsComputationIncluded(*it)) {
+        ABSL_RETURN_IF_ERROR(PropagateCallerToCallees(*it, &changed));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace xla

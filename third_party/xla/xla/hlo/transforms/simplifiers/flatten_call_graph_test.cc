@@ -22,9 +22,13 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
@@ -38,6 +42,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOkAndHolds;
 
 class FlattenCallGraphTest : public HloHardwareIndependentTestBase {
  protected:
@@ -1427,6 +1433,219 @@ ENTRY %main (param: f32[]) -> f32[] {
   )";
 
   RunAndFilecheckHloRewrite(hlo_string, CreateSkipCallsFlattenPass());
+}
+
+// TODO(b/260601110): Flatten sparsecore threads consistently; should have
+// similar behavior for the original and clones of a computation.
+TEST_F(FlattenCallGraphTest, CrossThreadCalleeCalledTwiceInClonedCaller) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule CrossThreadCalleeCalledTwiceInClonedCaller
+
+// CHECK-LABEL: %bar (
+// CHECK: ROOT %neg{{.*}} = f32[] negate(%param{{.*}})
+// CHECK-NEXT: }, execution_thread="sparsecore"
+%bar (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}, execution_thread="sparsecore"
+
+// CHECK-LABEL: %foo (
+// CHECK: %bar_call_0 = f32[] call(%param{{.*}}), to_apply=%bar
+// CHECK: ROOT %bar_call_1 = f32[] call(%bar_call_0), to_apply=%bar
+%foo (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %bar_call_0 = f32[] call(%param), to_apply=%bar
+  ROOT %bar_call_1 = f32[] call(%bar_call_0), to_apply=%bar
+}
+
+// CHECK-LABEL: %bar.clone (
+// CHECK: ROOT %neg{{.*}} = f32[] negate(%param{{.*}})
+// CHECK-NEXT: }, execution_thread="sparsecore"
+
+// CHECK-LABEL: %bar.clone.1 (
+// CHECK: ROOT %neg{{.*}} = f32[] negate(%param{{.*}})
+// CHECK-NEXT: }, execution_thread="sparsecore"
+
+// CHECK-LABEL: %foo.clone (
+// CHECK: %[[CALL0:.*]] = f32[] call(%param{{.*}}), to_apply=%bar.clone
+// CHECK: ROOT %{{.*}} = f32[] call(%[[CALL0]]), to_apply=%bar.clone.1
+
+// CHECK-LABEL: ENTRY %main (
+// CHECK: %call_foo_0 = f32[] call(%param{{.*}}), to_apply=%foo
+// CHECK: ROOT %call_foo_1 = f32[] call(%call_foo_0), to_apply=%foo.clone
+ENTRY %main (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %call_foo_0 = f32[] call(%param), to_apply=%foo
+  ROOT %call_foo_1 = f32[] call(%call_foo_0), to_apply=%foo
+}
+)hlo";
+
+  FlattenCallGraph flatten;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(flatten.Run(module.get(), {HloInstruction::kMainExecutionThread}),
+              IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(FlattenCallGraphTest,
+       EntryCallsSeparateAsyncWrappersToSharedCallee_FlattenMainThread) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule test_module
+
+%bar (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}, execution_thread="sparsecore"
+
+%bar.async_wrapper (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
+}, execution_thread="sparsecore"
+
+%bar.async_wrapper.1 (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
+}, execution_thread="sparsecore"
+
+ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %start0 = ((f32[], f32[]), f32[]) async-start(%p0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
+  %done0 = f32[] async-done(%start0)
+  %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper.1
+  ROOT %done1 = f32[] async-done(%start1)
+}
+)hlo";
+
+  FlattenCallGraph flatten;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(flatten.Run(module.get(), {HloInstruction::kMainExecutionThread}),
+              IsOkAndHolds(false));
+}
+
+TEST_F(FlattenCallGraphTest,
+       EntryCallsSeparateAsyncWrappersToSharedCallee_FlattenSparseCoreThread) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule test_module
+
+// CHECK-LABEL: %bar (
+// CHECK: ROOT %add = f32[] add(%p0{{.*}}, %p1{{.*}})
+// CHECK-NEXT: }, execution_thread="sparsecore"
+%bar (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}, execution_thread="sparsecore"
+
+// CHECK-LABEL: %bar.async_wrapper (
+// CHECK: ROOT %{{.*}} = f32[] call(%p0{{.*}}, %p1{{.*}}), to_apply=%bar
+// CHECK-NEXT: }, execution_thread="sparsecore"
+%bar.async_wrapper (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
+}, execution_thread="sparsecore"
+
+// CHECK-LABEL: %bar.clone (
+// CHECK: ROOT %add{{.*}} = f32[] add(%p0{{.*}}, %p1{{.*}})
+// CHECK-NEXT: }, execution_thread="sparsecore"
+
+// CHECK-LABEL: %bar.async_wrapper.1 (
+// CHECK: ROOT %{{.*}} = f32[] call(%p0{{.*}}, %p1{{.*}}), to_apply=%bar.clone
+// CHECK-NEXT: }, execution_thread="sparsecore"
+%bar.async_wrapper.1 (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
+}, execution_thread="sparsecore"
+
+// CHECK-LABEL: ENTRY %main (
+// CHECK: %start0 = ((f32[], f32[]), f32[]) async-start(%p0{{.*}}, %p1{{.*}}), async_execution_thread="sparsecore", calls=%bar.async_wrapper
+// CHECK: %done0 = f32[] async-done(%start0)
+// CHECK: %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1{{.*}}), async_execution_thread="sparsecore", calls=%bar.async_wrapper.1
+// CHECK: ROOT %done1 = f32[] async-done(%start1)
+ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %start0 = ((f32[], f32[]), f32[]) async-start(%p0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
+  %done0 = f32[] async-done(%start0)
+  %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper.1
+  ROOT %done1 = f32[] async-done(%start1)
+}
+)hlo";
+
+  FlattenCallGraph flatten;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(flatten.Run(module.get(), {"sparsecore"}), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(FlattenCallGraphTest, EntryCallsSharedAsyncWrapper_FlattenMainThread) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule test_module
+
+%bar (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}, execution_thread="sparsecore"
+
+%bar.async_wrapper (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
+}, execution_thread="sparsecore"
+
+ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %start0 = ((f32[], f32[]), f32[]) async-start(%p0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
+  %done0 = f32[] async-done(%start0)
+  %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
+  ROOT %done1 = f32[] async-done(%start1)
+}
+)hlo";
+
+  FlattenCallGraph flatten;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(flatten.Run(module.get(), {HloInstruction::kMainExecutionThread}),
+              IsOkAndHolds(false));
+}
+
+// TODO(b/260601110): Flatten sparsecore threads fully.
+TEST_F(FlattenCallGraphTest,
+       EntryCallsSharedAsyncWrapper_FlattenSparseCoreThread) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule test_module
+
+%bar (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%p0, %p1)
+}, execution_thread="sparsecore"
+
+%bar.async_wrapper (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %call = f32[] call(%p0, %p1), to_apply=%bar
+}, execution_thread="sparsecore"
+
+ENTRY %main (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %start0 = ((f32[], f32[]), f32[]) async-start(%p0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
+  %done0 = f32[] async-done(%start0)
+  %start1 = ((f32[], f32[]), f32[]) async-start(%done0, %p1), async_execution_thread="sparsecore", calls=%bar.async_wrapper
+  ROOT %done1 = f32[] async-done(%start1)
+}
+)hlo";
+
+  FlattenCallGraph flatten;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(flatten.Run(module.get(), {"sparsecore"}), IsOkAndHolds(false));
 }
 
 }  // namespace

@@ -78,6 +78,11 @@ class SegmentReduce : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntScalar(
                        2, &num_segments, xla::ValueInferenceMode::kUpperBound));
+    // Reject a negative num_segments like the TensorFlow kernels, before it
+    // reaches TensorShape, which CHECK-fails on negative sizes.
+    OP_REQUIRES(ctx, num_segments >= 0,
+                errors::InvalidArgument("Input num_segments == ", num_segments,
+                                        " must not be negative."));
     OP_REQUIRES(ctx, data_shape.dims() >= indices_shape.dims(),
                 errors::InvalidArgument(type_string(),
                                         " requires that indices' rank be"
@@ -184,6 +189,14 @@ class SegmentReduce : public XlaOpKernel {
         // For each dynamic dimension, call set-dimension-size on it.
         buffer = xla::SetDimensionSize(buffer, buffer_dims[i], i);
       }
+    }
+
+    // With no segments, every segment id is dropped and the result is empty.
+    // XlaScatter rejects a scatter into a dimension of size zero, so return
+    // the empty buffer as is.
+    if (num_segments == 0) {
+      ctx->SetOutput(0, buffer);
+      return;
     }
 
     if (FilterNaNs() && xla::primitive_util::IsFloatingPointType(type_)) {

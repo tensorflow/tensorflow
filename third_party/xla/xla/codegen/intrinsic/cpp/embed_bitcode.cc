@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Object/ObjectFile.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Host.h"
 #include "xla/util/embedded_constant_buffers.h"
 
@@ -147,6 +149,28 @@ std::string GenerateHeaderContent(const xla::EmbeddedConstantBuffers& buffers,
   return os.str();
 }
 
+bool WriteEmptyHeaderAndObject(const Args& args) {
+  std::ofstream header_file(args.output_header_path);
+  if (!header_file) {
+    fprintf(stderr, "Error: Could not open output header file %s\n",
+            args.output_header_path.c_str());
+    return false;
+  }
+  header_file << "#pragma once\n\n#include <cstdint>\n#include <string>\n\n";
+  if (!args.namespace_name.empty()) {
+    header_file << "namespace " << args.namespace_name << " {\n";
+  }
+  header_file << "inline const std::string " << args.variable_name << ";\n";
+  if (!args.namespace_name.empty()) {
+    header_file << "}  // namespace " << args.namespace_name << "\n";
+  }
+  header_file.close();
+
+  std::ofstream object_file(args.output_object_path);
+  object_file.close();
+  return true;
+}
+
 }  // namespace
 
 static void InitializeTargets() {
@@ -232,26 +256,7 @@ int main(int argc, char* argv[]) {
               args->input_path.c_str());
       return 1;
     }
-
-    std::ofstream header_file(args->output_header_path);
-    if (!header_file) {
-      fprintf(stderr, "Error: Could not open output header file %s\n",
-              args->output_header_path.c_str());
-      return 1;
-    }
-    header_file << "#pragma once\n\n#include <cstdint>\n#include <string>\n\n";
-    if (!args->namespace_name.empty()) {
-      header_file << "namespace " << args->namespace_name << " {\n";
-    }
-    header_file << "inline const std::string " << args->variable_name << ";\n";
-    if (!args->namespace_name.empty()) {
-      header_file << "}  // namespace " << args->namespace_name << "\n";
-    }
-    header_file.close();
-
-    std::ofstream object_file(args->output_object_path);
-    object_file.close();
-    return 0;
+    return WriteEmptyHeaderAndObject(*args) ? 0 : 1;
   }
 
   // We need to determine the target triple.
@@ -261,21 +266,38 @@ int main(int argc, char* argv[]) {
 
   std::string target_triple = llvm::sys::getDefaultTargetTriple();
 
-  if (!content.empty()) {
-    // Attempt to parse the bitcode to extract its target triple.
-    std::unique_ptr<llvm::MemoryBuffer> bitcode_buffer =
-        llvm::MemoryBuffer::getMemBuffer(content, "<embedded_bitcode>",
-                                         /*RequiresNullTerminator=*/false);
-    module = llvm::parseIR(bitcode_buffer->getMemBufferRef(), err, context);
-    if (module && !module->getTargetTriple().str().empty()) {
-      target_triple = module->getTargetTriple().str();
+  // Attempt to parse the bitcode to extract its target triple.
+  std::unique_ptr<llvm::MemoryBuffer> bitcode_buffer =
+      llvm::MemoryBuffer::getMemBuffer(content, "<embedded_bitcode>",
+                                       /*RequiresNullTerminator=*/false);
+  module = llvm::parseIR(bitcode_buffer->getMemBufferRef(), err, context);
+  if (!module) {
+    err.print(args->input_path.c_str(), llvm::errs());
+    return 1;
+  }
+  if (!module->getTargetTriple().str().empty()) {
+    target_triple = module->getTargetTriple().str();
+  }
+
+  bool has_defined_functions = false;
+  for (const llvm::Function& func : *module) {
+    if (!func.isDeclaration()) {
+      has_defined_functions = true;
+      break;
     }
   }
 
-  // Wrap the content into a ConstantToEmbed.
+  // Wrap the content into a ConstantToEmbed. If there are no defined functions
+  // in the bitcode (e.g. because compiler guards disabled vector extensions),
+  // embed an empty buffer so that the variable evaluates to an empty string and
+  // the object file remains a valid object with symbol table entries for
+  // libtool. Otherwise, embed the full bitcode content.
   xla::ConstantToEmbed constant_to_embed;
   constant_to_embed.symbol_prefix = args->variable_name;
-  std::vector<uint8_t> content_vec(content.begin(), content.end());
+  std::vector<uint8_t> content_vec;
+  if (has_defined_functions) {
+    content_vec.assign(content.begin(), content.end());
+  }
   constant_to_embed.SerializeIntoBuffer(content_vec);
 
   std::vector<xla::ConstantToEmbed> constants;

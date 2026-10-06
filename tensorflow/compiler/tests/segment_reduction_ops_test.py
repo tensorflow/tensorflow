@@ -175,6 +175,46 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
               np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
               np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 5))
 
+  def _testZeroSegments(self, reductions, indices):
+    # With no segments, every segment id is dropped and the result is empty.
+    for reduction, types in reductions:
+      for dtype in types:
+        self.assertAllEqual(
+            reduction(np.ones([2, 3], dtype=dtype), indices, 0),
+            np.zeros([0, 3], dtype=dtype))
+
+  def testUnsortedSegmentReductionWithZeroSegments(self):
+    real_types = self.int_types | self.float_types
+    self._testZeroSegments(
+        ((self._unsortedSegmentSum, self.numeric_types),
+         (self._unsortedSegmentProd, self.numeric_types),
+         (self._unsortedSegmentMin, real_types),
+         (self._unsortedSegmentMax, real_types)),
+        np.array([-1, -2], dtype=np.int32))
+
+  def testSortedSegmentReductionV2WithZeroSegments(self):
+    # The sorted V2 ops share the XLA kernel. The ids have to be non-empty to
+    # reach the scatter, and sorted.
+    real_types = self.int_types | self.float_types
+    self._testZeroSegments(
+        ((self._segmentSumV2, self.numeric_types),
+         (self._segmentProdV2, self.numeric_types),
+         (self._segmentMinV2, real_types),
+         (self._segmentMaxV2, real_types)),
+        np.array([-1, -1], dtype=np.int32))
+
+  def testUnsortedSegmentSumNegativeNumSegments(self):
+    # Graph shape inference rejects a negative constant num_segments, so feed
+    # it to reach the XLA kernel, which used to CHECK-fail on it.
+    with self.session() as sess, self.test_scope():
+      d = array_ops.placeholder(np.float32, shape=[2, 3])
+      i = array_ops.placeholder(np.int32, shape=[2])
+      n = array_ops.placeholder(np.int32, shape=[])
+      out = math_ops.unsorted_segment_sum(d, i, n)
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "num_segments == -1 must not be negative"):
+        sess.run(out, {d: np.ones([2, 3], dtype=np.float32), i: [0, 1], n: -1})
+
   def testUnsortedSegmentSum0DIndices1DData(self):
     for dtype in self.numeric_types:
       self.assertAllClose(

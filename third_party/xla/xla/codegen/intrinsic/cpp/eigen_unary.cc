@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(__FLT16_MANT_DIG__) && defined(__has_attribute) &&    \
-    __has_attribute(ext_vector_type) && defined(__has_builtin) && \
-    __has_builtin(__builtin_vectorelements)
+#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
+    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 
 #include "xla/codegen/intrinsic/cpp/eigen_unary.h"
 
@@ -165,5 +164,5 @@ Vec4d atan_v4f64(Vec4d x) { return VectorAtan(x); }
 Vec8d atan_v8f64(Vec8d x) { return VectorAtan(x); }
 
 }  // namespace xla::codegen
-#endif  // defined(__has_attribute) && __has_attribute(vector_size) &&
+#endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) &&
         // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)

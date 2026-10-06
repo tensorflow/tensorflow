@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/vector_storage.h"
 
+#include <memory>
+
+#include "absl/functional/function_ref.h"
 #include "xla/backends/gpu/runtime/device_slot.h"
 
 namespace xla::gpu {
@@ -24,6 +27,12 @@ DeviceSlot* VectorStorage::Find(int device_ordinal) const {
     return nullptr;
   }
   return slots_[device_ordinal].get();
+}
+
+void VectorStorage::ForEach(absl::FunctionRef<void(DeviceSlot&)> fn) const {
+  for (const std::unique_ptr<DeviceSlot>& slot : slots_) {
+    fn(*slot);
+  }
 }
 
 }  // namespace xla::gpu

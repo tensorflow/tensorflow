@@ -395,6 +395,35 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
+  @parameterized.parameters((1, 2, 1), (1, 4, 2), (0, 1, 1), (20, 21, 1))
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolValidEmptyOutput(self, rows, window, stride):
+    value = array_ops.zeros([1, rows, 10, 3])
+    output = nn_ops.avg_pool(
+        value,
+        ksize=[1, window, 2, 1],
+        strides=[1, stride, 1, 1],
+        padding="VALID",
+    )
+    self.assertEqual(output.shape.as_list(), [1, 0, 9, 3])
+    self.assertEqual(self.evaluate(output).shape, (1, 0, 9, 3))
+
+  @parameterized.parameters((1, 3), (0, 2))
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolNegativeOutput(self, rows, window):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Negative dimension size|Computed output size would be negative",
+    ):
+      self.evaluate(
+          nn_ops.avg_pool(
+              array_ops.zeros([1, rows, 10, 3]),
+              ksize=[1, window, 2, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+          )
+      )
+
   @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
   @test_util.run_deprecated_v1
   def testAvgPoolSamePadding(self, **kwargs):
@@ -2446,6 +2475,9 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                     strides=[2, 1, 1, 1],
                     padding="SAME"))
 
+        # AvgPool accepts zero-sized outputs; MaxPool keeps its existing check.
+        if pool_func == nn_ops.avg_pool:
+          continue
         # Filter too large.
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           sess.run(
