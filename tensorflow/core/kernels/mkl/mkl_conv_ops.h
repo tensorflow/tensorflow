@@ -676,6 +676,23 @@ class MklConvBackpropCommonOp : public OpKernel {
         OP_REQUIRES(
             context, dilation_h > 0 && dilation_w > 0,
             errors::InvalidArgument("Dilated rates should be larger than 0."));
+      } else if (strides_.size() == 5) {
+        OP_REQUIRES(
+            context, dilations_.size() == 5,
+            errors::InvalidArgument("Sliding window dilations field must "
+                                    "specify 5 dimensions"));
+        int dilation_n = GetTensorDim(dilations_, data_format_, 'N');
+        int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
+        int dilation_0 = GetTensorDim(dilations_, data_format_, '0');
+        int dilation_1 = GetTensorDim(dilations_, data_format_, '1');
+        int dilation_2 = GetTensorDim(dilations_, data_format_, '2');
+        OP_REQUIRES(context, (dilation_n == 1 && dilation_c == 1),
+                    errors::InvalidArgument(
+                        "Current implementation does not yet support "
+                        "dilations in the batch and depth dimensions."));
+        OP_REQUIRES(
+            context, dilation_0 > 0 && dilation_1 > 0 && dilation_2 > 0,
+            errors::InvalidArgument("Dilated rates should be larger than 0."));
       }
     } else {
       // Set dilations as 1 for depthwise conv
