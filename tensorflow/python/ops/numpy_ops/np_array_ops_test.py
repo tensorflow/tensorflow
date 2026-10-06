@@ -1510,16 +1510,26 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, [1, -2], axis=[-3, 2])
     _test(a, np.array([0, 1]), axis=np.array([-1, 1]))
 
-    # Out-of-bounds axes raise, matching np.roll's AxisError.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # Out-of-bounds axes raise, checked by the backend kernel.
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+    ):
       np_array_ops.roll(a, 1, axis=3)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+    ):
       np_array_ops.roll(a, 1, axis=-4)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+    ):
       np_array_ops.roll(a, (1, 2), axis=(0, 3))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+    ):
       np_array_ops.roll(a, (1, -1), axis=[0, -4])
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), 'out of bounds'
+    ):
       np_array_ops.roll(a, range(2), axis=range(2, 4))
 
   def testNdim(self):

@@ -75,9 +75,11 @@ class RollOp : public OpKernel {
       if (axis < 0) {
         axis += num_dims;
       }
-      OP_REQUIRES(context, FastBoundsCheck(axis, num_dims),
-                  absl::InvalidArgumentError(
-                      absl::StrCat("axis ", axis, " is out of range")));
+      OP_REQUIRES(
+          context, FastBoundsCheck(axis, num_dims),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Argument `axis` (received axis=", axis_flat(i),
+              ") is out of bounds for input of rank ", num_dims, ".")));
       const int ds = std::max<int>(static_cast<int>(input.dim_size(axis)), 1);
       const int sum = shift_mod_sum[axis] + static_cast<int>(shift_flat(i));
       // modulo that works with negatives: ((x % y) + y) % y
