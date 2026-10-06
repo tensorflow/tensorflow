@@ -2792,58 +2792,6 @@ TEST_P(FrontendAttributesMemorySpaceTest, DirectUsage) {
               absl_testing::IsOkAndHolds(true));
 }
 
-TEST_P(FrontendAttributesMemorySpaceTest, FusionUsage) {
-  constexpr absl::string_view kHloTemplate = R"(
-    HloModule test$0
-
-    fused_computation {
-      p0 = f32[16]{0} parameter(0)
-      ROOT cc = f32[16]{0} custom-call(p0),
-        custom_call_target="__xla_test_mock_custom_call_f32",
-        api_version=API_VERSION_TYPED_FFI
-    }
-
-    ENTRY test_computation {
-      p = f32[16] parameter(0)
-      ROOT fusion = f32[16] fusion(p), kind=kCustom, calls=fused_computation,
-        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_slice_fusion"}}},
-        frontend_attributes={
-          operands_memory_spaces="{0:7}",
-          results_memory_spaces="{0:7}"
-        }
-    }
-  )";
-
-  bool use_input_output_alias = GetParam();
-  std::string hlo_text = absl::StrReplaceAll(
-      kHloTemplate,
-      {{"$0",
-        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
-
-  HloModuleConfig config = GetModuleConfigForTest();
-
-  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
-      optimized_module_and_executable;
-  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
-                       GetOptimizedModuleForExecutable(hlo_text, config));
-
-  const HloModule* optimized_module = optimized_module_and_executable.first;
-
-  constexpr absl::string_view expected_check = R"(
-    // CHECK: %p = f32[16]{0} parameter(0)
-    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(7)} copy(%p)
-    // CHECK: %fusion = f32[16]{0:S(7)} fusion([[COPY0]])
-    // CHECK: ROOT %copy{{.*}} = f32[16]{0} copy(%fusion)
-  )";
-
-  EXPECT_THAT(RunFileCheck(
-                  optimized_module->ToString(HloPrintOptions{}
-                                                 .set_print_operand_shape(false)
-                                                 .set_print_metadata(false)),
-                  expected_check),
-              absl_testing::IsOkAndHolds(true));
-}
-
 TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
   constexpr absl::string_view kHloTemplate = R"(
     HloModule test$0

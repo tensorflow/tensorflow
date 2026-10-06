@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -32,7 +31,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
@@ -44,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -692,95 +689,6 @@ absl::Status SetDynamicSliceFusionBackendConfig(HloInstruction* fusion) {
   return fusion->set_backend_config(std::move(gpu_config));
 }
 
-absl::Status PropagateMemorySpaceFrontendAttributes(
-    HloInstruction* hero, HloInstruction* fusion,
-    const HloComputation* fusion_body,
-    absl::Span<const SlicedResult> sliced_results) {
-  if (!hero->has_frontend_attributes()) {
-    return absl::OkStatus();
-  }
-
-  // Remap operands_memory_spaces if present on the hero.
-  auto operands_attr = hero->get_frontend_attribute(kOperandsMemorySpacesAttr);
-  if (operands_attr.has_value()) {
-    ABSL_ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*operands_attr));
-    const HloInstruction* cloned_hero =
-        DynamicSliceFusion::FindHero(fusion_body);
-    if (cloned_hero != nullptr) {
-      ABSL_ASSIGN_OR_RETURN(auto hero_params,
-                       DynamicSliceFusion::ResolveParameters(cloned_hero));
-      std::vector<std::pair<int64_t, int64_t>> remapped_pairs;
-      for (auto [hero_operand_idx, memory_space] : pairs) {
-        if (hero_operand_idx >= 0 &&
-            hero_operand_idx < static_cast<int64_t>(hero_params.size())) {
-          int64_t fusion_param_num =
-              hero_params[hero_operand_idx].parameter_number;
-          remapped_pairs.emplace_back(fusion_param_num,
-                                      static_cast<int64_t>(memory_space));
-        }
-      }
-      if (!remapped_pairs.empty()) {
-        std::sort(remapped_pairs.begin(), remapped_pairs.end());
-        remapped_pairs.erase(
-            std::unique(remapped_pairs.begin(), remapped_pairs.end()),
-            remapped_pairs.end());
-        std::string serialized = absl::StrCat(
-            "{",
-            absl::StrJoin(remapped_pairs, ",",
-                          [](std::string* out, const auto& pair) {
-                            absl::StrAppend(out, pair.first, ":", pair.second);
-                          }),
-            "}");
-        fusion->add_frontend_attribute(std::string(kOperandsMemorySpacesAttr),
-                                       serialized);
-      }
-    }
-  }
-
-  // Remap results_memory_spaces if present on the hero.
-  auto results_attr = hero->get_frontend_attribute(kResultsMemorySpacesAttr);
-  if (results_attr.has_value()) {
-    ABSL_ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*results_attr));
-    absl::flat_hash_map<int64_t, int64_t> hero_to_fusion_result_map;
-    if (sliced_results.size() <= 1) {
-      hero_to_fusion_result_map[0] = 0;
-    } else {
-      for (int64_t fusion_idx = 0;
-           fusion_idx < static_cast<int64_t>(sliced_results.size());
-           ++fusion_idx) {
-        hero_to_fusion_result_map[sliced_results[fusion_idx].result_number] =
-            fusion_idx;
-      }
-    }
-
-    std::vector<std::pair<int64_t, int64_t>> remapped_pairs;
-    for (auto [hero_result_idx, memory_space] : pairs) {
-      auto it = hero_to_fusion_result_map.find(hero_result_idx);
-      if (it != hero_to_fusion_result_map.end()) {
-        remapped_pairs.emplace_back(it->second,
-                                    static_cast<int64_t>(memory_space));
-      }
-    }
-    if (!remapped_pairs.empty()) {
-      std::sort(remapped_pairs.begin(), remapped_pairs.end());
-      remapped_pairs.erase(
-          std::unique(remapped_pairs.begin(), remapped_pairs.end()),
-          remapped_pairs.end());
-      std::string serialized = absl::StrCat(
-          "{",
-          absl::StrJoin(remapped_pairs, ",",
-                        [](std::string* out, const auto& pair) {
-                          absl::StrAppend(out, pair.first, ":", pair.second);
-                        }),
-          "}");
-      fusion->add_frontend_attribute(std::string(kResultsMemorySpacesAttr),
-                                     serialized);
-    }
-  }
-
-  return absl::OkStatus();
-}
-
 //===----------------------------------------------------------------------===//
 // Rewrite sync hero
 //===----------------------------------------------------------------------===//
@@ -806,8 +714,6 @@ absl::StatusOr<bool> RewriteHero(
   ABSL_RETURN_IF_ERROR(SetDynamicSliceFusionBackendConfig(fusion));
   ABSL_RETURN_IF_ERROR(fusion->CopyAllControlDepsFrom(hero));
   ABSL_RETURN_IF_ERROR(hero->DropAllControlDeps());
-  ABSL_RETURN_IF_ERROR(PropagateMemorySpaceFrontendAttributes(
-      hero, fusion, fusion_body, sliced_results));
 
   const bool hero_has_side_effect = hero->HasSideEffect();
 

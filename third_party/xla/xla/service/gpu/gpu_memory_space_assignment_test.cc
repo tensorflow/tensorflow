@@ -689,43 +689,5 @@ INSTANTIATE_TEST_SUITE_P(
                         : "mosaic_does_not_use_collective_metadata";
     });
 
-TEST_F(GpuMemorySpaceAssignmentTest, FusionOperandAndResultMemorySpace) {
-  absl::string_view kHloModule = R"(
-    HloModule m
-
-    fused_computation {
-      body_param = f32[1024]{0} parameter(0)
-      ROOT cc = f32[1024]{0} custom-call(body_param), custom_call_target="foo"
-    }
-
-    ENTRY main {
-      entry_param = f32[1024]{0} parameter(0)
-      ROOT fusion = f32[1024]{0} fusion(entry_param), kind=kCustom, calls=fused_computation,
-        frontend_attributes={
-          operands_memory_spaces="{0:7}",
-          results_memory_spaces="{0:7}"
-        }
-    }
-  )";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       ParseAndReturnVerifiedModule(kHloModule, config));
-  AliasInfo alias_info;
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                       HloAliasAnalysis::Run(module.get(), &alias_info));
-  DependencyHloOrdering ordering(module.get());
-  EXPECT_OK(colorer(alias_analysis.get(), ordering));
-
-  // Operand 0 (entry_param) should be colored with memory space kCollective.
-  EXPECT_EQ(FindColorByName(*alias_analysis, "entry_param"),
-            (int)MemorySpaceColor::kCollective);
-  // Fusion result should be colored with memory space kCollective.
-  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion"),
-            (int)MemorySpaceColor::kCollective);
-}
-
 }  // namespace
 }  // namespace xla::gpu
