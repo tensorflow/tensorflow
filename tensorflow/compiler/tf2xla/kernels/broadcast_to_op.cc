@@ -46,9 +46,8 @@ class BroadcastToOp : public XlaOpKernel {
 
     // xla::BroadcastTo also tiles an input dimension into an output dimension
     // that is a multiple of it, but TensorFlow only broadcasts dimensions of
-    // size 1. Check TensorFlow's rules, with the BroadcastTo kernel's errors,
-    // for dimensions whose sizes are static; a dynamic size is only known by
-    // its bound here.
+    // size 1. Check TensorFlow's rules, with the BroadcastTo kernel's errors.
+    // A dynamic size is only known by its bound here.
     const TensorShape input_shape = context->InputShape(0);
     OP_REQUIRES(context, input_shape.dims() <= output_shape.dims(),
                 errors::InvalidArgument(
@@ -63,17 +62,26 @@ class BroadcastToOp : public XlaOpKernel {
     for (int i = 0; i < input_shape.dims(); ++i) {
       const int64_t input_size = input_shape.dim_size(i);
       const int64_t output_size = output_shape.dim_size(i + rank_difference);
-      if (input_size != output_size && input_size != 1 &&
-          !dynamic_dims[i + rank_difference]) {
+      if (input_size != output_size && input_size != 1) {
         if (!has_input_xla_shape) {
           OP_REQUIRES_VALUE(input_xla_shape, context,
                             context->InputXlaShape(0));
           has_input_xla_shape = true;
         }
-        OP_REQUIRES(context, input_xla_shape.is_dynamic_dimension(i),
-                    errors::InvalidArgument(
-                        "Incompatible shapes: ", input_shape.DebugString(),
-                        " vs. ", output_shape.DebugString()));
+        if (!input_xla_shape.is_dynamic_dimension(i)) {
+          // A static input dimension other than 1 only broadcasts to its own
+          // size, so a dynamic output dimension must have that size at run
+          // time. Make it static, so that xla::BroadcastTo doesn't tile the
+          // input into the output's bound.
+          OP_REQUIRES(
+              context,
+              dynamic_dims[i + rank_difference] && input_size <= output_size,
+              errors::InvalidArgument(
+                  "Incompatible shapes: ", input_shape.DebugString(), " vs. ",
+                  output_shape.DebugString()));
+          output_shape.set_dim(i + rank_difference, input_size);
+          dynamic_dims[i + rank_difference] = false;
+        }
       }
     }
 
