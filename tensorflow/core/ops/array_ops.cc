@@ -2681,24 +2681,6 @@ REGISTER_OP("ExtractImagePatches")
             rates.size()));
       }
 
-      if (ksizes[0] != 1 || ksizes[3] != 1) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("ExtractImagePatches requires the first and last "
-                         "elements of ksizes to be 1, but got: [",
-                         ksizes[0], ", ", ksizes[3], "]"));
-      }
-      if (strides[0] != 1 || strides[3] != 1) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("ExtractImagePatches requires the first and last "
-                         "elements of strides to be 1, but got: [",
-                         strides[0], ", ", strides[3], "]"));
-      }
-      if (rates[0] != 1 || rates[3] != 1) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("ExtractImagePatches requires the first and last "
-                         "elements of rates to be 1, but got: [",
-                         rates[0], ", ", rates[3], "]"));
-      }
 
       int64_t ksize_rows = ksizes[1];
       int64_t ksize_cols = ksizes[2];
@@ -2801,19 +2783,6 @@ REGISTER_OP("ExtractVolumePatches")
             strides.size()));
       }
 
-      if (ksizes[0] != 1 || ksizes[4] != 1) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("ExtractVolumePatches requires the first and last "
-                         "elements of ksizes to be 1, but got: [",
-                         ksizes[0], ", ", ksizes[4], "]"));
-      }
-
-      if (strides[0] != 1 || strides[4] != 1) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("ExtractVolumePatches requires the first and last "
-                         "elements of strides to be 1, but got: [",
-                         strides[0], ", ", strides[4], "]"));
-      }
 
       /*
       // TODO(hsgkim): Enable rates.
