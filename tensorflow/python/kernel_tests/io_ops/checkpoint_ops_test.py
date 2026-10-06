@@ -255,7 +255,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
               num_cols=1))
 
   @test_util.run_deprecated_v1
-  def test_load_and_remap_empty_old_tensor_name(self):
+  def test_load_and_remap_non_scalar_old_tensor_name(self):
     old_tensor_name_placeholder = array_ops.placeholder(dtypes.string)
     remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
@@ -267,12 +267,16 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_cols=self.old_num_cols,
     )
 
-    with self.cached_session() as sess:
-      with self.assertRaisesRegex(
-          errors.InvalidArgumentError,
-          'old_tensor_name.*must have exactly one element',
-      ):
-        sess.run(remapped_matrix, feed_dict={old_tensor_name_placeholder: []})
+    for bad_old_tensor_name in [[], [self.old_tensor_name]]:
+      with self.cached_session() as sess:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            'The `old_tensor_name` tensor must be a scalar',
+        ):
+          sess.run(
+              remapped_matrix,
+              feed_dict={old_tensor_name_placeholder: bad_old_tensor_name},
+          )
 
   def test_load_and_remap_out_of_bounds_row_remapping(self):
     # self.old_num_rows is 5. We use 5 (out of bounds) in row_remapping.
@@ -311,13 +315,12 @@ class LoadAndRemapMatrixTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_num_cols_empty_col_remapping(self):
-    # self.old_num_cols is 16. Mismatched or large num_cols with empty
-    # col_remapping must raise InvalidArgumentError before attempting to
-    # allocate col_id_present memory. Test both sides of the equality boundary.
+    # self.old_num_cols is 16. Mismatched num_cols with empty col_remapping must
+    # raise InvalidArgumentError before attempting to allocate col_id_present
+    # memory. Test both sides of the equality boundary.
     for invalid_num_cols in [
         self.old_num_cols - 1,
         self.old_num_cols + 1,
-        10**12,
     ]:
       with self.cached_session(), self.assertRaisesRegex(
           errors.InvalidArgumentError,
@@ -334,6 +337,62 @@ class LoadAndRemapMatrixTest(test.TestCase):
                 num_cols=invalid_num_cols,
             )
         )
+
+    with self.cached_session(), self.assertRaisesRegex(
+        errors.ResourceExhaustedError,
+        'OOM when allocating tensor',
+    ):
+      self.evaluate(
+          gen_checkpoint_ops.load_and_remap_matrix(
+              ckpt_path=[self.bundle_file],
+              old_tensor_name=self.old_tensor_name,
+              row_remapping=list(range(self.old_num_rows)),
+              col_remapping=[],
+              initializing_values=[],
+              num_rows=self.old_num_rows,
+              num_cols=10**12,
+          )
+      )
+
+  @test_util.run_deprecated_v1
+  def test_load_and_remap_invalid_ckpt_path(self):
+    for bad_ckpt_path in [
+        [],
+        [self.bundle_file, self.bundle_file],
+        [[self.bundle_file]],
+    ]:
+      with self.cached_session(), self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r'The `ckpt_path` tensor must be a scalar or a 1-D tensor with 1 '
+          r'element',
+      ):
+        self.evaluate(
+            gen_checkpoint_ops.load_and_remap_matrix(
+                ckpt_path=bad_ckpt_path,
+                old_tensor_name=self.old_tensor_name,
+                row_remapping=list(range(self.old_num_rows)),
+                col_remapping=[],
+                initializing_values=[],
+                num_rows=self.old_num_rows,
+                num_cols=self.old_num_cols,
+            )
+        )
+
+  @test_util.run_deprecated_v1
+  def test_load_and_remap_scalar_ckpt_path(self):
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+        ckpt_path=self.bundle_file,
+        old_tensor_name=self.old_tensor_name,
+        row_remapping=[1, 0],
+        col_remapping=[],
+        initializing_values=[],
+        num_rows=2,
+        num_cols=self.old_num_cols,
+    )
+    with self.cached_session():
+      self.assertAllClose(
+          self.matrix_value[[1, 0]], self.evaluate(remapped_matrix)
+      )
 
   @test_util.run_deprecated_v1
   def test_load_and_remap_non_1d_col_remapping(self):

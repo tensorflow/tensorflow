@@ -120,20 +120,23 @@ class LoadAndRemapMatrixOp : public OpKernel {
     // Processes the checkpoint source and the provided Tensor name.
     const Tensor* ckpt_path_t;
     OP_REQUIRES_OK(context, context->input("ckpt_path", &ckpt_path_t));
-    OP_REQUIRES(context, ckpt_path_t->NumElements() == 1,
-                absl::InvalidArgumentError(
-                    absl::StrCat("The `ckpt_path` tensor must have exactly one "
-                                 "element, got tensor of shape ",
-                                 ckpt_path_t->shape().DebugString())));
-    const std::string& ckpt_path = ckpt_path_t->scalar<tstring>()();
+    OP_REQUIRES(
+        context,
+        ckpt_path_t->dims() == 0 ||
+            (ckpt_path_t->dims() == 1 && ckpt_path_t->NumElements() == 1),
+        absl::InvalidArgumentError(absl::StrCat(
+            "The `ckpt_path` tensor must be a scalar or a 1-D tensor with 1 "
+            "element, got a tensor of shape ",
+            ckpt_path_t->shape().DebugString())));
+    const std::string& ckpt_path = ckpt_path_t->flat<tstring>()(0);
 
     const Tensor* old_tensor_name_t;
     OP_REQUIRES_OK(context,
                    context->input("old_tensor_name", &old_tensor_name_t));
-    OP_REQUIRES(context, old_tensor_name_t->NumElements() == 1,
+    OP_REQUIRES(context, old_tensor_name_t->dims() == 0,
                 absl::InvalidArgumentError(absl::StrCat(
-                    "The `old_tensor_name` tensor must have exactly one "
-                    "element, got tensor of shape ",
+                    "The `old_tensor_name` tensor must be a scalar, got "
+                    "a tensor of shape ",
                     old_tensor_name_t->shape().DebugString())));
     const std::string& old_tensor_name = old_tensor_name_t->scalar<tstring>()();
 
