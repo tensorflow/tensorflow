@@ -1288,6 +1288,28 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "fft_thunk_test",
+    srcs = ["fft_thunk_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":fft_thunk",
+        ":thunk",
+        ":thunk_testlib",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
 cc_library(
     name = "topk_lib",
     hdrs = ["topk_lib.h"],
