@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
@@ -119,10 +121,12 @@ class SegmentReduce : public XlaOpKernel {
       const int64_t indices_bound = indices_shape.dim_size(d);
       if (data_bound > indices_bound &&
           data_xla_shape.is_dynamic_dimension(d)) {
+        // Dimension sizes are S32, so clamp the bound before narrowing it.
+        const int32_t size_bound = static_cast<int32_t>(std::min<int64_t>(
+            indices_bound, std::numeric_limits<int32_t>::max()));
         xla::XlaOp size =
             xla::Min(xla::GetDimensionSize(data, d),
-                     xla::ConstantR0<int32_t>(
-                         ctx->builder(), static_cast<int32_t>(indices_bound)));
+                     xla::ConstantR0<int32_t>(ctx->builder(), size_bound));
         data = xla::SliceInDim(data, /*start_index=*/0,
                                /*limit_index=*/indices_bound, /*stride=*/1,
                                /*dimno=*/d);
@@ -130,10 +134,11 @@ class SegmentReduce : public XlaOpKernel {
         data_shape.set_dim(d, indices_bound);
       } else if (indices_bound > data_bound &&
                  indices_xla_shape.is_dynamic_dimension(d)) {
+        const int32_t size_bound = static_cast<int32_t>(
+            std::min<int64_t>(data_bound, std::numeric_limits<int32_t>::max()));
         xla::XlaOp size =
             xla::Min(xla::GetDimensionSize(indices, d),
-                     xla::ConstantR0<int32_t>(
-                         ctx->builder(), static_cast<int32_t>(data_bound)));
+                     xla::ConstantR0<int32_t>(ctx->builder(), size_bound));
         indices = xla::SliceInDim(indices, /*start_index=*/0,
                                   /*limit_index=*/data_bound, /*stride=*/1,
                                   /*dimno=*/d);
