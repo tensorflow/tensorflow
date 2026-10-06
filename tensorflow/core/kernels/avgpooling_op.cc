@@ -340,10 +340,12 @@ class AvgPoolingGradOp : public OpKernel {
                                 in_cols, window_cols, /*dilation_rate=*/1,
                                 col_stride, padding_, &out_width, &pad_cols));
     TensorShape forward_output_shape;
-    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
-                                data_format_, output_shape.dim_size(0),
-                                out_height, out_width, output_shape.dim_size(3),
-                                &forward_output_shape));
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(
+                     data_format_,
+                     GetTensorDim(output_shape, data_format_, 'N'), out_height,
+                     out_width, GetTensorDim(output_shape, data_format_, 'C'),
+                     &forward_output_shape));
     OP_REQUIRES(
         context, out_backprop.shape() == forward_output_shape,
         absl::InvalidArgumentError(absl::StrCat(
