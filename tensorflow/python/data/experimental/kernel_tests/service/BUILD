@@ -290,7 +290,11 @@ tf_py_strict_test(
     name = "distributed_save_load_test",
     size = "medium",
     srcs = ["distributed_save_load_test.py"],
-    shard_count = 8,
+    # b/569477438: keep each shard within the moderate budget (300 s plain,
+    # 900 s under tsan/msan). Do not set `timeout` or `size = "large"` instead:
+    # TensorFlow's internal CI only runs short/moderate tests and the OSS CI only
+    # small/medium.
+    shard_count = 16,
     tags = [
         "requires-mem:20g",
     ],

@@ -100,7 +100,9 @@ void ReferencePrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                       int layout_cols, int src_rows, int src_cols, int width,
                       int depth) {
   size_t size = layout_rows * layout_cols / 2;
-  memset(dest, static_cast<uint8_t>(0x77), sizeof(uint8_t) * size);
+  memset(dest,
+         static_cast<uint8_t>((-zero_point_4bit << 4) | (-zero_point_4bit)),
+         sizeof(uint8_t) * size);
   int outer_cols = layout_cols / depth;
   int outer_rows = layout_rows / width;
   int inner_cols = depth;

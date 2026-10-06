@@ -565,6 +565,21 @@ class HloComputation {
           HloInstruction::kMainExecutionThread,
       bool replace = true, bool override_names = false);
 
+  // Replaces an asynchronous instruction with its synchronous variant, and
+  // returns the synchronous instruction.
+  //
+  // For example, calling ReplaceWithSyncVariant with an all-gather-start
+  // instruction and an all-gather-done instruction will replace the
+  // instructions with an all-gather instruction.
+  absl::StatusOr<HloInstruction*> ReplaceWithSyncVariant(
+      HloInstruction* async_start, HloInstruction* async_done);
+
+  // Helper utility to replace a list of pairs of async-start/done ops in this
+  // computation with their synchronous variants and update the schedule.
+  absl::Status ReplaceAsyncInstructionsWithSync(
+      absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
+          async_pairs);
+
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
   // to the computation. For array-shaped values, this method trivially returns
