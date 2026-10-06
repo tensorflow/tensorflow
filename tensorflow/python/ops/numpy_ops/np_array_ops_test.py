@@ -1487,26 +1487,29 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, axis=[0, 2])
     _test(a, axis=(0, 1, 2))
     _test(a, axis=range(3))
-    # Out-of-bounds axes raise, matching np.flip's AxisError.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      np_array_ops.flip(np.float64(1.0), axis=0)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      np_array_ops.flip(a, axis=3)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      np_array_ops.flip(a, axis=-4)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      np_array_ops.flip(a, axis=(0, 3))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      np_array_ops.flip(a, axis=[0, -4])
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      np_array_ops.flip(a, axis=np.array([3]))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      np_array_ops.flip(a, axis=range(4))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      np_array_ops.fliplr(np.arange(3))
-    # The check runs at trace time when the rank is static.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
-      def_function.function(lambda x: np_array_ops.flip(x, axis=-4))(a)
+    # Out-of-bounds axes raise InvalidArgumentError from the C++ kernel.
+    kernel_err = r'out of (valid )?range'
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(np.float64(1.0), axis=0))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=3))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=-4))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=(0, 3)))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=[0, -4]))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=np.array([3])))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=range(4)))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.fliplr(np.arange(3)))
+    # The C++ kernel raises at execution time for traced functions too.
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(
+          def_function.function(lambda x: np_array_ops.flip(x, axis=-4))(a)
+      )
     # Unknown-rank inputs keep the previous behavior for valid axes.
     flip_unknown_rank = def_function.function(
         lambda x: np_array_ops.flip(x, axis=-1),
