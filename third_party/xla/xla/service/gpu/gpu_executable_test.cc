@@ -323,7 +323,8 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
   auto sequential_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::move(command_thunks));
   ThunkSequence thunk_sequence = ThunkSequence::Of<CommandBufferThunk>(
-      std::move(commands), Thunk::ThunkInfo(), std::move(sequential_thunk));
+      std::move(commands), Thunk::ThunkInfo(), /*devices_in_process=*/1,
+      std::move(sequential_thunk));
   ThunkExecutor thunk_executor(std::move(thunk_sequence));
 
   std::vector<const BufferAllocation*> allocation_ptrs;

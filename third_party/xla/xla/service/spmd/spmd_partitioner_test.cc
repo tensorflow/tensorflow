@@ -10526,8 +10526,12 @@ ENTRY entry {
         PartitionComputation(hlo_string, /*num_devices=*/4, options));
     VLOG(1) << module->ToString();
 
+    auto in_group_partition_id =
+        op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
     auto input =
-        AllOf(op::Shape("f32[10,6,7,4]"), op::Select(_, _, op::Parameter(0)));
+        AllOf(op::Shape("f32[10,6,7,4]"),
+              op::Select(op::Broadcast(op::Convert(in_group_partition_id)),
+                         op::Broadcast(op::Constant()), op::Parameter(0)));
     auto indices = AllOf(op::Shape("s32[7,10,3,2]"), op::Parameter(1));
     auto updates = AllOf(op::Shape("f32[7,10,3,2]"), op::Parameter(2));
     auto scatter = AllOf(op::Shape("f32[10,6,7,4]"),
@@ -10564,8 +10568,12 @@ ENTRY entry {
         PartitionComputation(hlo_string, /*num_devices=*/16, options));
     VLOG(1) << module->ToString();
 
+    auto in_group_partition_id =
+        op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
     auto input =
-        AllOf(op::Shape("f32[1,7,32]"), op::Select(_, _, op::Parameter(0)));
+        AllOf(op::Shape("f32[1,7,32]"),
+              op::Select(op::Broadcast(op::Convert(in_group_partition_id)),
+                         op::Broadcast(op::Constant()), op::Parameter(0)));
     auto indices = AllOf(op::Shape("s32[1,2,2,1]"), op::Parameter(1));
     auto updates = AllOf(op::Shape("f32[1,2,2,32]"), op::Parameter(2));
     auto scatter = AllOf(
