@@ -738,12 +738,14 @@ class TensorContractionSubMapper<
     return m_base_mapper(i + m_depth_offset, j + m_col_offset);
   }
 
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet loadPacket(Index i) const {
+  template <typename PacketT = Packet>
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE PacketT loadPacket(Index i) const {
     return m_base_mapper.loadPacket(i + m_depth_offset, m_rowIndex, m_colIndex,
                                     m_otherIndex);
   }
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet loadPacket(Index i,
-                                                          Index j) const {
+  template <typename PacketT = Packet>
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE PacketT loadPacket(Index i,
+                                                           Index j) const {
     return m_base_mapper.template loadPacket<Alignment>(i + m_depth_offset,
                                                         j + m_col_offset);
   }
@@ -1056,8 +1058,7 @@ class TensorContractionSubMapper<
 template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
           typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, int packet_size,
-          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment,
-          int nr>
+          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
 struct gemm_pack_rhs<
     Scalar, Index,
     TensorContractionSubMapper<
@@ -1068,7 +1069,7 @@ struct gemm_pack_rhs<
             Device>,
         nocontract_t, contract_t, packet_size, inner_dim_contiguous,
         inner_dim_reordered, Alignment>,
-    nr, ColMajor, false, false> {
+    /*nr=*/4, ColMajor, false, false> {
   typedef TensorContractionSubMapper<
       Scalar, Index, Rhs,
       TensorEvaluator<
@@ -1080,8 +1081,6 @@ struct gemm_pack_rhs<
       SubMapper;
   typedef SubMapper DataMapper;
   typedef typename packet_traits<Scalar>::type Packet;
-
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
@@ -1264,7 +1263,7 @@ struct gemm_pack_rhs<
 template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
           typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, bool inner_dim_contiguous,
-          bool inner_dim_reordered, int Alignment, int nr>
+          bool inner_dim_reordered, int Alignment>
 struct gemm_pack_rhs<
     Scalar, Index,
     TensorContractionSubMapper<
@@ -1275,7 +1274,7 @@ struct gemm_pack_rhs<
             Device>,
         nocontract_t, contract_t, 2, inner_dim_contiguous, inner_dim_reordered,
         Alignment>,
-    nr, ColMajor, false, false> {
+    /*nr=*/4, ColMajor, false, false> {
   typedef TensorContractionSubMapper<
       Scalar, Index, Rhs,
       TensorEvaluator<
@@ -1287,8 +1286,6 @@ struct gemm_pack_rhs<
       SubMapper;
   typedef SubMapper DataMapper;
   typedef typename packet_traits<Scalar>::type Packet;
-
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
@@ -1480,7 +1477,7 @@ struct gemm_pack_rhs<
 template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
           typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, bool inner_dim_contiguous,
-          bool inner_dim_reordered, int Alignment, int nr>
+          bool inner_dim_reordered, int Alignment>
 struct gemm_pack_rhs<
     Scalar, Index,
     TensorContractionSubMapper<
@@ -1491,7 +1488,7 @@ struct gemm_pack_rhs<
             Device>,
         nocontract_t, contract_t, 1, inner_dim_contiguous, inner_dim_reordered,
         Alignment>,
-    nr, ColMajor, false, false> {
+    /*nr=*/4, ColMajor, false, false> {
   typedef TensorContractionSubMapper<
       Scalar, Index, Rhs,
       TensorEvaluator<
@@ -1502,8 +1499,6 @@ struct gemm_pack_rhs<
       Alignment>
       SubMapper;
   typedef SubMapper DataMapper;
-
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
