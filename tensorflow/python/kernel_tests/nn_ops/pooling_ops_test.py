@@ -2403,11 +2403,11 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
         (
-            # CPU error message
+            # oneDNN error message
             "(Output only has 3 elements but computation requested would use"
             " element with index=6"
             ")|("
-            # GPU error message
+            # CPU and GPU error message
             r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\])"
         ),
     ):
@@ -2438,18 +2438,17 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
          r"\[1,14,14,6\]"),
         ([2, 2, 2, 2], [2, 3, 3, 3], 1, r"\[2,2,2,2\], but got \[2,3,3,3\]"),
     ):
-      with ops.device("/cpu:0"):
-        with self.assertRaisesRegex(
-            (errors_impl.InvalidArgumentError, ValueError),
-            "Expected grad shape to be " + expected):
-          self.evaluate(
-              gen_nn_ops.AvgPoolGrad(
-                  orig_input_shape=orig_input_shape,
-                  grad=array_ops.zeros(grad_shape),
-                  ksize=[1, ksize, ksize, 1],
-                  strides=[1, ksize, ksize, 1],
-                  padding="VALID",
-                  data_format="NHWC"))
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "Expected grad shape to be " + expected):
+        self.evaluate(
+            gen_nn_ops.AvgPoolGrad(
+                orig_input_shape=orig_input_shape,
+                grad=array_ops.zeros(grad_shape),
+                ksize=[1, ksize, ksize, 1],
+                strides=[1, ksize, ksize, 1],
+                padding="VALID",
+                data_format="NHWC"))
 
   @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
