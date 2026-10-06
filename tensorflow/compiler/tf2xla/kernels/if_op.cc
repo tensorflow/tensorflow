@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"

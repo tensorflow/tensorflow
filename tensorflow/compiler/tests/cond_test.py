@@ -328,18 +328,24 @@ class CondTest(xla_test.XLATestCase):
     # dead code before it reaches XLA.
     with context.eager_mode():
 
+      def uncompilable():
+        return array_ops.size(
+            image_ops.decode_image(io_ops.read_file('/tmp/bmp')))
+
       @def_function.function(jit_compile=True)
-      def f():
-
-        def uncompilable():
-          return array_ops.size(
-              image_ops.decode_image(io_ops.read_file('/tmp/bmp')))
-
+      def take_then():
         return cond.cond(
             constant_op.constant(True), lambda: constant_op.constant(17),
             uncompilable)
 
-      self.assertEqual(f().numpy(), 17)
+      @def_function.function(jit_compile=True)
+      def take_else():
+        return cond.cond(
+            constant_op.constant(False), uncompilable,
+            lambda: constant_op.constant(42))
+
+      self.assertEqual(take_then().numpy(), 17)
+      self.assertEqual(take_else().numpy(), 42)
 
   def testConstantPredicateKeepsTakenBranchShape(self):
     # rot90 builds nested conds over k whose branches have different static
