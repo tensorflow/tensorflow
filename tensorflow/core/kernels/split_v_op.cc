@@ -106,9 +106,9 @@ class SplitVOpBase : public OpKernel {
     // truncated size silently drop the rest of the input.
     const int64_t actual_input_size = input_shape.dim_size(split_dim);
     OP_REQUIRES(context, actual_input_size <= std::numeric_limits<Tlen>::max(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input size along split_dim must be <= max(Tlen). Got: ",
-                    actual_input_size));
+                    actual_input_size)));
     Tlen input_size_split_dim = static_cast<Tlen>(actual_input_size);
 
     // Special case 1: num_split == 1. Nothing to do.
@@ -152,9 +152,9 @@ class SplitVOpBase : public OpKernel {
         // since the accepted total then bounds every partial sum.
         OP_REQUIRES(context,
                     determined_size <= std::numeric_limits<Tlen>::max() - size,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Sum of size_splits overflows the index type at index ",
-                        d, "."));
+                        d, ".")));
         determined_size += size;
       }
     }
