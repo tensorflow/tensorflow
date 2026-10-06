@@ -480,6 +480,7 @@ def swish(features, beta=1.0):
       # representable as normal float64 numbers. We evaluate them via
       # half-exponents to prevent intermediate underflow.
       is_extreme_neg = logits <= -500.0
+      safe_logits = array_ops.where_v2(is_extreme_neg, logits, -500.0)
       use_complement = logits >= 0.0
       sigmoid_tail = math_ops.sigmoid(
           array_ops.where_v2(use_complement, -logits, logits)
@@ -490,8 +491,8 @@ def swish(features, beta=1.0):
       sigmoid_grad = sigmoid_tail * (1.0 - sigmoid_tail)
       standard_act_grad = sigmoid_features + logits * sigmoid_grad
 
-      half_exp = math_ops.exp(logits / 2.0)
-      extreme_neg_act_grad = ((1.0 + logits) * half_exp) * half_exp
+      half_exp = math_ops.exp(safe_logits / 2.0)
+      extreme_neg_act_grad = ((1.0 + safe_logits) * half_exp) * half_exp
       act_grad = array_ops.where_v2(
           is_extreme_neg, extreme_neg_act_grad, standard_act_grad
       )
@@ -503,7 +504,7 @@ def swish(features, beta=1.0):
             1.0 - 2.0 * sigmoid_tail,
         )
         standard_d_act = sigmoid_grad * (2.0 + logits * tail_factor)
-        extreme_neg_d_act = ((2.0 + logits) * half_exp) * half_exp
+        extreme_neg_d_act = ((2.0 + safe_logits) * half_exp) * half_exp
         d_logits = array_ops.where_v2(
             is_extreme_neg, extreme_neg_d_act, standard_d_act
         )
@@ -525,12 +526,13 @@ def swish(features, beta=1.0):
           activation_grad = _float64_activation_grad(logits)
 
           is_extreme_neg = logits <= -500.0
+          safe_logits = array_ops.where_v2(is_extreme_neg, logits, -500.0)
           use_complement = logits >= 0.0
           sigmoid_tail = math_ops.sigmoid(
               array_ops.where_v2(use_complement, -logits, logits)
           )
           sigmoid_grad = sigmoid_tail * (1.0 - sigmoid_tail)
-          half_exp = math_ops.exp(logits / 2.0)
+          half_exp = math_ops.exp(safe_logits / 2.0)
           extreme_neg_grad = half_exp * half_exp
           eff_sigmoid_grad = array_ops.where_v2(
               is_extreme_neg, extreme_neg_grad, sigmoid_grad

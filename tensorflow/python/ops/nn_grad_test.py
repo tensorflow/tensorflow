@@ -383,6 +383,26 @@ class SwishGradOpTest(test.TestCase):
         atol=0.0,
     )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishDoubleGradientLargePositiveDoesNotNaN(self):
+    # For large positive logits (e.g. 1500.0), exp(logits / 2) would overflow
+    # to inf if unselected branches in the backward pass are not guarded,
+    # causing NaN propagation.
+    features = constant_op.constant(1500.0, dtypes.float64)
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+
+    self.assertFalse(np.isnan(self.evaluate(first_derivative)))
+    self.assertFalse(np.isnan(second_derivative))
+    self.assertEqual(0.0, second_derivative)
+
 
 class SoftmaxVJPFloat64InvarianceTest(test.TestCase):
   """Regression tests for GitHub issue #126525.
