@@ -229,17 +229,16 @@ class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
       t = array_ops.ones([8], dtype=np.float32)
 
       out = op(t, indices, updates)
-      return sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+      # Rank-0 updates are rejected to match the eager kernels (#128455).
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "Updates shape must have rank"):
+        sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
 
   def testUpdate(self):
-    self.assertAllEqual(
-        self._runScatter(array_ops.tensor_scatter_update),
-        np.array([1, 9, 1, 9, 9, 1, 1, 9], dtype=np.float32))
+    self._runScatter(array_ops.tensor_scatter_update)
 
   def testAdd(self):
-    self.assertAllEqual(
-        self._runScatter(array_ops.tensor_scatter_add),
-        np.array([1, 10, 1, 10, 10, 1, 1, 10], dtype=np.float32))
+    self._runScatter(array_ops.tensor_scatter_add)
 
 if __name__ == "__main__":
   test.main()
