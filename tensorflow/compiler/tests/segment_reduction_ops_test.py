@@ -223,7 +223,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
               n: -1
           })
 
-  def testUnsortedSegmentSumRuntimeNumSegments(self):
+  def testSegmentSumRuntimeNumSegments(self):
     if "GPU" in self.device:
       self.skipTest("XLA:GPU's dynamic padder doesn't support the dynamic "
                     "select that boolean_mask produces.")
@@ -234,10 +234,11 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
       for offset, expected in ((0, np.ones([2, 3])), (3, np.zeros([0, 3]))):
 
         @def_function.function(jit_compile=True)
-        def segment_sum(data, ids, mask, dtype=dtype, offset=offset):
+        def segment_sums(data, ids, mask, dtype=dtype, offset=offset):
           n = array_ops.shape(
               array_ops.boolean_mask(mask, mask), out_type=dtype)[0] - offset
-          return math_ops.unsorted_segment_sum(data, ids, n)
+          return (math_ops.unsorted_segment_sum(data, ids, n),
+                  math_ops.segment_sum_v2(data, ids, n))
 
         with self.subTest(dtype=dtype.name, offset=offset):
           with self.session() as sess:
@@ -245,13 +246,14 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
               data = array_ops.placeholder(np.float32, shape=[2, 3])
               ids = array_ops.placeholder(np.int32, shape=[2])
               mask = array_ops.placeholder(np.bool_, shape=[4])
-              out = segment_sum(data, ids, mask)
-            result = sess.run(out, {
+              out = segment_sums(data, ids, mask)
+            unsorted_result, sorted_result = sess.run(out, {
                 data: np.ones([2, 3], dtype=np.float32),
                 ids: [0, 1],
                 mask: [True, False, True, False]
             })
-          self.assertAllEqual(expected, result)
+          self.assertAllEqual(expected, unsorted_result)
+          self.assertAllEqual(expected, sorted_result)
 
   def testUnsortedSegmentSum0DIndices1DData(self):
     for dtype in self.numeric_types:

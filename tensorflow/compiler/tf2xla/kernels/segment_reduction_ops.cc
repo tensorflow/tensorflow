@@ -183,13 +183,16 @@ class SegmentReduce : public XlaOpKernel {
     if (num_segments_is_dynamic) {
       // SetDimensionSize takes an S32 size. The check above only sees the
       // bound of a num_segments known only at run time, so clamp a negative
-      // one at 0 rather than set it as the dimension size.
+      // one at 0 rather than set it as the dimension size. Clamp in the
+      // original width, so that an int64 size doesn't wrap when narrowed.
+      num_segments_size =
+          xla::Clamp(xla::ScalarLike(num_segments_size, 0), num_segments_size,
+                     xla::ScalarLike(num_segments_size,
+                                     std::numeric_limits<int32_t>::max()));
       if (ctx->input_xla_type(2) != xla::S32) {
         num_segments_size =
             xla::ConvertElementType(num_segments_size, xla::S32);
       }
-      num_segments_size =
-          xla::Max(num_segments_size, xla::Zero(builder, xla::S32));
     }
     buffer_dims.insert(buffer_dims.begin(), num_segments_size);
     buffer_dims_are_dynamic.insert(buffer_dims_are_dynamic.begin(),
