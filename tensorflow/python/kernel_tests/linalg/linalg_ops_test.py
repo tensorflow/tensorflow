@@ -907,39 +907,49 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
     # Regression test for GitHub issue 128429: in a tf.function whose input
     # signature leaves the length of alpha unknown, eigh_tridiagonal used to
     # fail on Python arithmetic with that length.
-    all_kwargs = [
-        {},
-        {"select": "i", "select_range": (0, 0)},
-        {"select": "v", "select_range": (0.25, 0.75)},
-    ]
-    if not (
-        test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled()
-    ):
-      all_kwargs.append({"eigvals_only": False})
-      all_kwargs.append(
-          {"eigvals_only": False, "select": "i", "select_range": (0, 0)}
-      )
-      all_kwargs.append(
-          {"eigvals_only": False, "select": "v", "select_range": (0.25, 0.75)}
-      )
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
+      all_kwargs = [
+          {},
+          {"select": "i", "select_range": (0, 0)},
+          {"select": "v", "select_range": (0.25, 0.75)},
+      ]
+    else:
+      all_kwargs = [
+          {},
+          {"eigvals_only": False},
+          {"eigvals_only": False, "select": "i", "select_range": (0, 0)},
+          {
+              "eigvals_only": False,
+              "select": "v",
+              "select_range": (0.25, 0.75),
+          },
+      ]
+    # Lengths of at most 1 are handled separately. The others peel 1, 4, 15,
+    # 0, 1, and 0 steps off the Sturm sequence's 16-way unrolled loop, which
+    # then runs 0, 0, 0, 1, 1, and 2 times.
+    inputs = {}
+    for n in [0, 1, 2, 5, 16, 17, 18, 33]:
+      alpha = np.random.uniform(size=(n,)).astype(dtype)
+      beta = np.random.uniform(size=(max(n - 1, 0),)).astype(dtype)
+      if np.issubdtype(dtype, np.complexfloating):
+        beta += 1j * np.random.uniform(size=beta.shape).astype(dtype)
+      inputs[n] = (alpha, beta)
+
     spec = tensor.TensorSpec([None], dtype)
+    checks = []
     for kwargs in all_kwargs:
       eigh_tridiagonal = def_function.function(
           functools.partial(linalg.eigh_tridiagonal, **kwargs),
           input_signature=[spec, spec],
       )
-      # Lengths of at most 1 are handled separately. The others peel 1, 4, 15,
-      # 0 and 1 steps off the Sturm sequence's 16-way unrolled loop, which
-      # then runs 0, 0, 0, 1 and 1 times.
-      for n in [0, 1, 2, 5, 16, 17, 18]:
-        alpha = np.random.uniform(size=(n,)).astype(dtype)
-        beta = np.random.uniform(size=(max(n - 1, 0),)).astype(dtype)
-        if np.issubdtype(dtype, np.complexfloating):
-          beta += 1j * np.random.uniform(size=beta.shape).astype(dtype)
-        self.assertAllClose(
+      for n in [0, 1, 2, 5, 16, 17, 18, 33]:
+        alpha, beta = inputs[n]
+        checks.append((
             linalg.eigh_tridiagonal(alpha, beta, **kwargs),
             eigh_tridiagonal(alpha, beta),
-        )
+        ))
+    for expected, actual in self.evaluate(checks):
+      self.assertAllClose(expected, actual)
 
 
 if __name__ == "__main__":
