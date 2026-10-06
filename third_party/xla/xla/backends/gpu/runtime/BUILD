@@ -5477,39 +5477,6 @@ xla_test(
 )
 
 cc_library(
-    name = "lock_free_kernel_cache",
-    hdrs = ["lock_free_kernel_cache.h"],
-    deps = [
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-xla_cc_test(
-    name = "lock_free_kernel_cache_test",
-    srcs = ["lock_free_kernel_cache_test.cc"],
-    deps = [
-        ":lock_free_kernel_cache",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:kernel_args",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "device_slot",
     hdrs = ["device_slot.h"],
     visibility = ["//visibility:private"],
