@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -201,14 +202,6 @@ class FFTBase : public OpKernel {
         uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
                            ? fft_shape[i] / 2 + 1
                            : fft_shape[i];
-        // An empty FFT axis is passed through by the check above. Keep it
-        // empty in the output too. Sizing it from `fft_length` instead would
-        // give a non-empty output for an empty input, and the
-        // `num_elements() == 0` early return below would then hand back the
-        // output buffer without ever writing it.
-        if (input_shape.dim_size(input_index) == 0) {
-          dim = 0;
-        }
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       }
     } else {
@@ -247,11 +240,9 @@ class FFTBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
-      return;
-    }
-
+    // An empty input is handled inside DoFFT, which zeroes the output. The
+    // output is sized from `fft_length`, so it can be non-empty even when the
+    // input is not, and it must not be returned unwritten.
     DoFFT(ctx, in, fft_shape, out);
   }
 
@@ -320,12 +311,11 @@ class FFTNBase : public OpKernel {
                       "fft_length[", i,
                       "] must >= 0, but got: ", fft_length_as_vec(i))));
       fft_shape[i] = fft_length_as_vec(i);
-      auto input_index = input_rank - fft_rank + i;
-      uint64_t dim = fft_shape[i];
       if (IsReal()) {
         bool inner_most = (i == fft_rank - 1);
         uint64_t min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
+        auto input_index = input_rank - fft_rank + i;
         OP_REQUIRES(
             ctx,
             // We pass through empty tensors, so special case them here.
@@ -335,20 +325,13 @@ class FFTNBase : public OpKernel {
                 "Input dimension ", input_index,
                 " must have length of at least ", min_input_dim_length,
                 " but got: ", input_shape.dim_size(input_index))));
-        if (IsForward() && inner_most && fft_shape[i] != 0) {
-          dim = fft_shape[i] / 2 + 1;
-        }
+        uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
+                           ? fft_shape[i] / 2 + 1
+                           : fft_shape[i];
+        output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
+      } else {
+        output_shape.set_dim(output_shape.dims() - fft_rank + i, fft_shape[i]);
       }
-      // An empty FFT axis is passed through, so keep it empty in the output
-      // too. Sizing it from `fft_length` instead would give a non-empty output
-      // for an empty input, and the `num_elements() == 0` early return below
-      // would then hand back the output buffer without ever writing it. This
-      // applies to the complex transforms as well, which also take an explicit
-      // `fft_length`.
-      if (input_shape.dim_size(input_index) == 0) {
-        dim = 0;
-      }
-      output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
     }
 
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out));
@@ -380,10 +363,7 @@ class FFTNBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
-      return;
-    }
+    // As above, DoFFTN zeroes the output for an empty input.
     DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
   }
 
@@ -411,6 +391,16 @@ class FFTCPU : public FFTBase {
 
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
              Tensor* out) override {
+    // An empty input carries no frequency content, and `fft_length` pads it
+    // with zeros, so the transform is identically zero. The output is sized
+    // from `fft_length` and can be non-empty here, so fill it.
+    if (in.NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        memset(out->data(), 0, out->TotalBytes());
+      }
+      return;
+    }
+
     std::vector<size_t> axes(Rank());
     int batch_dims = in.dims() - FFTRank;
 
@@ -685,6 +675,17 @@ class FFTGPUBase : public FFTBase {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
+    // See the CPU kernel: an empty input transforms to an all-zero output,
+    // which is sized from `fft_length` and can be non-empty.
+    if (in.NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        stream_executor::DeviceAddressBase out_bytes(out->data(),
+                                                     out->TotalBytes());
+        OP_REQUIRES_OK(ctx, stream->MemZero(&out_bytes, out->TotalBytes()));
+      }
+      return;
+    }
+
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
 
@@ -874,6 +875,17 @@ class FFTNGPUBase : public FFTNBase {
         absl::InvalidArgumentError("Only 1D, 2D and 3D FFTs supported."));
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
+
+    // See the CPU kernel: an empty input transforms to an all-zero output,
+    // which is sized from `fft_length` and can be non-empty.
+    if (in.NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        stream_executor::DeviceAddressBase out_bytes(out->data(),
+                                                     out->TotalBytes());
+        OP_REQUIRES_OK(ctx, stream->MemZero(&out_bytes, out->TotalBytes()));
+      }
+      return;
+    }
 
     Eigen::Map<Eigen::ArrayXi> axes(axes_shape, fft_rank);
     const TensorShape& input_shape = in.shape();
