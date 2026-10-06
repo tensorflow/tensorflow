@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -73,6 +74,18 @@ class LoadAndRemapMatrixOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    // Allocates the output matrix first to validate shapes and gracefully
+    // handle potential OOM or overflow errors before opening checkpoints.
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape({num_rows_, num_cols_},
+                                                 &output_shape));
+    Tensor* output_matrix_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output("output_matrix", output_shape,
+                                            &output_matrix_t));
+    auto output_matrix = output_matrix_t->matrix<float>();
+
     // Checks what we're remapping and inverts the relevant remapping Tensors.
     const Tensor* row_remapping_t;
     OP_REQUIRES_OK(context, context->input("row_remapping", &row_remapping_t));
@@ -202,7 +215,6 @@ class LoadAndRemapMatrixOp : public OpKernel {
                       ", where the size of its 2nd dimension is ",
                       tensor_shape.dim_size(1),
                       " instead of being equal to num_cols=", num_cols_)));
-      col_id_present.assign(num_cols_, true);
     }
 
     // Uses TensorSlice to potentially load the old tensor in chunks in case
@@ -227,18 +239,6 @@ class LoadAndRemapMatrixOp : public OpKernel {
         row_start += slice_length;
       }
     }
-
-    // Allocates the output matrix.
-    TensorShape output_shape;
-    OP_REQUIRES_OK(context,
-                   TensorShape::BuildTensorShape({num_rows_, num_cols_},
-                                                 &output_shape));
-    Tensor* output_matrix_t = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output("output_matrix",
-                                            output_shape,
-                                            &output_matrix_t));
-    auto output_matrix = output_matrix_t->matrix<float>();
 
     // Iterates through tensor slices and copies over values from the old tensor
     // to the output matrix.
@@ -320,7 +320,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
     int64_t initializing_values_index = 0;
     for (int i = 0; i < num_rows_; ++i) {
       for (int j = 0; j < num_cols_; ++j) {
-        if (row_id_present[i] && col_id_present[j]) continue;
+        if (row_id_present[i] && (!remap_cols || col_id_present[j])) continue;
         OP_REQUIRES(
             context, initializing_values_index < initializing_values.size(),
             absl::InvalidArgumentError(absl::StrCat(
