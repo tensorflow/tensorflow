@@ -3198,6 +3198,31 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
             dilations=[1, 1, 1, 1])
         self.evaluate(t)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DBackpropEmptyStridesRaiseError(self):
+    # Empty strides used to abort the oneDNN kernels instead of raising.
+    with test_util.device(use_gpu=False):
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "Sliding window strides field must specify 4"):
+        self.evaluate(
+            gen_nn_ops.conv2d_backprop_input(
+                input_sizes=[1, 4, 4, 3],
+                filter=array_ops.zeros([2, 2, 3, 5]),
+                out_backprop=array_ops.zeros([1, 3, 3, 5]),
+                strides=[],
+                padding="VALID"))
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "Sliding window strides field must specify 4"):
+        self.evaluate(
+            gen_nn_ops.conv2d_backprop_filter(
+                input=array_ops.zeros([1, 4, 4, 3]),
+                filter_sizes=[2, 2, 3, 5],
+                out_backprop=array_ops.zeros([1, 3, 3, 5]),
+                strides=[],
+                padding="VALID"))
+
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
 class DepthwiseConv2DTest(test.TestCase):
