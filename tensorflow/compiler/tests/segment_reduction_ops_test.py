@@ -224,9 +224,10 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
           })
 
   def testSegmentSumRuntimeNumSegments(self):
-    if "GPU" in self.device:
+    if "GPU" in self.device or "TPU" in self.device:
       self.skipTest("XLA:GPU's dynamic padder doesn't support the dynamic "
-                    "select that boolean_mask produces.")
+                    "select that boolean_mask produces, and XLA:TPU doesn't "
+                    "support the scatter into a padded dynamic dimension.")
     # num_segments is only known at run time, where it is 2 - offset, with a
     # bound of 4 - offset. A negative one, which the check on the bound can't
     # see, is clamped to no segments rather than set as a dimension size.
