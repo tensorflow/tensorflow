@@ -115,7 +115,8 @@ class DecodeImageOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testEmptyBytes(self):
-    with self.assertRaises(errors_impl.InvalidArgumentError):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Input is empty"):
       self.evaluate(image_ops.decode_image(b""))
 
   @test_util.run_in_graph_and_eager_modes
@@ -126,7 +127,8 @@ class DecodeImageOpTest(test.TestCase):
         "deb0c6db56f0d68b89028a2e1af323374f8b7e479d69e5c16c2c99153d4c95c14"
         "669b6c39b9c4f30734c4"
     )
-    with self.assertRaises(errors_impl.InvalidArgumentError):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Failed to decode JXL header"):
       self.evaluate(image_ops.decode_image(data))
 
 
