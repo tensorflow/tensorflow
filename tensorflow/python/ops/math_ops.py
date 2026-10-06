@@ -5625,14 +5625,13 @@ def polyval(coeffs, x, name=None):
         ops.convert_to_tensor(coeff, name=("coeff_%d" % index))
         for index, coeff in enumerate(coeffs)
     ]
-    p = coeffs[0]
+    # Start the Horner accumulator at coeffs[0] + x*0 (rather than coeffs[0])
+    # so that non-finite x (inf/nan) propagates to NaN on the first multiply,
+    # matching numpy.polyval, which starts its accumulator at zero. For finite
+    # x this is a no-op, and it also broadcasts the result against x's shape.
+    p = coeffs[0] + x * 0
     for c in coeffs[1:]:
       p = c + p * x
-    # For single-coefficient polynomials, the loop above never executes,
-    # so x is unused. Add x*0 to broadcast against x's shape and
-    # propagate NaN, matching numpy.polyval behavior.
-    if len(coeffs) == 1:
-      p = p + x * 0
     return p
 
 
