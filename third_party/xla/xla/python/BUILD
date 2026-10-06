@@ -586,6 +586,19 @@ nanobind_pywrap_extension(
     ],
 )
 
+nanobind_pywrap_extension(
+    name = "_gpu_spec",
+    srcs = ["gpu_spec.cc"],
+    pytype_srcs = ["_gpu_spec.pyi"],
+    visibility = internal_visibility([":jax"] + XLA_PYTHON_PROFILER_USERS),
+    deps = [
+        "//xla/backends/gpu/target_config",
+        "//xla/pjrt:exceptions",
+        "@com_google_absl//absl/base:core_headers",
+        "@nanobind",
+    ],
+)
+
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],

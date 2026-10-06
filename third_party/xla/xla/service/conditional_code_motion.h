@@ -205,12 +205,6 @@ class ConditionalCodeMotion : public HloModulePass {
     Direction direction_;
     int benefit_;
   };
-  // If the optimization decision is NO_CHANGE, new_boundary is set to nullptr;
-  // otherwise, it is set to the new boundary after proposed optimization.
-  virtual Decision ConsiderCodeMotion(
-      HloInstruction* conditional, const Boundary& cur_boundary,
-      std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
-      absl::flat_hash_map<HloInstruction*, int>& visited_count);
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -234,6 +228,17 @@ class ConditionalCodeMotion : public HloModulePass {
   // moved.
   int64_t memory_increase_allowance_ = 5000;
   int64_t memory_increase_ = 0;
+  // State of the boundary analysis of one conditional, shared by the
+  // ConsiderCodeMotion calls for its boundaries; defined with
+  // ConsiderCodeMotion.
+  struct ConditionalAnalysisState;
+  // If the optimization decision is NO_CHANGE, new_boundary is set to nullptr;
+  // otherwise, it is set to the new boundary after proposed optimization.
+  Decision ConsiderCodeMotion(HloInstruction* conditional,
+                              const Boundary& cur_boundary,
+                              std::vector<Boundary>& to_move,
+                              std::vector<Boundary>& new_boundaries,
+                              ConditionalAnalysisState& analysis);
   absl::StatusOr<bool> MoveInstructionOut(
       HloInstruction* conditional, std::vector<Boundary>& to_move_out,
       std::vector<Boundary>& new_boundaries);

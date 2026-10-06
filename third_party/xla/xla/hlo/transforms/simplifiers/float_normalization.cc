@@ -537,19 +537,10 @@ absl::Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
           ShapeLeafCount(hlo->shape())) {
     bool can_use_low_prec = true;
     for (int i = 0; i < hlo->operand_count(); ++i) {
-      if (CountSubshapesWithMatchingType(hlo->operand(i)->shape(),
-                                         LowPrecisionType()) ==
-          ShapeLeafCount(hlo->operand(i)->shape())) {
-        continue;
+      if (!float_support_->CanConvertOperandToLowPrecision(*hlo, i)) {
+        can_use_low_prec = false;
+        break;
       }
-      if ((float_support_->EffectiveOperandPrecisionIsLowPrecision(*hlo, i) ||
-           float_support_->EffectiveOperandPrecisionIsOutputPrecision(*hlo,
-                                                                      i)) &&
-          float_support_->SupportsLowPrecisionOperand(*hlo, i)) {
-        continue;
-      }
-      can_use_low_prec = false;
-      break;
     }
     if (can_use_low_prec) {
       for (int i = 0; i < hlo->operand_count(); ++i) {

@@ -56,7 +56,7 @@ absl::Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
     gpu_config.mutable_collective_backend_config()->set_is_sync(true);
     ABSL_RETURN_IF_ERROR(async_start->set_backend_config(gpu_config));
   }
-  return ReplaceAsyncInstructionsWithSync(computation, async_pairs);
+  return computation->ReplaceAsyncInstructionsWithSync(async_pairs);
 }
 
 absl::StatusOr<bool> GpuConvertAsyncCollectivesToSync::RunImpl(
@@ -90,7 +90,7 @@ absl::StatusOr<bool> GpuConvertAsyncCollectivesToSync::RunImpl(
 
       if (!async_pairs.empty()) {
         ABSL_RETURN_IF_ERROR(
-            ReplaceAsyncInstructionsWithSync(computation, async_pairs));
+            computation->ReplaceAsyncInstructionsWithSync(async_pairs));
         changed = true;
       }
     }

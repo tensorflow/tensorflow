@@ -274,6 +274,7 @@ TEST(SelectKThunkTest, CommandBuffer) {
   auto sequential_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::move(thunk_sequence));
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
+                           /*devices_in_process=*/1,
                            std::move(sequential_thunk));
 
   std::vector<se::DeviceAddressBase> operands;
