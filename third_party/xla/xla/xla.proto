@@ -1372,6 +1372,12 @@ message DebugOptions {
   // ignored.
   optional string xla_gpu_target_config_filename = 261;
 
+  // Description of the target GPU topology in GpuTopologyProto format or inline
+  // shorthand ([platform:]num_partitions x num_hosts_per_partition x
+  // num_devices_per_host); if provided, deviceless compilation is assumed, and
+  // the current device is ignored.
+  optional string xla_gpu_topology_filename = 554;
+
   // Enable this flag will use a separate memory space color for
   // temp buffer, and then will use separate memory allocator to allocate it,
   // as there is no other memory allocation interference,
@@ -1915,7 +1921,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 554
+  // Next id: 555
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

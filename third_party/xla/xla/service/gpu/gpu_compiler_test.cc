@@ -3645,5 +3645,57 @@ TEST_F(GpuCompilerTest, EarlyExitAfterConfigAssignment) {
                                     "config-assigner"}));
 }
 
+TEST_F(GpuCompilerTest, DevicelessCollectiveFusionWithTopologyFlag) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Test requires CUDA backend.";
+  }
+
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule all_reduce_module, num_partitions=1, replica_count=8
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      p0 = f32[1024]{0} parameter(0)
+      ROOT ar = f32[1024]{0} all-reduce(p0),
+        channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}},
+        use_global_device_ids=true, to_apply=add
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  config.mutable_debug_options().set_xla_gpu_topology_filename(
+      "oberon_b200:1x2x4");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               Compiler::CompileOptions{}));
+
+  constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] ({{.*}}: f32[1024]) -> f32[1024] {
+    // CHECK:   %[[P0:.*]] = f32[1024]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[1024]{0} all-reduce(%[[P0]])
+    // CHECK: }
+    // CHECK: %[[ASYNC_COMPUTATION:.*]] ({{.*}}: f32[1024]) -> f32[1024] {
+    // CHECK:   %[[ASYNC_P0:.*]] = f32[1024]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[1024]{0} fusion(%[[ASYNC_P0]]), kind=kCustom, calls=%[[FUSION_COMPUTATION]], backend_config={{{.*}}"kind":"__triton_collective"
+    // CHECK: }
+    // CHECK: ENTRY %main ({{.*}}: f32[1024]) -> f32[1024] {
+    // CHECK:   %[[P0_ENTRY:.*]] = f32[1024]{0} parameter(0)
+    // CHECK:   %[[ASYNC_START:.*]] = ((f32[1024]{0}), f32[1024]{0}) async-start(%[[P0_ENTRY]]), calls=%[[ASYNC_COMPUTATION]]
+    // CHECK:   ROOT {{.*}} = f32[1024]{0} async-done(%[[ASYNC_START]])
+    // CHECK: }
+  )";
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), kExpected),
+              absl_testing::IsOkAndHolds(true));
+}
+
 }  // namespace gpu
 }  // namespace xla
