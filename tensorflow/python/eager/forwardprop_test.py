@@ -15,6 +15,7 @@
 
 import functools
 import gc
+import threading
 import weakref
 
 from absl.testing import parameterized
@@ -345,17 +346,63 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testJVPFunctionUsedByAccumulatorForOps(self):
     previous_fn = forwardprop._jvp_dispatch
-    try:
-      x = constant_op.constant(1.)
-      with forwardprop.ForwardAccumulator(x, 2.) as acc:
-        y = x + x
-        pywrap_tfe.TFE_Py_RegisterJVPFunction(
-            lambda *args, **kwargs: [constant_op.constant(-15.)])
-        z = x + x
-      self.assertAllClose(4., acc.jvp(y))
-      self.assertAllClose(-15., acc.jvp(z))
-    finally:
-      pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn)
+    self.addCleanup(lambda: pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn))
+    x = constant_op.constant(1.)
+    with forwardprop.ForwardAccumulator(x, 2.) as acc:
+      y = x + x
+      pywrap_tfe.TFE_Py_RegisterJVPFunction(
+          lambda *args, **kwargs: [constant_op.constant(-15.)])
+      z = x + x
+    self.assertAllClose(4., acc.jvp(y))
+    self.assertAllClose(-15., acc.jvp(z))
+
+  def testConcurrentJVPFunctionRegistration(self):
+    previous_fn = forwardprop._jvp_dispatch
+    self.addCleanup(lambda: pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn))
+    stop = threading.Event()
+    errors = []
+
+    def replacement_jvp(*_, **__):
+      return [constant_op.constant(4.)]
+
+    def register_loop():
+      try:
+        for _ in range(2000):
+          pywrap_tfe.TFE_Py_RegisterJVPFunction(replacement_jvp)
+          pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn)
+      except (ValueError, TypeError, RuntimeError, AssertionError) as e:
+        errors.append(e)
+      finally:
+        stop.set()
+
+    def execute_loop():
+      try:
+        while not stop.is_set():
+          x = constant_op.constant(1.)
+          with forwardprop.ForwardAccumulator(x, 2.) as acc:
+            y = x + x
+          result = acc.jvp(y)
+          self.assertIsNotNone(result)
+      except (ValueError, TypeError, RuntimeError, AssertionError) as e:
+        errors.append(e)
+        stop.set()
+
+    registration_thread = threading.Thread(target=register_loop)
+    execution_thread = threading.Thread(target=execute_loop)
+
+    registration_thread.start()
+    execution_thread.start()
+
+    registration_thread.join(timeout=15.0)
+    execution_thread.join(timeout=15.0)
+
+    self.assertFalse(
+        registration_thread.is_alive() or execution_thread.is_alive(),
+        "Concurrent registration/execution threads deadlocked or exceeded "
+        "timeout.")
+
+    if errors:
+      raise errors[0]
 
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testFunctionCacheLimited(self):

@@ -31,7 +31,8 @@ using tensorflow::flags::Flags;
 #define TF_PY_DECLARE_FLAG(flag_name) \
   flags.def_readwrite(#flag_name, &Flags::flag_name);
 
-PYBIND11_MODULE(flags_pybind, m) {
+PYBIND11_MODULE(
+    flags_pybind, m, pybind11::mod_gil_not_used()) {
   py::class_<Flag>(m, "Flag")
       .def("value", &Flag::value)
       .def("reset", &Flag::reset);
