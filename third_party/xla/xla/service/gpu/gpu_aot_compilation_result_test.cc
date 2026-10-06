@@ -119,7 +119,8 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         /*kernel_name=*/"test_kernel", emitters::KernelArguments({}),
         LaunchDimensions(),
         /*cluster_dim=*/std::nullopt,
-        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata());
+        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata(),
+        gpu_topology.num_devices_per_host());
     CustomKernel custom_kernel{
         "custom_kernel_name",
         stream_executor::KernelLoaderSpec::
@@ -153,9 +154,6 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.allocations = {BufferAllocation(0, 1024, 0)};
-    params.gpu_topology =
-        GpuTopology(/*platform_version=*/"", /*num_partitions=*/1,
-                    /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/1);
     ABSL_ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(

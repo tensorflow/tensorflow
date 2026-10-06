@@ -2592,6 +2592,29 @@ TEST_F(AlgebraicSimplifierTest, DivOfPower) {
                   m::Power(m::Parameter(1), m::Negate(m::Parameter(2))))));
 }
 
+// Test that an integer A/pow(B,C) is kept: pow(B,-C) is not a reciprocal for
+// integers.
+TEST_F(AlgebraicSimplifierTest, IntegerDivOfPower) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      c = s32[] parameter(2)
+      p = s32[] power(b, c)
+      ROOT d = s32[] divide(a, p)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AlgebraicSimplifier(default_options_).Run(m.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Divide(m::Parameter(0),
+                           m::Power(m::Parameter(1), m::Parameter(2)))));
+}
+
 // Test that broadcasting is done on the right step when simplifying A/pow(B,C)
 // to A*pow(B,-C).
 TEST_F(AlgebraicSimplifierTest, DivOfBroadcastingPower) {

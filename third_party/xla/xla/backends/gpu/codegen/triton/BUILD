@@ -850,6 +850,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_query",
+        "//xla/runtime:object_pool",
         "//xla/service:gpu_topology",
         "//xla/service:hlo_creation_utils",
         "//xla/service/gpu:gpu_device_info_for_tests",

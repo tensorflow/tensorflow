@@ -14,12 +14,14 @@
 # ==============================================================================
 """Tests for tensorflow.python.ops.linalg_ops."""
 
+import functools
 import itertools
 
 from absl.testing import parameterized
 import numpy as np
 import scipy.linalg
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -797,6 +799,147 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
     alpha = np.ones(n).astype(dtype)
     beta = 0.01 * np.sqrt(eps) * np.ones((n - 1)).astype(dtype)
     self.run_test(alpha, beta, eigvals_only=False)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_eigenvectors_select_by_value(self, dtype):
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
+      return
+    # The number of eigenvalues in the range is only known at runtime, which
+    # computing their eigenvectors in a graph used to fail on.
+    n = 8
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    if np.issubdtype(dtype, np.complexfloating):
+      beta += 1j * np.random.uniform(size=(n - 1,)).astype(dtype)
+    matrix = np.diag(alpha) + np.diag(beta, 1) + np.diag(np.conj(beta), -1)
+    eigvals_all = np.linalg.eigvalsh(matrix)
+    eigvals, eigvectors = linalg.eigh_tridiagonal(
+        alpha,
+        beta,
+        eigvals_only=False,
+        select="v",
+        select_range=(
+            (eigvals_all[1] + eigvals_all[2]) / 2,
+            (eigvals_all[5] + eigvals_all[6]) / 2,
+        ),
+    )
+
+    eps = np.finfo(dtype).eps
+    atol = n * eps * np.amax(np.abs(eigvals_all))
+    self.assertAllClose(eigvals_all[2:6], eigvals, atol=atol)
+    self.check_orthogonality(eigvectors, 2 * np.sqrt(n) * eps)
+    self.check_residual(matrix, eigvals, eigvectors, atol)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_eigenvectors_of_trivial_matrix(self, dtype):
+    # Matrices with at most one row used to return only their eigenvalues.
+    for n in [0, 1]:
+      alpha = 3 * np.ones([n], dtype=dtype)
+      beta = np.ones([0], dtype=dtype)
+      eigvals, eigvectors = linalg.eigh_tridiagonal(
+          alpha, beta, eigvals_only=False
+      )
+      self.assertAllEqual(np.real(alpha), eigvals)
+      self.assertAllEqual(np.eye(n, dtype=dtype), eigvectors)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_select_by_value_of_trivial_matrix(self, dtype):
+    # The eigenvalue of a matrix with one row is only selected if it's in the
+    # interval, and a matrix with no rows has no eigenvalue to select.
+    beta = np.ones([0], dtype=dtype)
+    for alpha, select_range, expected in (
+        ([3], (0.0, 1.0), []),
+        ([3], (2.0, 4.0), [3.0]),
+        ([], (2.0, 4.0), []),
+    ):
+      alpha = np.array(alpha, dtype=dtype)
+      eigvals, eigvectors = linalg.eigh_tridiagonal(
+          alpha, beta, eigvals_only=False, select="v", select_range=select_range
+      )
+      self.assertAllEqual(expected, eigvals)
+      self.assertAllEqual(
+          np.eye(len(alpha), dtype=dtype)[:, : len(expected)], eigvectors
+      )
+
+  def test_select_range_of_other_dtype(self):
+    # select_range can be a tensor of another floating-point type than the
+    # matrix, whatever its size.
+    select_range = constant_op.constant([2.0, 4.0], dtype=dtypes.float32)
+    for alpha, beta, expected in (
+        ([3.0], [], [3.0]),
+        ([3.0, 3.0, 3.0], [0.0, 0.0], [3.0, 3.0, 3.0]),
+    ):
+      eigvals = linalg.eigh_tridiagonal(
+          np.array(alpha, dtype=np.float64),
+          np.array(beta, dtype=np.float64),
+          select="v",
+          select_range=select_range,
+      )
+      self.assertAllClose(expected, eigvals)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_eigenvectors_select_empty_interval(self, dtype):
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
+      return
+    # Computing the eigenvectors used to index the first eigenvalue, which
+    # fails when the interval has none.
+    n = 4
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    eigvals, eigvectors = linalg.eigh_tridiagonal(
+        alpha, beta, eigvals_only=False, select="v", select_range=(100.0, 200.0)
+    )
+    self.assertEqual((0,), self.evaluate(eigvals).shape)
+    self.assertEqual((n, 0), self.evaluate(eigvectors).shape)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_dynamic_length(self, dtype):
+    # Regression test for GitHub issue 128429: in a tf.function whose input
+    # signature leaves the length of alpha unknown, eigh_tridiagonal used to
+    # fail on Python arithmetic with that length.
+    all_kwargs = [
+        {},
+        {"select": "i", "select_range": (0, 0)},
+        {"select": "v", "select_range": (0.25, 0.75)},
+    ]
+    if not (
+        test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled()
+    ):
+      all_kwargs.append({"eigvals_only": False})
+      all_kwargs.append(
+          {"eigvals_only": False, "select": "i", "select_range": (0, 0)}
+      )
+      all_kwargs.append(
+          {"eigvals_only": False, "select": "v", "select_range": (0.25, 0.75)}
+      )
+    spec = tensor.TensorSpec([None], dtype)
+    for kwargs in all_kwargs:
+      eigh_tridiagonal = def_function.function(
+          functools.partial(linalg.eigh_tridiagonal, **kwargs),
+          input_signature=[spec, spec],
+      )
+      # Lengths of at most 1 are handled separately. The others peel 1, 4, 15,
+      # 0 and 1 steps off the Sturm sequence's 16-way unrolled loop, which
+      # then runs 0, 0, 0, 1 and 1 times.
+      for n in [0, 1, 2, 5, 16, 17, 18]:
+        alpha = np.random.uniform(size=(n,)).astype(dtype)
+        beta = np.random.uniform(size=(max(n - 1, 0),)).astype(dtype)
+        if np.issubdtype(dtype, np.complexfloating):
+          beta += 1j * np.random.uniform(size=beta.shape).astype(dtype)
+        self.assertAllClose(
+            linalg.eigh_tridiagonal(alpha, beta, **kwargs),
+            eigh_tridiagonal(alpha, beta),
+        )
 
 
 if __name__ == "__main__":

@@ -983,7 +983,10 @@ absl::Status CudaExecutor::Init() {
     if (!is_vmm_supported) {
       return absl::InternalError(absl::StrFormat(
           "Device %d does not support CUDA Virtual Memory Management (VMM). "
-          "VMM is required for device memory allocation in XLA.",
+          "VMM is required for device memory allocation in XLA. "
+          "If it is expected that the VMM API is not available, use the "
+          "\"--xla_gpu_experimental_vmm_disabled\" flag. Note that this might "
+          "slow down some operations, especially cross-GPU collectives.",
           device_ordinal()));
     }
   }

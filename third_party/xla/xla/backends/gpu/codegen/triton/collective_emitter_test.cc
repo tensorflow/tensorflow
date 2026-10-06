@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/mlir_context_pool.h"
@@ -830,6 +831,84 @@ TEST_F(GetSymmetricMemoryTypeTest, CrossProcessRocmSharedSliceReturnsError) {
                                              /*is_cuda=*/false),
                              *module_with_fusion.FusionInstr()),
       StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(CollectiveEmitterTest,
+       ReduceScatterBlockLevelConfigUses64BlocksForNonPowerOfTwoShape) {
+  constexpr absl::string_view kReduceScatterHloStr = R"(
+    HloModule test
+    add {
+      x = bf16[] parameter(0)
+      y = bf16[] parameter(1)
+      ROOT add = bf16[] add(x, y)
+    }
+    ENTRY test_computation {
+      param_0 = bf16[128,24576] parameter(0)
+      ROOT rs = bf16[8,24576] reduce-scatter(param_0),
+        replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}},
+        dimensions={0}, to_apply=add,
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kReduceScatterHloStr, /*replica_count=*/16,
+                                   /*num_partitions=*/1));
+  const HloInstruction* rs = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kReduceScatter);
+  ASSERT_NE(rs, nullptr);
+  std::unique_ptr<HloModule> fused_module =
+      NewModuleWithFusion(rs, HloInstruction::FusionKind::kCustom);
+  HloFusionInstruction* fusion_instr = Cast<HloFusionInstruction>(
+      fused_module->entry_computation()->root_instruction());
+  ASSERT_OK(FlattenReduceScatterFusion(fusion_instr));
+
+  // Root is now a bitcast back to bf16[8,24576]; operand(0) is the 3D fusion
+  // with shape bf16[16,4,3072].
+  HloInstruction* root = fused_module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kBitcast);
+  HloFusionInstruction* flat_fusion =
+      Cast<HloFusionInstruction>(root->mutable_operand(0));
+  EXPECT_EQ(flat_fusion->shape(), ShapeUtil::MakeShape(BF16, {16, 4, 3072}));
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology topology_16,
+                       GetGpuTopologyForPlatform("nvidia_h100", 1, 1, 16));
+  ASSERT_OK(TrySetGpuBackendConfigForCollective(topology_16, flat_fusion));
+  ASSERT_OK_AND_ASSIGN(
+      BlockLevelFusionConfig block_level_config,
+      GetCollectiveBlockLevelFusionConfig(topology_16, flat_fusion));
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(),
+              ElementsAre(1, 1, 4096));
+
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(*flat_fusion, device_info_);
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      TritonFusion::GetLaunchConfig(&analysis);
+  ASSERT_TRUE(launch_config.has_value());
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 64);
+  EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
+
+  auto llvm_compiler =
+      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+          const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
+    return std::vector<uint8_t>{1};
+  };
+  DebugOptions debug_options;
+  CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
+                                            debug_options, topology_16);
+  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
+      []() { return CreateMlirContext(); });
+  ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                       mlir_context_pool.GetOrCreate());
+  TritonFusion emitter(analysis);
+  ASSERT_OK_AND_ASSIGN(
+      TritonWrapperResult triton_kernel,
+      emitter
+          .GenerateTritonKernelAndWrapper(
+              *flat_fusion, "test-reduce-scatter", device_info_,
+              llvm::Triple(""), /*data_layout=*/"", std::move(borrowed_context),
+              &kernel_compiler)
+          .Await());
 }
 
 }  // namespace

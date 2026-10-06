@@ -61,6 +61,48 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+// Returns true if `instruction` is a cross_buffer_slice fusion: a custom fusion
+// whose fused computation either
+//  * is rooted at a "cross_buffer_slice" custom call (compact form),
+//  * is rooted at a nested custom fusion that writes the tiles into a buffer
+//    allocated inside the fusion (read form), or
+//  * returns a tuple of the source buffer parameter and such a nested custom
+//    fusion (write form).
+bool IsCrossBufferSliceFusion(const HloInstruction* instruction) {
+  if (instruction->opcode() != HloOpcode::kFusion ||
+      instruction->fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+  const HloInstruction* root = instruction->fused_expression_root();
+  if (root->opcode() == HloOpcode::kCustomCall) {
+    return root->custom_call_target() == "cross_buffer_slice";
+  }
+  if (root->opcode() == HloOpcode::kTuple) {
+    if (root->operand_count() != 2 ||
+        root->operand(0)->opcode() != HloOpcode::kParameter) {
+      return false;
+    }
+    root = root->operand(1);
+  }
+  return root->IsCustomFusion();
+}
+
+// Returns true if the async op `async_op` wraps an op whose loop-carried async
+// state forwards the in-flight output (index {1}) to the async-update/done: a
+// dynamic-slice, a dynamic-update-slice or a cross_buffer_slice fusion.
+bool WrapsSliceOrCrossBufferSlice(const HloInstruction* async_op) {
+  switch (async_op->async_wrapped_opcode()) {
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+      return true;
+    case HloOpcode::kFusion:
+      return IsCrossBufferSliceFusion(async_op->async_wrapped_instruction());
+    default:
+      return false;
+  }
+}
+
 // CalculatePostOrderSchedule traverses a module and assign a ordinal to each
 // instruction based the postorder dependency.
 int64_t CalculatePostOrderScheduleHelper(
@@ -616,9 +658,7 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
       async_update->operand(0)->opcode() == HloOpcode::kWhile ||
       async_update->operand(0)->opcode() == HloOpcode::kParameter;
   bool is_slice_or_copy =
-      is_loop_crossing &&
-      (async_update->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice ||
-       async_update->async_wrapped_opcode() == HloOpcode::kDynamicSlice);
+      is_loop_crossing && WrapsSliceOrCrossBufferSlice(async_update);
 
   if (!is_slice_or_copy) {
     // 2. Update the output values from wrapped computation (index 1)
@@ -654,11 +694,11 @@ bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
       async_done->operand(0)->opcode() == HloOpcode::kWhile ||
       async_done->operand(0)->opcode() == HloOpcode::kParameter;
   bool is_slice_or_copy =
-      is_loop_crossing &&
-      (async_done->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice ||
-       async_done->async_wrapped_opcode() == HloOpcode::kDynamicSlice);
-  // For loop-crossing chains where async-done wraps dynamic-slice or copy,
-  // forward the value set from operand tuple index 1 directly.
+      is_loop_crossing && WrapsSliceOrCrossBufferSlice(async_done);
+  // For loop-crossing chains where async-done wraps a dynamic-slice,
+  // dynamic-update-slice or cross_buffer_slice fusion (e.g. a prefetch started
+  // in a previous iteration), forward the value set from operand tuple index 1
+  // directly.
   if (!is_slice_or_copy) {
     return UpdateAsyncChainOutputValueSet(async_done);
   }

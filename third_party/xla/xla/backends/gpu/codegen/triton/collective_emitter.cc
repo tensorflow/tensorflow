@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <variant>
@@ -1838,13 +1839,40 @@ absl::Status FlattenReduceScatterFusion(
       << " is not divisible by the number of devices " << num_devices;
   const int64_t inner_elements = num_output_elements / num_devices;
   const PrimitiveType element_type = original_output_shape.element_type();
-  // Input [R * R, OutputSize / R] and output [R, OutputSize / R]: shard `s` of
-  // the input is rows [s * R, (s + 1) * R) and every output row is reduced from
-  // one input row of each rank.
-  const Shape flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
-      element_type, {num_devices * num_devices, inner_elements}, {1, 0});
-  const Shape flat_output_shape = ShapeUtil::MakeShapeWithDenseLayout(
-      element_type, {num_devices, inner_elements}, {1, 0});
+  // When `inner_elements` is not a power of two (e.g. 12288), a 2D
+  // [R, OutputSize / R] shape rounds the inner tile size up to a power of two
+  // in GreedyPowerOfTwoTiles, which can drop the grid below the target block
+  // count from ReduceScatterLaunchDimensions (e.g. 48 blocks instead of 64).
+  // Factor out up to `kReduceScatterMaxBlocksPerGrid / R` blocks into a middle
+  // dimension [R, B, OutputSize / (R * B)] so GreedyPowerOfTwoTiles can assign
+  // blocks along that dimension without rounding `inner_elements` as a single
+  // power of two.
+  const int64_t max_blocks_per_rank =
+      std::max<int64_t>(1, kReduceScatterMaxBlocksPerGrid / num_devices);
+  const int64_t inner_blocks =
+      llvm::has_single_bit(static_cast<uint64_t>(inner_elements))
+          ? 1
+          : std::gcd(inner_elements, max_blocks_per_rank);
+  Shape flat_input_shape;
+  Shape flat_output_shape;
+  if (inner_blocks > 1) {
+    flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        element_type,
+        {num_devices * num_devices, inner_blocks,
+         inner_elements / inner_blocks},
+        {2, 1, 0});
+    flat_output_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        element_type,
+        {num_devices, inner_blocks, inner_elements / inner_blocks}, {2, 1, 0});
+  } else {
+    // Input [R * R, OutputSize / R] and output [R, OutputSize / R]: shard `s`
+    // of the input is rows [s * R, (s + 1) * R) and every output row is reduced
+    // from one input row of each rank.
+    flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        element_type, {num_devices * num_devices, inner_elements}, {1, 0});
+    flat_output_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        element_type, {num_devices, inner_elements}, {1, 0});
+  }
   if (original_input_shape == flat_input_shape &&
       original_output_shape == flat_output_shape &&
       rs->scatter_dimension() == 0) {

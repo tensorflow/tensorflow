@@ -163,9 +163,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           std::move(thunk_info), thunk_proto.triangular_solve_thunk(),
           buffer_allocations);
     case ThunkProto::kKernelThunk:
-      return KernelThunk::FromProto(std::move(thunk_info),
-                                    thunk_proto.kernel_thunk(),
-                                    buffer_allocations);
+      return KernelThunk::FromProto(
+          std::move(thunk_info), thunk_proto.kernel_thunk(), buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kReplicaIdThunk:
       return ReplicaIdThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.replica_id_thunk(),
