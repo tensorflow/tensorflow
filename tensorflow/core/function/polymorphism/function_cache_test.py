@@ -360,7 +360,8 @@ class FunctionCacheTest(test.TestCase):
     f_type_sub = make_single_param_type(MockSubtypeOf2(3))
     self.assertEqual(cache.lookup(f_type_sub, ctx).test_string, "generalized")
 
-    # Adding a 3rd function should evict f_type_other (the LRU entry), NOT f_type_gen.
+    # Adding a 3rd function should evict f_type_other (the LRU entry),
+    # NOT f_type_gen.
     cache.add(MockFunction(f_type_new, "new"), ctx)
 
     self.assertIsNotNone(cache.lookup(f_type_sub, ctx))
