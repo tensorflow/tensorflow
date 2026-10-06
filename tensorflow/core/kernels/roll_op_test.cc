@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <limits>
 #include <memory>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -364,6 +365,22 @@ TEST_F(RollOpTest, MultiShifts_TwoD32_NoMemcpy) {
   test::FillValues<tstring>(&expected, {"l", "m", "n", "o", "k", "b", "c", "d",
                                         "e", "a", "g", "h", "i", "j", "f"});
   test::ExpectTensorEqual<tstring>(expected, *GetOutput(0));
+}
+
+TEST_F(RollOpTest, LargeShifts_SameAxis64) {
+  MakeOp(DT_FLOAT, DT_INT64);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 3, 4});
+  AddInputFromArray<int64_t>(TensorShape({2}),
+                             {1, std::numeric_limits<int64_t>::max()});
+  AddInputFromArray<int64_t>(TensorShape({2}), {0, 0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output. The total shift is 2**63, which is 3 modulo 5.
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({5}));
+  test::FillValues<float>(&expected, {2, 3, 4, 0, 1});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
 TEST_F(RollOpTest, Error_InputMustBeVectorOrHigher) {
