@@ -2978,6 +2978,10 @@ CommonPjRtLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<tsl::Future<void>>& returned_future, bool fill_future) const {
+  if (options.multi_slice_config != nullptr) {
+    ABSL_RETURN_IF_ERROR(load_state_->SetupMultiSliceConfig(
+        GetExecutable(), options.multi_slice_config));
+  }
   RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
                                         : RunId::CreateUniqueId();
   tsl::profiler::TraceMe traceme([&]() {
@@ -3113,6 +3117,10 @@ CommonPjRtLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<tsl::Future<void>>>& returned_futures) const {
+  if (options.multi_slice_config != nullptr) {
+    ABSL_RETURN_IF_ERROR(load_state_->SetupMultiSliceConfig(
+        GetExecutable(), options.multi_slice_config));
+  }
   if (addressable_devices_.size() == 1 && argument_handles.size() == 1 &&
       IsCpuId(client()->platform_id())) {
     std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(1);

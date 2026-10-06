@@ -115,8 +115,8 @@ class CommandBufferAsyncConversionTest : public testing::Test {
     options.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
     se::DeviceDescription device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
     RejectingAllocator allocator;
-    return CommandBufferConversionPass("test").Run(
-        &thunks, options, /*hlo_module=*/nullptr, device, allocator);
+    return CommandBufferConversionPass("test", /*devices_in_process=*/1)
+        .Run(&thunks, options, /*hlo_module=*/nullptr, device, allocator);
   }
 
   BufferAllocation allocation_{0, sizeof(int32_t), 0};
