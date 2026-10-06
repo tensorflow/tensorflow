@@ -77,7 +77,8 @@ bool DecodeHeader(absl::string_view encoded, int* width, int* height,
     // channel added below so that sum cannot overflow either.
     constexpr uint32_t kMaxInt =
         static_cast<uint32_t>(std::numeric_limits<int>::max());
-    if (info.xsize > kMaxInt || info.ysize > kMaxInt ||
+    if (info.xsize == 0 || info.ysize == 0 || info.xsize > kMaxInt ||
+        info.ysize > kMaxInt ||
         info.num_color_channels > kMaxInt - (info.alpha_bits != 0 ? 1 : 0)) {
       return false;
     }
