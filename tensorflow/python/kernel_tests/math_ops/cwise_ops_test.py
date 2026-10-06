@@ -1343,15 +1343,16 @@ class PolyvalTest(test.TestCase):
   def testNonFiniteXPropagation(self):
     # Non-finite x must propagate to NaN, matching numpy.polyval, which
     # starts its Horner accumulator at zero (0 * inf + c -> nan).
-    for x_val in [float("inf"), float("-inf"), float("nan")]:
-      with self.subTest(x=x_val):
-        x = np.array([1.0, x_val, 3.0], dtype=np.float32)
-        coeffs = [np.float32(1.0), np.float32(1.0)]
-        with np.errstate(invalid="ignore"):
-          np_val = np.polyval(coeffs, x)
-        with self.cached_session():
-          tf_val = math_ops.polyval(coeffs, x)
-          self.assertAllClose(np_val, self.evaluate(tf_val))
+    for dtype in [np.float32, np.float64, np.complex64]:
+      for x_val in [float("inf"), float("-inf"), float("nan")]:
+        with self.subTest(dtype=dtype, x=x_val):
+          x = np.array([1.0, x_val, 3.0], dtype=dtype)
+          coeffs = [dtype(1.0), dtype(1.0)]
+          with np.errstate(invalid="ignore"):
+            np_val = np.polyval(coeffs, x)
+          with self.cached_session():
+            tf_val = math_ops.polyval(coeffs, x)
+            self.assertAllClose(np_val, self.evaluate(tf_val))
 
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
