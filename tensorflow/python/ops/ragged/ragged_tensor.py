@@ -343,16 +343,12 @@ class RaggedTensor(
     # pylint: disable=protected-access
     static_nvals = row_partition._static_nvals_or_constant()
     if row_partition._has_precomputed_value_rowids():
-      # pylint: enable=protected-access
       value_rowids_shape = row_partition.value_rowids().shape
       values.shape[:1].assert_is_compatible_with(value_rowids_shape)
     elif static_nvals is not None:
-      # pylint: enable=protected-access
       values.shape[:1].assert_is_compatible_with(
           tensor_shape.TensorShape([static_nvals]))
-    else:
-      # pylint: enable=protected-access
-      pass
+    # pylint: enable=protected-access
     if validate:
       msg = "Arguments to _from_row_partition do not form a valid RaggedTensor"
       nvals = _nrows(values, row_partition.dtype)
