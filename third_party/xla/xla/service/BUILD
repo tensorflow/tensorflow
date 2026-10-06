@@ -135,6 +135,7 @@ cc_library(
     srcs = ["float_support.cc"],
     hdrs = ["float_support.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
     ],

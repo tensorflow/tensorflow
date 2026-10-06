@@ -631,7 +631,7 @@ absl::StatusOr<std::unique_ptr<CommandBufferThunk>>
 ConvertThunksToCommandBuffer(
     ThunkSequence thunks_to_convert,
     CommandExecutor::SynchronizationMode synchronization_mode,
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options, int devices_in_process) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
   ABSL_ASSIGN_OR_RETURN(
       CommandExecutor cmd_executor,
@@ -666,7 +666,7 @@ ConvertThunksToCommandBuffer(
                    absl::StrAppend(out, thunk->thunk_info().profile_annotation);
                  });
   return std::make_unique<CommandBufferThunk>(
-      std::move(cmd_executor), std::move(thunk_info),
+      std::move(cmd_executor), std::move(thunk_info), devices_in_process,
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
       debug_options.xla_enable_command_buffers_during_profiling());
@@ -688,7 +688,7 @@ int64_t CountCommandBufferSize(ThunkSequence& thunks) {
 
 absl::Status FlushCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
-    const DebugOptions& debug_options,
+    const DebugOptions& debug_options, int devices_in_process,
     ThunkSequence& current_command_buffer_thunks, ThunkSequence& new_thunks,
     bool& changed) {
   // If we don't have enough thunks to form a command buffer, we just add
@@ -713,7 +713,8 @@ absl::Status FlushCommandBuffer(
   ABSL_ASSIGN_OR_RETURN(
       auto cmd_buffer_thunk,
       ConvertThunksToCommandBuffer(std::move(current_command_buffer_thunks),
-                                   synchronization_mode, debug_options));
+                                   synchronization_mode, debug_options,
+                                   devices_in_process));
   current_command_buffer_thunks.clear();
 
   // Check that the command buffer thunk is not empty
@@ -783,9 +784,9 @@ absl::StatusOr<bool> CommandBufferConversionPass::RunImpl(
   ThunkSequence new_thunks;
 
   auto flush_command_buffer = [&]() -> absl::Status {
-    return FlushCommandBuffer(synchronization_mode, debug_options,
-                              current_command_buffer_thunks, new_thunks,
-                              changed);
+    return FlushCommandBuffer(
+        synchronization_mode, debug_options, devices_in_process_,
+        current_command_buffer_thunks, new_thunks, changed);
   };
 
   auto& original_thunks = *thunk_sequence;

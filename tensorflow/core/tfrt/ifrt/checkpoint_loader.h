@@ -69,7 +69,7 @@ class CheckpointLoader {
         use_async_restore_(use_async_restore),
         materialize_variables_in_resource_manager_(
             materialize_variables_in_resource_manager) {}
-  virtual ~CheckpointLoader() = default;
+  virtual ~CheckpointLoader();
 
   bool materialize_variables_in_resource_manager() const {
     return materialize_variables_in_resource_manager_;
@@ -104,6 +104,9 @@ class CheckpointLoader {
   tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue_;
   bool use_async_restore_ = true;
   bool materialize_variables_in_resource_manager_ = false;
+
+  absl::Mutex in_flight_mu_;
+  int num_in_flight_shards_ ABSL_GUARDED_BY(in_flight_mu_) = 0;
 
   absl::Mutex materialized_variables_mu_;
   // When materialize_variables_in_resource_manager is true: everything

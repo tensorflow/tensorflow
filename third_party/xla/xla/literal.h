@@ -1933,19 +1933,21 @@ template <typename NativeT>
 NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
-  DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
-  if (subshape().element_type() == PRED) {
-    return static_cast<NativeT>(buffer()[linear_index] ? true : false);
+  DCHECK_LT(linear_index, data<NativeT>().size())
+      << "linear_index out of bounds";
+  if constexpr (std::is_same_v<NativeT, bool>) {
+    return buffer()[linear_index] != 0;
   }
-  return data<NativeT>()[linear_index];
+  return tsl::safe_reinterpret_cast<const NativeT*>(buffer())[linear_index];
 }
 
 template <typename NativeT>
 void LiteralBase::Piece::SetLinear(int64_t linear_index, NativeT value) {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
-  DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
-  data<NativeT>()[linear_index] = value;
+  DCHECK_LT(linear_index, data<NativeT>().size())
+      << "linear_index out of bounds";
+  tsl::safe_reinterpret_cast<NativeT*>(buffer())[linear_index] = value;
 }
 
 template <typename NativeT>
