@@ -155,7 +155,7 @@ class ExtractVolumePatches(test.TestCase):
         self.evaluate(out_tensor)
 
   def testLargeKsizeDynamic(self):
-    """Test for integer overflow during OpKernel execution by using dynamic shapes."""
+    """Tests OpKernel integer overflow using dynamic shapes."""
     with ops.Graph().as_default():
       image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 1, 1, 1, None])
       out_tensor = array_ops.extract_volume_patches(

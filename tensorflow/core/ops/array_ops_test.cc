@@ -1470,6 +1470,7 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
               "[1,?,?,2]");
   set_op({1, 2, 2, 1}, {1, 1, 1, 1}, {1, 1, -1, 1}, "VALID");
   INFER_ERROR("ExtractImagePatches requires spatial rates to be positive", op,
+              "[1,7,7,2]");
 }
 
 TEST(ArrayOpsTest, ExtractVolumePatchesShapeTest) {
@@ -1496,7 +1497,8 @@ TEST(ArrayOpsTest, ExtractVolumePatchesShapeTest) {
   INFER_ERROR("ExtractVolumePatches requires spatial ksizes to be positive", op,
               "[1,3,3,3,2]");
   set_op({1, 2, 2, 2, 1}, {1, 1, 0, 1, 1}, "VALID");
-  INFER_ERROR("ExtractVolumePatches requires spatial strides to be positive",
+  INFER_ERROR("ExtractVolumePatches requires spatial strides to be positive", op,
+              "[1,3,3,3,2]");
 }
 
 TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {
