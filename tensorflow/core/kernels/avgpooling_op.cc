@@ -338,6 +338,17 @@ class AvgPoolingGradOp : public OpKernel {
                                 in_cols, window_cols, /*dilation_rate=*/1,
                                 col_stride, padding_, &out_width, &pad_cols));
 
+    OP_REQUIRES(
+        context, out_backprop_batch == output_shape.dim_size(0),
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_input_shape batch (", output_shape.dim_size(0),
+            ") must equal out_backprop batch (", out_backprop_batch, ")")));
+    OP_REQUIRES(
+        context, out_backprop_depth == output_shape.dim_size(3),
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_input_shape depth (", output_shape.dim_size(3),
+            ") must equal out_backprop depth (", out_backprop_depth, ")")));
+
     const T* out_backprop_ptr = out_backprop.flat<T>().data();
     T* input_backprop_ptr = output->flat<T>().data();
 
@@ -352,9 +363,11 @@ class AvgPoolingGradOp : public OpKernel {
                        GetBroadcastSize(c, in_cols, window_cols, col_stride,
                                         pad_cols, &cindex, &csize));
         int64_t input_max =
-            ((out_backprop_batch - 1) * in_rows + rindex + rsize - 1) *
-                in_cols +
-            cindex + csize - 1;
+            (((out_backprop_batch - 1) * in_rows + rindex + rsize - 1) *
+                 in_cols +
+             cindex + csize - 1) *
+                out_backprop_depth +
+            (out_backprop_depth - 1);
         OP_REQUIRES(context, input_max < output->NumElements(),
                     absl::InvalidArgumentError(absl::StrCat(
                         "Output only has ", output->NumElements(),

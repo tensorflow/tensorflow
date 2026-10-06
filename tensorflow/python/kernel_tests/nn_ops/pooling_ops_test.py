@@ -2375,8 +2375,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         errors_impl.InvalidArgumentError,
         (
             # CPU error message
-            "(Output only has 3 elements but computation requested would use"
-            " element with index=6"
+            r"(orig_input_shape batch \(1\) must equal out_backprop batch \(3\)"
             ")|("
             # GPU error message
             r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\])"
@@ -2392,6 +2391,22 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
               ],
               ksize=[1, 1, 1, 1],
               strides=[1, 1, 1, 2],
+              padding="VALID",
+              data_format="NHWC",
+          )
+      )
+
+  def testAvgPoolGradMismatchedDepthRaisesError(self):
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        r"orig_input_shape depth \(1\) must equal out_backprop depth \(4\)",
+    ):
+      self.evaluate(
+          gen_nn_ops.AvgPoolGrad(
+              orig_input_shape=[1, 2, 2, 1],
+              grad=[[[[1.0, 2.0, 3.0, 4.0]]]],
+              ksize=[1, 2, 2, 1],
+              strides=[1, 1, 1, 1],
               padding="VALID",
               data_format="NHWC",
           )
