@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -39,6 +40,7 @@ namespace {
 
 using ::tensorflow::data::testing::EqualsProto;
 using ::tensorflow::data::testing::LocalTempFilename;
+using ::testing::HasSubstr;
 
 void GenerateTensorVector(tensorflow::DataTypeVector& dtypes,
                           std::vector<Tensor>& tensors) {
@@ -223,7 +225,9 @@ TEST(SnapshotUtilTest, SnappyInvalidTensorShapeIsAnError) {
                               io::compression::kSnappy, /*version=*/1, dtypes,
                               &reader));
   std::vector<Tensor> read_tensors;
-  EXPECT_TRUE(absl::IsInvalidArgument(reader->ReadTensors(&read_tensors)));
+  absl::Status status = reader->ReadTensors(&read_tensors);
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_THAT(status.message(), HasSubstr("Expected a non-negative size"));
 
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
@@ -243,7 +247,9 @@ TEST(SnapshotUtilTest, SnappyZeroTensorDimensionIsAnError) {
                               io::compression::kSnappy, /*version=*/1, dtypes,
                               &reader));
   std::vector<Tensor> read_tensors;
-  EXPECT_TRUE(absl::IsInternal(reader->ReadTensors(&read_tensors)));
+  absl::Status status = reader->ReadTensors(&read_tensors);
+  EXPECT_TRUE(absl::IsInternal(status));
+  EXPECT_THAT(status.message(), HasSubstr("Uncompressed size mismatch"));
 
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
@@ -262,7 +268,10 @@ TEST(SnapshotUtilTest, SnappyOverflowingTensorShapeIsAnError) {
                               io::compression::kSnappy, /*version=*/1, dtypes,
                               &reader));
   std::vector<Tensor> read_tensors;
-  EXPECT_TRUE(absl::IsInvalidArgument(reader->ReadTensors(&read_tensors)));
+  absl::Status status = reader->ReadTensors(&read_tensors);
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Encountered overflow when multiplying"));
 
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
