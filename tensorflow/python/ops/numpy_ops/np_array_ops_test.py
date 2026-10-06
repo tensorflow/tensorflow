@@ -1493,6 +1493,23 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.flip(a, axis=-4)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.flip(a, axis=(0, 3))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.flip(a, axis=[0, -4])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.flip(a, axis=np.array([3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.flip(a, axis=range(4))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.fliplr(np.arange(3))
+    # The check runs at trace time when the rank is static.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      def_function.function(lambda x: np_array_ops.flip(x, axis=-4))(a)
+    # Unknown-rank inputs keep the previous behavior for valid axes.
+    flip_unknown_rank = def_function.function(
+        lambda x: np_array_ops.flip(x, axis=-1),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
+    )
+    self.assertAllEqual(np.flip(a, -1), flip_unknown_rank(a))
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))

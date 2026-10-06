@@ -1666,8 +1666,10 @@ def flip(m, axis=None):  # pylint: disable=missing-docstring
         )
       normalized_axes.append(normalized)
     axis = normalized_axes
-
-  axis = np_utils._canonicalize_axes(axis, array_ops.rank(m))  # pylint: disable=protected-access
+  else:
+    axis = np_utils._canonicalize_axes(
+        axis, array_ops.rank(m)
+    )  # pylint: disable=protected-access
 
   return array_ops.reverse(m, axis)
 
