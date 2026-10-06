@@ -2426,6 +2426,31 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           )
       )
 
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Xla does not raise error on out of bounds access")
+  def testAvgPoolGradMismatchedGradShapeRaisesError(self):
+    if test_util.IsMklEnabled():
+      self.skipTest("The oneDNN AvgPoolGrad kernel does not check grad's shape")
+    # Each grad has more channels than the input. The CPU kernel used to write
+    # past the end of its output buffer instead of raising an error.
+    for orig_input_shape, grad_shape, ksize, expected in (
+        ([1, 28, 28, 3], [1, 14, 14, 6], 2, r"\[1,14,14,3\], but got "
+         r"\[1,14,14,6\]"),
+        ([2, 2, 2, 2], [2, 3, 3, 3], 1, r"\[2,2,2,2\], but got \[2,3,3,3\]"),
+    ):
+      with ops.device("/cpu:0"):
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "Expected grad shape to be " + expected):
+          self.evaluate(
+              gen_nn_ops.AvgPoolGrad(
+                  orig_input_shape=orig_input_shape,
+                  grad=array_ops.zeros(grad_shape),
+                  ksize=[1, ksize, ksize, 1],
+                  strides=[1, ksize, ksize, 1],
+                  padding="VALID",
+                  data_format="NHWC"))
+
   @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.

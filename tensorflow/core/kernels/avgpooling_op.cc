@@ -21,7 +21,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -337,6 +339,16 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, GetWindowedOutputSize(
                                 in_cols, window_cols, /*dilation_rate=*/1,
                                 col_stride, padding_, &out_width, &pad_cols));
+    TensorShape forward_output_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                data_format_, output_shape.dim_size(0),
+                                out_height, out_width, output_shape.dim_size(3),
+                                &forward_output_shape));
+    OP_REQUIRES(
+        context, out_backprop.shape() == forward_output_shape,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expected grad shape to be ", forward_output_shape.DebugString(),
+            ", but got ", out_backprop.shape().DebugString())));
 
     const T* out_backprop_ptr = out_backprop.flat<T>().data();
     T* input_backprop_ptr = output->flat<T>().data();
