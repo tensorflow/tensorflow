@@ -1931,12 +1931,24 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
                            /*fusedActivationFunction=*/
                            rewriter.getStringAttr("NONE"))
             .getOutput();
-    // If bias isn't None, it needs to be multiplied as well.
+    // If bias isn't None, it needs to be multiplied as well. Use the
+    // multiplier flattened to 1-D: `cst` may have leading unit dims (e.g.
+    // [1, 1, 1, C]), and multiplying the 1-D bias by it directly would
+    // broadcast the bias to that rank.
     if (!mlir::isa<NoneType>(bias.getType())) {
-      bias = TFL::MulOp::create(rewriter, mul_op.getLoc(), bias, constant_val,
-                                /*fusedActivationFunction=*/
-                                rewriter.getStringAttr("NONE"))
-                 .getOutput();
+      Value bias_multiplier = constant_val;
+      auto bias_type = mlir::dyn_cast<RankedTensorType>(bias.getType());
+      if (bias_type && bias_type.getRank() == 1 && shape.size() != 1) {
+        auto flat_cst = cst.reshape(RankedTensorType::get(
+            {element_size}, cst.getType().getElementType()));
+        bias_multiplier = arith::ConstantOp::create(
+            rewriter, mul_op.getLoc(), flat_cst.getType(), flat_cst);
+      }
+      bias =
+          TFL::MulOp::create(rewriter, mul_op.getLoc(), bias, bias_multiplier,
+                             /*fusedActivationFunction=*/
+                             rewriter.getStringAttr("NONE"))
+              .getOutput();
     }
 
     auto fc = TFL::FullyConnectedOp::create(
