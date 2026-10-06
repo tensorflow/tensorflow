@@ -495,9 +495,9 @@ tf_xla_py_strict_test(
 
 tf_xla_py_strict_test(
     name = "cholesky_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["cholesky_op_test.py"],
-    disabled_backends = ["gpu_h100"],  # TODO: b/362907482 - Re-enable after fixing.
+    shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
@@ -790,6 +790,7 @@ tf_xla_py_strict_test(
         ":xla_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:nn_grad",
@@ -1359,14 +1360,14 @@ tf_xla_py_strict_test(
 
 tf_xla_py_strict_test(
     name = "qr_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["qr_op_test.py"],
     disabled_backends = [
         # Test is very slow on CPU.
         "cpu",
         "cpu_ondemand",
     ],
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "nozapfhahn",
