@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -69,7 +70,7 @@ class RollOp : public OpKernel {
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
-    absl::InlinedVector<int32_t, 4> shift_mod_sum(num_dims, 0);
+    absl::InlinedVector<int64_t, 4> shift_mod_sum(num_dims, 0);
     for (int64_t i = 0; i < num_shifts; i++) {
       int64_t axis = axis_flat(i);
       if (axis < 0) {
@@ -80,11 +81,11 @@ class RollOp : public OpKernel {
           absl::InvalidArgumentError(absl::StrCat(
               "axis ", axis_flat(i), " is out of range for input of rank ",
               num_dims, ".")));
-      const int ds = std::max<int>(static_cast<int>(input.dim_size(axis)), 1);
+      const int64_t ds = std::max<int64_t>(input.dim_size(axis), 1);
       const int64_t shift_val = shift_flat(i);
       const int64_t sum = shift_mod_sum[axis] + (shift_val % ds + ds) % ds;
       // modulo that works with negatives: ((x % y) + y) % y
-      shift_mod_sum[axis] = static_cast<int>(sum % ds);
+      shift_mod_sum[axis] = sum % ds;
     }
     // the size of each dimension
     absl::InlinedVector<int32_t, 4> dim_size(num_dims);
@@ -99,10 +100,15 @@ class RollOp : public OpKernel {
     int64_t isd = 0;
     for (int i = num_dims - 1; i >= 0; i--) {
       if (isd == 0 && shift_mod_sum[i] != 0) isd = i;
-      const int ds = std::max<int>(static_cast<int>(input.dim_size(i)), 1);
-      dim_size[i] = ds;
-      threshold[i] = (ds - shift_mod_sum[i]) % ds;
-      dim_size_prod *= static_cast<int64_t>(input.dim_size(i));
+      const int64_t ds = std::max<int64_t>(input.dim_size(i), 1);
+      OP_REQUIRES(
+          context, ds <= std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Dimension size ", ds,
+              " exceeds the maximum supported size of 2^31-1.")));
+      dim_size[i] = static_cast<int32_t>(ds);
+      threshold[i] = static_cast<int32_t>((ds - shift_mod_sum[i]) % ds);
+      dim_size_prod *= input.dim_size(i);
       dim_range[i] = dim_size_prod;
     }
 
