@@ -22,18 +22,16 @@ limitations under the License.*/
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.pb.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
@@ -44,7 +42,6 @@ limitations under the License.*/
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
-#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/stream.h"
@@ -66,9 +63,6 @@ namespace xla::gpu {
 // must be set.
 class CollectiveKernelThunk : public TracedCommand {
  public:
-  static constexpr auto kMaxNumExecutors =
-      ::stream_executor::gpu::kMaxNumAllReduceInputPtrs;
-
   CollectiveKernelThunk(
       ThunkInfo info, CollectiveConfig collective_config,  //
       CollectiveKernelSpec kernel_spec,                    //
@@ -76,6 +70,7 @@ class CollectiveKernelThunk : public TracedCommand {
       bool is_collective_kernel_enabled,                   //
       absl::string_view kernel_name,                       //
       LaunchDimensions launch_dimensions,                  //
+      int devices_in_process,                              //
       int32_t shmem_bytes = 0,                             //
       std::optional<std::vector<uint8_t>> cubin = std::nullopt,
       bool use_pdl = false)
@@ -88,9 +83,8 @@ class CollectiveKernelThunk : public TracedCommand {
         cubin_(std::move(cubin)),
         shmem_bytes_(shmem_bytes),
         buffers_(std::move(buffers)),
-        use_pdl_(use_pdl) {
-    per_stream_state_.reserve(kMaxNumExecutors);
-  }
+        per_device_state_(devices_in_process),
+        use_pdl_(use_pdl) {}
 
   const CollectiveKernelSpec& kernel_spec() const { return kernel_spec_; }
 
@@ -144,7 +138,8 @@ class CollectiveKernelThunk : public TracedCommand {
 
   static absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>> FromProto(
       ThunkInfo thunk_info, const CollectiveKernelThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_in_process);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -152,12 +147,6 @@ class CollectiveKernelThunk : public TracedCommand {
   // We use a double buffering strategy for the buffers.
   // See docs on struct StreamState for more details.
   static constexpr int64_t kNumBuffers = 2;
-
-  // Per-executor scratch memory.
-  struct StreamMemory {
-    std::vector<se::DeviceAddressHandle> scratch_allocations;
-    std::vector<tsl::TiedRef<SymmetricMemory>> scratch_symmetric_memories;
-  };
 
   // Per-executor state that needs to be synchronized for access.
   struct StreamState {
@@ -171,13 +160,18 @@ class CollectiveKernelThunk : public TracedCommand {
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
+    std::vector<se::DeviceAddressHandle> scratch_allocations;
+    std::vector<tsl::TiedRef<SymmetricMemory>> scratch_symmetric_memories;
+
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
-                std::unique_ptr<se::Kernel> kernel_arg)
+                std::unique_ptr<se::Kernel> kernel_arg,
+                std::vector<se::DeviceAddressHandle> scratch_allocations_arg)
         : device_ordinal(device_ordinal_arg),
           rank(rank_arg),
-          kernel(std::move(kernel_arg)) {}
+          kernel(std::move(kernel_arg)),
+          scratch_allocations(std::move(scratch_allocations_arg)) {}
   };
 
   // Returns the input size in bytes for the collective.
@@ -218,13 +212,9 @@ class CollectiveKernelThunk : public TracedCommand {
   // Reference to the buffer related information required for the collective.
   std::vector<CollectiveThunk::Buffer> buffers_;
 
-  // Guard access to the stream state across different threads (which control
+  // Per-device state and scratch memory across different threads (which control
   // different streams).
-  absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamState>>
-      per_stream_state_ ABSL_GUARDED_BY(mutex_);
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamMemory>>
-      per_stream_memory_ ABSL_GUARDED_BY(mutex_);
+  PerDeviceState<StreamState> per_device_state_;
 
   // Programmatic Dependent Launch.
   const bool use_pdl_;

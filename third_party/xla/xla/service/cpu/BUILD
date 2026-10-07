@@ -166,6 +166,7 @@ cc_library(
         ":parallel_task_assignment",
         ":small_while_loop_hoisting_pass",
         ":thunk_emitter",
+        "//xla:comparison_util",
         "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_pool",
@@ -940,6 +941,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -1869,6 +1871,7 @@ xla_cc_test(
         ":cpu_compiler_pure",
         ":cpu_options",
         ":thunk_emitter",
+        "//xla:comparison_util",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitter_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

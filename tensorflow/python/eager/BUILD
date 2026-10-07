@@ -478,6 +478,7 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "backprop_test",
     srcs = ["backprop_test.py"],
+    shard_count = 4,
     tags = [
         "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)

@@ -162,6 +162,9 @@ Range RecursivelyIdentifyRange(
       if (instr->comparison_direction() != ComparisonDirection::kLt) {
         return Range{};
       }
+      if (lhs.IsEmpty() || rhs.IsEmpty()) {
+        return Range{};
+      }
       if (lhs.IsBounded() && lhs.max()->lt(rhs.min())) {
         return RecordAndReturnRange(
             Range{ConstantValue::GetOne(/*bitwidth=*/1, /*is_signed=*/false),

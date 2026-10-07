@@ -24,6 +24,7 @@ limitations under the License.
 #include "Eigen/ThreadPool"
 #include "oneapi/dnnl/dnnl_threadpool.h"  // IWYU pragma: keep
 #include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
+#include "oneapi/dnnl/dnnl_version.h"
 #include "xla/backends/cpu/runtime/work_queue.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -67,9 +68,8 @@ class OneDnnThreadPool final
 
   uint64_t get_flags() const final { return is_async_ ? ASYNCHRONOUS : 0; }
 
-#ifdef ENABLE_ONEDNN_ASYNC
-  // The wait() method only exists with oneDNN's experimental support for
-  // asynchronous execution determined by the ENABLE_ONEDNN_ASYNC.
+#if defined(ENABLE_ONEDNN_ASYNC) || DNNL_VERSION_MAJOR > 3 || \
+    (DNNL_VERSION_MAJOR == 3 && DNNL_VERSION_MINOR >= 11)
   void wait() override {
     if (is_async_) {
       // While performing asynchronous execution, wait() method is needed to
@@ -78,7 +78,8 @@ class OneDnnThreadPool final
       tsl::BlockUntilReady(done_event_);
     }
   }
-#endif  // ENABLE_ONEDNN_ASYNC
+#endif  // defined(ENABLE_ONEDNN_ASYNC) || DNNL_VERSION_MAJOR > 3 ||
+        // (DNNL_VERSION_MAJOR == 3 && DNNL_VERSION_MINOR >= 11)
 
   void parallel_for(int n, const std::function<void(int, int)>& fn) final {
     // Cap num_workers at n to avoid Worker::Parallelize's partition-clamping

@@ -169,10 +169,11 @@ absl::StatusOr<std::vector<T>> RunReduceScatter(
     const std::shared_ptr<xla::KeyValueStoreInterface>& kv_store,
     const std::vector<T>& input_buffer,
     std::vector<GlobalDeviceId> global_devices, int rank, PrimitiveType dtype,
-    size_t chunk_count, ReductionKind reduction_kind) {
+    size_t chunk_count, ReductionKind reduction_kind,
+    std::unique_ptr<Communicator>& communicator) {
   std::vector<T> output_buffer(chunk_count);
   RendezvousKey rendezvous_key = MakeRendezvousKey(global_devices);
-  ABSL_ASSIGN_OR_RETURN(auto communicator,
+  ABSL_ASSIGN_OR_RETURN(communicator,
                    GetCommunicator(global_devices, kv_store, rank));
 
   CpuCollectives::Executor executor(rendezvous_key, kTimeout);
@@ -394,19 +395,20 @@ TEST(GlooCollectives, ReduceScatterMinMaxOnComplexFails) {
        {xla::PrimitiveType::C64, xla::PrimitiveType::C128}) {
     for (ReductionKind kind : {ReductionKind::MIN, ReductionKind::MAX}) {
       auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
+      std::vector<std::unique_ptr<Communicator>> communicators(2);
       std::vector<absl::StatusOr<std::vector<std::complex<double>>>> results(2);
       {
         tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
                                             "ComplexMinMax", 2);
         for (int rank = 0; rank < 2; ++rank) {
-          thread_pool.Schedule(
-              [rank, &results, &kv_store, &global_devices, dtype, kind]() {
-                std::vector<std::complex<double>> input(2 * kChunkCount,
-                                                        {1.0, 2.0});
-                results[rank] = RunReduceScatter<std::complex<double>>(
-                    kv_store, input, global_devices, rank, dtype, kChunkCount,
-                    kind);
-              });
+          thread_pool.Schedule([rank, &communicators, &results, &kv_store,
+                                &global_devices, dtype, kind]() {
+            std::vector<std::complex<double>> input(2 * kChunkCount,
+                                                    {1.0, 2.0});
+            results[rank] = RunReduceScatter<std::complex<double>>(
+                kv_store, input, global_devices, rank, dtype, kChunkCount, kind,
+                communicators[rank]);
+          });
         }
       }
       for (int rank = 0; rank < 2; ++rank) {

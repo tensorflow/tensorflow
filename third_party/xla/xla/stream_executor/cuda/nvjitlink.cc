@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/debugging/leak_check.h"
@@ -169,6 +170,7 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
   }
   cli_args.emplace_back("-Xptxas=--warn-on-spills");
   cli_args.emplace_back(absl::StrCat("-split-compile=", inputs.size()));
+  cli_args.emplace_back("-no-cache");
 
   if (options.disable_gpuasm_optimizations) {
     cli_args.emplace_back("-Xptxas=-O0");
@@ -280,11 +282,13 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
                         std::move(module_stats)};
 }
 
-absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
+namespace {
+
+absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLinkImpl() {
   absl::string_view ptx_contents = ".version 99.99";
   // The call to `nvJitLinkCreate` below requires an arch to be specified in
   // order to succeed.
-  std::vector<const char*> cli_args_ptrs{"-arch=sm_90a"};
+  std::vector<const char*> cli_args_ptrs{"-arch=sm_90a", "-no-cache"};
   nvJitLinkHandle link_handle = nullptr;
   nvJitLinkResult create_result =
       nvJitLinkCreate(&link_handle, /*num_args=*/cli_args_ptrs.size(),
@@ -323,6 +327,17 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
 
   ABSL_ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
   return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(error_log);
+}
+
+}  // namespace
+
+absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
+  // Cache the result because querying the supported PTX ISA version compiles a
+  // dummy `.version 99.99` PTX snippet and parses the resulting error log (and
+  // leaks memory inside libnvjitlink prior to CUDA 13).
+  static const absl::NoDestructor<absl::StatusOr<int>> version(
+      GetLatestPtxIsaVersionForLibNvJitLinkImpl());
+  return *version;
 }
 
 #undef RETURN_IF_NVJITLINK_ERROR

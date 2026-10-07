@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <sycl/sycl.hpp>
+#include <sycl/sycl.hpp>  // NOLINT
 
 #include "absl/status/status.h"
 

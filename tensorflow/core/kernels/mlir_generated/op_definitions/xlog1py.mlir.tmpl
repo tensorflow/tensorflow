@@ -23,7 +23,7 @@ func.func @Xlog1py_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %a
     %21 = chlo.broadcast_compare %19, %5 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<elem_type>, tensor<elem_type>) -> tensor<i1>
     %22 = mhlo.log_plus_one %20 : tensor<?xelem_type>
     %23 = chlo.broadcast_multiply %19, %22 : (tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
-    %24 = chlo.broadcast_select %21, %19, %23 : (tensor<i1>, tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+    %24 = chlo.broadcast_select %21, %5, %23 : (tensor<i1>, tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
     %cast = tensor.cast %24 : tensor<?xelem_type> to tensor<*xelem_type>
     scf.yield %cast : tensor<*xelem_type>
   } else {
@@ -37,7 +37,7 @@ func.func @Xlog1py_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %a
       %24 = chlo.broadcast_compare %22, %5 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
       %25 = mhlo.log_plus_one %23 : tensor<elem_type>
       %26 = chlo.broadcast_multiply %22, %25 : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xelem_type>
-      %27 = chlo.broadcast_select %24, %22, %26 : (tensor<?xi1>, tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+      %27 = chlo.broadcast_select %24, %5, %26 : (tensor<?xi1>, tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
       %cast = tensor.cast %27 : tensor<?xelem_type> to tensor<*xelem_type>
       scf.yield %cast : tensor<*xelem_type>
     } else {
@@ -51,7 +51,7 @@ func.func @Xlog1py_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %a
         %27 = chlo.broadcast_compare %25, %5 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
         %28 = mhlo.log_plus_one %26 : tensor<?xelem_type>
         %29 = chlo.broadcast_multiply %25, %28 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
-        %30 = chlo.broadcast_select %27, %25, %29 : (tensor<?xi1>, tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+        %30 = chlo.broadcast_select %27, %5, %29 : (tensor<?xi1>, tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
         %cast = tensor.cast %30 : tensor<?xelem_type> to tensor<*xelem_type>
         scf.yield %cast : tensor<*xelem_type>
       } else {
@@ -71,7 +71,7 @@ func.func @Xlog1py_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %a
           %34 = chlo.broadcast_compare %31, %5 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
           %35 = mhlo.log_plus_one %33 : tensor<?xelem_type>
           %36 = chlo.broadcast_multiply %31, %35 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
-          %37 = chlo.broadcast_select %34, %31, %36 : (tensor<?xi1>, tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+          %37 = chlo.broadcast_select %34, %5, %36 : (tensor<?xi1>, tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
           %cast_1 = tensor.cast %37 : tensor<?xelem_type> to tensor<*xelem_type>
           scf.yield %cast_1 : tensor<*xelem_type>
         } else {
@@ -86,7 +86,7 @@ func.func @Xlog1py_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %a
             %36 = chlo.broadcast_compare %33, %5 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?xelem_type>, tensor<elem_type>) -> tensor<?x?xi1>
             %37 = mhlo.log_plus_one %35 : tensor<?x?xelem_type>
             %38 = chlo.broadcast_multiply %33, %37 : (tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xelem_type>
-            %39 = chlo.broadcast_select %36, %33, %38 : (tensor<?x?xi1>, tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xelem_type>
+            %39 = chlo.broadcast_select %36, %5, %38 : (tensor<?x?xi1>, tensor<elem_type>, tensor<?x?xelem_type>) -> tensor<?x?xelem_type>
             %cast_1 = tensor.cast %39 : tensor<?x?xelem_type> to tensor<*xelem_type>
             scf.yield %cast_1 : tensor<*xelem_type>
           } else {
@@ -101,7 +101,7 @@ func.func @Xlog1py_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %a
               %38 = chlo.broadcast_compare %35, %5 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?xi1>
               %39 = mhlo.log_plus_one %37 : tensor<?x?x?xelem_type>
               %40 = chlo.broadcast_multiply %35, %39 : (tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xelem_type>
-              %41 = chlo.broadcast_select %38, %35, %40 : (tensor<?x?x?xi1>, tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xelem_type>
+              %41 = chlo.broadcast_select %38, %5, %40 : (tensor<?x?x?xi1>, tensor<elem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xelem_type>
               %cast_1 = tensor.cast %41 : tensor<?x?x?xelem_type> to tensor<*xelem_type>
               scf.yield %cast_1 : tensor<*xelem_type>
             } else {
@@ -116,7 +116,7 @@ func.func @Xlog1py_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %a
                 %40 = chlo.broadcast_compare %37, %5 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?x?xi1>
                 %41 = mhlo.log_plus_one %39 : tensor<?x?x?x?xelem_type>
                 %42 = chlo.broadcast_multiply %37, %41 : (tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xelem_type>
-                %43 = chlo.broadcast_select %40, %37, %42 : (tensor<?x?x?x?xi1>, tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xelem_type>
+                %43 = chlo.broadcast_select %40, %5, %42 : (tensor<?x?x?x?xi1>, tensor<elem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xelem_type>
                 %cast_1 = tensor.cast %43 : tensor<?x?x?x?xelem_type> to tensor<*xelem_type>
                 scf.yield %cast_1 : tensor<*xelem_type>
               } else {
@@ -131,7 +131,7 @@ func.func @Xlog1py_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %a
                 %41 = chlo.broadcast_compare %38, %5 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?x?x?xi1>
                 %42 = mhlo.log_plus_one %40 : tensor<?x?x?x?x?xelem_type>
                 %43 = chlo.broadcast_multiply %38, %42 : (tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xelem_type>
-                %44 = chlo.broadcast_select %41, %38, %43 : (tensor<?x?x?x?x?xi1>, tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xelem_type>
+                %44 = chlo.broadcast_select %41, %5, %43 : (tensor<?x?x?x?x?xi1>, tensor<elem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xelem_type>
                 %cast_1 = tensor.cast %44 : tensor<?x?x?x?x?xelem_type> to tensor<*xelem_type>
                 scf.yield %cast_1 : tensor<*xelem_type>
               }

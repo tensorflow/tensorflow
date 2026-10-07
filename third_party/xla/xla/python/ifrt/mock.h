@@ -248,6 +248,11 @@ class MockClient : public RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<DeviceListRef>, MakeDeviceList,
               (absl::Span<Device* const> devices), (const));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>>,
+              Load,
+              (absl::Span<const ExecutableRef> executables,
+               absl::Span<std::unique_ptr<LoadOptions>> options),
+              (final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
               (const xla::ifrt::DeviceListRef& devices), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,

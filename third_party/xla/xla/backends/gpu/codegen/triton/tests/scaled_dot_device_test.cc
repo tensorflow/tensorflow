@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -72,7 +73,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -505,18 +505,15 @@ ENTRY e {
          {"$output_shape", absl::StrCat(m, ",", n)},
          {"$lhs_contracting_dim", lhs_k_minor ? "1" : "0"},
          {"$rhs_contracting_dim", rhs_k_minor ? "1" : "0"}});
-    if (scale_type == F8E8M0FNU && block_size == 16 &&
-        GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
-#ifndef NDEBUG
-      EXPECT_DEATH(
-          { (void)GetOptimizedModule(hlo); },
-          "MMAv5 with kind=mxf4nvf4 does not support transpose");
-      return;
-#endif
-    }
     ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(hlo));
     HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
         *optimized_module, HloOpcode::kScaledDot);
+    if (scale_type == F8E8M0FNU && block_size == 16 &&
+        GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
+      EXPECT_EQ(scaled_dot_computation, nullptr);
+      return;
+    }
+    ASSERT_NE(scaled_dot_computation, nullptr);
     EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                  "CHECK: tt.dot_scaled"),
                 IsOk());
@@ -905,7 +902,7 @@ ENTRY e {
         "num_warps":"4","num_ctas":"1","num_stages":"1"}}}
 }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   HloComputation* scaled_dot_computation =
       GetFirstComputationWithInstruction(*module, HloOpcode::kScaledDot);
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation, R"(
@@ -1282,16 +1279,6 @@ ENTRY e {
                      {"$lhs_contracting_dim", lhs_k_minor ? "1" : "0"},
                      {"$rhs_contracting_dim", rhs_k_minor ? "1" : "0"}});
 
-  if (param.scale_type == F8E8M0FNU && param.block_size == 16 &&
-      GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
-#ifndef NDEBUG
-    EXPECT_DEATH(
-        { (void)GetOptimizedModule(hlo); },
-        "MMAv5 with kind=mxf4nvf4 does not support transpose");
-    return;
-#endif
-  }
-
   std::string optimized_hlo = "N/A";
   auto optimized_module_or = GetOptimizedModule(hlo);
   HloComputation* scaled_dot_computation = nullptr;
@@ -1375,7 +1362,7 @@ ENTRY e {
 
     auto cloned_module = (*optimized_module_or)->Clone();
     auto executable_or = CompileToExecutable(std::move(cloned_module),
-                                             /*run_optimization_passes=*/true);
+                                             /*run_optimization_passes=*/false);
     compilation_succeeded = executable_or.ok();
     gpu_compiler->RemoveAsmHook();
   }

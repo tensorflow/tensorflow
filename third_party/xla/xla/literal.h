@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -1821,10 +1822,10 @@ absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
             subshape.element_type());
         return absl::OkStatus();
       }));
-#ifndef NDEBUG
-  ABSL_ASSIGN_OR_RETURN(int64_t expected_size, SerializedSize(pack_pred));
-  DCHECK_EQ(state.num_written(), expected_size) << shape().ToString();
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    ABSL_ASSIGN_OR_RETURN(int64_t expected_size, SerializedSize(pack_pred));
+    DCHECK_EQ(state.num_written(), expected_size) << shape().ToString();
+  }
   return absl::OkStatus();
 }
 
@@ -1863,11 +1864,11 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
             }
             return absl::OkStatus();
           }));
-#ifndef NDEBUG
-  ABSL_ASSIGN_OR_RETURN(int64_t expected_size,
-                   ShapeUtil::SerializedSize(shape, pack_pred));
-  DCHECK_EQ(state.num_read(), expected_size) << shape.ToString();
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    ABSL_ASSIGN_OR_RETURN(int64_t expected_size,
+                     ShapeUtil::SerializedSize(shape, pack_pred));
+    DCHECK_EQ(state.num_read(), expected_size) << shape.ToString();
+  }
   if (!state.at_end()) {
     return InvalidArgument("Did not consume all input data");
   }
@@ -1932,19 +1933,21 @@ template <typename NativeT>
 NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
-  DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
-  if (subshape().element_type() == PRED) {
-    return static_cast<NativeT>(buffer()[linear_index] ? true : false);
+  DCHECK_LT(linear_index, data<NativeT>().size())
+      << "linear_index out of bounds";
+  if constexpr (std::is_same_v<NativeT, bool>) {
+    return buffer()[linear_index] != 0;
   }
-  return data<NativeT>().data()[linear_index];
+  return tsl::safe_reinterpret_cast<const NativeT*>(buffer())[linear_index];
 }
 
 template <typename NativeT>
 void LiteralBase::Piece::SetLinear(int64_t linear_index, NativeT value) {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
-  DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
-  data<NativeT>().data()[linear_index] = value;
+  DCHECK_LT(linear_index, data<NativeT>().size())
+      << "linear_index out of bounds";
+  tsl::safe_reinterpret_cast<NativeT*>(buffer())[linear_index] = value;
 }
 
 template <typename NativeT>

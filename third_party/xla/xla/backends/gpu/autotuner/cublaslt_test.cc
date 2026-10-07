@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -213,11 +212,11 @@ TEST_F(CublasLtBackendTest, ApplyConfig) {
   config.set_autotune_workspace_size(42);
   BackendConfig backend_config;
   *backend_config.mutable_gemm() = config;
-  TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
-                                         ->root_instruction()
-                                         ->mutable_operands()
-                                         .at(0),
-                                    backend_config));
+  EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
+                                      ->root_instruction()
+                                      ->mutable_operands()
+                                      .at(0),
+                                 backend_config));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
                               CHECK: "selected_algorithm":"2")"),

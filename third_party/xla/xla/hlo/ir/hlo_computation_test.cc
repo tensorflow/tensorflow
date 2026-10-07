@@ -19,15 +19,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -414,6 +417,44 @@ TEST_F(HLOComputationTest, ModuleCleanupUnlinksEdgesToSurvivingComputations) {
   EXPECT_EQ(kept_param->user_count(), 0);
 }
 
+// The fusion reads x at all three parameters. Dropping two of them keeps the
+// fusion among x's users, since the third still reads x.
+TEST_F(HLOComputationTest,
+       RemovingFusionParametersKeepsUserOfOperandReadTwice) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+f {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = f32[8] parameter(2)
+  a = f32[8] negate(p0)
+  b = f32[8] negate(p1)
+  ROOT n = f32[8] negate(p2)
+}
+
+ENTRY e {
+  x = f32[8] parameter(0)
+  ROOT fusion = f32[8] fusion(x, x, x), kind=kLoop, calls=f
+}
+)";
+  // Unverified: the fusion holds dead instructions, as after a multi output
+  // fusion loses outputs.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  HloComputation* fused = fusion->fused_instructions_computation();
+  ASSERT_OK(fused->RemoveInstructionAndUnusedOperands(
+      FindInstruction(module.get(), "a")));
+  ASSERT_OK(fused->RemoveInstructionAndUnusedOperands(
+      FindInstruction(module.get(), "b")));
+  const HloInstruction* x =
+      module->entry_computation()->parameter_instruction(0);
+  EXPECT_EQ(fusion->operand_count(), 1);
+  ASSERT_EQ(x->user_count(), 1);
+  EXPECT_EQ(x->users().front(), fusion);
+}
+
 TEST_F(HLOComputationTest, PrintWithCompactGTE) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -562,6 +603,56 @@ TEST_F(HLOComputationTest, BackendConfigProtoRoundTrip) {
   HloComputationProto roundtrip_proto;
   deserialized->ToProto(&roundtrip_proto);
   EXPECT_EQ(roundtrip_proto.backend_config(), proto.backend_config());
+}
+
+TEST_F(HLOComputationTest,
+       SetRootInstructionPreservesAliasWhenNewRootMatchesAliasConfigShape) {
+  absl::string_view hlo_string = R"(
+HloModule module, input_output_alias={ {}: (0, {}, must-alias) }
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  ROOT neg = f32[4] negate(p0)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* old_root = entry->root_instruction();
+  Shape orig_shape = old_root->shape();
+
+  // Mutate the old root's shape in place before wrapping it back to orig_shape.
+  *old_root->mutable_shape() = ShapeUtil::MakeTupleShape({orig_shape});
+  HloInstruction* gte = entry->AddInstruction(
+      HloInstruction::CreateGetTupleElement(orig_shape, old_root, 0));
+  entry->set_root_instruction(gte, /*accept_different_shape=*/true);
+
+  EXPECT_TRUE(module->input_output_alias_config().OutputHasAnyAlias());
+  EXPECT_EQ(module->input_output_alias_config().GetAliasedParameter({}),
+            HloInputOutputAliasConfig::Alias(
+                0, {}, HloInputOutputAliasConfig::kMustAlias));
+  // Restore old_root shape for VerifiedHloModule destructor verification.
+  *old_root->mutable_shape() = orig_shape;
+  entry->set_root_instruction(old_root, /*accept_different_shape=*/true);
+  ASSERT_OK(entry->RemoveInstruction(gte));
+}
+
+TEST_F(HLOComputationTest,
+       SetRootInstructionCrashesWhenOverwritingNonEmptyAliasConfig) {
+  absl::string_view hlo_string = R"(
+HloModule module, input_output_alias={ {}: (0, {}, must-alias) }
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT neg = f32[4] negate(p0)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p1 = entry->parameter_instruction(1);
+
+  EXPECT_DEATH(entry->set_root_instruction(p1, /*accept_different_shape=*/true),
+               "Cannot overwrite non-empty input_output_alias_config");
 }
 
 }  // namespace

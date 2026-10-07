@@ -44,6 +44,10 @@ class FlattenCallGraph : public HloModulePass {
   // called by kCall instructions.
   static bool SkipCloningForCalls(const HloComputation& computation);
 
+  // A skip cloning handler that only clones asynchronous computations (i.e.,
+  // computations called by kAsyncStart, kAsyncUpdate, or kAsyncDone).
+  static bool SkipCloningForNonAsync(const HloComputation& computation);
+
   absl::string_view name() const override { return "flatten-call-graph"; }
 
  protected:

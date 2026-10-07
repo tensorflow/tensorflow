@@ -341,6 +341,43 @@ TEST_F(GpuPerformanceModelBaseTest, CalculatePeakF64OpsPerNsH100) {
   EXPECT_LT(flops_per_ns, 68000);
 }
 
+// MI300X MFMA peaks below are from the CDNA 3 white paper.
+TEST_F(GpuPerformanceModelBaseTest, CalculatePeakBF16OpsPerNsMI300X) {
+  se::DeviceDescription mi300_device_info =
+      TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  int64_t flops_per_ns = GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+      mi300_device_info, xla::PrimitiveType::BF16);
+  // MI300X has a peak of 1307.4 TFLOPS/s for BF16.
+  EXPECT_GT(flops_per_ns, 1300000);
+  EXPECT_LT(flops_per_ns, 1315000);
+}
+
+TEST_F(GpuPerformanceModelBaseTest, CalculatePeakFP8OpsPerNsMI300X) {
+  se::DeviceDescription mi300_device_info =
+      TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  int64_t flops_per_ns = GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+      mi300_device_info, xla::PrimitiveType::F8E4M3);
+  // MI300X has a peak of 2614.9 TFLOPS/s for FP8.
+  EXPECT_GT(flops_per_ns, 2600000);
+  EXPECT_LT(flops_per_ns, 2620000);
+}
+
+// Guards against matrix_unit_description silently going unset, in which case
+// CalculatePeakMatrixOpsPerNs degrades to the vector FP32 peak instead of
+// failing, and the ratio below collapses to 1.
+TEST_F(GpuPerformanceModelBaseTest, MFMAPathExceedsScalarFallbackMI300X) {
+  se::DeviceDescription mi300_device_info =
+      TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  int64_t mfma_bf16 = GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+      mi300_device_info, xla::PrimitiveType::BF16);
+  int64_t scalar_fallback =
+      GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
+          mi300_device_info, /*num_blocks=*/mi300_device_info.core_count(),
+          /*num_threads_per_block=*/mi300_device_info.fpus_per_core());
+  // 1307.4 TF against 163.4 TF, so 5x leaves ample margin.
+  EXPECT_GT(mfma_bf16, 5 * scalar_fallback);
+}
+
 TEST_F(GpuPerformanceModelBaseTest, RecordEstimatedRunTimeWithName) {
   EstimateRunTimeData data = {/*flops=*/100,
                               /*bytes_read=*/200,

@@ -264,6 +264,15 @@ class ResizeBilinearOpTestBase(test.TestCase, parameterized.TestCase):
     for params in self._itGen(smaller_shape, larger_shape):
       self._gpuVsCpuCase(*params, dtype=np.float32)
 
+  def testCompareGpuVsCpuMultipleChannelIterations(self):
+    self._gpuVsCpuCase(
+        [2, 2, 2, 36],
+        [2, 3, 3, 36],
+        align_corners=False,
+        half_pixel_centers=True,
+        dtype=np.float32,
+    )
+
   def testCompareGpuVsCpuFloat64(self):
     in_shape = [1, 5, 7, 1]
     out_shape = [1, 9, 11, 1]
@@ -447,6 +456,93 @@ class CropAndResizeOpTestBase(test.TestCase):
       self.assertEqual(crops_shape, list(crops.get_shape()))
       crops = self.evaluate(crops)
       self.assertEqual(crops_shape, list(crops.shape))
+
+  def testMalformedEmptyBoxesRaisesError(self):
+    # Regression test for GitHub issue 123397: rank-1 empty `boxes` or
+    # rank-2 empty `box_ind` used to pass validation and crash the process
+    # with a fatal CHECK failure instead of raising InvalidArgumentError.
+    grads = array_ops.zeros([0, 1, 1, 1], dtype=dtypes.float32)
+    image = array_ops.zeros([2, 7, 7, 1], dtype=dtypes.float32)
+    image_size = constant_op.constant([2, 7, 7, 1], dtype=dtypes.int32)
+    valid_boxes = array_ops.zeros([0, 4], dtype=dtypes.float32)
+    valid_box_ind = array_ops.zeros([0], dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), 'boxes must be 2-D'
+    ):
+      self.evaluate(
+          gen_image_ops.crop_and_resize_grad_image(
+              grads=grads,
+              boxes=array_ops.zeros([0], dtype=dtypes.float32),
+              box_ind=valid_box_ind,
+              image_size=image_size,
+              T=dtypes.float32,
+          )
+      )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), 'box_index must be 1-D'
+    ):
+      self.evaluate(
+          gen_image_ops.crop_and_resize_grad_image(
+              grads=grads,
+              boxes=valid_boxes,
+              box_ind=array_ops.zeros([0, 0], dtype=dtypes.int32),
+              image_size=image_size,
+              T=dtypes.float32,
+          )
+      )
+    # Empty boxes with the wrong number of columns must be rejected too.
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), '4 columns|must be 4'
+    ):
+      self.evaluate(
+          gen_image_ops.crop_and_resize_grad_image(
+              grads=grads,
+              boxes=array_ops.zeros([0, 5], dtype=dtypes.float32),
+              box_ind=valid_box_ind,
+              image_size=image_size,
+              T=dtypes.float32,
+          )
+      )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), 'boxes must be 2-D'
+    ):
+      self.evaluate(
+          gen_image_ops.crop_and_resize_grad_boxes(
+              grads=grads,
+              image=image,
+              boxes=array_ops.zeros([0], dtype=dtypes.float32),
+              box_ind=valid_box_ind,
+          )
+      )
+    # Rank-2 empty box_ind for the boxes gradient.
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), 'box_index must be 1-D'
+    ):
+      self.evaluate(
+          gen_image_ops.crop_and_resize_grad_boxes(
+              grads=grads,
+              image=image,
+              boxes=valid_boxes,
+              box_ind=array_ops.zeros([0, 0], dtype=dtypes.int32),
+          )
+      )
+    # Well-formed empty inputs must keep working.
+    output = self.evaluate(
+        gen_image_ops.crop_and_resize_grad_image(
+            grads=grads,
+            boxes=valid_boxes,
+            box_ind=valid_box_ind,
+            image_size=image_size,
+            T=dtypes.float32,
+        )
+    )
+    self.assertEqual((2, 7, 7, 1), output.shape)
+    output = self.evaluate(
+        gen_image_ops.crop_and_resize_grad_boxes(
+            grads=grads, image=image, boxes=valid_boxes, box_ind=valid_box_ind
+        )
+    )
+    self.assertEqual((0, 4), output.shape)
 
   def _randomUniformAvoidAnchors(self, low, high, anchors, radius, num_samples):
     """Generate samples that are far enough from a set of anchor points.

@@ -34,7 +34,16 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class GpuCopyTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
+class GpuCopyTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
+        GpuPjRtCodegenTest>::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_dynamic_slice_table_offsets(
+        true);
+    return debug_options;
+  }
+};
 
 // The GPU backend should not emit a copy kernel for the kCopy instruction in
 // this test. Instead, it should generate a CopyThunk which invokes cuMemcpy at
@@ -110,7 +119,7 @@ constexpr char kSliceMemcpyModule[] = R"(
       c1 = s32[] constant(1)
       ROOT slice = s32[1] dynamic-slice(p0, c1), dynamic_slice_sizes={1},
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
     }
 
     ENTRY main {
@@ -140,7 +149,7 @@ constexpr char kDynamicUpdateSliceModule[] = R"(
       c1 = s32[] constant(1)
       ROOT update-slice = s32[4] dynamic-update-slice(p0, p1, c1),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
     }
 
     ENTRY main {
@@ -171,7 +180,7 @@ constexpr char kDynamicUpdateSliceWithBitcastModule[] = R"(
       bc1 = s32[4] bitcast(p1)
       update-slice = s32[64] dynamic-update-slice(bc0, bc1, p2),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"0","byte_stride":"4","loop_index":"0"}}
+              {"loop_index":"0","linear":{"byte_offset":"0","byte_stride":"4"}}}
       ROOT bc = s32[8,8] bitcast(update-slice)
     }
 
@@ -248,9 +257,9 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
 
 constexpr char kSliceMemcpyModuleUnfused[] = R"(
     body {
-      p0 = (s32[], s32[6,8,1000000], s32[1,1,1000000]) parameter(0)
+      p0 = (s32[], s32[4,8,1000000], s32[1,1,1000000]) parameter(0)
       ivar = s32[] get-tuple-element(p0), index=0
-      input = s32[6,8,1000000] get-tuple-element(p0), index=1
+      input = s32[4,8,1000000] get-tuple-element(p0), index=1
 
       ivar_copy = s32[] copy(ivar)
       c1 = s32[] constant(1)
@@ -258,7 +267,7 @@ constexpr char kSliceMemcpyModuleUnfused[] = R"(
           dynamic_slice_sizes={1,1,1000000}
 
       next_ivar = s32[] add(ivar_copy, c1)
-      ROOT result = (s32[], s32[6,8,1000000], s32[1,1,1000000])
+      ROOT result = (s32[], s32[4,8,1000000], s32[1,1,1000000])
           tuple(next_ivar, input, slice)
     }
 
@@ -269,18 +278,18 @@ constexpr char kSliceMemcpyModuleUnfused[] = R"(
     }
 
     condition {
-      p0 = (s32[], s32[6,8,1000000], s32[1,1,1000000]) parameter(0)
+      p0 = (s32[], s32[4,8,1000000], s32[1,1,1000000]) parameter(0)
       ivar = s32[] get-tuple-element(p0), index=0
       c6 = s32[] constant(6)
       ROOT cmp = pred[] compare(ivar, c6), direction=LT
     }
 
     ENTRY main {
-      p0 = s32[6,8,1000000] parameter(0)
+      p0 = s32[4,8,1000000] parameter(0)
       p1 = s32[1,1,1000000] parameter(1)
       c0 = s32[] constant(0)
-      tuple = (s32[], s32[6,8,1000000], s32[1,1,1000000]) tuple(c0, p0, p1)
-      ROOT while = (s32[], s32[6,8,1000000], s32[1,1,1000000]) while(tuple),
+      tuple = (s32[], s32[4,8,1000000], s32[1,1,1000000]) tuple(c0, p0, p1)
+      ROOT while = (s32[], s32[4,8,1000000], s32[1,1,1000000]) while(tuple),
           condition=condition, body=body
     })";
 
@@ -324,6 +333,7 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
                        CHECK-NOT: define {{.*}}@)",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/true));
+  EXPECT_TRUE(RunAndCompare(kSliceMemcpyModuleUnfused, ErrorSpec{0, 0}));
 }
 
 constexpr char kDUSOutOfBoundsConstantOffsetsModule[] = R"(
@@ -347,6 +357,53 @@ TEST_F(GpuCopyTest,
                                /*run_optimization_passes=*/true));
   EXPECT_TRUE(
       RunAndCompare(kDUSOutOfBoundsConstantOffsetsModule, ErrorSpec{0, 0}));
+}
+
+TEST_F(GpuCopyTest, DynamicUpdateSliceOffsetTable) {
+  const char* hlo = R"(
+    body {
+      p = (s32[], s32[3,5], s32[6,1,1]) parameter(0)
+      i = s32[] get-tuple-element(p), index=0
+      buf = s32[3,5] get-tuple-element(p), index=1
+      updates = s32[6,1,1] get-tuple-element(p), index=2
+
+      zero = s32[] constant(0)
+      slice = s32[1,1,1] dynamic-slice(updates, i, zero, zero),
+          dynamic_slice_sizes={1,1,1}
+      update = s32[1,1] reshape(slice)
+      dus = s32[3,5] dynamic-update-slice(buf, update, i, i)
+
+      one = s32[] constant(1)
+      next = s32[] add(i, one)
+      ROOT result = (s32[], s32[3,5], s32[6,1,1]) tuple(next, dus, updates)
+    }
+
+    cond {
+      p = (s32[], s32[3,5], s32[6,1,1]) parameter(0)
+      i = s32[] get-tuple-element(p), index=0
+      limit = s32[] constant(6)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      buf = s32[3,5] parameter(0)
+      updates = s32[6,1,1] parameter(1)
+      zero = s32[] constant(0)
+      init = (s32[], s32[3,5], s32[6,1,1]) tuple(zero, buf, updates)
+      loop = (s32[], s32[3,5], s32[6,1,1])
+        while(init), condition=cond, body=body
+      ROOT result = s32[3,5] get-tuple-element(loop), index=1
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  // Only the loop condition and increment need kernels. The copy uses a linear
+  // source offset and destination offsets {0, 24, 48, 52, 56, 56}.
+  ASSERT_OK(CompileAndVerifyIr(std::move(module), R"(
+      CHECK-COUNT-2: define {{.*}}@
+      CHECK-NOT: define {{.*}}@)",
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/true));
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
 }
 
 }  // namespace

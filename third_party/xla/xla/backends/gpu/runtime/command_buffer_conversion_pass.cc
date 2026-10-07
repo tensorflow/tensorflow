@@ -143,10 +143,6 @@ CommandBufferConfig GetCommandBufferConfig(
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
                                                 DebugOptions::WHILE};
-  static constexpr auto kRequireTracing = {
-      DebugOptions::CUBLAS,      DebugOptions::CUBLASLT,
-      DebugOptions::CUDNN,       DebugOptions::CUSTOM_CALL,
-      DebugOptions::COLLECTIVES, DebugOptions::CONVOLUTION};
 
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {
@@ -168,10 +164,21 @@ CommandBufferConfig GetCommandBufferConfig(
 
   // Check if CUDA/ROCM driver supports required features.
   if (device_info.gpu_compute_capability().IsCuda()) {
-    if (std::min(device_info.runtime_version(), device_info.driver_version()) <
-        se::SemanticVersion{12, 3, 0}) {
-      erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
-      erase(kRequireConditionals);  // on-device control flow
+    // CUDA command buffers are built with graph APIs that require CUDA 12.3:
+    // polymorphic node creation and update (cuGraphAddNode_v2,
+    // cuGraphExecNodeSetParams), cuStreamBeginCaptureToGraph and conditional
+    // nodes. Older toolkits and drivers fall back to regular thunk execution.
+    // Target configs can leave either version unset (0.0.0), so check each
+    // known version independently.
+    const se::SemanticVersion runtime_version = device_info.runtime_version();
+    const se::SemanticVersion driver_version = device_info.driver_version();
+    if ((runtime_version > se::SemanticVersion{0, 0, 0} &&
+         runtime_version < se::SemanticVersion{12, 3, 0}) ||
+        (driver_version > se::SemanticVersion{0, 0, 0} &&
+         driver_version < se::SemanticVersion{12, 3, 0})) {
+      std::vector<DebugOptions::CommandBufferCmdType> all_commands(
+          config.enabled_commands.begin(), config.enabled_commands.end());
+      erase(all_commands);
     }
   }
   if (device_info.gpu_compute_capability().IsRocm()) {
@@ -229,7 +236,6 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kConvolution:
       return DebugOptions::CONVOLUTION;
     case Thunk::kCustomCall:
-    case Thunk::kSelectK:
       return DebugOptions::CUSTOM_CALL;
     case Thunk::kCublasLtMatmul:
       return DebugOptions::CUBLASLT;
@@ -624,7 +630,7 @@ absl::StatusOr<std::unique_ptr<CommandBufferThunk>>
 ConvertThunksToCommandBuffer(
     ThunkSequence thunks_to_convert,
     CommandExecutor::SynchronizationMode synchronization_mode,
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options, int devices_in_process) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
   ABSL_ASSIGN_OR_RETURN(
       CommandExecutor cmd_executor,
@@ -659,7 +665,7 @@ ConvertThunksToCommandBuffer(
                    absl::StrAppend(out, thunk->thunk_info().profile_annotation);
                  });
   return std::make_unique<CommandBufferThunk>(
-      std::move(cmd_executor), std::move(thunk_info),
+      std::move(cmd_executor), std::move(thunk_info), devices_in_process,
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
       debug_options.xla_enable_command_buffers_during_profiling());
@@ -681,7 +687,7 @@ int64_t CountCommandBufferSize(ThunkSequence& thunks) {
 
 absl::Status FlushCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
-    const DebugOptions& debug_options,
+    const DebugOptions& debug_options, int devices_in_process,
     ThunkSequence& current_command_buffer_thunks, ThunkSequence& new_thunks,
     bool& changed) {
   // If we don't have enough thunks to form a command buffer, we just add
@@ -706,7 +712,8 @@ absl::Status FlushCommandBuffer(
   ABSL_ASSIGN_OR_RETURN(
       auto cmd_buffer_thunk,
       ConvertThunksToCommandBuffer(std::move(current_command_buffer_thunks),
-                                   synchronization_mode, debug_options));
+                                   synchronization_mode, debug_options,
+                                   devices_in_process));
   current_command_buffer_thunks.clear();
 
   // Check that the command buffer thunk is not empty
@@ -776,9 +783,9 @@ absl::StatusOr<bool> CommandBufferConversionPass::RunImpl(
   ThunkSequence new_thunks;
 
   auto flush_command_buffer = [&]() -> absl::Status {
-    return FlushCommandBuffer(synchronization_mode, debug_options,
-                              current_command_buffer_thunks, new_thunks,
-                              changed);
+    return FlushCommandBuffer(
+        synchronization_mode, debug_options, devices_in_process_,
+        current_command_buffer_thunks, new_thunks, changed);
   };
 
   auto& original_thunks = *thunk_sequence;

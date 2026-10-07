@@ -703,7 +703,7 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
     case tsl::protobuf::FieldDescriptor::TYPE_FLOAT: {
       if (std::holds_alternative<double>(value)) {
         double double_value = std::get<double>(value);
-        if (double_value >= std::numeric_limits<float>::min() &&
+        if (double_value >= std::numeric_limits<float>::lowest() &&
             double_value <= std::numeric_limits<float>::max()) {
           return ApplyFloatOption(xla_field, static_cast<float>(double_value),
                                   debug_options);

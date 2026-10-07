@@ -485,6 +485,181 @@ void MemRefSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<MemRefSliceFoldConstantDynamicDim>(context);
 }
 
+LogicalResult SharedMemRefSliceOp::verify() {
+  CoreType core_type = GetCoreTypeOfParentOp(**this);
+  if (core_type != CoreType::kScVectorSubcore) {
+    return emitOpError("Unsupported core type: ") << core_type;
+  }
+
+  auto source_type = getMemRef().getType();
+  auto target_type = getType();
+  auto source_memory_space = source_type.getMemorySpace();
+  auto target_memory_space = target_type.getMemorySpace();
+
+  auto expected_source_memory_space =
+      tpu::MemorySpaceAttr::get(getContext(), tpu::MemorySpace::kVmemShared);
+  if (source_memory_space != expected_source_memory_space) {
+    return emitOpError("Source memref must have memory space ")
+           << expected_source_memory_space;
+  }
+  auto expected_target_memory_space = tpu::MemorySpaceAttr::get(
+      getContext(), tpu::MemorySpace::kVmem, CoreType::kScVectorSubcore);
+  if (target_memory_space != expected_target_memory_space &&
+      target_memory_space !=
+          tpu::MemorySpaceAttr::get(getContext(), tpu::MemorySpace::kVmem)) {
+    return emitOpError("Target memref must have memory space ")
+           << expected_target_memory_space;
+  }
+  if (source_type.getElementType() != target_type.getElementType()) {
+    return emitOpError("Source and target element types must match.");
+  }
+
+  ArrayRef<int64_t> source_shape = source_type.getShape();
+  ArrayRef<int64_t> target_shape = target_type.getShape();
+  if (source_shape.size() != target_shape.size()) {
+    return emitOpError("Target shape rank must match source shape rank.");
+  }
+  if (source_shape.empty()) {
+    return emitOpError("Source and target memrefs must be at least rank 1.");
+  }
+  if (source_shape.drop_back() != target_shape.drop_back()) {
+    return emitOpError(
+        "Target shape must match source shape for all dimensions except the "
+        "last.");
+  }
+  if (source_shape.back() == 0 || target_shape.back() == 0) {
+    return emitOpError(
+        "Source and target minormost dimension must be greater than 0.");
+  }
+  if (ShapedType::isDynamic(source_shape.back()) ||
+      ShapedType::isDynamic(target_shape.back())) {
+    return emitOpError(
+        "Source and target minormost dimension cannot be dynamic.");
+  }
+  if (source_shape.back() % target_shape.back() != 0) {
+    return emitOpError(
+        "Source shape's minormost dimension must be divisible by target "
+        "shape's minormost dimension.");
+  }
+  return success();
+}
+
+FailureOr<TiledLayoutAttr> SharedMemRefSliceOp::inferResultLayout(
+    MemRefType source_type, ArrayRef<int64_t> target_shape,
+    int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
+    int64_t spmem_word_size_bytes,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  if (!source_type.hasStaticShape() ||
+      !ShapedType::isStaticShape(target_shape)) {
+    return emit_error() << "SharedMemRefSliceOp requires static shapes.";
+  }
+  if (spmem_stripe_granularity_bytes % spmem_word_size_bytes != 0) {
+    return emit_error() << "Shared VMEM stripe granularity ("
+                        << spmem_stripe_granularity_bytes
+                        << " bytes) must be a multiple of the VMEM word size ("
+                        << spmem_word_size_bytes << " bytes).";
+  }
+  auto layout_attr = dyn_cast<TiledLayoutAttr>(source_type.getLayout());
+  if (!layout_attr) {
+    return emit_error()
+           << "SharedMemRefSliceOp requires a tiled source layout.";
+  }
+  ArrayRef<xla::Tile> tiles = layout_attr.getTiles();
+  if (tiles.empty()) {
+    return emit_error()
+           << "shared_memref_slice input tiling layout tiles cannot be empty";
+  }
+  ArrayRef<int64_t> source_shape = source_type.getShape();
+  CHECK(!layout_attr.getTileStrides().empty());
+  if (layout_attr.getTileStrides().back() != 1) {
+    return emit_error()
+           << "The last dimension of the MemRef must be contiguous for "
+              "SharedMemRefSliceOp.";
+  }
+
+  int64_t bitwidth = source_type.getElementTypeBitWidth();
+  int64_t word_bitwidth = spmem_word_size_bytes * 8;
+  if (word_bitwidth % bitwidth != 0) {
+    return emit_error() << "Element bitwidth (" << bitwidth
+                        << ") must divide the VMEM word bitwidth ("
+                        << word_bitwidth << ").";
+  }
+  int64_t packing = word_bitwidth / bitwidth;
+  int64_t stripe_elems = spmem_stripe_granularity_bytes * 8 / bitwidth;
+  int64_t stripe_words = spmem_stripe_granularity_bytes / spmem_word_size_bytes;
+
+  // Case 1: 1D DMA-granule tiling (e.g. `#tpu.tiled<(8), [16, 1]>`), where the
+  // single 1D tile already equals `stripe_width` (`target_shape.back()`), so
+  // the tile dimensions stay unchanged and the leading tile strides are scaled
+  // down by `num_sc_tiles`.
+  bool is_1d_stripe_tiling =
+      tiles.size() == 1 &&
+      tiles[0].dimensions() == ArrayRef<int64_t>{stripe_elems};
+  // Case 2: Full-width tiling where `tiles[0]` spans `source_shape.back()`
+  // (either a single unpacked tile or a 2D packed layout with sub-tile
+  // `(packing, 1)`), so `tiles[0]`'s trailing dimension is rewritten to
+  // `target_shape.back()` (`stripe_width`) and tile strides remain unchanged.
+  bool is_packed_tiling =
+      tiles.size() == 2 && tiles[0].dimensions().size() >= 2 &&
+      tiles[1].dimensions() == ArrayRef<int64_t>{packing, 1};
+  bool is_unpacked_tiling = tiles.size() == 1 &&
+                            tiles[0].dimensions().size() >= 2 &&
+                            bitwidth == word_bitwidth;
+  bool is_full_width_tiling =
+      (is_unpacked_tiling || is_packed_tiling) &&
+      tiles[0].dimensions().back() == source_shape.back();
+
+  int64_t stripe_width;
+  if (is_packed_tiling && is_full_width_tiling) {
+    stripe_width = stripe_words;
+  } else if ((is_unpacked_tiling && is_full_width_tiling) ||
+             is_1d_stripe_tiling) {
+    stripe_width = stripe_elems;
+  } else {
+    return emit_error() << "Expected a 1D stripe tile (" << stripe_elems
+                        << ") or a full-width 2D tile with trailing dimension "
+                        << source_shape.back()
+                        << ". 1D TC tilings are not yet supported.";
+  }
+  int64_t expected_source_last_dim = num_sc_tiles * stripe_width;
+
+  if (source_shape.back() != expected_source_last_dim) {
+    return emit_error() << "Source trailing dimension (" << source_shape.back()
+                        << ") must equal " << expected_source_last_dim;
+  }
+  if (target_shape.back() != stripe_width) {
+    return emit_error() << "Target trailing dimension (" << target_shape.back()
+                        << ") must equal " << stripe_width;
+  }
+
+  SmallVector<xla::Tile> new_tiles(tiles.begin(), tiles.end());
+  SmallVector<int64_t> new_tile_strides(layout_attr.getTileStrides());
+  if (is_1d_stripe_tiling) {
+    for (int64_t i = 0; i < new_tile_strides.size() - 1; ++i) {
+      if (ShapedType::isDynamic(new_tile_strides[i])) {
+        continue;
+      }
+      if (new_tile_strides[i] % num_sc_tiles != 0) {
+        return emit_error()
+               << "Tile strides must be divisible by the ratio of source and "
+                  "target trailing dimensions.";
+      }
+      new_tile_strides[i] /= num_sc_tiles;
+    }
+  } else {
+    CHECK(is_full_width_tiling);
+    // The minormost dimension of the memref shape and the first tile are both
+    // scaled down by num_sc_tiles, so the tile strides are unchanged.
+    SmallVector<int64_t> first_tile_dims =
+        llvm::to_vector(tiles[0].dimensions());
+    first_tile_dims.back() = target_shape.back();
+    new_tiles[0] = xla::Tile(first_tile_dims);
+  }
+
+  return TiledLayoutAttr::get(source_type.getContext(), new_tiles,
+                              new_tile_strides);
+}
+
 LogicalResult MemRefSqueezeOp::verify() {
   MemRefType source_type = getInput().getType();
   MemRefType target_type = getType();
@@ -980,67 +1155,112 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
 LogicalResult MemRefBitcastOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
-    return emitOpError("Memory spaces do not match.");
+  FAILUREOR_ASSIGN_OR_RETURN(
+      auto result_type, inferResultType(src_ty, tgt_ty.getElementType(),
+                                        [this]() { return emitOpError(); }));
+  if (result_type != tgt_ty) {
+    return emitOpError("Expected result type to be ") << result_type;
   }
-  if (src_ty.getRank() != tgt_ty.getRank()) {
-    return emitOpError("Ranks do not match.");
-  }
-  if (src_ty.getRank() <= 1) {
-    return emitOpError("Not implemented: 1d memref bitcast.");
-  }
-  auto src_bitwidth = getElementTypeBitwidth(src_ty);
-  auto tgt_bitwidth = getElementTypeBitwidth(tgt_ty);
-  for (int i = 0; i < src_ty.getRank(); ++i) {
-    auto src_dim_size = src_ty.getDimSize(i);
-    auto tgt_dim_size = tgt_ty.getDimSize(i);
-    if (i == src_ty.getRank() - 2) {
-      auto src_bits = src_dim_size * src_bitwidth;
-      auto tgt_bits = tgt_dim_size * tgt_bitwidth;
-      if (src_bits != tgt_bits) {
-        return emitOpError(
-                   "Expected the same number of bits on the 2nd minormost "
-                   "dim: (")
-               << src_dim_size << " * " << src_bitwidth << ") vs ("
-               << tgt_dim_size << " * " << tgt_bitwidth << ")";
-        ;
-      }
-    } else {
-      if (src_dim_size != tgt_dim_size) {
-        return emitOpError("Expected the same dim size on dim ")
-               << i << ": " << src_dim_size << " vs " << tgt_dim_size;
-      }
-    }
-  }
-  // Source and target attributes may be different before propagation is done by
-  // the canonicalizer, so we allow this when attributes are "unset" in the
-  // target type.
-  auto tgt_layout = dyn_cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (!tgt_layout) {
-    return success();
-  }
-  auto src_layout = dyn_cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  if (!src_layout) {
-    return emitOpError("Expected a tiled layout for the input memref.");
-  }
-  return verifyTiling();
+  return success();
 }
 
-mlir::InFlightDiagnostic MemRefBitcastOp::verifyTiling() {
-  auto src_ty = getMemRefType(getInput());
-  auto tgt_ty = getType();
-  auto src_bitwidth = getElementTypeBitwidth(src_ty);
-  auto tgt_bitwidth = getElementTypeBitwidth(tgt_ty);
-  auto src_layout = cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  // TODO(jevinjiang): verify memref tiling is valid. Here we just assume the
-  // source and target tilings are valid.
-  auto src_tile = src_layout.getTiles().front().dimensions();
-  auto tgt_tile = tgt_layout.getTiles().front().dimensions();
-  if (src_tile[0] * src_bitwidth != tgt_tile[0] * tgt_bitwidth) {
-    return emitOpError("Invalid memref bitcast.");
+mlir::FailureOr<MemRefType> MemRefBitcastOp::inferResultType(
+    const MemRefType input_type, const Type result_elem_type,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  const int8_t input_bitwidth = getElementTypeBitwidth(input_type);
+  const int8_t result_bitwidth = getTypeBitwidth(result_elem_type);
+  if (input_bitwidth == result_bitwidth) {
+    return MemRefType(
+        MemRefType::Builder(input_type).setElementType(result_elem_type));
   }
-  return {};
+  const int64_t rank = input_type.getRank();
+  if (rank < 2) {
+    return emit_error() << "Cannot bitcast along 2nd minor in 1D memref";
+  }
+  if (input_type.isDynamicDim(rank - 2)) {
+    return emit_error() << "Not implemented: Dynamic 2nd minor dimension";
+  }
+  if (input_type.getDimSize(rank - 2) * input_bitwidth % result_bitwidth != 0) {
+    return emit_error() << "Input 2nd minor dimension bits not a multiple of "
+                           "result bitwidth";
+  }
+  SmallVector<int64_t> result_shape(input_type.getShape());
+  result_shape[rank - 2] =
+      input_type.getDimSize(rank - 2) * input_bitwidth / result_bitwidth;
+
+  if (auto affine_layout = dyn_cast<AffineMapAttr>(input_type.getLayout());
+      affine_layout && affine_layout.isIdentity()) {
+    // An affine map layout is interpreted as "unset"/"unknown" (non-standard
+    // semantics)
+    return MemRefType(MemRefType::Builder(input_type)
+                          .setShape(result_shape)
+                          .setElementType(result_elem_type));
+  }
+  const auto input_layout =
+      dyn_cast<tpu::TiledLayoutAttr>(input_type.getLayout());
+  if (input_layout == nullptr) {
+    return emit_error() << "Expected a tiled layout for the input memref.";
+  }
+  ArrayRef<xla::Tile> input_tiles = input_layout.getTiles();
+  while (!input_tiles.empty() && llvm::all_of(input_tiles.back().dimensions(),
+                                              llvm::equal_to<int64_t>(1))) {
+    input_tiles = input_tiles.drop_back(1);
+  }
+  const int64_t num_input_tiles = input_tiles.size();
+  for (int64_t i = 0; i < num_input_tiles - 1; ++i) {
+    if (input_tiles[i].dimensions().size() <
+        input_tiles[i + 1].dimensions().size()) {
+      // NOTE: TiledLayoutAttr verification allows tiles that tile across
+      // previous levels, like T(256)(128)(2, 1), but it enforces that
+      // previous levels are evenly divided by later levels.
+      return emit_error() << "Not implemented: Tile at level " << i + 1
+                          << " tiles across previous tiles.";
+    }
+  }
+
+  const bool has_interleaving_tile =
+      !input_tiles.empty() && input_tiles.back().dimensions().size() >= 2 &&
+      *(input_tiles.back().dimensions().end() - 1) == 1;
+  const int64_t input_factor =
+      has_interleaving_tile ? *(input_tiles.back().dimensions().end() - 2) : 1;
+  if (input_factor * input_bitwidth % result_bitwidth != 0) {
+    return emit_error() << "Not implemented: Input 2nd minor interleaving tile "
+                           "bits not a multiple of result bitwidth";
+  }
+  const int64_t result_factor = input_factor * input_bitwidth / result_bitwidth;
+  SmallVector<xla::Tile> result_tiles;
+  result_tiles.reserve(input_tiles.size());
+  for (const xla::Tile& input_tile : input_tiles) {
+    const int64_t tile_rank = input_tile.dimensions().size();
+    SmallVector<int64_t> tile;
+    if (tile_rank == 0) {
+      continue;  // Skip
+    }
+    if (tile_rank == 1) {
+      // Recall we checked tiles are of decreasing rank. This is part of a
+      // suffix of 1D tiles. The input factor must be 1 since the last tile
+      // is not of the form (..., A, 1).
+      // The suffix ...(A)(B)(C) becomes ...(1, A)(1, B)(1, C)
+      CHECK_EQ(input_factor, 1);
+      CHECK_NE(result_factor, 1);  // Identical bitwidths handled above
+      tile.push_back(1);
+    }
+    tile.append(input_tile.dimensions().begin(), input_tile.dimensions().end());
+    CHECK_EQ(*(tile.end() - 2) * result_factor % input_factor, 0);
+    *(tile.end() - 2) = *(tile.end() - 2) * result_factor / input_factor;
+    // Since tiles are of decreasing rank and higher level tiles divide lower
+    // level tiles, we can safely remove all-1s tiles.
+    if (!llvm::all_of(tile, llvm::equal_to<int64_t>(1))) {
+      result_tiles.emplace_back(tile);
+    }
+  }
+  if (!has_interleaving_tile && result_factor != 1) {
+    result_tiles.emplace_back(xla::Tile({result_factor, 1}));
+  }
+  auto result_layout = tpu::TiledLayoutAttr::get(
+      input_type.getContext(), result_tiles, input_layout.getTileStrides());
+  return MemRefType::get(result_shape, result_elem_type, result_layout,
+                         input_type.getMemorySpace());
 }
 
 LogicalResult MemRefBitcastOp::canonicalize(MemRefBitcastOp op,
@@ -1406,17 +1626,11 @@ OpFoldResult EraseLayoutOp::fold(FoldAdaptor adaptor) {
 LogicalResult EraseLayoutOp::verify() {
   MemRefType operand_type = getOperand().getType();
   MemRefType result_type = getType();
-  // TODO(tlongeri): Enforce no shape changes
-  if (operand_type.getElementType() != result_type.getElementType()) {
-    return emitOpError("Cannot change the memref element type");
+  if (operand_type.getMemorySpace() != result_type.getMemorySpace()) {
+    return emitOpError("Cannot change the memref memory space");
   }
-  if (operand_type.getMemorySpace() != result_type.getMemorySpace() &&
-      result_type.getMemorySpace()) {
-    return emitOpError(
-        "Memref memory space must be either erased (changed to null) or "
-        "preserved");
-  }
-  if (operand_type.getLayout() == nullptr) {
+  if (auto affine_map_attr = dyn_cast<AffineMapAttr>(result_type.getLayout());
+      affine_map_attr == nullptr || !affine_map_attr.isIdentity()) {
     return emitOpError("Memref layout must be erased");
   }
   return success();
@@ -1943,9 +2157,36 @@ LogicalResult ScanOp::verify() {
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
   }
-  if (getKind() != ReductionKind::kSum && getKind() != ReductionKind::kMax &&
-      getKind() != ReductionKind::kMin) {
-    return emitOpError("Only sum, max and min reductions are supported.");
+  switch (getKind()) {
+    case ReductionKind::kSum:
+      break;
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(input_ty.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type.");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(input_ty.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type.");
+      }
+      break;
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead.");
+    case ReductionKind::kArgMax:
+    case ReductionKind::kArgMin:
+    case ReductionKind::kFindFirstSet:
+      return emitOpError("Only sum, max and min reductions are supported.");
   }
 
   if (getMask() == nullptr) {
@@ -2873,14 +3114,45 @@ LogicalResult AllReduceOp::verify() {
 
   switch (kind) {
     case ReductionKind::kSum:
-    case ReductionKind::kMax:
-    case ReductionKind::kMin:
       if (in_ty != out_ty) {
         return emitOpError(
             "Sum, max, and min reductions must have the same "
             "input and output type");
       }
       break;
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(in_ty.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type");
+      }
+      if (in_ty != out_ty) {
+        return emitOpError(
+            "Sum, max, and min reductions must have the same "
+            "input and output type");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(in_ty.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type");
+      }
+      if (in_ty != out_ty) {
+        return emitOpError(
+            "Sum, max, and min reductions must have the same "
+            "input and output type");
+      }
+      break;
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead");
     case ReductionKind::kArgMax:
     case ReductionKind::kArgMin:
       if (in_ty.getShape() != out_ty.getShape()) {
@@ -2907,7 +3179,6 @@ LogicalResult AllReduceOp::verify() {
       break;
     case ReductionKind::kFindFirstSet:
       return emitOpError("Only i1 input is supported for find_first_set");
-      break;
   }
   return success();
 }
@@ -3007,9 +3278,40 @@ LogicalResult ReduceOp::verify() {
           "arg_max/arg_min not supported - use tpu.reduce_index instead");
     case ReductionKind::kFindFirstSet:
       return emitOpError("find_first_set not supported");
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead");
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(input_type.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type");
+      }
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(input_type.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type");
+      }
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
     case ReductionKind::kSum:
-    case ReductionKind::kMax:
-    case ReductionKind::kMin:
       // TODO(tlongeri): Might be worth allowing things like bf16 -> f32.
       if (input_type.getElementType() != output_type.getElementType()) {
         return emitOpError(
@@ -3232,6 +3534,29 @@ LogicalResult TileSizeOp::verify() {
     return emitOpError("Index out of bounds");
   }
   return success();
+}
+
+LogicalResult MemRefMemorySpaceIsOp::verify() {
+  if (getMemorySpace().getValue() == MemorySpace::kAny) {
+    return emitOpError("Comparing to 'any' can never succeed");
+  }
+  return success();
+}
+
+OpFoldResult MemRefMemorySpaceIsOp::fold(FoldAdaptor adaptor) {
+  auto actual = dyn_cast_if_present<MemorySpaceAttr>(
+      getSource().getType().getMemorySpace());
+  if (!actual || actual.getValue() == MemorySpace::kAny) {
+    return nullptr;  // Not specialized yet.
+  }
+  MemorySpaceAttr expected = getMemorySpace();
+  if (actual.getValue() == expected.getValue() &&
+      expected.getCoreType().has_value() && !actual.getCoreType().has_value()) {
+    return nullptr;  // Core type not canonicalized yet.
+  }
+  return BoolAttr::get(
+      getContext(), HasMemorySpace(getSource().getType(), expected.getValue(),
+                                   expected.getCoreType()));
 }
 
 }  // namespace tpu

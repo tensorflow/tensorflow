@@ -160,7 +160,7 @@ module @multiple_calls_of_same_module {
     return %2 : !array
   }
 
-  module @add_one attributes {sym_visibility = "private"} {
+  module @add_one <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
       %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
       %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
@@ -208,7 +208,7 @@ module @multiple_calls_of_same_module {
     return %0 : !array
   }
 
-  module @add_one attributes {sym_visibility = "private"} {
+  module @add_one <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
       %0 = stablehlo.constant dense<1> : tensor<2xi32>
       %1 = stablehlo.add %arg0, %0 : tensor<2xi32>

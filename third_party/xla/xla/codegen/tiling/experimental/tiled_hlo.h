@@ -1,4 +1,3 @@
-#include "absl/base/nullability.h"
 /* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,12 +17,13 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_EXPERIMENTAL_TILED_HLO_H_
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -37,8 +37,6 @@ limitations under the License.
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/iterator_util.h"
-#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/util.h"
 
 namespace xla::gpu::experimental {
@@ -49,6 +47,9 @@ class TiledHloInstruction;
 // control flow (e.g., loops) or a distinct computation branch. It also exposes
 // the subset of those instructions that are the entry points to the region
 // ("roots").
+//
+// A region does not own its instructions: they are owned by the enclosing
+// TiledHloComputation, which must outlive the region.
 class TiledHloRegion {
  public:
   TiledHloRegion() = default;
@@ -56,12 +57,10 @@ class TiledHloRegion {
   TiledHloRegion& operator=(TiledHloRegion&&) = default;
 
   TiledHloRegion(
-      std::vector<absl_nonnull std::unique_ptr<TiledHloInstruction>>
-          instructions,
+      std::vector<TiledHloInstruction* absl_nonnull> instructions,
       llvm::SmallVector<const TiledHloInstruction* absl_nonnull, 4> roots);
 
-  const std::vector<std::unique_ptr<TiledHloInstruction>>& instructions()
-      const {
+  absl::Span<const TiledHloInstruction* const> instructions() const {
     return instructions_;
   }
   const llvm::SmallVector<const TiledHloInstruction*, 4>& roots() const {
@@ -75,9 +74,10 @@ class TiledHloRegion {
   void SortInstructionsPostOrder();
 
  private:
-  // The tiled HLO instructions. Instructions are not ordered by
-  // default, call SortInstructionsPostOrder() to sort them.
-  std::vector<std::unique_ptr<TiledHloInstruction>> instructions_;
+  // The tiled HLO instructions, owned by the enclosing TiledHloComputation.
+  // Instructions are not ordered by default; call SortInstructionsPostOrder()
+  // to sort them.
+  std::vector<TiledHloInstruction*> instructions_;
   llvm::SmallVector<const TiledHloInstruction*, 4> roots_;
 };
 
@@ -205,13 +205,10 @@ class TiledHloComputation {
   // not in def-before-use order by default.
   const TiledHloRegion& tiled_root_region() const { return region_; }
 
-  // Returns an iterator range over the instructions in the root region of
-  // the computation (not in def-before-use order by default).
-  tsl::gtl::iterator_range<UnwrappingIterator<
-      std::vector<std::unique_ptr<TiledHloInstruction>>::const_iterator>>
-  instructions() const {
-    return {MakeUnwrappingIterator(region_.instructions().begin()),
-            MakeUnwrappingIterator(region_.instructions().end())};
+  // Returns the instructions in the root region of the computation (not in
+  // def-before-use order by default).
+  absl::Span<const TiledHloInstruction* const> instructions() const {
+    return region_.instructions();
   }
 
   // Return the underlying MLIRContext.
@@ -261,22 +258,32 @@ class TiledHloComputation {
  private:
   TiledHloComputation(
       std::unique_ptr<TilingSpace> tiling_space,
+      std::deque<TiledHloInstruction> instruction_storage,
       TiledHloRegion tiled_root_region,
       absl::flat_hash_map<int64_t,
                           std::pair<const TiledHloInstruction*, Interval>>
           rt_symbol_to_tiled_hlo)
       : tiling_space_(std::move(tiling_space)),
+        instruction_storage_(std::move(instruction_storage)),
         region_(std::move(tiled_root_region)),
         rt_symbol_to_tiled_hlo_(std::move(rt_symbol_to_tiled_hlo)) {}
 
+  // Creates a region from `roots`, constructing all its instructions (including
+  // those of nested regions) in `instruction_storage`.
   static absl::StatusOr<TiledHloRegion> CreateHloRegion(
-      std::vector<std::unique_ptr<TiledHloInstruction>> roots,
+      llvm::SmallVector<std::pair<const HloInstruction*, experimental::Tile>, 4>
+          roots,
       const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
+      std::deque<TiledHloInstruction>& instruction_storage,
       absl::flat_hash_map<int64_t,
                           std::pair<const TiledHloInstruction*, Interval>>&
           rt_symbol_to_tiled_hlo);
 
   std::unique_ptr<TilingSpace> tiling_space_;
+
+  // All instructions of the computation, including nested regions. std::deque
+  // is used for pointer stability.
+  std::deque<TiledHloInstruction> instruction_storage_;
 
   TiledHloRegion region_;
 

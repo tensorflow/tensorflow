@@ -899,16 +899,8 @@ IndexingMap::IndexingMap(
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
     const llvm::MapVector<SymbolicExpr, Interval>& constraints)
-    : symbolic_map_(symbolic_map),
-      dim_vars_(std::move(dimensions)),
-      range_vars_(std::move(range_vars)),
-      rt_vars_(std::move(rt_vars)),
-      constraints_(constraints) {
-  if (!VerifyVariableIntervals() || !VerifyConstraintIntervals()) {
-    ResetToKnownEmpty();
-    return;
-  }
-}
+    : IndexingMap(symbolic_map, std::move(dimensions), std::move(range_vars),
+                  std::move(rt_vars), constraints.getArrayRef()) {}
 
 IndexingMap IndexingMap::FromTensorSizes(
     SymbolicMap symbolic_map, absl::Span<const int64_t> dim_upper_bounds,
@@ -1276,6 +1268,10 @@ bool SymbolicExprSimplifier::SimplifyConstraintExprs(IndexingMap& map) {
     // Skip constraints that are always satisfied.
     Interval evaluated_range =
         range_evaluator_->ComputeExpressionRange(simplified);
+    if (!evaluated_range.Intersect(range).IsFeasible()) {
+      map.ResetToKnownEmpty();
+      return true;
+    }
     if (evaluated_range.upper <= range.upper &&
         evaluated_range.lower >= range.lower) {
       to_remove.push_back(expr);
@@ -1595,12 +1591,6 @@ bool IndexingMap::VerifyVariableIntervals() {
          llvm::all_of(rt_vars_, [](const IndexingMap::Variable& rt_var) {
            return rt_var.bounds.IsFeasible();
          });
-}
-
-bool IndexingMap::VerifyConstraintIntervals() {
-  return llvm::all_of(constraints_, [](const auto& constraint) {
-    return constraint.second.IsFeasible();
-  });
 }
 
 SmallBitVector IndexingMap::RemoveUnusedVars() {

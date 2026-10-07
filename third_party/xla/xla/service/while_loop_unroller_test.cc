@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,7 +39,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/scheduling_annotations_util.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -1166,6 +1167,54 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSShapeMismatch) {
   HloInstruction* instr = body->GetInstructionWithName("slice");
   EXPECT_FALSE(MatchShapeCoveringDynamicIndexInstruction(
                    instr, input, HloOpcode::kDynamicSlice, config.value())
+                   .has_value());
+  HloInstruction* update = body->GetInstructionWithName("update");
+  HloInstruction* dus = body->GetInstructionWithName("new-update");
+  EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
+                  dus, update, HloOpcode::kDynamicUpdateSlice, config.value())
+                  .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUSShapeMismatch) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule SimpleLoop
+  body {
+    param = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) parameter(0)
+    idx = s32[]{:T(128)} get-tuple-element(param), index=0
+    constant1 = s32[]{:T(128)} constant(1)
+    new-idx = s32[]{:T(128)} add(idx, constant1)
+    update = s32[3,10]{1,0} get-tuple-element(param), index=1
+    slice = s32[1,5]{1,0} get-tuple-element(param), index=2
+    zero = s32[] constant(0)
+    new-update = s32[3,10]{1,0} dynamic-update-slice(update, slice, idx, zero)
+    ROOT tuple = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) tuple(new-idx, new-update, slice)
+  }
+  condition {
+    param = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) parameter(0)
+    idx = s32[] get-tuple-element(param), index=0
+    constant3 = s32[]{:T(128)} constant(3)
+    ROOT less-than = pred[] compare(idx, constant3), direction=LT
+  }
+  ENTRY main {
+    constant0 = s32[]{:T(128)} constant(0)
+    init-update = s32[3,10]{1,0} constant({...})
+    init-slice = s32[1,5]{1,0} constant({...})
+    init-while = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) tuple(constant0, init-update, init-slice)
+    ROOT while = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) while(init-while), condition=condition, body=body
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  std::optional<WhileLoopConfig> config =
+      WhileLoopUnroller::IsLoopUnrollable(loop);
+  ASSERT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("body");
+  HloInstruction* update = body->GetInstructionWithName("update");
+  HloInstruction* dus = body->GetInstructionWithName("new-update");
+  EXPECT_FALSE(MatchShapeCoveringDynamicIndexInstruction(
+                   dus, update, HloOpcode::kDynamicUpdateSlice, config.value())
                    .has_value());
 }
 

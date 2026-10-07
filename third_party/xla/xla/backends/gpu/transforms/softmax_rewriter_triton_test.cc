@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,7 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
@@ -1190,14 +1191,9 @@ ENTRY main {
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
-  // Mirrors the contexts GpuCompiler pools: multithreading is disabled, so the
-  // cost model must give each candidate its own context.
-  MlirContextPool mlir_context_pool(
-      [] {
-        return std::make_unique<mlir::MLIRContext>(
-            mlir::MLIRContext::Threading::DISABLED);
-      },
-      /*preallocate=*/4);
+  // Same contexts as GpuCompiler pools. They are single-threaded, so the cost
+  // model must give each candidate its own context.
+  MlirContextPool mlir_context_pool(CreateMlirContext, /*preallocate=*/4);
   SoftmaxRewriterTriton rewriter(
       device_info_, HloCostAnalysis::DefaultShapeSize, &alias_info_,
       &mlir_context_,

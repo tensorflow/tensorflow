@@ -60,11 +60,9 @@ class AllGatherPadDsSimplifierTest : public HloHardwareIndependentTestBase {
     config.set_use_spmd_partitioning(num_partitions > 1);
     ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
-    auto changed = AllGatherPadDsSimplifier().Run(module.get(), {});
-    if (!changed.ok()) {
-      return changed.status();
-    }
-    EXPECT_EQ(changed.value(), expect_change);
+    ABSL_ASSIGN_OR_RETURN(bool changed,
+                     AllGatherPadDsSimplifier().Run(module.get(), {}));
+    EXPECT_EQ(changed, expect_change);
     LOG(INFO) << "new module: " << module->ToString();
     return module;
   }

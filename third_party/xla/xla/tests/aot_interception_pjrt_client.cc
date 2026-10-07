@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -84,8 +85,98 @@ const tsl::protobuf::FieldDescriptor* FieldByPath(
   return field;
 }
 
+// DebugOptions fields that cannot change the compiled program. Every other
+// field, including fields added in future, is compared. That includes
+// runtime-only knobs such as watchdog timeouts: GpuExecutable reads them from
+// the serialized options, so the artifact carries them into every process that
+// loads it. A field belongs here only if every reader of it is in one of the
+// groups below; when in doubt, leave it out. Keep each group sorted.
+// TODO(b/567825028): Replace this hand-kept list once DebugOptions separates
+// compiler options from runtime, debug and environment options.
+constexpr absl::string_view kIgnoredDebugOptionsFields[] = {
+    // Dump controls not covered by `kIgnoredDebugOptionsFieldPrefixes`.
+    "xla_enable_dumping",
+    "xla_gpu_experimental_dump_fdo_profiles",
+    "xla_gpu_experimental_dump_gpu_executable",
+    "xla_hlo_graph_addresses",
+    "xla_hlo_graph_sharding_color",
+    // HLO text rendering: read only by HloModule::ToString(), which formats
+    // dumps, logs and error messages.
+    "xla_hlo_print_inline_stack_frames",
+    "xla_syntax_sugar_async_ops",
+    // Logging, profiling and tracing: log text, timers, profiler and NVTX
+    // payloads only.
+    "xla_debug_buffer_assignment_show_max",
+    "xla_detailed_logging",
+    "xla_enable_hlo_modules_upload",
+    "xla_enable_scoped_logging_timers",
+    "xla_gpu_enable_cupti_multi_subscriber",
+    "xla_gpu_print_compilation_stats",
+    "xla_gpu_rocm_max_trace_events",
+    "xla_gpu_trace_annotation_level",
+    // Host-specific: where the toolchain and compilation caches live and how
+    // many threads compile, not what is compiled.
+    "xla_gpu_cuda_data_dir",
+    "xla_gpu_experimental_autotuner_cache_dir",
+    "xla_gpu_force_compilation_parallelism",
+    "xla_gpu_kernel_cache_file",
+    "xla_gpu_per_fusion_autotune_cache_dir",
+    "xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found",
+    // Verification only: can abort compilation or log, but never changes a
+    // successfully compiled executable.
+    "xla_gpu_crash_on_verification_failures",
+    "xla_gpu_llvm_verification_level",
+    "xla_hlo_pass_fix_detect_cycles",
+    "xla_unsupported_crash_on_hlo_pass_fix_max_iterations",
+    "xla_unsupported_crash_on_hlo_pass_noop_change",
+    "xla_unsupported_crash_on_hlo_pass_silent_hlo_change",
+    // Not read by the GPU compiler or runtime from the stored options: read by
+    // the CPU or TPU compilers only, or only from process-global flags.
+    "xla_embed_ir_in_executable",
+    "xla_flags_reset",
+    "xla_force_host_platform_device_count",
+    "xla_tpu_detect_inf",
+    "xla_tpu_detect_nan",
+    // Test harness only: never read by the compiler or runtime.
+    "xla_test_add_command_buffer_mode",
+    "xla_test_all_input_layouts",
+    "xla_test_all_output_layouts",
+};
+
+// Every DebugOptions field with one of these prefixes is ignored, including
+// fields added in future.
+constexpr absl::string_view kIgnoredDebugOptionsFieldPrefixes[] = {
+    // Read by the CPU backend only.
+    "xla_cpu_",
+    // Dump controls: where, whether and in which format to write debug dumps.
+    // xla_dump_to is also overridden per process at GpuExecutable
+    // deserialization.
+    "xla_dump_",
+    "xla_gpu_dump_",
+};
+
+// Resolves `kIgnoredDebugOptionsFields` plus every field matching
+// `kIgnoredDebugOptionsFieldPrefixes`.
+std::vector<const tsl::protobuf::FieldDescriptor*> IgnoredDebugOptionsFields() {
+  const tsl::protobuf::Descriptor* descriptor = DebugOptions::descriptor();
+  std::vector<const tsl::protobuf::FieldDescriptor*> fields;
+  for (const absl::string_view name : kIgnoredDebugOptionsFields) {
+    fields.push_back(FieldByPath(descriptor, {name}));
+  }
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+    for (const absl::string_view prefix : kIgnoredDebugOptionsFieldPrefixes) {
+      if (absl::StartsWith(field->name(), prefix)) {
+        fields.push_back(field);
+        break;
+      }
+    }
+  }
+  return fields;
+}
+
 // Runs the structural comparison shared by all backends. `extra_ignored_fields`
-// adds to the common, backend-agnostic ignore list.
+// adds backend-specific fields to the common ignore list.
 absl::Status CompareStructurally(
     const HumanReadableAotExecutable& fresh,
     const HumanReadableAotExecutable& golden,
@@ -94,6 +185,8 @@ absl::Status CompareStructurally(
   tsl::protobuf::util::MessageDifferencer differencer;
   differencer.set_message_field_comparison(
       tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
+  // Only report real differences, not the (long) list of ignored fields.
+  differencer.set_report_ignores(false);
 
   std::vector<const tsl::protobuf::FieldDescriptor*> ignored_fields = {
       ExecutableAndOptionsProto::descriptor()->FindFieldByName(
@@ -103,6 +196,15 @@ absl::Status CompareStructurally(
   };
   ignored_fields.insert(ignored_fields.end(), extra_ignored_fields.begin(),
                         extra_ignored_fields.end());
+  // Both debug_options copies (compile options and HLO module config) are
+  // `DebugOptions`, so ignoring its fields applies to both. The list was
+  // classified for GPU; it is a no-op on CPU, which still ignores
+  // debug_options wholesale.
+  const std::vector<const tsl::protobuf::FieldDescriptor*>
+      ignored_debug_options_fields = IgnoredDebugOptionsFields();
+  ignored_fields.insert(ignored_fields.end(),
+                        ignored_debug_options_fields.begin(),
+                        ignored_debug_options_fields.end());
   for (const auto* field : ignored_fields) {
     CHECK(field != nullptr)
         << "AOTInterceptionPjrtClient: a proto field descriptor to ignore was "
@@ -134,8 +236,30 @@ std::string RegenerationHint(absl::string_view target_name) {
       "reviewing the differences.\n"
       "(Google-internal: run, from the workspace root, "
       "third_party/tensorflow/compiler/xla/tests/"
-      "aot_compatibility_experimental/google/update_goldens.py ",
+      "aot_compatibility/google/update_goldens.py ",
       label, ")");
+}
+
+// Context for a load failure in kBackwardsCompatibility mode: the golden came
+// from an older compiler, so failing to load it is a compatibility break.
+std::string BackwardsCompatibilityHint(absl::string_view artifact_path,
+                                       absl::string_view platform_name) {
+  std::string hint = absl::StrCat(
+      "Backwards compatibility check failed: the current runtime could not "
+      "load the golden executable ",
+      artifact_path,
+      ", which was serialized by an older compiler. The runtime must keep "
+      "loading everything compilers emitted in the last 6 months; a thunk "
+      "kind, proto field, or registered symbol was most likely removed or "
+      "renamed.");
+  // The guide only covers XLA:GPU; do not point CPU failures at it.
+  if (AOTInterceptionPjrtClient::PlatformFromName(platform_name)
+          .value_or(AOTTestPlatform::kCpu) == AOTTestPlatform::kGpu) {
+    absl::StrAppend(&hint,
+                    " See the GPU AOT compatibility guide: "
+                    "https://openxla.org/xla/gpu_aot_compatibility");
+  }
+  return hint;
 }
 
 }  // namespace
@@ -209,11 +333,8 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
     const HumanReadableAotExecutable& fresh,
     const HumanReadableAotExecutable& golden) {
   // The ignored fields hold backend machine code and device-specific details.
-  //
-  // TODO(b/528258781): Debug options are ignored wholesale. Work out which
-  // flags actually affect the artifact and should be compared, versus which are
-  // host- or run-specific noise (dump paths, cache dirs), and ignore only
-  // those.
+  // Both debug_options copies are compared, except for the fields in
+  // `kIgnoredDebugOptionsFields`.
   return CompareStructurally(
       fresh, golden,
       {
@@ -229,9 +350,6 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
               "ptx"),
           stream_executor::KernelLoaderSpecProto::descriptor()->FindFieldByName(
               "cubin"),
-          ExecutableBuildOptionsProto::descriptor()->FindFieldByName(
-              "debug_options"),
-          HloModuleConfigProto::descriptor()->FindFieldByName("debug_options"),
           stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
               descriptor()
                   ->FindFieldByName("cuda_toolkit_version"),
@@ -241,6 +359,13 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
           stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
               descriptor()
                   ->FindFieldByName("cub_version"),
+          // GpuTopology embeds the compile host's driver/toolkit/CPU details.
+          // Only the topology shape (partitions/hosts/devices) is stable across
+          // hosts of the same arch.
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"gpu_topology", "gpu_target_config"}),
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"gpu_topology", "host_target_machine_options"}),
       });
 }
 
@@ -248,7 +373,7 @@ absl::Status AOTInterceptionPjrtClient::CompareGoldenCPUExecutable(
     const HumanReadableAotExecutable& fresh,
     const HumanReadableAotExecutable& golden) {
   // The ignored fields hold compiled machine code, host-specific target details
-  // and debug options, which are host- or run-specific noise.
+  // and, for now, both debug_options copies.
   return CompareStructurally(
       fresh, golden,
       {
@@ -258,6 +383,11 @@ absl::Status AOTInterceptionPjrtClient::CompareGoldenCPUExecutable(
               "target_machine_options"),
           cpu::CompilationResultProto::descriptor()->FindFieldByName(
               "data_layout"),
+          // TODO(b/528258781): Debug options are still ignored wholesale on
+          // CPU: `kIgnoredDebugOptionsFields` was classified for GPU only (it
+          // ignores every xla_cpu_* field), and the CPU golden predates
+          // current DebugOptions defaults. Compare them here too once CPU flags
+          // are classified and the golden regenerated.
           ExecutableBuildOptionsProto::descriptor()->FindFieldByName(
               "debug_options"),
           HloModuleConfigProto::descriptor()->FindFieldByName("debug_options"),
@@ -441,8 +571,12 @@ AOTInterceptionPjrtClient::Compile(const XlaComputation& computation,
       ABSL_ASSIGN_OR_RETURN(std::string serialized, PackArtifactForInnerClient());
       VLOG(1) << "AOTInterceptionPjrtClient: Calling "
                  "inner_client_->DeserializeExecutable.";
-      return inner_client_->DeserializeExecutable(serialized,
-                                                  std::move(options));
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtExecutable> exec,
+          inner_client_->DeserializeExecutable(serialized, std::move(options)),
+          _ << BackwardsCompatibilityHint(artifact_path_,
+                                          inner_client_->platform_name()));
+      return exec;
     }
     case AOTTestMode::kUpdateGolden:
     case AOTTestMode::kGoldenVerification: {
@@ -473,8 +607,12 @@ AOTInterceptionPjrtClient::CompileAndLoad(const XlaComputation& computation,
       ABSL_ASSIGN_OR_RETURN(std::string serialized, PackArtifactForInnerClient());
       VLOG(1) << "AOTInterceptionPjrtClient: Calling "
                  "inner_client_->LoadSerializedExecutable.";
-      return inner_client_->LoadSerializedExecutable(
-          serialized, std::move(options), LoadOptions());
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> exec,
+                       inner_client_->LoadSerializedExecutable(
+                           serialized, std::move(options), LoadOptions()),
+                       _ << BackwardsCompatibilityHint(
+                           artifact_path_, inner_client_->platform_name()));
+      return exec;
     }
     case AOTTestMode::kUpdateGolden:
     case AOTTestMode::kGoldenVerification: {

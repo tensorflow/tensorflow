@@ -35,8 +35,6 @@ class Range {
  public:
   Range()
       : min_(ConstantValue::GetZero(/*bitwidth=*/64, /*is_signed=*/false)),
-        max_(ConstantValue::GetZero(/*bitwidth=*/64, /*is_signed=*/false)),
-        step_(ConstantValue::GetZero(/*bitwidth=*/64, /*is_signed=*/false)),
         empty_(true),
         is_linear_(false) {}
   Range(const ConstantValue& min, std::optional<ConstantValue> max,

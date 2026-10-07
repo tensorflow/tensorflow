@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_core_info_table.h"
-
 #include <cstdint>
 #include <optional>
 
@@ -22,6 +20,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/core_info.h"
 #include "xla/xla_data.pb.h"
 
 namespace stream_executor {
@@ -57,7 +56,7 @@ void CheckPeakOpsPerNs(const DeviceDescription& device_info,
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsA100) {
   DeviceDescription a100_device_info =
       xla::gpu::TestGpuDeviceInfo::A100SXMDeviceInfo();
-  FillExecutionUnitDesc(a100_device_info.cuda_compute_capability(),
+  FillExecutionUnitDesc(a100_device_info.gpu_compute_capability(),
                         a100_device_info.clock_rate_ghz(), a100_device_info);
 
   CheckPeakOpsPerNs(a100_device_info, /*is_matrix_unit=*/true,
@@ -89,7 +88,7 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsA100) {
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
   DeviceDescription h100_device_info =
       xla::gpu::TestGpuDeviceInfo::H100SXMDeviceInfo();
-  FillExecutionUnitDesc(h100_device_info.cuda_compute_capability(),
+  FillExecutionUnitDesc(h100_device_info.gpu_compute_capability(),
                         h100_device_info.clock_rate_ghz(), h100_device_info);
 
   CheckPeakOpsPerNs(h100_device_info, /*is_matrix_unit=*/true,
@@ -119,7 +118,7 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsB200) {
   DeviceDescription b200_device_info =
       xla::gpu::TestGpuDeviceInfo::B200SXMDeviceInfo();
-  FillExecutionUnitDesc(b200_device_info.cuda_compute_capability(),
+  FillExecutionUnitDesc(b200_device_info.gpu_compute_capability(),
                         b200_device_info.clock_rate_ghz(), b200_device_info);
 
   CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,

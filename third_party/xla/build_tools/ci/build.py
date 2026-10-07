@@ -32,8 +32,18 @@ import subprocess
 import sys
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
+# Ensure the XLA repository root is on sys.path when invoked directly as a
+# script in OSS (e.g. `python3 build_tools/ci/build.py` without PYTHONPATH).
+_XLA_SRC_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+if _XLA_SRC_ROOT not in sys.path:
+  sys.path.insert(0, _XLA_SRC_ROOT)
+
+# pylint: disable=g-import-not-at-top
 from build_tools.ci import bazel_diff
 from build_tools.ci import change_detector
+# pylint: enable=g-import-not-at-top
 
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
@@ -504,7 +514,10 @@ Build(
     type_=BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    target_patterns=(
+        *_XLA_DEFAULT_TARGET_PATTERNS,
+        "-@tsl//tsl/platform:stacktrace_handler_test",
+    ),
     options={
         **_DEFAULT_BAZEL_OPTIONS,
         "build_tests_only": True,

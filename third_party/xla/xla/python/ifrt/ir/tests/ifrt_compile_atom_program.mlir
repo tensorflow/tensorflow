@@ -30,7 +30,7 @@ module @call_hlo {
   // CHECK-SAME: on devices [0, 1]
   // CHECK: (!ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>)
   // CHECK-SAME: -> !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
-  module @add_one attributes {sym_visibility = "private"} {
+  module @add_one <sym_visibility = "private"> {
     func.func @main(
         %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
         -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
@@ -61,7 +61,7 @@ module @call_hlo_sdy_lowered attributes {
   // CHECK-SAME: on devices [0, 1]
   // CHECK: (!ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>)
   // CHECK-SAME: -> !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
-  module @add_one attributes {sym_visibility = "private"} {
+  module @add_one <sym_visibility = "private"> {
     func.func @main(
         %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
         -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
@@ -95,7 +95,7 @@ module @call_hlo_multiple_calls_same_target_module {
   // CHECK-SAME: on devices [2, 3]
   // CHECK: ifrt.LoadedExecutable @
   // CHECK-SAME: on devices [0, 1]
-  module @add_one attributes {sym_visibility = "private"} {
+  module @add_one <sym_visibility = "private"> {
     func.func @main(
         %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
         -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {

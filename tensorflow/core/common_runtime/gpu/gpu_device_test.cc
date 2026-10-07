@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 #ifdef TF_GPU_USE_PJRT
+#include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #endif  // TF_GPU_USE_PJRT
@@ -50,13 +53,18 @@ using ::testing::SizeIs;
 
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
-int64_t GetTotalGPUMemory(tsl::PlatformDeviceId gpu_id) {
+struct GpuMemoryUsage {
+  int64_t total_bytes;
+  int64_t available_bytes;
+};
+
+GpuMemoryUsage GetGpuMemoryUsage(tsl::PlatformDeviceId gpu_id) {
   se::StreamExecutor* se =
       se::GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
 
-  int64_t total_memory, available_memory;
-  CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
-  return total_memory;
+  GpuMemoryUsage usage;
+  CHECK(se->DeviceMemoryUsage(&usage.available_bytes, &usage.total_bytes));
+  return usage;
 }
 
 se::CudaComputeCapability GetComputeCapability() {
@@ -85,12 +93,15 @@ void ExpectErrorMessageSubstr(const absl::Status& s, absl::string_view substr) {
 
 class GPUDeviceTest : public ::testing::Test {
  public:
-  void TearDown() override {
-    BaseGPUDevice::TestOnlyReset();
-    GPUProcessState::singleton()->TestOnlyReset();
-  }
+  void TearDown() override { ResetGpuState(); }
 
  protected:
+  static void ResetGpuState() {
+    BaseGPUDevice::TestOnlyReset();
+    GPUProcessState::singleton()->TestOnlyReset();
+    tsl::DeviceIdManager::TestOnlyReset();
+  }
+
   static SessionOptions MakeSessionOptions(
       const std::string& visible_device_list = "",
       double per_process_gpu_memory_fraction = 0, int gpu_device_count = 1,
@@ -328,6 +339,94 @@ TEST_F(GPUDeviceTest, GpuDeviceWithPjrt) {
   EXPECT_EQ(static_cast<BaseGPUDevice*>(devices[0].get())->priority(), 0);
   auto pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
   EXPECT_OK(pjrt_client.status());
+}
+
+TEST_F(GPUDeviceTest, TestOnlyResetRecreatesPjRtClient) {
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      MakeSessionOptions("0"), kDeviceNamePrefix, &devices));
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtClient * pjrt_client_before,
+                          GetPjRtClient(DeviceType(DEVICE_GPU)));
+  devices.clear();
+
+  ResetGpuState();
+
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      MakeSessionOptions("0"), kDeviceNamePrefix, &devices));
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtClient * pjrt_client_after,
+                          GetPjRtClient(DeviceType(DEVICE_GPU)));
+  // The retired client is kept alive (not freed), so comparing pointers is
+  // meaningful.
+  EXPECT_NE(pjrt_client_after, pjrt_client_before);
+}
+
+TEST_F(GPUDeviceTest, TestOnlyResetAllowsDifferentVisibleDeviceList) {
+  // This test requires at least two visible GPU hardware.
+  if (se::GPUMachineManager()->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Requires at least 2 visible GPUs.";
+  }
+
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      MakeSessionOptions("0"), kDeviceNamePrefix, &devices));
+  EXPECT_THAT(devices, SizeIs(1));
+  // CreateDevices creates the process-global GPU XLA LocalClient restricted to
+  // the visible devices; GetOrCreateLocalClient returns that cached instance.
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::LocalClient * local_client,
+      xla::ClientLibrary::GetOrCreateLocalClient(se::GPUMachineManager()));
+  EXPECT_EQ(local_client->device_count(), 1);
+  devices.clear();
+
+  ResetGpuState();
+
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      MakeSessionOptions("0,1", 0, 2), kDeviceNamePrefix, &devices));
+  EXPECT_THAT(devices, SizeIs(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      local_client,
+      xla::ClientLibrary::GetOrCreateLocalClient(se::GPUMachineManager()));
+  EXPECT_EQ(local_client->device_count(), 2);
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtClient * pjrt_client,
+                          GetPjRtClient(DeviceType(DEVICE_GPU)));
+  EXPECT_EQ(pjrt_client->addressable_device_count(), 2);
+}
+
+TEST_F(GPUDeviceTest, TestOnlyResetReleasesAllocatorMemory) {
+  constexpr int64_t kMemoryLimitMb = 256;
+  constexpr int64_t kMb = 1 << 20;
+  // More than half the limit, so the BFC allocator must reserve at least this
+  // much even with allow_growth (e.g. TF_FORCE_GPU_ALLOW_GROWTH=true), where it
+  // only grows its region on demand.
+  constexpr int64_t kAllocBytes = kMemoryLimitMb / 2 * kMb + kMb;
+  const tsl::PlatformDeviceId gpu_id(0);
+
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      MakeSessionOptions("0", 0, 1, {{static_cast<float>(kMemoryLimitMb)}}),
+      kDeviceNamePrefix, &devices));
+  ASSERT_THAT(devices, SizeIs(1));
+  const int64_t available_before_alloc =
+      GetGpuMemoryUsage(gpu_id).available_bytes;
+
+  // The BFC allocator keeps the region it reserved after the deallocation.
+  Allocator* allocator = devices[0]->GetAllocator(AllocatorAttributes());
+  void* ptr =
+      allocator->AllocateRaw(Allocator::kAllocatorAlignment, kAllocBytes);
+  ASSERT_NE(ptr, nullptr);
+  allocator->DeallocateRaw(ptr);
+  const int64_t available_alive = GetGpuMemoryUsage(gpu_id).available_bytes;
+  // Sanity check that the allocator really reserved (most of) its region;
+  // otherwise the check below would be vacuous.
+  ASSERT_GE(available_before_alloc - available_alive, kMemoryLimitMb / 2 * kMb);
+
+  devices.clear();
+  ResetGpuState();
+
+  // The allocator's region must be returned to the device. Small unrelated
+  // retention (e.g. by the retired PjRt client) is intentionally not checked.
+  EXPECT_GE(GetGpuMemoryUsage(gpu_id).available_bytes - available_alive,
+            kMemoryLimitMb / 2 * kMb);
 }
 #endif  // TF_GPU_USE_PJRT
 
@@ -572,9 +671,9 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   ASSERT_THAT(devices, SizeIs(1));
 
   int64_t memory_limit = devices[0]->attributes().memory_limit();
-  ASSERT_EQ(memory_limit,
-            static_cast<int64_t>(GetTotalGPUMemory(kPlatformDeviceId) *
-                                 kGpuMemoryFraction));
+  ASSERT_EQ(memory_limit, static_cast<int64_t>(
+                              GetGpuMemoryUsage(kPlatformDeviceId).total_bytes *
+                              kGpuMemoryFraction));
 
   AllocatorAttributes allocator_attributes = AllocatorAttributes();
   allocator_attributes.set_gpu_compatible(true);

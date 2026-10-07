@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
@@ -633,43 +634,70 @@ int64_t TilingSpace::num_parallel_dimensions() const {
 void TilingSpace::InitSimplificationIndexing() {
   CHECK(!is_symbolic_) << "Tile sizes must be assigned before initializing "
                           "cached indexing map variables.";
+  CHECK(dim_vars_indexing_.empty())
+      << "InitSimplificationIndexing must be called once";
+  CHECK(range_vars_indexing_.empty());
+  CHECK(rt_vars_indexing_.empty());
 
-  dim_vars_indexing_.clear();
   dim_vars_indexing_.reserve(dimensions_.size());
-  for (const auto& dim_info : dimensions_) {
-    CHECK_GT(dim_info.tile_size.value(), 0);
-    int64_t upper_bound =
-        llvm::divideCeil(dim_info.dimension_size, dim_info.tile_size.value());
+  range_vars_indexing_.reserve(dimensions_.size());
+  for (const DimensionInfo& dim_info : dimensions_) {
+    int64_t tile_size = dim_info.tile_size.value();
+    CHECK_GT(tile_size, 0);
+    int64_t upper_bound = llvm::divideCeil(dim_info.dimension_size, tile_size);
     dim_vars_indexing_.push_back(IndexingMap::Variable{0, upper_bound - 1});
+    // Even though ts_X must already be replaced with constants right now, we
+    // initialize their bounds to [tile_size, tile_size] for completeness.
+    range_vars_indexing_.push_back(IndexingMap::Variable{tile_size, tile_size});
   }
-
-  range_vars_indexing_.assign(dimensions_.size(), IndexingMap::Variable{0, 0});
-
-  rt_vars_indexing_.clear();
   rt_vars_indexing_.reserve(rt_vars_.size());
-  for (const auto& rt_var : rt_vars_) {
+  for (const RTVarInfo& rt_var : rt_vars_) {
     rt_vars_indexing_.push_back(IndexingMap::Variable{rt_var.bounds});
   }
 }
 
-llvm::SmallVector<SymbolicExpr> TilingSpace::SimplifyExpressions(
-    const llvm::SmallVector<SymbolicExpr>& expressions) const {
+TilingSpace::SimplificationResult TilingSpace::SimplifyExpressions(
+    const llvm::SmallVector<SymbolicExpr>& expressions,
+    llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints) const {
+  SimplificationResult result;
   if (is_symbolic_) {
-    llvm::SmallVector<SymbolicExpr> simplified_expressions;
-    simplified_expressions.reserve(expressions.size());
+    result.expressions.reserve(expressions.size());
     for (const auto& expr : expressions) {
-      simplified_expressions.push_back(expr.Canonicalize());
+      result.expressions.push_back(expr.Canonicalize());
     }
-    return simplified_expressions;
+    return result;
   }
-  // TODO(b/565301234): add constraints from tiling space?
-  SymbolicMap map = SymbolicMap::Get(mlir_context(), dimensions_.size(),
-                                     rt_vars_.size(), expressions);
-
-  IndexingMap indexing_map(map, dim_vars_indexing_, range_vars_indexing_,
-                           rt_vars_indexing_);
-  indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
-  return std::move(indexing_map).GetSymbolicMap().GetResults();
+  CHECK_EQ(dimensions_.size(), dim_vars_indexing_.size());
+  CHECK_EQ(dimensions_.size(), range_vars_indexing_.size());
+  CHECK_EQ(rt_vars_indexing_.size(), rt_vars_.size());
+  // TODO(b/565301234): add constraints from tiling space? They don't seem to
+  // be used in the current implementation.
+  SymbolicMap map =
+      SymbolicMap::Get(mlir_context(), dimensions_.size(),
+                       dimensions_.size() + rt_vars_.size(), expressions);
+  IndexingMap indexing_map(
+      map, dim_vars_indexing_, range_vars_indexing_, rt_vars_indexing_,
+      absl::MakeConstSpan(constraints.data(), constraints.size()));
+  VLOG(2) << "SimplifyExpressions original map: " << indexing_map;
+  bool simplified =
+      indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kReplace);
+  VLOG(2) << "SimplifyExpressions simplified map: " << simplified << " "
+          << indexing_map;
+  if (indexing_map.IsKnownEmpty()) {
+    // IndexingMap resets all results to 0 when the domain is empty, so we
+    // return the original expressions instead.
+    VLOG(2) << "Constraints are infeasible, expressions are not simplified: "
+            << absl::StrJoin(constraints, ", ",
+                             [](std::string* out, const auto& c) {
+                               absl::StrAppend(out, c.first.ToString(), " in ",
+                                               c.second.ToString());
+                             });
+    result.expressions = expressions;
+    result.is_known_empty = true;
+    return result;
+  }
+  result.expressions = std::move(indexing_map).GetSymbolicMap().GetResults();
+  return result;
 }
 
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>
@@ -708,5 +736,4 @@ TilingSpace::GetValidTilings() {
   }
   return valid_tilings;
 }
-
 }  // namespace xla::gpu::experimental

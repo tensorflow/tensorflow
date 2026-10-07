@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -102,7 +101,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/rng_seed_thunk.h"
-#include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -239,6 +237,7 @@ bool IsInternalAotAllowlistedCustomCall(absl::string_view target_name) {
   static constexpr absl::string_view kInternalAotAllowlist[] = {
       kCubDeviceRadixSortPairsTarget,
       kCubDeviceRadixSortKeysTarget,
+      kTopKCustomCallTarget,
   };
   return absl::c_linear_search(kInternalAotAllowlist, target_name);
 }
@@ -1498,12 +1497,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
           : std::tuple<size_t, size_t, size_t>{
                 1, data_shape.dimensions(0), top_elements_shape.dimensions(0)};
 
-  // Prepare kernel arguments.
-  ABSL_ASSIGN_OR_RETURN(auto kernel_arguments,
-                   emitters::KernelArguments::Create(
-                       ir_emitter_context_->buffer_assignment(),
-                       GetDefaultBufferAlignment(), instr));
-
   auto dtype = data_shape.element_type();
   bool is_cuda = ir_emitter_context_->gpu_compute_capability().IsCuda();
 
@@ -1528,13 +1521,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
     VLOG(3) << "EmitTopKCustomCall: dtype=" << dtype << ", n=" << n
             << ", k=" << k << ", use_raft_select_k=" << use_raft_select_k;
 
-    Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
-        instr, ir_emitter_context_->GetNextThunkId());
     if (use_raft_select_k) {
-      return ThunkSequence::Of<SelectKThunk>(std::move(info), batch_size, n, k,
-                                             dtype, kernel_arguments);
+      return EmitGenericCustomCall(instr);
     }
   }
+
+  // Prepare kernel arguments.
+  ABSL_ASSIGN_OR_RETURN(auto kernel_arguments,
+                   emitters::KernelArguments::Create(
+                       ir_emitter_context_->buffer_assignment(),
+                       GetDefaultBufferAlignment(), instr));
 
   auto wavefront_size =
       ir_emitter_context_->gpu_device_info().threads_per_warp();
@@ -1548,7 +1544,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
   return ThunkSequence::Of<CustomKernelThunk>(
-      std::move(info), std::move(kernel), kernel_arguments);
+      std::move(info), std::move(kernel), kernel_arguments,
+      ir_emitter_context_->gpu_topology().num_devices_per_process());
 }
 
 Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
@@ -1650,7 +1647,9 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
       instr, ir_emitter_context_->GetNextThunkId());
   return status_or_entry.Map(
       [info = std::move(info), kernel_arguments = std::move(kernel_arguments),
-       call_zeroed_outputs = std::move(call_zeroed_outputs)](
+       call_zeroed_outputs = std::move(call_zeroed_outputs),
+       devices_in_process =
+           ir_emitter_context_->gpu_topology().num_devices_per_process()](
           const KernelReuseCache::Entry& entry) mutable
           -> absl::StatusOr<ThunkSequence> {
         ABSL_ASSIGN_OR_RETURN(
@@ -1662,8 +1661,8 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                 entry.shmem_bytes));
         return ThunkSequence::Of<CustomKernelThunk>(
             std::move(info), std::move(custom_kernel),
-            std::move(kernel_arguments), entry.use_pdl, call_zeroed_outputs,
-            entry.tma_metadata);
+            std::move(kernel_arguments), devices_in_process, entry.use_pdl,
+            call_zeroed_outputs, entry.tma_metadata);
       });
 }
 

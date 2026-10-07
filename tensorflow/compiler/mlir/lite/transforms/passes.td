@@ -369,6 +369,22 @@ def FoldStablehloConstantTransformsPass : Pass<"tfl-fold-stablehlo-constant-tran
   ];
 }
 
+def FuseA4W2DRQFullyConnectedPass : Pass<"tfl-fuse-a4w2-drq-fully-connected", "mlir::func::FuncOp"> {
+  let summary = "Collapses a blockwise a4w2 dynamic range quantized pattern into a single fully_connected.";
+  let description = [{
+      Matches a `blockwise_quantize` / `blockwise_dequantize` pair feeding the
+      activations of a `tfl.fully_connected` whose filter is a
+      `blockwise_dequantize` of an i2 constant, and rewrites it into one
+      `tfl.fully_connected` with per-axis i2 weights and a `tfl.quant_spec`
+      naming the `cint2_fp32_int4_e8m0_drq` contract.
+  }];
+  let constructor = "CreateFuseA4W2DRQFullyConnectedPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect",
+    "mlir::quant::QuantDialect"
+  ];
+}
+
 def PropagateQParamsPass : Pass<"tfl-propagate-qparams", "mlir::ModuleOp"> {
   let summary = "Propagates Quantization Parameters (scale and zero point) information through the graph.";
   let description = [{

@@ -52,9 +52,8 @@ struct scalar_arg_op<std::complex<double>> {
 
 template <typename Scalar, typename Exponent>
 struct safe_scalar_binary_pow_op {
-  static_assert(std::is_integral<Scalar>::value, "Integer type expected");
-  static_assert(std::is_integral<Exponent>::value &&
-                    std::is_signed<Exponent>::value,
+  static_assert(std::is_integral_v<Scalar>, "Integer type expected");
+  static_assert(std::is_integral_v<Exponent> && std::is_signed_v<Exponent>,
                 "Signed integer type expected");
 
   bool* const error;
@@ -79,9 +78,42 @@ struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
+// Eigen evaluates complex powers as exp(exponent * log(base)), which yields
+// NaN for 0^0. IEEE 754 requires z^0 == 1, which TensorFlow follows,
+// including non-finite bases. Handle zero exponents before the logarithm as a
+// TensorFlow-local workaround, without depending on an upstream Eigen change.
+template <typename T, bool IsComplex = NumTraits<T>::IsComplex>
+struct tf_scalar_pow_op;
+
+template <typename T>
+struct tf_scalar_pow_op<T, /*IsComplex=*/false> : scalar_pow_op<T, T> {};
+
+template <typename T>
+struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/false>>
+    : functor_traits<scalar_pow_op<T, T>> {};
+
+template <typename T>
+struct tf_scalar_pow_op<T, /*IsComplex=*/true> : scalar_pow_op<T, T> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& base,
+                                                     const T& exponent) const {
+    if (TF_PREDICT_FALSE(Eigen::numext::is_exactly_zero(exponent))) {
+      return T(1);
+    }
+    return scalar_pow_op<T, T>::operator()(base, exponent);
+  }
+};
+
+template <typename T>
+struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/true>> {
+  enum {
+    Cost = functor_traits<scalar_pow_op<T, T>>::Cost + NumTraits<T>::AddCost,
+    PacketAccess = false,
+  };
+};
+
 template <typename T, typename DivOrMod>
 struct safe_div_or_mod_op {
-  static_assert(std::is_integral<T>::value, "Integer type expected");
+  static_assert(std::is_integral_v<T>, "Integer type expected");
 
   bool* const error;
 
@@ -377,8 +409,7 @@ struct google_floor_div {
 };
 
 template <typename T>
-struct google_floor_div<
-    T, typename std::enable_if<std::is_unsigned<T>::value>::type> {
+struct google_floor_div<T, std::enable_if_t<std::is_unsigned_v<T>>> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
     return x / y;
@@ -760,10 +791,21 @@ struct functor_traits<scalar_erfinv_op<T>> {
     PacketAccess = packet_traits<T>::HasNdtri,
   };
 };
+
+// digamma has poles at zero and at the negative integers. Eigen's
+// scalar_digamma_op returns NaN for all of them; TensorFlow returns -inf at
+// zero (the limit from the right) and NaN at the negative integers, matching
+// the XLA lowering in xla/hlo/builder/lib/math.cc.
 template <typename Scalar>
 struct digamma_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
+    if (x < Scalar(0.)) {
+      Scalar floor_x = Eigen::numext::floor(x);
+      if (x == floor_x) {
+        return Eigen::NumTraits<Scalar>::quiet_NaN();
+      }
+    }
     if (x == Scalar(0.)) {
       return -Eigen::NumTraits<Scalar>::infinity();
     }
@@ -772,10 +814,21 @@ struct digamma_op {
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     Packet zeros = pzero(x);
-    Packet mask = pcmp_eq(x, zeros);
+    Packet is_zero = pcmp_eq(x, zeros);
+    Packet is_lt_zero = pcmp_lt(x, zeros);
+    Packet is_integer = pcmp_eq(x, pfloor(x));
+    Packet is_negative_integer = pand(is_lt_zero, is_integer);
+
+    Packet is_unsafe = por(is_zero, is_negative_integer);
+    Packet safe_x = pselect(is_unsafe, pset1<Packet>(Scalar(1.)), x);
+
     Packet infs = pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity());
-    Packet digamma_x = Eigen::internal::scalar_digamma_op<Scalar>().packetOp(x);
-    return pselect(mask, infs, digamma_x);
+    Packet nans = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
+    Packet digamma_x =
+        Eigen::internal::scalar_digamma_op<Scalar>().packetOp(safe_x);
+
+    Packet result = pselect(is_negative_integer, nans, digamma_x);
+    return pselect(is_zero, infs, result);
   }
 };
 
@@ -1243,7 +1296,7 @@ struct truncate_div_real
     : base<T, Eigen::internal::google_truncate_div_real<T>> {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};
+struct pow : base<T, Eigen::internal::tf_scalar_pow_op<T>> {};
 
 template <typename T>
 struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
@@ -1255,7 +1308,7 @@ struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
 // completes; this functor must still produce a defined result on the device.
 template <typename T>
 struct safe_pow_ignore_error_op {
-  static_assert(std::is_integral<T>::value, "Integer type expected");
+  static_assert(std::is_integral_v<T>, "Integer type expected");
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
     if (TF_PREDICT_FALSE(y < 0)) {
@@ -1372,7 +1425,7 @@ struct left_shift_op {
     } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
       y_clamped = sizeof(T) * CHAR_BIT - 1;
     }
-    using U = typename std::make_unsigned<T>::type;
+    using U = std::make_unsigned_t<T>;
     return static_cast<T>(static_cast<U>(x) << static_cast<U>(y_clamped));
   }
 };

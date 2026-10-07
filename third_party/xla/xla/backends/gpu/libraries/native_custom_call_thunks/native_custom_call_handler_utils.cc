@@ -123,7 +123,8 @@ absl::StatusOr<ThunkSequence> MakeCustomKernelThunkSequence(
 
   return ThunkSequence::Of<CustomKernelThunk>(
       ctx.GenerateThunkInfo(), std::move(custom_kernel), kernel_arguments,
-      spec.use_pdl, std::move(spec.zeroed_output_buffer_indices));
+      ctx.GetTargetTopology().num_devices_per_process(), spec.use_pdl,
+      std::move(spec.zeroed_output_buffer_indices));
 }
 
 }  // namespace xla::gpu

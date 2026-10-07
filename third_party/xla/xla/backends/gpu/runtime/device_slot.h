@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 
 namespace xla::gpu {
 
@@ -33,6 +35,9 @@ struct alignas(ABSL_CACHELINE_SIZE) DeviceSlot {
 
   template <typename T>
   static T* Unwrap(DeviceSlot* slot);
+
+  absl::once_flag init_flag;
+  absl::Status init_status;
 };
 
 template <typename T>

@@ -1554,6 +1554,7 @@ cc_library(
         "transforms/decompose_hybrid_quantization.cc",
         "transforms/default_quant_params.cc",
         "transforms/fold_stablehlo_constant_transforms_pass.cc",
+        "transforms/fuse_a4w2_drq_fully_connected_pass.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
         "transforms/lower_quant_annotations_helper.cc",

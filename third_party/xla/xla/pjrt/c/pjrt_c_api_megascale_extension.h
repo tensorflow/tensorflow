@@ -112,9 +112,12 @@ typedef PJRT_Error* PJRT_Megascale_CreateMultiSliceConfig(
 struct PJRT_Megascale_ClientContext_Initialize_Args {
   size_t struct_size;
   PJRT_Megascale_ClientContext* client_context;
+  bool has_incarnation_id;
+  uint64_t incarnation_id;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ClientContext_Initialize_Args,
-                          client_context);
+                          incarnation_id);
+
 typedef PJRT_Error* PJRT_Megascale_ClientContext_Initialize(
     PJRT_Megascale_ClientContext_Initialize_Args* args);
 

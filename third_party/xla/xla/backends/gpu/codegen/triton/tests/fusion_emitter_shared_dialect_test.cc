@@ -457,6 +457,45 @@ CHECK: stablehlo.add
 }
 
 TEST_P(XTileDialectTestParameterized,
+       HloReduceScatterIsLoweredToStableHloReduceScatter) {
+  constexpr absl::string_view kHloText =
+      R"(
+      HloModule wrapped_module_reduce-scatter
+
+      %apply_op {
+        %x = f32[] parameter(0)
+        %y = f32[] parameter(1)
+        ROOT %apply_op = f32[] add(%x, %y)
+      }
+
+      %wrapped_reduce-scatter {
+        %param = f32[4,16384]{1,0} parameter(0)
+        ROOT %reduce-scatter = f32[2,16384]{1,0} reduce-scatter(%param), replica_groups={{0,1}}, dimensions={0}, to_apply=%apply_op
+      }
+
+      ENTRY %entry {
+        %param = f32[4,16384]{1,0} parameter(0)
+        ROOT %fusion = f32[2,16384]{1,0} fusion(%param), kind=kLoop, calls=%wrapped_reduce-scatter, backend_config={"fusion_backend_config":{"kind":"__triton_collective","block_level_fusion_config":{"num_warps":"16","output_tiles":[{"sizes":["1","1024"]}],"num_ctas":1,"num_stages":1,"is_tma_allowed":false,"is_warp_specialization_allowed":false}}}
+      }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{1, 1024}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *hlo_module->GetComputationWithName("wrapped_reduce-scatter"),
+      block_level_parameters,
+      R"(
+CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0[%{{.*}}, %{{.*}}] [2, 1024] [1, 1] : memref<4x16384xf32> -> tensor<2x1024xf32>
+CHECK: stablehlo.reduce_scatter
+CHECK: stablehlo.add
+)"));
+}
+
+TEST_P(XTileDialectTestParameterized,
        HloUnsignedIntIsLoweredToStableHloUnsignedInt) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
@@ -578,12 +617,9 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
 
   EXPECT_OK(CreateXTileIrAndFileCheck(*module->GetComputationWithName("ag_dot"),
                                       block_level_parameters, R"(
-    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<2xi64>
-    CHECK: %[[SELECT1:.*]] = xtile.select_buffer %arg0[%{{.*}}]
-    CHECK-SAME: : memref<2xi64> -> memref<2xi64>
-    CHECK: %[[SELECT2:.*]] = xtile.select_buffer %[[SELECT1]][%{{.*}}]
-    CHECK-SAME: : memref<2xi64> -> memref<128x128xf32>
-    CHECK: %[[LHS_TILE:.*]] = xtile.extract %[[SELECT2]]
+    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<128x128xf32>, %arg1: memref<128x128xf32>, %arg2: memref<512x128xf32>, %arg3: index
+    CHECK-NOT: xtile.select_buffer
+    CHECK: %[[LHS_TILE:.*]] = xtile.extract %arg0
     CHECK: %[[AG1:.*]] = "stablehlo.all_gather"(%[[LHS_TILE]])
     CHECK: %[[AG2:.*]] = "stablehlo.all_gather"(%[[AG1]])
     CHECK: %[[RHS_TILE:.*]] = xtile.extract %arg1

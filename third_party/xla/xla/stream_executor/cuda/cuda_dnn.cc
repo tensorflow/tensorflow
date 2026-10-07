@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
@@ -213,11 +214,6 @@ class CudnnHandle {
         lock_(std::move(lock)),
         handle_(handle) {}
 
-  // Takes ownership of the lock to access cuDNN using handle. Doesn't activate
-  // a CUDA context.
-  CudnnHandle(std::unique_ptr<absl::MutexLock> lock, cudnnHandle_t handle)
-      : lock_(std::move(lock)), handle_(handle) {}
-
   // Returns cuDNN handle. To be passed directly to cuDNN APIs, don't keep
   // a copy.
   cudnnHandle_t handle() const { return handle_; }
@@ -269,6 +265,9 @@ class CudnnAccess {
     if (compilation_handle_) {
       cudnnDestroy(compilation_handle_);
     }
+    if (private_stream_) {
+      cuStreamDestroy(private_stream_);
+    }
   }
 
   // Creates a CudnnHandle instance for stream.
@@ -302,14 +301,29 @@ class CudnnAccess {
   }
 
   // Creates a CudnnHandle instance for the compilation handle, which is used
-  // to build cuDNN graphs and execution plans.
-  absl::StatusOr<CudnnHandle> GetCompilationHandle() {
+  // to build and deserialize cuDNN graphs and execution plans.
+  //
+  // TOOD(b/567795551): We currently use a private stream for all compilation
+  // related tasks to avoid race conditions. Explore if we can use the default
+  // stream instead.
+  absl::StatusOr<CudnnHandle> GetCompilationHandle(StreamExecutor* executor) {
     auto lock = std::make_unique<absl::MutexLock>(compilation_mutex_);
     compilation_mutex_.AssertHeld();
     if (!compilation_handle_) {
       return absl::InternalError("CudnnAccess not properly initialized.");
     }
-    return CudnnHandle(std::move(lock), compilation_handle_);
+    CudnnHandle cudnn(executor, std::move(lock), compilation_handle_);
+    if (private_stream_ == nullptr) {
+      CUstream stream;
+      ABSL_RETURN_IF_ERROR(
+          cuda::ToStatus(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING)));
+      if (cudnnSetStream(compilation_handle_, stream) != CUDNN_STATUS_SUCCESS) {
+        cuStreamDestroy(stream);
+        return absl::InternalError("Failed to set cuDNN compilation stream.");
+      }
+      private_stream_ = stream;
+    }
+    return cudnn;
   }
 
   void NotifyStreamDestroyed(Stream* stream) {
@@ -339,6 +353,10 @@ class CudnnAccess {
 
   // Shared compilation handle for all threads calling GetCompilationHandle().
   cudnnHandle_t compilation_handle_ ABSL_GUARDED_BY(compilation_mutex_) =
+      nullptr;  // Owned.
+
+  // Private stream bound to compilation_handle_, see GetCompilationHandle().
+  CUstream private_stream_ ABSL_GUARDED_BY(compilation_mutex_) =
       nullptr;  // Owned.
 };
 
@@ -6821,7 +6839,10 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
 
 absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
     Stream& stream, absl::string_view serialized_data) const {
-  auto cudnn = cudnn_->GetHandle(stream.parent(), &stream);
+  // Deserializing a graph runs a warmup execution by default. Use a private
+  // stream for the warmup to avoid race conditions.
+  ABSL_ASSIGN_OR_RETURN(CudnnHandle cudnn,
+                   cudnn_->GetCompilationHandle(stream.parent()));
   cudnn_frontend::graph::Graph graph;
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph.deserialize(
       cudnn.handle(),
@@ -6904,8 +6925,9 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
     const CudnnSupport& cudnn_support =
         static_cast<CudnnSupport&>(*dnn_support);
     // Holds the lock on the shared compilation handle until the end of scope.
-    ABSL_ASSIGN_OR_RETURN(CudnnHandle cudnn,
-                     cudnn_support.cudnn_->GetCompilationHandle());
+    ABSL_ASSIGN_OR_RETURN(
+        CudnnHandle cudnn,
+        cudnn_support.cudnn_->GetCompilationHandle(cudnn_support.parent_));
     RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
     RETURN_IF_CUDNN_FRONTEND_ERROR(
         graph_.build_operation_graph(cudnn.handle()));
@@ -6931,8 +6953,9 @@ absl::Status CudnnGraph::Build(dnn::DnnSupport* dnn_support,
   if (dnn_support) {
     const CudnnSupport& cudnn_support =
         static_cast<CudnnSupport&>(*dnn_support);
-    ABSL_ASSIGN_OR_RETURN(CudnnHandle cudnn,
-                     cudnn_support.cudnn_->GetCompilationHandle());
+    ABSL_ASSIGN_OR_RETURN(
+        CudnnHandle cudnn,
+        cudnn_support.cudnn_->GetCompilationHandle(cudnn_support.parent_));
     if (plan_id.has_value()) {
       RETURN_CUDNN_FRONTEND_STATUS(
           graph_.build_plan_at_index(cudnn.handle(), *plan_id));
