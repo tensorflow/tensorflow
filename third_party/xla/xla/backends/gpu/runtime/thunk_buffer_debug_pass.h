@@ -46,7 +46,8 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
 
   // Returns an error if any of the provided module_output_slices is a tuple.
   static absl::StatusOr<std::unique_ptr<ThunkBufferDebugPass>> Create(
-      Mode mode, std::vector<ShapedSlice> module_output_slices);
+      Mode mode, std::vector<ShapedSlice> module_output_slices,
+      int devices_per_host);
 
   absl::string_view name() const override { return "thunk-buffer-debug"; }
 
@@ -58,12 +59,16 @@ class ThunkBufferDebugPass : public ThunkPassInterface {
 
  private:
   explicit ThunkBufferDebugPass(Mode mode,
-                                std::vector<ShapedSlice> module_output_slices)
-      : mode_(mode), module_output_slices_(std::move(module_output_slices)) {}
+                                std::vector<ShapedSlice> module_output_slices,
+                                int devices_per_host)
+      : mode_(mode),
+        module_output_slices_(std::move(module_output_slices)),
+        devices_per_host_(devices_per_host) {}
 
   Mode mode_;
   // Outputs of the entire HLO module graph.
   std::vector<ShapedSlice> module_output_slices_;
+  int devices_per_host_;
 };
 
 absl::StatusOr<std::vector<ShapedSlice>> GetOutputShapedBuffers(
