@@ -115,6 +115,7 @@ class RollOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
+    if (num_elements == 0) return;
     auto input_flat = input.flat<T>().data();
     auto output_flat = output->flat<T>().data();
 
