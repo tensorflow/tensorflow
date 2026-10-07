@@ -1022,6 +1022,15 @@ message DebugOptions {
   // after the runtime support has landed (GPU compatibility window).
   optional bool xla_gpu_experimental_enable_dynamic_slice_table_offsets = 552;
 
+  // Enables divide, remainder, minimum, maximum, and clamp operations in
+  // dynamic-slice fusion offset expressions.
+  //
+  // TODO(ezhulenev): Remove this flag and always enable extended offset
+  // expressions two weeks after the runtime support has landed (GPU
+  // compatibility window).
+  optional bool xla_gpu_experimental_enable_dynamic_slice_extended_offsets =
+      555;
+
   // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
   // This feature is still experimental and effective only
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
@@ -1922,7 +1931,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 555
+  // Next id: 556
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -359,6 +359,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_dus_accumulator_zero_init_elimination(false);
   opts.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(false);
   opts.set_xla_gpu_experimental_enable_dynamic_slice_table_offsets(false);
+  opts.set_xla_gpu_experimental_enable_dynamic_slice_extended_offsets(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_user_buffers_in_default_space(false);
@@ -2381,6 +2382,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_dynamic_slice_table_offsets(),
       "Enables DynamicSliceAnnotator to represent non-linear DS/DUS offsets "
       "as a table with one entry per loop iteration."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_dynamic_slice_extended_offsets",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_dynamic_slice_extended_offsets),
+      debug_options
+          ->xla_gpu_experimental_enable_dynamic_slice_extended_offsets(),
+      "Enables divide, remainder, minimum, maximum, and clamp operations in "
+      "dynamic-slice fusion offset expressions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(

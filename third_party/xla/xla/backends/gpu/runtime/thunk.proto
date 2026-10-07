@@ -194,6 +194,10 @@ message DynamicSliceFusionThunkProto {
       MULTIPLY = 5;
       COMPARE = 6;
       SELECT = 7;
+      DIVIDE = 8;
+      REMAINDER = 9;
+      MINIMUM = 10;
+      MAXIMUM = 11;
     }
 
     enum CompareDirection {
