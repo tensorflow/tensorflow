@@ -668,6 +668,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
 // Emits `root` and its transitive dependencies within `region`, in region
 // order, and returns the value of `root`. Dependencies are also collected
 // through nested regions, whose loop-invariant operands may live in `region`.
+// Instructions already emitted in `emitter_ctx` are skipped.
 absl::StatusOr<TensorValue> EmitRegionInstructionWithDependencies(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     const ge::TiledHloInstruction* root) {
@@ -676,7 +677,7 @@ absl::StatusOr<TensorValue> EmitRegionInstructionWithDependencies(
   while (!worklist.empty()) {
     const ge::TiledHloInstruction* instr = worklist.back();
     worklist.pop_back();
-    if (!visited.insert(instr).second) {
+    if (emitter_ctx.IsEmitted(*instr) || !visited.insert(instr).second) {
       continue;
     }
     absl::c_copy(instr->operands(), std::back_inserter(worklist));
@@ -685,21 +686,18 @@ absl::StatusOr<TensorValue> EmitRegionInstructionWithDependencies(
     }
   }
 
-  TensorValue result;
   for (const ge::TiledHloInstruction* instr : region.instructions()) {
     if (!visited.contains(instr)) {
       continue;
     }
     ABSL_ASSIGN_OR_RETURN(TensorValue value,
                      EmitTiledHloInstruction(emitter_ctx, *instr));
-    emitter_ctx.MapTiledHloToTensorValue(instr, value);
-    if (instr == root) {
-      result = value;
-    }
+    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(instr, value))
+        << instr->hlo()->ToString();
   }
-  TF_RET_CHECK(result) << "Instruction not found in its region: "
-                       << root->hlo()->ToString();
-  return result;
+  TF_RET_CHECK(emitter_ctx.IsEmitted(*root))
+      << "Instruction not found in its region: " << root->hlo()->ToString();
+  return emitter_ctx.TiledHloToTensorValue(*root);
 }
 
 // Emits a kRaggedDot instruction.
