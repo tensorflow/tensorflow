@@ -1348,6 +1348,14 @@ class ArrayMethodsTest(test.TestCase):
         [[2, 1, 1, 2, 3, 3, 2], [2, 1, 1, 2, 3, 3, 2], [5, 4, 4, 5, 6, 6, 5],
          [5, 4, 4, 5, 6, 6, 5]])
 
+  def testPadBroadcastPadWidth(self):
+    t = np.arange(12).reshape(3, 4)
+    for pad_width in [1, [1], [1, 2], [[1, 2]]]:
+      for mode in ['constant', 'reflect', 'symmetric']:
+        self.assertAllEqual(
+            np_array_ops.pad(t, pad_width, mode),
+            np.pad(t, pad_width, mode))
+
   def testTake(self):
     a = [4, 3, 5, 7, 6, 8]
     indices = [0, 1, 4]

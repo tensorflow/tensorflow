@@ -1234,6 +1234,11 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
   mode = mode.upper()
   array = asarray(array)
   pad_width = asarray(pad_width, dtype=dtypes.int32)
+  # Like NumPy, accept an int, a `(before, after)` pair or `((before, after),)`
+  # and use it for every axis.
+  pad_width = array_ops.broadcast_to(
+      pad_width, array_ops_stack.stack([array_ops.rank(array), 2])
+  )
   return array_ops.pad(
       tensor=array,
       paddings=pad_width,
