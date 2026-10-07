@@ -289,6 +289,24 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=_tfconst([[-9, 5, -4, 4], [9, -5, 4, -4]]),
         diags_format="sequence")
 
+  def testNumpyInputs(self):
+    rhs = np.array([1., 2., 3., 4.])
+    expected = np.array([-9., 5., -4., 4.])
+    self._test(
+        diags=np.array(_sample_diags, np.float64), rhs=rhs, expected=expected)
+    self._test(
+        diags=(np.array([2., 1., 4.]), np.array([1., 3., 2., 2.]),
+               np.array([1., -1., 1.])),
+        rhs=rhs,
+        expected=expected,
+        diags_format="sequence")
+    self._test(
+        diags=np.array([[1., 2., 0., 0.], [1., 3., 1., 0.], [0., -1., 2., 4.],
+                        [0., 0., 1., 2.]]),
+        rhs=rhs,
+        expected=expected,
+        diags_format="matrix")
+
   def testMatrixFormat(self):
     self._testWithLists(
         diags=[[1, 2, 0, 0], [1, 3, 1, 0], [0, -1, 2, 4], [0, 0, 1, 2]],
