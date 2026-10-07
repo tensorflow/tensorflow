@@ -4528,12 +4528,19 @@ absl::Status SpmdPartitioningVisitor::HandleConstant(HloInstruction* hlo) {
   TF_RET_CHECK(literal.IsAllFirst());
   auto shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
   ABSL_ASSIGN_OR_RETURN(Literal shard_literal, Literal::Make(shard_shape));
-  primitive_util::ArrayTypeSwitch(
-      [&](auto type) {
-        using NativeT = primitive_util::NativeTypeOf<type>;
-        shard_literal.PopulateWithValue(literal.GetFirstElement<NativeT>());
-      },
-      literal.shape().element_type());
+  if (shard_literal.element_count() > 0) {
+    primitive_util::ByteWidthTypeSwitch(
+        [&](auto type) {
+          using NativeT = primitive_util::NativeTypeOf<type>;
+          const NativeT first =
+              *static_cast<const NativeT*>(literal.untyped_data());
+          absl::Span<NativeT> dest(
+              static_cast<NativeT*>(shard_literal.untyped_data()),
+              shard_literal.element_count());
+          absl::c_fill(dest, first);
+        },
+        literal.shape().element_type());
+  }
   auto constant = b_.AddInstruction(
       HloInstruction::CreateConstant(std::move(shard_literal)));
   *constant->mutable_shape() = shard_shape;
