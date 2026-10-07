@@ -379,7 +379,12 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
 bool GpuScheduleCrossesOverlapLimit(
     const DefaultSchedulerCore::SchedulingState& sched_state,
     const HloGraphNode* node, const DeviceAssignment& device_assignment) {
-  for (const auto& [resource, limit] : sched_state.max_concurrent_resource) {
+  const auto& limits = sched_state.max_concurrent_resource.counts;
+  for (int64_t resource = 0; resource < limits.size(); ++resource) {
+    if (!limits[resource].has_value()) {
+      continue;
+    }
+    const int64_t limit = *limits[resource];
     // No resources in flight of this kind. Continue.
     auto it = sched_state.resource_occupiers_in_flight.find(resource);
     if (it == sched_state.resource_occupiers_in_flight.end() ||
@@ -497,11 +502,12 @@ bool IsGpuD2DOverlapWindowOpen(
   }
   const int64_t memcpy_resource =
       ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy);
-  auto current = sched_state.max_concurrent_resource.find(memcpy_resource);
-  if (current == sched_state.max_concurrent_resource.end()) {
+  const int64_t* current =
+      sched_state.max_concurrent_resource.Find(memcpy_resource);
+  if (current == nullptr) {
     return false;
   }
-  return current->second !=
+  return *current !=
          sched_state.async_tracker->GetNumAvailableResources(memcpy_resource);
 }
 

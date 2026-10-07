@@ -1,0 +1,11 @@
+# proto-file: learning/gemini/_agents/cl_review_agent/agentic_review.proto
+# proto-message: AgenticReview
+
+# User Guide: go/cl-review-agent-user-guide
+conditional_capability_groups {
+  path_expression: "core/..."
+  path_expression: "tools/..."
+  path_expression: "converter/..."
+  path_expression: "schema/..."
+  review_capability_skills: "third_party/tensorflow/lite/google/skills/tflite_weight_storage_review/SKILL.md"
+}
