@@ -1718,7 +1718,16 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
           )
 
   m_rank = array_ops.rank(m)
-  ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
+  if maybe_rank is None:
+    rank_t = ops.convert_to_tensor(m_rank)
+    axes_t = ops.convert_to_tensor(axes)
+    control_flow_assert.Assert(
+        math_ops.reduce_all(math_ops.logical_and(
+            axes_t >= -rank_t, axes_t < rank_t)),
+        ['Axes', axes_t, 'out of range for array of ndim', rank_t],
+    )
+  ax1, ax2 = np_utils._canonicalize_axes(
+      axes, m_rank)  # pylint: disable=protected-access
 
   k = k % 4
   if k == 0:

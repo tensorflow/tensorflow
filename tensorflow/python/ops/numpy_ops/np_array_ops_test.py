@@ -1491,7 +1491,10 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, axis=(0, 1, 2))
     _test(a, axis=range(3))
     # Out-of-bounds axes raise InvalidArgumentError from the C++ kernel.
-    kernel_err = r'out of (valid )?range'
+    kernel_err = (
+        r'(out of (valid )?range'
+        r'|can not have more elements than input tensor has dimensions)'
+    )
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(np_array_ops.flip(np.float64(1.0), axis=0))
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
@@ -1510,8 +1513,10 @@ class ArrayMethodsTest(test.TestCase):
       self.evaluate(np_array_ops.flip(a, axis=range(4)))
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(np_array_ops.fliplr(np.arange(3)))
-    # The C++ kernel raises at execution time for traced functions too.
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+    # The C++ kernel raises at execution time (or shape inference at trace time).
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError), kernel_err
+    ):
       self.evaluate(
           def_function.function(lambda x: np_array_ops.flip(x, axis=-4))(a)
       )
