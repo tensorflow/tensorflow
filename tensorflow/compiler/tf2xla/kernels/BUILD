@@ -507,6 +507,7 @@ tf_kernel_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@xla//xla:literal",
         "@xla//xla:shape_util",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
