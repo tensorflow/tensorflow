@@ -1271,19 +1271,22 @@ rocm_library(
     srcs = [
         "mori_kernels.cu.cc",
     ],
-    hdrs = [
-        "mori_kernels.h",
-        "mori_stub.h",
-    ],
+    hdrs = ["mori_kernels.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    copts = ["-U__HIP_DISABLE_CPP_FUNCTIONS__"],  # <-- only if needed
+    copts = [
+        "-DBUILD_CCO_SDMA=1",
+    ],
     linkstatic = True,
     tags = [
         "gpu",
         "no-oneapi",
         "rocm-only",
     ],
-    deps = [],
+    deps = [
+        "@roc_mori//:mori_application_headers",
+        "@roc_mori//src/application:mori_application",  # build_cleaner: keep
+        "@roc_mori//src/cco:mori_cco",  # build_cleaner: keep
+    ],
 )
 
 cc_library(
@@ -1295,8 +1298,6 @@ cc_library(
     hdrs = [
         "mori_collectives.h",
         "mori_communicator.h",
-        "mori_kernels.h",
-        "mori_stub.h",
     ],
     tags = [
         "gpu",
@@ -1306,12 +1307,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cancellation_token",
-        ":gpu_clique_key",
         ":gpu_collectives",
         ":gpu_communicator",
         "//xla:future",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives",
@@ -1332,15 +1331,13 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/rocm:rocm_status",
         "//xla/tsl/platform:env",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -1348,7 +1345,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:casts",

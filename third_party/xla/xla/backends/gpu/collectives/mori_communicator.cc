@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -49,7 +48,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
-namespace shmem = ::mori::shmem;
 namespace xla::gpu {
 
 using ::mori::collective::CollectivesFacade;
@@ -131,13 +129,9 @@ absl::StatusOr<std::unique_ptr<MoriCommunicator>> MoriCommunicator::Create(
   }
   comm->rank_ = rank;
   comm->num_ranks_ = num_ranks;
-
-  // The CollectivesFacade owns this communicator's symmetric-heap staging
-  // buffer and the push reduce-scatter group counters. It records the rank
-  // identity (rank/num_ranks) and allocates the ~2GB staging; the unique_ptr
-  // frees it (before ShmemFinalize) when the communicator is destroyed.
-  const size_t buffer_size = 2UL << 30;  // 2GB
-  comm->facade_ = CollectivesFacade::Create(rank, num_ranks, buffer_size);
+  // Communicator obtains a reference to the CollectivesFacade singleton for
+  // the current device.
+  comm->facade_ = CollectivesFacade::Get();
   if (comm->facade_ == nullptr) {
     return absl::InternalError("CollectivesFacade::Create failed");
   }
