@@ -23,6 +23,7 @@ limitations under the License.
 #include "fp16.h"  // from @FP16
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "third_party/gloop/util/gtl/c_memcpy.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -234,8 +235,7 @@ absl::Status ConvertToPHWC4(absl::Span<const float> in, const BHWC& shape,
                             absl::Span<float> out) {
   RETURN_IF_ERROR(ValidateConvertToPHWC4(in, shape, out));
   if (shape.c == 4) {
-    std::memcpy(out.data(), in.data(),
-                shape.DimensionsProduct() * sizeof(float));
+    gtl::c_memcpy(out, in, shape.DimensionsProduct() * sizeof(float));
     return absl::OkStatus();
   }
   // Layout is Pc,H,W,C4 where P - is a plane based on channels.
@@ -409,8 +409,7 @@ absl::Status ConvertFromPHWC4(absl::Span<const float> in, const BHWC& shape,
                               absl::Span<float> out) {
   RETURN_IF_ERROR(ValidateConvertFromPHWC4(in, shape, out));
   if (shape.c == 4) {
-    std::memcpy(out.data(), in.data(),
-                shape.DimensionsProduct() * sizeof(float));
+    gtl::c_memcpy(out, in, shape.DimensionsProduct() * sizeof(float));
     return absl::OkStatus();
   }
 

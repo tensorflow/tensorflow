@@ -52,6 +52,16 @@ diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llv
  
  config_setting(
      name = "darwin_arm64",
+@@ -2259,9 +2289,6 @@
+     srcs = ["include/llvm/Transforms/IPO/InstrumentorRuntimeHelper.h"],
+     outs = ["include/llvm/Transforms/IPO/InstrumentorVariables.inc"],
+     cmd = "printf 'constexpr char InstrumentorRuntimeHelper[] = R\"(' > $@ && cat $(SRCS) >> $@ && echo ')\";' >> $@",
+-    # `set /p` writes its prompt without a newline, like printf; it also returns
+-    # errorlevel 1 on empty input, hence the single `&` after it.
+-    cmd_bat = ">$@ <nul set /p =constexpr char InstrumentorRuntimeHelper[] = R^\"(& >>$@ type $(SRCS)&& >>$@ echo ^)^\";",
+ )
+ 
+ cc_library(
 diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
 --- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
 +++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl

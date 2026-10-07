@@ -36,6 +36,7 @@ cc_library(
         ":tensor",
         ":types",
         ":util",
+        "//third_party/gloop/util/gtl:c_memcpy",
         "@FP16",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

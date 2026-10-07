@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -71,7 +70,6 @@ class SingleDeviceShardingSpecTest : public ShardingSpecTest {};
 class OpaqueShardingSpecTest : public ShardingSpecTest {};
 class ConcreteShardingSpecTest : public ShardingSpecTest {};
 class ConcreteEvenShardingSpecTest : public ShardingSpecTest {};
-class ShardingParamShardingSpecTest : public ShardingSpecTest {};
 
 TEST_P(SingleDeviceShardingSpecTest, IsFullyReplicated) {
   ShardingSpecRef sharding = SingleDeviceShardingSpec::Create();
@@ -616,237 +614,6 @@ TEST_P(ConcreteEvenShardingSpecTest, Hash) {
   }));
 }
 
-TEST_P(ShardingParamShardingSpecTest, IsFullyReplicated) {
-  {
-    // Fully replicated.
-    ShardingParam param{/*dim_shards=*/{1, 1},
-                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-    ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-    EXPECT_TRUE(param_sharding->IsFullyReplicated());
-  }
-  {
-    // Not fully replicated.
-    ShardingParam param{/*dim_shards=*/{1, 6},
-                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-    ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-    EXPECT_FALSE(param_sharding->IsFullyReplicated());
-  }
-  {
-    // Not fully replicated.
-    ShardingParam param{/*dim_shards=*/{2, 3},
-                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-    ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-    EXPECT_FALSE(param_sharding->IsFullyReplicated());
-  }
-}
-
-TEST_P(ShardingParamShardingSpecTest, GetShardShape) {
-  ShardingParam param{/*dim_shards=*/{2, 3},
-                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  ShardingSpecRef sharding = ShardingParamShardingSpec::Create(param);
-  EXPECT_THAT(sharding->GetShardShape(Shape({6, 6})),
-              absl_testing::IsOkAndHolds(Shape({3, 2})));
-  EXPECT_THAT(sharding->GetShardShape(Shape({6, 6, 6})),
-              absl_testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("Numbers of dimensions don't match. From "
-                            "Shape [6,6,6] vs from ShardingParam "
-                            "2x3 to [1, 0] on 3x2")));
-}
-
-TEST_P(ShardingParamShardingSpecTest, HasSamePartitioning) {
-  ShardingParam param0{/*dim_shards=*/{2, 3},
-                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  ShardingSpecRef sharding0 = ShardingParamShardingSpec::Create(param0);
-
-  EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
-  {
-    ShardingParam param1{/*dim_shards=*/{2, 3},
-                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-    ShardingSpecRef sharding1 = ShardingParamShardingSpec::Create(param1);
-    EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
-  }
-  // Different number of shards.
-  {
-    ShardingParam param1{/*dim_shards=*/{3, 1},
-                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{1, 3}}};
-    ShardingSpecRef sharding1 = ShardingParamShardingSpec::Create(param1);
-    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
-  }
-  // Different sharding param.
-  {
-    ShardingParam param1{/*dim_shards=*/{3, 2},
-                         {/*permutation=*/{0, 1}, /*axis_sizes=*/{3, 2}}};
-    ShardingSpecRef sharding1 = ShardingParamShardingSpec::Create(param1);
-    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
-  }
-}
-
-TEST_P(ShardingParamShardingSpecTest, Disassemble) {
-  ShardingParam param{/*dim_shards=*/{2, 3},
-                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-
-  {
-    ASSERT_OK_AND_ASSIGN(auto disassembled,
-                         param_sharding->Disassemble(Shape({6, 6})));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({3, 2}));
-      EXPECT_EQ(*sharding, *SingleDeviceShardingSpec::Create());
-    }
-  }
-}
-
-TEST_P(ShardingParamShardingSpecTest, DisassembleFailsWhenRankNotMatch) {
-  ShardingParam param{/*dim_shards=*/{2, 3},
-                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-
-  EXPECT_THAT(param_sharding->Disassemble(Shape({6, 6, 6})),
-              absl_testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("Numbers of dimensions don't match. From "
-                            "Shape [6,6,6] vs from ShardingParam "
-                            "2x3 to [1, 0] on 3x2")));
-}
-
-TEST_P(ShardingParamShardingSpecTest, DisassembleFailsForUnevenSharding) {
-  ShardingParam param{/*dim_shards=*/{2, 3},
-                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-
-  EXPECT_THAT(
-      param_sharding->Disassemble(Shape({7, 6})),
-      absl_testing::StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("Uneven shard is not supported. dim: 7, dim_shards: 2")));
-}
-
-TEST_P(ShardingParamShardingSpecTest, IndexDomain) {
-  ShardingParam param{/*dim_shards=*/{2, 3},
-                      {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
-  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-
-  {
-    ASSERT_OK_AND_ASSIGN(auto index_domains,
-                         param_sharding->IndexDomains(Shape({6, 6})));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
-                            IndexDomain(Index({0, 2}), Shape({3, 2})),
-                            IndexDomain(Index({0, 4}), Shape({3, 2})),
-                            IndexDomain(Index({3, 0}), Shape({3, 2})),
-                            IndexDomain(Index({3, 2}), Shape({3, 2})),
-                            IndexDomain(Index({3, 4}), Shape({3, 2}))));
-  }
-}
-
-TEST_P(ShardingParamShardingSpecTest, IndexDomainWithPermutation) {
-  ShardingParam param{/*dim_shards=*/{2, 3},
-                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-
-  {
-    ASSERT_OK_AND_ASSIGN(auto index_domains,
-                         param_sharding->IndexDomains(Shape({6, 6})));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
-                            IndexDomain(Index({0, 4}), Shape({3, 2})),
-                            IndexDomain(Index({3, 2}), Shape({3, 2})),
-                            IndexDomain(Index({0, 2}), Shape({3, 2})),
-                            IndexDomain(Index({3, 0}), Shape({3, 2})),
-                            IndexDomain(Index({3, 4}), Shape({3, 2}))));
-  }
-}
-
-TEST_P(ShardingParamShardingSpecTest, IndexDomainWithReplication) {
-  ShardingParam param{/*dim_shards=*/{2, 1},
-                      {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
-  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-
-  {
-    ASSERT_OK_AND_ASSIGN(auto index_domains,
-                         param_sharding->IndexDomains(Shape({6, 6})));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 6})),
-                            IndexDomain(Index({0, 0}), Shape({3, 6})),
-                            IndexDomain(Index({0, 0}), Shape({3, 6})),
-                            IndexDomain(Index({3, 0}), Shape({3, 6})),
-                            IndexDomain(Index({3, 0}), Shape({3, 6})),
-                            IndexDomain(Index({3, 0}), Shape({3, 6}))));
-  }
-}
-
-TEST_P(ShardingParamShardingSpecTest, UniqueIndexDomains) {
-  {
-    // 2x3 tiled with replication 1.
-    ShardingParam param{/*dim_shards=*/{2, 3},
-                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
-    ShardingSpecRef sharding = ShardingParamShardingSpec::Create(param);
-
-    Shape shape({4, 9});
-    EXPECT_THAT(sharding->UniqueIndexDomains(shape),
-                absl_testing::IsOkAndHolds(ElementsAre(
-                    FieldsAre(IndexDomain(Index({0, 0}), Shape({2, 3})),
-                              ElementsAre(0)),
-                    FieldsAre(IndexDomain(Index({0, 3}), Shape({2, 3})),
-                              ElementsAre(1)),
-                    FieldsAre(IndexDomain(Index({0, 6}), Shape({2, 3})),
-                              ElementsAre(2)),
-                    FieldsAre(IndexDomain(Index({2, 0}), Shape({2, 3})),
-                              ElementsAre(3)),
-                    FieldsAre(IndexDomain(Index({2, 3}), Shape({2, 3})),
-                              ElementsAre(4)),
-                    FieldsAre(IndexDomain(Index({2, 6}), Shape({2, 3})),
-                              ElementsAre(5)))));
-    EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
-                absl_testing::IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5)));
-  }
-  {
-    // 2x1 tiled with replication 3.
-    ShardingParam param{/*dim_shards=*/{2, 1},
-                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
-    ShardingSpecRef sharding = ShardingParamShardingSpec::Create(param);
-
-    Shape shape({4, 9});
-    EXPECT_THAT(sharding->UniqueIndexDomains(shape),
-                absl_testing::IsOkAndHolds(ElementsAre(
-                    FieldsAre(IndexDomain(Index({0, 0}), Shape({2, 9})),
-                              ElementsAre(0, 1, 2)),
-                    FieldsAre(IndexDomain(Index({2, 0}), Shape({2, 9})),
-                              ElementsAre(3, 4, 5)))));
-    EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
-                absl_testing::IsOkAndHolds(ElementsAre(0, 0, 0, 1, 1, 1)));
-  }
-}
-
-TEST_P(ShardingParamShardingSpecTest, IndexDomainZeroRank) {
-  ShardingParam param{/*dim_shards=*/{},
-                      {/*permutation=*/{0}, /*axis_sizes=*/{6}}};
-  ShardingSpecRef param_sharding = ShardingParamShardingSpec::Create(param);
-
-  ASSERT_OK_AND_ASSIGN(auto index_domains,
-                       param_sharding->IndexDomains(Shape({})));
-  EXPECT_THAT(index_domains, ElementsAre(IndexDomain(Index({}), Shape({})),
-                                         IndexDomain(Index({}), Shape({})),
-                                         IndexDomain(Index({}), Shape({})),
-                                         IndexDomain(Index({}), Shape({})),
-                                         IndexDomain(Index({}), Shape({})),
-                                         IndexDomain(Index({}), Shape({}))));
-}
-
-TEST_P(ShardingParamShardingSpecTest, Hash) {
-  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
-      *ShardingParamShardingSpec::Create(
-          ShardingParam{/*dim_shards=*/{2, 3},
-                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}}),
-      *ShardingParamShardingSpec::Create(
-          ShardingParam{/*dim_shards=*/{3, 2},
-                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{3, 2}}}),
-  }));
-}
-
 TEST_P(SingleDeviceShardingSpecTest, ToSharding) {
   ShardingSpecRef spec = SingleDeviceShardingSpec::Create();
 
@@ -932,28 +699,6 @@ TEST_P(ConcreteEvenShardingSpecTest, ToSharding) {
   EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
 }
 
-TEST_P(ShardingParamShardingSpecTest, ToSharding) {
-  ShardingParam sharding_param{/*dim_shards=*/{2, 3},
-                               {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  ShardingSpecRef spec = ShardingParamShardingSpec::Create(sharding_param);
-
-  ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding,
-      spec->ToSharding(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind("device")));
-  EXPECT_EQ(sharding->sharding_spec(), spec);
-
-  EXPECT_THAT(spec->ToSharding(GetDevices({0, 1, 2, 3}), MemoryKind("device")),
-              StatusIs(absl::StatusCode::kInvalidArgument));
-
-  // Non-shared_ptr instance fallback.
-  std::unique_ptr<ShardingParamShardingSpec> non_shared_spec =
-      ShardingParamShardingSpec::Create(sharding_param);
-  ASSERT_OK_AND_ASSIGN(
-      ShardingRef non_shared_sharding,
-      non_shared_spec->ToSharding(GetDevices({0, 1, 2, 3, 4, 5}),
-                                  MemoryKind("device")));
-  EXPECT_EQ(*non_shared_sharding->sharding_spec(), *non_shared_spec);
-}
 
 INSTANTIATE_TEST_SUITE_P(NumShards, SingleDeviceShardingSpecTest,
                          testing::Values(ShardingSpecTestParam{
@@ -965,9 +710,6 @@ INSTANTIATE_TEST_SUITE_P(NumShards, ConcreteShardingSpecTest,
                          testing::Values(ShardingSpecTestParam{
                              /*num_shards=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumShards, ConcreteEvenShardingSpecTest,
-                         testing::Values(ShardingSpecTestParam{
-                             /*num_shards=*/6}));
-INSTANTIATE_TEST_SUITE_P(NumShards, ShardingParamShardingSpecTest,
                          testing::Values(ShardingSpecTestParam{
                              /*num_shards=*/6}));
 
