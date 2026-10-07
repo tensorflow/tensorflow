@@ -1678,12 +1678,13 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
   # backend kernel fail with a confusing error.
   maybe_rank = a.shape.rank
   if axis is not None and maybe_rank is not None:
-    normalized = axis + maybe_rank if axis < 0 else axis
-    if normalized < 0 or normalized >= maybe_rank:
+    if not (-maybe_rank <= axis < maybe_rank):
       raise ValueError(
           f'Argument `axis` (received axis={axis}) is out of bounds '
           f'for input of rank {maybe_rank}.'
       )
+    if axis < 0:
+      axis += maybe_rank
   default_float_type = np_utils.result_type(float)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
