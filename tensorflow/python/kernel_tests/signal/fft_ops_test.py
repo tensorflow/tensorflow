@@ -481,6 +481,19 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       self.assertIsNotNone(fft_ops.fftnd(x))
       self.assertIsNotNone(fft_ops.ifftnd(x))
 
+  def testNDOpsRejectScalarInput(self):
+    # An N-D transform of a scalar infers empty axes, and the padding helpers
+    # then had nothing to index. With those fixed the op's shape function
+    # reports the rank itself. Built in a graph because that check runs at
+    # graph construction, and so this does not need an FFTND/IFFTND kernel.
+    with ops.Graph().as_default():
+      for fn, dtype in (
+          (fft_ops.fftnd, dtypes.complex64),
+          (fft_ops.ifftnd, dtypes.complex64),
+      ):
+        with self.assertRaisesRegex(ValueError, "at least rank 1"):
+          fn(array_ops.ones([], dtype=dtype))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
@@ -543,6 +556,19 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     with ops.Graph().as_default():
       self.assertIsNotNone(fft_ops.rfftnd(x))
       self.assertIsNotNone(fft_ops.irfftnd(x))
+
+  def testNDOpsRejectScalarInput(self):
+    # An N-D transform of a scalar infers empty axes, and the padding helpers
+    # then had nothing to index. With those fixed the op's shape function
+    # reports the rank itself. Built in a graph because that check runs at
+    # graph construction, and so this does not need an RFFTND/IRFFTND kernel.
+    with ops.Graph().as_default():
+      for fn, dtype in (
+          (fft_ops.rfftnd, dtypes.float32),
+          (fft_ops.irfftnd, dtypes.complex64),
+      ):
+        with self.assertRaisesRegex(ValueError, "at least rank 1"):
+          fn(array_ops.ones([], dtype=dtype))
 
   def _np_fftn(self, x, fft_length=None, axes=None, norm=None):
     return np.fft.rfftn(x, s=fft_length, axes=axes, norm=norm)
