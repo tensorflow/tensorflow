@@ -1356,6 +1356,13 @@ class ArrayMethodsTest(test.TestCase):
             np_array_ops.pad(t, pad_width, mode),
             np.pad(t, pad_width, mode))
 
+  def testPadBroadcastPadWidthUnknownShape(self):
+    t = np.arange(12, dtype=np.float32).reshape(3, 4)
+    pad = def_function.function(
+        lambda x: np_array_ops.pad(x, [1, 2], 'reflect'),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    self.assertAllEqual(pad(t), np.pad(t, [1, 2], 'reflect'))
+
   def testTake(self):
     a = [4, 3, 5, 7, 6, 8]
     indices = [0, 1, 4]
