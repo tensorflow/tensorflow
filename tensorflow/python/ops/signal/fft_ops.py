@@ -36,7 +36,9 @@ def _infer_fft_length_for_fftn(input_tensor):
 def _infer_fft_length_for_irfftn(input_tensor):
   fft_shape = input_tensor.get_shape()[-len(input_tensor.shape) :]
   fft_length = fft_shape.as_list()
-  fft_length[-1] = max(0, 2 * (fft_length[-1] - 1))
+  # A rank 0 input leaves nothing to index, as in _infer_fft_length_for_irfft.
+  if fft_length:
+    fft_length[-1] = max(0, 2 * (fft_length[-1] - 1))
   return _ops.convert_to_tensor(fft_length, _dtypes.int32)
 
 
@@ -110,6 +112,11 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   # Edge case: skip padding empty tensors.
   if (input_tensor.shape.ndims is not None and
       any(dim.value == 0 for dim in input_tensor.shape.dims)):
+    return input_tensor
+
+  # An N-D transform over a rank 0 input has no dimensions to pad, and the
+  # reverse branch below would index off the end of an empty fft_shape.
+  if fft_rank == 0:
     return input_tensor
 
   # If we know the shapes ahead of time, we can either skip or pre-compute the
@@ -240,11 +247,7 @@ def _fftn_wrapper(fft_n, default_name):
       )
       axes = _process_empty_axes(input_tensor, axes)
       fft_rank = axes.shape[0]
-      # An N-D transform of a scalar has no dimension to work on: the
-      # inferred axes and fft_length both come out empty, and irfftnd then
-      # fails with an IndexError from the padding helper rather than saying
-      # what is wrong. rfft and irfft reject a scalar with this same message.
-      input_tensor.shape.with_rank_at_least(max(fft_rank, 1))
+      input_tensor.shape.with_rank_at_least(fft_rank)
       if fft_length is None:
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
@@ -286,11 +289,7 @@ def _ifftn_wrapper(ifft_n, default_name):
       )
       axes = _process_empty_axes(input_tensor, axes)
       fft_rank = axes.shape[0]
-      # An N-D transform of a scalar has no dimension to work on: the
-      # inferred axes and fft_length both come out empty, and irfftnd then
-      # fails with an IndexError from the padding helper rather than saying
-      # what is wrong. rfft and irfft reject a scalar with this same message.
-      input_tensor.shape.with_rank_at_least(max(fft_rank, 1))
+      input_tensor.shape.with_rank_at_least(fft_rank)
       if fft_length is None:
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
@@ -343,11 +342,7 @@ def _rfftn_wrapper(rfft_n, default_name):
       else:
         assert real_dtype == _dtypes.float64
         complex_dtype = _dtypes.complex128
-      # An N-D transform of a scalar has no dimension to work on: the
-      # inferred axes and fft_length both come out empty, and irfftnd then
-      # fails with an IndexError from the padding helper rather than saying
-      # what is wrong. rfft and irfft reject a scalar with this same message.
-      input_tensor.shape.with_rank_at_least(max(fft_rank, 1))
+      input_tensor.shape.with_rank_at_least(fft_rank)
       if fft_length is None:
         fft_length = _infer_fft_length_for_fftn(input_tensor)
       else:
@@ -395,11 +390,7 @@ def _irfftn_wrapper(irfft_n, default_name):
       )
       axes = _process_empty_axes(input_tensor, axes)
       fft_rank = axes.shape[0]
-      # An N-D transform of a scalar has no dimension to work on: the
-      # inferred axes and fft_length both come out empty, and irfftnd then
-      # fails with an IndexError from the padding helper rather than saying
-      # what is wrong. rfft and irfft reject a scalar with this same message.
-      input_tensor.shape.with_rank_at_least(max(fft_rank, 1))
+      input_tensor.shape.with_rank_at_least(fft_rank)
       if input_tensor.dtype not in (_dtypes.complex64, _dtypes.complex128):
         raise ValueError(
             "IRFFT requires tf.complex64 or tf.complex128 inputs, got: %s"
