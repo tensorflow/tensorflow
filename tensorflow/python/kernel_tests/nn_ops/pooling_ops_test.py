@@ -2441,6 +2441,18 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                 padding="VALID",
                 data_format="NHWC"))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolGradEmptyTensorFastExit(self):
+    for empty_shape in ([0, 10, 10, 3], [1, 0, 10, 3], [1, 10, 10, 0]):
+      self.evaluate(
+          gen_nn_ops.AvgPoolGrad(
+              orig_input_shape=empty_shape,
+              grad=array_ops.zeros(empty_shape),
+              ksize=[1, 2, 2, 1],
+              strides=[1, 2, 2, 1],
+              padding="VALID",
+              data_format="NHWC"))
+
   @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.

@@ -279,6 +279,10 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
 
+      if (output_shape.num_elements() == 0 || grad_tensor.NumElements() == 0) {
+        return;
+      }
+
       MklPoolParameters pool_params;
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
                                   output_shape);
@@ -304,9 +308,6 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
               "Expected grad shape to be ", forward_output_shape.DebugString(),
               ", but got ", grad_tensor.shape().DebugString())));
 
-      if (output_shape.num_elements() == 0 || grad_tensor.NumElements() == 0) {
-        return;
-      }
       // Used to allocate output_diff_src/diff_src.
       MklDnnData<T> grad_dnn_data(&cpu_engine_);
 
