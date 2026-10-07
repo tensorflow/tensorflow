@@ -29,7 +29,7 @@ namespace {
 
 std::mt19937 random_engine(2023);
 std::uniform_real_distribution<float> real_dist(0.f, 1.f);
-std::uniform_int_distribution<int32_t> int_dist(-8, 7);
+std::uniform_int_distribution<int32_t> int_dist(-7, 7);
 
 struct TestPack {
   TestPack(std::vector<int8_t> src_data, int src_rows, int src_cols, int width,
@@ -92,7 +92,7 @@ TEST_P(RunPackTests, RunPackTests) {
   for (int i = 0; i < src_rows; ++i) {
     int stride = optimized_4bit::FilterDepth / 4;
     int strides = src_cols / stride / 2;
-    int v = -8;
+    int v = -7;
     int l = 0;
     for (int j = 0; j < strides; j++) {
       for (int k = 0; k < stride; k++) {  // 8
@@ -117,7 +117,7 @@ TEST_P(RunPackTests, RunPackTests) {
   int outer_cols = test.cols / optimized_4bit::FilterDepth;
   int k = 0;
   for (int i = 0; i < outer_rows; ++i) {
-    int v = -8;
+    int v = -7;
     for (int j = 0; j < outer_cols; ++j) {
       for (int w = 0; w < optimized_4bit::FilterWidth; w++) {
         int c = 0;
@@ -125,14 +125,14 @@ TEST_P(RunPackTests, RunPackTests) {
           uint8_t res = result[k++];
           uint8_t res0 = res >> 4;
           uint8_t res1 = res & UINT8_C(15);
-          int res00 = res0 - 8;
-          int res11 = res1 - 8;
+          int res00 = res0 - 7;
+          int res11 = res1 - 7;
           if ((i * optimized_4bit::FilterWidth + w) < src_rows) {
             if ((j * optimized_4bit::FilterDepth / 2 + c) < src_cols / 2) {
-              EXPECT_EQ(res00, v);
+              EXPECT_EQ(res00, v % 8);
             }
             if ((j * optimized_4bit::FilterDepth / 2 + c + 16) < src_cols / 2) {
-              EXPECT_EQ(res11, v + 1);
+              EXPECT_EQ(res11, v + 1 % 8);
             }
           }
         }
@@ -438,8 +438,8 @@ TEST_P(RunKernelTests, RunKernelTests) {
     for (int j = 0; j < lhs_outer_cols; ++j) {
       for (int k = 0; k < optimized_4bit::FilterWidth; ++k) {
         for (int l = 0; l < optimized_4bit::FilterDepth / 2; ++l) {
-          uint8_t u = static_cast<uint8_t>(int_dist(random_engine) + 8);
-          uint8_t v = static_cast<uint8_t>(int_dist(random_engine) + 8);
+          uint8_t u = static_cast<uint8_t>(int_dist(random_engine) + 7);
+          uint8_t v = static_cast<uint8_t>(int_dist(random_engine) + 7);
           int lower = static_cast<uint8_t>(v) & UINT8_C(15);
           int upper = static_cast<uint8_t>(u) << 4;
           int cluster_index = (i * lhs_outer_cols + j) *
