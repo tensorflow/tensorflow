@@ -16,6 +16,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
@@ -24,10 +26,12 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/reverse_sequence_op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -381,6 +385,42 @@ BENCHMARK(BM_ReverseRowsOf4Channels_4T_uint8)
     ->ArgPair(288, 288)
     ->ArgPair(1024, 1024)
     ->ArgPair(10 * 1024, 1024);
+
+TEST(ReverseSequenceOpTest, ReverseGeneratorCoverage) {
+  float input_data[] = {1, 2, 3, 4, 5, 6};
+  TTypes<float, 2>::ConstTensor input(input_data, 2, 3);
+
+  int32_t seq_lengths_data[] = {4, 4};  // OUT OF BOUNDS!
+  TTypes<int32_t>::ConstVec seq_lengths(seq_lengths_data, 2);
+
+  ::tensorflow::generator::ReverseGenerator<float, int32_t, 2> gen(
+      input, /*batch_dim=*/0, /*seq_dim=*/1, seq_lengths);
+
+  Eigen::array<Eigen::DenseIndex, 2> coords = {0, 0};
+  float result = gen(coords);
+  EXPECT_EQ(result, 3);
+}
+
+TEST(ReverseSequenceOpTest, ReverseGeneratorCoverage_InBounds) {
+  float input_data[] = {1, 2, 3, 4, 5, 6};
+  TTypes<float, 2>::ConstTensor input(input_data, 2, 3);
+
+  int32_t seq_lengths_data[] = {2, 2};  // IN BOUNDS
+  TTypes<int32_t>::ConstVec seq_lengths(seq_lengths_data, 2);
+
+  ::tensorflow::generator::ReverseGenerator<float, int32_t, 2> gen(
+      input, /*batch_dim=*/0, /*seq_dim=*/1, seq_lengths);
+
+  // Test true branch of coords[seq_dim_] < seq_len
+  Eigen::array<Eigen::DenseIndex, 2> coords = {0, 0};
+  float result = gen(coords);
+  EXPECT_EQ(result, 2);
+
+  // Test false branch of coords[seq_dim_] < seq_len
+  Eigen::array<Eigen::DenseIndex, 2> coords_out = {0, 2};
+  float result_out = gen(coords_out);
+  EXPECT_EQ(result_out, 3);
+}
 
 }  // namespace
 }  // namespace tensorflow
