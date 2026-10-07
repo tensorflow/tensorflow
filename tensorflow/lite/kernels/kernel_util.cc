@@ -627,17 +627,16 @@ TfLiteStatus CheckedShapeProduct(TfLiteContext* context, const int* dims,
 TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
                                       std::initializer_list<int> dims,
                                       const char* error_message, int& product) {
-  size_t checked_count = 1;
-  for (const int d : dims) {
-    TF_LITE_ENSURE_MSG(context, d >= 0, "Encountered a negative dimension.");
-    TF_LITE_ENSURE_MSG(
-        context,
-        checked_count == 0 ||
-            static_cast<size_t>(d) <=
-                std::numeric_limits<size_t>::max() / checked_count,
-        "%s", error_message);
-    checked_count *= d;
-  }
+  return CheckedShapeProductToInt(context, dims.begin(), dims.size(),
+                                  error_message, product);
+}
+
+TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context, const int* dims,
+                                      int count, const char* error_message,
+                                      int& product) {
+  size_t checked_count = 0;
+  TF_LITE_ENSURE_OK(context, CheckedShapeProduct(context, dims, count,
+                                                 error_message, checked_count));
   TF_LITE_ENSURE_MSG(
       context,
       checked_count <= static_cast<size_t>(std::numeric_limits<int>::max()),
