@@ -268,17 +268,6 @@ class TiledHloComputation {
         region_(std::move(tiled_root_region)),
         rt_symbol_to_tiled_hlo_(std::move(rt_symbol_to_tiled_hlo)) {}
 
-  // Creates a region from `roots`, constructing all its instructions (including
-  // those of nested regions) in `instruction_storage`.
-  static absl::StatusOr<TiledHloRegion> CreateHloRegion(
-      llvm::SmallVector<std::pair<const HloInstruction*, experimental::Tile>, 4>
-          roots,
-      const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
-      std::deque<TiledHloInstruction>& instruction_storage,
-      absl::flat_hash_map<int64_t,
-                          std::pair<const TiledHloInstruction*, Interval>>&
-          rt_symbol_to_tiled_hlo);
-
   std::unique_ptr<TilingSpace> tiling_space_;
 
   // All instructions of the computation, including nested regions. std::deque

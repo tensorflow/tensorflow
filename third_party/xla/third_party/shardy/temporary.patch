@@ -1,191 +1,821 @@
-diff --git a/shardy/dialect/sdy/transforms/export/BUILD b/shardy/dialect/sdy/transforms/export/BUILD
-index 23e84e0a..80207797 100644
---- a/shardy/dialect/sdy/transforms/export/BUILD
-+++ b/shardy/dialect/sdy/transforms/export/BUILD
-@@ -136,6 +136,8 @@ cc_library(
-     deps = [
-         "//shardy/common:logging",
-         "//shardy/dialect/sdy/ir:dialect",
-+        "//shardy/dialect/sdy/transforms/common:partitioner_stage",
-+        "//shardy/dialect/sdy/transforms/common:propagation_options",
-         "@llvm-project//llvm:Support",
-         "@llvm-project//mlir:IR",
-         "@llvm-project//mlir:Support",
-@@ -150,6 +152,8 @@ cc_test(
-         ":utils",
-         "//shardy/dialect/sdy/ir:dialect",
-         "//shardy/dialect/sdy/ir:testing_utils",
-+        "//shardy/dialect/sdy/transforms/common:partitioner_stage",
-+        "//shardy/dialect/sdy/transforms/common:propagation_options",
-         "@com_google_googletest//:gtest_main",
-         "@llvm-project//llvm:Support",
-         "@llvm-project//mlir:FuncDialect",
-diff --git a/shardy/dialect/sdy/transforms/export/drop_sharding_and_mesh.cc b/shardy/dialect/sdy/transforms/export/drop_sharding_and_mesh.cc
-index c36e7e65..f2b23ef4 100644
---- a/shardy/dialect/sdy/transforms/export/drop_sharding_and_mesh.cc
-+++ b/shardy/dialect/sdy/transforms/export/drop_sharding_and_mesh.cc
-@@ -29,8 +29,10 @@ struct DropShardingAndMeshPass
-  protected:
-   void runOnOperation() final {
-     ModuleOp module = getOperation();
--    module->removeAttr(kParametersShardingsAttr);
--    module->removeAttr(kOutputShardingsAttr);
-+    if (!keepModuleShardingMetadata) {
-+      module->removeAttr(kParametersShardingsAttr);
-+      module->removeAttr(kOutputShardingsAttr);
-+    }
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index e2237d49..509398da 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,459 +1 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/llvm/include/llvm/IR/Metadata.h b/llvm/include/llvm/IR/Metadata.h
+---- a/llvm/include/llvm/IR/Metadata.h
+-+++ b/llvm/include/llvm/IR/Metadata.h
+-@@ -397,18 +397,8 @@
+-   using OwnerTy = MetadataTracking::OwnerTy;
+- 
+- private:
+--  struct UseEntry {
+--    void *Ref = nullptr;
+--    OwnerTy Owner = nullptr;
+--  };
+--
+--  static constexpr unsigned IndexThreshold = 32;
+--  // Tracked uses of this. Dropping one moves the last entry into its slot, so
+--  // the order is deterministic but not the order they were added in.
+--  SmallVector<UseEntry, 4> UseMap;
+--  // Lazily allocated map from Ref to its index in UseMap for large use lists.
+--  using IndexMapTy = DenseMap<void *, unsigned>;
+--  std::unique_ptr<IndexMapTy> IndexMap;
+-+  uint64_t NextIndex = 0;
+-+  SmallDenseMap<void *, std::pair<OwnerTy, uint64_t>, 4> UseMap;
+- 
+- protected:
+-   ~ReplaceableUses() {
+-@@ -439,7 +429,6 @@
+-   unsigned getNumUses() const { return UseMap.size(); }
+- 
+- private:
+--  UseEntry *findRef(void *Ref);
+-   void addRef(void *Ref, OwnerTy Owner);
+-   void dropRef(void *Ref);
+-   void moveRef(void *Ref, void *New, const Metadata &MD);
+-diff -ruN --strip-trailing-cr a/llvm/lib/IR/Metadata.cpp b/llvm/lib/IR/Metadata.cpp
+---- a/llvm/lib/IR/Metadata.cpp
+-+++ b/llvm/lib/IR/Metadata.cpp
+-@@ -258,96 +258,82 @@
+- }
+- 
+- SmallVector<Metadata *> ReplaceableUses::getAllArgListUsers() {
+--  SmallVector<Metadata *> MDUsers;
+--  for (const auto &[Ref, Owner] : UseMap) {
+-+  SmallVector<std::pair<OwnerTy, uint64_t> *> MDUsersWithID;
+-+  for (auto Pair : UseMap) {
+-+    OwnerTy Owner = Pair.second.first;
+-     if (Owner.isNull())
+-       continue;
+-     if (!isa<Metadata *>(Owner))
+-       continue;
+-     Metadata *OwnerMD = cast<Metadata *>(Owner);
+-     if (OwnerMD->getMetadataID() == Metadata::DIArgListKind)
+--      MDUsers.push_back(OwnerMD);
+-+      MDUsersWithID.push_back(&UseMap[Pair.first]);
+-   }
+-+  llvm::sort(MDUsersWithID, [](auto UserA, auto UserB) {
+-+    return UserA->second < UserB->second;
+-+  });
+-+  SmallVector<Metadata *> MDUsers;
+-+  for (auto *UserWithID : MDUsersWithID)
+-+    MDUsers.push_back(cast<Metadata *>(UserWithID->first));
+-   return MDUsers;
+- }
+- 
+- SmallVector<DbgVariableRecord *>
+- ReplaceableUses::getAllDbgVariableRecordUsers() {
+-+  SmallVector<std::pair<OwnerTy, uint64_t> *> DVRUsersWithID;
+-+  for (auto Pair : UseMap) {
+-+    OwnerTy Owner = Pair.second.first;
+-+    if (Owner.isNull())
+-+      continue;
+-+    if (!isa<DebugValueUser *>(Owner))
+-+      continue;
+-+    DVRUsersWithID.push_back(&UseMap[Pair.first]);
+-+  }
+-   // Order DbgVariableRecord users in reverse-creation order. Normal dbg.value
+-   // users of MetadataAsValues are ordered by their UseList, i.e. reverse order
+-   // of when they were added: we need to replicate that here. The structure of
+-   // debug-info output depends on the ordering of intrinsics, thus we need
+-   // to keep them consistent for comparisons sake.
+-+  llvm::sort(DVRUsersWithID, [](auto UserA, auto UserB) {
+-+    return UserA->second > UserB->second;
+-+  });
+-   SmallVector<DbgVariableRecord *> DVRUsers;
+--  for (const auto &[Ref, Owner] : reverse(UseMap)) {
+--    if (Owner.isNull())
+--      continue;
+--    if (!isa<DebugValueUser *>(Owner))
+--      continue;
+--    DVRUsers.push_back(cast<DebugValueUser *>(Owner)->getUser());
+--  }
+-+  for (auto UserWithID : DVRUsersWithID)
+-+    DVRUsers.push_back(cast<DebugValueUser *>(UserWithID->first)->getUser());
+-   return DVRUsers;
+- }
+- 
+--ReplaceableUses::UseEntry *ReplaceableUses::findRef(void *Ref) {
+--  if (!IndexMap) {
+--    // Search backward for temporal locality; recently added references are
+--    // often dropped or moved first.
+--    for (UseEntry &U : reverse(UseMap))
+--      if (U.Ref == Ref)
+--        return &U;
+--    return nullptr;
+--  }
+--
+--  auto It = IndexMap->find(Ref);
+--  return It == IndexMap->end() ? nullptr : &UseMap[It->second];
+--}
+--
+- void ReplaceableUses::addRef(void *Ref, OwnerTy Owner) {
+--  assert(Ref && "Expected live reference");
+--  assert(!findRef(Ref) && "Reference already tracked");
+--  unsigned NewIdx = UseMap.size();
+--  UseMap.push_back({Ref, Owner});
+--  if (IndexMap) {
+--    (*IndexMap)[Ref] = NewIdx;
+--  } else if (UseMap.size() > IndexThreshold) {
+--    // Build the index map once UseMap grows past the threshold.
+--    IndexMap = std::make_unique<IndexMapTy>();
+--    for (unsigned I = 0, E = UseMap.size(); I != E; ++I)
+--      (*IndexMap)[UseMap[I].Ref] = I;
+--  }
+-+  bool WasInserted =
+-+      UseMap.insert(std::make_pair(Ref, std::make_pair(Owner, NextIndex)))
+-+          .second;
+-+  (void)WasInserted;
+-+  assert(WasInserted && "Expected to add a reference");
+-+
+-+  ++NextIndex;
+-+  assert(NextIndex != 0 && "Unexpected overflow");
+- }
+- 
+- void ReplaceableUses::dropRef(void *Ref) {
+--  UseEntry *Entry = findRef(Ref);
+--  assert(Entry && "Expected to find Ref");
+--  if (IndexMap)
+--    IndexMap->erase(Ref);
+--  if (Entry != &UseMap.back()) {
+--    *Entry = UseMap.back();
+--    if (IndexMap)
+--      (*IndexMap)[Entry->Ref] = Entry - UseMap.begin();
+--  }
+--  UseMap.pop_back();
+--  if (IndexMap && UseMap.size() <= IndexThreshold / 2)
+--    IndexMap.reset();
+-+  bool WasErased = UseMap.erase(Ref);
+-+  (void)WasErased;
+-+  assert(WasErased && "Expected to drop a reference");
+- }
+- 
+- void ReplaceableUses::moveRef(void *Ref, void *New, const Metadata &MD) {
+--  assert(!findRef(New) && "Cannot move to an existing reference");
+--  UseEntry *Entry = findRef(Ref);
+--  assert(Entry && "Expected to move a reference");
+--  if (IndexMap) {
+--    IndexMap->erase(Ref);
+--    (*IndexMap)[New] = Entry - UseMap.begin();
+--  }
+--  Entry->Ref = New;
+-+  auto I = UseMap.find(Ref);
+-+  assert(I != UseMap.end() && "Expected to move a reference");
+-+  auto OwnerAndIndex = I->second;
+-+  UseMap.erase(I);
+-+  bool WasInserted = UseMap.insert(std::make_pair(New, OwnerAndIndex)).second;
+-+  (void)WasInserted;
+-+  assert(WasInserted && "Expected to add a reference");
+- 
+-   // Check that the references are direct if there's no owner.
+-   (void)MD;
+--  assert((Entry->Owner || *static_cast<Metadata **>(Ref) == &MD) &&
+-+  assert((OwnerAndIndex.first || *static_cast<Metadata **>(Ref) == &MD) &&
+-          "Reference without owner must be direct");
+--  assert((Entry->Owner || *static_cast<Metadata **>(New) == &MD) &&
+-+  assert((OwnerAndIndex.first || *static_cast<Metadata **>(New) == &MD) &&
+-          "Reference without owner must be direct");
+- }
+- 
+-@@ -360,11 +346,14 @@
+-   auto &Store = Context.pImpl->ValuesAsMetadata;
+-   auto I = Store.find(&C);
+-   ValueAsMetadata *MD = I->second;
+-+  using UseTy =
+-+      std::pair<void *, std::pair<MetadataTracking::OwnerTy, uint64_t>>;
+-   // Copy out uses and update value of Constant used by debug info metadata with
+--  // poison below.
+--  SmallVector<UseEntry, 4> Uses = MD->UseMap;
+-+  // poison below
+-+  SmallVector<UseTy, 8> Uses(MD->UseMap.begin(), MD->UseMap.end());
+- 
+--  for (const auto &[Ref, Owner] : Uses) {
+-+  for (const auto &Pair : Uses) {
+-+    MetadataTracking::OwnerTy Owner = Pair.second.first;
+-     if (!Owner)
+-       continue;
+-     // Check for MetadataAsValue.
+-@@ -380,7 +369,7 @@
+-       continue;
+-     if (isa<DINode>(OwnerMD)) {
+-       OwnerMD->handleChangedOperand(
+--          Ref, ValueAsMetadata::get(PoisonValue::get(C.getType())));
+-+          Pair.first, ValueAsMetadata::get(PoisonValue::get(C.getType())));
+-     }
+-   }
+- }
+-@@ -390,21 +379,25 @@
+-     return;
+- 
+-   // Copy out uses since UseMap will get touched below.
+--  SmallVector<UseEntry, 4> Uses = UseMap;
+--
+--  for (const auto &[Ref, Owner] : Uses) {
+-+  using UseTy = std::pair<void *, std::pair<OwnerTy, uint64_t>>;
+-+  SmallVector<UseTy, 8> Uses(UseMap.begin(), UseMap.end());
+-+  llvm::sort(Uses, [](const UseTy &L, const UseTy &R) {
+-+    return L.second.second < R.second.second;
+-+  });
+-+  for (const auto &Pair : Uses) {
+-     // Check that this Ref hasn't disappeared after RAUW (when updating a
+-     // previous Ref).
+--    if (!findRef(Ref))
+-+    if (!UseMap.count(Pair.first))
+-       continue;
+- 
+-+    OwnerTy Owner = Pair.second.first;
+-     if (!Owner) {
+-       // Update unowned tracking references directly.
+--      Metadata *&DirectRef = *static_cast<Metadata **>(Ref);
+--      dropRef(Ref);
+--      DirectRef = MD;
+-+      Metadata *&Ref = *static_cast<Metadata **>(Pair.first);
+-+      Ref = MD;
+-       if (MD)
+--        MetadataTracking::track(DirectRef);
+-+        MetadataTracking::track(Ref);
+-+      UseMap.erase(Pair.first);
+-       continue;
+-     }
+- 
+-@@ -415,7 +408,7 @@
+-     }
+- 
+-     if (auto *DVU = dyn_cast<DebugValueUser *>(Owner)) {
+--      DVU->handleChangedValue(Ref, MD);
+-+      DVU->handleChangedValue(Pair.first, MD);
+-       continue;
+-     }
+- 
+-@@ -424,7 +417,7 @@
+-     switch (OwnerMD->getMetadataID()) {
+- #define HANDLE_METADATA_LEAF(CLASS)                                            \
+-   case Metadata::CLASS##Kind:                                                  \
+--    cast<CLASS>(OwnerMD)->handleChangedOperand(Ref, MD);                       \
+-+    cast<CLASS>(OwnerMD)->handleChangedOperand(Pair.first, MD);                \
+-     continue;
+- #include "llvm/IR/Metadata.def"
+-     default:
+-@@ -440,16 +433,18 @@
+- 
+-   if (!ResolveUsers) {
+-     UseMap.clear();
+--    IndexMap.reset();
+-     return;
+-   }
+- 
+--  // Move uses out since UseMap could get touched below.
+--  SmallVector<UseEntry, 4> Uses = std::move(UseMap);
+-+  // Copy out uses since UseMap could get touched below.
+-+  using UseTy = std::pair<void *, std::pair<OwnerTy, uint64_t>>;
+-+  SmallVector<UseTy, 8> Uses(UseMap.begin(), UseMap.end());
+-+  llvm::sort(Uses, [](const UseTy &L, const UseTy &R) {
+-+    return L.second.second < R.second.second;
+-+  });
+-   UseMap.clear();
+--  IndexMap.reset();
+--  for (const auto &U : Uses) {
+--    auto Owner = U.Owner;
+-+  for (const auto &Pair : Uses) {
+-+    auto Owner = Pair.second.first;
+-     if (!Owner)
+-       continue;
+-     if (!isa<Metadata *>(Owner))
+-diff -ruN --strip-trailing-cr a/llvm/lib/ObjCopy/ELF/ELFObject.cpp b/llvm/lib/ObjCopy/ELF/ELFObject.cpp
+---- a/llvm/lib/ObjCopy/ELF/ELFObject.cpp
+-+++ b/llvm/lib/ObjCopy/ELF/ELFObject.cpp
+-@@ -1709,11 +1709,7 @@
+-   case SHT_REL:
+-   case SHT_RELA:
+-   case SHT_CREL:
+--    // SHF_ALLOC relocations of an executable or shared object are copied
+--    // verbatim. Relocatable files relocations are usually non-ALLOC, but Linux
+--    // livepatch modules set SHF_ALLOC on .klp.rela.* to keep these static
+--    // relocations in memory.
+--    if ((Shdr.sh_flags & SHF_ALLOC) && ElfFile.getHeader().e_type != ET_REL) {
+-+    if (Shdr.sh_flags & SHF_ALLOC) {
+-       if (Expected<ArrayRef<uint8_t>> Data = ElfFile.getSectionContents(Shdr))
+-         return Obj.addSection<DynamicRelocationSection>(*Data);
+-       else
+-diff -ruN --strip-trailing-cr a/llvm/lib/ObjCopy/ELF/ELFObject.h b/llvm/lib/ObjCopy/ELF/ELFObject.h
+---- a/llvm/lib/ObjCopy/ELF/ELFObject.h
+-+++ b/llvm/lib/ObjCopy/ELF/ELFObject.h
+-@@ -38,7 +38,6 @@
+- class SymbolTableSection;
+- class RelocationSection;
+- class DynamicRelocationSection;
+--class DynamicSymbolTableSection;
+- class GnuDebugLinkSection;
+- class GroupSection;
+- class SectionIndexSection;
+-@@ -876,15 +875,10 @@
+- // and another which handles the symbol table type. The symbol table type is
+- // taken as a type parameter to the class (see RelocSectionWithSymtabBase).
+- class RelocationSectionBase : public SectionBase {
+--  const bool Dynamic;
+--
+- protected:
+-   SectionBase *SecToApplyRel = nullptr;
+- 
+--  explicit RelocationSectionBase(bool Dynamic) : Dynamic(Dynamic) {}
+--
+- public:
+--  bool isDynamic() const { return Dynamic; }
+-   const SectionBase *getSection() const { return SecToApplyRel; }
+-   void setSection(SectionBase *Sec) { SecToApplyRel = Sec; }
+- 
+-@@ -903,9 +897,7 @@
+-   void setSymTab(SymTabType *SymTab) { Symbols = SymTab; }
+- 
+- protected:
+--  RelocSectionWithSymtabBase()
+--      : RelocationSectionBase(
+--            std::is_same_v<SymTabType, DynamicSymbolTableSection>) {}
+-+  RelocSectionWithSymtabBase() = default;
+- 
+-   SymTabType *Symbols = nullptr;
+- 
+-@@ -936,8 +928,9 @@
+-   const Object &getObject() const { return Obj; }
+- 
+-   static bool classof(const SectionBase *S) {
+--    return RelocationSectionBase::classof(S) &&
+--           !static_cast<const RelocationSectionBase *>(S)->isDynamic();
+-+    if (S->OriginalFlags & ELF::SHF_ALLOC)
+-+      return false;
+-+    return RelocationSectionBase::classof(S);
+-   }
+- };
+- 
+-@@ -1022,8 +1015,9 @@
+-       function_ref<bool(const SectionBase *)> ToRemove) override;
+- 
+-   static bool classof(const SectionBase *S) {
+--    return RelocationSectionBase::classof(S) &&
+--           static_cast<const RelocationSectionBase *>(S)->isDynamic();
+-+    if (!(S->OriginalFlags & ELF::SHF_ALLOC))
+-+      return false;
+-+    return S->OriginalType == ELF::SHT_REL || S->OriginalType == ELF::SHT_RELA;
+-   }
+- };
+- 
+-diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test b/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
+---- a/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
+-+++ b/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
+-@@ -1,42 +0,0 @@
+--## In a relocatable file, an SHF_ALLOC relocation section (e.g. .klp.rela.* in
+--## Linux livepatch modules) is a static relocation section: its symbol indexes
+--## are updated and the symbols it references are kept.
+--
+--# RUN: yaml2obj %s -o %t
+--# RUN: llvm-strip --strip-unneeded %t -o %t1
+--# RUN: llvm-readelf -Sr -s %t1 | FileCheck %s
+--# RUN: yaml2obj -DTYPE=SHT_CREL %s -o %t.crel
+--# RUN: llvm-strip --strip-unneeded %t.crel -o %t1.crel
+--# RUN: llvm-readelf -Sr -s %t1.crel | FileCheck %s
+--
+--# CHECK:      [ 2] .klp.rela.vmlinux.text {{RELA|CREL}} {{.*}} AI  3   1
+--# CHECK-NEXT: [ 3] .symtab
+--# CHECK:      R_X86_64_PC32 {{.*}} referenced + 0
+--# CHECK:      Symbol table '.symtab' contains 2 entries:
+--# CHECK:      1: {{.*}} UND referenced
+--
+--!ELF
+--FileHeader:
+--  Class:   ELFCLASS64
+--  Data:    ELFDATA2LSB
+--  Type:    ET_REL
+--  Machine: EM_X86_64
+--Sections:
+--  - Name:    .text
+--    Type:    SHT_PROGBITS
+--    Flags:   [ SHF_ALLOC, SHF_EXECINSTR ]
+--    Content: "e800000000"
+--  - Name:    .klp.rela.vmlinux.text
+--    Type:    [[TYPE=SHT_RELA]]
+--    Flags:   [ SHF_ALLOC, SHF_INFO_LINK ]
+--    Link:    .symtab
+--    Info:    .text
+--    Relocations:
+--      - Offset: 1
+--        Symbol: referenced
+--        Type:   R_X86_64_PC32
+--Symbols:
+--  - Name:    unreferenced
+--    Section: .text
+--  - Name:    referenced
+--    Binding: STB_GLOBAL
+-diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test b/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
+---- a/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
+-+++ b/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
+-@@ -10,16 +10,11 @@
+- # RUN: llvm-readobj --sections %t.original | FileCheck %s
+- # RUN: llvm-readobj --sections %t.stripped | FileCheck %s
+- 
+--## In a relocatable file, .rela.plt is a static relocation section.
+--# RUN: yaml2obj -DTYPE=ET_REL %s -o %t.rel
+--# RUN: llvm-strip %t.rel -o %t.rel.stripped
+--# RUN: llvm-readobj --sections %t.rel.stripped | FileCheck %s
+--
+- !ELF
+- FileHeader:
+-   Class:           ELFCLASS64
+-   Data:            ELFDATA2LSB
+--  Type:            [[TYPE=ET_EXEC]]
+-+  Type:            ET_REL
+-   Machine:         EM_X86_64
+- Sections:
+-   - Name:          .text
+-diff -ruN --strip-trailing-cr a/llvm/unittests/IR/MetadataTest.cpp b/llvm/unittests/IR/MetadataTest.cpp
+---- a/llvm/unittests/IR/MetadataTest.cpp
+-+++ b/llvm/unittests/IR/MetadataTest.cpp
+-@@ -5355,29 +5355,6 @@
+-   EXPECT_TRUE(!MD);
+- }
+- 
+--// Once the use list is indexed, look each changed reference up again right
+--// away: a later swap in dropRef would repair a stale index entry.
+--TEST_F(TrackingMDRefTest, LargeUseList) {
+--  auto Temp = MDTuple::getTemporary(Context, {});
+--  TrackingMDRef Refs[41];
+--  for (unsigned I = 0; I != 40; ++I)
+--    Refs[I].reset(Temp.get());
+--  Refs[0].reset();
+--  Refs[0].reset(Temp.get());
+--  Refs[0].reset();
+--  Refs[40] = std::move(Refs[1]);
+--  Refs[1].reset(Temp.get());
+--  Refs[40].reset();
+--  Refs[39].reset();
+--  EXPECT_EQ(38u, Temp->getNumTemporaryUses());
+--
+--  auto *N = MDTuple::getDistinct(Context, {});
+--  Temp->replaceAllUsesWith(N);
+--  EXPECT_EQ(0u, Temp->getNumTemporaryUses());
+--  for (unsigned I = 1; I != 39; ++I)
+--    EXPECT_EQ(N, Refs[I].get()) << I;
+--}
+--
+- TEST(NamedMDNodeTest, Search) {
+-   LLVMContext Context;
+-   ConstantAsMetadata *C =
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index 9de7c05a..65143e39 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
-     module.walk([](Operation* op) {
-       // kShardingAttr is "sdy.sharding"
-diff --git a/shardy/dialect/sdy/transforms/export/partitioner_pipeline.cc b/shardy/dialect/sdy/transforms/export/partitioner_pipeline.cc
-index d0c304e2..2ffae400 100644
---- a/shardy/dialect/sdy/transforms/export/partitioner_pipeline.cc
-+++ b/shardy/dialect/sdy/transforms/export/partitioner_pipeline.cc
-@@ -68,7 +68,9 @@ void addPartitionerPipeline(OpPassManager& pm,
-     convertOptions.replicaCount = options.replicaCount;
-     convertOptions.partitionCount = options.partitionCount;
-     pm.addPass(createConvertGlobalToLocalPass(convertOptions));
--    pm.addPass(createDropShardingAndMeshPass());
-+    DropShardingAndMeshPassOptions dropOptions;
-+    dropOptions.keepModuleShardingMetadata = true;
-+    pm.addPass(createDropShardingAndMeshPass(dropOptions));
-   }
- }
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "62e30e3326d9b4e3948d242ccfee7aa4fc030ef3"
+-    LLVM_SHA256 = "478ae34c463f28708582082098aaf0e79f431c2719f5d297bd546051dbeae0dd"
++    LLVM_COMMIT = "c62a1a544bb22d39aba0ab94274f415a0f4417f4"
++    LLVM_SHA256 = "3b3613a71962862569707a2e598bd3a4c40665bc64e84b6f949fc3ba208389b6"
  
-diff --git a/shardy/dialect/sdy/transforms/export/passes.td b/shardy/dialect/sdy/transforms/export/passes.td
-index 987c0ff4..e0740280 100644
---- a/shardy/dialect/sdy/transforms/export/passes.td
-+++ b/shardy/dialect/sdy/transforms/export/passes.td
-@@ -251,6 +251,12 @@ def DropShardingRulesPass : Pass<"sdy-drop-sharding-rules", "func::FuncOp"> {
- def DropShardingAndMeshPass : Pass<"sdy-drop-sharding-and-mesh", "ModuleOp"> {
-   let summary = "Removes the mesh op and sharding notation from the program.";
-   let dependentDialects = ["mlir::sdy::SdyDialect"];
-+  let options = [
-+    Option<"keepModuleShardingMetadata", "keep-module-sharding-metadata",
-+           "bool", /*default=*/"false",
-+           "Whether to keep module-level sharding metadata "
-+           "(sdy.parameters_shardings and sdy.output_shardings).">
-+  ];
- }
- 
- def ConstantOrScalarMergerPass : Pass<"sdy-constant-or-scalar-merger", "func::FuncOp"> {
-diff --git a/shardy/dialect/sdy/transforms/export/test/drop_sharding_and_mesh.mlir b/shardy/dialect/sdy/transforms/export/test/drop_sharding_and_mesh.mlir
-index 4b2d681c..909229f6 100644
---- a/shardy/dialect/sdy/transforms/export/test/drop_sharding_and_mesh.mlir
-+++ b/shardy/dialect/sdy/transforms/export/test/drop_sharding_and_mesh.mlir
-@@ -1,4 +1,5 @@
--// RUN: sdy_opt %s -split-input-file -sdy-drop-sharding-and-mesh | FileCheck %s
-+// RUN: sdy_opt %s -split-input-file -sdy-drop-sharding-and-mesh | FileCheck %s --check-prefixes=CHECK,DROP
-+// RUN: sdy_opt %s -split-input-file -sdy-drop-sharding-and-mesh="keep-module-sharding-metadata=true" | FileCheck %s --check-prefixes=CHECK,KEEP
- 
- // CHECK-NOT: sdy.mesh
- sdy.mesh @mesh_2 = <["x"=2]>
-@@ -27,13 +28,15 @@ func.func @drop_multiple_sharding(
- // -----
- 
- // CHECK-LABEL: module @module_input_output_shardings
--// CHECK-NOT: sdy.parameters_shardings
--// CHECK-NOT: sdy.output_shardings
-+// KEEP-SAME: sdy.output_shardings = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}]>]>,
-+// KEEP-SAME: sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}]>]>
-+// DROP-NOT: sdy.output_shardings
-+// DROP-NOT: sdy.parameters_shardings
- // CHECK-NOT: sdy.mesh
- // CHECK:     func.func @main
- module @module_input_output_shardings attributes {
--  sdy.parameters_shardings = #sdy.sharding_per_value<[<@mesh_2, [{"x"}]>]>,
--  sdy.output_shardings = #sdy.sharding_per_value<[<@mesh_2, [{"x"}]>]>
-+  sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}]>]>,
-+  sdy.output_shardings = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}]>]>
- } {
-   sdy.mesh @mesh_2 = <["x"=2]>
-   func.func @main() {
-diff --git a/shardy/dialect/sdy/transforms/export/utils.cc b/shardy/dialect/sdy/transforms/export/utils.cc
-index 75b9925d..f4ac3ec9 100644
---- a/shardy/dialect/sdy/transforms/export/utils.cc
-+++ b/shardy/dialect/sdy/transforms/export/utils.cc
-@@ -41,6 +41,8 @@ limitations under the License.
- #include "shardy/common/logging.h"
- #include "shardy/dialect/sdy/ir/dialect.h"
- #include "shardy/dialect/sdy/ir/utils.h"
-+#include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
-+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "stablehlo/dialect/StablehloOps.h"
- 
- namespace mlir {
-@@ -901,5 +903,11 @@ Attribute getReductionIdentityAttr(Type elementType, ReductionOp reductionOp,
-   SDY_CHECK(false) << "Unsupported element type for reduction identity";
- }
- 
-+bool shardyGeneratesDeviceCode(const PropagationOptions& options) {
-+  return !options.avoidExportForPartitioning &&
-+         !options.enablePerInstructionPartitioning &&
-+         options.partitionerStage == PartitionerStage::kConvertGlobalToLocal;
-+}
-+
- }  // namespace sdy
- }  // namespace mlir
-diff --git a/shardy/dialect/sdy/transforms/export/utils.h b/shardy/dialect/sdy/transforms/export/utils.h
-index c3760057..2834276f 100644
---- a/shardy/dialect/sdy/transforms/export/utils.h
-+++ b/shardy/dialect/sdy/transforms/export/utils.h
-@@ -26,6 +26,7 @@ limitations under the License.
- #include "mlir/IR/SymbolTable.h"
- #include "mlir/Support/LLVM.h"
- #include "shardy/dialect/sdy/ir/dialect.h"
-+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include "stablehlo/dialect/StablehloOps.h"
- 
- namespace mlir {
-@@ -294,6 +295,12 @@ Attribute getReductionIdentityAttr(Type elementType, ReductionOp reductionOp,
- ElementsAttr padElementsAttr(ElementsAttr elementsAttr,
-                              RankedTensorType origType,
-                              RankedTensorType paddedType);
-+
-+// Returns true if Shardy's propagation pipeline converts the module from
-+// global to local shapes, meaning the downstream GSPMD partitioner should be
-+// skipped.
-+bool shardyGeneratesDeviceCode(const PropagationOptions& options);
-+
- }  // namespace sdy
- }  // namespace mlir
- 
-diff --git a/shardy/dialect/sdy/transforms/export/utils_test.cc b/shardy/dialect/sdy/transforms/export/utils_test.cc
-index 9d08f825..a1f296a5 100644
---- a/shardy/dialect/sdy/transforms/export/utils_test.cc
-+++ b/shardy/dialect/sdy/transforms/export/utils_test.cc
-@@ -34,6 +34,8 @@ limitations under the License.
- #include "mlir/Support/LLVM.h"
- #include "shardy/dialect/sdy/ir/dialect.h"
- #include "shardy/dialect/sdy/ir/testing_utils.h"
-+#include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
-+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
- #include <gtest/gtest.h>
- 
- namespace mlir {
-@@ -586,6 +588,25 @@ TEST_F(ExportUtilsTest, GetDivisiblePaddedTypeDualShardingUnsharded) {
-   EXPECT_EQ(paddedType, origType);
- }
- 
-+TEST_F(ExportUtilsTest, ShardyGeneratesDeviceCode) {
-+  PropagationOptions options;
-+  EXPECT_FALSE(shardyGeneratesDeviceCode(options));
-+
-+  options.partitionerStage = PartitionerStage::kConvertGlobalToLocal;
-+  EXPECT_TRUE(shardyGeneratesDeviceCode(options));
-+
-+  options.avoidExportForPartitioning = true;
-+  EXPECT_FALSE(shardyGeneratesDeviceCode(options));
-+  options.avoidExportForPartitioning = false;
-+
-+  options.enablePerInstructionPartitioning = true;
-+  EXPECT_FALSE(shardyGeneratesDeviceCode(options));
-+  options.enablePerInstructionPartitioning = false;
-+
-+  options.partitionerStage = PartitionerStage::kResolveSingleDeviceSharding;
-+  EXPECT_FALSE(shardyGeneratesDeviceCode(options));
-+}
-+
- }  // namespace
- }  // namespace sdy
- }  // namespace mlir
+     tf_http_archive(
+         name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index c38c5147..caa44ab8 100644
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -3698,15 +3698,30 @@ diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stable
+  
+  #include "llvm/Support/Casting.h"
+  #include "llvm/Support/Errc.h"
+-@@ -175,36 +176,39 @@
++@@ -174,37 +175,52 @@
++     ArrayRef<InterpreterValue> inputs, std::queue<StringAttr>& infeed,
+      SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
+      InterpreterFallback* fallback) {
+-   llvm::DefaultThreadPool threadPool;
++-  llvm::DefaultThreadPool threadPool;
+ -  SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
+-+  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
+- 
++-
+    uint32_t numReplicas = programs.size();
+    uint32_t numPartitions = programs[0].size();
+++
+++  // StableHLO collectives are blocking barriers: a process inside rendezvous
+++  // waits for every other process in its group to arrive, so all processes
+++  // must run concurrently. Size the pool from the process count rather than
+++  // the default (hardware_concurrency(), i.e. the host thread count). With a
+++  // default-sized pool, a program with more processes than the host has
+++  // hardware threads leaves the surplus tasks queued and never started while
+++  // the started tasks block forever waiting for them - a deadlock that only
+++  // surfaces as the rendezvous timeout. hardware_concurrency(N) leaves
+++  // ThreadPoolStrategy::Limit false, so the pool gets N threads uncapped by the
+++  // host.
+++  llvm::DefaultThreadPool threadPool(
+++      llvm::hardware_concurrency(numReplicas * numPartitions));
+++  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
+++
+    ProcessGrid processGrid(numReplicas, numPartitions, infeed);
+  
+ +  SmallVector<SmallVector<InterpreterValue>> taskOutputs(numReplicas *
+@@ -4443,6 +4458,159 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
+  
+    // CHECK-LABEL: @all_reduce_sdy_mesh_max
+    func.func @all_reduce_sdy_mesh_max(%arg0: tensor<4xf32>) -> tensor<4xf32> {
++diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
++--- stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
+++++ stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
++@@ -168,6 +168,18 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_broadcast_in_dim_discardable_attrs
+++func.func @dynamic_broadcast_in_dim_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<3x4xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_broadcast_in_dim
+++  //      CHECK: stablehlo.broadcast_in_dim %arg0, dims = [1]
+++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
+++  %0 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
+++  %1 = stablehlo.dynamic_broadcast_in_dim %arg0, %0, dims = [1] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<2xi64>) -> tensor<3x4xf32>
+++  return %1 : tensor<3x4xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_broadcast_in_dim_inapplicable_dynamic_operand_type
++ func.func @dynamic_broadcast_in_dim_inapplicable_dynamic_operand_type(%arg0: tensor<?xf32>) -> tensor<3x4xf32> {
++   // CHECK: stablehlo.dynamic_broadcast_in_dim
++@@ -225,6 +237,26 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_conv_discardable_attrs
+++func.func @dynamic_conv_discardable_attrs(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_conv
+++  //      CHECK: stablehlo.convolution(%arg0, %arg1)
+++  // CHECK-SAME:   mhlo.frontend_attributes = {MUST_FUSE = "0"}
+++  %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
+++  %1 = "stablehlo.dynamic_conv"(%arg0, %arg1, %0) {
+++    dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
+++    window_strides = array<i64: 1, 1>,
+++    lhs_dilation = array<i64: 1, 1>,
+++    rhs_dilation = array<i64: 1, 1>,
+++    feature_group_count = 1 : i64,
+++    batch_group_count = 1 : i64,
+++    mhlo.frontend_attributes = {MUST_FUSE = "0"}
+++  } : (tensor<100x26x26x32xf32>, tensor<3x3x1x32xf32>, tensor<2x2xi32>) -> tensor<100x28x28x1xf32>
+++  return %1 : tensor<100x28x28x1xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_conv_success_dynamic_result_type
++ func.func @dynamic_conv_success_dynamic_result_type(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf32>) -> tensor<?x28x28x1xf32> {
++   //  CHECK-NOT: stablehlo.dynamic_conv
++@@ -295,6 +327,25 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: @dynamic_gather_discardable_attrs
+++func.func @dynamic_gather_discardable_attrs(%arg0 : tensor<2x4x9xi32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+++  //  CHECK-NOT: stablehlo.dynamic_gather
+++  //      CHECK: "stablehlo.gather"(%arg0, %arg1)
+++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
+++  %0 = stablehlo.constant dense<[1, 1, 8]> : tensor<3xi32>
+++  %1 = "stablehlo.dynamic_gather"(%arg0, %arg1, %0) <{
+++    dimension_numbers = #stablehlo.gather<
+++      collapsed_slice_dims = [0, 1],
+++      index_vector_dim = 2,
+++      offset_dims = [2],
+++      start_index_map = [0, 1]
+++    >
+++  }> {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x4x9xi32>, tensor<1x5x2xi32>, tensor<3xi32>) -> tensor<1x5x8xi32>
+++  return %1 : tensor<1x5x8xi32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: @dynamic_gather_success_dynamic_result_type
++ func.func @dynamic_gather_success_dynamic_result_type(%arg0 : tensor<2x4x9xi32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x?xi32> {
++   //  CHECK-NOT: stablehlo.dynamic_gather
++@@ -348,6 +399,18 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_iota_discardable_attrs
+++func.func @dynamic_iota_discardable_attrs() -> tensor<4xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_iota
+++  //      CHECK: stablehlo.iota
+++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
+++  %0 = stablehlo.constant dense<4> : tensor<1xi64>
+++  %1 = stablehlo.dynamic_iota %0, dim = 0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<1xi64>) -> tensor<4xf32>
+++  return %1 : tensor<4xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_iota_inapplicable_dynamic_output_shape
++ func.func @dynamic_iota_inapplicable_dynamic_output_shape(%arg0: tensor<1xi64>) -> tensor<4xf32> {
++   // CHECK: stablehlo.dynamic_iota
++@@ -380,6 +443,20 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_pad_discardable_attrs
+++func.func @dynamic_pad_discardable_attrs(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<11xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_pad
+++  //      CHECK: stablehlo.pad
+++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
+++  %0 = stablehlo.constant dense<0> : tensor<1xi64>
+++  %1 = stablehlo.constant dense<1> : tensor<1xi64>
+++  %2 = stablehlo.constant dense<2> : tensor<1xi64>
+++  %3 = stablehlo.dynamic_pad %arg0, %arg1, %0, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<f32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<11xf32>
+++  return %3 : tensor<11xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_pad_success_dynamic_result_type
++ func.func @dynamic_pad_success_dynamic_result_type(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
++   // CHECK-NOT: stablehlo.dynamic_pad
++@@ -437,6 +514,17 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_reshape_discardable_attrs
+++func.func @dynamic_reshape_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<1x4xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_reshape
+++  //      CHECK: stablehlo.reshape %arg0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>) -> tensor<1x4xf32>
+++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
+++  %1 = stablehlo.dynamic_reshape %arg0, %0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<2xi64>) -> tensor<1x4xf32>
+++  return %1 : tensor<1x4xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_reshape_inapplicable_dynamic_output_shape
++ func.func @dynamic_reshape_inapplicable_dynamic_output_shape(%arg0: tensor<4xf32>, %arg1: tensor<2xi64>) -> tensor<1x4xf32> {
++   // CHECK: stablehlo.dynamic_reshape
++diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
++--- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
+++++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
++@@ -10,6 +10,16 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: op_dot_discardable_attrs
+++func.func @op_dot_discardable_attrs(%arg0: tensor<2x3xf32>,
+++                 %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
+++  // CHECK: stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
+++  %0 = "stablehlo.dot"(%arg0, %arg1) {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
+++  func.return %0 : tensor<2x?xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: op_unary_einsum
++ func.func @op_unary_einsum(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
++   // CHECK:      %cst = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+ --- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+ +++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+@@ -8393,6 +8561,99 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
+      return success();
+    }
+  };
++@@ -119,8 +120,11 @@
++                                          "expected static output_dimensions");
++     if (!op.getType().hasStaticShape())
++       return rewriter.notifyMatchFailure(op, "expected static result type");
++-    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
++-        op, op.getType(), op.getOperand(), op.getBroadcastDimensionsAttr());
+++    auto broadcastInDimOp = BroadcastInDimOp::create(
+++        rewriter, op.getLoc(), op.getType(), op.getOperand(),
+++        op.getBroadcastDimensionsAttr());
+++    broadcastInDimOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, broadcastInDimOp);
++     return success();
++   }
++ };
++@@ -139,12 +143,14 @@
++         RankedTensorType::get({static_cast<int64_t>(padding.size()) / 2, 2},
++                               rewriter.getI64Type()),
++         padding);
++-    rewriter.replaceOpWithNewOp<ConvolutionOp>(
++-        op, op.getType(), op.getLhs(), op.getRhs(), op.getWindowStridesAttr(),
++-        paddingAttr, op.getLhsDilationAttr(), op.getRhsDilationAttr(),
++-        op.getWindowReversalAttr(), op.getDimensionNumbers(),
++-        op.getFeatureGroupCount(), op.getBatchGroupCount(),
++-        op.getPrecisionConfigAttr());
+++    auto convolutionOp = ConvolutionOp::create(
+++        rewriter, op.getLoc(), op.getType(), op.getLhs(), op.getRhs(),
+++        op.getWindowStridesAttr(), paddingAttr, op.getLhsDilationAttr(),
+++        op.getRhsDilationAttr(), op.getWindowReversalAttr(),
+++        op.getDimensionNumbers(), op.getFeatureGroupCount(),
+++        op.getBatchGroupCount(), op.getPrecisionConfigAttr());
+++    convolutionOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, convolutionOp);
++     return success();
++   }
++ };
++@@ -159,10 +165,13 @@
++     SmallVector<int64_t> sliceSizes;
++     if (!succeeded(hlo::matchInts(op.getSliceSizes(), sliceSizes)))
++       return rewriter.notifyMatchFailure(op, "expected static slice_sizes");
++-    rewriter.replaceOpWithNewOp<GatherOp>(
++-        op, op.getType(), op.getOperand(), op.getStartIndices(),
++-        op.getDimensionNumbersAttr(), rewriter.getDenseI64ArrayAttr(sliceSizes),
++-        op.getIndicesAreSortedAttr());
+++    auto gatherOp =
+++        GatherOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand(),
+++                         op.getStartIndices(), op.getDimensionNumbersAttr(),
+++                         rewriter.getDenseI64ArrayAttr(sliceSizes),
+++                         op.getIndicesAreSortedAttr());
+++    gatherOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, gatherOp);
++     return success();
++   }
++ };
++@@ -179,8 +188,10 @@
++       return rewriter.notifyMatchFailure(op, "expected static output_shape");
++     if (!op.getType().hasStaticShape())
++       return rewriter.notifyMatchFailure(op, "expected static result type");
++-    rewriter.replaceOpWithNewOp<IotaOp>(op, op.getType(),
++-                                        op.getIotaDimension());
+++    auto iotaOp = IotaOp::create(rewriter, op.getLoc(), op.getType(),
+++                                 op.getIotaDimension());
+++    iotaOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, iotaOp);
++     return success();
++   }
++ };
++@@ -198,9 +209,11 @@
++       return rewriter.notifyMatchFailure(op, "expected static high");
++     if (!succeeded(hlo::matchInts(op.getInteriorPadding(), interiorPadding)))
++       return rewriter.notifyMatchFailure(op, "expected static interior");
++-    rewriter.replaceOpWithNewOp<PadOp>(op, op.getType(), op.getOperand(),
++-                                       op.getPaddingValue(), edgePaddingLow,
++-                                       edgePaddingHigh, interiorPadding);
+++    auto padOp = PadOp::create(
+++        rewriter, op.getLoc(), op.getType(), op.getOperand(),
+++        op.getPaddingValue(), edgePaddingLow, edgePaddingHigh, interiorPadding);
+++    padOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, padOp);
++     return success();
++   }
++ };
++@@ -216,7 +229,10 @@
++       return rewriter.notifyMatchFailure(op, "expected static output_shape");
++     if (!op.getType().hasStaticShape())
++       return rewriter.notifyMatchFailure(op, "expected static result type");
++-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
+++    auto reshapeOp =
+++        ReshapeOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand());
+++    reshapeOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, reshapeOp);
++     return success();
++   }
++ };
+ diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
+ --- stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
+ +++ stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
+@@ -8433,6 +8694,42 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/s
+    populateWithGenerated(*patterns);
+  }
+  
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
++--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
+++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
++@@ -132,6 +132,14 @@
++   llvm::report_fatal_error("unsupported type");
++ }
++ 
+++void copyDiscardableAttrs(Operation* src, Operation* dst) {
+++  dst->setDiscardableAttrs(src->getDiscardableAttrDictionary());
+++}
+++
+++void copyDiscardableAttrs(Value src, Value dst) {
+++  copyDiscardableAttrs(src.getDefiningOp(), dst.getDefiningOp());
+++}
+++
++ #include "stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.h.inc"
++ }  // namespace
++ 
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
++--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
+++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
++@@ -45,9 +45,12 @@
++ 
++ // def CrossReplicaSumToAllReduce : <Declared in cpp>
++ 
+++def CopyDiscardableAttrs : NativeCodeCallVoid<"copyDiscardableAttrs($0, $1)">;
+++
++ def DotToDotGeneral : Pat<
++-  (StableHLO_DotOp $lhs, $rhs, $precision_config),
++-  (StableHLO_DotGeneralOp $lhs, $rhs, (GetDefaultDotDimensionNumbers $lhs), $precision_config, (NativeCodeCall<"Attribute{}">))>;
+++  (StableHLO_DotOp:$src $lhs, $rhs, $precision_config),
+++  (StableHLO_DotGeneralOp:$dst $lhs, $rhs, (GetDefaultDotDimensionNumbers $lhs), $precision_config, (NativeCodeCall<"Attribute{}">)),
+++  [], [(CopyDiscardableAttrs $src, $dst)]>;
++ 
++ def UnaryEinsumToEinsum : Pat<
++   (StableHLO_UnaryEinsumOp $operand, $equation),
+ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+ --- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+ +++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
