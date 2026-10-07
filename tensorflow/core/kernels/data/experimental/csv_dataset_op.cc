@@ -630,7 +630,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         while (found != std::string::npos) {
           if (!*skip_next_quote) {
             // This is the first quote in a pair of adjacent double quotes
-            field_complete->append(piece.data() + from, found + 1 - from);
+            field_complete->append(piece, from, found + 1 - from);
           }
           *skip_next_quote = !*skip_next_quote;
           from = found + 1;
@@ -638,7 +638,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         }
         // Include the chunk after the last quotation mark in the string
         if (from < piece.size()) {
-          field_complete->append(piece.data() + from, piece.size() - from);
+          field_complete->append(piece, from);
         }
       }
 
