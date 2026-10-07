@@ -240,5 +240,14 @@ class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
   def testAdd(self):
     self._runScatter(array_ops.tensor_scatter_add)
 
+  def testSub(self):
+    self._runScatter(array_ops.tensor_scatter_sub)
+
+  def testMax(self):
+    self._runScatter(array_ops.tensor_scatter_max)
+
+  def testMin(self):
+    self._runScatter(array_ops.tensor_scatter_min)
+
 if __name__ == "__main__":
   test.main()
