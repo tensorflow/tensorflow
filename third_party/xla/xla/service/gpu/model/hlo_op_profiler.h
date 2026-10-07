@@ -40,6 +40,7 @@ class HloOpProfiler {
    public:
     virtual ~KernelTracer() = default;
     virtual uint64_t getMedianKernelTimeNs() && = 0;
+    virtual uint64_t getSumKernelTimeNs() && = 0;
   };
 
   HloOpProfiler(HloRunnerInterface* absl_nonnull runner,
