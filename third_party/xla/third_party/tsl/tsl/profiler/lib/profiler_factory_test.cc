@@ -277,25 +277,23 @@ TEST(ProfilerFactoryTest,
 TEST(ProfilerFactoryTest,
      MultiPassControllerDestructorCleansUpActivePassOnError) {
   ClearRegisteredMultiPassProfilersForTest();
-  TrackingMultiPassProfiler* raw_profiler = nullptr;
+  TrackingMultiPassProfiler::Tracker tracker;
   RegisterMultiPassProfilerFactory(
-      [&raw_profiler](const tensorflow::ProfileOptions& options) {
-        auto profiler = std::make_unique<TrackingMultiPassProfiler>();
-        raw_profiler = profiler.get();
-        return profiler;
+      [&tracker](const tensorflow::ProfileOptions& options) {
+        return std::make_unique<TrackingMultiPassProfiler>(&tracker);
       });
   {
     auto profilers = CreateMultiPassProfilers(tensorflow::ProfileOptions());
     ASSERT_EQ(profilers.size(), 1);
     ASSERT_TRUE(profilers[0]->Start().ok());
     ASSERT_TRUE(profilers[0]->StartPass().ok());
-    raw_profiler->fail_push_range_ = true;
+    tracker.fail_push_range = true;
     EXPECT_FALSE(profilers[0]->PushRange("fail").ok());
     // Destructor runs when exiting this scope while state_ == kPassStarted with
     // error.
   }
-  EXPECT_EQ(raw_profiler->stop_pass_called_, 1);
-  EXPECT_EQ(raw_profiler->stop_called_, 1);
+  EXPECT_EQ(tracker.stop_pass_called, 1);
+  EXPECT_EQ(tracker.stop_called, 1);
 }
 
 #if !defined(IS_MOBILE_PLATFORM)

@@ -125,6 +125,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:TransformUtils",
@@ -182,6 +183,9 @@ cc_library(
         "@xla//xla/stream_executor:device_description",
     ] + if_cuda_is_configured([
         "@tsl//tsl/platform:cuda_root_path",
+        "@xla//xla/stream_executor/cuda:assemble_compilation_provider",
+        "@xla//xla/stream_executor/cuda:compilation_provider",
+        "@xla//xla/stream_executor/cuda:compilation_provider_options",
         "@xla//xla/stream_executor/cuda:cuda_asm_compiler",
         "@xla//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
     ]) + if_rocm_is_configured([
