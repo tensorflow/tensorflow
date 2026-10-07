@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -758,18 +759,63 @@ flexbuffers::Map GetFlexBufferMap(const NodeInfo& node) {
   return flexbuffers::Map::EmptyMap();
 }
 
+bool IsCustomOrCompositeOpNamed(const TfLiteRegistration* registration,
+                                const TfLiteNode* node, const char* name) {
+  if (registration == nullptr) return false;
+  if (registration->builtin_code == kTfLiteBuiltinCustom &&
+      registration->custom_name != nullptr) {
+    return strcmp(registration->custom_name, name) == 0;
+  }
+  if (registration->builtin_code == kTfLiteBuiltinStablehloComposite &&
+      node != nullptr && node->builtin_data != nullptr) {
+    const auto* params =
+        static_cast<const TfLiteStablehloCompositeParams*>(node->builtin_data);
+    return params->name != nullptr && strcmp(params->name, name) == 0;
+  }
+  return false;
+}
+
+bool ReadParamElement(const TfLiteTensor& tensor, size_t index,
+                      int64_t* value) {
+  if (tensor.data.raw == nullptr) return false;
+  if (tensor.type == kTfLiteInt32 &&
+      tensor.bytes >= (index + 1) * sizeof(int32_t)) {
+    *value = reinterpret_cast<const int32_t*>(tensor.data.raw)[index];
+    return true;
+  }
+  if (tensor.type == kTfLiteInt64 &&
+      tensor.bytes >= (index + 1) * sizeof(int64_t)) {
+    *value = reinterpret_cast<const int64_t*>(tensor.data.raw)[index];
+    return true;
+  }
+  return false;
+}
+
+bool IsProducedInSubgraph(TfLiteContext* context, int tensor_index) {
+  const auto* subgraph = reinterpret_cast<const tflite::Subgraph*>(
+      context != nullptr ? context->impl_ : nullptr);
+  if (subgraph == nullptr) return false;
+  for (int node_idx : subgraph->execution_plan()) {
+    const auto* nr = subgraph->node_and_registration(node_idx);
+    if (nr == nullptr || nr->first.outputs == nullptr) continue;
+    for (int i = 0; i < nr->first.outputs->size; ++i) {
+      if (nr->first.outputs->data[i] == tensor_index) return true;
+    }
+  }
+  return false;
+}
+
 // Find a dummy input we can use for a particular runtime_bmm op. Often, many
 // runtime_bmm ops use the same params tensor, which can share a dummy input.
-TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
-                                   ynn_subgraph_t subgraph,
-                                   uint32_t& next_external_id,
-                                   std::vector<DummyInputInfo>& dummy_inputs,
-                                   int param_tensor_index, int seq_axis,
-                                   size_t rank, const size_t* full_dims,
-                                   ynn_type type, uint32_t* dummy_val_id_out) {
+TfLiteStatus GetOrCreateDummyInput(
+    TfLiteContext* context, ynn_subgraph_t subgraph, uint32_t& next_external_id,
+    std::vector<DummyInputInfo>& dummy_inputs, int param_tensor_index,
+    int seq_axis, size_t rank, const size_t* full_dims, ynn_type type,
+    uint32_t* dummy_val_id_out, DummyExtent extent) {
   for (const auto& dummy : dummy_inputs) {
     if (dummy.param_tensor_index == param_tensor_index &&
-        dummy.seq_axis == seq_axis && dummy.rank == rank) {
+        dummy.seq_axis == seq_axis && dummy.rank == rank &&
+        dummy.extent == extent) {
       bool dims_match = true;
       for (size_t i = 0; i < rank; ++i) {
         if (dummy.full_dims[i] != full_dims[i]) {
@@ -794,6 +840,7 @@ TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
   dummy_info.dummy_val_id = dummy_val_id;
   dummy_info.seq_axis = seq_axis;
   dummy_info.rank = rank;
+  dummy_info.extent = extent;
   std::copy_n(full_dims, rank, dummy_info.full_dims);
   dummy_inputs.push_back(dummy_info);
 
