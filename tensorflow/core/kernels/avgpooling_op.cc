@@ -291,8 +291,9 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
-                                   "elements"));
+        absl::InvalidArgumentError(
+            "tensor_in_shape must be 1-dimensional and 4 "
+            "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
@@ -465,8 +466,9 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
-                                   "elements"));
+        absl::InvalidArgumentError(
+            "tensor_in_shape must be 1-dimensional and 4 "
+            "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(
         context, out_backprop.dims() == 4,
@@ -553,8 +555,9 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        absl::InvalidArgumentError("out_backprop must be 1-dimensional and 4 "
-                                   "elements"));
+        absl::InvalidArgumentError(
+            "tensor_in_shape must be 1-dimensional and 4 "
+            "elements"));
     // For avgpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(
         context, out_backprop.dims() == 4,

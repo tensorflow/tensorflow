@@ -279,61 +279,36 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
 
-      // out-of-memory boundary index check for output_tensor in 2D case.
-      const int depth_window = this->ksize_[3];
-      if (is_pool2d && depth_window == 1) {
-        const int window_rows = this->ksize_[1];
-        const int window_cols = this->ksize_[2];
-        const int row_stride = this->stride_[1];
-        const int col_stride = this->stride_[2];
-        const int64_t in_rows = output_shape.dim_size(1);
-        const int64_t in_cols = output_shape.dim_size(2);
-        const int64_t out_backprop_batch = grad_tensor.dim_size(0);
-        const int64_t out_backprop_rows = grad_tensor.dim_size(1);
-        const int64_t out_backprop_cols = grad_tensor.dim_size(2);
-        int64_t out_height, out_width, pad_rows, pad_cols;
-        OP_REQUIRES_OK(
-            context, GetWindowedOutputSize(
-                         in_rows, window_rows, /*dilation_rate=*/1, row_stride,
-                         this->padding_, &out_height, &pad_rows));
+      MklPoolParameters pool_params;
+      this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
+                                  output_shape);
 
-        OP_REQUIRES_OK(
-            context, GetWindowedOutputSize(
-                         in_cols, window_cols, /*dilation_rate=*/1, col_stride,
-                         this->padding_, &out_width, &pad_cols));
-
-        for (int64_t r = 0; r < out_backprop_rows; ++r) {
-          int rindex, rsize;
-          OP_REQUIRES_OK(context,
-                         GetBroadcastSize(r, in_rows, window_rows, row_stride,
-                                          pad_rows, &rindex, &rsize));
-          for (int64_t c = 0; c < out_backprop_cols; ++c) {
-            int cindex, csize;
-            OP_REQUIRES_OK(context,
-                           GetBroadcastSize(c, in_cols, window_cols, col_stride,
-                                            pad_cols, &cindex, &csize));
-            int64_t input_max =
-                ((out_backprop_batch - 1) * in_rows + rindex + rsize - 1) *
-                    in_cols +
-                cindex + csize - 1;
-            OP_REQUIRES(context, input_max < output_tensor->NumElements(),
-                        absl::InvalidArgumentError(absl::StrCat(
-                            "Output only has ", output_tensor->NumElements(),
-                            " elements but computation requested"
-                            " would use element with index=",
-                            input_max)));
-          }
-        }
+      TensorShape forward_output_shape;
+      if (is_pool2d) {
+        OP_REQUIRES_OK(context,
+                       ShapeFromFormatWithStatus(
+                           this->data_format_tf_, pool_params.tensor_in_batch,
+                           pool_params.out_height, pool_params.out_width,
+                           pool_params.out_depth, &forward_output_shape));
+      } else {
+        OP_REQUIRES_OK(context,
+                       ShapeFromFormatWithStatus(
+                           this->data_format_tf_, pool_params.tensor_in_batch,
+                           {pool_params.out_planes, pool_params.out_height,
+                            pool_params.out_width},
+                           pool_params.out_depth, &forward_output_shape));
       }
+      OP_REQUIRES(
+          context, grad_tensor.shape() == forward_output_shape,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Expected grad shape to be ", forward_output_shape.DebugString(),
+              ", but got ", grad_tensor.shape().DebugString())));
 
       if (output_shape.num_elements() == 0 || grad_tensor.NumElements() == 0) {
         return;
       }
       // Used to allocate output_diff_src/diff_src.
       MklDnnData<T> grad_dnn_data(&cpu_engine_);
-      MklPoolParameters pool_params;
-      this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
-                                  output_shape);
 
       memory::dims filter_dims, strides, padding_left, padding_right;
 #ifndef ENABLE_ONEDNN_V3

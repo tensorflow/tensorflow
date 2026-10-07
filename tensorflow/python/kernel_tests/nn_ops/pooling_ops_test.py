@@ -2402,14 +2402,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def testAvgPoolGradOutputMemoryOutOfBounds(self):
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        (
-            # oneDNN error message
-            "(Output only has 3 elements but computation requested would use"
-            " element with index=6"
-            ")|("
-            # CPU and GPU error message
-            r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\])"
-        ),
+        r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\]"
     ):
       self.evaluate(
           gen_nn_ops.AvgPoolGrad(
@@ -2429,8 +2422,6 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_xla("Xla does not raise error on out of bounds access")
   def testAvgPoolGradMismatchedGradShapeRaisesError(self):
-    if test_util.IsMklEnabled():
-      self.skipTest("The oneDNN AvgPoolGrad kernel does not check grad's shape")
     # Each grad has more channels than the input. The CPU kernel used to write
     # past the end of its output buffer instead of raising an error.
     for orig_input_shape, grad_shape, ksize, expected in (
