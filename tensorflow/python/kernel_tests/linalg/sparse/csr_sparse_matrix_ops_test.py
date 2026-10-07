@@ -708,6 +708,60 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(c_t_value, c_dense_t_value, atol=1e-5, rtol=1e-5)
 
   @test_util.run_in_graph_and_eager_modes
+  def testSparseMatrixSparseMatMulOOBColIndexRaisesError(self):
+    import struct  # pylint: disable=g-import-not-at-top
+    metadata_bytes = struct.pack('=?xxxI', True, 1)
+
+    dense_shape = np.array([2, 3], dtype=np.int64)
+    batch_pointers = np.array([0, 1], dtype=np.int32)
+    row_pointers = np.array([0, 1, 1], dtype=np.int32)
+    col_indices = np.array([999], dtype=np.int32)  # 999 >= num_cols=3
+    values = np.array([1.0], dtype=np.float32)
+
+    variant_data = tensor_pb2.VariantTensorDataProto(
+        type_name='tensorflow::CSRSparseMatrix',
+        metadata=metadata_bytes,
+        tensors=[
+            tensor_util.make_tensor_proto(dense_shape),
+            tensor_util.make_tensor_proto(batch_pointers),
+            tensor_util.make_tensor_proto(row_pointers),
+            tensor_util.make_tensor_proto(col_indices),
+            tensor_util.make_tensor_proto(values),
+        ])
+    variant_tensor_proto = tensor_pb2.TensorProto(
+        dtype=dtypes.variant.as_datatype_enum,
+        tensor_shape=tensor_shape.TensorShape([]).as_proto())
+    variant_tensor_proto.variant_val.extend([variant_data])
+    a_sm = constant_op.constant(variant_tensor_proto)
+
+    b_dense_shape = np.array([3, 2], dtype=np.int64)
+    b_batch_pointers = np.array([0, 1], dtype=np.int32)
+    b_row_pointers = np.array([0, 1, 1, 1], dtype=np.int32)
+    b_col_indices = np.array([0], dtype=np.int32)
+    b_values = np.array([1.0], dtype=np.float32)
+
+    b_variant_data = tensor_pb2.VariantTensorDataProto(
+        type_name='tensorflow::CSRSparseMatrix',
+        metadata=metadata_bytes,
+        tensors=[
+            tensor_util.make_tensor_proto(b_dense_shape),
+            tensor_util.make_tensor_proto(b_batch_pointers),
+            tensor_util.make_tensor_proto(b_row_pointers),
+            tensor_util.make_tensor_proto(b_col_indices),
+            tensor_util.make_tensor_proto(b_values),
+        ])
+    b_variant_proto = tensor_pb2.TensorProto(
+        dtype=dtypes.variant.as_datatype_enum,
+        tensor_shape=tensor_shape.TensorShape([]).as_proto())
+    b_variant_proto.variant_val.extend([b_variant_data])
+    b_sm = constant_op.constant(b_variant_proto)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          sparse_csr_matrix_ops.sparse_matrix_sparse_mat_mul(
+              a=a_sm, b=b_sm, type=dtypes.float32))
+
+  @test_util.run_in_graph_and_eager_modes
   def testSparseMatrixSparseMatMul(self):
     a_indices = np.array([[0, 0], [2, 3]])
     a_values = np.array([1.0, 5.0]).astype(np.float32)

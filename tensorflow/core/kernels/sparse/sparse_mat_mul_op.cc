@@ -180,6 +180,37 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     const bool broadcast_batch_a = (batch_size > input_matrix_a->batch_size());
     const bool broadcast_batch_b = (batch_size > input_matrix_b->batch_size());
 
+    const int64_t a_num_cols =
+        input_matrix_a->dense_shape().vec<int64_t>()(row_dim + 1);
+    for (int batch_idx = 0; batch_idx < input_matrix_a->batch_size();
+         ++batch_idx) {
+      const auto col_ind = input_matrix_a->col_indices_vec(batch_idx);
+      const int32_t* col_ptr = col_ind.data();
+      const int64_t nnz = col_ind.size();
+      for (int64_t i = 0; i < nnz; ++i) {
+        OP_REQUIRES(ctx, col_ptr[i] >= 0 && col_ptr[i] < a_num_cols,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "a col_indices[", batch_idx, ", ", i, "] = ", col_ptr[i],
+                        " is out of bounds; expected value in [0, ", a_num_cols,
+                        ")")));
+      }
+    }
+    const int64_t b_num_cols =
+        input_matrix_b->dense_shape().vec<int64_t>()(row_dim + 1);
+    for (int batch_idx = 0; batch_idx < input_matrix_b->batch_size();
+         ++batch_idx) {
+      const auto col_ind = input_matrix_b->col_indices_vec(batch_idx);
+      const int32_t* col_ptr = col_ind.data();
+      const int64_t nnz = col_ind.size();
+      for (int64_t i = 0; i < nnz; ++i) {
+        OP_REQUIRES(ctx, col_ptr[i] >= 0 && col_ptr[i] < b_num_cols,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "b col_indices[", batch_idx, ", ", i, "] = ", col_ptr[i],
+                        " is out of bounds; expected value in [0, ", b_num_cols,
+                        ")")));
+      }
+    }
+
     Tensor output_shape(cpu_allocator(), DT_INT64, TensorShape({rank}));
     auto output_shape_vec = output_shape.vec<int64_t>();
     if (rank == 3) output_shape_vec(0) = batch_size;
