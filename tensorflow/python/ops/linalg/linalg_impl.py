@@ -610,9 +610,9 @@ def tridiagonal_solve(diagonals,
     if not isinstance(diagonals, (tuple, list)) or len(diagonals) != 3:
       raise ValueError('Expected diagonals to be a sequence of length 3.')
 
-    superdiag, maindiag, subdiag = (
-        ops.convert_to_tensor(d, name=n) for d, n in zip(
-            diagonals, ('superdiag', 'maindiag', 'subdiag')))
+    superdiag = ops.convert_to_tensor(diagonals[0], name='superdiag')
+    maindiag = ops.convert_to_tensor(diagonals[1], name='maindiag')
+    subdiag = ops.convert_to_tensor(diagonals[2], name='subdiag')
     if (not subdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1]) or
         not superdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1])):
       raise ValueError(
