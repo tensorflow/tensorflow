@@ -19,12 +19,130 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
+
+#include <cstdint>
+#include <limits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
 constexpr const char CSRSparseMatrix::kTypeName[];
+
+absl::Status CSRSparseMatrix::ValidateComponentValues(
+    const Tensor& dense_shape, const Tensor& batch_pointers,
+    const Tensor& row_pointers, const Tensor& col_indices) {
+  // Decode rejects device-resident dense_shape/index tensors before calling
+  // this, so every tensor read here is host-resident.
+  //
+  // dense_shape has already been checked to be an int64 vector of size 2 or 3
+  // by ValidateTypesAndShapes, and the index arrays to be int32 vectors of the
+  // matching sizes: batch_pointers -> batch_size + 1,
+  // row_pointers -> batch_size * (num_rows + 1), col_indices -> total nnz.
+  const auto dense_shape_vec = dense_shape.vec<int64_t>();
+  const int rank = dense_shape.dim_size(0);
+  const int64_t batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
+  const int64_t num_rows =
+      (rank == 2) ? dense_shape_vec(0) : dense_shape_vec(1);
+  const int64_t num_cols =
+      (rank == 2) ? dense_shape_vec(1) : dense_shape_vec(2);
+  if (batch_size < 0 || num_rows < 0 || num_cols < 0) {
+    return errors::InvalidArgument(absl::StrCat(
+        "CSRSparseMatrix::Validate: dense_shape has a negative dimension: ",
+        dense_shape.SummarizeValue(5)));
+  }
+  // ValidateTypesAndShapes sizes row_pointers as batch_size * (num_rows + 1).
+  // With dimensions taken straight from an untrusted dense_shape that product
+  // can wrap in int64 (e.g. num_rows = INT64_MAX makes it 0), letting a
+  // 0-element row_pointers pass the shape check and reach the loop below, where
+  // row_ptr[base] reads a null buffer. Reject dimensions that would overflow.
+  if (num_rows == std::numeric_limits<int64_t>::max() ||
+      (batch_size > 0 &&
+       (num_rows + 1) > std::numeric_limits<int64_t>::max() / batch_size)) {
+    return errors::InvalidArgument(absl::StrCat(
+        "CSRSparseMatrix::Validate: dense_shape dimensions overflow int64: ",
+        dense_shape.SummarizeValue(5)));
+  }
+
+  const int64_t total_nnz = col_indices.NumElements();
+  // The tensors are host-resident (Decode rejects device tensors), so read
+  // them through raw pointers to keep these O(nnz) loops cheap and
+  // vectorizable.
+  const int32_t* batch_ptr = batch_pointers.flat<int32_t>().data();
+  const int32_t* row_ptr = row_pointers.flat<int32_t>().data();
+  const int32_t* col_ind = col_indices.flat<int32_t>().data();
+
+  // batch_pointers: 0, ..., total_nnz (non-decreasing offsets into the values).
+  // Anchoring at 0 and rejecting any decrease keeps every entry non-negative,
+  // so carry the previous value in a register and drop the redundant < 0 test.
+  if (batch_ptr[0] != 0) {
+    return errors::InvalidArgument(absl::StrCat(
+        "CSRSparseMatrix::Validate: batch_pointers[0] = ", batch_ptr[0],
+        " but should be 0"));
+  }
+  int32_t prev_batch = 0;
+  for (int64_t b = 0; b < batch_size; ++b) {
+    const int32_t next_batch = batch_ptr[b + 1];
+    if (next_batch < prev_batch) {
+      return errors::InvalidArgument(absl::StrCat(
+          "CSRSparseMatrix::Validate: batch_pointers must be non-decreasing, "
+          "saw ",
+          prev_batch, " -> ", next_batch, " at batch ", b));
+    }
+    prev_batch = next_batch;
+  }
+  if (batch_ptr[batch_size] != total_nnz) {
+    return errors::InvalidArgument(absl::StrCat(
+        "CSRSparseMatrix::Validate: batch_pointers[batch_size] = ",
+        batch_ptr[batch_size], " but should equal nnz = ", total_nnz));
+  }
+
+  // row_pointers: within each batch, 0, ..., nnz(batch) (non-decreasing). Same
+  // reasoning as above: anchored at 0 and non-decreasing implies non-negative.
+  for (int64_t b = 0; b < batch_size; ++b) {
+    const int64_t base = b * (num_rows + 1);
+    const int32_t batch_nnz = batch_ptr[b + 1] - batch_ptr[b];
+    if (row_ptr[base] != 0) {
+      return errors::InvalidArgument(
+          absl::StrCat("CSRSparseMatrix::Validate: row_pointers for batch ", b,
+                       " should start at 0, saw ", row_ptr[base]));
+    }
+    int32_t prev_row = 0;
+    for (int64_t r = 0; r < num_rows; ++r) {
+      const int32_t next_row = row_ptr[base + r + 1];
+      if (next_row < prev_row) {
+        return errors::InvalidArgument(absl::StrCat(
+            "CSRSparseMatrix::Validate: row_pointers must be non-decreasing, "
+            "saw ",
+            prev_row, " -> ", next_row, " in batch ", b));
+      }
+      prev_row = next_row;
+    }
+    // prev_row already holds row_ptr[base + num_rows] (or 0 when num_rows ==
+    // 0), so compare it directly instead of reloading from memory.
+    if (prev_row != batch_nnz) {
+      return errors::InvalidArgument(absl::StrCat(
+          "CSRSparseMatrix::Validate: last row_pointer for batch ", b, " = ",
+          prev_row, " but should equal the batch nnz = ", batch_nnz));
+    }
+  }
+
+  // col_indices: every column index is in [0, num_cols). A single unsigned
+  // compare folds the negative and >= num_cols cases into one branch.
+  for (int64_t i = 0; i < total_nnz; ++i) {
+    if (static_cast<uint64_t>(col_ind[i]) >= static_cast<uint64_t>(num_cols)) {
+      return errors::InvalidArgument(
+          absl::StrCat("CSRSparseMatrix::Validate: column index ", col_ind[i],
+                       " is outside of the valid range [0, ", num_cols, ")"));
+    }
+  }
+
+  return absl::OkStatus();
+}
 
 // Register variant decoding function for TF's RPC.
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(CSRSparseMatrix,
