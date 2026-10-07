@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/utils.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
