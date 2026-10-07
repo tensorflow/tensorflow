@@ -55,6 +55,16 @@ class BinValuesFixedWidth(test.TestCase, parameterized.TestCase):
       self.assertEqual(dtypes.int32, bins.dtype)
       self.assertAllClose(expected_bins, self.evaluate(bins))
 
+  @parameterized.parameters(np.float32, np.float64)
+  def test_1d_values_python_value_range(self, dtype):
+    # value_range given as a Python list takes the dtype of values.
+    values = np.array([-1.0, 0.0, 1.5, 2.0, 5.0, 15]).astype(dtype)
+    expected_bins = [0, 0, 1, 2, 4, 4]
+    with self.cached_session():
+      bins = histogram_ops.histogram_fixed_width_bins(
+          values, [0.0, 5.0], nbins=5)
+      self.assertAllClose(expected_bins, self.evaluate(bins))
+
   def test_2d_values(self):
     # Bins will be:
     #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)

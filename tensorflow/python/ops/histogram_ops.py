@@ -77,7 +77,8 @@ def histogram_fixed_width_bins(values,
     shape = array_ops.shape(values)
 
     values = array_ops.reshape(values, [-1])
-    value_range = ops.convert_to_tensor(value_range, name='value_range')
+    value_range = ops.convert_to_tensor(
+        value_range, dtype_hint=values.dtype, name='value_range')
     nbins = ops.convert_to_tensor(nbins, dtype=dtypes.int32, name='nbins')
     check = control_flow_assert.Assert(
         math_ops.greater(nbins, 0), ['nbins %s must > 0' % nbins])
