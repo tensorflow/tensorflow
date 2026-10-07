@@ -182,6 +182,76 @@ TEST(CastOpModel, CastInt2ToFloat8E5M2) {
 }
 #endif
 
+TEST(CastOpModel, CastInt2ToInt32) {
+  CastOpModel m({TensorType_INT2, {7}}, {TensorType_INT32, {7}});
+  m.Set2BitInput({1, 0, -1, -2, 1, 0, -1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({1, 0, -1, -2, 1, 0, -1}));
+}
+
+TEST(CastOpModel, CastInt2ToInt8) {
+  CastOpModel m({TensorType_INT2, {2, 4}}, {TensorType_INT8, {2, 4}});
+  m.Set2BitInput({-2, -1, 0, 1, 1, 0, -1, -2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int8_t>(m.output()),
+              ElementsAreArray({-2, -1, 0, 1, 1, 0, -1, -2}));
+}
+
+TEST(CastOpModel, CastInt4ToInt32) {
+  CastOpModel m({TensorType_INT4, {7}}, {TensorType_INT32, {7}});
+  m.Set4BitInput({-8, -3, -1, 0, 1, 3, 7});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({-8, -3, -1, 0, 1, 3, 7}));
+}
+
+TEST(CastOpModel, CastUInt4ToInt32) {
+  CastOpModel m({TensorType_UINT4, {7}}, {TensorType_INT32, {7}});
+  m.SetUInt4Input({0, 1, 3, 7, 8, 12, 15});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({0, 1, 3, 7, 8, 12, 15}));
+}
+
+TEST(CastOpModel, CastInt4ToFloat16) {
+  CastOpModel m({TensorType_INT4, {4}}, {TensorType_FLOAT16, {4}});
+  m.Set4BitInput({-8, -1, 0, 7});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<half>(m.output()),
+              ElementsAreArray({half(-8.f), half(-1.f), half(0.f), half(7.f)}));
+}
+
+TEST(CastOpModel, CastInt4ToBool) {
+  CastOpModel m({TensorType_INT4, {5}}, {TensorType_BOOL, {5}});
+  m.Set4BitInput({-8, -1, 0, 1, 7});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<bool>(m.output()),
+              ElementsAreArray({true, true, false, true, true}));
+}
+
+TEST(CastOpModel, CastInt4ToInt64) {
+  CastOpModel m({TensorType_INT4, {5}}, {TensorType_INT64, {5}});
+  m.Set4BitInput({-8, -1, 0, 1, 7});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int64_t>(m.output()),
+              ElementsAreArray({-8, -1, 0, 1, 7}));
+}
+
+TEST(CastOpModel, CastInt2ToInt16) {
+  CastOpModel m({TensorType_INT2, {6}}, {TensorType_INT16, {6}});
+  m.Set2BitInput({-2, -1, 0, 1, -2, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int16_t>(m.output()),
+              ElementsAreArray({-2, -1, 0, 1, -2, 1}));
+}
+
+TEST(CastOpModel, CastInt4ToInt4Unsupported) {
+  CastOpModel m({TensorType_INT4, {4}}, {TensorType_INT4, {4}});
+  m.Set4BitInput({-8, -1, 0, 7});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
 TEST(CastOpModel, CastFloatToInt4) {
   CastOpModel m({TensorType_FLOAT32, {2, 4}}, {TensorType_INT4, {2, 4}});
   m.PopulateTensor<float>(m.input(), {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, -8.f});

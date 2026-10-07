@@ -34,8 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 
 // Helpers for writing custom-call thunk-folding handlers. See
-// `native_custom_call_handler_registry.h` for the mechanism itself and
-// `g3doc/native_custom_call_handlers.md` for a tutorial.
+// `native_custom_call_handler_registry.h` for the mechanism itself.
 
 namespace xla::gpu {
 

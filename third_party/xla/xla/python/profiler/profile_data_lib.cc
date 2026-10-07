@@ -211,9 +211,19 @@ ProfileData::ProfileData(const void* serialized_xspace_ptr,
   }
 }
 
-/*explicit*/ ProfileData::ProfileData(std::shared_ptr<XSpace> xspace_ptr) {
-  xspace_ = xspace_ptr;
-}
+// Store session_id on ProfileData and support chunked XSpaces while
+// aliasing the first chunk so plane visitors remain valid without null derefs.
+/*explicit*/ ProfileData::ProfileData(std::shared_ptr<XSpace> xspace_ptr,
+                                      std::string session_id)
+    : xspace_(std::move(xspace_ptr)), session_id_(std::move(session_id)) {}
+
+/*explicit*/ ProfileData::ProfileData(
+    std::shared_ptr<std::vector<XSpace>> xspaces_ptr, std::string session_id)
+    : xspace_((xspaces_ptr && !xspaces_ptr->empty())
+                  ? std::shared_ptr<XSpace>(xspaces_ptr, &(*xspaces_ptr)[0])
+                  : std::make_shared<XSpace>()),
+      xspaces_(std::move(xspaces_ptr)),
+      session_id_(std::move(session_id)) {}
 
 /*explicit*/ ProfileData::ProfileData(const nb::bytes& serialized_xspace) {
   if (!xspace_) {

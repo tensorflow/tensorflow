@@ -645,8 +645,15 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
   TF_LITE_ENSURE(context, num_detections_per_class > 0);
 
   int sorted_indices_size = 0;
+  // In the multi-threaded path, both the accumulated result
+  // (`sorted_indices_size`) and each task's result
+  // (`tasks[j].sorted_indices_size`) can hold up to `max_detections` entries
+  // before they are merged and truncated, so the buffer must hold
+  // `2 * max_detections` entries. The single-threaded path needs at most
+  // `max_detections + num_detections_per_class`, which is no larger because
+  // `num_detections_per_class <= max_detections`.
   std::vector<BoxInfo> box_info_after_regular_non_max_suppression(
-      max_detections + num_detections_per_class);
+      2 * max_detections);
   std::vector<int> num_selected(num_classes);
 
   NMSTaskParam nms_task_param{context,

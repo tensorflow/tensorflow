@@ -279,7 +279,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   ...   true_fn =  lambda: y+1
   ...   false_fn = lambda: y-1
   ...   return tf.cond(pred, true_fn, false_fn)  # Use tf.cond() explicitly.
-  >>> print(fun1(tf.constant(7), tf.constant(3)).numpy())
+  >>> print(fun2(tf.constant(7), tf.constant(3)).numpy())
   4
 
   For more information, see [tf.function and AutoGraph guide](
@@ -351,7 +351,6 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   >>> # Operations in f2 (e.g., tf.add) are not executed.
   >>> print(r.numpy())
   14
-
   """
   return cond(pred, true_fn=true_fn, false_fn=false_fn, strict=True, name=name)
 

@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_filter.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/collective_utils.h"
-#include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/util/command_line_flags.h"
@@ -266,7 +265,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_xnnpack(true);
-  opts.set_xla_cpu_use_new_xtile_lowering(false);
+  opts.set_xla_cpu_use_new_xtile_lowering(true);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
   opts.add_xla_cpu_experimental_ynn_fusion_type(
@@ -303,6 +302,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_trace_annotation_level(0);
   opts.set_xla_gpu_enable_cupti_multi_subscriber(true);
 
+  opts.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES_KERNEL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
@@ -311,6 +311,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::DYNAMIC_SLICE_FUSION);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   opts.add_xla_gpu_enable_collectives_command_buffer_filter(
+      DebugOptions::ALLCOLLECTIVES);
+  opts.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
       DebugOptions::ALLCOLLECTIVES);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
@@ -356,11 +358,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_dynamic_slice_fusion(true);
   opts.set_xla_gpu_enable_dus_accumulator_zero_init_elimination(false);
   opts.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(false);
+  opts.set_xla_gpu_experimental_enable_dynamic_slice_table_offsets(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_user_buffers_in_default_space(false);
   opts.set_xla_gpu_enable_allocator_spatial_partitioning(true);
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
+  opts.set_xla_gpu_experimental_vmm_disabled(false);
+  opts.set_xla_gpu_experimental_emit_collective_reduce(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
@@ -409,9 +414,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(false);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
-  opts.set_xla_gpu_experimental_gemm_fusion_v2(false);
+  opts.set_xla_gpu_experimental_gemm_fusion_v2(true);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
-  opts.set_xla_gpu_experimental_enable_tiling_propagation(false);
+  opts.set_xla_gpu_experimental_enable_tiling_propagation(true);
   opts.set_xla_gpu_experimental_cost_model_gemm_tiling_default(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
@@ -438,6 +443,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_fail_ptx_compilation_on_register_spilling(false);
   opts.set_xla_gpu_llvm_verification_level(0);
   opts.set_xla_gpu_target_config_filename("");
+  opts.set_xla_gpu_topology_filename("");
   opts.set_xla_gpu_enable_cub_radix_sort(true);
   opts.set_xla_gpu_enable_cudnn_layer_norm(false);
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(100000);
@@ -512,6 +518,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_execution_terminate_timeout("inf");
+  opts.set_xla_gpu_device_execution_terminate_timeout("inf");
   opts.set_xla_gpu_execution_progress_tracking(0);
 
   opts.set_xla_gpu_first_collective_call_warn_stuck_timeout_seconds(20);
@@ -521,7 +528,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
-  opts.set_xla_gpu_experimental_enable_conv_fusion(false);
+  opts.set_xla_gpu_experimental_enable_conv_fusion(true);
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -1756,8 +1763,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_cpu_max_isa(),
       "Maximum ISA that XLA:CPU LLVM backend will codegen, i.e., it will not "
       "use newer instructions. Available values: SSE4_2, AVX, AVX2, AVX512, "
-      "AVX512_VNNI, AVX512_BF16, AMX, and AMX_FP16. (`AMX` will enable both "
-      "`AMX_BF16` and `AMX_INT8` instructions.)"));
+      "AVX512_VNNI, AVX512_BF16, AMX, AMX_FP16, and AMX_FP8. (`AMX` will "
+      "enable both `AMX_BF16` and `AMX_INT8` instructions.)"));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_emitter_verification_level",
       int32_setter_for(&DebugOptions::set_xla_cpu_emitter_verification_level),
@@ -2367,6 +2374,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "annotated DynamicSliceConfig offsets match actual XLA-computed "
       "DS/DUS offsets. Adds D2H sync overhead — for debugging only."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_dynamic_slice_table_offsets",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_dynamic_slice_table_offsets),
+      debug_options->xla_gpu_experimental_enable_dynamic_slice_table_offsets(),
+      "Enables DynamicSliceAnnotator to represent non-linear DS/DUS offsets "
+      "as a table with one entry per loop iteration."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
           &DebugOptions::set_xla_gpu_nccl_termination_timeout_seconds),
@@ -2401,6 +2416,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_nccl_symmetric_buffers),
       debug_options->xla_gpu_experimental_enable_nccl_symmetric_buffers(),
       "Enables NCCL symmetric buffer registration."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_emit_collective_reduce",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_emit_collective_reduce),
+      debug_options->xla_gpu_experimental_emit_collective_reduce(),
+      "Enables emitting a CollectiveReduceThunk for kCollectiveReduce HLO "
+      "instructions. Kept off by default to preserve the forward "
+      "compatibility window until the runtime support for the thunk has "
+      "rolled out."));
   flag_list->push_back(tsl::Flag(
       "xla_enable_nccl_symmetric_buffers_for_collectives",
       setter_for_xla_enable_nccl_symmetric_buffers_for_collectives,
@@ -2872,6 +2896,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "device is "
       "ignored, and the proto is queried instead"));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_topology_filename",
+      string_setter_for(&DebugOptions::set_xla_gpu_topology_filename),
+      debug_options->xla_gpu_topology_filename(),
+      "Filename for GpuTopologyProto or inline topology spec "
+      "([platform:]num_partitionsxnum_hosts_per_partitionxnum_devices_per_host"
+      "). Triggers deviceless compilation when target config is present."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_cub_radix_sort",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cub_radix_sort),
       debug_options->xla_gpu_enable_cub_radix_sort(),
@@ -2948,7 +2979,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                     : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
         return true;
       },
-      stream_executor::IsLibNvJitLinkSupported(),
+      /*default_value_for_display=*/true,
       "Use libnvjitlink for PTX-to-GPU-assembly compilation instead of "
       "calling ptxas."));
   flag_list->push_back(tsl::Flag(
@@ -3250,7 +3281,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       duration_setter_for(
           &DebugOptions::set_xla_gpu_execution_terminate_timeout),
       debug_options->xla_gpu_execution_terminate_timeout(),
-      "Set timeout for XLA:GPU execution to prevent undetected deadlocks"));
+      "Set timeout for host-side XLA:GPU execution "
+      "(inf to disable); does not wait for asynchronous device work"));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_device_execution_terminate_timeout",
+      duration_setter_for(
+          &DebugOptions::set_xla_gpu_device_execution_terminate_timeout),
+      debug_options->xla_gpu_device_execution_terminate_timeout(),
+      "Set timeout to abort if enqueued XLA:GPU device work does not complete "
+      "after host dispatch (inf to disable)"));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_execution_progress_tracking",
@@ -3321,7 +3361,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           debug_options->xla_gpu_experimental_use_collective_kernels()),
       "Experimental: comma-separated filter of collective ops that should use "
       "custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL. "
-      "Accepted values: ALL_REDUCE, ALL_GATHER (case-insensitive; the "
+      "Accepted values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER "
+      "(case-insensitive; the "
       "COLLECTIVE_KERNEL_ prefix may be omitted). Supports +/- "
       "incremental modifiers (e.g. +ALL_REDUCE,-ALL_GATHER). The deprecated "
       "--xla_gpu_unsupported_use_all_reduce_one_shot_kernel flag also adds "
@@ -3722,6 +3763,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_scaled_dot_with_triton),
       debug_options->xla_gpu_experimental_scaled_dot_with_triton(),
       "If true, use the Triton emitter for scaled dot."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_vmm_disabled",
+      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_vmm_disabled),
+      debug_options->xla_gpu_experimental_vmm_disabled(),
+      "If true, disables CUDA Virtual Memory Management (VMM) APIs for device "
+      "memory allocation and collective fusion."));
 
   flag_list->push_back(tsl::Flag(
       "xla_cpu_collective_call_warn_stuck_timeout_seconds",

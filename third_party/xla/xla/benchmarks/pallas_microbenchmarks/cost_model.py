@@ -25,6 +25,24 @@ import numpy as np
 from xla.benchmarks.core import platform_info
 
 
+def vmem_for_operand(
+    d1: int,
+    d2: int,
+    block_d1: int | np.ndarray,
+    block_d2: int | np.ndarray,
+    dtype: jax.typing.DTypeLike,
+) -> int | np.ndarray:
+  """Calculates VMEM buffer usage for an operand including double buffering."""
+  return (
+      # Double-buffer if the operand doesn't fit in the window.
+      (2 - ((d1 == block_d1) & (d2 == block_d2)))
+      * block_d1
+      * block_d2
+      * jax.dtypes.itemsize_bits(dtype)
+      // 8
+  )
+
+
 def _vmem_usage_bytes(
     m: int,
     k: int,
@@ -61,29 +79,18 @@ def _vmem_usage_bytes(
     The estimated VMEM usage in bytes, or an array of VMEM usages for all
     block size combinations.
   """
-
-  def _vmem_for_operand(d1, d2, block_d1, block_d2, dtype):
-    return (
-        # Double-buffer if the operand doesn't fit in the window.
-        (2 - ((d1 == block_d1) & (d2 == block_d2)))
-        * block_d1
-        * block_d2
-        * jax.dtypes.itemsize_bits(dtype)
-        // 8
-    )
-
-  rhs_vmem_usage = _vmem_for_operand(k, n, block_k, block_n, rhs_dtype)
+  rhs_vmem_usage = vmem_for_operand(k, n, block_k, block_n, rhs_dtype)
   if sparse_rhs:
-    rhs_sp_indices_vmem_usage = _vmem_for_operand(
+    rhs_sp_indices_vmem_usage = vmem_for_operand(
         k, n, block_k, block_n, jnp.int2
     )
     rhs_vmem_usage = (
         (rhs_vmem_usage + rhs_sp_indices_vmem_usage) * sp_n // sp_m
     )
   return (
-      _vmem_for_operand(m, k, block_m, block_k, lhs_dtype)
+      vmem_for_operand(m, k, block_m, block_k, lhs_dtype)
       + rhs_vmem_usage
-      + _vmem_for_operand(m, n, block_m, block_n, out_dtype)
+      + vmem_for_operand(m, n, block_m, block_n, out_dtype)
       # Only one accumulator tile is needed.
       + block_m * block_n * jax.dtypes.itemsize_bits(acc_dtype) // 8
   )

@@ -36,15 +36,14 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
 struct TritonWrapperResult;
-using BorrowedMlirContext =
-    ObjectPool<std::unique_ptr<mlir::MLIRContext>>::BorrowedObject;
+using BorrowedMlirContext = MlirContextPool::BorrowedObject;
 
 // Abstract base class for asynchronous kernel compilation.
 //

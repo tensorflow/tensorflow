@@ -141,6 +141,7 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tsl//tsl/profiler/lib:connected_traceme",
         "@tsl//tsl/profiler/lib:context_types_hdrs",
+        "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla/tsl/platform:criticality",
     ],
 )
@@ -235,6 +236,7 @@ tf_cc_shared_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/ops:math_ops_op_lib",
+        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/tfrt/fallback:device_with_custom_allocator",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/mlrt/bytecode",
@@ -248,8 +250,16 @@ tf_cc_shared_test(
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:hostcontext",
         "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@xla//xla/backends/profiler/cpu:host_tracer",  # buildcleaner: keep
         "@xla//xla/tsl/lib/core:status_test_util",
         "@xla//xla/tsl/platform:status_matchers",
+        "@xla//xla/tsl/profiler/utils:group_events",
+        "@xla//xla/tsl/profiler/utils:preprocess_xplane",
+        "@xla//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "@xla//xla/tsl/profiler/utils:xplane_schema",
+        "@xla//xla/tsl/profiler/utils:xplane_visitor",
     ],
 )
 

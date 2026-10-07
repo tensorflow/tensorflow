@@ -104,6 +104,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_interpreter": "Uses interpreter backend.",
     "xla_cpu": "Uses CPU backend.",
     "xla_amdgpu_any": "Uses ROCm backend.",
+    "xla_mi350": "Runs on MI350 backend.",
     "xla_nvgpu_any": "Uses NVIDIA GPU backend.",
     "xla_intelgpu_any": "Uses Intel GPU backend.",
     # Below tags are emitted alongside `requires-gpu-x` tags, which is what the

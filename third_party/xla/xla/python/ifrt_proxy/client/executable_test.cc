@@ -144,8 +144,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
   ON_CALL(device2, Id()).WillByDefault(Return(DeviceId(2)));
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*devices=*/{},
-      /*addressable_devices=*/{},
+      /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
@@ -226,7 +225,7 @@ TEST_F(LoadedExecutableTest, Execute) {
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*devices=*/{}, /*addressable_devices=*/{},
+      /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
@@ -390,7 +389,7 @@ TEST_F(LoadedExecutableTest, DeviceTime) {
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/1, /*devices=*/{}, /*addressable_devices=*/{},
+      /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 

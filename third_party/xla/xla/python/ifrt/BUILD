@@ -583,8 +583,10 @@ cc_library(
     visibility = internal_visibility([
         ":friends",
         ":internal",
+        ":users",
     ]),
     deps = [
+        ":attribute_map",
         ":basic_device_list",
         ":ifrt",
         ":mock",
@@ -785,7 +787,6 @@ cc_library(
     visibility = internal_visibility([
         ":friends",
         ":internal",
-        ":users",
     ]),
     deps = [
         ":attribute_map",

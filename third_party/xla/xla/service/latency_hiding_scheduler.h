@@ -208,6 +208,10 @@ struct SchedulerConfig {
   bool top_down_scheduling = false;
   // If true, enable schedule by structure.
   bool enable_schedule_by_structure = false;
+  // If true (and enable_schedule_by_structure is true), synchronous
+  // collectives are used as schedule anchors by the target-specific
+  // schedule-by-structure (critical path depth) heuristic.
+  bool enable_cpd_for_sync_collective = true;
   // If set, only log computations that match the given regular expression.
   std::string log_computation_re;
 };
@@ -474,6 +478,12 @@ class AsyncTracker {
 
   const SchedulerConfig& GetConfig() const { return config_; }
 
+  // Overrides SchedulerConfig::enable_cpd_for_sync_collective. Used by the
+  // scheduler to reschedule with a different schedule-by-structure setting.
+  void SetEnableCpdForSyncCollective(bool enable) {
+    config_.enable_cpd_for_sync_collective = enable;
+  }
+
   // Clears the cache of per-computation resource maps. This is needed when,
   // e.g., we modify the schedule of a computation, which could change the
   // resource usage of the computation.
@@ -521,7 +531,7 @@ class AsyncTracker {
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
 
  protected:
-  const SchedulerConfig config_;
+  SchedulerConfig config_;
   mutable absl::Mutex resources_cache_mu_;
   mutable absl::flat_hash_map<const HloInstruction*,
                               std::unique_ptr<ResourcesVector>>

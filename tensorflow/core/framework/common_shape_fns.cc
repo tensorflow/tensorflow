@@ -1401,10 +1401,25 @@ absl::Status AvgPoolShape(shape_inference::InferenceContext* c) {
   // in the kernel implementation.
 
   DimensionHandle output_rows, output_cols;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, kernel_rows, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
+  auto pooling_output_size = [&](DimensionHandle input_size, int32_t window,
+                                 int32_t stride, DimensionHandle* output_size) {
+    if (padding == Padding::VALID && stride > 0 && c->ValueKnown(input_size) &&
+        c->Value(input_size) < window) {
+      // Runtime pooling uses signed division, which truncates toward zero.
+      // Compare the gap with twice the stride without overflowing.
+      const int64_t gap = static_cast<int64_t>(window) - c->Value(input_size);
+      if (gap - stride < stride) {
+        *output_size = c->MakeDim(0);
+        return absl::OkStatus();
+      }
+    }
+    return GetWindowedOutputSizeFromDims(c, input_size, window, stride, padding,
+                                         output_size);
+  };
+  TF_RETURN_IF_ERROR(
+      pooling_output_size(in_rows_dim, kernel_rows, stride_rows, &output_rows));
+  TF_RETURN_IF_ERROR(
+      pooling_output_size(in_cols_dim, kernel_cols, stride_cols, &output_cols));
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,

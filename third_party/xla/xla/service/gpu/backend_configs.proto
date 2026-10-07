@@ -238,28 +238,46 @@ message CuDnnFusionConfig {
 }
 
 // A backend config for dynamic-slice and dynamic-update-slice instructions
-// whose runtime offset is a simple function of the parent loop iteration.
-// Only set on instructions where offset analysis succeeds; absence of this
-// config means the slice is truly data-dependent.
+// whose runtime offset is known for every parent loop iteration, or is static.
+// Only set on instructions where offset analysis succeeds.
 message DynamicSliceConfig {
   // Index into the while loop nest. Value `0` means that the dynamic slice
   // offset depends on the innermost while loop. Value `1` means that it depends
   // on the parent while loop. See `while_loop.h` in `xla/backends/gpu/runtime`
   // that documents how while loops work at run time in XLA:GPU.
   //
-  // Must be set when byte_stride != 0. When byte_stride == 0 the offset is
-  // loop invariant and fully defined by constant offsets.
+  // Must be set for a table or a nonzero linear.byte_stride. A zero stride
+  // represents a loop-invariant offset.
   optional int64 loop_index = 1;
 
-  // Initial byte offset into the sliced buffer. Together with a negative
-  // byte_stride it allows traversing buffer slices backwards.
+  // Legacy fields for loading older serialized executables. Deserialization
+  // converts these to Linear when offsets is unset. Thunk serialization also
+  // populates them for Linear offsets so that older runtimes can execute newer
+  // executables (see the GPU compatibility window in docs/contributing.md).
   int64 byte_offset = 2;
-
-  // Byte stride into the sliced buffer. At run time the buffer offset is
-  // computed as `byte_offset + loop_iteration[loop_index] * byte_stride`.
-  //
-  // When byte_stride is 0 the DS/DUS is loop-invariant (fully static offset).
   int64 byte_stride = 3;
+
+  message Linear {
+    // Initial byte offset into the sliced buffer. Together with a negative
+    // byte_stride it allows traversing buffer slices backwards.
+    int64 byte_offset = 1;
+
+    // Byte stride per loop iteration. Zero means that the DS/DUS is
+    // loop-invariant. The computed offset is clamped at run time.
+    int64 byte_stride = 2;
+  }
+
+  message Table {
+    // One byte offset per loop iteration, after per-dimension HLO clamping.
+    // Indexed by loop iteration, starting at zero, not induction variable
+    // value.
+    repeated int64 offsets = 1;
+  }
+
+  oneof offsets {
+    Linear linear = 5;
+    Table table = 4;
+  }
 }
 
 // Next id: 8

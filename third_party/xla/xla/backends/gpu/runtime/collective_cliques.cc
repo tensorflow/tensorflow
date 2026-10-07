@@ -190,7 +190,7 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     // multiple processes via an external storage (i.e. builtin KV store).
     //
     // IMPORTANT: This callback is called once for the clique key by the
-    // rendezvous leader elected inside the `AcquireGpuClique` implementation.
+    // rendezvous leader elected inside the `AcquireClique` implementation.
     CliqueIdCallback default_clique_id_callback =
         [&](const CliqueKey& key) -> absl::StatusOr<CliqueIds> {
       VLOG(4) << absl::StrFormat("Get local NCCL clique ids: clique=%v", key);
@@ -213,13 +213,13 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
 
     ABSL_ASSIGN_OR_RETURN(
         std::shared_ptr<LockableGpuClique::Lock> clique,
-        AcquireGpuClique(params.collectives, params.executor, params.run_id,
-                         r.key, r.device_groups,
-                         params.clique_id_callback ? *params.clique_id_callback
-                                                   : default_clique_id_callback,
-                         *rank, cliques_map, max_channels,
-                         params.collective_use_minimal_resource,
-                         r.use_gxl_requested));
+        AcquireClique(params.collectives, params.executor, params.run_id, r.key,
+                      r.device_groups,
+                      params.clique_id_callback ? *params.clique_id_callback
+                                                : default_clique_id_callback,
+                      *rank, cliques_map, max_channels,
+                      params.collective_use_minimal_resource,
+                      r.use_gxl_requested));
 
     cliques_map[r.key] = std::move(clique);
   }

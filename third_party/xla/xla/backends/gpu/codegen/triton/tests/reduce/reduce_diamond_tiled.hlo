@@ -1,7 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s
-// RUN: not triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
-
-// CHECK: MapSymbolIdToSequentialDimValue failed for symbolic dimension
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
 
 max_region {
   p0 = f32[] parameter(0)
@@ -40,3 +38,22 @@ ENTRY main {
           "num_ctas":"1",
           "num_stages":"1"}}}
 }
+
+// `max` feeds both the root (via `exp`) and the tiled `sum`, so tiling
+// duplicates it into the region of `sum`.
+// TODO(b/559130830): Hoist the loop-invariant `max` out of the `sum` region.
+
+// Loop 1: top-level `max`, used by the numerator exp(p - max).
+// CHECK-LABEL: xtile.entry_func @triton_fn
+// CHECK:         scf.for
+// CHECK:           arith.maximumf
+// CHECK:         %[[EXP:.*]] = tt.extern_elementwise {{.*}} symbol = "__nv_expf"
+
+// Loop 2: `sum`, with loop 3 (the duplicated `max`) nested inside.
+// CHECK:         %[[SUM:.*]] = scf.for {{.*}} iter_args(%[[ACC:[^ ]+]] =
+// CHECK:           scf.for
+// CHECK:             arith.maximumf
+// CHECK:           %[[INNER_EXP:.*]] = tt.extern_elementwise {{.*}} symbol = "__nv_expf"
+// CHECK:           arith.addf %[[ACC]], %[[INNER_EXP]]
+// CHECK:         "tt.reduce"(%[[SUM]])
+// CHECK:         arith.divf %[[EXP]],

@@ -177,6 +177,50 @@ mlir::LogicalResult EntryFuncOp::verify() {
   return mlir::success();
 }
 
+mlir::LogicalResult MemRefBitcastOp::verify() {
+  mlir::MemRefType source_type = getSource().getType();
+  mlir::MemRefType result_type = getResult().getType();
+
+  if (source_type.getLayout() != result_type.getLayout()) {
+    return emitOpError() << "source layout: " << source_type.getLayout()
+                         << " does not match result layout: "
+                         << result_type.getLayout();
+  }
+  if (source_type.getMemorySpace() != result_type.getMemorySpace()) {
+    return emitOpError() << "source and result memory spaces differ";
+  }
+
+  mlir::Type source_element_type = source_type.getElementType();
+  mlir::Type result_element_type = result_type.getElementType();
+  if (!source_element_type.isIntOrFloat() ||
+      !result_element_type.isIntOrFloat()) {
+    return emitOpError() << "element types must be integer or float, got: "
+                         << source_element_type << " and "
+                         << result_element_type;
+  }
+  if (source_element_type.getIntOrFloatBitWidth() !=
+      result_element_type.getIntOrFloatBitWidth()) {
+    return emitOpError() << "element bit widths differ: " << source_element_type
+                         << " vs " << result_element_type;
+  }
+  return mlir::success();
+}
+
+mlir::OpFoldResult MemRefBitcastOp::fold(FoldAdaptor) {
+  if (getSource().getType() == getType()) {
+    return getSource();
+  }
+  // bitcast(bitcast(x)) -> x, or a single bitcast from x otherwise.
+  if (auto producer = getSource().getDefiningOp<MemRefBitcastOp>()) {
+    if (producer.getSource().getType() == getType()) {
+      return producer.getSource();
+    }
+    getSourceMutable().assign(producer.getSource());
+    return getResult();
+  }
+  return {};
+}
+
 mlir::TypedValue<mlir::MemRefType> ExtractTileOp::getBuffer() {
   return getSource();
 }

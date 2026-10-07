@@ -10,7 +10,7 @@
 // CHECK-SAME:    %[[ARG0:.*]]: memref<64x32x16xi32>,
 // CHECK-SAME:    %[[ARG1:.*]]: memref<i32>,
 // CHECK-SAME:    %[[ARG2:.*]]: memref<10x10x8xi32>,
-// CHECK-SAME:    %[[ARG3:.*]]: index)
+// CHECK-SAME:    %[[ARG3:.*]]: index{{( \{xla.range = \[0 : index, 1 : index\]\})?}})
 // CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:     %[[C50:.*]] = arith.constant 50 : index
 // CHECK-DAG:     %[[C22:.*]] = arith.constant 22 : i32

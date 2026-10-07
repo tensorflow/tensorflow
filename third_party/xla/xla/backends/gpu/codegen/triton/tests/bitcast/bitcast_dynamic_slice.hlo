@@ -19,7 +19,7 @@ fusion (p0: f32[1024, 16], offset: s32[]) -> f32[8192] {
 // CHECK-SAME:      %[[ARG0:.*]]: memref<1024x16xf32>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<i32>,
 // CHECK-SAME:      %[[ARG2:.*]]: memref<8192xf32>,
-// CHECK-SAME:      %[[ARG3:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-SAME:      %[[ARG3:.*]]: index{{( \{xla.range = \[0 : index, 1023 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 // CHECK:           %[[CONSTANT_0:.*]] = arith.constant 512 : i32
 // CHECK:           %[[CONSTANT_1:.*]] = arith.constant 0 : i32
 // CHECK:           %[[EXTRACT_0:.*]] = xtile.extract %[[ARG1]][] [] [] : memref<i32> -> tensor<i32>

@@ -446,17 +446,23 @@ def eig(tensor, name=None):
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
-  if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
-    out_dtype = dtypes.complex64
-  elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
-    out_dtype = dtypes.complex128
-  else:
-    raise ValueError(
-        "'tensor' must have dtype float32, float64, complex64, or "
-        f'complex128, got {tensor.dtype}'
-    )
-  e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
-  return e, v
+  with ops.name_scope(name, 'eig', [tensor]) as name:
+    # Convert first: the dtype check below reads `tensor.dtype`, which a
+    # list or any other unconverted value does not have. linalg.eigh and
+    # the rest of this module accept those, since they hand the argument
+    # straight to the generated op, which converts it.
+    tensor = ops.convert_to_tensor(tensor, name='tensor')
+    if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
+      out_dtype = dtypes.complex64
+    elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
+      out_dtype = dtypes.complex128
+    else:
+      raise ValueError(
+          "'tensor' must have dtype float32, float64, complex64, or "
+          f'complex128, got {tensor.dtype}'
+      )
+    e, v = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=True, name=name)
+    return e, v
 
 
 @tf_export('linalg.eigvals', 'eigvals', v1=[])
@@ -478,17 +484,25 @@ def eigvals(tensor, name=None):
     e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
       eigenvalues of `tensor[..., :, :]`.
   """
-  if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
-    out_dtype = dtypes.complex64
-  elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
-    out_dtype = dtypes.complex128
-  else:
-    raise ValueError(
-        "'tensor' must have dtype float32, float64, complex64, or "
-        f'complex128, got {tensor.dtype}'
+  with ops.name_scope(name, 'eigvals', [tensor]) as name:
+    # Convert first: the dtype check below reads `tensor.dtype`, which a
+    # list or any other unconverted value does not have. linalg.eigh and
+    # the rest of this module accept those, since they hand the argument
+    # straight to the generated op, which converts it.
+    tensor = ops.convert_to_tensor(tensor, name='tensor')
+    if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
+      out_dtype = dtypes.complex64
+    elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
+      out_dtype = dtypes.complex128
+    else:
+      raise ValueError(
+          "'tensor' must have dtype float32, float64, complex64, or "
+          f'complex128, got {tensor.dtype}'
+      )
+    e, _ = gen_linalg_ops.eig(
+        tensor, Tout=out_dtype, compute_v=False, name=name
     )
-  e, _ = gen_linalg_ops.eig(tensor, Tout=out_dtype, compute_v=False, name=name)
-  return e
+    return e
 
 
 @tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
@@ -783,6 +797,17 @@ def norm(tensor,
 
   with ops.name_scope(name, 'norm', [tensor]):
     tensor = ops.convert_to_tensor(tensor)
+
+    # Match np.linalg.norm: out-of-bounds axes raise a clear AxisError
+    # (a ValueError) instead of an opaque backend kernel failure.
+    if axis is not None and tensor.shape.rank is not None:
+      for ax in axis:
+        normalized = ax + tensor.shape.rank if ax < 0 else ax
+        if normalized < 0 or normalized >= tensor.shape.rank:
+          raise ValueError(
+              f'axis {ax} is out of bounds for tensor of rank '
+              f'{tensor.shape.rank}'
+          )
 
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:

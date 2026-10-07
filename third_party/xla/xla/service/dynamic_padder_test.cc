@@ -150,6 +150,27 @@ class DynamicPadderTest : public HloTestBase {
   const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
+TEST_F(DynamicPadderTest, SliceToDynamicSizeIsClamped) {
+  // Regression test for https://github.com/openxla/xla/issues/44940: the
+  // size operand of set-dimension-size is not otherwise validated, so the
+  // materializing SliceToDynamic must clamp it to [0, bound].
+  const std::string hlo_text = R"(
+HloModule ClampSize
+
+ENTRY main {
+  data = s32[4] parameter(0)
+  size = s32[] parameter(1)
+  ROOT dyn = s32[<=4] set-dimension-size(data, size), dimensions={0}
+}
+)";
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  EXPECT_THAT(module_->entry_computation()->root_instruction(),
+              op::CustomCall(
+                  {"SliceToDynamic"}, op::Parameter(0),
+                  op::Clamp(op::Constant(), op::Parameter(1), op::Constant())));
+}
+
 class MemoryAlignmentTest : public HloInterpreterReferenceMixin<HloTestBase> {};
 
 // Test that dynamic padder will not cause memory misalignment in CUDA
@@ -266,9 +287,9 @@ ENTRY main {
   //  OpWithDynamicLowering (custom_call_2)
   //     |
   //  PadToStatic
-  //     |
-  //   Negate
-  //     |
+  //     |     \
+  //   Negate  Clamp(0, size, bound)
+  //      \     /
   //   SliceToDynamic // Root require dynamic form tensor.
   auto custom_call_1 =
       module_->entry_computation()->GetInstructionWithName("custom-call.1");
@@ -326,16 +347,20 @@ ENTRY main {
   //   GTE
   //     |
   //  PadToStatic
-  //     |
-  //   Negate
-  //     |
+  //     |     \
+  //   Negate  Clamp(0, size, bound)
+  //      \     /
   //   SliceToDynamic // Root require dynamic form tensor.
 
   auto* root = module_->entry_computation()->root_instruction();
-  // The final result should use the dynamic size provided by PadToStatic.
-  EXPECT_THAT(root, op::CustomCall(
-                        {"SliceToDynamic"}, op::Negate(),
-                        op::GetTupleElement(op::CustomCall({"PadToStatic"}))));
+  // The final result should use the dynamic size provided by PadToStatic,
+  // clamped to the dimension bound.
+  EXPECT_THAT(
+      root, op::CustomCall(
+                {"SliceToDynamic"}, op::Negate(),
+                op::Clamp(op::Constant(),
+                          op::GetTupleElement(op::CustomCall({"PadToStatic"})),
+                          op::Constant())));
   HloInstruction* negate = root->mutable_operand(0);
   EXPECT_THAT(
       negate,
@@ -1156,6 +1181,40 @@ ENTRY main {
   Literal expected = LiteralUtil::CreateR1<int32_t>({2, 6, 24});
 
   EXPECT_EQ(result, expected);
+}
+
+TEST_F(ExecutionTest, OutOfBoundsDynamicDimensionSizeClamped) {
+  // Regression test for https://github.com/openxla/xla/issues/44940: a
+  // runtime size beyond the dimension bound used to become an unchecked
+  // copy bound in SliceToDynamic, corrupting memory.
+  // The interpreter cannot execute the SliceToDynamic custom call.
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
+  const std::string hlo_text = R"(
+HloModule OversizeDynamicSize
+
+ENTRY main {
+  data = s32[4] parameter(0)
+  size = s32[] parameter(1)
+  ROOT dyn = s32[<=4] set-dimension-size(data, size), dimensions={0}
+}
+)";
+  Literal data = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+
+  // An oversize runtime size is clamped to the bound.
+  Literal oversize = LiteralUtil::CreateR0<int32_t>(100000);
+  auto module = GetHloModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          PadAndExecute(std::move(module), {&data, &oversize}));
+  EXPECT_EQ(result.ToStatic(), LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4}));
+
+  // A negative runtime size is clamped to zero.
+  Literal negative = LiteralUtil::CreateR0<int32_t>(-5);
+  module = GetHloModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(Literal empty_result,
+                          PadAndExecute(std::move(module), {&data, &negative}));
+  EXPECT_EQ(empty_result.ToStatic(), LiteralUtil::CreateR1<int32_t>({}));
 }
 
 TEST_F(ExecutionTest, DynamicConcat) {

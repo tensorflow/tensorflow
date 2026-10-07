@@ -19,12 +19,15 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -211,6 +214,19 @@ class MathTest(test.TestCase, parameterized.TestCase):
     actual = np_math_ops.hypot(x, y)
     expected = np.hypot(x, y)
     np.testing.assert_equal(actual.tolist(), expected.tolist())
+
+  def testLogaddexpEqualInputsGradient(self):
+    # Both partial derivatives of logaddexp(x, x) are 0.5. `maximum` used to
+    # send the whole gradient to x1 there, giving 1.0 and 0.0.
+    for dtype in (dtypes.float32, dtypes.float64):
+      x1 = constant_op.constant([0.0, 1.0, -2.0, 100.0], dtype=dtype)
+      x2 = constant_op.constant([0.0, 1.0, -2.0, 100.0], dtype=dtype)
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x1)
+        tape.watch(x2)
+        y = math_ops.reduce_sum(np_math_ops.logaddexp(x1, x2))
+      for grad in tape.gradient(y, (x1, x2)):
+        self.assertAllClose(grad, [0.5, 0.5, 0.5, 0.5])
 
   def testLogaddexp(self):
     self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
@@ -820,6 +836,32 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.diff(a, axis=-3)
 
+  def testTrace(self):
+    a = np.arange(6).reshape(2, 3)
+    self.match(np_math_ops.trace(a), np.trace(a))
+    self.match(np_math_ops.trace(a, offset=1), np.trace(a, offset=1))
+    self.match(
+        np_math_ops.trace(a, axis1=0, axis2=-1), np.trace(a, axis1=0, axis2=-1)
+    )
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(a, axis1=0, axis2=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(a, axis1=-3, axis2=1)
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_math_ops.trace(a, axis1=1, axis2=1)
+    # Mixed-sign duplicates normalize to the same axis.
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_math_ops.trace(a, axis1=1, axis2=-1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array([1, 2, 3]))
+    # A rank-1 input has no valid trace axes: the out-of-bounds default
+    # axes (axis1=-2, axis2=-1) must raise, not silently route the input
+    # to the rank>=2-only `math_ops.trace` fast path.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array([1.0, 2.0, 3.0]), axis1=-2, axis2=-1)
+
   def testIsInf(self):
     x1 = ops.convert_to_tensor(-2147483648)
     x2 = ops.convert_to_tensor(2147483647)
@@ -841,6 +883,29 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testSinc(self):
+    for dtype in (dtypes.float32, dtypes.float64):
+      x = constant_op.constant([0.0, -0.0, 0.5, 1.0, -1.5], dtype=dtype)
+      self.assertAllClose(np_math_ops.sinc(x), np.sinc(x.numpy()))
+
+  def testSincGradientAtZero(self):
+    # `sinc(0)` is 1 and its derivative there is 0. The unselected
+    # `sin(pi_x) / pi_x` branch evaluates to 0/0, which used to turn the
+    # gradient at zero into NaN through `where`.
+    for dtype in (dtypes.float32, dtypes.float64):
+      x_np = np.array([0.0, -0.0, 0.5, 1.0, -1.5])
+      x = constant_op.constant(x_np, dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_sum(np_math_ops.sinc(x))
+      pi_x = np.pi * x_np
+      expected = np.where(
+          x_np == 0,
+          0.0,
+          (pi_x * np.cos(pi_x) - np.sin(pi_x)) / (np.pi * x_np * x_np),
+      ).astype(dtype.as_numpy_dtype)
+      self.assertAllClose(tape.gradient(y, x), expected)
 
   def testConcatenateAxisNone(self):
     a = np_array_ops.array([1, 2])

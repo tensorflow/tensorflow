@@ -48,8 +48,8 @@ absl::StatusOr<absl::string_view> GetCustomCallTarget(
   if (external_annotation == memory_annotations::kMemoryTargetPinnedDevice) {
     return memory_annotations::kPinToDeviceCustomCallTarget;
   }
-  return absl::InvalidArgumentError(
-      absl::StrCat("Invalid external annotation: ", external_annotation));
+  return InvalidArgumentStrCat("Invalid external annotation: ",
+                               external_annotation);
 }
 
 absl::StatusOr<bool>

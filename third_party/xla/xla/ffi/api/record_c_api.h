@@ -41,7 +41,7 @@ extern "C" {
 //==============================================================================
 #define XLA_FFI_Extension_Record 128
 #define XLA_FFI_Extension_Record_MajorVersion 0
-#define XLA_FFI_Extension_Record_MinorVersion 1
+#define XLA_FFI_Extension_Record_MinorVersion 2
 
 //===----------------------------------------------------------------------===//
 // Command Buffer Recording API (FFI Record)
@@ -64,6 +64,7 @@ typedef enum XLA_FFI_RecordAction {
 typedef enum XLA_FFI_SourceFormat {
   XLA_FFI_SourceFormat_PTX = 0,
   XLA_FFI_SourceFormat_CUBIN = 1,
+  XLA_FFI_SourceFormat_FUNCTION_PTR = 2,
 } XLA_FFI_SourceFormat;
 
 typedef struct XLA_FFI_Dim3 {
@@ -142,9 +143,11 @@ typedef struct XLA_FFI_KernelArgs {
 // ```
 typedef struct XLA_FFI_RecordApi {
   // Creates a launch command for a kernel with the given name, data and size.
-  // kernel_data is the binary of the kernel, and format is the format of the
-  // kernel data. Since recording implies creation of a graph, dependencies
-  // argument is used to specify dependencies on other commands.
+  // kernel_data is the binary of the kernel (for PTX/CUBIN) or the pre-loaded
+  // device function pointer (for FUNCTION_PTR, where kernel_size must be 0),
+  // and format is the format of the kernel data. Since recording implies
+  // creation of a graph, dependencies argument is used to specify dependencies
+  // on other commands.
   // For eg:
   // XLA_FFI_Command* cmd1 = api->create_launch(...);
   // XLA_FFI_Command* cmd2 = api->create_launch(..., {&cmd1}, 1);

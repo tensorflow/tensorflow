@@ -33,6 +33,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:shape_layout",
         "//xla:shape_util",
+        "//xla:shuffle",
         "//xla:tuple_tree",
         "//xla:types",
         "//xla:util",

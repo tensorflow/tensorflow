@@ -788,12 +788,14 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
             dim_numbers.scatter_dims_to_operand_dims(), scatter_indices));
     CHECK(scatter_indices->shape().dimensions(0) == scatter_indices_count);
 
-    // Add implicit dimensions to OOB constant, if needed.
-    ABSL_ASSIGN_OR_RETURN(
-        out_of_bound_tensor,
-        AddImplicitDimensionsToIndices(
-            scatter_operands[0]->shape().dimensions().size(),
-            dim_numbers.scatter_dims_to_operand_dims(), out_of_bound_tensor));
+    // Recompute OOB constant with implicit dimensions, if needed.
+    if (operand_shape.dimensions().size() !=
+        dim_numbers.scatter_dims_to_operand_dims_size()) {
+      ABSL_ASSIGN_OR_RETURN(
+          out_of_bound_tensor,
+          CreateBoundTensor(parent, scatter_indices, operand_shape.dimensions(),
+                            full_index_to_operand_dims));
+    }
 
     // If any updates are out of bound, we change the corresponding indices to
     // be oob_tensor values
@@ -841,6 +843,19 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
           full_index_to_operand_dims[i]);
     }
   } else {
+    if (!has_scalar_indices) {
+      std::vector<int64_t> actual_update_window_dims(
+          scatter_operands[0]->shape().dimensions().size(), 1);
+      ABSL_ASSIGN_OR_RETURN(
+          HloInstruction * oob_check_mask,
+          CheckValidIndices(parent, scatter_indices,
+                            scatter_operands[0]->shape().dimensions(),
+                            actual_update_window_dims,
+                            dim_numbers.scatter_dims_to_operand_dims()));
+      scatter_indices = parent->AddInstruction(HloInstruction::CreateTernary(
+          scatter_indices->shape(), HloOpcode::kSelect, oob_check_mask,
+          scatter_indices, out_of_bound_tensor));
+    }
     new_dim_numbers = dim_numbers;
   }
 

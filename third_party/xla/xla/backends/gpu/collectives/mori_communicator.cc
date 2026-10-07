@@ -13,13 +13,13 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/mori_communicator.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"

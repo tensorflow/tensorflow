@@ -42,11 +42,9 @@ class ReduceScatterReassociateTest : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, bool expect_change) {
     ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
-    auto changed = ReduceScatterReassociate().Run(module.get());
-    if (!changed.ok()) {
-      return changed.status();
-    }
-    EXPECT_EQ(changed.value(), expect_change);
+    ABSL_ASSIGN_OR_RETURN(bool changed,
+                     ReduceScatterReassociate().Run(module.get()));
+    EXPECT_EQ(changed, expect_change);
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 

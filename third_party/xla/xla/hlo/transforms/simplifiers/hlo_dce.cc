@@ -228,7 +228,8 @@ bool CanRemoveInstruction(
     bool remove_cross_partition_collective_ops,
     const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
         computation_callers) {
-  if (!instruction->IsDead() || HasDisableWhileLoopDceAttr(instruction)) {
+  if (instruction->parent() == nullptr || !instruction->IsDead() ||
+      HasDisableWhileLoopDceAttr(instruction)) {
     return false;
   }
 
@@ -250,18 +251,42 @@ bool CanRemoveInstruction(
        instruction->operand(0)->user_count() != 1)) {
     return false;
   }
+  auto has_dce_side_effect_attr = [](const HloInstruction* inst,
+                                     absl::string_view value) {
+    if (inst == nullptr) {
+      return false;
+    }
+    auto it =
+        inst->frontend_attributes().map().find(kDceSideEffectFrontendAttribute);
+    return it != inst->frontend_attributes().map().end() && it->second == value;
+  };
+  // Reverse postorder visits async-done before async-start. If "false" is
+  // set on async-start, async-done must inspect async_chain_start().
+  // otherwise only async-done will be removed, leaving a dangling async-start
+  if (has_dce_side_effect_attr(instruction, "false") ||
+      has_dce_side_effect_attr(instruction->async_chain_start(), "false")) {
+    return false;
+  }
   if (instruction->HasSideEffect()) {
-    auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
+    auto maybe_collective_op = DynCast<HloCollectiveInstruction>(
+        instruction->async_wrapped_instruction()
+            ? instruction->async_wrapped_instruction()
+            : instruction);
     bool allow_collective = remove_cross_partition_collective_ops &&
                             maybe_collective_op &&
                             !maybe_collective_op->constrain_layout();
     bool allow_while =
         IsRemovableWhile(instruction, remove_cross_partition_collective_ops);
-    bool allow_custom_call = instruction->IsCustomCall("tpu_custom_call") &&
-                             instruction->frontend_attributes().map().contains(
-                                 kDceSideEffectFrontendAttribute) &&
-                             instruction->frontend_attributes().map().at(
-                                 kDceSideEffectFrontendAttribute) == "true";
+    // Reverse postorder visits async-done before async-start. If "true" is
+    // set on async-start, async-done must inspect
+    // async_chain_start(). otherwise async-done is kept
+    // alive, which keeps async-start used (user_count > 0) and prevents
+    // either from being removed.
+    bool allow_custom_call =
+        (instruction->IsCustomCall("tpu_custom_call") ||
+         instruction->IsAsynchronous()) &&
+        (has_dce_side_effect_attr(instruction, "true") ||
+         has_dce_side_effect_attr(instruction->async_chain_start(), "true"));
     if (!allow_collective && !allow_while && !allow_custom_call) {
       return false;
     }
@@ -274,27 +299,25 @@ absl::StatusOr<bool> RemoveDeadRoots(
     const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
         computation_callers) {
   bool changed = false;
-  std::vector<HloInstruction*> dead_roots;
-  for (auto* instruction : computation->instructions()) {
+  auto post_order = computation->MakeInstructionPostOrder();
+  for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
+    HloInstruction* instruction = *it;
     if (!CanRemoveInstruction(instruction,
                               remove_cross_partition_collective_ops,
                               computation_callers)) {
       continue;
     }
-    dead_roots.push_back(instruction);
-  }
-
-  for (HloInstruction* dead_root : dead_roots) {
-    VLOG(1) << "Removing dead root " << dead_root->ToString()
+    VLOG(1) << "Removing dead root " << instruction->ToString()
             << " and its unused operands";
     ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
-        dead_root, /*cleanup=*/std::nullopt,
+        instruction, /*cleanup=*/std::nullopt,
         /*ignore_control_dependencies=*/false,
         /*computation_callers=*/computation_callers));
     changed = true;
   }
   return changed;
 }
+
 absl::Status RemoveDeadParametersFromEntryComputationLayout(
     HloModule* module, std::vector<int64_t>& dead_parameter_indexes) {
   if (dead_parameter_indexes.empty()) {

@@ -1,0 +1,37 @@
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation 2>&1 | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+// Both branches of concat access whole second dimension of parameters and we
+// can simplify offset of it to 0 constant.
+
+// CHECK:      xtile.entry_func @triton_fn
+// CHECK:        %[[C0:.*]] = arith.constant 0 : index
+// CHECK:        scf.if
+// CHECK:          %[[ROW_0:.*]] = xla.apply_indexing #indexing_map1(%arg3)
+// CHECK:          xtile.extract %arg0[%[[ROW_0]], %[[C0]]] [16, 128] [1, 1]
+// CHECK:        } else {
+// CHECK:          %[[ROW_1:.*]] = xla.apply_indexing #indexing_map1(%arg3)
+// CHECK:          xtile.extract %arg1[%[[ROW_1]], %[[C0]]] [16, 128] [1, 1]
+
+fusion {
+  p0 = f32[64,128] parameter(0)
+  c0 = bf16[64,128] convert(p0)
+  p1 = f32[64,128] parameter(1)
+  c1 = bf16[64,128] convert(p1)
+  concat = bf16[64,256] concatenate(c0, c1), dimensions={1}
+  ROOT reshape = bf16[2,32,256] reshape(concat)
+}
+
+ENTRY main {
+  p0 = f32[64,128] parameter(0)
+  p1 = f32[64,128] parameter(1)
+  ROOT fusion = bf16[2,32,256] fusion(p0, p1), kind=kCustom,
+    calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","16","128"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

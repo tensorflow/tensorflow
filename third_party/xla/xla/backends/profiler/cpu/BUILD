@@ -79,15 +79,17 @@ cc_library(
     ]),
     deps = [
         "//xla:status_macros",
-        "//xla/backends/profiler/util:metadata_registry",
+        "//xla/backends/profiler/util:metadata_registry",  # buildcleaner: keep
         "//xla/python/profiler/internal:python_hooks",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],

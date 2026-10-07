@@ -246,6 +246,8 @@ xla_test(
     backends = [
         "gpu",
     ],
+    # Non-blocking NCCL initialization is required to cancel pending cliques.
+    env = {"XLA_FLAGS": "--xla_gpu_nccl_async_execution=true --xla_gpu_nccl_blocking_communicators=false"},
     deps = [
         ":gpu_clique",
         ":gpu_clique_key",
@@ -269,6 +271,7 @@ xla_test(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -865,6 +868,7 @@ cc_library(
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
+        "//xla:xla_proto_cc",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/profiler/lib:traceme",
     ],
@@ -1149,12 +1153,10 @@ xla_cc_test(
         "rocm-only",
     ],
     deps = [
-        ":rccl_errors",
         ":rccl_symmetric_memory",
         "//xla/stream_executor:device_address",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
@@ -1174,12 +1176,10 @@ cc_library(
     deps = [
         ":rccl_errors",
         "//xla:util",
-        "//xla/core/collectives:rank_id",
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@local_config_rocm//rocm:rccl",  # buildcleaner: keep

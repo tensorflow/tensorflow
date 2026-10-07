@@ -133,6 +133,7 @@ cc_library(
         "//xla/service:copy_insertion",
         "//xla/service:dump",
         "//xla/service:executable",
+        "//xla/service:gpu_topology",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
         "//xla/service:llvm_compiler",
@@ -140,6 +141,7 @@ cc_library(
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/service/gpu:gpu_spmd_pipeline",
         "//xla/service/gpu:nvptx_alias_info",
@@ -155,6 +157,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -244,6 +247,7 @@ lit_test_suite(
             "tests/gpu_hlo_backend.hlo",
             "tests/gpu_hlo_buffers.hlo",
             "tests/gpu_hlo_collective_cse.hlo",
+            "tests/gpu_hlo_collective_topology.hlo",
             "tests/gpu_hlo_llvm.hlo",
             "tests/gpu_hlo_pass.hlo",
             "tests/gpu_hlo_ptx.hlo",
@@ -270,6 +274,7 @@ lit_test_suite(
     data = [":test_utilities"],
     default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
     tags_override = {
+        "tests/gpu_hlo_collective_topology.hlo": ["cuda-only"],
         "tests/gpu_hlo_ptx.hlo": ["cuda-only"],
     },
     tools = [

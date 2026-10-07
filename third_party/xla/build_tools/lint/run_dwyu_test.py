@@ -378,6 +378,114 @@ cc_library(
         )
         self.assertEqual(result.stdout, expected_stdout)
 
+  def _setup_googletest_repo(self):
+    self.write_file(
+        "MODULE.bazel",
+        """\
+module(name = "xla")
+bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
+""",
+    )
+    gtest_repo = self.external / "googletest+"
+    (gtest_repo / "googletest/include/gtest").mkdir(parents=True)
+    (gtest_repo / "googlemock/include/gmock").mkdir(parents=True)
+    (gtest_repo / "googlemock/src").mkdir(parents=True)
+    (gtest_repo / "MODULE.bazel").write_text('module(name = "googletest")\n')
+    (gtest_repo / "googletest/include/gtest/gtest.h").write_text("// gtest\n")
+    (gtest_repo / "googlemock/include/gmock/gmock.h").write_text("// gmock\n")
+    (gtest_repo / "googlemock/src/gmock_main.cc").write_text("int main() {}\n")
+    (gtest_repo / "BUILD.bazel").write_text("""\
+cc_library(
+    name = "gtest",
+    hdrs = [
+        "googlemock/include/gmock/gmock.h",
+        "googletest/include/gtest/gtest.h",
+    ],
+    includes = [
+        "googlemock",
+        "googlemock/include",
+        "googletest",
+        "googletest/include",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "gtest_main",
+    srcs = ["googlemock/src/gmock_main.cc"],
+    hdrs = [
+        "googlemock/include/gmock/gmock.h",
+        "googletest/include/gtest/gtest.h",
+    ],
+    includes = [
+        "googlemock",
+        "googlemock/include",
+        "googletest",
+        "googletest/include",
+    ],
+    tags = [
+        "avoid_dep",
+        "keep_dep",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [":gtest"],
+)
+""")
+
+  def test_googletest_gtest_main_compatibility(self):
+    self._setup_googletest_repo()
+    test_cases = [
+        (
+            "gtest_main_satisfies_quoted_gtest_and_gmock_includes",
+            '["@com_google_googletest//:gtest_main"]',
+            '#include "gmock/gmock.h"\n#include "gtest/gtest.h"\n',
+            0,
+            "",
+        ),
+        (
+            "gtest_main_kept_for_angle_bracket_and_transitive_includes",
+            '["//xla/platform:errors", "@com_google_googletest//:gtest_main"]',
+            (
+                "#include <gmock/gmock.h>\n"
+                "#include <gtest/gtest.h>\n"
+                '#include "xla/platform/errors.h"\n'
+            ),
+            0,
+            "",
+        ),
+        (
+            "missing_gtest_suggests_gtest_not_gtest_main",
+            "[]",
+            '#include "gtest/gtest.h"\n',
+            3,
+            (
+                "buildozer 'add deps @com_google_googletest//:gtest'"
+                " @xla//xla/consumer:consumer_test\n"
+            ),
+        ),
+    ]
+    for name, deps, source, expected_returncode, expected_stdout in test_cases:
+      with self.subTest(name):
+        self.write_file(
+            "xla/consumer/BUILD",
+            f"""\
+cc_test(
+    name = "consumer_test",
+    srcs = ["consumer_test.cc"],
+    deps = {deps},
+)
+""",
+        )
+        self.write_file("xla/consumer/consumer_test.cc", source)
+        result = self.check_targets("//xla/consumer:consumer_test")
+        self.assertEqual(
+            result.returncode,
+            expected_returncode,
+            result.stdout + result.stderr,
+        )
+        self.assertEqual(result.stdout, expected_stdout)
+
 
 if __name__ == "__main__":
   unittest.main()
+

@@ -245,7 +245,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "conv3d_backprop_filter_v2_grad_test",
-    size = "small",
+    size = "medium",
     srcs = ["conv3d_backprop_filter_v2_grad_test.py"],
     deps = [
         "//tensorflow/python/framework:constant_op",
@@ -436,9 +436,11 @@ py_library(
     srcs = ["depthwise_conv_op_base.py"],
     strict_deps = True,
     deps = [
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
@@ -596,6 +598,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["lrn_op_test.py"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",

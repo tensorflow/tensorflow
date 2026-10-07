@@ -452,6 +452,17 @@ tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
         &IfrtResponse::has_##PROPERTY##_response, std::move(req), #PROPERTY); \
   }
 
+// RPCs that do not need to return a response.
+// TODO(madthanu): For such RPCs, remove the proto response message and stop
+// sending a message from the server.
+#define RPC_FIRE_FORGET(METHOD, PROPERTY)                                     \
+  void RpcHelper::METHOD(std::unique_ptr<METHOD##Request> req) {              \
+    (void)DoRpc(                                                              \
+        batcher_.get(), &IfrtRequest::set_allocated_##PROPERTY##_request,     \
+        &IfrtResponse::mutable_##PROPERTY##_response,                         \
+        &IfrtResponse::has_##PROPERTY##_response, std::move(req), #PROPERTY); \
+  }
+
 RPC(Init, init);
 RPC(GetDefaultDeviceAssignment, get_default_device_assignment);
 RPC(CheckFuture, check_future);
@@ -462,14 +473,15 @@ RPC(MakeErrorArrays, make_error_arrays);
 RPC(AssembleArrayFromSingleDeviceArrays,
     assemble_array_from_single_device_arrays);
 RPC(RemapArrays, remap_arrays);
-RPC(ReshardArrays, reshard_arrays);
+RPC_FIRE_FORGET(ReshardArrays, reshard_arrays);
 RPC(BitcastArrays, bitcast_arrays);
-RPC(DisassembleIntoSingleDeviceArrays, disassemble_into_single_device_arrays);
+RPC_FIRE_FORGET(DisassembleIntoSingleDeviceArrays,
+                disassemble_into_single_device_arrays);
 RPC(CopyToHostBuffer, copy_to_host_buffer);
 RPC(IsArrayDeleted, is_array_deleted);
 RPC(DestructArray, destruct_array)
-RPC(CopyArrays, copy_arrays);
-RPC(FullyReplicatedShard, fully_replicated_shard);
+RPC_FIRE_FORGET(CopyArrays, copy_arrays);
+RPC_FIRE_FORGET(FullyReplicatedShard, fully_replicated_shard);
 RPC(DeleteArray, delete_array);
 RPC(Compile, compile);
 RPC(LoadedExecutableMetadata, loaded_executable_metadata);

@@ -86,7 +86,8 @@ absl::StatusOr<void*> GetCudaDsoHandle(const std::string& name,
   if (name == "cufft" || name == "cusolver") {
     alt_version = (version == "12") ? "11" : (version == "11" ? "12" : "");
   } else if (name == "cublas" || name == "cublasLt" || name == "cudart" ||
-             name == "nvrtc" || name == "cusparse" || name == "cupti") {
+             name == "nvrtc" || name == "cusparse" || name == "cupti" ||
+             name == "nvJitLink") {
     alt_version = (version == "13") ? "12" : (version == "12" ? "13" : "");
   }
 
@@ -126,6 +127,10 @@ absl::StatusOr<void*> GetNvmlDsoHandle() {
 
 absl::StatusOr<void*> GetNvrtcDsoHandle() {
   return GetCudaDsoHandle("nvrtc", GetCudaRtVersion());
+}
+
+absl::StatusOr<void*> GetNvJitLinkDsoHandle() {
+  return GetCudaDsoHandle("nvJitLink", GetCudaRtVersion());
 }
 
 absl::StatusOr<void*> GetCudaRuntimeDsoHandle() {
@@ -229,6 +234,11 @@ absl::StatusOr<void*> GetCuptiDsoHandle() {
 
 absl::StatusOr<void*> GetCudnnDsoHandle() {
   static auto result = new auto(DsoLoader::GetCudnnDsoHandle());
+  return *result;
+}
+
+absl::StatusOr<void*> GetNvJitLinkDsoHandle() {
+  static auto result = new auto(DsoLoader::GetNvJitLinkDsoHandle());
   return *result;
 }
 

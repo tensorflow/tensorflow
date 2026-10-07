@@ -25,6 +25,13 @@ def LowerXTileEntryPass : Pass<"xtile-cpu-lower-xtile-entry", "mlir::ModuleOp"> 
     "xla::cpu::XlaCpuDialect",
     "xla::xtile::XTileDialect"
   ];
+
+  let options = [
+    Option<"prefer_vector_width_", "prefer_vector_width", "int32_t",
+           /*default=*/"0",
+           "prefer-vector-width value to set on the kernel function. "
+           "Not set if 0.">,
+  ];
 }
 
 def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
@@ -114,6 +121,52 @@ def UnrollVectorsPass : Pass<"xtile-cpu-unroll-vectors"> {
   ];
 }
 
+
+def LegalizeNarrowFloatStoragePass
+    : Pass<"xtile-cpu-legalize-narrow-float-storage", "mlir::ModuleOp"> {
+  let summary = "Moves data movement of narrow floats onto same-width integers.";
+
+  let description = [{
+    x86 has no legal vector register class for float types narrower than 32
+    bits unless the matching ISA extension is present (AVX512-BF16,
+    AVX512-FP16, ...). SelectionDAG therefore scalarizes any such vector that
+    is not immediately extended or truncated, promoting every element to f32
+    and paying a libcall (e.g. `__truncsfbf2`) per element on the way back.
+    This happens for phis, shuffles, masked loads and stores and selects of
+    narrow float vectors, i.e. for exactly the ops that only move data around.
+
+    This pass treats 8- and 16-bit floats as storage-only types:
+
+    * Tile accesses to narrow float buffers go through an
+      `xtile.memref_bitcast` view of the buffer as the same-width integer type,
+      followed by a `tensor.bitcast` back to the float type.
+    * These bitcasts are then moved through data movement ops (transpose,
+      reshape, broadcast, slice, concatenate, mask, select) towards the ops that
+      compute on the float values, e.g. `arith.extf`/`arith.truncf`, where the
+      remaining pairs cancel.
+
+    Ops the pass does not know simply stop the bitcasts, so it never changes
+    semantics; at worst the float type survives on that op, as before.
+  }];
+
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::tensor::TensorDialect",
+    "::xla::xtile::XTileDialect",
+  ];
+}
+
+def LowerMemRefBitcastPass
+    : Pass<"xtile-cpu-lower-memref-bitcast", "mlir::ModuleOp"> {
+  let summary = "Lowers xtile.memref_bitcast to LLVM.";
+
+  let description = [{
+    The memref descriptor holds an opaque pointer, so its LLVM type does not
+    depend on the element type and the op lowers to nothing.
+  }];
+
+  let dependentDialects = ["::mlir::LLVM::LLVMDialect"];
+}
 
 def UnpackSubByteVectorWritePass : Pass<"xtile-cpu-unpack-sub-byte-vector-write"> {
   let summary = "Unpacks sub-byte vector writes.";

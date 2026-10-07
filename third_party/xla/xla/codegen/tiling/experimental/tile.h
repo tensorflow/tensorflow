@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla::gpu::experimental {
@@ -95,6 +96,7 @@ class TilingSpace;
 //  - runtime variables.
 struct DimTile {
   bool operator==(const DimTile& other) const;
+  bool operator!=(const DimTile& other) const { return !(*this == other); }
 
   SymbolicExpr offset;
   SymbolicExpr size;
@@ -126,7 +128,9 @@ struct DimTile {
 
   // Simplify expressions inside the DimTile using the actual dimension and
   // symbol bounds.
-  void Simplify(const TilingSpace& space);
+  void Simplify(
+      const TilingSpace& space,
+      llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {});
 
   std::string ToString() const;
 
@@ -143,6 +147,19 @@ H AbslHashValue(H h, const DimTile& dim_tile) {
   return H::combine(std::move(h), static_cast<size_t>(dim_tile_hash));
 }
 
+// Simplifies groups of DimTiles using the dimension and symbol bounds of the
+// given tiling space.
+void SimplifyDimTiles(
+    llvm::ArrayRef<llvm::MutableArrayRef<DimTile>> dim_tile_groups,
+    const TilingSpace& space,
+    llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {});
+
+// Simplifies a list of DimTiles using the dimension and symbol bounds of the
+// given tiling space.
+void SimplifyDimTiles(
+    llvm::MutableArrayRef<DimTile> dim_tiles, const TilingSpace& space,
+    llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {});
+
 // Tile is a collection of tilings for every dimension of output tensor
 // of an HLO instruction. TiledHloInstruction associates a Tile
 // with an HLO instruction.
@@ -152,7 +169,8 @@ class Tile {
 
  public:
   Tile(const TilingSpace& tiling_space, llvm::SmallVector<DimTile> dim_tiles,
-       llvm::SmallVector<DimTile> replica_ids = {});
+       llvm::SmallVector<DimTile> replica_ids = {},
+       llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {});
 
   Tile(const TilingSpace& tiling_space, llvm::ArrayRef<SymbolicExpr> offsets,
        llvm::ArrayRef<SymbolicExpr> sizes, llvm::ArrayRef<SymbolicExpr> strides,
@@ -189,6 +207,16 @@ class Tile {
   // bounds.
   void Simplify();
 
+  // Constraints on the tiling space variables (tile IDs, tile sizes and
+  // runtime variables) that hold for this tile, e.g. the range of the offset
+  // that selects a particular operand of a concatenate.
+  llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints() const {
+    return constraints_;
+  }
+  int64_t num_constraints() const { return constraints_.size(); }
+
+  void AddConstraint(SymbolicExpr expr, Interval range);
+
   // Clone the tile with new dim tiles.
   // When we are propagating a tile to an input, we need to adjust the offsets
   // and upper bounds according to the input. The other fields are copied from
@@ -199,6 +227,7 @@ class Tile {
   Tile CloneWithNewTilingSpace(const TilingSpace& new_space) const;
 
   bool operator==(const Tile& other) const;
+  bool operator!=(const Tile& other) const { return !(*this == other); }
 
   // This allows GUnit to print the tile.
   template <typename Sink>
@@ -214,6 +243,7 @@ class Tile {
   // a replica ID, but does not change the number of dimensions so propagation
   // for ops that don't have replica IDs stays the same.
   llvm::SmallVector<DimTile> replica_ids_;
+  llvm::SmallVector<std::pair<SymbolicExpr, Interval>, 2> constraints_;
 };
 
 template <typename H>
@@ -222,6 +252,9 @@ H AbslHashValue(H h, const Tile& tile) {
   for (const DimTile& dim_tile :
        llvm::concat<const DimTile>(tile.dim_tiles(), tile.replica_ids())) {
     h = H::combine(std::move(h), dim_tile);
+  }
+  for (const auto& [expr, interval] : tile.constraints()) {
+    h = H::combine(std::move(h), expr, interval);
   }
   return h;
 }

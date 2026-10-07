@@ -71,6 +71,30 @@ cc_library(
 )
 
 cc_library(
+    name = "dtype_core_info",
+    hdrs = ["dtype_core_info.h"],
+    deps = ["@com_google_absl//absl/types:span"],
+)
+
+cc_library(
+    name = "core_info",
+    srcs = ["core_info.cc"],
+    hdrs = ["core_info.h"],
+    deps = [
+        ":dtype_core_info",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/cuda:cuda_core_info_table",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "//xla/stream_executor/rocm:rocm_core_info_table",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "context_map",
     hdrs = ["context_map.h"],
     deps = [
@@ -350,6 +374,31 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
+    name = "gpu_hsaco_bundle_test",
+    srcs = ["gpu_hsaco_bundle_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":asm_compiler",
+        "//xla:debug_options_flags",
+        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_platform",  # buildcleaner: keep
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:rocm_rocdl_path",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:path",
     ],
 )

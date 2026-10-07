@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
@@ -45,7 +46,9 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_host_allocator.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
+#include "xla/stream_executor/cuda/green_context.h"
 #include "xla/stream_executor/cuda/host_callback_registry.h"
+#include "xla/stream_executor/cuda/locality_domain.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
@@ -155,6 +158,31 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<CudaStream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority,
       CudaStreamType type);
+
+  // Creates a green context over (at least) `sm_count` SMs of this device.
+  // Green contexts are a general SM-partitioning mechanism, independent of
+  // locality domains. The device's primary context is made current for the
+  // duration of the call.
+  absl::StatusOr<std::unique_ptr<GreenContext>> CreateGreenContext(
+      int sm_count);
+
+  // Creates a stream whose work is launched onto `green_context`'s SM
+  // partition. `green_context` must outlive the returned stream.
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInGreenContext(
+      const GreenContext& green_context,
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+
+  // Returns this device's locality domains in domain-id order, created lazily
+  // on first call. Locality domains are a CUDA 13.4+ feature; on an older
+  // toolkit this returns an unimplemented error.
+  absl::StatusOr<absl::Span<const std::unique_ptr<LocalityDomain>>>
+  GetLocalityDomains();
+
+  // Creates a stream whose work is launched onto the SM partition of locality
+  // domain `locality_domain_id`.
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
+      int locality_domain_id,
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
@@ -362,6 +390,13 @@ class CudaExecutor : public GpuExecutor {
   bool stream_priority_query_ok_ = false;
   absl::flat_hash_map<int, bool> peer_access_cache_;
   std::unique_ptr<HostCallbackRegistry> host_callback_registry_{nullptr};
+
+  // Locality domains for this device, created lazily by GetLocalityDomains().
+  absl::Mutex locality_domains_mu_;
+  bool locality_domains_initialized_ ABSL_GUARDED_BY(locality_domains_mu_) =
+      false;
+  std::vector<std::unique_ptr<LocalityDomain>> locality_domains_
+      ABSL_GUARDED_BY(locality_domains_mu_);
 };
 
 }  // namespace stream_executor::gpu
