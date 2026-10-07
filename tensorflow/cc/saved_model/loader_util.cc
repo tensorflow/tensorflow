@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/loader_util.h"
 
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace internal {
