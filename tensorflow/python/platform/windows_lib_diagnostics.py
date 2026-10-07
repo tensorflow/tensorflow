@@ -34,9 +34,13 @@ def _safe_print(text, end="\n"):
   paths (e.g. under a non-ASCII user directory) may not be encodable on a
   console that uses a legacy code page.
   """
-  encoding = getattr(sys.stdout, "encoding", None) or "ascii"
-  print(text.encode(encoding, errors="backslashreplace").decode(encoding),
-        end=end)
+  try:
+    encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+    print(text.encode(encoding, errors="backslashreplace").decode(encoding),
+          end=end)
+  except Exception:  # pylint: disable=broad-exception-caught
+    # A diagnostic message must never mask the original import error.
+    pass
 
 
 def get_dll_dependencies(path):
@@ -218,7 +222,9 @@ def run_diagnosis(path=None):
       diagnose_dll_load(path)
     else:
       _safe_print(f"Error: Path does not exist or not on Windows: {path}")
-  except OSError as e:
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    # This runs while handling an ImportError, so no diagnostic failure may
+    # escape and replace the original error.
     _safe_print(f"Diagnostic failed: {e}")
 
 
