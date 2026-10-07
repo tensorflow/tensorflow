@@ -1510,6 +1510,11 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, [1, -2], axis=[-3, 2])
     _test(a, np.array([0, 1]), axis=np.array([-1, 1]))
 
+    # Empty and scalar arrays.
+    _test(np.empty((0, 3, 4)), 1, axis=1)
+    _test(np.empty((3, 4, 0)), 1, axis=1)
+    _test(np.array(42.0), 1)
+
     # Out-of-bounds axes raise, checked by the backend kernel.
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError, 'out of range'
