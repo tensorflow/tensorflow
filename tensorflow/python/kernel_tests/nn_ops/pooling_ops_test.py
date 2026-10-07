@@ -819,6 +819,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         self.evaluate(t)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "XLA handles NCHW_VECT_C without CPU MaxPoolingOp error")
   def testMaxPoolNchwVectCOnCpuRaisesError(self):
     # With oneDNN on, this MaxPool used to be rewritten to the oneDNN op, which
     # rejects NCHW_VECT_C, and the process aborted.
