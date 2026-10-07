@@ -1585,7 +1585,8 @@ TEST(CommandBufferThunkTest, WhileThunk) {
   // Prepare thunk sequence for command buffer conversion.
   ThunkSequence thunks = ThunkSequence::Of<WhileThunk>(
       Thunk::ThunkInfo(), slice_pred, std::move(cond_thunks),
-      std::move(body_thunks));
+      std::move(body_thunks), /*trip_count=*/std::nullopt,
+      /*devices_per_host=*/1);
 
   ConvertToCommandsOptions options;
   options.synchronization_mode = serialize;

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -325,7 +326,8 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
       Thunk::ThunkInfo(),
       /*condition_result_buffer_index=*/BufferAllocation::Slice(),
       /*condition_thunks=*/std::move(while_condition_thunks),
-      /*body_thunks=*/std::move(while_body_thunks));
+      /*body_thunks=*/std::move(while_body_thunks),
+      /*trip_count=*/std::nullopt, /*devices_per_host=*/1);
 
   ThunkSequence thunks;
   thunks.push_back(std::move(while_thunk));

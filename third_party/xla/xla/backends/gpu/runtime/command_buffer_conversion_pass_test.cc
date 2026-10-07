@@ -321,9 +321,9 @@ std::unique_ptr<WhileThunk> CreateWhileThunk(
     std::optional<int64_t> trip_count = std::nullopt) {
   BufferAllocation::Slice slice(&alloc, 0, 1024);
 
-  return std::make_unique<WhileThunk>(Thunk::ThunkInfo(), slice,
-                                      std::move(condition_thunks),
-                                      std::move(body_thunks), trip_count);
+  return std::make_unique<WhileThunk>(
+      Thunk::ThunkInfo(), slice, std::move(condition_thunks),
+      std::move(body_thunks), trip_count, /*devices_per_host=*/1);
 }
 
 std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
