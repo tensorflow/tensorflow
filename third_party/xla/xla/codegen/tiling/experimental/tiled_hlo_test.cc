@@ -54,6 +54,7 @@ namespace {
 using ::absl_testing::StatusIs;
 using ::mlir::MLIRContext;
 using ::testing::Contains;
+using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Not;
@@ -148,6 +149,30 @@ MATCHER_P2(IsHloWithOperands, opcode, operand_opcodes,
                           const auto& [operand, operand_opcode] = pair;
                           return operand->hlo()->opcode() == operand_opcode;
                         });
+}
+
+// Returns the names of the HLO instructions in `region`.
+std::vector<std::string> InstructionNames(const TiledHloRegion& region) {
+  std::vector<std::string> names;
+  names.reserve(region.instructions().size());
+  for (const TiledHloInstruction* instruction : region.instructions()) {
+    names.push_back(std::string(instruction->hlo()->name()));
+  }
+  return names;
+}
+
+// Returns the unique instruction in `region` whose HLO is named `name`.
+const TiledHloInstruction* FindByName(const TiledHloRegion& region,
+                                      absl::string_view name) {
+  const TiledHloInstruction* result = nullptr;
+  for (const TiledHloInstruction* instruction : region.instructions()) {
+    if (instruction->hlo()->name() == name) {
+      CHECK(result == nullptr) << "Multiple instructions named " << name;
+      result = instruction;
+    }
+  }
+  CHECK(result != nullptr) << "No instruction named " << name;
+  return result;
 }
 
 class TileAnalysisTestBase : public HloHardwareIndependentTestBase {
@@ -368,6 +393,117 @@ Tiled HLO:
       tiled_computation.tiled_root_region().instructions(),
       Contains(IsHloWithOperands(HloOpcode::kBroadcast,
                                  std::vector<HloOpcode>{HloOpcode::kReduce})));
+}
+
+TEST_P(TileAnalysisTest, TiledSoftmaxDiamondHoistsLoopInvariantReduction) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    max_fn {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT m = f32[] maximum(a, b)
+    }
+
+    add_fn {
+      c = f32[] parameter(0)
+      d = f32[] parameter(1)
+      ROOT s = f32[] add(c, d)
+    }
+
+    fusion {
+      p0 = f32[16,32]{1,0} parameter(0)
+      c_neg_inf = f32[] constant(-inf)
+      c_zero = f32[] constant(0)
+      max = f32[16]{0} reduce(p0, c_neg_inf), dimensions={1}, to_apply=max_fn
+      bcast_max = f32[16,32]{1,0} broadcast(max), dimensions={0}
+      sub = f32[16,32]{1,0} subtract(p0, bcast_max)
+      exp = f32[16,32]{1,0} exponential(sub)
+      sum = f32[16]{0} reduce(exp, c_zero), dimensions={1}, to_apply=add_fn
+      bcast_sum = f32[16,32]{1,0} broadcast(sum), dimensions={0}
+      ROOT div = f32[16,32]{1,0} divide(exp, bcast_sum)
+    }
+
+    ENTRY main {
+      x = f32[16,32]{1,0} parameter(0)
+      ROOT fusion = f32[16,32]{1,0} fusion(x), kind=kLoop, calls=fusion
+    })hlo",
+                                    {4, 8, 8, 8}));
+
+  const TiledHloRegion& top = tiled_computation.tiled_root_region();
+  const TiledHloRegion& sum_loop = FindByName(top, "sum")->hlo_regions()[0];
+
+  // `max` does not depend on the `sum` loop: it is computed once at the top
+  // level and not inside the loop.
+  EXPECT_THAT(InstructionNames(top), Contains("max").Times(1));
+  EXPECT_THAT(InstructionNames(sum_loop),
+              UnorderedElementsAre("x", "bcast_max", "sub", "exp"));
+  // The `bcast_max` inside the loop uses the hoisted `max`.
+  EXPECT_EQ(FindByName(sum_loop, "bcast_max")->operand(0),
+            FindByName(top, "max"));
+}
+
+TEST_P(TileAnalysisTest, DotHoistsContractingLoopInvariantOperands) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    fusion {
+      p0 = f32[16,64]{1,0} parameter(0)
+      p1 = f32[64,32]{1,0} parameter(1)
+      p2 = f32[16]{0} parameter(2)
+      bcast = f32[16,64]{1,0} broadcast(p2), dimensions={0}
+      scaled_lhs = f32[16,64]{1,0} multiply(p0, bcast)
+      ROOT dot = f32[16,32]{1,0} dot(scaled_lhs, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      lhs = f32[16,64]{1,0} parameter(0)
+      rhs = f32[64,32]{1,0} parameter(1)
+      scale = f32[16]{0} parameter(2)
+      ROOT fusion = f32[16,32]{1,0} fusion(lhs, rhs, scale), kind=kLoop, calls=fusion
+    })hlo",
+                                    {8, 16, 16}));
+
+  const TiledHloRegion& top = tiled_computation.tiled_root_region();
+  const TiledHloRegion& dot_loop = FindByName(top, "dot")->hlo_regions()[0];
+
+  // Only `scale` is invariant w.r.t. the contracting dimension.
+  EXPECT_THAT(InstructionNames(top), UnorderedElementsAre("scale", "dot"));
+  EXPECT_THAT(InstructionNames(dot_loop),
+              UnorderedElementsAre("lhs", "bcast", "scaled_lhs", "rhs"));
+  EXPECT_EQ(FindByName(dot_loop, "bcast")->operand(0),
+            FindByName(top, "scale"));
+}
+
+TEST_P(TileAnalysisTest, ConcatenateRegionsAreHoistingBarriers) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    add_fn {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT s = f32[] add(a, b)
+    }
+
+    fusion {
+      p0 = f32[16,32]{1,0} parameter(0)
+      p1 = f32[16]{0} parameter(1)
+      c0 = f32[] constant(0)
+      red = f32[16]{0} reduce(p0, c0), dimensions={1}, to_apply=add_fn
+      ROOT concat = f32[32]{0} concatenate(red, p1), dimensions={0}
+    }
+
+    ENTRY main {
+      x = f32[16,32]{1,0} parameter(0)
+      y = f32[16]{0} parameter(1)
+      ROOT fusion = f32[32]{0} fusion(x, y), kind=kLoop, calls=fusion
+    })hlo",
+                                    {8, 8}));
+
+  const TiledHloRegion& top = tiled_computation.tiled_root_region();
+  const TiledHloRegion& branch = FindByName(top, "concat")->hlo_regions()[0];
+
+  // `c0` depends on nothing, but it must stay in the concatenate branch.
+  EXPECT_THAT(InstructionNames(top), ElementsAre("concat"));
+  EXPECT_THAT(InstructionNames(branch), UnorderedElementsAre("c0", "red"));
 }
 
 TEST_P(TileAnalysisTest, ConcatenateIsSupported) {
