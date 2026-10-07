@@ -294,9 +294,13 @@ class FunctionCacheTest(test.TestCase):
       )
 
   def testMaxCapacityInvalidRaisesValueError(self):
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegex(
+        ValueError, "max_capacity must be greater than 0"
+    ):
       function_cache.FunctionCache(max_capacity=0)
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegex(
+        ValueError, "max_capacity must be greater than 0"
+    ):
       function_cache.FunctionCache(max_capacity=-1)
 
   def testMaxCapacitySingleton(self):
