@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla;
 
 import "google/protobuf/any.proto";
+import "google/protobuf/descriptor.proto";
 import "xla/backends/autotuner/backends.proto";
 import "xla/service/hlo.proto";
 import "xla/xla_data.proto";
@@ -45,6 +46,73 @@ message ThunkBufferDebugFilter {
   repeated string profile_annotation_regexes = 2;
 }
 
+// Annotation on `DebugOptions` fields recording when each field is read. Read
+// by tools that need the fields able to change a loaded executable, such as
+// AOT golden verification.
+message DebugOptionsFieldOptions {
+  // When a field is read.
+  enum Stage {
+    // Proto3 default; do not use.
+    STAGE_UNSPECIFIED = 0;
+
+    // Read while compiling: HLO passes, emitters, autotuning, buffer
+    // assignment, thunk emission. A value copied into the HLO, a backend
+    // config or a thunk is still COMPILE: the executable carries the copy.
+    COMPILE = 1;
+
+    // Read after compilation, either
+    //   - from the executable's own `DebugOptions` while it is loaded or run
+    //     (e.g. by `RunThunkPasses` when a `GpuExecutable` is created), or
+    //   - from the running process's flags (`GetDebugOptionsFromFlags()`),
+    //     e.g. by clients, allocators, collectives or profilers. The value
+    //     stored in an executable is never read for these.
+    // TODO(b/567825028): Give the second case its own stage.
+    RUNTIME = 2;
+  }
+
+  // Every stage the field is read in, e.g. `[COMPILE, RUNTIME]`. To decide,
+  // find every reader of the field and check when it runs. If unsure, list
+  // both: a missing RUNTIME makes tools such as AOT golden verification
+  // silently ignore the field; an extra one only costs a comparison.
+  //
+  // Examples (hypothetical fields):
+  //
+  //   // Only read by an HLO pass.
+  //   optional bool xla_enable_fancy_fusion = 600
+  //       [(debug_options_field) = { stages: [ COMPILE ] }];
+  //
+  //   // Copied into a thunk while compiling; the thunk never reads
+  //   // `DebugOptions` again.
+  //   optional int64 xla_thunk_unroll_factor = 601
+  //       [(debug_options_field) = { stages: [ COMPILE ] }];
+  //
+  //   // Read from the executable's `DebugOptions` on every run.
+  //   optional int32 xla_execution_timeout_seconds = 602
+  //       [(debug_options_field) = { stages: [ RUNTIME ] }];
+  //
+  //   // Read from `GetDebugOptionsFromFlags()` when the client is created.
+  //   optional bool xla_use_fancy_allocator = 603
+  //       [(debug_options_field) = { stages: [ RUNTIME ] }];
+  //
+  //   // Changes the generated code, and is read again when loading to
+  //   // reject executables compiled with it.
+  //   optional bool xla_emit_experimental_kernels = 604
+  //       [(debug_options_field) = { stages: [ COMPILE, RUNTIME ] }];
+  //
+  // Fields numbered 555 or above must list at least one stage (enforced by
+  // `DebugOptions.NewFieldsDeclareStages` in debug_options_flags_test.cc).
+  // Fields below 555 were audited only for reads after compilation: those
+  // read after compilation list RUNTIME, possibly without COMPILE; the rest
+  // are unannotated or list only COMPILE. Dump fields (`xla_dump_*`,
+  // `xla_gpu_dump_*`, `xla_enable_dumping`) are not classified yet. Tools
+  // must only rely on whether RUNTIME is listed.
+  repeated Stage stages = 1;
+}
+
+extend google.protobuf.FieldOptions {
+  DebugOptionsFieldOptions debug_options_field = 525000158;
+}
+
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields with
 // the exception of few stable GPU feature flags (see `GetFlagStatus` in
@@ -61,6 +129,11 @@ message ThunkBufferDebugFilter {
 // All singular scalar fields must be explicitly defined as `optional` so that
 // field presence is available to support merging between command-line flags and
 // stored instances. This is enforced via a unit test.
+//
+// Fields are annotated with the stages they are read in, e.g.
+// `[(debug_options_field) = { stages: [RUNTIME] }]` (see
+// `DebugOptionsFieldOptions` for the rules). New fields must list at least one
+// stage. This is enforced via a unit test.
 message DebugOptions {
   // Enum to define all collective ops
   // that xla supports.
@@ -246,14 +319,17 @@ message DebugOptions {
   optional CpuOptPreset xla_cpu_opt_preset = 467;
 
   // The number of seconds to wait before terminating a rendezvous call
-  optional int32 xla_cpu_collective_call_terminate_timeout_seconds = 417;
+  optional int32 xla_cpu_collective_call_terminate_timeout_seconds = 417
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // The number of seconds to wait before warning about a rendezvous call that
   // has not yet timed out.
-  optional int32 xla_cpu_collective_call_warn_stuck_seconds = 418;
+  optional int32 xla_cpu_collective_call_warn_stuck_seconds = 418
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // The number of seconds to wait before terminating a collective.
-  optional int32 xla_cpu_collective_timeout_seconds = 438;
+  optional int32 xla_cpu_collective_timeout_seconds = 438
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Use region analysis in copy insertion pass.
   optional bool xla_cpu_copy_insertion_use_region_analysis = 337;
@@ -552,13 +628,14 @@ message DebugOptions {
 
   // Limits the thunk buffer debug instrumentation to specific thunks.
   optional ThunkBufferDebugFilter
-      xla_gpu_experimental_thunk_buffer_debug_filter = 424;
+      xla_gpu_experimental_thunk_buffer_debug_filter = 424
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Enable NCCL symmetric buffers for specific collectives and sizes.
   // Example:
   // --xla_enable_nccl_symmetric_buffers_for_collectives=allreduce:1024:0,alltoall:1024,allgather
   repeated CollectiveFilter xla_enable_nccl_symmetric_buffers_for_collectives =
-      503;
+      503 [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // List of autotuner backends to enable. If empty, all backends are enabled.
   // Backends not relevant to the platform will be ignored, e.g. cuDNN on AMD.
@@ -703,18 +780,21 @@ message DebugOptions {
   // "loopback"). When empty (the default), the highest-priority registered
   // implementation is used. When set, the named implementation is looked up
   // in the CollectivesRegistry.
-  optional string xla_gpu_collectives_implementation = 468;
+  optional string xla_gpu_collectives_implementation = 468
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
-      404;
+      404 [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // During command buffer lowering, unroll the loop command if loop has known
   // loop count and the loop body does not have unsupported commands.
-  optional bool xla_gpu_command_buffer_unroll_loops = 411;
+  optional bool xla_gpu_command_buffer_unroll_loops = 411
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Controls the VA remapping allocation strategy for command buffer thunks.
   // See CommandBufferUpdateMode for details.
-  optional CommandBufferUpdateMode xla_gpu_command_buffer_update_mode = 469;
+  optional CommandBufferUpdateMode xla_gpu_command_buffer_update_mode = 469
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   optional bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
@@ -794,7 +874,8 @@ message DebugOptions {
   // Enables spatial partitioning of the GPU BFC allocator so default and
   // collective allocations share one fixed address range. Requires BFC
   // preallocation.
-  optional bool xla_gpu_enable_allocator_spatial_partitioning = 494;
+  optional bool xla_gpu_enable_allocator_spatial_partitioning = 494
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   optional bool xla_gpu_enable_analytical_latency_estimator = 255;
 
@@ -807,10 +888,11 @@ message DebugOptions {
   // Only collectives specified in this filter will be executed in a command
   // buffer. Default is ALLCOLLECTIVES.
   repeated CollectiveOpType xla_gpu_enable_collectives_command_buffer_filter =
-      497;
+      497 [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Determine the types of commands that are recorded into command buffers.
-  repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
+  repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Enable radix sort using CUB.
   optional bool xla_gpu_enable_cub_radix_sort = 259;
@@ -836,7 +918,8 @@ message DebugOptions {
   // this is true we don't propagate NaNs through Min and Max.
   optional bool xla_gpu_enable_fast_min_max = 100;
 
-  optional bool xla_gpu_enable_highest_priority_async_stream = 216;
+  optional bool xla_gpu_enable_highest_priority_async_stream = 216
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If true, will enable host memory offloading on a device.
   optional bool xla_gpu_enable_host_memory_offloading = 296;
@@ -851,14 +934,16 @@ message DebugOptions {
       [deprecated = true];
 
   // Enable NCCL communicator splitting.
-  optional bool xla_gpu_enable_nccl_comm_splitting = 272;
+  optional bool xla_gpu_enable_nccl_comm_splitting = 272
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Enable NCCL user buffers.
   optional bool xla_gpu_enable_nccl_user_buffers = 267;
 
   // Register NCCL user buffers without moving buffers to collective memory
   // space.
-  optional bool xla_gpu_enable_nccl_user_buffers_in_default_space = 506;
+  optional bool xla_gpu_enable_nccl_user_buffers_in_default_space = 506
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Enable PDL - Programmatic Dependent Launch.
   optional bool xla_gpu_enable_pdl = 460;
@@ -905,20 +990,25 @@ message DebugOptions {
   // config.
   optional bool xla_gpu_exclude_nondeterministic_ops = 297;
 
-  optional bool xla_gpu_executable_embed_debug_info = 437;
+  optional bool xla_gpu_executable_embed_debug_info = 437
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Number of additional communication streams to allocate for a GPU
   // executable.
-  optional int32 xla_gpu_executable_num_communication_streams = 487;
+  optional int32 xla_gpu_executable_num_communication_streams = 487
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Number of additional compute streams to allocate for a GPU executable.
-  optional int32 xla_gpu_executable_num_compute_streams = 486;
+  optional int32 xla_gpu_executable_num_compute_streams = 486
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Timeout to terminate on stuck rendezvous.
-  optional int32 xla_gpu_executable_terminate_timeout_seconds = 328;
+  optional int32 xla_gpu_executable_terminate_timeout_seconds = 328
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Timeout to issue a warning on stuck rendezvous.
-  optional int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
+  optional int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Number of thunks to track for execution progress reporting. When this
   // value is greater than 0, XLA:GPU installs a progress tracker for the
@@ -926,7 +1016,8 @@ message DebugOptions {
   // and first N pending thunks are logged before aborting the process. This
   // helps diagnose which GPU kernel or collective operation caused a hang.
   // Default is 0 (disabled).
-  optional int32 xla_gpu_execution_progress_tracking = 457;
+  optional int32 xla_gpu_execution_progress_tracking = 457
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Timeout to terminate XLA:GPU execution if host execution gets stuck.
   //
@@ -945,7 +1036,8 @@ message DebugOptions {
   // synchronization required by host execution. The host typically runs far
   // ahead of the device, so this does not guarantee that the GPU itself
   // finishes execution within the configured timeout.
-  optional string xla_gpu_execution_terminate_timeout = 451;
+  optional string xla_gpu_execution_terminate_timeout = 451
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Timeout to terminate XLA:GPU execution if device work does not complete.
   //
@@ -960,7 +1052,8 @@ message DebugOptions {
   // Because the host can run ahead of the device, this includes time waiting
   // behind previously queued work. It is not a limit on the executable's actual
   // time running on the device.
-  optional string xla_gpu_device_execution_terminate_timeout = 553;
+  optional string xla_gpu_device_execution_terminate_timeout = 553
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   optional bool xla_gpu_exhaustive_tiling_search = 219;
 
@@ -1028,8 +1121,8 @@ message DebugOptions {
   // TODO(ezhulenev): Remove this flag and always enable extended offset
   // expressions two weeks after the runtime support has landed (GPU
   // compatibility window).
-  optional bool xla_gpu_experimental_enable_dynamic_slice_extended_offsets =
-      555;
+  optional bool xla_gpu_experimental_enable_dynamic_slice_extended_offsets = 555
+      [(debug_options_field) = { stages: [ COMPILE ] }];
 
   // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
   // This feature is still experimental and effective only
@@ -1038,11 +1131,13 @@ message DebugOptions {
 
   // Enables an experimental feature to record outputs of selected thunks.
   // Writes to --xla_dump_to.
-  optional bool xla_gpu_experimental_enable_buffer_saver_on_thunks = 431;
+  optional bool xla_gpu_experimental_enable_buffer_saver_on_thunks = 431
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Enables an experimental feature to record checksums of selected thunk
   // inputs/outputs.
-  optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414;
+  optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If true, use multiple streams for asynchronous collective operations.
   optional bool xla_gpu_experimental_enable_collective_multi_streaming = 470;
@@ -1069,7 +1164,8 @@ message DebugOptions {
       366;
 
   // Enable NCCL symmetric buffers.
-  optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406;
+  optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If true, XLA:GPU emits a CollectiveReduceThunk for kCollectiveReduce HLO
   // instructions. This is guarded behind a flag to preserve the 2-week
@@ -1153,7 +1249,8 @@ message DebugOptions {
   //   coll.2-start = collective(input2)
   //   coll.1-done = collective(coll.1-start)
   //   coll.2-done = collective(coll.2-start)
-  optional int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336;
+  optional int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Controls how many scale-up-fabric collectives the latency-hiding scheduler
   // can keep in flight. A value of 0 means unlimited.
@@ -1182,7 +1279,8 @@ message DebugOptions {
 
   // If true, disables CUDA Virtual Memory Management (VMM) APIs for device
   // memory allocation and collective fusion.
-  optional bool xla_gpu_experimental_vmm_disabled = 551;
+  optional bool xla_gpu_experimental_vmm_disabled = 551
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If true, PTX compilation will fail if a kernel spills registers.
   // This is meant for debugging and only applies to CUDA PTX compilation.
@@ -1193,11 +1291,13 @@ message DebugOptions {
 
   // The number of seconds to wait before terminating a rendezvous of the first
   // call.
-  optional int32 xla_gpu_first_collective_call_terminate_timeout_seconds = 392;
+  optional int32 xla_gpu_first_collective_call_terminate_timeout_seconds = 392
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // The number of seconds to wait before warning about a first call rendezvous
   // that has not yet timed out.
-  optional int32 xla_gpu_first_collective_call_warn_stuck_timeout_seconds = 391;
+  optional int32 xla_gpu_first_collective_call_warn_stuck_timeout_seconds = 391
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Overrides normal multi-threaded compilation setting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
@@ -1241,7 +1341,8 @@ message DebugOptions {
   // This number determines how many moved instructions like fusion kernels are
   // required for a region to be captured as a function to be launched as a GPU
   // graph.
-  optional int32 xla_gpu_graph_min_graph_size = 208;
+  optional int32 xla_gpu_graph_min_graph_size = 208
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   optional string xla_gpu_kernel_cache_file = 306;
 
@@ -1274,7 +1375,8 @@ message DebugOptions {
   // If true, NCCL collectives (e.g., AllReduce) execute asynchronously. If
   // xla_gpu_nccl_blocking_communicators is false, then
   // xla_gpu_nccl_async_execution must be true.
-  optional bool xla_gpu_nccl_async_execution = 393;
+  optional bool xla_gpu_nccl_async_execution = 393
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // There are two types of NCCL communicators: blocking and non-blocking.  When
   // a collective operation is called on a blocking communicator, the
@@ -1282,25 +1384,31 @@ message DebugOptions {
   // non-blocking communicator, on the other hand, returns immediately.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#c.blocking
-  optional bool xla_gpu_nccl_blocking_communicators = 390;
+  optional bool xla_gpu_nccl_blocking_communicators = 390
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Specify the maximum number of channels(SMs) NCCL
   // will use for collective operations.
-  optional int64 xla_gpu_nccl_collective_max_nchannels = 273;
+  optional int64 xla_gpu_nccl_collective_max_nchannels = 273
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Set number of ranks per root rank for NCCL init.
-  optional int64 xla_gpu_nccl_init_max_rank_per_root_ratio = 277;
+  optional int64 xla_gpu_nccl_init_max_rank_per_root_ratio = 277
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Specify the maximum number of channels(SMs) NCCL
   // will use for p2p operations.
-  optional int64 xla_gpu_nccl_p2p_max_nchannels = 274;
+  optional int64 xla_gpu_nccl_p2p_max_nchannels = 274
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If true, Nccl errors will terminate the process.
-  optional bool xla_gpu_nccl_terminate_on_error = 301;
+  optional bool xla_gpu_nccl_terminate_on_error = 301
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Timeout in seconds before terminating jobs that are stuck in a NCCL
   // Rendezvous. Negative value disables the timeout and will not terminate.
-  optional int64 xla_gpu_nccl_termination_timeout_seconds = 163;
+  optional int64 xla_gpu_nccl_termination_timeout_seconds = 163
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If set >= 0, this controls the total bytes(combined sizes of both
   // operands in bytes) to enable windowed einsum and
@@ -1364,7 +1472,8 @@ message DebugOptions {
   // can enable some optimizations that reduce the cost of resource management,
   // e.g., command buffer updates to ensure correctness when running in
   // multi-thread mode.
-  optional bool xla_gpu_require_exclusive_lock = 347;
+  optional bool xla_gpu_require_exclusive_lock = 347
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Maximum number of trace events for ROCm GPU profiling. Limits memory
   // usage during profiling on AMD GPUs.
@@ -1393,7 +1502,8 @@ message DebugOptions {
   // as there is no other memory allocation interference,
   // it will allocate temp buffer to some fix address on every iteration,
   // which is good for cuda-graph perf.
-  optional bool xla_gpu_temp_buffer_use_separate_color = 312;
+  optional bool xla_gpu_temp_buffer_use_separate_color = 312
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Threshold to enable windowed einsum (collective matmul) in MB.
   optional int64 xla_gpu_threshold_for_windowed_einsum_mib = 265;
@@ -1402,11 +1512,13 @@ message DebugOptions {
   // and basic structured payloads. Level 1 additionally emits detailed HLO and
   // collective metadata in XProf annotation names and structured payloads. NVTX
   // names remain compact.
-  optional int32 xla_gpu_trace_annotation_level = 530;
+  optional int32 xla_gpu_trace_annotation_level = 530
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Enables CUPTI V2 multi-subscriber APIs for GPU profiling when available.
   // Allows XLA profiling to coexist with tools such as Nsight Systems.
-  optional bool xla_gpu_enable_cupti_multi_subscriber = 534;
+  optional bool xla_gpu_enable_cupti_multi_subscriber = 534
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Creates triton fusion for all supported gemms.
   // To make sure only triton gemm is chosen by the autotuner run with
@@ -1567,10 +1679,12 @@ message DebugOptions {
   // Setting this to anything other than 1 can increase overhead from context
   // switching but we let the user override this behavior to help run tests on
   // the host that run models in parallel across multiple devices.
-  optional int32 xla_force_host_platform_device_count = 102;
+  optional int32 xla_force_host_platform_device_count = 102
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Enable fast math with eigen in the HLO evaluator.
-  optional bool xla_hlo_evaluator_use_fast_path = 106;
+  optional bool xla_hlo_evaluator_use_fast_path = 106
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Temporary option to allow support for both the R1 and the scalar index
   // versions of DynamicSlice and DynamicUpdateSlice. Only used for testing.
@@ -1724,7 +1838,8 @@ message DebugOptions {
   optional PartitioningAlgorithm xla_partitioning_algorithm = 187;
 
   // Maximum number of buffers to print when debugging buffer assignment.
-  optional int64 xla_debug_buffer_assignment_show_max = 251;
+  optional int64 xla_debug_buffer_assignment_show_max = 251
+      [(debug_options_field) = { stages: [ COMPILE ] }];
 
   enum DetectionMode {
     DETECTION_MODE_NONE = 0;
@@ -1742,20 +1857,24 @@ message DebugOptions {
       432;
 
   // Whether to enable checks for NaN values in computations.
-  optional DetectionMode xla_gpu_detect_nan = 426;
+  optional DetectionMode xla_gpu_detect_nan = 426
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Whether to enable checks for Inf values in computations.
-  optional DetectionMode xla_gpu_detect_inf = 428;
+  optional DetectionMode xla_gpu_detect_inf = 428
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Whether to log min/max values from buffers in computations.
   //
   // This will log the values for all thunks affected by float checks.
-  optional bool xla_gpu_log_minmax = 453;
+  optional bool xla_gpu_log_minmax = 453
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // Whether to enable runtime instrumentation (float check, checksum, buffer
   // saver) on all output buffers of an XLA module after all computation is
   // finished.
-  optional bool xla_gpu_experimental_thunk_buffer_debug_module_outputs = 492;
+  optional bool xla_gpu_experimental_thunk_buffer_debug_module_outputs = 492
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If true, large constants will be printed out when dumping HLOs.
   optional bool xla_dump_large_constants = 290;
@@ -1766,7 +1885,8 @@ message DebugOptions {
   // The command buffer trace cache size, increasing the cache size may
   // sometimes reduces the chances of doing command buffer tracing for
   // updating command buffer instance.
-  optional int64 xla_cmd_buffer_trace_cache_size = 311;
+  optional int64 xla_cmd_buffer_trace_cache_size = 311
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // This flag is used for controlling HLO dumping and NVTX marker. If turned
   // on, both HLO dumping and NVTX marker will use syntactic sugar wrappers
@@ -1798,7 +1918,8 @@ message DebugOptions {
   // Allow launching command buffers while profiling active.
   // When disabled, execute in op-by-op mode.
   // TODO(b/355487968): Remove this option when validation complete.
-  optional bool xla_enable_command_buffers_during_profiling = 317;
+  optional bool xla_enable_command_buffers_during_profiling = 317
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If true, the HLO dumper will print the stack frame inline.
   optional bool xla_hlo_print_inline_stack_frames = 447;
@@ -1829,13 +1950,16 @@ message DebugOptions {
   optional string xla_gpu_experimental_matmul_perf_table_path = 383;
 
   // Exits the compilation after layout assignment and returns only the
-  // layouts.
-  optional bool xla_early_exit_with_layouts = 397;
+  // layouts. Also read when loading, to reject such executables.
+  optional bool xla_early_exit_with_layouts = 397
+      [(debug_options_field) = { stages: [ COMPILE, RUNTIME ] }];
 
   // Exits compilation early at the specified point and returns the HLO up to
   // that point. This flag is mutually exclusive with
-  // xla_early_exit_with_layouts.
-  optional EarlyExitPoint xla_gpu_experimental_early_exit = 549;
+  // xla_early_exit_with_layouts. Also read when loading, to reject such
+  // executables.
+  optional EarlyExitPoint xla_gpu_experimental_early_exit = 549
+      [(debug_options_field) = { stages: [ COMPILE, RUNTIME ] }];
 
   // If true, the triton fusion emitter will ignore IsTritonSupportedInstruction
   // We need this to enable triton scaled dot emitter for testing.
@@ -1850,7 +1974,8 @@ message DebugOptions {
   optional bool xla_gpu_enable_gxl_ragged_all_to_all = 513;
 
   // Scratch buffer size (in bytes) for GXL collectives.
-  optional int64 xla_gpu_gxl_scratch_size_bytes = 514;
+  optional int64 xla_gpu_gxl_scratch_size_bytes = 514
+      [(debug_options_field) = { stages: [ RUNTIME ] }];
 
   // If true, use the device-initiated (NCCL GIN + LSA) kernel for
   // ragged-all-to-all. Requires NCCL >= 2.29.
@@ -1932,6 +2057,10 @@ message DebugOptions {
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
   // Next id: 556
+  //
+  // New fields must list the stages they are read in:
+  // `[(debug_options_field) = { stages: [...] }]`. See
+  // `DebugOptionsFieldOptions`.
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
