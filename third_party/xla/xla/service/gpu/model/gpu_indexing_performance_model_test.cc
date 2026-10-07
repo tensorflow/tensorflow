@@ -1400,6 +1400,19 @@ ENTRY main {
   }
 }
 
+TEST_P(FlopsPerElementTest, CopyHasZeroFlops) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 64] parameter(0)
+  ROOT copy = f32[32, 64] copy(p0)
+}
+)"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 0);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
