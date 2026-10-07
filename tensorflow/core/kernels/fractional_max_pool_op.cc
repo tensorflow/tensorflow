@@ -328,6 +328,15 @@ class FractionalMaxPoolGradOp : public OpKernel {
             "col_pooling_sequence must have ", output_size[2] + 1,
             " elements to match the ", output_size[2],
             " cols of orig_output, but got ", width_seq_tensor.dim_size(0))));
+    // Step 2 walks out_backprop and indexes tensor_out_arg_max, which is sized
+    // from orig_output, with the same linear index, so an out_backprop larger
+    // than orig_output reads past that buffer.
+    OP_REQUIRES(
+        context, tensor_out.shape() == out_backprop.shape(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_output and out_backprop must have the same shape, got ",
+            tensor_out.shape().DebugString(), " and ",
+            out_backprop.shape().DebugString())));
 
     // ---------
     // Step 1
@@ -406,7 +415,7 @@ class FractionalMaxPoolGradOp : public OpKernel {
                 if (output_ref < input_ref ||
                     out_arg_max_ref == kInvalidMaxPoolingIndex) {
                   output_ref = input_ref;
-                  int input_offset = in_index * input_size[3] + d;
+                  int64_t input_offset = in_index * input_size[3] + d;
                   out_arg_max_ref = input_offset;
                 }
               }
@@ -438,11 +447,11 @@ class FractionalMaxPoolGradOp : public OpKernel {
     auto out_backprop_flat = out_backprop.flat<T>();
     auto input_backprop_flat = output->flat<T>();
     auto out_arg_max_flat = tensor_out_arg_max.flat<int64_t>();
-    int num_total_outputs = out_backprop_flat.size();
-    int num_total_inputs = input_backprop_flat.size();
+    int64_t num_total_outputs = out_backprop_flat.size();
+    int64_t num_total_inputs = input_backprop_flat.size();
 
-    for (int index = 0; index < num_total_outputs; ++index) {
-      int input_backprop_index = out_arg_max_flat(index);
+    for (int64_t index = 0; index < num_total_outputs; ++index) {
+      int64_t input_backprop_index = out_arg_max_flat(index);
       OP_REQUIRES(
           context,
           input_backprop_index >= 0 && input_backprop_index < num_total_inputs,

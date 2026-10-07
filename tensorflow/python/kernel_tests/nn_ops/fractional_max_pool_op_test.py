@@ -658,7 +658,9 @@ class FractionalMaxPoolGradTest(test.TestCase):
                           input_backprop_overlapping)
 
   def testInvalidSeqRaiseErrorForFractionalMaxPoolGrad(self):
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "row_pooling_sequence must have"
+    ):
       with self.cached_session():
         overlapping = True
         orig_input = constant_op.constant(
@@ -711,14 +713,20 @@ class FractionalMaxPoolGradTest(test.TestCase):
       self.evaluate(t)
 
   def testOverLargeSeqRaiseErrorForFractionalMaxPoolGrad(self):
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Row sequence tensor values must not be negative",
+    ):
       with self.cached_session():
         overlapping = False
-        orig_input = [[[[1, 1, 1, 1, 1]]]]
-        orig_output = [[[[1, 1, 1]]]]
-        out_backprop = [[[[3], [3], [6]]]]
-        row_pooling_sequence = [-0x4000000, 1, 1]
-        col_pooling_sequence = [-0x4000000, 1, 1]
+        orig_input = constant_op.constant(
+            1.0, shape=[1, 2, 2, 1], dtype=dtypes.float32)
+        orig_output = constant_op.constant(
+            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32)
+        out_backprop = constant_op.constant(
+            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32)
+        row_pooling_sequence = [-0x4000000, 2]
+        col_pooling_sequence = [0, 2]
         t = gen_nn_ops.FractionalMaxPoolGrad(
             orig_input=orig_input,
             orig_output=orig_output,
@@ -753,6 +761,97 @@ class FractionalMaxPoolGradTest(test.TestCase):
             out_backprop=out_backprop,
             row_pooling_sequence=row_pooling_sequence,
             col_pooling_sequence=col_pooling_sequence,
+            overlapping=True)
+        self.evaluate(t)
+
+  def testColSeqLengthMismatchRaisesErrorForFractionalMaxPoolGrad(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "col_pooling_sequence must have"
+    ):
+      with self.cached_session():
+        t = gen_nn_ops.FractionalMaxPoolGrad(
+            orig_input=constant_op.constant(1.0, shape=[1, 4, 4, 1]),
+            orig_output=constant_op.constant(1.0, shape=[1, 2, 2, 1]),
+            out_backprop=constant_op.constant(1.0, shape=[1, 2, 2, 1]),
+            row_pooling_sequence=[0, 2, 4],
+            col_pooling_sequence=[0, 2, 3, 4],
+            overlapping=False)
+        self.evaluate(t)
+
+  def testBatchMismatchRaisesErrorForFractionalMaxPoolGrad(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "orig_input and orig_output must have the same batch size",
+    ):
+      with self.cached_session():
+        t = gen_nn_ops.FractionalMaxPoolGrad(
+            orig_input=constant_op.constant(1.0, shape=[2, 4, 4, 1]),
+            orig_output=constant_op.constant(1.0, shape=[1, 2, 2, 1]),
+            out_backprop=constant_op.constant(1.0, shape=[1, 2, 2, 1]),
+            row_pooling_sequence=[0, 2, 4],
+            col_pooling_sequence=[0, 2, 4],
+            overlapping=False)
+        self.evaluate(t)
+
+  def testDepthMismatchRaisesErrorForFractionalMaxPoolGrad(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "orig_input and orig_output must have the same depth",
+    ):
+      with self.cached_session():
+        t = gen_nn_ops.FractionalMaxPoolGrad(
+            orig_input=constant_op.constant(1.0, shape=[1, 4, 4, 2]),
+            orig_output=constant_op.constant(1.0, shape=[1, 2, 2, 1]),
+            out_backprop=constant_op.constant(1.0, shape=[1, 2, 2, 1]),
+            row_pooling_sequence=[0, 2, 4],
+            col_pooling_sequence=[0, 2, 4],
+            overlapping=False)
+        self.evaluate(t)
+
+  def testOutBackpropShapeMismatchRaisesErrorForFractionalMaxPoolGrad(self):
+    # Step 2 indexes tensor_out_arg_max, sized from orig_output, with
+    # out_backprop's linear index, so a larger out_backprop reads out of
+    # bounds.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "orig_output and out_backprop must have the same shape",
+    ):
+      with self.cached_session():
+        orig_input = constant_op.constant(
+            1.0, shape=[1, 2, 2, 1], dtype=dtypes.float32)
+        orig_output = constant_op.constant(
+            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32)
+        out_backprop = constant_op.constant(
+            1.0, shape=[1, 2, 2, 1], dtype=dtypes.float32)
+        t = gen_nn_ops.FractionalMaxPoolGrad(
+            orig_input=orig_input,
+            orig_output=orig_output,
+            out_backprop=out_backprop,
+            row_pooling_sequence=[0, 2],
+            col_pooling_sequence=[0, 2],
+            overlapping=True)
+        self.evaluate(t)
+
+  def testValueMismatchRaisesErrorForFractionalMaxPoolGrad(self):
+    # Valid sequence lengths, but orig_output does not hold the values the
+    # replay recomputes.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "tensor_out_dup is not the same as tensor_out",
+    ):
+      with self.cached_session():
+        orig_input = constant_op.constant(
+            1.0, shape=[1, 2, 2, 1], dtype=dtypes.float32)
+        orig_output = constant_op.constant(
+            2.0, shape=[1, 1, 1, 1], dtype=dtypes.float32)
+        out_backprop = constant_op.constant(
+            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32)
+        t = gen_nn_ops.FractionalMaxPoolGrad(
+            orig_input=orig_input,
+            orig_output=orig_output,
+            out_backprop=out_backprop,
+            row_pooling_sequence=[0, 2],
+            col_pooling_sequence=[0, 2],
             overlapping=True)
         self.evaluate(t)
 
