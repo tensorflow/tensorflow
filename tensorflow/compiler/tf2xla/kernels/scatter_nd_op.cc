@@ -60,6 +60,9 @@ absl::Status ValidateUpdateShape(const TensorShape& buffer_shape,
   };
 
   if (updates_shape.dims() == 0 && broadcast_scalar_update) {
+    if (num_index_dims < 0 || num_index_dims > buffer_shape.dims()) {
+      return shape_err();
+    }
     return absl::OkStatus();
   }
 
@@ -210,7 +213,7 @@ class TensorScatterMaxOp : public XlaOpKernel {
         [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) {
           return xla::Max(x, y);
         },
-        /*broadcast_scalar_update=*/false);
+        /*broadcast_scalar_update=*/true);
   }
 };
 
@@ -225,7 +228,7 @@ class TensorScatterMinOp : public XlaOpKernel {
         [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) {
           return xla::Min(x, y);
         },
-        /*broadcast_scalar_update=*/false);
+        /*broadcast_scalar_update=*/true);
   }
 };
 
@@ -240,7 +243,7 @@ class TensorScatterSubOp : public XlaOpKernel {
         [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) {
           return xla::Sub(x, y);
         },
-        /*broadcast_scalar_update=*/false);
+        /*broadcast_scalar_update=*/true);
   }
 };
 
