@@ -469,7 +469,7 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
   const PrecisionConfig::Algorithm precision_algorithm =
       config.precision_config().algorithm();
 
-  return GemmConfig::For(
+  absl::StatusOr<GemmConfig> gemm_config = GemmConfig::For(
       lhs_shape, dot_dims.lhs_batch_dimensions(),
       dot_dims.lhs_contracting_dimensions(), rhs_shape,
       dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
@@ -479,6 +479,10 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
       config.alpha_real(), config.alpha_imag(), config.beta(),
       precision_algorithm, algorithm, precision, grad_x, grad_y,
       static_cast<se::gpu::ScaleMode>(config.scale_mode()), gpu_version);
+  if (gemm_config.ok()) {
+    gemm_config->has_d_scale = config.has_d_scale();
+  }
+  return gemm_config;
 }
 
 /*static*/ absl::StatusOr<GroupedGemmConfig> GroupedGemmConfig::For(
