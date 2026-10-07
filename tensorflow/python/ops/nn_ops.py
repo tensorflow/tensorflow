@@ -2675,16 +2675,15 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
     )
 
   filter_shape = getattr(filter, "shape", None)
-  filter_ndims = (
-      getattr(filter_shape, "ndims", -1) if filter_shape is not None else -1
-  )
-  if filter_ndims == -1 and filter_shape is not None:
-    filter_ndims = len(filter_shape)
-  if filter_ndims is not None and filter_ndims != -1 and filter_ndims < 4:
-    raise ValueError(
-        f"`filter.shape.rank` must be at least 4. "
-        f"Received: filter.shape={filter_shape} with rank {filter_ndims}."
-    )
+  if filter_shape is not None:
+    filter_ndims = getattr(filter_shape, "ndims", -1)
+    if filter_ndims == -1:
+      filter_ndims = len(filter_shape)
+    if filter_ndims is not None and filter_ndims < 4:
+      raise ValueError(
+          f"`filter.shape.rank` must be at least 4. "
+          f"Received: filter.shape={filter_shape} with rank {filter_ndims}."
+      )
 
   if ndims in (4, None):
     # We avoid calling squeeze_batch_dims to reduce extra python function
