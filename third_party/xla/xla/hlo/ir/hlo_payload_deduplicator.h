@@ -41,6 +41,11 @@ class HloPayloadDeduplicator {
   // the payload and stores it if not already stored.
   int64_t Deduplicate(const BackendConfigWrapper* wrapper);
 
+  // Same, with the wrapper's raw string as the caller already holds it, so a
+  // pointer miss does not take the wrapper's mutex again to read it.
+  int64_t Deduplicate(const BackendConfigWrapper* wrapper,
+                      absl::string_view raw_string);
+
   // Fallback path: deduplicates the backend config using raw string comparison.
   // Stores the given value if not already stored, and returns a unique index
   // (ID) referencing it.

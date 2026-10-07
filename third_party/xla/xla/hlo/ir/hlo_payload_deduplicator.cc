@@ -34,9 +34,18 @@ int64_t HloPayloadDeduplicator::Deduplicate(
   if (it != pointer_map_.end()) {
     return it->second;
   }
+  return Deduplicate(wrapper, wrapper->GetRawString());
+}
+
+int64_t HloPayloadDeduplicator::Deduplicate(const BackendConfigWrapper* wrapper,
+                                            absl::string_view raw_string) {
+  auto it = pointer_map_.find(wrapper);
+  if (it != pointer_map_.end()) {
+    return it->second;
+  }
 
   // Fall back to string deduplication.
-  int64_t id = Deduplicate(wrapper->GetRawString());
+  int64_t id = Deduplicate(raw_string);
   pointer_map_.emplace(wrapper, id);
   return id;
 }
