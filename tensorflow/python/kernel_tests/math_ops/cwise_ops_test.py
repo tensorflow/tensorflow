@@ -1340,6 +1340,26 @@ class PolyvalTest(test.TestCase):
       self.assertEqual(tf_val.shape, x.shape)
       self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  def testSingleCoeffInfReturnsNan(self):
+    for dtype in [
+        np.float16, np.float32, np.float64, np.complex64, np.complex128
+    ]:
+      for x_val in [float("inf"), float("-inf")]:
+        for x_np in [
+            np.array(x_val, dtype=dtype),
+            np.full(3, x_val, dtype=dtype)
+        ]:
+          with self.subTest(dtype=dtype, x=x_val, scalar=x_np.shape == ()):
+            coeffs = [dtype(2.0)]
+            with self.cached_session():
+              tf_val = math_ops.polyval(coeffs, x_np)
+              result = self.evaluate(tf_val)
+              self.assertEqual(tf_val.shape, x_np.shape)
+              if np.issubdtype(dtype, np.complexfloating):
+                self.assertTrue(np.all(np.isnan(np.real(result))))
+              else:
+                self.assertTrue(np.all(np.isnan(result)))
+
   def testNonFiniteXReturnsInf(self):
     # inf x must evaluate to inf (not nan): the limit of a polynomial such as
     # p(x) = x + 1 as x -> inf is mathematically inf. NumPy returns nan here
