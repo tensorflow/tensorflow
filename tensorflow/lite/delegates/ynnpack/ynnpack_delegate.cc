@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/ynnpack/copy.h"
 #include "tensorflow/lite/delegates/ynnpack/dot.h"
 #include "tensorflow/lite/delegates/ynnpack/elementwise.h"
+#include "tensorflow/lite/delegates/ynnpack/fused_sdpa_cache_update.h"
 #include "tensorflow/lite/delegates/ynnpack/moe.h"
 #include "tensorflow/lite/delegates/ynnpack/pooling.h"
 #include "tensorflow/lite/delegates/ynnpack/reduction.h"
@@ -74,6 +75,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     outputs_.clear();
     dummy_inputs_.clear();
     input_shapes_.clear();
+    cache_writes_.clear();
+    host_outputs_.clear();
 
     int num_dummy_inputs = 0;
     for (const auto& node : nodes_info_) {
@@ -82,8 +85,22 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         num_dummy_inputs += 2;
       } else if (node.composite_op_type == CompositeOpType::kSdpa) {
         num_dummy_inputs += 4;
+      } else if (node.composite_op_type ==
+                 CompositeOpType::kFusedSdpaCacheUpdate) {
+        num_dummy_inputs += kFusedSdpaCacheUpdateMaxExternalIds;
+        if (node.outputs.size() == 3) {
+          // Updated caches are written by the delegate on the host after the
+          // YNNPACK runtime has run (see ApplyFusedCacheWrite).
+          host_outputs_.push_back({node.outputs[1], node.inputs[1]});
+          host_outputs_.push_back({node.outputs[2], node.inputs[2]});
+        }
       }
     }
+    auto is_host_output = [this](int tensor_index) {
+      return std::any_of(
+          host_outputs_.begin(), host_outputs_.end(),
+          [&](const HostOutput& h) { return h.tensor_index == tensor_index; });
+    };
 
     int external_value_ids = input_tensor_indices_.size() +
                              output_tensor_indices_.size() + num_dummy_inputs;
@@ -147,6 +164,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       int tensor_index = output_tensor_indices_[i];
       const TfLiteTensor& tensor = context->tensors[tensor_index];
       uint32_t val_id = next_external_id++;
+      if (is_host_output(tensor_index)) continue;
 
       ynn_type ynn_type = GetYnnType(tensor.type);
       TF_LITE_ENSURE_MSG(context, ynn_type != ynn_type_invalid,
@@ -231,6 +249,11 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_STATUS(
             DefineSdpaNode(context, subgraph_, tensor_to_value_id_,
                            next_external_id, dummy_inputs_, node));
+      } else if (node.composite_op_type ==
+                 CompositeOpType::kFusedSdpaCacheUpdate) {
+        TF_LITE_ENSURE_STATUS(DefineFusedSdpaCacheUpdateNode(
+            context, subgraph_, tensor_to_value_id_, next_external_id,
+            dummy_inputs_, node, cache_writes_));
       } else if (node.builtin_code == kTfLiteBuiltinBatchMatmul) {
         TF_LITE_ENSURE_STATUS(DefineBatchMatMulNode(context, subgraph_,
                                                     tensor_to_value_id_, node));
@@ -311,6 +334,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         node_info.composite_op_type = CompositeOpType::kSdpa;
       } else if (IsMoe(reg, node)) {
         node_info.composite_op_type = CompositeOpType::kMoe;
+      } else if (IsFusedSdpaCacheUpdate(reg, node)) {
+        node_info.composite_op_type = CompositeOpType::kFusedSdpaCacheUpdate;
       }
       nodes_info_.push_back(node_info);
     }
@@ -376,6 +401,15 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
           context->ResizeTensor(context, &tensor, output_shape));
     }
 
+    // Host-written cache outputs have the shape of the cache they update.
+    for (const auto& host_output : host_outputs_) {
+      TfLiteTensor& tensor = context->tensors[host_output.tensor_index];
+      const TfLiteTensor& cache = context->tensors[host_output.cache_index];
+      if (TfLiteIntArrayEqual(tensor.dims, cache.dims)) continue;
+      TF_LITE_ENSURE_STATUS(context->ResizeTensor(
+          context, &tensor, TfLiteIntArrayCopy(cache.dims)));
+    }
+
     return kTfLiteOk;
   }
 
@@ -389,23 +423,17 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         size_t dims[YNN_MAX_TENSOR_RANK] = {0};
         std::copy_n(dummy.full_dims, dummy.rank, dims);
         size_t num_elements = tflite::NumElements(&param_tensor);
+        const bool ring_fill = dummy.extent == DummyExtent::kRingFill;
         if (num_elements > 0) {
           int64_t active_tokens = 0;
-          size_t index = (num_elements >= 2) ? 1 : 0;
-          if (param_tensor.type == kTfLiteInt32 &&
-              param_tensor.data.raw != nullptr &&
-              param_tensor.bytes >= (index + 1) * sizeof(int32_t)) {
-            const int32_t* i32_data =
-                reinterpret_cast<const int32_t*>(param_tensor.data.raw);
-            active_tokens = i32_data[index];
-          } else if (param_tensor.type == kTfLiteInt64 &&
-                     param_tensor.data.raw != nullptr &&
-                     param_tensor.bytes >= (index + 1) * sizeof(int64_t)) {
-            const int64_t* i64_data =
-                reinterpret_cast<const int64_t*>(param_tensor.data.raw);
-            active_tokens = i64_data[index];
-          }
-          if (active_tokens > 0) {
+          size_t index = (num_elements >= 2 && !ring_fill) ? 1 : 0;
+          ReadParamElement(param_tensor, index, &active_tokens);
+          if (ring_fill) {
+            // Until the ring wraps, slots [0, start] can hold tokens (slot
+            // `start` holds a re-fed token). Keep at least one slot.
+            dims[dummy.seq_axis] = static_cast<size_t>(std::clamp<int64_t>(
+                active_tokens + 1, 1, dims[dummy.seq_axis]));
+          } else if (active_tokens > 0) {
             dims[dummy.seq_axis] =
                 std::min<size_t>(active_tokens, dims[dummy.seq_axis]);
           }
@@ -429,8 +457,20 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_data(
           runtime_, output.val_id, tensor.data.raw));
     }
+    for (auto& write : cache_writes_) {
+      TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_data(
+          runtime_, write.k_new_ext_id, write.k_new_buffer.data()));
+      TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_data(
+          runtime_, write.v_new_ext_id, write.v_new_buffer.data()));
+    }
 
     TF_LITE_ENSURE_YNN_STATUS(ynn_invoke_runtime(runtime_));
+
+    // Every read of the old cache contents has completed; commit the new
+    // tokens into the ring buffers.
+    for (const auto& write : cache_writes_) {
+      TF_LITE_ENSURE_STATUS(ApplyFusedCacheWrite(context, write));
+    }
     return kTfLiteOk;
   }
 
@@ -446,6 +486,15 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   };
   std::vector<TensorMap> inputs_;
   std::vector<TensorMap> outputs_;
+
+  // A partition output written by the delegate on the host rather than by
+  // YNNPACK, together with the cache input whose shape it mirrors.
+  struct HostOutput {
+    int tensor_index;
+    int cache_index;
+  };
+  std::vector<HostOutput> host_outputs_;
+  std::vector<FusedCacheWrite> cache_writes_;
 
   std::vector<NodeInfo> nodes_info_;
   std::vector<int> input_tensor_indices_;
@@ -539,6 +588,9 @@ class YNNPackDelegate : public SimpleDelegateInterface {
       return IsSdpaSupported(registration, node, context) == kTfLiteOk;
     } else if (IsMoe(registration, node)) {
       return IsMoeSupported(registration, node, context) == kTfLiteOk;
+    } else if (IsFusedSdpaCacheUpdate(registration, node)) {
+      return IsFusedSdpaCacheUpdateSupported(registration, node, context) ==
+             kTfLiteOk;
     }
     return false;
   }
@@ -566,6 +618,11 @@ class YNNPackDelegate : public SimpleDelegateInterface {
         } else if (IsMoe(reg, node) &&
                    IsMoeSupported(reg, node, context) == kTfLiteOk) {
           // Don't inline this supported MoE.
+          return false;
+        } else if (IsFusedSdpaCacheUpdate(reg, node) &&
+                   IsFusedSdpaCacheUpdateSupported(reg, node, context) ==
+                       kTfLiteOk) {
+          // Don't inline this supported fused SWA attention + cache update.
           return false;
         }
         return true;
