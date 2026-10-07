@@ -21,18 +21,17 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -49,13 +48,11 @@ absl::Status XlaExecutableVersion::IsCompatibleWith(
     return absl::OkStatus();
   }
   if (auto* other_xla_executable_version =
-          llvm::dyn_cast<XlaExecutableVersion>(&other)) {
+          dyn_cast<XlaExecutableVersion>(&other)) {
     if (platform_id != other_xla_executable_version->platform_id) {
       return absl::InvalidArgumentError(
           "Executable version is not compatible with current version");
     }
-    // TODO(b/477624817): Add compatibility check for ABI version once we have
-    // created xla runtime versions.
     return absl::OkStatus();
   }
   return absl::InvalidArgumentError(
@@ -75,7 +72,7 @@ absl::Status XlaExecutableVersion::ToProto(
   executable_version_proto.set_version_number(SerDesVersionNumber(0).value());
   executable_version_proto.set_platform_id(platform_id);
   if (abi_version) {
-    ASSIGN_OR_RETURN(xla::ifrt::Serialized executable_abi_version_proto,
+    ABSL_ASSIGN_OR_RETURN(xla::ifrt::Serialized executable_abi_version_proto,
                      xla::ifrt::Serialize(
                          *abi_version,
                          std::make_unique<xla::ifrt::SerializeOptions>(
@@ -110,7 +107,7 @@ XlaExecutableVersion::FromProto(const SerializedXlaExecutableVersion& proto) {
     return absl::InvalidArgumentError(
         "Failed to parse XlaExecutableAbiVersion from string.");
   }
-  ASSIGN_OR_RETURN(std::unique_ptr<XlaExecutableAbiVersion>
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<XlaExecutableAbiVersion>
                        xla_executable_runtime_abi_version,
                    xla::ifrt::Deserialize<XlaExecutableAbiVersion>(
                        executable_abi_version_proto,
@@ -126,7 +123,7 @@ ToXlaExecutableVersion(
   if (!executable_version) {
     return absl::InvalidArgumentError("executable_version is null");
   }
-  if (llvm::isa_and_nonnull<XlaExecutableVersion>(executable_version.get())) {
+  if (isa_and_nonnull<XlaExecutableVersion>(executable_version.get())) {
     return std::static_pointer_cast<const XlaExecutableVersion>(
         executable_version);
   }

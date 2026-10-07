@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -54,20 +54,21 @@ absl::Status RunMain(
     absl::string_view reference_platform_name, absl::string_view filter_by_name,
     absl::string_view skip_by_name, absl::string_view filter_by_opcode,
     absl::string_view skip_by_opcode, int shard_index, int num_shards,
-    double abs_error_bound, double rel_error_bound, bool run_hlo_passes) {
+    double abs_error_bound, double rel_error_bound, bool run_hlo_passes,
+    bool use_dataflow_based_input_generation) {
   if (hlo_path.empty()) {
     return absl::InvalidArgumentError("--hlo_file is required");
   }
 
   // 1. Create Runners
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> test_client,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> test_client,
                    GetPjRtClientForPlatform(test_platform_name));
   HloRunner test_runner(std::move(test_client));
 
   std::unique_ptr<HloRunner> reference_runner_ptr;
   HloRunnerInterface* reference_runner_ptr_raw = nullptr;
   if (!reference_platform_name.empty()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> ref_client,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> ref_client,
                      GetPjRtClientForPlatform(reference_platform_name));
     reference_runner_ptr = std::make_unique<HloRunner>(std::move(ref_client));
     reference_runner_ptr_raw = reference_runner_ptr.get();
@@ -78,6 +79,8 @@ absl::Status RunMain(
   options.module_options.abs_error_bound = abs_error_bound;
   options.module_options.rel_error_bound = rel_error_bound;
   options.module_options.run_hlo_passes = run_hlo_passes;
+  options.module_options.use_dataflow_based_input_generation =
+      use_dataflow_based_input_generation;
   options.shard_index = shard_index;
   options.num_shards = num_shards;
   options.filter_by_name = std::string(filter_by_name);
@@ -85,7 +88,7 @@ absl::Status RunMain(
   options.filter_by_opcode = std::string(filter_by_opcode);
   options.skip_by_opcode = std::string(skip_by_opcode);
 
-  ASSIGN_OR_RETURN(std::vector<HloIsolationTestResult> results,
+  ABSL_ASSIGN_OR_RETURN(std::vector<HloIsolationTestResult> results,
                    RunIsolationPipeline(std::string(hlo_path), &test_runner,
                                         reference_runner_ptr_raw, options));
 
@@ -126,6 +129,7 @@ int main(int argc, char** argv) {
   std::string abs_error_bound_str = "0.01";
   std::string rel_error_bound_str = "0.1";
   bool run_hlo_passes = false;
+  bool use_dataflow_based_input_generation = true;
 
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag(
@@ -157,6 +161,10 @@ int main(int argc, char** argv) {
                 "Relative error bound for comparison."),
       tsl::Flag("run_hlo_passes", &run_hlo_passes,
                 "Whether to run HLO passes on the submodules."),
+      tsl::Flag("use_dataflow_based_input_generation",
+                &use_dataflow_based_input_generation,
+                "If true, generate inputs that respect dataflow constraints "
+                "(e.g. avoid division by zero). Default is true."),
       tsl::Flag("shard_index", &shard_index,
                 "The specific shard index to run (zero-based)."),
       tsl::Flag("num_shards", &num_shards, "The total number of shards.")};
@@ -186,7 +194,8 @@ int main(int argc, char** argv) {
   absl::Status status = xla::hlo_isolation::RunMain(
       hlo_file, test_platform, reference_platform, filter_by_name, skip_by_name,
       filter_by_opcode, skip_by_opcode, shard_index, num_shards,
-      abs_error_bound, rel_error_bound, run_hlo_passes);
+      abs_error_bound, rel_error_bound, run_hlo_passes,
+      use_dataflow_based_input_generation);
   if (!status.ok()) {
     std::cerr << "Error: " << status << "\n";
     return 1;

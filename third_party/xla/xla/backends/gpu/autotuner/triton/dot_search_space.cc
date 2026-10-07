@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "google/protobuf/repeated_field.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -100,6 +102,8 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
       operand_bitwidth_(  // The bitwitdth of both operands is the same.
           primitive_util::BitWidth(dot->operand(0)->shape().element_type())),
       compute_bitwidth_(primitive_util::BitWidth(dot->shape().element_type())),
+      operand_type_(dot->operand(0)->shape().element_type()),
+      compute_type_(dot->shape().element_type()),
       // Figure out some basic limitations on tiling based on the above.
       lhs_has_expensive_op_(HasExpensiveTransitiveParent(dot->operand(0))),
       rhs_has_expensive_op_(HasExpensiveTransitiveParent(dot->operand(1))),
@@ -155,11 +159,23 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   return result;
 }
 
+std::vector<TritonGemmConfig>
+TritonDotFusionSearchSpace::GenerateAndOptimizeConfigs(
+    absl::Span<const TritonGemmConfig> hints,
+    bool autotune_warp_specialization) const {
+  std::vector<TritonGemmConfig> gemm_configs =
+      GenerateConfigs(autotune_warp_specialization);
+  if (hints.empty()) {
+    return gemm_configs;
+  }
+  return OptimizeConfigSet(gemm_configs, hints);
+}
+
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
-    const std::vector<TritonGemmConfig>& configs,
-    const std::vector<TritonGemmConfig>& hints) const {
+    absl::Span<const TritonGemmConfig> configs,
+    absl::Span<const TritonGemmConfig> hints) const {
   if (hints.empty() || configs.empty()) {
-    return configs;
+    return std::vector<TritonGemmConfig>(configs.begin(), configs.end());
   }
 
   absl::flat_hash_set<TritonGemmConfig> filter;
@@ -195,7 +211,7 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
                  "sufficiently match the hints. Maybe the hints set does "
                  "not contain a good representative set of valid configs? "
                  "Working around this by using the full hints set instead.";
-    return hints;
+    return std::vector<TritonGemmConfig>(hints.begin(), hints.end());
   }
   return result_configs;
 }
@@ -229,11 +245,54 @@ bool TritonDotFusionSearchSpace::HasExpensiveTransitiveParent(
   });
 }
 
+double TritonDotFusionSearchSpace::GetArithmeticIntensity() const {
+  const double m = static_cast<double>(lhs_parallel_size_);
+  const double n = static_cast<double>(rhs_parallel_size_);
+  const double k = static_cast<double>(contracting_size_);
+  const double flops = 2.0 * m * n * k;
+  const double lhs_bytes = m * k * (operand_bitwidth_ / 8.0);
+  const double rhs_bytes = k * n * (operand_bitwidth_ / 8.0);
+  const double out_bytes = m * n * (compute_bitwidth_ / 8.0);
+  const double total_bytes = lhs_bytes + rhs_bytes + out_bytes;
+  return total_bytes > 0 ? flops / total_bytes : 0.0;
+}
+
+double TritonDotFusionSearchSpace::GetRidgePoint() const {
+  const int64_t peak_matrix_ops_per_ns =
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(device_description_,
+                                                           operand_type_);
+  const int64_t memory_bandwidth = device_description_.memory_bandwidth();
+  if (peak_matrix_ops_per_ns > 0 && memory_bandwidth > 0) {
+    // Ridge point = (peak FLOPs / s) / (memory bandwidth in bytes / s)
+    //             = (peak_matrix_ops_per_ns * 1e9) / memory_bandwidth.
+    return (static_cast<double>(peak_matrix_ops_per_ns) * 1e9) /
+           static_cast<double>(memory_bandwidth);
+  }
+  // Fallback if matrix unit description or bandwidth is unavailable:
+  // ~300 FLOP/B for 16-bit Tensor Cores on Hopper/Blackwell, scaling inversely
+  // with operand bitwidth.
+  return operand_bitwidth_ > 0 ? 4800.0 / operand_bitwidth_ : 300.0;
+}
+
 int TritonDotFusionSearchSpace::GetDesiredTotalWarps() const {
   constexpr int kSchedulersPerCore = 4;
-  constexpr int kDesiredWarpsPerCore =
-      kMaxWarpsPerScheduler * kSchedulersPerCore;
-  return kDesiredWarpsPerCore * device_description_.core_count();
+  const double arithmetic_intensity = GetArithmeticIntensity();
+  const double ridge_point = GetRidgePoint();
+  const double compute_intensity_ratio =
+      ridge_point > 0.0
+          ? std::clamp(arithmetic_intensity / ridge_point, 0.0, 1.0)
+          : 1.0;
+
+  // Memory-bound dots benefit from higher warp oversubscription (up to
+  // kMaxWarpsPerScheduler) to overlap memory latency, while compute-bound dots
+  // scale down to kMinWarpsPerScheduler to avoid thrashing and contention.
+  const int desired_warps_per_scheduler = static_cast<int>(
+      std::round(kMaxWarpsPerScheduler -
+                 compute_intensity_ratio *
+                     (kMaxWarpsPerScheduler - kMinWarpsPerScheduler)));
+  const int desired_warps_per_core =
+      desired_warps_per_scheduler * kSchedulersPerCore;
+  return desired_warps_per_core * device_description_.core_count();
 }
 
 TritonDotFusionSearchSpace::OutputTile
@@ -580,7 +639,9 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     return;
   }
 
-  constexpr int kMinConfigsForOccupancyOptimization = 24;
+  // Output tilings alone typically produce 12-20 configs (without split-K
+  // multipliers). We only skip optimization for very small search spaces.
+  constexpr int kMinConfigsForOccupancyOptimization = 15;
   if (configs.size() < kMinConfigsForOccupancyOptimization) {
     VLOG(10) << "Skipping occupancy optimization for small search spaces. "
                 "Configs size: "
@@ -588,7 +649,7 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     return;
   }
 
-  ConfigWithNotes last_config = configs.back();  // Largest split.
+  ConfigWithNotes last_config = configs.back();
   auto has_too_few_tiles = [](const ConfigWithNotes& config) {
     if (config.not_enough_tiles) {
       VLOG(10) << "Skipping due to fewer tiles than cores, config = "
@@ -600,8 +661,7 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
   configs.erase(llvm::remove_if(configs, has_too_few_tiles), configs.end());
   if (configs.empty()) {
     // We can get no configs if the problem is small enough to not even occupy
-    // all cores. In that case, we just use the largest split and smallest
-    // tiling.
+    // all cores. In that case, we just use the smallest tiling.
     last_config.config.block_m = min_out_tile_.lhs_dim;
     last_config.config.block_n = min_out_tile_.rhs_dim;
     VLOG(10) << "No configs with sufficient occupancy, using config = "

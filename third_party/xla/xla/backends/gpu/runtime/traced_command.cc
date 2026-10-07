@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -71,7 +71,7 @@ TracedCommand::RecordTracedCommand(
             debug_options.xla_cmd_buffer_trace_cache_size());
       });
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto nested_cmd,
       traced_cmd->GetOrTraceCommandBuffer(
           execute_params.buffer_allocations, execute_params.stream->parent(),
@@ -89,7 +89,7 @@ TracedCommand::RecordTracedCommand(
     VLOG(5) << "Record traced command " << nested_cmd
             << " into parent command buffer: " << command_buffer
             << " (UpdateChildCommand)";
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         command_buffer->UpdateChildCommand(update->command, *nested_cmd));
     return update->command;
   }

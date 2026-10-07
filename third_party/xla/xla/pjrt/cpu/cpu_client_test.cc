@@ -44,13 +44,17 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/host_to_device_transfer_manager.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
@@ -180,7 +184,7 @@ TEST(PjRtCpuClientTest, RuntimeDonationDenial) {
   static constexpr char kProgram[] =
       R"(
 HloModule RuntimeDonationDenial,
-          input_output_alias={ {}: (0, {}, must-alias) }
+          input_output_alias={ {}: (0, {}, may-alias) }
 
 ENTRY RuntimeDonationDenial() -> f32[2, 2] {
     ROOT %param = f32[2, 2] parameter(0)
@@ -520,6 +524,63 @@ TEST(PjRtCpuClientTest, AsyncTransferWithSpecs) {
   EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
 }
 
+TEST(PjRtCpuClientTest, AsyncTransferDonatedBuffers) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  PjRtClient::ShapeSpec shape_spec{U32, {3, 2}};
+  constexpr size_t raw_data_size = 3 * 2 * 4;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto raw_buffer,
+      absl::down_cast<CommonPjRtClient*>(client.get())
+          ->AllocateRawBuffer(client->memory_spaces()[0], raw_data_size,
+                              /*retry_on_oom=*/true, {}));
+
+  std::vector<PjRtRawBufferRef> donated_buffers = {raw_buffer};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      CreateAsyncHostToDeviceTransferManager({shape_spec}, std::nullopt,
+                                             client->memory_spaces()[0],
+                                             absl::MakeSpan(donated_buffers)));
+
+  auto buffer = transfer_manager->RetrieveBuffer(0);
+  auto ready_future = buffer->GetReadyFuture();
+  EXPECT_THAT(ready_future.IsReady(), IsFalse());
+
+  char raw_data[raw_data_size];
+  std::fill(raw_data, raw_data + raw_data_size, 0x42);
+  TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+      0, absl::string_view(raw_data, raw_data_size), []() {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
+  ASSERT_EQ(literal->element_count(), 3 * 2);
+  EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
+}
+
+TEST(PjRtCpuClientTest, AsyncTransferDonatedBuffersSizeMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  PjRtClient::ShapeSpec shape_spec{U32, {3, 2}};
+  constexpr size_t wrong_size = 3 * 2 * 4 + 10;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto raw_buffer,
+      absl::down_cast<CommonPjRtClient*>(client.get())
+          ->AllocateRawBuffer(client->memory_spaces()[0], wrong_size,
+                              /*retry_on_oom=*/true, {}));
+
+  std::vector<PjRtRawBufferRef> donated_buffers = {raw_buffer};
+  EXPECT_THAT(CreateAsyncHostToDeviceTransferManager(
+                  {shape_spec}, std::nullopt, client->memory_spaces()[0],
+                  absl::MakeSpan(donated_buffers)),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(PjRtCpuClientTest, AsyncTransferDonatedBuffersCountMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  PjRtClient::ShapeSpec shape_spec{U32, {3, 2}};
+  std::vector<PjRtRawBufferRef> donated_buffers = {};
+  EXPECT_THAT(CreateAsyncHostToDeviceTransferManager(
+                  {shape_spec}, std::nullopt, client->memory_spaces()[0],
+                  absl::MakeSpan(donated_buffers)),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST(PjRtCpuClientTest, AsyncTransferLiteral) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = xla::ShapeUtil::MakeShape(F32, {128, 256});
@@ -630,6 +691,23 @@ TEST(PjRtCpuClientTest, CopyToMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<int32_t>(),
               ElementsAreArray(literal.data<int32_t>()));
+}
+
+TEST(PjRtCpuClientTest, CopyToMemorySpaceWithCustomLayout) {
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  xla::Shape shape = xla::ShapeUtil::MakeShape(S32, {128, 256});
+  ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  Layout device_layout = LayoutUtil::MakeAscendingLayout(2);
+  for (auto* memory_space : client->memory_spaces()) {
+    ASSERT_OK_AND_ASSIGN(
+        auto buffer,
+        client->BufferFromHostLiteral(literal, memory_space, &device_layout));
+    ASSERT_OK_AND_ASSIGN(buffer,
+                         buffer->CopyToMemorySpace(buffer->memory_space()));
+    EXPECT_EQ(buffer->layout()->xla_layout(), device_layout);
+    ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
+    EXPECT_EQ(*received_literal, literal);
+  }
 }
 
 TEST(PjRtCpuClientTest, CopyTokenToDevice) {
@@ -1356,6 +1434,75 @@ TEST(PjRtCpuClientTest, MultiDevicePrepareFailurePropagatesError) {
   // going vacuous if a future top-level validation rejects the arguments
   // before the per-device Prepare runs.
   EXPECT_THAT(result.status().message(), HasSubstr("incompatible size"));
+}
+
+TEST(PjRtCpuClientTest, DonateWithControlDependency) {
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  auto literal = LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
+                                    /*device_layout=*/nullptr));
+
+  auto [promise, future] = MakePromise<>();
+  ASSERT_OK_AND_ASSIGN(auto blocked_buffer,
+                       buffer->DonateWithControlDependency(future));
+  EXPECT_TRUE(buffer->IsDeleted());
+
+  buffer.reset();
+  auto result_literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
+  absl::Notification done;
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
+    TF_ASSERT_OK(s);
+    done.Notify();
+  });
+  blocked_buffer.reset();
+
+  EXPECT_FALSE(done.HasBeenNotified());
+
+  promise.Set();
+  EXPECT_TRUE(future.IsReady());
+
+  done.WaitForNotification();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result_literal));
+}
+
+TEST(PjRtCpuClientTest, DonateWithControlDependencyError) {
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  auto literal = LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
+                                    /*device_layout=*/nullptr));
+
+  auto [promise, future] = MakePromise<>();
+  ASSERT_OK_AND_ASSIGN(auto blocked_buffer,
+                       buffer->DonateWithControlDependency(future));
+  EXPECT_TRUE(buffer->IsDeleted());
+
+  buffer.reset();
+  auto result_literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
+  absl::Notification done;
+  absl::Status to_literal_status;
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
+    to_literal_status = s;
+    done.Notify();
+  });
+  blocked_buffer.reset();
+
+  EXPECT_FALSE(done.HasBeenNotified());
+
+  promise.Set(absl::InternalError("control dependency failed"));
+  EXPECT_TRUE(future.IsReady());
+
+  done.WaitForNotification();
+
+  EXPECT_THAT(to_literal_status,
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("control dependency failed")));
 }
 
 }  // namespace

@@ -69,6 +69,9 @@ const char kXlaStreamAnnotationAttr[] = "_xla_stream_annotation";
 
 const char kXlaCollectiveStreamAnnotation[] = "collective";
 
+const char kCollectiveCommunicationDomainAttr[] =
+    "collective_communication_domain";
+
 const char kXlaCollectiveMatmulAttr[] = "_xla_collective_matmul";
 
 const char kXlaCollectiveMatmulLhsAg[] = "lhs_ag";

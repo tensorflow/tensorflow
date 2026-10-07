@@ -228,7 +228,7 @@ class BaseGPUDevice : public LocalDevice {
                           int stream_id, Allocator* allocator);
 
   std::string ComputeOpKernelDebugString(const OpKernel& op_kernel,
-                                         const int& stream_id);
+                                         int stream_id);
 
   // This method returns an initialization status, in addition to
   // calling the "done" StatusCallback, if there is a failure to
@@ -310,7 +310,7 @@ class GPUKernelTracker {
 
   // Returns the largest timing count such that all kernels queued no
   // later than that count are known to have terminated.
-  inline uint64_t LastTerminatedCount(uint64_t old_value) {
+  uint64_t LastTerminatedCount(uint64_t old_value) {
     uint64_t new_value = last_terminated_count_.load(std::memory_order_relaxed);
     if (new_value == old_value) {
       MaybeQueueProgressEvent();

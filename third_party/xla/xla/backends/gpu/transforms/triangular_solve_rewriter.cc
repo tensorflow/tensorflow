@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -69,7 +69,7 @@ absl::StatusOr<bool> TriangularSolveRewriter::RunImpl(
           comp->AddInstruction(HloInstruction::CreateCustomCall(
               new_shape, instr->operands(), kTriangularSolveCallTarget));
       module->SetAndUniquifyInstrName(custom_call, "triangular-solve");
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           custom_call->set_backend_config(instr->triangular_solve_options()));
 
       // Preserve metadata from `instr`.
@@ -77,9 +77,9 @@ absl::StatusOr<bool> TriangularSolveRewriter::RunImpl(
       custom_call->set_frontend_attributes(instr->frontend_attributes());
 
       // Get the actual result out of the custom call's tuple.
-      ASSIGN_OR_RETURN(HloInstruction * gte,
+      ABSL_ASSIGN_OR_RETURN(HloInstruction * gte,
                        MakeGetTupleElementHlo(custom_call, 0));
-      RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+      ABSL_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
       changed = true;
     }
   }

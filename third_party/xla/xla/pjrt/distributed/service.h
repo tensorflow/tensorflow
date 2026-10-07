@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -61,6 +62,12 @@ class CoordinationServiceImpl {
     // How long should we wait for all clients to call Shutdown() before giving
     // up and returning a failure?
     absl::Duration shutdown_timeout = absl::Minutes(5);
+
+    // An optional gRPC credentials to use for the server.
+    absl_nullable std::shared_ptr<::grpc::ServerCredentials> credentials;
+
+    // If true, crash if insecure credentials are used.
+    bool verify_secure_credentials = false;
   };
 
   CoordinationServiceImpl(const Options& options,

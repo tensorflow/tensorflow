@@ -42,7 +42,8 @@ absl::Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
     *output = str.substr(prefix.size());
     return absl::OkStatus();
   }
-  return errors::NotFound("No prefix \"", prefix, "\" in \"", str, "\"");
+  return absl::NotFoundError(
+      absl::StrCat("No prefix \"", prefix, "\" in \"", str, "\""));
 }
 
 absl::Status ParseTextProto(absl::string_view text_proto,
@@ -65,7 +66,8 @@ absl::Status ParseTextProto(absl::string_view text_proto,
     return absl::OkStatus();
   }
   parsed_proto->Clear();
-  return errors::InvalidArgument("Could not parse text proto: ", text_proto);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Could not parse text proto: ", text_proto));
 }
 
 }  // namespace tensorflow

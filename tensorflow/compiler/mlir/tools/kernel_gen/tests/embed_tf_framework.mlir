@@ -92,9 +92,9 @@ func.func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable attributes {tf_entry} {
   // CHECK: %[[RES:.*]] = tf_framework.jit_compile_from_str %[[CTX]], "placeholder"
   // CHECK: return %[[RES]]
-  %0 = tf_framework.jit_compile_from_str "placeholder" {
-      architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
-      unrollFactors = [4], enableFtz = false,
-      index64Bit = false, cpuCodegen = false }
+  %0 = tf_framework.jit_compile_from_str "placeholder" <
+      tileSizes = [1, 2, 3], unrollFactors = [4], enableFtz = false,
+      index64Bit = false, cpuCodegen = false> {
+      architectures = ["sm_123", "sm_456"] }
   func.return %0 : !tf_framework.jit_callable
 }

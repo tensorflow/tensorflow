@@ -17,12 +17,17 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
+#include <limits>
 #include <map>
+#include <numeric>
 #include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,11 +53,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/index_util.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_dump/hlo_dump_assets.h"
 #include "xla/tools/hlo_dump/hlo_lexer.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/util.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/path.h"
 
@@ -202,24 +212,34 @@ std::string JsStringEscape(absl::string_view s) {
   return absl::StrReplaceAll(escaped, {{"<", "\\x3c"}, {">", "\\x3e"}});
 }
 
+std::string FormatJsDouble(double val) {
+  if (std::isnan(val)) {
+    return "NaN";
+  }
+  if (std::isinf(val)) {
+    return val > 0 ? "Infinity" : "-Infinity";
+  }
+  return absl::StrFormat("%g", val);
+}
+
 std::string SerializeGraphDataCompressed(const GraphData& data) {
   std::string binary_data;
 
   tsl::core::PutFixed32(&binary_data, data.nodes.size());
 
   for (const auto& node : data.nodes) {
-    int32_t id = node.id;
+    int64_t id = node.id;
     float x = node.x;
     float y = node.y;
     float diff_score = node.diff_score;
-    int32_t anchor_id = node.anchor_id;
+    int64_t anchor_id = node.anchor_id;
     uint16_t key_len = node.key.size();
 
-    tsl::core::PutFixed32(&binary_data, id);
+    tsl::core::PutFixed64(&binary_data, id);
     tsl::core::PutFixed32(&binary_data, absl::bit_cast<uint32_t>(x));
     tsl::core::PutFixed32(&binary_data, absl::bit_cast<uint32_t>(y));
     tsl::core::PutFixed32(&binary_data, absl::bit_cast<uint32_t>(diff_score));
-    tsl::core::PutFixed32(&binary_data, anchor_id);
+    tsl::core::PutFixed64(&binary_data, anchor_id);
     tsl::core::PutFixed16(&binary_data, key_len);
     binary_data.append(node.key.data(), key_len);
   }
@@ -227,11 +247,11 @@ std::string SerializeGraphDataCompressed(const GraphData& data) {
   tsl::core::PutFixed32(&binary_data, data.edges.size());
 
   for (const auto& edge : data.edges) {
-    int32_t supplier_id = edge.supplier_id;
-    int32_t consumer_id = edge.consumer_id;
+    int64_t supplier_id = edge.supplier_id;
+    int64_t consumer_id = edge.consumer_id;
 
-    tsl::core::PutFixed32(&binary_data, supplier_id);
-    tsl::core::PutFixed32(&binary_data, consumer_id);
+    tsl::core::PutFixed64(&binary_data, supplier_id);
+    tsl::core::PutFixed64(&binary_data, consumer_id);
   }
 
   std::string compressed;
@@ -664,10 +684,6 @@ TokenAnnotationMapping GetTokenAnnotationMapping(
                 // Deeper shape index (longer path) wins for background/border.
                 mapping.token_to_annotation.insert({abs_token_idx, annotation});
                 shape_tokens_indices[sid].push_back(abs_token_idx);
-                if (annotation->stack_frame_id) {
-                  mapping.token_stack_frame_ids[abs_token_idx] =
-                      *annotation->stack_frame_id;
-                }
               }
             }
           }
@@ -699,11 +715,56 @@ std::string GenerateHloHtmlContent(
     absl::flat_hash_map<std::string, std::string>& tooltip_data) {
   std::string parts;
   int tt_counter = 0;
-  absl::flat_hash_map<const TensorAnnotation*, std::string> ann_to_id;
+  absl::flat_hash_map<std::string, std::string> tooltip_str_to_id;
+  bool in_block = false;
+  int line_count = 0;
+  constexpr int kLinesPerBlock = 50;
+
+  auto open_block_if_needed = [&]() {
+    if (!in_block) {
+      absl::StrAppend(&parts, "<div class=\"hlo-block\">");
+      in_block = true;
+      line_count = 0;
+    }
+  };
+
+  auto close_block_if_open = [&]() {
+    if (in_block) {
+      absl::StrAppend(&parts, "</div>");
+      in_block = false;
+      line_count = 0;
+    }
+  };
+
   for (size_t i = 0; i < tokens.size(); ++i) {
     if (mapping.tokens_to_skip.count(i)) {
       continue;
     }
+
+    if (tokens[i].kind == TokKind::kText &&
+        absl::StrContains(tokens[i].value, '\n')) {
+      std::string val = tokens[i].value;
+      size_t pos = 0;
+      while (pos < val.size()) {
+        size_t nl_pos = val.find('\n', pos);
+        if (nl_pos == std::string::npos) {
+          open_block_if_needed();
+          absl::StrAppend(&parts, HtmlEscape(val.substr(pos)));
+          break;
+        }
+        open_block_if_needed();
+        absl::StrAppend(&parts, HtmlEscape(val.substr(pos, nl_pos - pos)),
+                        "\n");
+        line_count++;
+        if (line_count >= kLinesPerBlock) {
+          close_block_if_open();
+        }
+        pos = nl_pos + 1;
+      }
+      continue;
+    }
+
+    open_block_if_needed();
 
     if (mapping.span_starts.count(i)) {
       for (const auto* ann : mapping.span_starts.at(i)) {
@@ -714,12 +775,12 @@ std::string GenerateHloHtmlContent(
         std::string tooltip_attr;
         if (ann->tooltip_data) {
           std::string tt_id;
-          auto it = ann_to_id.find(ann);
-          if (it != ann_to_id.end()) {
+          auto it = tooltip_str_to_id.find(*ann->tooltip_data);
+          if (it != tooltip_str_to_id.end()) {
             tt_id = it->second;
           } else {
             tt_id = absl::StrCat("tt", tt_counter++);
-            ann_to_id[ann] = tt_id;
+            tooltip_str_to_id[*ann->tooltip_data] = tt_id;
             tooltip_data[tt_id] = *ann->tooltip_data;
           }
           tooltip_attr = absl::StrCat(" data-tooltip-id=\"", tt_id, "\"");
@@ -773,9 +834,19 @@ std::string GenerateHloHtmlContent(
                       anchor_attr, extra_attrs, style_attr, ">",
                       HtmlEscape(tokens[i].value), "</span>");
     } else {
-      const char* css_class = TokKindToClass(tokens[i].kind);
-      if (css_class[0] != '\0' || !anchor_attr.empty() ||
-          !extra_attrs.empty()) {
+      bool needs_span = !anchor_attr.empty() || !extra_attrs.empty() ||
+                        mapping.token_links.count(i) > 0;
+      if (!needs_span) {
+        TokKind kind = tokens[i].kind;
+        if (kind == TokKind::kComment || kind == TokKind::kCommentSpecial ||
+            kind == TokKind::kString || kind == TokKind::kKeyword ||
+            kind == TokKind::kKeywordType || kind == TokKind::kNameFunction ||
+            kind == TokKind::kNameComputation || kind == TokKind::kNumber) {
+          needs_span = true;
+        }
+      }
+      if (needs_span) {
+        const char* css_class = TokKindToClass(tokens[i].kind);
         absl::StrAppend(&parts, "<span class=\"", css_class, "\"", anchor_attr,
                         extra_attrs, ">", HtmlEscape(tokens[i].value),
                         "</span>");
@@ -794,6 +865,7 @@ std::string GenerateHloHtmlContent(
       }
     }
   }
+  close_block_if_open();
   return parts;
 }
 
@@ -875,12 +947,510 @@ std::string GenerateConfigInjectionJs() {
 
 }  // namespace
 
+std::string ClassifyMismatchPattern(const MismatchBoundingBox& bbox) {
+  if (bbox.mismatch_count <= 0) {
+    return "";
+  }
+  if (!bbox.tensor_shape.empty() &&
+      (bbox.box_min.empty() || bbox.box_max.empty())) {
+    return "";
+  }
+
+  size_t rank = bbox.box_min.size();
+  int64_t box_volume = 1;
+  for (size_t d = 0; d < rank; ++d) {
+    int64_t span = std::max<int64_t>(1, bbox.box_max[d] - bbox.box_min[d] + 1);
+    box_volume *= span;
+  }
+  double density = box_volume > 0 ? static_cast<double>(bbox.mismatch_count) /
+                                        static_cast<double>(box_volume)
+                                  : 0.0;
+
+  // 1. SPARSE_OUTLIERS (density < 2% and count < 16, or ultra-low density <
+  // 0.1% for large tensors)
+  if ((bbox.mismatch_count < 16 &&
+       (density < 0.02 ||
+        (bbox.total_elements > 0 &&
+         static_cast<double>(bbox.mismatch_count) / bbox.total_elements <
+             0.02 &&
+         box_volume <= bbox.mismatch_count))) ||
+      (bbox.total_elements >= 10000 && density < 0.001 &&
+       static_cast<double>(bbox.mismatch_count) / bbox.total_elements <
+           0.001)) {
+    return "SPARSE_OUTLIERS";
+  }
+
+  // 2. BOUNDARY (mismatches concentrated at min and max bounds along one or
+  // more dimensions with a hollow interior)
+  if (rank >= 1 && !bbox.top_mismatch_coords.empty()) {
+    for (size_t d = 0; d < rank; ++d) {
+      if (bbox.box_max[d] - bbox.box_min[d] >= 2) {
+        bool has_min_bound = false;
+        bool has_max_bound = false;
+        bool has_interior = false;
+        for (const auto& coord : bbox.top_mismatch_coords) {
+          if (coord.size() == rank) {
+            if (coord[d] == bbox.box_min[d]) {
+              has_min_bound = true;
+            } else if (coord[d] == bbox.box_max[d]) {
+              has_max_bound = true;
+            } else if (coord[d] > bbox.box_min[d] &&
+                       coord[d] < bbox.box_max[d]) {
+              has_interior = true;
+              break;
+            }
+          }
+        }
+        if (has_min_bound && has_max_bound && !has_interior) {
+          return "BOUNDARY";
+        }
+      }
+    }
+  }
+
+  // 3. STRIDED (periodic delta between mismatch coordinates in the minor
+  // dimension, e.g. stride 4, 8, etc.)
+  if (rank >= 1 && bbox.top_mismatch_coords.size() >= 2) {
+    size_t dim_minor = rank - 1;
+    std::vector<int64_t> minor_coords;
+    minor_coords.reserve(bbox.top_mismatch_coords.size());
+    for (const auto& coord : bbox.top_mismatch_coords) {
+      if (coord.size() == rank) {
+        minor_coords.push_back(coord[dim_minor]);
+      }
+    }
+    std::sort(minor_coords.begin(), minor_coords.end());
+    minor_coords.erase(std::unique(minor_coords.begin(), minor_coords.end()),
+                       minor_coords.end());
+
+    if (minor_coords.size() >= 2) {
+      int64_t stride = minor_coords[1] - minor_coords[0];
+      for (size_t i = 2; i < minor_coords.size(); ++i) {
+        stride = std::gcd(stride, minor_coords[i] - minor_coords[i - 1]);
+      }
+      if (stride >= 2) {
+        bool is_periodic = true;
+        for (size_t i = 1; i < minor_coords.size(); ++i) {
+          int64_t diff = minor_coords[i] - minor_coords[i - 1];
+          if (diff % stride != 0 || diff > 4 * stride) {
+            is_periodic = false;
+            break;
+          }
+        }
+        if (is_periodic) {
+          return absl::StrFormat("STRIDED (stride %d)", stride);
+        }
+      }
+    }
+  }
+
+  // 4. SINGLE_SLICE (span is 1 along one or more dimensions)
+  if (rank >= 1) {
+    for (size_t d = 0; d < rank; ++d) {
+      if (bbox.box_max[d] == bbox.box_min[d]) {
+        if (bbox.tensor_shape.empty() ||
+            (d < bbox.tensor_shape.size() && bbox.tensor_shape[d] > 1)) {
+          return "SINGLE_SLICE";
+        }
+      }
+    }
+  }
+
+  // 5. DENSE_BLOCK (density >= 70%)
+  if (density >= 0.70) {
+    return "DENSE_BLOCK";
+  }
+
+  return "";
+}
+
+MismatchBoundingBox ComputeBoundingBoxFromLiteralMask(
+    const LiteralSlice& mismatches) {
+  MismatchBoundingBox result;
+  const Shape& shape = mismatches.shape();
+  if (!shape.IsArray()) {
+    return result;
+  }
+  int64_t rank = shape.dimensions().size();
+  result.tensor_shape.assign(shape.dimensions().begin(),
+                             shape.dimensions().end());
+  result.total_elements = ShapeUtil::ElementsIn(shape);
+  result.box_min.assign(rank, 0);
+  result.box_max.assign(rank, 0);
+  result.mismatch_count = 0;
+
+  if (result.total_elements == 0) {
+    return result;
+  }
+
+  if (rank == 0) {
+    if (mismatches.Get<bool>({})) {
+      result.mismatch_count = 1;
+      result.top_mismatch_coords.push_back({});
+      result.pattern = "DENSE_BLOCK";
+    }
+    return result;
+  }
+
+  absl::Span<const bool> data_span = mismatches.data<bool>();
+  const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data_span.data());
+
+  int64_t dim_minor = LayoutUtil::Minor(shape.layout(), 0);
+  int64_t W = shape.dimensions(dim_minor);
+  int64_t num_rows = result.total_elements / W;
+
+  bool found_any = false;
+  std::vector<int64_t> current_min(rank, std::numeric_limits<int64_t>::max());
+  std::vector<int64_t> current_max(rank, std::numeric_limits<int64_t>::min());
+
+  constexpr size_t kMaxTopMismatches = 16;
+  std::minstd_rand rng(0x1337);
+  auto uniform = [&]() -> double {
+    return (rng() - rng.min() + 1.0) /
+           (static_cast<double>(rng.max() - rng.min()) + 2.0);
+  };
+  double w = 1.0;
+  int64_t skip = 0;
+  auto advance_skip = [&]() {
+    double u = uniform();
+    w *= std::exp(std::log(u) / static_cast<double>(kMaxTopMismatches));
+    double u2 = uniform();
+    skip = static_cast<int64_t>(std::log(u2) / std::log1p(-w));
+    skip = std::max<int64_t>(0, skip);
+  };
+
+  for (int64_t r = 0; r < num_rows; ++r) {
+    const uint8_t* row_bytes = bytes + r * W;
+    int64_t c = 0;
+    int64_t first_in_row = -1;
+    int64_t last_in_row = -1;
+    int64_t row_mismatches = 0;
+
+    std::optional<DimensionVector> row_coords;
+    auto get_row_coords = [&]() -> const DimensionVector& {
+      if (!row_coords.has_value()) {
+        row_coords =
+            IndexUtil::LinearIndexToMultidimensionalIndex(shape, r * W);
+      }
+      return *row_coords;
+    };
+
+    auto record_mismatch = [&](int64_t col) {
+      row_mismatches++;
+      if (first_in_row == -1) {
+        first_in_row = col;
+      }
+      last_in_row = col;
+
+      auto compute_sample_coord = [&]() {
+        const DimensionVector& outer_coords = get_row_coords();
+        std::vector<int64_t> sample_coord(outer_coords.begin(),
+                                          outer_coords.end());
+        sample_coord[dim_minor] = col;
+        return sample_coord;
+      };
+
+      if (result.top_mismatch_coords.size() < kMaxTopMismatches) {
+        result.top_mismatch_coords.push_back(compute_sample_coord());
+        if (result.top_mismatch_coords.size() == kMaxTopMismatches) {
+          advance_skip();
+        }
+      } else if (skip > 0) {
+        --skip;
+      } else {
+        size_t j = rng() % kMaxTopMismatches;
+        result.top_mismatch_coords[j] = compute_sample_coord();
+        advance_skip();
+      }
+    };
+
+    while (c + 8 <= W) {
+      uint64_t word;
+      std::memcpy(&word, row_bytes + c, sizeof(uint64_t));
+      if (word != 0) {
+        for (int j = 0; j < 8; ++j) {
+          if (row_bytes[c + j]) {
+            record_mismatch(c + j);
+          }
+        }
+      }
+      c += 8;
+    }
+    while (c < W) {
+      if (row_bytes[c]) {
+        record_mismatch(c);
+      }
+      c++;
+    }
+
+    if (row_mismatches > 0) {
+      found_any = true;
+      result.mismatch_count += row_mismatches;
+
+      const DimensionVector& outer_coords = get_row_coords();
+      auto update_bounds = [&](std::vector<int64_t>& box_min,
+                               std::vector<int64_t>& box_max) {
+        box_min[dim_minor] = std::min(box_min[dim_minor], first_in_row);
+        box_max[dim_minor] = std::max(box_max[dim_minor], last_in_row);
+        for (int64_t d = 0; d < rank; ++d) {
+          if (d != dim_minor) {
+            box_min[d] =
+                std::min(box_min[d], static_cast<int64_t>(outer_coords[d]));
+            box_max[d] =
+                std::max(box_max[d], static_cast<int64_t>(outer_coords[d]));
+          }
+        }
+      };
+
+      update_bounds(current_min, current_max);
+      if (rank >= 4) {
+        int64_t slice_idx = static_cast<int64_t>(outer_coords[rank - 4]);
+        if (std::find(result.mismatched_slices.begin(),
+                      result.mismatched_slices.end(),
+                      slice_idx) == result.mismatched_slices.end()) {
+          result.mismatched_slices.push_back(slice_idx);
+        }
+
+        std::vector<int64_t> slice_coords;
+        slice_coords.reserve(rank - 3);
+        for (int64_t d = 0; d <= rank - 4; ++d) {
+          slice_coords.push_back(static_cast<int64_t>(outer_coords[d]));
+        }
+        std::string slice_key = absl::StrJoin(slice_coords, ",");
+
+        auto& sbox = result.slice_boxes[slice_key];
+        if (sbox.box_min.empty()) {
+          sbox.slice_key = slice_key;
+          sbox.slice_coords = slice_coords;
+          sbox.slice_index = slice_idx;
+          sbox.box_min.assign(rank, std::numeric_limits<int64_t>::max());
+          sbox.box_max.assign(rank, std::numeric_limits<int64_t>::min());
+        }
+        sbox.mismatch_count += row_mismatches;
+        update_bounds(sbox.box_min, sbox.box_max);
+      }
+    }
+  }
+
+  if (found_any) {
+    result.box_min = std::move(current_min);
+    result.box_max = std::move(current_max);
+    if (!result.mismatched_slices.empty()) {
+      std::sort(result.mismatched_slices.begin(),
+                result.mismatched_slices.end());
+    }
+    result.pattern = ClassifyMismatchPattern(result);
+  }
+  return result;
+}
+
+namespace {
+
+void ApplyBoundingBoxTail(const MismatchBoundingBox& bbox, double rel_error,
+                          TensorVisualizationInfo& info) {
+  info.mismatch_count = bbox.mismatch_count;
+  info.total_elements =
+      bbox.total_elements > 0 ? bbox.total_elements : info.total_elements;
+  for (const auto& coord : bbox.top_mismatch_coords) {
+    info.top_mismatches.push_back({coord, rel_error});
+  }
+  if (!bbox.mismatched_slices.empty()) {
+    info.mismatched_slices = bbox.mismatched_slices;
+  }
+  if (!bbox.slice_boxes.empty()) {
+    info.slice_boxes = bbox.slice_boxes;
+  }
+  info.pattern =
+      !bbox.pattern.empty() ? bbox.pattern : ClassifyMismatchPattern(bbox);
+}
+
+}  // namespace
+
+absl::flat_hash_map<std::string, TensorVisualizationInfo>
+PopulateTensorVisualizations(const HloModule& module,
+                             absl::Span<const MismatchDetails> mismatches) {
+  absl::flat_hash_map<std::string, TensorVisualizationInfo> visualizations;
+
+  absl::flat_hash_map<std::string, const MismatchDetails*> instr_to_mismatch;
+  for (const MismatchDetails& mismatch : mismatches) {
+    instr_to_mismatch[mismatch.target_instruction_name] = &mismatch;
+  }
+
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      TensorVisualizationInfo info;
+      info.instruction_name = std::string(instr->name());
+      info.opcode = std::string(HloOpcodeString(instr->opcode()));
+
+      const Shape& instr_shape = instr->shape();
+      if (instr_shape.IsArray()) {
+        info.shape.assign(instr_shape.dimensions().begin(),
+                          instr_shape.dimensions().end());
+        info.total_elements = ShapeUtil::ElementsIn(instr_shape);
+      } else if (instr_shape.IsTuple() && !instr_shape.tuple_shapes().empty()) {
+        const auto it = instr_to_mismatch.find(instr->name());
+        int64_t tuple_idx = 0;
+        if (it != instr_to_mismatch.end() &&
+            it->second->output_shape_index.has_value() &&
+            *it->second->output_shape_index <
+                instr_shape.tuple_shapes().size()) {
+          tuple_idx = *it->second->output_shape_index;
+        }
+        const Shape& sub = instr_shape.tuple_shapes(tuple_idx);
+        if (sub.IsArray()) {
+          info.shape.assign(sub.dimensions().begin(), sub.dimensions().end());
+          info.total_elements = ShapeUtil::ElementsIn(sub);
+        }
+      }
+
+      info.box_min.assign(info.shape.size(), 0);
+      info.box_max.assign(info.shape.size(), 0);
+
+      auto it = instr_to_mismatch.find(instr->name());
+      if (it != instr_to_mismatch.end()) {
+        const MismatchDetails* mismatch = it->second;
+        info.has_mismatch = true;
+        if (mismatch->bounding_box.has_value()) {
+          const auto& bbox = *mismatch->bounding_box;
+          if (!bbox.tensor_shape.empty()) {
+            info.shape = bbox.tensor_shape;
+          }
+          if (bbox.box_min.size() == info.shape.size()) {
+            info.box_min = bbox.box_min;
+          }
+          if (bbox.box_max.size() == info.shape.size()) {
+            info.box_max = bbox.box_max;
+          }
+          ApplyBoundingBoxTail(bbox, mismatch->rel_error, info);
+        } else {
+          info.mismatch_count = 1;
+        }
+      }
+
+      std::string anchor_id = absl::StrCat("step", instr->unique_id());
+      visualizations[anchor_id] = info;
+      visualizations[instr->name()] = std::move(info);
+    }
+  }
+
+  for (const MismatchDetails& mismatch : mismatches) {
+    auto [it, inserted] =
+        visualizations.try_emplace(mismatch.target_instruction_name);
+    if (inserted) {
+      TensorVisualizationInfo& info = it->second;
+      info.instruction_name = mismatch.target_instruction_name;
+      info.has_mismatch = true;
+      if (mismatch.bounding_box.has_value()) {
+        const auto& bbox = *mismatch.bounding_box;
+        info.shape = bbox.tensor_shape;
+        info.box_min = bbox.box_min;
+        info.box_max = bbox.box_max;
+        ApplyBoundingBoxTail(bbox, mismatch.rel_error, info);
+      } else {
+        info.mismatch_count = 1;
+      }
+    }
+  }
+
+  return visualizations;
+}
+
+namespace {
+
+template <typename MapT>
+std::vector<std::string> SortedKeys(const MapT& map) {
+  std::vector<std::string> keys;
+  keys.reserve(map.size());
+  // NOLINTNEXTLINE
+  for (const auto& [key, _] : map) {
+    keys.push_back(key);
+  }
+  std::sort(keys.begin(), keys.end());
+  return keys;
+}
+
+void AppendInt64Array(std::string* js, absl::string_view indent,
+                      absl::string_view name,
+                      absl::Span<const int64_t> values) {
+  absl::StrAppend(js, indent, "\"", name, "\": [", absl::StrJoin(values, ", "),
+                  "],\n");
+}
+
+}  // namespace
+
+std::string SerializeTensorVisualizationsJs(
+    const absl::flat_hash_map<std::string, TensorVisualizationInfo>&
+        visualizations) {
+  std::string js;
+  absl::StrAppend(&js, "window.tensorVisualizations = {\n");
+  std::vector<std::string> keys = SortedKeys(visualizations);
+
+  for (size_t k = 0; k < keys.size(); ++k) {
+    const auto& key = keys[k];
+    const auto& info = visualizations.at(key);
+    absl::StrAppendFormat(&js, "  \"%s\": {\n", JsStringEscape(key));
+    absl::StrAppendFormat(&js, "    \"instruction_name\": \"%s\",\n",
+                          JsStringEscape(info.instruction_name));
+    absl::StrAppendFormat(&js, "    \"opcode\": \"%s\",\n",
+                          JsStringEscape(info.opcode));
+    AppendInt64Array(&js, "    ", "shape", info.shape);
+    absl::StrAppendFormat(&js, "    \"has_mismatch\": %s,\n",
+                          info.has_mismatch ? "true" : "false");
+    AppendInt64Array(&js, "    ", "box_min", info.box_min);
+    AppendInt64Array(&js, "    ", "box_max", info.box_max);
+    if (!info.pattern.empty()) {
+      absl::StrAppendFormat(&js, "    \"pattern\": \"%s\",\n",
+                            JsStringEscape(info.pattern));
+    }
+    if (!info.mismatched_slices.empty()) {
+      AppendInt64Array(&js, "    ", "mismatched_slices",
+                       info.mismatched_slices);
+    }
+    if (!info.slice_boxes.empty()) {
+      absl::StrAppend(&js, "    \"slice_boxes\": {\n");
+      std::vector<std::string> slice_keys = SortedKeys(info.slice_boxes);
+      for (size_t si = 0; si < slice_keys.size(); ++si) {
+        const auto& s_key = slice_keys[si];
+        const auto& sbox = info.slice_boxes.at(s_key);
+        absl::StrAppendFormat(&js, "      \"%s\": {\n", JsStringEscape(s_key));
+        AppendInt64Array(&js, "        ", "box_min", sbox.box_min);
+        AppendInt64Array(&js, "        ", "box_max", sbox.box_max);
+        absl::StrAppendFormat(&js, "        \"mismatch_count\": %d\n",
+                              sbox.mismatch_count);
+        absl::StrAppend(
+            &js, si + 1 < slice_keys.size() ? "      },\n" : "      }\n");
+      }
+      absl::StrAppend(&js, "    },\n");
+    }
+    absl::StrAppend(&js, "    \"top_mismatches\": [");
+    for (size_t i = 0; i < info.top_mismatches.size(); ++i) {
+      const auto& p = info.top_mismatches[i];
+      absl::StrAppend(&js, "{\"coord\": [", absl::StrJoin(p.coord, ", "),
+                      absl::StrFormat("], \"rel_error\": %s}",
+                                      FormatJsDouble(p.rel_error)));
+      if (i + 1 < info.top_mismatches.size()) {
+        absl::StrAppend(&js, ", ");
+      }
+    }
+    absl::StrAppend(&js, "],\n");
+    absl::StrAppendFormat(&js, "    \"mismatch_count\": %d,\n",
+                          info.mismatch_count);
+    absl::StrAppendFormat(&js, "    \"total_elements\": %d\n",
+                          info.total_elements);
+    absl::StrAppend(&js, k + 1 < keys.size() ? "  },\n" : "  }\n");
+  }
+  absl::StrAppend(&js, "};\n");
+  return js;
+}
+
 std::string ConvertHloToHtml(
     absl::string_view dump_name, absl::string_view hlo_text,
     const absl::flat_hash_map<TensorKey, TensorAnnotation>& annotations,
     OriginalValueRecoveryInfo recovery_info,
     const xla::StackFrameIndexProto* stack_frame_index,
-    const GraphData* graph_data) {
+    const GraphData* graph_data,
+    const absl::flat_hash_map<std::string, TensorVisualizationInfo>*
+        tensor_visualizations) {
   std::string hlo_dump_ui_js;
   std::string html_template;
   std::string hlo_dump_style_css;
@@ -926,9 +1496,39 @@ std::string ConvertHloToHtml(
   std::string compressed_data_str;
   if (graph_data != nullptr) {
     compressed_data_str = SerializeGraphDataCompressed(*graph_data);
-    graph_content =
-        "<canvas id=\"dag-canvas\" style=\"width: 100%; height: 100%; display: "
-        "block;\"></canvas>";
+    graph_content = absl::StrCat(
+        "<div id=\"graph-controls\" style=\"position: absolute; top: 10px; "
+        "right: 10px; z-index: 10; background: rgba(255, 255, 255, 0.9); "
+        "padding: 4px; border-radius: 4px; box-shadow: 0 1px 3px rgba(60, 64, "
+        "67, 0.15); display: flex; align-items: center; gap: 4px; font-family: "
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, "
+        "Arial, sans-serif;\">",
+        "<button id=\"zoom-in-btn\" class=\"graph-ctrl-btn\" style=\"cursor: "
+        "pointer; width: 24px; height: 24px; padding: 0; border: 1px solid "
+        "#dadce0; background: #fff; border-radius: 3px; font-family: "
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, "
+        "Arial, sans-serif; font-size: 15px; font-weight: 500; color: #3c4043; "
+        "display: flex; align-items: center; justify-content: center; "
+        "line-height: 1; box-sizing: border-box;\" title=\"Zoom "
+        "in\">+</button>",
+        "<button id=\"zoom-out-btn\" class=\"graph-ctrl-btn\" style=\"cursor: "
+        "pointer; width: 24px; height: 24px; padding: 0; border: 1px solid "
+        "#dadce0; background: #fff; border-radius: 3px; font-family: "
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, "
+        "Arial, sans-serif; font-size: 15px; font-weight: 500; color: #3c4043; "
+        "display: flex; align-items: center; justify-content: center; "
+        "line-height: 1; box-sizing: border-box;\" title=\"Zoom "
+        "out\">&minus;</button>",
+        "<button id=\"zoom-fit-btn\" class=\"graph-ctrl-btn\" style=\"cursor: "
+        "pointer; height: 24px; padding: 0 8px; border: 1px solid #dadce0; "
+        "background: #fff; border-radius: 3px; font-family: -apple-system, "
+        "BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; "
+        "font-size: 11px; font-weight: 500; color: #3c4043; display: flex; "
+        "align-items: center; justify-content: center; line-height: 1; "
+        "box-sizing: border-box;\" title=\"Fit graph to view\">Fit</button>",
+        "</div>",
+        "<canvas id=\"dag-canvas\" style=\"width: 100%; height: 100%; "
+        "display: block;\"></canvas>");
   }
 
   std::string data_injection_script;
@@ -941,6 +1541,14 @@ std::string ConvertHloToHtml(
                     ",\n");
   }
   absl::StrAppend(&data_injection_script, "};\n");
+
+  if (tensor_visualizations != nullptr && !tensor_visualizations->empty()) {
+    absl::StrAppend(&data_injection_script,
+                    SerializeTensorVisualizationsJs(*tensor_visualizations));
+  } else {
+    absl::StrAppend(&data_injection_script,
+                    "window.tensorVisualizations = {};\n");
+  }
 
   if (!compressed_data_str.empty()) {
     absl::StrAppendFormat(&data_injection_script,
@@ -968,19 +1576,19 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches) {
   absl::flat_hash_map<TensorKey, TensorAnnotation> annotations;
 
-  absl::flat_hash_map<const HloComputation*, const HloInstruction*>
-      comp_to_fusion;
-  for (const HloComputation* comp : module.computations()) {
-    for (const HloInstruction* instr : comp->instructions()) {
-      if (instr->opcode() == HloOpcode::kFusion) {
-        comp_to_fusion[instr->fused_instructions_computation()] = instr;
-      }
-      TensorKey key = TensorKey::Create(instr->name(), ShapeIndex{});
-      TensorAnnotation ann;
-      ann.anchor_id = absl::StrCat("step", instr->unique_id());
-      annotations[key] = std::move(ann);
-    }
-  }
+  // absl::flat_hash_map<const HloComputation*, const HloInstruction*>
+  //     comp_to_fusion;
+  // for (const HloComputation* comp : module.computations()) {
+  //   for (const HloInstruction* instr : comp->instructions()) {
+  //     if (instr->opcode() == HloOpcode::kFusion) {
+  //       comp_to_fusion[instr->fused_instructions_computation()] = instr;
+  //     }
+  //     TensorKey key = TensorKey::Create(instr->name(), ShapeIndex{});
+  //     TensorAnnotation ann;
+  //     ann.anchor_id = absl::StrCat("step", instr->unique_id());
+  //     annotations[key] = std::move(ann);
+  //   }
+  // }
 
   absl::flat_hash_map<std::string, const HloInstruction*> name_to_instr;
   for (const HloComputation* comp : module.computations()) {
@@ -997,7 +1605,8 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     const HloInstruction* target_instr = it->second;
     TensorKey key;
     key.instruction_name = target_instr->name();
-    if (mismatch.output_shape_index.has_value()) {
+    if (target_instr->shape().IsTuple() &&
+        mismatch.output_shape_index.has_value()) {
       key.shape_index.push_back(*mismatch.output_shape_index);
     }
 
@@ -1039,19 +1648,7 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
 
     ann.tooltip_data = absl::StrCat(
         "\"", JsStringEscape(absl::StrJoin(tooltip_parts, "<br/>")), "\"");
-    std::optional<std::string> tooltip_data = ann.tooltip_data;
     annotations[key] = std::move(ann);
-
-    const HloInstruction* cur = target_instr;
-    while (cur->opcode() == HloOpcode::kFusion) {
-      cur = cur->fused_instructions_computation()->root_instruction();
-      TensorKey inner_key = TensorKey::Create(cur->name(), ShapeIndex{});
-      TensorAnnotation inner_ann;
-      inner_ann.anchor_id = absl::StrCat("step", cur->unique_id());
-      inner_ann.background_color = "pink";
-      inner_ann.tooltip_data = tooltip_data;
-      annotations[inner_key] = std::move(inner_ann);
-    }
   }
 
   return annotations;
@@ -1060,9 +1657,6 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
 GraphData PopulateMismatchGraphData(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches) {
   GraphData graph_data;
-
-  const HloComputation* entry = module.entry_computation();
-  const HloInstruction* root = entry ? entry->root_instruction() : nullptr;
 
   absl::flat_hash_map<const HloComputation*, const HloInstruction*>
       comp_to_fusion;
@@ -1081,26 +1675,40 @@ GraphData PopulateMismatchGraphData(
     }
   }
 
-  double root_score = 100.0;
-  if (!mismatches.empty()) {
-    double max_rel = 0.0;
-    for (const auto& m : mismatches) {
-      if (m.rel_error > max_rel) {
-        max_rel = m.rel_error;
-      }
-    }
-    if (max_rel > 0.0) {
-      root_score = max_rel * 100.0;
+  absl::flat_hash_map<std::string, const HloInstruction*> name_to_instr;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      name_to_instr[instr->name()] = instr;
     }
   }
 
-  absl::flat_hash_set<const HloInstruction*> root_instrs;
-  if (root != nullptr) {
-    const HloInstruction* cur = root;
-    root_instrs.insert(cur);
-    while (cur->opcode() == HloOpcode::kFusion) {
-      cur = cur->fused_instructions_computation()->root_instruction();
-      root_instrs.insert(cur);
+  absl::flat_hash_map<const HloInstruction*, double> instr_to_score;
+  auto update_score = [&](const HloInstruction* instr, double score) {
+    auto [it, inserted] = instr_to_score.try_emplace(instr, score);
+    if (!inserted) {
+      if (score == kNanInfMismatchDiffScore ||
+          it->second == kNanInfMismatchDiffScore) {
+        it->second = kNanInfMismatchDiffScore;
+      } else {
+        it->second = std::max(it->second, score);
+      }
+    }
+  };
+
+  for (const MismatchDetails& m : mismatches) {
+    double score = 100.0;
+    if (std::isnan(m.actual) || std::isinf(m.actual) ||
+        std::isnan(m.expected) || std::isinf(m.expected)) {
+      score = kNanInfMismatchDiffScore;
+    } else if (m.rel_error > 0.0) {
+      score = m.rel_error * 100.0;
+    }
+
+    const HloInstruction* target_instr = nullptr;
+    auto it = name_to_instr.find(m.target_instruction_name);
+    if (it != name_to_instr.end()) {
+      target_instr = it->second;
+      update_score(target_instr, score);
     }
   }
 
@@ -1151,7 +1759,10 @@ GraphData PopulateMismatchGraphData(
     double y = next_y;
     next_y += 2.0;
 
-    double score = root_instrs.contains(instr) ? root_score : 0.0;
+    double score = 0.0;
+    if (auto it = instr_to_score.find(instr); it != instr_to_score.end()) {
+      score = it->second;
+    }
 
     std::vector<std::string> scopes;
     const HloComputation* cur_comp = instr->parent();
@@ -1192,11 +1803,12 @@ absl::StatusOr<std::string> DumpHloModuleMismatchWithGraphData(
   absl::flat_hash_map<TensorKey, TensorAnnotation> annotations =
       PopulateMismatchAnnotations(module, mismatches);
   GraphData graph_data = PopulateMismatchGraphData(module, mismatches);
+  auto tensor_visualizations = PopulateTensorVisualizations(module, mismatches);
 
   xla::StackFrameIndexProto stack_frame_index = module.stack_frames().proto();
   std::string html =
       ConvertHloToHtml(module.name(), module.ToString(), annotations, {},
-                       &stack_frame_index, &graph_data);
+                       &stack_frame_index, &graph_data, &tensor_visualizations);
 
   const char* env_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
   std::string outdir;

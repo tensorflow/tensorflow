@@ -40,10 +40,17 @@ PyContextManager::~PyContextManager() {
     if (PyErr_Occurred()) {
       PyObject *type, *value, *traceback;
       PyErr_Fetch(&type, &value, &traceback);
-      value = value ? value : Py_None;
-      traceback = traceback ? traceback : Py_None;
-      Safe_PyObjectPtr result(PyObject_CallMethod(
-          context_manager_.get(), _exit, _ooo, type, value, traceback));
+
+      Safe_PyObjectPtr type_ref(type);
+      Safe_PyObjectPtr value_ref(value);
+      Safe_PyObjectPtr traceback_ref(traceback);
+
+      PyObject* exit_value = value ? value : Py_None;
+      PyObject* exit_traceback = traceback ? traceback : Py_None;
+
+      Safe_PyObjectPtr result(PyObject_CallMethod(context_manager_.get(), _exit,
+                                                  _ooo, type, exit_value,
+                                                  exit_traceback));
       if (result) {
         if (PyObject_IsTrue(result.get())) {
           PyErr_SetString(
@@ -51,7 +58,8 @@ PyContextManager::~PyContextManager() {
               "tensorflow::PyContextManager::Enter does not support "
               "context managers that suppress exceptions.");
         } else {
-          PyErr_Restore(type, value, traceback);
+          PyErr_Restore(type_ref.release(), value_ref.release(),
+                        traceback_ref.release());
         }
       }
     } else {

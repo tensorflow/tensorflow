@@ -155,3 +155,71 @@ module @jit_my_add attributes {jax.uses_shape_polymorphism = false, mhlo.num_par
 #loc6 = loc("<module>"(#loc4))
 #loc7 = loc(callsite(#loc5 at #loc6))
 #loc8 = loc("jit(my_add)/jit(main)/add"(#loc7))
+
+// -----
+
+// Checks a location as the inliner builds it: the location of the inlined
+// operation, op name and op type names included, becomes the callee of a call
+// site location whose caller is the location of the call. Both call stacks are
+// exported, innermost frame first. The caller frame shows up twice because the
+// call stack of the inlined operation already ends at the call site.
+
+// CHECK-LABEL: hlo_module       {
+
+// CHECK: name: "add.1"
+// CHECK-NEXT: opcode: "add"
+// CHECK: metadata {
+// CHECK-NEXT:   op_type: "add"
+// CHECK-NEXT:   op_name: "jit(f)/inner_fn/add"
+// CHECK-NEXT:   stack_frame_id: 3
+// CHECK-NEXT: }
+
+// CHECK: stack_frame_index {
+// CHECK-NEXT: file_names: "/tmp/add.py"
+// CHECK-NEXT: function_names: "<module>"
+// CHECK-NEXT: function_names: "inner_fn"
+// CHECK-NEXT: file_locations {
+// CHECK-NEXT:   file_name_id: 1
+// CHECK-NEXT:   function_name_id: 1
+// CHECK-NEXT:   line: 20
+// CHECK-NEXT:   column: 3
+// CHECK-NEXT:   end_line: 20
+// CHECK-NEXT:   end_column: 3
+// CHECK-NEXT: }
+// CHECK-NEXT: file_locations {
+// CHECK-NEXT:   file_name_id: 1
+// CHECK-NEXT:   function_name_id: 2
+// CHECK-NEXT:   line: 10
+// CHECK-NEXT:   column: 5
+// CHECK-NEXT:   end_line: 10
+// CHECK-NEXT:   end_column: 5
+// CHECK-NEXT: }
+// CHECK-NEXT: stack_frames {
+// CHECK-NEXT:   file_location_id: 1
+// CHECK-NEXT: }
+// CHECK-NEXT: stack_frames {
+// CHECK-NEXT:   file_location_id: 1
+// CHECK-NEXT:   parent_frame_id: 1
+// CHECK-NEXT: }
+// CHECK-NEXT: stack_frames {
+// CHECK-NEXT:   file_location_id: 2
+// CHECK-NEXT:   parent_frame_id: 2
+// CHECK-NEXT: }
+// CHECK-NEXT: }
+#loc = loc(unknown)
+module @jit_f attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func public @main(%arg0: tensor<i32> loc(unknown)) -> tensor<i32> {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<i32> loc(#inlined_loc)
+    return %0 : tensor<i32> loc(#loc)
+  } loc(#loc)
+} loc(#loc)
+#callee_file_loc = loc("/tmp/add.py":10:5)
+#caller_file_loc = loc("/tmp/add.py":20:3)
+#callee_frame_loc = loc("inner_fn"(#callee_file_loc))
+#caller_frame_loc = loc("<module>"(#caller_file_loc))
+#callee_stack_loc = loc(callsite(#callee_frame_loc at #caller_frame_loc))
+#callee_name_loc = loc("jit(f)/inner_fn/add"(#callee_stack_loc))
+#callee_op_loc = loc("add:"(#callee_name_loc))
+#caller_name_loc = loc("jit(f)/call"(#caller_frame_loc))
+#caller_op_loc = loc("call:"(#caller_name_loc))
+#inlined_loc = loc(callsite(#callee_op_loc at #caller_op_loc))

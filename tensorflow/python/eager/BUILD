@@ -371,6 +371,7 @@ tpu_py_strict_test(
 py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
@@ -477,6 +478,7 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "backprop_test",
     srcs = ["backprop_test.py"],
+    shard_count = 4,
     tags = [
         "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
@@ -518,6 +520,8 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/ops/linalg:linear_operator_identity",
+        "//tensorflow/python/ops/linalg:linear_operator_low_rank_update",
         "//tensorflow/python/training",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -606,6 +610,7 @@ py_library(
 py_library(
     name = "execute",
     srcs = ["execute.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
@@ -750,6 +755,7 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:unconnected_gradients",
@@ -1144,6 +1150,12 @@ cuda_py_strict_test(
     name = "remote_test",
     size = "medium",
     srcs = ["remote_test.py"],
+    exec_properties = select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cpp:msan_build": {"mem": "28g"},
+        # copybara:uncomment_end
+        "//conditions:default": None,
+    }),
     grpc_enabled = True,
     shard_count = 2,
     tags = [

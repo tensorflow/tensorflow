@@ -22,28 +22,30 @@ limitations under the License.*/
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.pb.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
-#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
 
@@ -61,23 +63,19 @@ namespace xla::gpu {
 // must be set.
 class CollectiveKernelThunk : public TracedCommand {
  public:
-  static constexpr auto kMaxNumExecutors =
-      ::stream_executor::gpu::kMaxNumAllReduceInputPtrs;
-
   CollectiveKernelThunk(
       ThunkInfo info, CollectiveConfig collective_config,  //
       CollectiveKernelSpec kernel_spec,                    //
-      bool is_async,                                       //
       std::vector<CollectiveThunk::Buffer> buffers,        //
       bool is_collective_kernel_enabled,                   //
       absl::string_view kernel_name,                       //
       LaunchDimensions launch_dimensions,                  //
+      int devices_in_process,                              //
       int32_t shmem_bytes = 0,                             //
       std::optional<std::vector<uint8_t>> cubin = std::nullopt,
       bool use_pdl = false)
       : TracedCommand{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
-        is_async_(is_async),
         collective_config_(std::move(collective_config)),
         kernel_spec_(std::move(kernel_spec)),
         launch_dimensions_(launch_dimensions),
@@ -85,9 +83,8 @@ class CollectiveKernelThunk : public TracedCommand {
         cubin_(std::move(cubin)),
         shmem_bytes_(shmem_bytes),
         buffers_(std::move(buffers)),
-        use_pdl_(use_pdl) {
-    per_stream_state_.reserve(kMaxNumExecutors);
-  }
+        per_device_state_(devices_in_process),
+        use_pdl_(use_pdl) {}
 
   const CollectiveKernelSpec& kernel_spec() const { return kernel_spec_; }
 
@@ -96,7 +93,6 @@ class CollectiveKernelThunk : public TracedCommand {
   absl::string_view kernel_name() const { return kernel_name_; }
 
   bool collective_kernel_enabled() const { return collective_kernel_enabled_; }
-  bool is_async() const { return is_async_; }
   LaunchDimensions launch_dimensions() const { return launch_dimensions_; }
 
   bool use_pdl() const { return use_pdl_; }
@@ -119,11 +115,31 @@ class CollectiveKernelThunk : public TracedCommand {
   // Execute the kernel on all devices.
   absl::Status ExecuteOnStream(const ExecuteParams& params) final;
 
+  // Records the collective kernel into a command buffer as an explicit kernel
+  // node, preceded by a (captured) input-to-scratch copy. On update the nodes
+  // are updated in place.
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  // Kernels that take the barrier signal value from the host-side
+  // `invocation_count` argument must be updated on every execution. Kernels
+  // with a device-side sync count keep the counter in device memory, so their
+  // recorded command only changes when buffer addresses change.
+  bool requires_update_on_execute() const override {
+    return !kernel_spec_.codegen_config.device_sync_count;
+  }
+
+  // Recorded with explicit graph construction APIs, not stream tracing.
+  bool IsTracedCommand() const override { return false; }
+
   BufferUses buffer_uses() const override;
 
   static absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>> FromProto(
       ThunkInfo thunk_info, const CollectiveKernelThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_in_process);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -131,11 +147,6 @@ class CollectiveKernelThunk : public TracedCommand {
   // We use a double buffering strategy for the buffers.
   // See docs on struct StreamState for more details.
   static constexpr int64_t kNumBuffers = 2;
-
-  // Per-executor scratch memory.
-  struct StreamMemory {
-    std::vector<se::DeviceAddressHandle> scratch_allocations;
-  };
 
   // Per-executor state that needs to be synchronized for access.
   struct StreamState {
@@ -149,22 +160,39 @@ class CollectiveKernelThunk : public TracedCommand {
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
+    std::vector<se::DeviceAddressHandle> scratch_allocations;
+    std::vector<tsl::TiedRef<SymmetricMemory>> scratch_symmetric_memories;
+
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
-                std::unique_ptr<se::Kernel> kernel_arg)
+                std::unique_ptr<se::Kernel> kernel_arg,
+                std::vector<se::DeviceAddressHandle> scratch_allocations_arg)
         : device_ordinal(device_ordinal_arg),
           rank(rank_arg),
-          kernel(std::move(kernel_arg)) {}
+          kernel(std::move(kernel_arg)),
+          scratch_allocations(std::move(scratch_allocations_arg)) {}
   };
 
   // Returns the input size in bytes for the collective.
   int64_t GetInputSizeBytes() const;
 
+  // Everything needed to launch the collective kernel once, either eagerly on
+  // a stream or as command buffer nodes.
+  struct LaunchPlan {
+    se::Kernel* kernel = nullptr;
+    std::vector<se::KernelArg> kernel_args;
+    // Optional input -> symmetric scratch copy performed before the kernel.
+    se::DeviceAddressBase* copy_dst = nullptr;
+    se::DeviceAddressBase copy_src;
+    int64_t copy_size = 0;
+  };
+
+  // Bumps the per-stream invocation count and builds the launch plan.
+  absl::StatusOr<LaunchPlan> PrepareLaunch(const ExecuteParams& params);
+
   // Whether the one-shot kernel is enabled.
   const bool collective_kernel_enabled_;
-  // Whether the collective is run on an async stream.
-  const bool is_async_;
   // Collective config being used. Copied over to avoid lifetime issues.
   const CollectiveConfig collective_config_;
   // Operation specific parameters.
@@ -184,13 +212,9 @@ class CollectiveKernelThunk : public TracedCommand {
   // Reference to the buffer related information required for the collective.
   std::vector<CollectiveThunk::Buffer> buffers_;
 
-  // Guard access to the stream state across different threads (which control
+  // Per-device state and scratch memory across different threads (which control
   // different streams).
-  absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamState>>
-      per_stream_state_ ABSL_GUARDED_BY(mutex_);
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamMemory>>
-      per_stream_memory_ ABSL_GUARDED_BY(mutex_);
+  PerDeviceState<StreamState> per_device_state_;
 
   // Programmatic Dependent Launch.
   const bool use_pdl_;

@@ -103,6 +103,12 @@ bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }
 bool ShapeLayout::AnyLayoutIsSet() const {
   return LayoutUtil::HasAnyLayout(shape_);
 }
+bool ShapeLayout::MinorToMajorInLayoutIsSet() const {
+  return LayoutUtil::HasMinorToMajorSetInLayout(shape_);
+}
+bool ShapeLayout::AnyMinorToMajorInLayoutIsSet() const {
+  return LayoutUtil::HasAnyMinorToMajorSetInLayout(shape_);
+}
 
 void ShapeLayout::ResetLayout(const Layout& layout) {
   DCHECK(!shape_.IsTuple());

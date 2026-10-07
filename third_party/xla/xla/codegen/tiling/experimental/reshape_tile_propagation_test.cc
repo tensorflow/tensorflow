@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu::experimental {
 namespace {
@@ -120,7 +121,7 @@ absl::StatusOr<Tile> CreateTile(absl::Span<const int64_t> sizes,
 absl::StatusOr<Tile> RunPropagation(const HloInstruction& reshape,
                                     const Tile& input_tile,
                                     TilingSpace& tiling_space) {
-  ASSIGN_OR_RETURN(Tiles output_tiles,
+  ABSL_ASSIGN_OR_RETURN(Tiles output_tiles,
                    PropagateTileToOutput(tiling_space, reshape, input_tile, 0));
   TF_RET_CHECK(output_tiles.size() == 1)
       << "Expected exactly one output tile, got " << output_tiles.size();
@@ -155,6 +156,10 @@ TEST_P(ReshapeExamplesTilePropagationTest, PropagateReshape) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* reshape =
       builder.AddInstruction(HloInstruction::CreateReshape(to_shape, p0));
+
+  module_ = CreateNewVerifiedModule();
+  module_->AddEntryComputation(builder.Build());
+
   auto tiling_space_statusor = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(p0), &mlir_context_);
   ASSERT_OK(tiling_space_statusor.status());
@@ -474,6 +479,9 @@ TEST_F(ReshapeTilePropagationTest, UnsupportedReshapeErrorFormat) {
       HloInstruction::CreateParameter(0, input_shape, "p0"));
   HloInstruction* reshape =
       builder.AddInstruction(HloInstruction::CreateReshape(output_shape, p0));
+
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<TilingSpace> tiling_space,

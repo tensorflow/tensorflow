@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
@@ -93,7 +93,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> HandleRecordAction(
   }
 
   if (auto* update = std::get_if<Command::RecordUpdate>(&action)) {
-    RETURN_IF_ERROR(update_command(update->command));
+    ABSL_RETURN_IF_ERROR(update_command(update->command));
     return update->command;
   }
 
@@ -114,25 +114,25 @@ WhileThunk::WhileThunk(
       trip_count_(trip_count) {}
 
 absl::Status WhileThunk::Prepare(const PrepareParams& params) {
-  RETURN_IF_ERROR(condition_executor_.Prepare(params));
-  RETURN_IF_ERROR(body_executor_.Prepare(params));
+  ABSL_RETURN_IF_ERROR(condition_executor_.Prepare(params));
+  ABSL_RETURN_IF_ERROR(body_executor_.Prepare(params));
   if (command_condition_executor_.has_value()) {
-    RETURN_IF_ERROR(command_condition_executor_->Prepare(params));
+    ABSL_RETURN_IF_ERROR(command_condition_executor_->Prepare(params));
   }
   if (command_body_executor_.has_value()) {
-    RETURN_IF_ERROR(command_body_executor_->Prepare(params));
+    ABSL_RETURN_IF_ERROR(command_body_executor_->Prepare(params));
   }
   return absl::OkStatus();
 }
 
 absl::Status WhileThunk::Initialize(const InitializeParams& params) {
-  RETURN_IF_ERROR(condition_executor_.Initialize(params));
-  RETURN_IF_ERROR(body_executor_.Initialize(params));
+  ABSL_RETURN_IF_ERROR(condition_executor_.Initialize(params));
+  ABSL_RETURN_IF_ERROR(body_executor_.Initialize(params));
   if (command_condition_executor_.has_value()) {
-    RETURN_IF_ERROR(command_condition_executor_->Initialize(params));
+    ABSL_RETURN_IF_ERROR(command_condition_executor_->Initialize(params));
   }
   if (command_body_executor_.has_value()) {
-    RETURN_IF_ERROR(command_body_executor_->Initialize(params));
+    ABSL_RETURN_IF_ERROR(command_body_executor_->Initialize(params));
   }
 
   is_unrolled_loop_ = false;
@@ -157,7 +157,7 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
 
   absl::MutexLock lock(mutex_);
   if (!host_memory_pools_.contains(params.executor)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<HostMemoryPool> pool,
         HostMemoryPool::Create(params.executor, PrimitiveType::PRED));
     host_memory_pools_[params.executor] = std::move(pool);
@@ -201,11 +201,11 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileThunk::Record(
       ScopedWhileLoop loop("record_fn", trip_count_);
       for (int64_t i = 0; i < *trip_count_; loop.IncLoopIteration(), ++i) {
         CommandExecutor::RecordId record_id(i);
-        ASSIGN_OR_RETURN(dependencies,
+        ABSL_ASSIGN_OR_RETURN(dependencies,
                          command_condition_executor_->RecordCreate(
                              execute_params, new_record_params,
                              child_command_buffer, dependencies, record_id));
-        ASSIGN_OR_RETURN(dependencies,
+        ABSL_ASSIGN_OR_RETURN(dependencies,
                          command_body_executor_->RecordCreate(
                              execute_params, new_record_params,
                              child_command_buffer, dependencies, record_id));
@@ -224,10 +224,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileThunk::Record(
       ScopedWhileLoop loop("record_fn", trip_count_);
       for (int64_t i = 0; i < *trip_count_; loop.IncLoopIteration(), ++i) {
         CommandExecutor::RecordId record_id(i);
-        RETURN_IF_ERROR(command_condition_executor_->RecordUpdate(
+        ABSL_RETURN_IF_ERROR(command_condition_executor_->RecordUpdate(
             execute_params, new_record_params, child_command_buffer,
             record_id));
-        RETURN_IF_ERROR(command_body_executor_->RecordUpdate(
+        ABSL_RETURN_IF_ERROR(command_body_executor_->RecordUpdate(
             execute_params, new_record_params, child_command_buffer,
             record_id));
       }
@@ -290,7 +290,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
       XLA_VLOG_DEVICE(3, device_ordinal)
           << "Executing iteration # " << i
           << " (Device: " << stream.parent()->device_ordinal() << ")";
-      RETURN_IF_ERROR(body_executor_.ExecuteOnStream(params));
+      ABSL_RETURN_IF_ERROR(body_executor_.ExecuteOnStream(params));
     }
     return absl::OkStatus();
   }
@@ -300,7 +300,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     absl::MutexLock lock(mutex_);
     pool = host_memory_pools_.at(stream.parent()).get();
   }
-  ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+  ABSL_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
   bool* condition_result = handle.get<bool>();
   se::DeviceAddressBase condition_result_data =
       params.buffer_allocations->GetDeviceAddress(
@@ -313,10 +313,10 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "Executing WhileThunk condition computation; iter="
         << loop.loop_iteration();
-    RETURN_IF_ERROR(condition_executor_.ExecuteOnStream(params));
+    ABSL_RETURN_IF_ERROR(condition_executor_.ExecuteOnStream(params));
 
     // Copy the result of condition computation and break the loop if 'false'.
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         stream.Memcpy(condition_result, condition_result_data, sizeof(bool)));
 
     if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
@@ -336,29 +336,30 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "Executing WhileThunk body computation; iter="
         << loop.loop_iteration();
-    RETURN_IF_ERROR(body_executor_.ExecuteOnStream(params));
+    ABSL_RETURN_IF_ERROR(body_executor_.ExecuteOnStream(params));
   }
   return absl::OkStatus();
 }
 
-absl::Status WhileThunk::WalkNested(Walker callback) {
-  RETURN_IF_ERROR(condition_executor_.thunks().WalkNested(callback));
-  return body_executor_.thunks().WalkNested(callback);
+absl::Status WhileThunk::WalkNested(Walker pre_order, Walker post_order) {
+  ABSL_RETURN_IF_ERROR(
+      condition_executor_.thunks().WalkNested(pre_order, post_order));
+  return body_executor_.thunks().WalkNested(pre_order, post_order);
 }
 
 absl::Status WhileThunk::WalkNestedCommands(CommandWalker callback) {
   if (command_condition_executor_.has_value()) {
-    RETURN_IF_ERROR(command_condition_executor_->Walk(callback));
+    ABSL_RETURN_IF_ERROR(command_condition_executor_->Walk(callback));
   }
   if (command_body_executor_.has_value()) {
-    RETURN_IF_ERROR(command_body_executor_->Walk(callback));
+    ABSL_RETURN_IF_ERROR(command_body_executor_->Walk(callback));
   }
   return absl::OkStatus();
 }
 
 absl::Status WhileThunk::TransformNested(Transformer callback) {
-  RETURN_IF_ERROR(condition_executor_.thunks().TransformNested(callback));
-  RETURN_IF_ERROR(body_executor_.thunks().TransformNested(callback));
+  ABSL_RETURN_IF_ERROR(condition_executor_.thunks().TransformNested(callback));
+  ABSL_RETURN_IF_ERROR(body_executor_.thunks().TransformNested(callback));
   return absl::OkStatus();
 }
 
@@ -377,13 +378,13 @@ absl::StatusOr<ThunkProto> WhileThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* while_proto = proto.mutable_while_thunk();
-  ASSIGN_OR_RETURN(*while_proto->mutable_condition_result_buffer_index(),
+  ABSL_ASSIGN_OR_RETURN(*while_proto->mutable_condition_result_buffer_index(),
                    condition_result_buffer_index_.ToProto());
 
   {
     ThunkSequenceProto condition_proto;
     for (const std::unique_ptr<Thunk>& thunk : condition_executor_.thunks()) {
-      ASSIGN_OR_RETURN(*condition_proto.add_thunks(), thunk->ToProto());
+      ABSL_ASSIGN_OR_RETURN(*condition_proto.add_thunks(), thunk->ToProto());
     }
     *while_proto->mutable_condition_thunk_sequence() =
         std::move(condition_proto);
@@ -392,7 +393,7 @@ absl::StatusOr<ThunkProto> WhileThunk::ToProto() const {
   {
     ThunkSequenceProto body_proto;
     for (const std::unique_ptr<Thunk>& thunk : body_executor_.thunks()) {
-      ASSIGN_OR_RETURN(*body_proto.add_thunks(), thunk->ToProto());
+      ABSL_ASSIGN_OR_RETURN(*body_proto.add_thunks(), thunk->ToProto());
     }
     *while_proto->mutable_body_thunk_sequence() = std::move(body_proto);
   }
@@ -407,18 +408,18 @@ absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunk::FromProto(
     ThunkInfo thunk_info, const WhileThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const Deserializer& deserializer) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       BufferAllocation::Slice condition_result_buffer_index,
       BufferAllocation::Slice::FromProto(
           thunk_proto.condition_result_buffer_index(), buffer_allocations));
   ThunkSequence condition_thunks;
   for (const auto& proto : thunk_proto.condition_thunk_sequence().thunks()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
     condition_thunks.push_back(std::move(thunk));
   }
   ThunkSequence body_thunks;
   for (const auto& proto : thunk_proto.body_thunk_sequence().thunks()) {
-    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
     body_thunks.push_back(std::move(thunk));
   }
   std::optional<int64_t> trip_count;

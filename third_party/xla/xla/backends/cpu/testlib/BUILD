@@ -61,10 +61,10 @@ cc_library(
         "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -142,8 +142,8 @@ cc_library(
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
         "//xla/service:shaped_slice",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -175,7 +175,6 @@ tsl_pybind_extension(
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",
-        "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitters",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
@@ -219,7 +218,7 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -237,23 +236,5 @@ py_test(
         "//third_party/py/numpy",
         "//xla/codegen/testlib",
         "@absl_py//absl/testing:absltest",
-    ],
-)
-
-py_test(
-    name = "elemental_kernel_emitter_test",
-    srcs = ["elemental_kernel_emitter_test.py"],
-    main = "elemental_kernel_emitter_test.py",
-    strict_deps = True,
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        ":testlib",
-        "//third_party/py/numpy",
-        "//xla/codegen/testlib",
-        "//xla/python:xla_extension",
-        "@absl_py//absl/testing:absltest",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

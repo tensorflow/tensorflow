@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_va_remap_allocator.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -51,6 +52,21 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+// True for allocations that GenerateBufferAllocations obtains from the device
+// memory allocator: everything that is not a parameter, a constant, or a
+// thread-local buffer.
+bool IsTransientAllocation(const BufferAllocation& allocation) {
+  return !allocation.is_thread_local() &&
+         !allocation.is_entry_computation_parameter() &&
+         !allocation.is_constant();
+}
+
+// True for allocations in the collective memory space S(1).
+bool IsCollectiveMemoryAllocation(const BufferAllocation& allocation) {
+  return allocation.color() ==
+         static_cast<int64_t>(MemorySpaceColor::kCollective);
+}
 
 absl::Status CheckAlignment(const BufferAllocation& allocation,
                             se::DeviceAddressBase buffer, int arg_idx) {
@@ -159,7 +175,7 @@ absl::StatusOr<se::DeviceAddressBase>
 GpuExecutableBufferAllocator::ExecutionScope::AllocateTransientBuffer(
     int device_ordinal, const BufferAllocation& allocation, int64_t buffer_size,
     se::DeviceAddressAllocator* memory_allocator) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::ScopedDeviceAddress<uint8_t> buffer,
       memory_allocator->Allocate(device_ordinal, buffer_size,
                                  /*retry_on_failure=*/true,
@@ -178,7 +194,7 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
     return se::DeviceAddressBase{};
   }
   if (allocation.is_entry_computation_parameter()) {
-    ASSIGN_OR_RETURN(ParameterBuffer registered_buffer,
+    ABSL_ASSIGN_OR_RETURN(ParameterBuffer registered_buffer,
                      get_parameter_buffer(allocation));
     if (registered_buffer.buffer.is_null() &&
         registered_buffer.buffer.size() > 0 &&
@@ -205,7 +221,7 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
   int64_t buffer_size = allocation.size();
   se::DeviceAddressBase buffer_address;
   if (buffer_size > 0) {
-    ASSIGN_OR_RETURN(buffer_address,
+    ABSL_ASSIGN_OR_RETURN(buffer_address,
                      AllocateTransientBuffer(device_ordinal, allocation,
                                              buffer_size, memory_allocator));
   }
@@ -228,17 +244,38 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
           run_options->run_options().device_assignment());
 
   const int64_t num_buffers = owner_->allocations_.size();
-  RETURN_IF_ERROR(Prepare(run_options, device_ordinal));
+  ABSL_RETURN_IF_ERROR(Prepare(run_options, device_ordinal));
 
-  std::vector<se::DeviceAddressBase> buffers;
-  buffers.reserve(num_buffers);
+  // Resolve allocations in two passes so that every collective memory (S(1))
+  // buffer of this execution is allocated before any default memory (S(0))
+  // buffer. S(1) buffers back NCCL symmetric windows and can only live in the
+  // fixed, preallocated part of the shared BFC arena, while S(0) may later be
+  // allowed to grow past it. Allocating S(1) first guarantees that S(0)
+  // pressure within the same execution can never take the space S(1) needs.
+  // Both passes keep allocation-index order, so S(1) placement stays a
+  // deterministic function of the program, and `buffers` remains indexed by
+  // allocation index.
+  std::vector<se::DeviceAddressBase> buffers(num_buffers);
+  auto resolve = [&](int64_t i) -> absl::Status {
+    const BufferAllocation& allocation = *owner_->allocations_[i];
+    ABSL_ASSIGN_OR_RETURN(buffers[i], BufferForAllocation(
+                                     get_parameter_buffer, globals, allocation,
+                                     memory_allocator, device_ordinal, i));
+    return CheckAlignment(allocation, buffers[i], i);
+  };
+
+  std::vector<int64_t> deferred_indices;
   for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = *owner_->allocations_[i];
-    ASSIGN_OR_RETURN(
-        buffers.emplace_back(),
-        BufferForAllocation(get_parameter_buffer, globals, allocation,
-                            memory_allocator, device_ordinal, i));
-    RETURN_IF_ERROR(CheckAlignment(allocation, buffers.back(), i));
+    if (IsTransientAllocation(allocation) &&
+        !IsCollectiveMemoryAllocation(allocation)) {
+      deferred_indices.push_back(i);
+      continue;
+    }
+    ABSL_RETURN_IF_ERROR(resolve(i));
+  }
+  for (int64_t i : deferred_indices) {
+    ABSL_RETURN_IF_ERROR(resolve(i));
   }
   return BufferAllocations(buffers, device_ordinal, memory_allocator);
 }
@@ -268,7 +305,7 @@ GpuExecutableBufferAllocator::ExecutionScope::AllocateCopyProtectedOutputBuffer(
   se::DeviceAddressBase& aliased_buffer =
       buffer_allocations.GetMutableDeviceAddress(allocation.index());
   CHECK_EQ(aliased_buffer.size(), result_buffer.size());
-  RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(
+  ABSL_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(
       &result_buffer, aliased_buffer, aliased_buffer.size()));
   aliased_buffer = result_buffer;
   return result_buffer;

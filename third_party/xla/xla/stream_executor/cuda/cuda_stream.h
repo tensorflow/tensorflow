@@ -45,6 +45,7 @@ namespace stream_executor {
 namespace gpu {
 
 class HostCallbackRegistry;
+class GreenContext;
 
 enum class CudaStreamType {
   // Regular execution stream.
@@ -100,10 +101,14 @@ class CudaStream : public StreamCommon {
       const CUgraphEdgeData* dependency_data, size_t num_dependencies,
       CUstreamCaptureMode mode);
 
+  // If `green_context` is non-null, the underlying CUstream is created inside
+  // that green context (scoping launches to its SM partition) instead of on the
+  // executor's primary context. The GreenContext must outlive the stream.
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
       CudaExecutor* executor,
       std::optional<std::variant<StreamPriority, int>> priority,
-      CudaStreamType type = CudaStreamType::kDefault);
+      CudaStreamType type = CudaStreamType::kDefault,
+      const GreenContext* green_context = nullptr);
 
   ~CudaStream() override;
 

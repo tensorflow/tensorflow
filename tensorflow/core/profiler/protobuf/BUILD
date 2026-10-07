@@ -14,6 +14,10 @@
 # ==============================================================================
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load(
+    "@xla//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
@@ -27,6 +31,10 @@ package_group(
     includes = [
         "//tensorflow/core/profiler:friends",
     ],
+    packages = internal_visibility(
+        [],
+        ["public"],
+    ),
 )
 
 package_group(

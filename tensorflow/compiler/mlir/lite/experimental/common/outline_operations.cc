@@ -48,8 +48,8 @@ bool IsConstantOrNone(Operation* op) {
 // Pre-order traverse, adding results and BlockArgs to `been_defined` and
 // collecting operands not contained within `been_defined`. If we encounter an
 // operand that references a Value that has been defined (and added to
-// `been_defined`) it is garuanteed that the Value definition is not contained
-// in descedant node of reference, and given that the input DAG is valid, the
+// `been_defined`) it is guaranteed that the Value definition is not contained
+// in descendant node of reference, and given that the input DAG is valid, the
 // definition is self-contained within `op` so it is not depended upon.
 // Otherwise, the operand must have been defined somewhere above the Subgraph,
 // so union with other operand dependencies.
@@ -102,7 +102,7 @@ llvm::SmallVector<Value> AccumulateResultsDefinedWithin(
   return values_for_results;
 }
 
-// Compute signature for raised func from arugments and outputs of
+// Compute signature for raised func from arguments and outputs of
 // Operation partition.
 llvm::SmallVector<Type> TypesFromValues(
     const llvm::SmallVector<Value>& values) {
@@ -116,7 +116,7 @@ llvm::SmallVector<Type> TypesFromValues(
 func::FuncOp BuildFuncOp(const Subgraph& subgraph, OpBuilder& builder,
                          ModuleOp& module, OpsAdded& ops_added) {
   // The parameters of the new MLIR function are taken to be the union
-  // of all operands referenced by Operations within the subraph.
+  // of all operands referenced by Operations within the subgraph.
   // Likewise the results of the function are any Value(s) that are defined
   // within the subgraph and are referenced outside the subgraph.
   llvm::SmallVector<Type> input_types =

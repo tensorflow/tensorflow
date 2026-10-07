@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"

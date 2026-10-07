@@ -69,6 +69,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "float8_e8m0fnu"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "int2"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -119,6 +123,10 @@ tf_module {
   member_method {
     name: "enable_strict_mode"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "fold"
+    argspec: "args=[\'patches\', \'output_size\', \'sizes\', \'strides\', \'padding\', \'rates\', \'reduction\'], varargs=None, keywords=None, defaults=[\'VALID\', \'1\', \'sum\'], "
   }
   member_method {
     name: "function_executor_type"

@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,7 +40,7 @@ absl::Status CreateTritonIrAndFileCheck(const HloModule* hlo_module,
 
 absl::Status CreateTritonIrAndFileCheck(
     const HloComputation& computation,
-    const BlockLevelParameters& block_level_parameters,
+    const xla::xtile::BlockLevelParameters& block_level_parameters,
     absl::string_view filecheck_pattern);
 
 absl::Status CreateTritonIrAndFileCheckForDot(
@@ -50,9 +50,9 @@ absl::Status CreateTritonIrAndFileCheckForDot(
 absl::Status CreateTritonIrAndFileCheckForDot(
     const HloComputation& computation, absl::string_view filecheck_pattern);
 
-inline BlockLevelParameters FromOutputTileSizes(
+inline xla::xtile::BlockLevelParameters FromOutputTileSizes(
     std::vector<std::vector<int64_t>> output_tile_sizes) {
-  BlockLevelParameters block_level_parameters;
+  xla::xtile::BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = std::move(output_tile_sizes);
   return block_level_parameters;
 }

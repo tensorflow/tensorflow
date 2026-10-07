@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/stream_executor/event.h"
@@ -70,7 +70,16 @@ AsyncExecution::ExecutionGuard::ExecutionGuard(se::Event* event,
                                                se::Stream* async_stream)
     : event_(event), async_stream_(async_stream) {}
 
+AsyncExecution::ExecutionGuard::ExecutionGuard(ExecutionGuard&& other) noexcept
+    : event_(std::exchange(other.event_, nullptr)),
+      async_stream_(std::exchange(other.async_stream_, nullptr)) {}
+
 AsyncExecution::ExecutionGuard::~ExecutionGuard() {
+  // Nothing to do for moved-from ExecutionGuards.
+  if (async_stream_ == nullptr) {
+    return;
+  }
+
   // If we fail to record completion event on a stream it is unsafe to continue
   // as the following computations might not see all the updates done by the
   // async execution.
@@ -93,7 +102,7 @@ absl::Status AsyncExecution::Initialize(Thunk::ExecutionScopedState* state,
       << absl::StreamFormat("Initialize async execution for `%s`",
                             start_thunk_info_.profile_annotation);
   EventPool& pool = GetOrCreatePool(executor);
-  ASSIGN_OR_RETURN(auto borrowed, pool.GetOrCreate());
+  ABSL_ASSIGN_OR_RETURN(auto borrowed, pool.GetOrCreate());
   state->try_emplace(start_thunk_info_.thunk_id,
                      std::in_place_type<ExecutionState>, std::move(borrowed));
   // For shared async executions (e.g. pipelined send/recv), multiple
@@ -123,7 +132,7 @@ absl::StatusOr<AsyncExecution::ExecutionGuard> AsyncExecution::Start(
   XLA_VLOG_DEVICE(1, stream->parent()->device_ordinal()) << absl::StreamFormat(
       "Start async execution for `%s`: stream=%p, async_stream=%p",
       start_thunk_info_.profile_annotation, stream, async_stream);
-  ASSIGN_OR_RETURN(ExecutionState * es,
+  ABSL_ASSIGN_OR_RETURN(ExecutionState * es,
                    GetExecutionState(state, start_thunk_info_.thunk_id));
 
   if (++es->counter > 1) {
@@ -138,10 +147,12 @@ absl::StatusOr<AsyncExecution::ExecutionGuard> AsyncExecution::Start(
   // Wait for all prior operations on `stream` before launching operations on
   // `async_stream`. We use a stream-level wait (not the shared event) so that
   // the event remains exclusively used for the async→main completion signal.
-  // This is critical for pipelined send/recv where multiple Start() calls can
-  // happen before Done() (the event is safely overwritten on the async stream
-  // because the stream is ordered).
-  RETURN_IF_ERROR(async_stream->WaitFor(stream));
+  // This matters for pipelined send/recv, where several start thunks share one
+  // execution and Start()/Done() alternate across loop iterations: each Start()
+  // re-records the shared event on the ordered async stream after the previous
+  // Done() has waited on it. A second Start() before the matching Done() is
+  // rejected by the counter check above.
+  ABSL_RETURN_IF_ERROR(async_stream->WaitFor(stream));
 
   return ExecutionGuard(event, async_stream);
 }
@@ -151,7 +162,7 @@ absl::Status AsyncExecution::Done(Thunk::ExecutionScopedState* state,
   XLA_VLOG_DEVICE(1, stream->parent()->device_ordinal())
       << absl::StreamFormat("Done async execution for `%s`: stream=%p",
                             start_thunk_info_.profile_annotation, stream);
-  ASSIGN_OR_RETURN(ExecutionState * es,
+  ABSL_ASSIGN_OR_RETURN(ExecutionState * es,
                    GetExecutionState(state, start_thunk_info_.thunk_id));
 
   if (--es->counter < 0) {

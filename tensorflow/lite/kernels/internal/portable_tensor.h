@@ -125,8 +125,8 @@ class SequentialTensorWriter {
   SequentialTensorWriter(const T* input_data, T* output_data)
       : input_data_(input_data), output_ptr_(output_data) {}
 
-  void Write(int position) { *output_ptr_++ = input_data_[position]; }
-  void WriteN(int position, int len) {
+  void Write(int64_t position) { *output_ptr_++ = input_data_[position]; }
+  void WriteN(int64_t position, int len) {
     memcpy(output_ptr_, &input_data_[position], sizeof(T) * len);
     output_ptr_ += len;
   }

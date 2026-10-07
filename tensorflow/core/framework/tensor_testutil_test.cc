@@ -226,23 +226,23 @@ TEST(TensorTestUtilTest, ExpectTensorCloseHalf) {
   EXPECT_TRUE(IsClose(static_cast<T>(1.0f), static_cast<T>(1.0f), 0.0, 0.0));
   EXPECT_FALSE(IsClose(static_cast<T>(1.0f), static_cast<T>(1.1f), 0.0, 0.0));
 
-  // Epsilon:            0 00010 0000000000 -> 2^-13  = 0.0001220703125
-  // Default Tolerance:  0 00100 0100000000 -> 5/2^13 = 0.0006103515625
+  // Epsilon:            0 00101 0000000000 -> 2^-10  = 0.0009765625
+  // Default Tolerance:  5 * 2^-10 = 0.0048828125
 
   // 1.234 -> 0 01111 0011110000 -> 1264/2^10 = 1.234375
   // 1.233 -> 0 01111 0011101111 -> 1263/2^10 = 1.2333984375
   // 1.235 -> 0 01111 0011110001 -> 1265/2^10 = 1.2353515625
   // 1.232 -> 0 01111 0011101110 -> 1262/2^10 = 1.232421875
   // 1.236 -> 0 01111 0011110010 -> 1266/2^10 = 1.236328125
-  // 1/2^10 = 0.0009765625E
-  // Threshold = 0.0013637542724609375
+  // 1.200 -> 1229/2^10 = 1.2001953125
+  // 1.260 -> 1290/2^10 = 1.259765625
   EXPECT_TRUE(IsClose(static_cast<T>(1.234f), static_cast<T>(1.234f)));
   EXPECT_TRUE(IsClose(static_cast<T>(1.234f), static_cast<T>(1.233f)));
   EXPECT_TRUE(IsClose(static_cast<T>(1.234f), static_cast<T>(1.235f)));
 
-  // Diff = 0.001953125
-  EXPECT_FALSE(IsClose(static_cast<T>(1.234f), static_cast<T>(1.232f)));
-  EXPECT_FALSE(IsClose(static_cast<T>(1.234f), static_cast<T>(1.236f)));
+  // Diff exceeds default tolerance (atol + rtol * abs(x) ~ 0.0109)
+  EXPECT_FALSE(IsClose(static_cast<T>(1.234f), static_cast<T>(1.200f)));
+  EXPECT_FALSE(IsClose(static_cast<T>(1.234f), static_cast<T>(1.260f)));
   EXPECT_TRUE(
       IsClose(static_cast<T>(1.234f), static_cast<T>(1.232f), 8e-4f, 1e-3f));
   EXPECT_TRUE(

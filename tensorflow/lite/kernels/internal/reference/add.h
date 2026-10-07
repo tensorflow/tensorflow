@@ -41,7 +41,8 @@ inline void Add(const ArithmeticParams& params,
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax<T>(
-        input1_data[i] + input2_data[i], activation_min, activation_max);
+        WrappingAdd(input1_data[i], input2_data[i]), activation_min,
+        activation_max);
   }
 }
 
@@ -280,7 +281,7 @@ BroadcastAdd6DSlow(const ArithmeticParams& params,
   T activation_min, activation_max;
   GetActivationParams(params, &activation_min, &activation_max);
   auto op = [activation_min, activation_max](T a, T b) {
-    return ActivationFunctionWithMinMax<T>(a + b, activation_min,
+    return ActivationFunctionWithMinMax<T>(WrappingAdd(a, b), activation_min,
                                            activation_max);
   };
   BroadcastBinaryOpSimple(input1_shape, input1_data, input2_shape, input2_data,

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/literal_comparison.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -196,6 +197,53 @@ TEST(LiteralComparisonSuggestionsTest,
   EXPECT_TRUE(absl::StrContains(
       error_message,
       "Suggested ErrorSpec adjustments to make this test pass:"));
+}
+
+TEST(LiteralComparisonTest, CompareNear_IntegerRoundingDifference) {
+  auto expected = LiteralUtil::CreateR1<int8_t>({-10, 0, 5, 127});
+  auto actual_diff_one = LiteralUtil::CreateR1<int8_t>({-9, 1, 4, 126});
+  auto actual_diff_two = LiteralUtil::CreateR1<int8_t>({-8, 0, 5, 127});
+
+  // Default ErrorSpec rejects diff of 1.
+  ErrorSpec default_spec(0.0, 0.0);
+  EXPECT_FALSE(literal_comparison::Near(expected, actual_diff_one, default_spec,
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr)
+                   .ok());
+
+  // ErrorSpec with allow_integer_rounding_difference = true accepts diff of 1.
+  ErrorSpec diff_one_spec(0.0, 0.0);
+  diff_one_spec.allow_integer_rounding_difference = true;
+  EXPECT_IS_OK(literal_comparison::Near(expected, actual_diff_one,
+                                        diff_one_spec,
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr));
+
+  // ErrorSpec with allow_integer_rounding_difference = true still rejects diff
+  // of 2.
+  EXPECT_FALSE(literal_comparison::Near(expected, actual_diff_two,
+                                        diff_one_spec,
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr)
+                   .ok());
+
+  // Unsigned types (including uint64_t bounds).
+  auto expected_u64 =
+      LiteralUtil::CreateR1<uint64_t>({0, 10, UINT64_MAX - 1, UINT64_MAX});
+  auto actual_u64_diff_one =
+      LiteralUtil::CreateR1<uint64_t>({1, 9, UINT64_MAX, UINT64_MAX - 1});
+  auto actual_u64_diff_max =
+      LiteralUtil::CreateR1<uint64_t>({UINT64_MAX, 10, 0, 0});
+
+  EXPECT_IS_OK(literal_comparison::Near(expected_u64, actual_u64_diff_one,
+                                        diff_one_spec,
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr));
+  EXPECT_FALSE(literal_comparison::Near(expected_u64, actual_u64_diff_max,
+                                        diff_one_spec,
+                                        /*detailed_message=*/false,
+                                        /*miscompare_callback=*/nullptr)
+                   .ok());
 }
 
 }  // namespace

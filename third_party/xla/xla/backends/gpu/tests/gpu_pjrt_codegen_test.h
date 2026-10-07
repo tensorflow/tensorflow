@@ -75,14 +75,16 @@ class GpuPjRtCodegenTest : public HloPjRtGpuTestBase {
   absl::Status CompileAndVerifyIr(std::unique_ptr<HloModule> module,
                                   absl::string_view expected_llvm_ir,
                                   bool match_optimized_ir = false,
-                                  bool run_optimization_passes = true);
+                                  bool run_optimization_passes = true,
+                                  bool match_ir_from_hlo_passes = false);
 
   // A thin wrapper around CompileAndVerifyIr that takes a string instead of a
   // HloModule.
   absl::Status CompileAndVerifyIr(absl::string_view hlo_text,
                                   absl::string_view expected_llvm_ir,
                                   bool match_optimized_ir = false,
-                                  bool run_optimization_passes = true);
+                                  bool run_optimization_passes = true,
+                                  bool match_ir_from_hlo_passes = false);
 
   bool IsBuiltWithRocm() const {
     return runner_type_ == HloRunnerPropertyTag::kUsingGpuRocm;

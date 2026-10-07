@@ -62,7 +62,7 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
 #define HANDLER(method)                                                        \
   void method##Handler(CoordCall<xla::coordination::method##Request,           \
                                  xla::coordination::method##Response>* call) { \
-    absl::ReaderMutexLock l(&shutdown_mu_);                                    \
+    absl::ReaderMutexLock l(shutdown_mu_);                                     \
     if (shutdown_) {                                                           \
       call->SendResponse(tsl::ToGrpcStatus(                                    \
           absl::InternalError("Coordination service has been shut down.")));   \
@@ -99,6 +99,7 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
   HANDLER(CancelBarrier);
   HANDLER(GetAliveTasks);
   HANDLER(PollForError);
+  HANDLER(ReportErrorToService);
 #undef HANDLER
 
   tsl::thread::ThreadPool& compute_pool_;

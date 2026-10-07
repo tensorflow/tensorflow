@@ -198,9 +198,10 @@ absl::Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
                        "Bundle entry offset: ", offset, " size: ", size));
     }
     Variant v = proto;
+    const std::string variant_type_name = v.TypeName();
     if (!DecodeUnaryVariant(&v)) {
       return absl::InternalError(absl::StrCat(
-          "Could not decode variant with type_name: \"", v.TypeName(),
+          "Could not decode variant with type_name: \"", variant_type_name,
           "\".  Perhaps you forgot to ", "register a decoder via ",
           "REGISTER_UNARY_VARIANT_DECODE_FUNCTION?"));
     }

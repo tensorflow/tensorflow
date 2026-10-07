@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -51,11 +50,6 @@ class GpuCostModelStatsCollectionTest
 
   bool use_experimental_tiling() const { return GetParam(); }
 
-  GpuCostModelStatsCollection cost_model_stats_{
-      TestGpuDeviceInfo::H100SXMDeviceInfo(),
-      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
-      &mlir_context_, use_experimental_tiling()};
-
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
@@ -65,7 +59,13 @@ class GpuCostModelStatsCollectionTest
     return debug_options;
   }
 
+  // Must be declared before `cost_model_stats_`, which uses it on construction.
   mlir::MLIRContext mlir_context_;
+  GpuCostModelStatsCollection cost_model_stats_{
+      TestGpuDeviceInfo::H100SXMDeviceInfo(),
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
+      &mlir_context_, use_experimental_tiling(),
+      /*enable_same_shape_multi_output_fusion=*/false};
 };
 
 TEST_P(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {

@@ -97,6 +97,9 @@ absl::Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
     case tensorflow::DT_FLOAT8_E5M2FNUZ:
       *type = builder.getType<mlir::Float8E5M2FNUZType>();
       return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E8M0FNU:
+      *type = builder.getType<mlir::Float8E8M0FNUType>();
+      return absl::OkStatus();
     case DT_INT4:
       // build a **signless** integer type.
       *type = builder.getIntegerType(4);
@@ -118,7 +121,7 @@ absl::Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
 
     default:
-      return errors::Unimplemented(absl::StrCat(
+      return absl::UnimplementedError(absl::StrCat(
           "Converting DataType '", DataTypeString(dtype), "' to MLIR Type"));
   }
 }
@@ -151,6 +154,9 @@ absl::Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
   } else if (llvm::isa<mlir::Float8E5M2FNUZType>(type)) {
     *dtype = DT_FLOAT8_E5M2FNUZ;
     return absl::OkStatus();
+  } else if (llvm::isa<mlir::Float8E8M0FNUType>(type)) {
+    *dtype = DT_FLOAT8_E8M0FNU;
+    return absl::OkStatus();
   } else if (auto itype = mlir::dyn_cast<mlir::IntegerType>(type)) {
     switch (itype.getWidth()) {
       case 1:
@@ -175,7 +181,7 @@ absl::Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
         *dtype = itype.isUnsigned() ? DT_UINT64 : DT_INT64;
         return absl::OkStatus();
       default:
-        return errors::Unimplemented(
+        return absl::UnimplementedError(
             absl::StrCat("Converting ", debugString(type), " to DataType"));
     }
   } else if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
@@ -187,7 +193,7 @@ absl::Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
       *dtype = DT_COMPLEX128;
       return absl::OkStatus();
     }
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         absl::StrCat("Converting ", debugString(type), " to DataType"));
   }
 
@@ -199,7 +205,7 @@ absl::Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
 
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       absl::StrCat("Converting ", debugString(type), " to DataType"));
 }
 
@@ -227,7 +233,7 @@ absl::Status ConvertToMlirShape(const TensorShapeProto& input_shape,
   auto& dims = input_shape.dim();
   for (auto& d : dims) {
     if (d.size() > std::numeric_limits<int64_t>::max()) {
-      return errors::InvalidArgument("Shape element overflows");
+      return absl::InvalidArgumentError("Shape element overflows");
     }
     shape->push_back(d.size() == kTFDynamicSize ? ShapedType::kDynamic
                                                 : d.size());

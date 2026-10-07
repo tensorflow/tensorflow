@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -43,8 +44,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -123,8 +124,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(kHloText, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(kHloText, config));
   absl::StatusOr<bool> filecheck_result;
   if (IsRocm() && Capability().rocm_compute_capability()->gfx9_mi200()) {
     filecheck_result = RunFileCheck(optimized_module->ToString(), R"(
@@ -137,7 +138,7 @@ ENTRY e {
     ; CHECK: __cublas$lt$matmul
     )");
   }
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value());
 }
 
@@ -145,6 +146,10 @@ TEST_F(GemmRewriteTest, TestBatchedAutotuning) {
   if (HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     GTEST_SKIP()
         << "There is no autotuning starting with the Nvidia Ampere generation";
+  }
+  // TODO(intel-tf): Remove this check when autotuning is supported on SYCL.
+  if (IsSycl()) {
+    GTEST_SKIP() << "Autotuning is not supported on SYCL platform.";
   }
 
   const char* hlo_text = R"(
@@ -187,8 +192,8 @@ ENTRY AddDotsFunc {
     return config;
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo_text, get_config()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text, get_config()));
 
   absl::StatusOr<bool> filecheck_result =
       RunFileCheck(optimized_module->ToString(),
@@ -197,8 +202,8 @@ ENTRY AddDotsFunc {
     )");
   ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, get_config()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, get_config()));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
 }
 
@@ -645,6 +650,55 @@ ENTRY test {
 )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, VectorBiasSquareMatrixRowBroadcastNotFused) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[8,8] parameter(0)
+  y = f32[8,8] parameter(1)
+  z = f32[8] parameter(2)
+  dot_a = f32[8,8] dot(x, y), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  z_bcast = f32[8,8] broadcast(z), dimensions={0}
+  ROOT out = f32[8,8] add(dot_a, z_bcast)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[8,8], {{.*}}: f32[8,8], {{.*}}: f32[8]) -> f32[8,8] {
+; CHECK:         [[MATMUL:%[^ ]+]] = (f32[8,8]{1,0}, s8[{{[0-9]+}}]{0}) custom-call
+; CHECK-NOT:     "epilogue":"BIAS"
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[8,8]{1,0} fusion
+)");
+}
+
+TEST_F(CublasLtGemmRewriteTest, VectorBiasSquareMatrixColumnBroadcastFused) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[8,8] parameter(0)
+  y = f32[8,8] parameter(1)
+  z = f32[8] parameter(2)
+  dot_a = f32[8,8] dot(x, y), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  z_bcast = f32[8,8] broadcast(z), dimensions={1}
+  ROOT out = f32[8,8] add(dot_a, z_bcast)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[8,8], {{.*}}: f32[8,8], {{.*}}: f32[8]) -> f32[8,8] {
+; CHECK:         [[OUT:%[^ ]+]] = (f32[8,8]{1,0}, s8[{{[0-9]+}}]{0}) custom-call
+; CHECK:           backend_config={
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
+)");
+}
+
 TEST_F(CublasLtGemmRewriteTest, VectorBiasWithAlphaScale) {
   const char* hlo_text = R"(
 HloModule test
@@ -817,6 +871,10 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasSliced) {
+  // TODO(intel-tf): Remove this check when autotuning is supported on SYCL.
+  if (IsSycl()) {
+    GTEST_SKIP() << "Autotuning is not supported on SYCL platform.";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -1202,6 +1260,10 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ReluActivationSliced) {
+  // TODO(intel-tf): Remove this check when autotuning is supported on SYCL.
+  if (IsSycl()) {
+    GTEST_SKIP() << "Autotuning is not supported on SYCL platform.";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -1624,12 +1686,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, MatrixBiasSwishActivation) {
-  auto runtime_version = GetToolkitVersion();
-  bool rocm_gelu_available =
-      IsRocm() &&
-      (runtime_version >= stream_executor::SemanticVersion(7, 0, 0));
-  if (!rocm_gelu_available) {
-    GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
+  if (!IsRocm()) {
+    GTEST_SKIP() << "Swish/SILU epilogue fusion is ROCm-only";
   }
   const char* hlo_text = R"(
 HloModule test
@@ -1677,12 +1735,8 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, SwishActivationWithBitcastAndAuxiliaryOutput) {
-  auto runtime_version = GetToolkitVersion();
-  bool rocm_swish_available =
-      IsRocm() &&
-      (runtime_version >= stream_executor::SemanticVersion(7, 0, 0));
-  if (!rocm_swish_available) {
-    GTEST_SKIP() << "Swish/SILU activation fusion only available on ROCm 7.0+";
+  if (!IsRocm()) {
+    GTEST_SKIP() << "Swish/SILU epilogue fusion is ROCm-only";
   }
 
   const char* hlo_text = R"(
@@ -1711,17 +1765,17 @@ ENTRY test (x: bf16[49152,11008], y: bf16[11008,11008]) -> (bf16[12,4096,11008],
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
-                          RunFileCheck(module->ToString(), R"(
+  ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                       RunFileCheck(module->ToString(), R"(
 ; CHECK:           [[GEMM_TUPLE:%[^ ]+]] = {{.*}} custom-call
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK-DAG:         "epilogue":"DEFAULT"
@@ -1730,13 +1784,6 @@ ENTRY test (x: bf16[49152,11008], y: bf16[11008,11008]) -> (bf16[12,4096,11008],
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivation) {
-  auto runtime_version = GetToolkitVersion();
-  bool rocm_gelu_available =
-      IsRocm() &&
-      (runtime_version >= stream_executor::SemanticVersion(6, 0, 0));
-  if (IsRocm() && !rocm_gelu_available) {
-    GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
-  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -1799,6 +1846,9 @@ ENTRY test {
 TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationWithAux) {
   if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
+  }
+  if (IsSycl()) {
+    GTEST_SKIP() << "TODO: BIAS_GELU_AUX epilogue not yet supported on SYCL";
   }
   const char* hlo_text = R"(
 HloModule test
@@ -1995,6 +2045,9 @@ TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivationWithAux) {
   if (IsRocm()) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
+  if (IsSycl()) {
+    GTEST_SKIP() << "TODO: BIAS_GELU_AUX epilogue not yet supported on SYCL";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -2133,11 +2186,11 @@ ENTRY test {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -2713,6 +2766,10 @@ TEST_F(ParameterizedGemmRewriteTest, F64C64_CublasLtSupportTest) {
   if (IsRocm()) {
     GTEST_SKIP() << " hipblaslt doesn't support c64 c128 types";
   }
+  // TODO(intel-tf): Remove this check once SYCL supports c64/c128.
+  if (IsSycl()) {
+    GTEST_SKIP() << "c64/c128 not supported on SYCL.";
+  }
   // This test should fail if gemm rewriter does not correctly rewrite
   // F64/C64 dots to cublas-lt or legacy cublas calls
   {
@@ -2925,8 +2982,9 @@ ENTRY main {
 }
 
 TEST_F(ParameterizedGemmRewriteTest, ComplexAlphaSimpleRewrite) {
-  if (IsRocm() && GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
-    GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM";
+  if ((IsSycl() || IsRocm()) &&
+      GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
+    GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM/SYCL.";
   }
   const char* hlo_text = R"(
 HloModule ComplexAlphaSimpleRewrite
@@ -3118,7 +3176,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsRocm() ||
+  if (IsRocm() || IsSycl() ||
       HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
@@ -3191,7 +3249,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsRocm() ||
+  if (IsRocm() || IsSycl() ||
       HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
@@ -3226,7 +3284,7 @@ ENTRY int8gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (IsRocm() ||
+  if (IsRocm() || IsSycl() ||
       HasCudaComputeCapability(se::CudaComputeCapability::Volta())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
@@ -3349,6 +3407,19 @@ TEST_F(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
     type_combinations.push_back({"c128", "c128", true});
   }
 
+  // TODO(intel-tf): Remove this check once SYCL supports f64, c64, c128 data
+  // types. SYCL does not support f64, c64, c128 data types in oneDNN matmul
+  if (IsSycl()) {
+    type_combinations.erase(
+        std::remove_if(type_combinations.begin(), type_combinations.end(),
+                       [](const auto& combo) {
+                         auto [input_type, output_type, should_rewrite] = combo;
+                         return input_type == "f64" || input_type == "c64" ||
+                                input_type == "c128";
+                       }),
+        type_combinations.end());
+  }
+
   for (const auto& type_combination : type_combinations) {
     absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
     replacements["<<ABType>>"] = std::get<0>(type_combination);
@@ -3386,11 +3457,11 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // input fp16 and output fp32 combination is supported by legacy cublas and
@@ -3415,11 +3486,11 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // u8 is not supported by legacy cublas and cublasLt, expect
@@ -3446,11 +3517,11 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // input fp16 and output fp32 combination is supported by legacy cublas and
@@ -3471,6 +3542,10 @@ class SmallDotGemmRewriteTest : public GemmRewriteTest {
 };
 
 TEST_F(SmallDotGemmRewriteTest, SkipSmallMatrixMultiplicationRewrite) {
+  // TODO(intel-tf): Remove this check when autotuning is supported on SYCL.
+  if (IsSycl()) {
+    GTEST_SKIP() << "Autotuning is not supported on SYCL platform.";
+  }
   const char* hlo_text = R"(
 HloModule SkipSmallMatrixRewrite
 

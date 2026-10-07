@@ -502,6 +502,8 @@ __global__ __launch_bounds__(1024) void GatherOriginalGradValuesKernel(
     if (output_i >= 0 && output_i < N_full) {
       d_values[input_i] = grad_values[output_i];
       visited[output_i] = true;
+    } else {
+      d_values[input_i] = T(0);
     }
   }
 }

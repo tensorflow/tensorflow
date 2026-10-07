@@ -1897,7 +1897,7 @@ module {
 // CHECK:       %[[$region_0_4:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_5:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  %[[Arg_1_6:[^ ]+]] = f32[] parameter(1)
-// CHECK-NEXT:  ROOT %[[compare_7:[^ ]+]] = pred[] compare(%[[Arg_0_5]], %[[Arg_1_6]]), direction=GE, type=TOTALORDER, metadata=
+// CHECK-NEXT:  ROOT %[[compare_7:[^ ]+]] = pred[] compare(%[[Arg_0_5]], %[[Arg_1_6]]), direction=GE, order=TOTAL, metadata=
 
 // CHECK:       %[[$region_1_8:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_9:[^ ]+]] = f32[] parameter(0)
@@ -2228,4 +2228,22 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
   %0 = "stablehlo.custom_call"(%arg0, %arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", xla_shape = "(f32[8,6]{0,1}, f32[8,6]{0,1})"} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tuple<tensor<8x6xf32>, tensor<8x6xf32>>
   %1 = stablehlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>, tensor<8x6xf32>>) -> tensor<8x6xf32>
   func.return %1: tensor<8x6xf32>
+}
+
+// -----
+
+// Test stablehlo.collective_broadcast with has_dynamic_root exports has_dynamic_root=true.
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[4]{0}, s32[1]{0})->f32[4]{0}}
+// CHECK: ENTRY
+// CHECK-NEXT: %[[DATA:.*]] = f32[4] parameter(0)
+// CHECK-NEXT: %[[SOURCE:.*]] = s32[1] parameter(1)
+// CHECK-NEXT: ROOT %[[RESULT:.*]] = f32[4] collective-broadcast(%[[DATA]], %[[SOURCE]]), channel_id=1,
+// CHECK-SAME{LITERAL}: replica_groups={{0,1}}, has_dynamic_root=true
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<1xi32>) -> tensor<4xf32> {
+  %0 = "stablehlo.collective_broadcast"(%arg0, %arg1) <{
+    channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
+    has_dynamic_root,
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  }> : (tensor<4xf32>, tensor<1xi32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }

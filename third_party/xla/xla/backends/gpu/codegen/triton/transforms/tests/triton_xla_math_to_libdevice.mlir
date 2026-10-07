@@ -71,6 +71,53 @@ func.func @atan2(%arg0: tensor<1024xf32>, %arg1: tensor<1024xf32>) -> tensor<102
 
 // -----
 
+func.func @atan(%arg0: tensor<1024xf32>) -> tensor<1024xf32> {
+  %result = math.atan %arg0 : tensor<1024xf32>
+  return %result : tensor<1024xf32>
+}
+
+// CHECK:       tt.extern_elementwise %arg0
+// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    pure = true, symbol = "__nv_atanf"}
+
+// -----
+
+func.func @atan_f16(%arg0: tensor<1024xf16>) -> tensor<1024xf16> {
+  %result = math.atan %arg0 : tensor<1024xf16>
+  return %result : tensor<1024xf16>
+}
+
+// CHECK:       %[[CAST:.*]] = arith.extf %arg0 : tensor<1024xf16> to tensor<1024xf32>
+// CHECK:       tt.extern_elementwise %[[CAST]]
+// CHECK-SAME:    symbol = "__nv_atanf"
+// CHECK:       arith.truncf {{.*}} : tensor<1024xf32> to tensor<1024xf16>
+
+// -----
+
+func.func @atan_bf16(%arg0: tensor<1024xbf16>) -> tensor<1024xbf16> {
+  %result = math.atan %arg0 : tensor<1024xbf16>
+  return %result : tensor<1024xbf16>
+}
+
+// CHECK:       %[[CAST:.*]] = arith.extf %arg0 : tensor<1024xbf16> to tensor<1024xf32>
+// CHECK:       tt.extern_elementwise %[[CAST]]
+// CHECK-SAME:    symbol = "__nv_atanf"
+// CHECK:       arith.truncf {{.*}} : tensor<1024xf32> to tensor<1024xbf16>
+
+// -----
+
+func.func @atan_f64(%arg0: tensor<1024xf64>) -> tensor<1024xf64> {
+  %result = math.atan %arg0 : tensor<1024xf64>
+  return %result : tensor<1024xf64>
+}
+
+// CHECK:       tt.extern_elementwise %arg0
+// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    pure = true, symbol = "__nv_atan"}
+
+// -----
+
+
 func.func @atanh(%arg0: tensor<1024xf32>) -> tensor<1024xf32> {
   %result = math.atanh %arg0 : tensor<1024xf32>
   return %result : tensor<1024xf32>

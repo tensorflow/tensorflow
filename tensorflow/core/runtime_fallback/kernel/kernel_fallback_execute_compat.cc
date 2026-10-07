@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/framework/logging.h"
@@ -62,7 +63,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfd {
-const char kOpKernelRunnerCacheResourceName[] =
+ABSL_CONST_INIT const char kOpKernelRunnerCacheResourceName[] =
     "OpKernelRunnerCacheResourceName";
 
 namespace {
@@ -405,7 +406,7 @@ class FallbackKernelAttributeFrame {
 
 // The BEF kernel for kernel fallback compat mode. The arguments and results are
 // expected to tensorflow::tfrt_stub::FallbackTensor.
-TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
+static inline TF_ATTRIBUTE_ALWAYS_INLINE void KernelFallbackExecuteOpInternal(
     llvm::ArrayRef<tfrt::AsyncValue*> args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
@@ -472,7 +473,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   }
 }
 
-TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
+static inline TF_ATTRIBUTE_ALWAYS_INLINE void KernelFallbackExecuteOp(
     llvm::ArrayRef<tfrt::AsyncValue*> args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,

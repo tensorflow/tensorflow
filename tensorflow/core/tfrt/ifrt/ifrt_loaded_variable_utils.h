@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/layout.h"
@@ -71,7 +72,8 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     const VariableDeviceShardingConfig& sharding_config,
     const xla::ifrt::LayoutRef& xla_input_layout,
     std::shared_ptr<const xla::Shape> shape_on_device,
-    const xla::ifrt::DeviceListRef& device_list);
+    const xla::ifrt::DeviceListRef& device_list,
+    bool use_undonatable_buffer_converter = false);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

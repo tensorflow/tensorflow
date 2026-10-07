@@ -27,9 +27,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -71,7 +71,7 @@ struct DummyThunk : public Thunk {
   BufferUses buffer_uses() const override { return {}; }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
-    ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+    ABSL_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                      Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
     return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
   }
@@ -330,10 +330,10 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
                  create_branches) {
               auto branch = std::make_unique<BranchCommandBuffer>();
               ConfigureNestedCommandBuffer(branch.get());
-              RETURN_IF_ERROR(create_branch(branch->command_buffer.get(),
+              ABSL_RETURN_IF_ERROR(create_branch(branch->command_buffer.get(),
                                             /*dependencies=*/{})
                                   .status());
-              RETURN_IF_ERROR(branch->command_buffer->Finalize());
+              ABSL_RETURN_IF_ERROR(branch->command_buffer->Finalize());
               branch_command_buffers.push_back(std::move(branch));
             }
             return &case_se_command;
@@ -369,10 +369,10 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
           return absl::InternalError("unexpected branch count");
         }
         for (size_t i = 0; i < update_branches.size(); ++i) {
-          RETURN_IF_ERROR(branch_command_buffers[i]->command_buffer->Update());
-          RETURN_IF_ERROR(update_branches[i](
+          ABSL_RETURN_IF_ERROR(branch_command_buffers[i]->command_buffer->Update());
+          ABSL_RETURN_IF_ERROR(update_branches[i](
               branch_command_buffers[i]->command_buffer.get()));
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               branch_command_buffers[i]->command_buffer->Finalize());
         }
         return absl::OkStatus();

@@ -25,10 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -69,6 +69,28 @@ TEST(FutureTest, StatusConstructedFuture) {
   Future<> future = Future<>(absl::OkStatus());
   EXPECT_TRUE(future.IsReady());
   EXPECT_EQ(future.Await(), absl::OkStatus());
+}
+
+TEST(FutureTest, FutureBoolCopyAndMoveDoesNotConvertViaOperatorBool) {
+  auto [promise, future] = MakePromise<bool>();
+  EXPECT_FALSE(future.IsReady());
+
+  // Copying a non-const Future<bool> lvalue must copy the future (sharing the
+  // pending async value), not invoke operator bool() via Future(U&&).
+  Future<bool> copied_from_non_const = future;
+  EXPECT_FALSE(copied_from_non_const.IsReady());
+
+  // Moving a const Future<bool> rvalue (e.g. when moving a lambda that captured
+  // Future<bool> by value) must copy the future, not invoke operator bool().
+  const Future<bool> const_future = future;
+  Future<bool> moved_from_const = std::move(const_future);
+  EXPECT_FALSE(moved_from_const.IsReady());
+
+  promise.Set(false);
+  EXPECT_TRUE(copied_from_non_const.IsReady());
+  EXPECT_THAT(copied_from_non_const.Await(), IsOkAndHolds(false));
+  EXPECT_TRUE(moved_from_const.IsReady());
+  EXPECT_THAT(moved_from_const.Await(), IsOkAndHolds(false));
 }
 
 TEST(FutureTest, ValueConstructedFuture) {
@@ -190,7 +212,7 @@ TEST(FutureTest, ValueImplicitConversion) {
 
 TEST(FutureTest, StatusMacro) {
   auto f = [&](absl::StatusOr<int> value) -> tsl::Future<int> {
-    ASSIGN_OR_RETURN(const int x, value);
+    ABSL_ASSIGN_OR_RETURN(const int x, value);
     return x;
   };
 
@@ -1063,6 +1085,25 @@ TEST(FutureTest, JoinCopyableFuturesError) {
 
   EXPECT_TRUE(join_two.IsReady());
   EXPECT_EQ(join_two.Await().status(), absl::InternalError("error0"));
+}
+
+TEST(FutureTest, JoinEmptyCopyableFutures) {
+  std::vector<Future<int32_t>> futures;
+  Future<std::vector<int32_t>> join = JoinFutures<int32_t>(futures);
+  ASSERT_TRUE(join.IsValid());
+  EXPECT_TRUE(join.IsReady());
+  ASSERT_OK_AND_ASSIGN(std::vector<int32_t> v, join.Await());
+  EXPECT_TRUE(v.empty());
+}
+
+TEST(FutureTest, JoinEmptyMoveOnlyFutures) {
+  std::vector<Future<std::unique_ptr<int32_t>>> futures;
+  Future<std::vector<std::unique_ptr<int32_t>>> join =
+      JoinFutures<std::unique_ptr<int32_t>>(absl::MakeSpan(futures));
+  ASSERT_TRUE(join.IsValid());
+  EXPECT_TRUE(join.IsReady());
+  ASSERT_OK_AND_ASSIGN(auto v, std::move(join).Await());
+  EXPECT_TRUE(v.empty());
 }
 
 TEST(FutureTest, JoinMoveOnlyFuture) {

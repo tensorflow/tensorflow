@@ -21,14 +21,16 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo.pb.h"
@@ -39,18 +41,20 @@ namespace xla {
 namespace {
 
 HloInstruction* InsertCallMarkerBefore(HloInstruction* instruction) {
-  // Gather operand shapes of the original call.
-  std::vector<Shape> operands_shapes;
-  operands_shapes.reserve(instruction->operand_count());
-  for (HloInstruction* operand : instruction->operands()) {
-    operands_shapes.push_back(operand->shape());
+  // Gather parameter shapes of the called computation.
+  std::vector<Shape> parameter_shapes;
+  parameter_shapes.reserve(instruction->operand_count());
+  for (HloInstruction* parameter :
+       instruction->to_apply()->parameter_instructions()) {
+    parameter_shapes.push_back(parameter->shape());
   }
-  Shape tuple_shape_of_operands = ShapeUtil::MakeTupleShape(operands_shapes);
+  Shape tuple_shape_of_parameters = ShapeUtil::MakeTupleShape(parameter_shapes);
 
-  // Create a custom call before the call with the tuple shape of the operands.
+  // Create a custom call before the call with the tuple shape of the
+  // parameters.
   std::unique_ptr<HloInstruction> call_before_ptr =
       HloInstruction::CreateCustomCall(
-          tuple_shape_of_operands, instruction->operands(),
+          tuple_shape_of_parameters, instruction->operands(),
           kCallMarkerBeforeTarget, "",
           CustomCallApiVersion::API_VERSION_ORIGINAL);
   Cast<HloCustomCallInstruction>(call_before_ptr.get())
@@ -62,8 +66,7 @@ HloInstruction* InsertCallMarkerBefore(HloInstruction* instruction) {
 HloInstruction* InsertCallMarkerAfter(HloInstruction* instruction) {
   std::unique_ptr<HloInstruction> call_after_ptr =
       HloInstruction::CreateCustomCall(
-          instruction->to_apply()->root_instruction()->shape(), {instruction},
-          kCallMarkerAfterTarget, "",
+          instruction->shape(), {instruction}, kCallMarkerAfterTarget, "",
           CustomCallApiVersion::API_VERSION_ORIGINAL);
   Cast<HloCustomCallInstruction>(call_after_ptr.get())
       ->set_custom_call_has_side_effect(true);
@@ -115,16 +118,16 @@ absl::Status PopulateMetadataAndDependencies(HloInstruction* call,
   std::vector<HloInstruction*> control_predecessors =
       call->control_predecessors();
   for (HloInstruction* predecessor : control_predecessors) {
-    RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call_before));
-    RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(call));
+    ABSL_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call_before));
+    ABSL_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(call));
   }
 
   // Move control successors of the call to the 'after' marker so they
   // execute after the outlined block ends.
   std::vector<HloInstruction*> control_successors = call->control_successors();
   for (HloInstruction* successor : control_successors) {
-    RETURN_IF_ERROR(call_after->AddControlDependencyTo(successor));
-    RETURN_IF_ERROR(call->RemoveControlDependencyTo(successor));
+    ABSL_RETURN_IF_ERROR(call_after->AddControlDependencyTo(successor));
+    ABSL_RETURN_IF_ERROR(call->RemoveControlDependencyTo(successor));
   }
 
   return absl::OkStatus();
@@ -139,17 +142,47 @@ absl::Status WrapCallWithCustomCall(HloInstruction* instruction) {
     HloInstruction* gte = instruction->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(
             call_before->shape().tuple_shapes(i), call_before, i));
-    RETURN_IF_ERROR(instruction->ReplaceOperandWith(i, gte));
+    ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWith(i, gte));
   }
 
   // Replace the original call with the custom call.
   HloInstruction* call_after = InsertCallMarkerAfter(instruction);
-  RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(call_after));
+  ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(call_after));
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PopulateMetadataAndDependencies(instruction, call_before, call_after));
 
   return absl::OkStatus();
+}
+
+// Returns whether the computation's root instruction has a dataflow or
+// control dependency on at least one of its parameter instructions by
+// performing a backward DFS traversal starting from the root.
+bool RootDependsOnParameters(const HloComputation* computation) {
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::vector<const HloInstruction*> worklist = {
+      computation->root_instruction()};
+  visited.insert(computation->root_instruction());
+
+  auto add_to_worklist = [&](absl::Span<HloInstruction* const> instructions) {
+    for (const HloInstruction* inst : instructions) {
+      if (visited.insert(inst).second) {
+        worklist.push_back(inst);
+      }
+    }
+  };
+
+  while (!worklist.empty()) {
+    const HloInstruction* current = worklist.back();
+    worklist.pop_back();
+
+    if (current->opcode() == HloOpcode::kParameter) {
+      return true;
+    }
+    add_to_worklist(current->operands());
+    add_to_worklist(current->control_predecessors());
+  }
+  return false;
 }
 }  // namespace
 
@@ -161,14 +194,14 @@ absl::StatusOr<bool> CallMarker::RunImpl(
   for (HloComputation* computation : module->MakeComputationPostOrder()) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
-      // Don't mark calls that are non-inlineable or have no operands.
-      // Instructions that don't have operands can't be reliably marked since
-      // we can't introduce data dependencies between them and the wrapping
-      // custom calls.
-      if (instruction->operand_count() == 0) {
-        continue;
-      }
-      if (inliner_.ShouldInline(*call_graph, instruction)) {
+      // Don't mark calls that are non-inlineable or have no operands or
+      // if their arguments are unused (not connected to the called
+      // computation's root), as no dataflow link can be created between the
+      // _before and _after markers.
+      if (instruction->operand_count() != 0 &&
+          instruction->opcode() == HloOpcode::kCall &&
+          inliner_.ShouldInline(*call_graph, instruction) &&
+          RootDependsOnParameters(instruction->to_apply())) {
         inlineable_calls.push_back(instruction);
       }
     }
@@ -178,7 +211,7 @@ absl::StatusOr<bool> CallMarker::RunImpl(
   }
 
   for (HloInstruction* instruction : inlineable_calls) {
-    RETURN_IF_ERROR(WrapCallWithCustomCall(instruction));
+    ABSL_RETURN_IF_ERROR(WrapCallWithCustomCall(instruction));
   }
 
   return true;

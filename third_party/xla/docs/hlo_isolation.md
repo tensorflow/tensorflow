@@ -80,10 +80,26 @@ inspection.
 
 On numeric mismatch, the tool writes the following debug artifacts:
 
-1.  The failed HLO submodule text (`failed-module-<module_name>.txt`).
-2.  The expected output literal (`failed-<module_name>-expected.txt`).
-3.  The actual output literal (`failed-<module_name>-actual.txt`).
-4.  The mismatching elements summary (`failed-<module_name>-mismatches.txt`).
+1.  The interactive HTML mismatch report (`failed-module-<module_name>.html`).
+2.  The failed HLO submodule text (`failed-module-<module_name>.txt`).
+3.  The expected output literal (`failed-<module_name>-expected.txt`).
+4.  The actual output literal (`failed-<module_name>-actual.txt`).
+5.  The mismatching elements summary (`failed-<module_name>-mismatches.txt`).
+
+### Interactive HTML Graph UI
+
+When numeric mismatches are detected during isolation testing, an interactive
+HTML report (`failed-module-<module_name>.html`) is generated for each mismatch
+detected. It provides a graphical view of the failing HLO module by rendering
+the HLO graph and highlighting mismatching instructions with annotations and
+tooltips that display detailed numeric mismatch statistics (including actual
+and expected values, relative and absolute error bounds, and element mismatch
+percentages).
+
+![HLO isolation interactive HTML graph UI](./images/hlo_isolation_html_dump.png)
+
+<p><span style="color: gray; font-size: smaller;"><em>Above: Example HTML
+output for a fusion containing a numeric mismatch.</em></span></p>
 
 ### Dump Target Location
 
@@ -194,6 +210,9 @@ spec:
     making it easy to debug HLO mismatches locally.
 -   **Granularity:** Granular opcode and name filtering improves the debugging
     loop when interacting with massive HLO dumps.
+-   **Interactive Visualization:** Dumps interactive HTML reports with graph
+    visualization and per-instruction numeric mismatch annotations for fast
+    root-cause diagnosis.
 -   **Extensibility:** Custom runner execution callbacks and data injectors
     (`make_fake_arguments_fn`) permit full customization for advanced
     verification workflows.

@@ -25,6 +25,7 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/meta_support.h"
@@ -515,6 +516,14 @@ class QuantizedConv2DOp : public OpKernel {
         context, filter.dims() == 4,
         absl::InvalidArgumentError(absl::StrCat(
             "filter must be rank 4 but is rank ", filter.shape().dims())));
+    OP_REQUIRES(context, filter.dim_size(0) > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("filter_rows must be greater than 0, but got ",
+                                 filter.dim_size(0))));
+    OP_REQUIRES(context, filter.dim_size(1) > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("filter_cols must be greater than 0, but got ",
+                                 filter.dim_size(1))));
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(2).shape()),
                 absl::InvalidArgumentError(
@@ -581,10 +590,15 @@ class QuantizedConv2DOp : public OpKernel {
     OP_REQUIRES_OK(context, GetWindowedOutputSize(
                                 input_cols, filter_cols, /*dilation_rate=*/1,
                                 stride, padding_, &out_cols, &pad_cols));
-    CHECK_GT(batch, 0);
-    CHECK_GT(out_rows, 0);
-    CHECK_GT(out_cols, 0);
-    CHECK_GT(out_depth, 0);
+    OP_REQUIRES(context, out_rows > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "out_rows must be greater than 0, but got ", out_rows)));
+    OP_REQUIRES(context, out_cols > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "out_cols must be greater than 0, but got ", out_cols)));
+    OP_REQUIRES(context, out_depth > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "out_depth must be greater than 0, but got ", out_depth)));
     TensorShape out_shape({batch, out_rows, out_cols, out_depth});
 
     // Output tensor is of the following dimensions:

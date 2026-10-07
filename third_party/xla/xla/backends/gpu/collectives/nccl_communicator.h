@@ -64,6 +64,7 @@ struct NcclCapabilities {
   bool supports_device_comm;
   bool supports_one_sided_comm;
   bool supports_gin;
+  std::optional<int> lsa_size;
 
   // Reason one-sided comm is not supported, cached at construction. Empty
   // if one-sided comm is supported.
@@ -112,6 +113,7 @@ class NcclCommunicator : public GpuCommunicator {
 
   bool SupportsDeviceComm() const final;
   bool SupportsGin() const final;
+  std::optional<int> LsaSize() const final;
 
   GxlCommunicator* gxl_communicator() const final {
     return gxl_communicator_.get();
@@ -214,6 +216,12 @@ class NcclCommunicator : public GpuCommunicator {
                                se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count, RankId root,
                                const Executor& executor) final;
+
+  absl::Status LaunchReduce(se::DeviceAddressBase send_buffer,
+                            se::DeviceAddressBase recv_buffer,
+                            PrimitiveType dtype, size_t count,
+                            ReductionKind reduction_kind, RankId root,
+                            const Executor& executor) final;
 
   absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
                                    se::DeviceAddressBase recv_buffer,

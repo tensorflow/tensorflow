@@ -193,3 +193,29 @@ module {
 // CHECK-LABEL: @e8m0_abs
 // CHECK-NOT: math.absf
 // CHECK: return %arg0
+
+// -----
+
+module {
+  func.func @maximumf_f8(%arg0: f8E4M3FN, %arg1: f8E4M3FN) -> f8E4M3FN {
+    %ret = arith.maximumf %arg0, %arg1 : f8E4M3FN
+    return %ret : f8E4M3FN
+  }
+}
+
+// CHECK-LABEL: @maximumf_f8
+// CHECK-NOT: arith.maximumf {{.*}}f8E4M3FN
+// CHECK: arith.maximumf {{.*}} : f32
+
+// -----
+
+module {
+  func.func @minimumf_f8(%arg0: f8E4M3FN, %arg1: f8E4M3FN) -> f8E4M3FN {
+    %ret = arith.minimumf %arg0, %arg1 : f8E4M3FN
+    return %ret : f8E4M3FN
+  }
+}
+
+// CHECK-LABEL: @minimumf_f8
+// CHECK-NOT: arith.minimumf {{.*}}f8E4M3FN
+// CHECK: arith.minimumf {{.*}} : f32

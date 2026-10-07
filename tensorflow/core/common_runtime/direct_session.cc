@@ -135,7 +135,7 @@ absl::Status NewThreadPoolFromThreadPoolOptions(
     const ThreadPoolOptionProto& thread_pool_options, int pool_number,
     thread::ThreadPool** pool, bool* owned) {
   int32_t num_threads = thread_pool_options.num_threads();
-  if (num_threads == 0) {
+  if (num_threads <= 0) {
     num_threads = NumInterOpThreadsFromSessionOptions(options);
   }
   const std::string& name = thread_pool_options.global_name();

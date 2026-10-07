@@ -23,15 +23,16 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
 #include "xla/stream_executor/cuda/defer_relocatable_compilation_compilation_provider.h"
 #include "xla/stream_executor/cuda/driver_compilation_provider.h"
+#include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_known_issues.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -62,6 +63,17 @@ absl::Status HasNvJitLinkSupport(const CompilationProviderOptions& options) {
       CompilationProviderOptions::NvJitLinkMode::kEnabled) {
     VLOG(4) << "Considering NvJitLink since it was explicitly enabled.";
     return absl::OkStatus();
+  }
+
+  // When built with the nvjitlink stub library, libnvJitLink.so is loaded
+  // dynamically at runtime and may not be present in the environment. Probe it
+  // via GetNvJitLinkVersion() first so auto mode can fall back gracefully.
+  if (absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
+      !version.ok()) {
+    return absl::UnavailableError(
+        absl::StrCat("LibNvJitLink is disabled in auto mode because the "
+                     "library could not be loaded: ",
+                     version.status().message()));
   }
 
   if (LoadedNvJitLinkHasKnownIssues()) {
@@ -136,7 +148,7 @@ absl::StatusOr<std::unique_ptr<CompilationProvider>>
 AssembleCompilationProvider(const CompilationProviderOptions& options) {
   // TODO(b/381059098): Simplify this logic
 
-  RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
+  ABSL_RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
 
   std::string decision_log;
   const auto append_to_decision_log = [&](absl::string_view decision) {

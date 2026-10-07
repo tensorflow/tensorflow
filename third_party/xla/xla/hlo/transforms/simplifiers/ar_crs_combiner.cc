@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -59,7 +60,7 @@ namespace {
 // performance.
 absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
                                                 int64_t partition_count) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
@@ -93,7 +94,7 @@ absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
               HloInstruction::CreateBroadcast(shape, divisor, {}));
           auto div = computation->AddInstruction(HloInstruction::CreateBinary(
               ar->shape(), HloOpcode::kDivide, ar, bcast));
-          RETURN_IF_ERROR(ar->ReplaceAllUsesWith(div));
+          ABSL_RETURN_IF_ERROR(ar->ReplaceAllUsesWith(div));
           changed = true;
         }
       }
@@ -143,13 +144,13 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_partitions) {
       // seen iff we see a replica id in the range [0, num_partitions) for the
       // first time. So, there is no need to check that all `seen_partition_ids`
       // values are equal to `marker`.
-#ifndef NDEBUG
-      for (int64_t i = 0; i < num_partitions; ++i) {
-        CHECK_EQ(seen_partition_ids[i], marker)
-            << "Programming error: seen_partition_ids[" << i
-            << "] != " << marker;
+      if constexpr (tsl::kIsDebugBuild) {
+        for (int64_t i = 0; i < num_partitions; ++i) {
+          CHECK_EQ(seen_partition_ids[i], marker)
+              << "Programming error: seen_partition_ids[" << i
+              << "] != " << marker;
+        }
       }
-#endif  // NDEBUG
     }
   }
   return true;
@@ -538,7 +539,7 @@ absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
     HloModule* module) {
   // For SPMD mode, use HloReplicationAnalysis to figure out HLO value
   // equivalence across partitions.
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
@@ -646,15 +647,15 @@ absl::StatusOr<bool> ArCrsCombiner::RunImpl(
   GroupAllReducesById(module);
 
   if (spmd_partition_) {
-    RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsSPMD(module));
+    ABSL_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsSPMD(module));
   } else {
-    RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
+    ABSL_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
   }
 
-  ASSIGN_OR_RETURN(auto changed, RewriteGraph());
+  ABSL_ASSIGN_OR_RETURN(auto changed, RewriteGraph());
 
   if (module->config().replica_count() > 1 && spmd_partition_) {
-    ASSIGN_OR_RETURN(auto replaced, ReplaceReplicatedAllReduce(
+    ABSL_ASSIGN_OR_RETURN(auto replaced, ReplaceReplicatedAllReduce(
                                         module, num_spatial_partitions_));
     changed |= replaced;
   }

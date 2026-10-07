@@ -631,6 +631,33 @@ TEST(ArrayOpsTest, BroadcastTo_ShapeFn) {
               "[3,1,1];[3]");
   INFER_ERROR("Dimensions must be equal, but are 2 and 10 for", op,
               "[2,2,1];[3]");
+
+  // Known negative dims are invalid (unlike Reshape, -1 is not "infer this").
+  Tensor neg_shape_t(DT_INT64, TensorShape{1});
+  test::FillValues<int64_t>(&neg_shape_t, {-1});
+  op.input_tensors[1] = &neg_shape_t;
+  INFER_ERROR("Dimension -1 must be >= 0", op, "[4];[1]");
+
+  Tensor neg_shape_t32(DT_INT32, TensorShape{2});
+  test::FillValues<int32_t>(&neg_shape_t32, {2, -1});
+  op.input_tensors[1] = &neg_shape_t32;
+  INFER_ERROR("Dimension -1 must be >= 0", op, "[1];[2]");
+
+  Tensor neg2_shape_t(DT_INT64, TensorShape{1});
+  test::FillValues<int64_t>(&neg2_shape_t, {-2});
+  op.input_tensors[1] = &neg2_shape_t;
+  INFER_ERROR("Dimension -2 must be >= 0", op, "[4];[1]");
+
+  // 0 is a valid dimension; only negatives are rejected.
+  Tensor zero_shape_t(DT_INT64, TensorShape{1});
+  test::FillValues<int64_t>(&zero_shape_t, {0});
+  op.input_tensors[1] = &zero_shape_t;
+  INFER_OK(op, "[1];[1]", "[0]");
+
+  // Unknown shape-tensor values are still allowed; the kernel validates later.
+  op.input_tensors[1] = nullptr;
+  INFER_OK(op, "[1];[1]", "[?]");
+  INFER_OK(op, "[4];[1]", "[d0_0]");
 }
 
 TEST(ArrayOpsTest, BroadcastGradientArgs_ShapeFn) {
@@ -989,10 +1016,32 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // dimensions.
   INFER_ERROR("Dimension size must be evenly divisible by 2 but is 7", op,
               "[7];[2]");
-  // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32_t>({-1, -1, 2});
-  INFER_OK(op, "[8];[3]", "[?,?,2]");
-  INFER_OK(op, "?;[3]", "[?,?,2]");
+  INFER_ERROR("Only one input size may be -1, not both 0 and 1", op, "[8];[3]");
+  INFER_ERROR("Only one input size may be -1, not both 0 and 1", op, "?;[3]");
+
+  new_shape = test::AsTensor<int32_t>({2, -1, -1});
+  INFER_ERROR("Only one input size may be -1, not both 1 and 2", op,
+              "[12];[3]");
+
+  new_shape = test::AsTensor<int32_t>({-1, -1});
+  INFER_ERROR("Only one input size may be -1, not both 0 and 1", op,
+              "[4,12];[2]");
+
+  new_shape = test::AsTensor<int32_t>({4, 3, -1});
+  INFER_OK(op, "[48];[3]", "[4,3,4]");
+
+  new_shape = test::AsTensor<int32_t>({-1, 4, -1});
+  INFER_ERROR("Only one input size may be -1, not both 0 and 2", op,
+              "[48];[3]");
+
+  new_shape = test::AsTensor<int32_t>({-1, 2, 3});
+  INFER_OK(op, "?;[3]", "[?,2,3]");
+
+  op.input_tensors[1] = nullptr;
+  INFER_OK(op, "[8];[3]", "[?,?,?]");
+  INFER_OK(op, "[?];[3]", "[?,?,?]");
+  op.input_tensors[1] = &new_shape;
 
   // Symbolic shape propagation
   new_shape = test::AsTensor<int32_t>({-1, 2, 3});

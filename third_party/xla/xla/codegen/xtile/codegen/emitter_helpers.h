@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 #define XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 
+#include <complex>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -23,10 +24,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -61,6 +65,33 @@ namespace xla::xtile {
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 static constexpr auto kTritonDivisibilityAttr = "tt.divisibility";
 
+// Maps sequential dimensions to their current value and its range.
+using SequentialDimValueMap =
+    absl::flat_hash_map<gpu::experimental::TiledDimId,
+                        std::pair<mlir::Value, Interval>>;
+
+// Removes `dim_id` from `map` when destroyed. Mappings are scoped because the
+// mapped values, e.g. loop induction variables, do not dominate code emitted
+// outside of their loop.
+class ScopedSequentialDimBinding {
+ public:
+  ScopedSequentialDimBinding(SequentialDimValueMap* map,
+                             gpu::experimental::TiledDimId dim_id)
+      : map_(map), dim_id_(dim_id) {}
+  ScopedSequentialDimBinding(ScopedSequentialDimBinding&& other) noexcept
+      : map_(std::exchange(other.map_, nullptr)), dim_id_(other.dim_id_) {}
+  ScopedSequentialDimBinding& operator=(ScopedSequentialDimBinding&&) = delete;
+  ~ScopedSequentialDimBinding() {
+    if (map_ != nullptr) {
+      map_->erase(dim_id_);
+    }
+  }
+
+ private:
+  SequentialDimValueMap* map_;
+  gpu::experimental::TiledDimId dim_id_;
+};
+
 // Convenience class for holding the emitted values.
 class EmitterContext {
  public:
@@ -82,6 +113,9 @@ class EmitterContext {
   mlir::Value tid() const { return tid_; }
   const HloFusionInstruction& fusion() const { return *fusion_; }
   xtile::EntryFuncOp entry_func() const { return entry_func_; }
+  const gpu::experimental::TiledHloComputation& tiled_computation() const {
+    return tiled_computation_;
+  }
 
   TensorValue TiledHloToTensorValue(
       const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
@@ -103,13 +137,20 @@ class EmitterContext {
     return it->second;
   }
 
-  bool MapSymbolIdToSequentialDimValue(
+  // Maps `sequential_dim_id` to `value` until the returned object is destroyed.
+  // Returns an error if the dimension is already mapped.
+  absl::StatusOr<ScopedSequentialDimBinding>
+  MapSymbolIdToSequentialDimValueScoped(
       gpu::experimental::TiledDimId sequential_dim_id, mlir::Value value,
       Interval interval) {
-    return sequential_dim_id_to_value_
-        .insert(
-            std::make_pair(sequential_dim_id, std::make_pair(value, interval)))
-        .second;
+    if (!sequential_dim_id_to_value_
+             .try_emplace(sequential_dim_id, value, interval)
+             .second) {
+      return absl::InternalError(absl::StrCat(
+          "Sequential dimension ", sequential_dim_id, " is already bound."));
+    }
+    return ScopedSequentialDimBinding(&sequential_dim_id_to_value_,
+                                      sequential_dim_id);
   }
 
   // Evaluates tiling parameters for the given affine expressions, e.g. offsets.
@@ -127,9 +168,7 @@ class EmitterContext {
   const HloFusionInstruction* fusion_ = nullptr;
   xtile::EntryFuncOp entry_func_;
   const gpu::experimental::TiledHloComputation& tiled_computation_;
-  absl::flat_hash_map<gpu::experimental::TiledDimId,
-                      std::pair<mlir::Value, Interval>>
-      sequential_dim_id_to_value_;
+  SequentialDimValueMap sequential_dim_id_to_value_;
 };
 
 // Constructs and holds information needed to construct a tile. This information
@@ -233,6 +272,10 @@ mlir::Type GetSignlessType(mlir::Type t);
 // operand to tt.dot_scaled.
 bool IsTritonDotScaledOperandType(PrimitiveType type);
 
+// Returns true if `scale` is provably all ones. Looks through value-preserving
+// ops and fusion parameters, as the scale may be defined outside the fusion.
+bool IsAllOnesScale(const HloInstruction& scale);
+
 // Some Triton dot-scaled value dtypes are smaller than one byte. XTile stores
 // those logical elements inside byte-sized carrier elements, so storage shapes
 // and offsets are expressed in carrier elements rather than logical elements.
@@ -259,21 +302,35 @@ mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     if (int_type.isUnsignedInteger()) {
       mlir::Type signless_type = GetSignlessType(type);
-      mlir::Value cst = b.create<mlir::arith::ConstantOp>(
-          b.getIntegerAttr(signless_type, value));
+      mlir::Value cst = mlir::arith::ConstantOp::create(
+          b, b.getIntegerAttr(signless_type, value));
       return mlir::UnrealizedConversionCastOp::create(b, b.getLoc(), type, cst)
           .getResult(0);
     }
-    return b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
+    return mlir::arith::ConstantOp::create(b, b.getIntegerAttr(type, value));
   }
 
   if (mlir::isa<mlir::IndexType>(type)) {
-    return b.create<mlir::arith::ConstantOp>(b.getIndexAttr(value));
+    return mlir::arith::ConstantOp::create(b, b.getIndexAttr(value));
   }
 
   if (mlir::isa<mlir::FloatType>(type)) {
-    return b.create<mlir::arith::ConstantOp>(
-        b.getFloatAttr(type, static_cast<double>(value)));
+    return mlir::arith::ConstantOp::create(
+        b, b.getFloatAttr(type, static_cast<double>(value)));
+  }
+  LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
+}
+
+template <typename T>
+mlir::Value CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
+                        std::complex<T> value) {
+  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
+    auto elem_type = complex_type.getElementType();
+    mlir::Value real_cst = mlir::arith::ConstantOp::create(
+        b, b.getFloatAttr(elem_type, static_cast<double>(value.real())));
+    mlir::Value imag_cst = mlir::arith::ConstantOp::create(
+        b, b.getFloatAttr(elem_type, static_cast<double>(value.imag())));
+    return mlir::complex::CreateOp::create(b, complex_type, real_cst, imag_cst);
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
@@ -288,27 +345,46 @@ mlir::TypedValue<mlir::RankedTensorType> CreateConst(
     if (int_type.isUnsignedInteger()) {
       auto signless_tensor_type =
           mlir::cast<mlir::ShapedType>(GetSignlessType(tensor_type));
-      mlir::Value cst =
-          b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-              signless_tensor_type,
-              mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
-                          /*isSigned=*/false, /*implicitTrunc=*/true)));
+      mlir::Value cst = mlir::arith::ConstantOp::create(
+          b, mlir::DenseElementsAttr::get(
+                 signless_tensor_type,
+                 mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                             /*isSigned=*/false, /*implicitTrunc=*/true)));
       mlir::Value cast_res = mlir::UnrealizedConversionCastOp::create(
                                  b, b.getLoc(), tensor_type, cst)
                                  .getResult(0);
       return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(cast_res);
     }
-    mlir::Value result =
-        b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-            tensor_type,
-            mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
-                        /*isSigned=*/false, /*implicitTrunc=*/true)));
+    mlir::Value result = mlir::arith::ConstantOp::create(
+        b, mlir::DenseElementsAttr::get(
+               tensor_type,
+               mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                           /*isSigned=*/false, /*implicitTrunc=*/true)));
     return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
-    mlir::Value result =
-        b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-            tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
+    mlir::Value result = mlir::arith::ConstantOp::create(
+        b, mlir::DenseElementsAttr::get(
+               tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
+    return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
+  }
+  LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
+}
+
+template <typename T>
+mlir::TypedValue<mlir::RankedTensorType> CreateConst(
+    mlir::ImplicitLocOpBuilder& b, mlir::Type type, std::complex<T> value,
+    llvm::ArrayRef<int64_t> shape) {
+  auto tensor_type = mlir::RankedTensorType::get(shape, type);
+  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
+    auto elem_type = complex_type.getElementType();
+    mlir::Attribute real_attr =
+        b.getFloatAttr(elem_type, static_cast<double>(value.real()));
+    mlir::Attribute imag_attr =
+        b.getFloatAttr(elem_type, static_cast<double>(value.imag()));
+    mlir::ArrayAttr complex_attr = b.getArrayAttr({real_attr, imag_attr});
+    mlir::Value result = mlir::arith::ConstantOp::create(
+        b, mlir::DenseElementsAttr::get(tensor_type, complex_attr));
     return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(result);
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
@@ -429,6 +505,19 @@ absl::Status CheckConcatenateOperands(
 absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
                                              llvm::ArrayRef<int64_t> tile_sizes,
                                              TensorValue input);
+
+// Trivial dimensions in output might be tiled with tile size > 1 and a
+// simple reshape op will fail as tile size of input and output are
+// different. For example:
+// f32[1,8] result = reshape(f32[2,4] operand)
+// where `result` has tile sizes [2,8]. Simple reshape will fail as we go from
+// 8 to 16 elements in a tile.
+// But if we represent this as a reshape followed by a broadcast
+//   [2,4] - reshape -> [8] - broadcast -> [1,8]
+// Broadcast handles the expansion of the tile size.
+absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    llvm::ArrayRef<int64_t> output_tile_sizes, TensorValue input);
 
 TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
                                llvm::ArrayRef<int64_t> tile_sizes,

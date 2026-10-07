@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -33,7 +33,7 @@ class Client;
 
 // Abstract superclass of values such as arrays.
 class Value : public tsl::ReferenceCounted<Value>,
-              public llvm::RTTIExtends<Value, llvm::RTTIRoot> {
+              public RTTIExtends<Value, RTTIRoot> {
  public:
   Value() = default;
 

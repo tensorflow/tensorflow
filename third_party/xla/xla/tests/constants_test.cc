@@ -47,7 +47,7 @@ namespace {
 constexpr ErrorSpec kErrorSpec{1e-3, 1e-5};
 
 using ConstantsTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 template <typename T>
 class ConstantsFloatTest : public ConstantsTest {

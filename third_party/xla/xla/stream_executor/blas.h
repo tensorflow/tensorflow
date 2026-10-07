@@ -30,9 +30,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/blas.pb.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_address.h"
@@ -415,7 +415,7 @@ class BlasSupport {
       int64_t stride_c, int batch_count, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm, const EngineOptions& engine_options,
       blas::ProfileResult* output_profile_result, blas::CallContext context) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         (CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
             computation_type)));
 
@@ -497,7 +497,7 @@ class BlasSupport {
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       const EngineOptions& engine_options,
       blas::ProfileResult* output_profile_result, blas::CallContext context) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         (CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
             computation_type)));
 

@@ -1,15 +1,191 @@
-diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index dbcd4e35..d40a47b3 100644
---- a/third_party/llvm/workspace.bzl
-+++ b/third_party/llvm/workspace.bzl
-@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+diff --git a/shardy/dialect/sdy/transforms/export/BUILD b/shardy/dialect/sdy/transforms/export/BUILD
+index 23e84e0a..80207797 100644
+--- a/shardy/dialect/sdy/transforms/export/BUILD
++++ b/shardy/dialect/sdy/transforms/export/BUILD
+@@ -136,6 +136,8 @@ cc_library(
+     deps = [
+         "//shardy/common:logging",
+         "//shardy/dialect/sdy/ir:dialect",
++        "//shardy/dialect/sdy/transforms/common:partitioner_stage",
++        "//shardy/dialect/sdy/transforms/common:propagation_options",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:Support",
+@@ -150,6 +152,8 @@ cc_test(
+         ":utils",
+         "//shardy/dialect/sdy/ir:dialect",
+         "//shardy/dialect/sdy/ir:testing_utils",
++        "//shardy/dialect/sdy/transforms/common:partitioner_stage",
++        "//shardy/dialect/sdy/transforms/common:propagation_options",
+         "@com_google_googletest//:gtest_main",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:FuncDialect",
+diff --git a/shardy/dialect/sdy/transforms/export/drop_sharding_and_mesh.cc b/shardy/dialect/sdy/transforms/export/drop_sharding_and_mesh.cc
+index c36e7e65..f2b23ef4 100644
+--- a/shardy/dialect/sdy/transforms/export/drop_sharding_and_mesh.cc
++++ b/shardy/dialect/sdy/transforms/export/drop_sharding_and_mesh.cc
+@@ -29,8 +29,10 @@ struct DropShardingAndMeshPass
+  protected:
+   void runOnOperation() final {
+     ModuleOp module = getOperation();
+-    module->removeAttr(kParametersShardingsAttr);
+-    module->removeAttr(kOutputShardingsAttr);
++    if (!keepModuleShardingMetadata) {
++      module->removeAttr(kParametersShardingsAttr);
++      module->removeAttr(kOutputShardingsAttr);
++    }
  
- def repo(name):
-     """Imports LLVM."""
--    LLVM_COMMIT = "2697ad154734e49f15f787c180fde969433f2968"
--    LLVM_SHA256 = "61cd10f4fae65914e9773d082d1398fa83535fde26142ab411d3d9d3f0bc6f57"
-+    LLVM_COMMIT = "0220c07a94012b9dce9250addac6a8ee1f674b21"
-+    LLVM_SHA256 = "0a3d6f9fc738b3aecfa6944f9db2d0c9f6bebd7b93c7a2670bb0fc29c97b6c01"
+     module.walk([](Operation* op) {
+       // kShardingAttr is "sdy.sharding"
+diff --git a/shardy/dialect/sdy/transforms/export/partitioner_pipeline.cc b/shardy/dialect/sdy/transforms/export/partitioner_pipeline.cc
+index d0c304e2..2ffae400 100644
+--- a/shardy/dialect/sdy/transforms/export/partitioner_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/export/partitioner_pipeline.cc
+@@ -68,7 +68,9 @@ void addPartitionerPipeline(OpPassManager& pm,
+     convertOptions.replicaCount = options.replicaCount;
+     convertOptions.partitionCount = options.partitionCount;
+     pm.addPass(createConvertGlobalToLocalPass(convertOptions));
+-    pm.addPass(createDropShardingAndMeshPass());
++    DropShardingAndMeshPassOptions dropOptions;
++    dropOptions.keepModuleShardingMetadata = true;
++    pm.addPass(createDropShardingAndMeshPass(dropOptions));
+   }
+ }
  
-     tf_http_archive(
-         name = name,
+diff --git a/shardy/dialect/sdy/transforms/export/passes.td b/shardy/dialect/sdy/transforms/export/passes.td
+index 987c0ff4..e0740280 100644
+--- a/shardy/dialect/sdy/transforms/export/passes.td
++++ b/shardy/dialect/sdy/transforms/export/passes.td
+@@ -251,6 +251,12 @@ def DropShardingRulesPass : Pass<"sdy-drop-sharding-rules", "func::FuncOp"> {
+ def DropShardingAndMeshPass : Pass<"sdy-drop-sharding-and-mesh", "ModuleOp"> {
+   let summary = "Removes the mesh op and sharding notation from the program.";
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
++  let options = [
++    Option<"keepModuleShardingMetadata", "keep-module-sharding-metadata",
++           "bool", /*default=*/"false",
++           "Whether to keep module-level sharding metadata "
++           "(sdy.parameters_shardings and sdy.output_shardings).">
++  ];
+ }
+ 
+ def ConstantOrScalarMergerPass : Pass<"sdy-constant-or-scalar-merger", "func::FuncOp"> {
+diff --git a/shardy/dialect/sdy/transforms/export/test/drop_sharding_and_mesh.mlir b/shardy/dialect/sdy/transforms/export/test/drop_sharding_and_mesh.mlir
+index 4b2d681c..909229f6 100644
+--- a/shardy/dialect/sdy/transforms/export/test/drop_sharding_and_mesh.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/drop_sharding_and_mesh.mlir
+@@ -1,4 +1,5 @@
+-// RUN: sdy_opt %s -split-input-file -sdy-drop-sharding-and-mesh | FileCheck %s
++// RUN: sdy_opt %s -split-input-file -sdy-drop-sharding-and-mesh | FileCheck %s --check-prefixes=CHECK,DROP
++// RUN: sdy_opt %s -split-input-file -sdy-drop-sharding-and-mesh="keep-module-sharding-metadata=true" | FileCheck %s --check-prefixes=CHECK,KEEP
+ 
+ // CHECK-NOT: sdy.mesh
+ sdy.mesh @mesh_2 = <["x"=2]>
+@@ -27,13 +28,15 @@ func.func @drop_multiple_sharding(
+ // -----
+ 
+ // CHECK-LABEL: module @module_input_output_shardings
+-// CHECK-NOT: sdy.parameters_shardings
+-// CHECK-NOT: sdy.output_shardings
++// KEEP-SAME: sdy.output_shardings = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}]>]>,
++// KEEP-SAME: sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}]>]>
++// DROP-NOT: sdy.output_shardings
++// DROP-NOT: sdy.parameters_shardings
+ // CHECK-NOT: sdy.mesh
+ // CHECK:     func.func @main
+ module @module_input_output_shardings attributes {
+-  sdy.parameters_shardings = #sdy.sharding_per_value<[<@mesh_2, [{"x"}]>]>,
+-  sdy.output_shardings = #sdy.sharding_per_value<[<@mesh_2, [{"x"}]>]>
++  sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}]>]>,
++  sdy.output_shardings = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}]>]>
+ } {
+   sdy.mesh @mesh_2 = <["x"=2]>
+   func.func @main() {
+diff --git a/shardy/dialect/sdy/transforms/export/utils.cc b/shardy/dialect/sdy/transforms/export/utils.cc
+index 75b9925d..f4ac3ec9 100644
+--- a/shardy/dialect/sdy/transforms/export/utils.cc
++++ b/shardy/dialect/sdy/transforms/export/utils.cc
+@@ -41,6 +41,8 @@ limitations under the License.
+ #include "shardy/common/logging.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
++#include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
++#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir {
+@@ -901,5 +903,11 @@ Attribute getReductionIdentityAttr(Type elementType, ReductionOp reductionOp,
+   SDY_CHECK(false) << "Unsupported element type for reduction identity";
+ }
+ 
++bool shardyGeneratesDeviceCode(const PropagationOptions& options) {
++  return !options.avoidExportForPartitioning &&
++         !options.enablePerInstructionPartitioning &&
++         options.partitionerStage == PartitionerStage::kConvertGlobalToLocal;
++}
++
+ }  // namespace sdy
+ }  // namespace mlir
+diff --git a/shardy/dialect/sdy/transforms/export/utils.h b/shardy/dialect/sdy/transforms/export/utils.h
+index c3760057..2834276f 100644
+--- a/shardy/dialect/sdy/transforms/export/utils.h
++++ b/shardy/dialect/sdy/transforms/export/utils.h
+@@ -26,6 +26,7 @@ limitations under the License.
+ #include "mlir/IR/SymbolTable.h"
+ #include "mlir/Support/LLVM.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
++#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir {
+@@ -294,6 +295,12 @@ Attribute getReductionIdentityAttr(Type elementType, ReductionOp reductionOp,
+ ElementsAttr padElementsAttr(ElementsAttr elementsAttr,
+                              RankedTensorType origType,
+                              RankedTensorType paddedType);
++
++// Returns true if Shardy's propagation pipeline converts the module from
++// global to local shapes, meaning the downstream GSPMD partitioner should be
++// skipped.
++bool shardyGeneratesDeviceCode(const PropagationOptions& options);
++
+ }  // namespace sdy
+ }  // namespace mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/utils_test.cc b/shardy/dialect/sdy/transforms/export/utils_test.cc
+index 9d08f825..a1f296a5 100644
+--- a/shardy/dialect/sdy/transforms/export/utils_test.cc
++++ b/shardy/dialect/sdy/transforms/export/utils_test.cc
+@@ -34,6 +34,8 @@ limitations under the License.
+ #include "mlir/Support/LLVM.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/testing_utils.h"
++#include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
++#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include <gtest/gtest.h>
+ 
+ namespace mlir {
+@@ -586,6 +588,25 @@ TEST_F(ExportUtilsTest, GetDivisiblePaddedTypeDualShardingUnsharded) {
+   EXPECT_EQ(paddedType, origType);
+ }
+ 
++TEST_F(ExportUtilsTest, ShardyGeneratesDeviceCode) {
++  PropagationOptions options;
++  EXPECT_FALSE(shardyGeneratesDeviceCode(options));
++
++  options.partitionerStage = PartitionerStage::kConvertGlobalToLocal;
++  EXPECT_TRUE(shardyGeneratesDeviceCode(options));
++
++  options.avoidExportForPartitioning = true;
++  EXPECT_FALSE(shardyGeneratesDeviceCode(options));
++  options.avoidExportForPartitioning = false;
++
++  options.enablePerInstructionPartitioning = true;
++  EXPECT_FALSE(shardyGeneratesDeviceCode(options));
++  options.enablePerInstructionPartitioning = false;
++
++  options.partitionerStage = PartitionerStage::kResolveSingleDeviceSharding;
++  EXPECT_FALSE(shardyGeneratesDeviceCode(options));
++}
++
+ }  // namespace
+ }  // namespace sdy
+ }  // namespace mlir

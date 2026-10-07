@@ -26,12 +26,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
@@ -81,6 +81,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().host_to_device_stream(),
                        run_options.run_options().send_device_memory_function(),
                        run_options.run_options().recv_device_memory_function(),
+                       run_options.run_options().custom_options(),
                        run_options.run_options().ffi_execution_context(),
                        additional_compute_streams, execution_scoped_state,
                        enable_mock_collectives,
@@ -98,13 +99,9 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
 
 Thunk::ExecuteParams Thunk::ExecuteParams::WithComputeStream(
     se::Stream* stream) const {
-  return ExecuteParams(buffer_allocations, stream, command_buffer_trace_stream,
-                       collective_params, collective_cliques, collective_memory,
-                       device_to_host_stream, host_to_device_stream,
-                       send_device_memory_function, recv_device_memory_function,
-                       ffi_execution_context, additional_compute_streams,
-                       execution_scoped_state, mock_collectives, execution_id,
-                       rng_seed, persistent_alloc_indices);
+  ExecuteParams params = *this;
+  params.stream = stream;
+  return params;
 }
 
 Thunk::ExecuteParams::ExecuteParams(
@@ -115,6 +112,7 @@ Thunk::ExecuteParams::ExecuteParams(
     se::Stream* host_to_device_stream,
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
+    const CustomOptions* custom_options,
     const ffi::ExecutionContext* ffi_execution_context,
     std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state, bool mock_collectives,
@@ -131,6 +129,7 @@ Thunk::ExecuteParams::ExecuteParams(
       host_to_device_stream(host_to_device_stream),
       send_device_memory_function(send_device_memory_function),
       recv_device_memory_function(recv_device_memory_function),
+      custom_options(custom_options),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
       execution_scoped_state(execution_scoped_state),
@@ -159,6 +158,8 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_BUFFERS_DEBUG_FLOAT_CHECK;
     case kCollectiveBroadcast:
       return THUNK_KIND_COLLECTIVE_BROADCAST;
+    case kCollectiveReduce:
+      return THUNK_KIND_COLLECTIVE_REDUCE;
     case kCollectiveKernel:
       return THUNK_KIND_COLLECTIVE_KERNEL;
     case kCollectiveMetadata:
@@ -185,8 +186,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_CUSTOM_CALL;
     case kCustomKernel:
       return THUNK_KIND_CUSTOM_KERNEL;
-    case kDynamicSlice:
-      return THUNK_KIND_DYNAMIC_SLICE;
     case kDynamicSliceFusion:
       return THUNK_KIND_DYNAMIC_SLICE_FUSION;
     case kFft:
@@ -231,8 +230,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_REPLICA_ID;
     case kRngSeed:
       return THUNK_KIND_RNG_SEED;
-    case kSelectK:
-      return THUNK_KIND_SELECT_K;
     case kSend:
       return THUNK_KIND_SEND;
     case kSequential:
@@ -262,6 +259,8 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kBuffersDebugFloatCheck;
     case THUNK_KIND_COLLECTIVE_BROADCAST:
       return kCollectiveBroadcast;
+    case THUNK_KIND_COLLECTIVE_REDUCE:
+      return kCollectiveReduce;
     case THUNK_KIND_COLLECTIVE_KERNEL:
       return kCollectiveKernel;
     case THUNK_KIND_COLLECTIVE_METADATA:
@@ -286,8 +285,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kCustomCall;
     case THUNK_KIND_CUSTOM_KERNEL:
       return kCustomKernel;
-    case THUNK_KIND_DYNAMIC_SLICE:
-      return kDynamicSlice;
     case THUNK_KIND_DYNAMIC_SLICE_FUSION:
       return kDynamicSliceFusion;
     case THUNK_KIND_FFT:
@@ -332,8 +329,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kReplicaId;
     case THUNK_KIND_RNG_SEED:
       return kRngSeed;
-    case THUNK_KIND_SELECT_K:
-      return kSelectK;
     case THUNK_KIND_SEND:
       return kSend;
     case THUNK_KIND_SEQUENTIAL:
@@ -364,6 +359,7 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kCollectiveKernel);
     CASE(kCollectiveMetadata);
     CASE(kCollectivePermute);
+    CASE(kCollectiveReduce);
     CASE(kCommand);
     CASE(kCommandBuffer);
     CASE(kConditional);
@@ -374,7 +370,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
     CASE(kCustomKernel);
-    CASE(kDynamicSlice);
     CASE(kDynamicSliceFusion);
     CASE(kFft);
     CASE(kGemm);
@@ -397,7 +392,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kReduceScatter);
     CASE(kReplicaId);
     CASE(kRngSeed);
-    CASE(kSelectK);
     CASE(kSend);
     CASE(kSequential);
     CASE(kTriangularSolve);
@@ -411,7 +405,8 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
 }
 
 bool IsReductionCollective(Thunk::Kind kind) {
-  return kind == Thunk::kAllReduce || kind == Thunk::kReduceScatter;
+  return kind == Thunk::kAllReduce || kind == Thunk::kReduceScatter ||
+         kind == Thunk::kCollectiveReduce;
 }
 
 absl::StatusOr<Thunk::ThunkInfo> Thunk::ThunkInfo::FromProto(
@@ -442,6 +437,7 @@ bool Thunk::IsCollective() const {
     case kAllToAll:
     case kCollectiveBroadcast:
     case kCollectivePermute:
+    case kCollectiveReduce:
     case kGroup:
     case kRaggedAllToAll:
     case kRecv:
@@ -452,6 +448,12 @@ bool Thunk::IsCollective() const {
     default:
       return false;
   }
+}
+
+absl::Status Thunk::WalkNested(Walker, Walker) { return absl::OkStatus(); }
+
+absl::Status Thunk::WalkNested(ConstWalker, ConstWalker) const {
+  return absl::OkStatus();
 }
 
 ThunkMetadataProto Thunk::ToMetadataProto() const {
@@ -514,9 +516,7 @@ ThunkSequence::ThunkSequence(int64_t len)
 ThunkSequence::ThunkSequence(std::vector<std::unique_ptr<Thunk>> thunks)
     : std::vector<std::unique_ptr<Thunk>>(std::move(thunks)) {}
 
-void ThunkSequence::Append(std::unique_ptr<Thunk> thunk) {
-  push_back(std::move(thunk));
-}
+ThunkSequence ThunkSequence::Empty() { return ThunkSequence(); }
 
 ThunkSequence ThunkSequence::Of(std::unique_ptr<Thunk> thunk) {
   ThunkSequence thunks;
@@ -524,24 +524,44 @@ ThunkSequence ThunkSequence::Of(std::unique_ptr<Thunk> thunk) {
   return thunks;
 }
 
+Thunk* ThunkSequence::Append(std::unique_ptr<Thunk> thunk) {
+  return emplace_back(std::move(thunk)).get();
+}
+
 absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
   for (auto& thunk : *this) {
-    RETURN_IF_ERROR(thunk->Walk(callback));
+    ABSL_RETURN_IF_ERROR(thunk->Walk(callback));
   }
   return absl::OkStatus();
 }
 
 absl::Status ThunkSequence::WalkNested(Thunk::ConstWalker callback) const {
   for (const auto& thunk : *this) {
-    RETURN_IF_ERROR(thunk->Walk(callback));
+    ABSL_RETURN_IF_ERROR(thunk->Walk(callback));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::WalkNested(Thunk::Walker pre_order,
+                                       Thunk::Walker post_order) {
+  for (auto& thunk : *this) {
+    ABSL_RETURN_IF_ERROR(thunk->Walk(pre_order, post_order));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::WalkNested(Thunk::ConstWalker pre_order,
+                                       Thunk::ConstWalker post_order) const {
+  for (const auto& thunk : *this) {
+    ABSL_RETURN_IF_ERROR(thunk->Walk(pre_order, post_order));
   }
   return absl::OkStatus();
 }
 
 absl::Status ThunkSequence::TransformNested(Thunk::Transformer callback) {
   for (std::unique_ptr<Thunk>& thunk : *this) {
-    RETURN_IF_ERROR(thunk->TransformNested(callback));
-    ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
+    ABSL_RETURN_IF_ERROR(thunk->TransformNested(callback));
+    ABSL_ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
   }
   return absl::OkStatus();
 }

@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/ref_wrapper.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -36,7 +36,7 @@ namespace ifrt {
 
 // Ordered immutable list of devices.
 class DeviceList : public tsl::ReferenceCounted<DeviceList>,
-                   public llvm::RTTIExtends<DeviceList, llvm::RTTIRoot> {
+                   public RTTIExtends<DeviceList, RTTIRoot> {
  public:
   // Not copyable or movable. `DeviceList` is a runtime object that may contain
   // runtime-specific state that cannot be trivially copied or moved.

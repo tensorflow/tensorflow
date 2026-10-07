@@ -775,7 +775,7 @@ cuda_py_strict_test(
     name = "memory_cleanup_test",
     size = "medium",
     srcs = ["memory_cleanup_test.py"],
-    shard_count = 12,
+    shard_count = 24,
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
     ],
@@ -1422,6 +1422,7 @@ py_test(
         ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:debug_mode",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/ops:variables",

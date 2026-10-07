@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -69,7 +69,7 @@ limitations under the License.
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 namespace xla {
@@ -557,6 +557,9 @@ class PjRtClient {
             std::move(host_memory_for_device_manager)) {}
 
   virtual ~PjRtClient() = default;
+
+  // Whether this client uses the C API.
+  virtual bool IsCApi() const;
 
   // Return the process index of this client. Always 0 in single-process
   // settings.
@@ -1151,7 +1154,7 @@ class PjRtBuffer {
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
   virtual absl::StatusOr<std::vector<int64_t>> logical_dimensions() {
-    ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
+    ABSL_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
     absl::Span<const int64_t> dims = logical_shape.dimensions();
     return std::vector<int64_t>(dims.begin(), dims.end());
   }

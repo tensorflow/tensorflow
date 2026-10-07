@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -175,7 +175,7 @@ TEST_F(HloBisectStateTest, TrimByOutputsLostBug) {
    public:
     CustomBugSearch() : TestBugSearch({HloOpcode::kConstant}) {}
     absl::StatusOr<bool> Run(const HloModule& module) override {
-      ASSIGN_OR_RETURN(bool has_constants, TestBugSearch::Run(module));
+      ABSL_ASSIGN_OR_RETURN(bool has_constants, TestBugSearch::Run(module));
       int program_size = module.entry_computation()->instruction_count();
       return program_size == 5 && !has_constants;
     }

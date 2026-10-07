@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
@@ -69,6 +69,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:coding",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:raw_coding",
@@ -85,9 +86,9 @@ cc_library(
         ":inputstream_interface",
         ":random_inputstream",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
@@ -110,10 +111,10 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -128,9 +129,9 @@ cc_library(
     hdrs = ["inputstream_interface.h"],
     deps = [
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@tsl//tsl/platform:cord",
     ],
     alwayslink = True,
@@ -189,11 +190,11 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:raw_coding",
         "@tsl//tsl/platform:stringpiece",
@@ -216,8 +217,8 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/status:status_macros",
         "@tsl//tsl/platform:coding",
         "@tsl//tsl/platform:cord",
         "@tsl//tsl/platform:stringpiece",
@@ -298,7 +299,7 @@ cc_library(
         "//xla/tsl/lib/hash:crc32c",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:status_macros",
         "@tsl//tsl/platform:cord",
     ],
 )
@@ -340,9 +341,9 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@tsl//tsl/platform:strcat",
         "@zlib",
     ],
@@ -359,11 +360,11 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
@@ -654,6 +655,28 @@ tsl_cc_test(
     ],
 )
 
+tsl_cc_test(
+    name = "zlib_buffers_large_append_test",
+    size = "large",
+    srcs = ["zlib_buffers_large_append_test.cc"],
+    tags = if_google([
+        "requires-mem:16g",
+    ]),
+    deps = [
+        ":random_inputstream",
+        ":zlib_compression_options",
+        ":zlib_inputstream",
+        ":zlib_outputbuffer",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:tstring",
+        "@zlib",
+    ],
+)
+
 cc_library(
     name = "zip_writer",
     srcs = ["zip_writer.cc"],
@@ -680,8 +703,8 @@ cc_binary(
     deps = [
         ":zip_writer",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:platform_port",

@@ -25,11 +25,11 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 
 namespace xla {
 namespace ifrt {
@@ -74,7 +74,7 @@ class DeviceDescription final : public xla::PjRtDeviceDescription {
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
 
-class Device final : public llvm::RTTIExtends<Device, xla::ifrt::Device> {
+class Device final : public RTTIExtends<Device, xla::ifrt::Device> {
  public:
   Device(DeviceDescription description, std::string platform_name,
          int local_device_id, int local_hardware_id, bool is_addressable);

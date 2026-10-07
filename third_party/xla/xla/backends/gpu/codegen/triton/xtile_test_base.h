@@ -25,11 +25,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 
 namespace xla::gpu {
 
@@ -55,7 +55,7 @@ class XTileTestBase {
   // `filecheck_pattern`.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
       const HloComputation& computation,
-      const BlockLevelParameters& block_level_parameters,
+      const xla::xtile::BlockLevelParameters& block_level_parameters,
       absl::string_view filecheck_pattern);
 
   // Lowers the given shared dialect IR to Triton IR and checks the result

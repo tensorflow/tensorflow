@@ -275,7 +275,7 @@ TEST_F(CpuPjrtCompilerTest, CompileClientlessAndExecuteOnClient) {
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results[0].size(), 1);
 
-  ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
   EXPECT_EQ(literal->Get<int32_t>({}), 2);
 }
 

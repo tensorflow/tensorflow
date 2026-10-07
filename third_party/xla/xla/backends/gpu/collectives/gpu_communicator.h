@@ -176,6 +176,10 @@ class GpuCommunicator : public Communicator {
   // network transfers to remote (non-LSA) peers.
   virtual bool SupportsGin() const { return false; }
 
+  // Returns the size of the load/store accessible communication domain (LSA).
+  // If LSA is not supported, returns std::nullopt.
+  virtual std::optional<int> LsaSize() const { return std::nullopt; }
+
   // Returns the StreamExecutor (and thus the device) this communicator runs on,
   // or nullptr if not backed by a StreamExecutor.
   virtual stream_executor::StreamExecutor* stream_executor() const {
@@ -235,6 +239,18 @@ class GpuCommunicator : public Communicator {
                                        PrimitiveType dtype, size_t count,
                                        RankId root,
                                        const Executor& executor) = 0;
+
+  // Reduces buffers of length `count` in `send_buffer` using `reduction_kind`
+  // and writes the result only to `recv_buffer` on the `root` rank (NCCL
+  // `ncclReduce` semantics). On non-root ranks `recv_buffer` is left untouched.
+  // Defaults to unimplemented so backends can opt in; NCCL overrides it.
+  virtual absl::Status LaunchReduce(se::DeviceAddressBase send_buffer,
+                                    se::DeviceAddressBase recv_buffer,
+                                    PrimitiveType dtype, size_t count,
+                                    ReductionKind reduction_kind, RankId root,
+                                    const Executor& executor) {
+    return Unimplemented("LaunchReduce is not implemented");
+  }
 
   virtual absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
                                            se::DeviceAddressBase recv_buffer,

@@ -34,8 +34,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 6> kScanOpTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64}};
+constexpr std::array<DataType, 8> kSumAndProductTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,
+     DT_COMPLEX64, DT_COMPLEX128}};
+
+constexpr std::array<DataType, 4> kLogSumExpTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE}};
 
 enum class Reducer { kProduct, kSum, kLogSumExp };
 
@@ -140,7 +144,7 @@ class CumsumOp : public ScanOp {
   explicit CumsumOp(OpKernelConstruction* ctx) : ScanOp(ctx, Reducer::kSum) {}
 };
 REGISTER_XLA_OP(Name("Cumsum")
-                    .TypeConstraint("T", kScanOpTypes)
+                    .TypeConstraint("T", kSumAndProductTypes)
                     .CompileTimeConstantInput("axis"),
                 CumsumOp);
 
@@ -150,7 +154,7 @@ class CumprodOp : public ScanOp {
       : ScanOp(ctx, Reducer::kProduct) {}
 };
 REGISTER_XLA_OP(Name("Cumprod")
-                    .TypeConstraint("T", kScanOpTypes)
+                    .TypeConstraint("T", kSumAndProductTypes)
                     .CompileTimeConstantInput("axis"),
                 CumprodOp);
 
@@ -160,7 +164,7 @@ class CumulativeLogsumexpOp : public ScanOp {
       : ScanOp(ctx, Reducer::kLogSumExp) {}
 };
 REGISTER_XLA_OP(Name("CumulativeLogsumexp")
-                    .TypeConstraint("T", kScanOpTypes)
+                    .TypeConstraint("T", kLogSumExpTypes)
                     .CompileTimeConstantInput("axis"),
                 CumulativeLogsumexpOp);
 

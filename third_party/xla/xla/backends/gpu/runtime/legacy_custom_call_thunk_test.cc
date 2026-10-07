@@ -25,10 +25,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -49,8 +49,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/xla_data.pb.h"
 
@@ -60,8 +58,8 @@ using absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
 static absl::StatusOr<se::StreamExecutor*> GpuExecutor() {
-  ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
-  ASSIGN_OR_RETURN(auto* platform, se::PlatformManager::PlatformWithName(name));
+  ABSL_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
+  ABSL_ASSIGN_OR_RETURN(auto* platform, se::PlatformManager::PlatformWithName(name));
   return platform->ExecutorForDevice(0);
 }
 
@@ -104,6 +102,7 @@ void Callback_WithStatusFailed(void* /*stream*/, void** /*buffers*/,
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "CUDA");
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "ROCM");
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_WithStatusFailed, "SYCL");
 
 TEST(LegacyCustomCallThunkTest, ResolvesLegacyCustomCall) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
@@ -218,8 +217,8 @@ TEST(LegacyCustomCallThunkTest, RecordCommandBuffer) {
   se::DeviceAddress<uint8_t> dst =
       executor->AllocateArray<uint8_t>(kCopyByteLength, 0);
   std::vector<uint8_t> host_src(kCopyByteLength, 0x5A);
-  TF_ASSERT_OK(stream->Memcpy(&src, host_src.data(), kCopyByteLength));
-  TF_ASSERT_OK(stream->MemZero(&dst, kCopyByteLength));
+  ASSERT_OK(stream->Memcpy(&src, host_src.data(), kCopyByteLength));
+  ASSERT_OK(stream->MemZero(&dst, kCopyByteLength));
 
   BufferAllocation src_alloc{0, kCopyByteLength, 0};
   BufferAllocation dst_alloc{1, kCopyByteLength, 0};
@@ -246,21 +245,20 @@ TEST(LegacyCustomCallThunkTest, RecordCommandBuffer) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      thunk->Record(execute_params, record_params,
-                    Command::RecordCreate{/*dependencies=*/{}},
-                    command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk->Record(execute_params, record_params,
+                                     Command::RecordCreate{/*dependencies=*/{}},
+                                     command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<uint8_t> host_dst(kCopyByteLength, 0);
-  TF_ASSERT_OK(stream->Memcpy(host_dst.data(), dst, kCopyByteLength));
+  ASSERT_OK(stream->Memcpy(host_dst.data(), dst, kCopyByteLength));
   EXPECT_EQ(host_dst, host_src);
 }
 
@@ -276,9 +274,9 @@ TEST(LegacyCustomCallThunkTest, RecordCommandBufferUpdate) {
   se::DeviceAddress<uint8_t> dst_second =
       executor->AllocateArray<uint8_t>(kCopyByteLength, 0);
   std::vector<uint8_t> host_src(kCopyByteLength, 0x3C);
-  TF_ASSERT_OK(stream->Memcpy(&src, host_src.data(), kCopyByteLength));
-  TF_ASSERT_OK(stream->MemZero(&dst_first, kCopyByteLength));
-  TF_ASSERT_OK(stream->MemZero(&dst_second, kCopyByteLength));
+  ASSERT_OK(stream->Memcpy(&src, host_src.data(), kCopyByteLength));
+  ASSERT_OK(stream->MemZero(&dst_first, kCopyByteLength));
+  ASSERT_OK(stream->MemZero(&dst_second, kCopyByteLength));
 
   BufferAllocation src_alloc{0, kCopyByteLength, 0};
   BufferAllocation dst_alloc{1, kCopyByteLength, 0};
@@ -305,21 +303,20 @@ TEST(LegacyCustomCallThunkTest, RecordCommandBufferUpdate) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      thunk->Record(params_first, record_params,
-                    Command::RecordCreate{/*dependencies=*/{}},
-                    command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk->Record(params_first, record_params,
+                                     Command::RecordCreate{/*dependencies=*/{}},
+                                     command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<uint8_t> host_first(kCopyByteLength, 0);
-  TF_ASSERT_OK(stream->Memcpy(host_first.data(), dst_first, kCopyByteLength));
+  ASSERT_OK(stream->Memcpy(host_first.data(), dst_first, kCopyByteLength));
   EXPECT_EQ(host_first, host_src);
 
   // Update with a different destination allocation and re-submit.
@@ -330,18 +327,18 @@ TEST(LegacyCustomCallThunkTest, RecordCommandBufferUpdate) {
       /*collective_params=*/nullptr,
       /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
 
-  TF_ASSERT_OK(command_buffer->Update());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK_AND_ASSIGN(
       const se::CommandBuffer::Command* updated_cmd,
       thunk->Record(params_second, record_params, Command::RecordUpdate{cmd},
                     command_buffer.get()));
   EXPECT_EQ(updated_cmd, cmd);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<uint8_t> host_second(kCopyByteLength, 0);
-  TF_ASSERT_OK(stream->Memcpy(host_second.data(), dst_second, kCopyByteLength));
+  ASSERT_OK(stream->Memcpy(host_second.data(), dst_second, kCopyByteLength));
   EXPECT_EQ(host_second, host_src);
 }
 

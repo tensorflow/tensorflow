@@ -508,6 +508,45 @@ tf_cc_test(
 
 # Linked directly into ":tensorflow_framework".
 cc_library(
+    name = "singleprint_impl",
+    srcs = [
+        "singleprint.cc",
+        "singleprint.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "singleprint",
+    hdrs = ["singleprint.h"],
+    visibility = ["//visibility:public"],
+    deps = if_static([
+        ":singleprint_impl",
+    ]) + [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "singleprint_test",
+    size = "small",
+    srcs = ["singleprint_test.cc"],
+    deps = [
+        ":singleprint",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Linked directly into ":tensorflow_framework".
+cc_library(
     name = "fingerprinting_impl",
     srcs = [
         "fingerprinting.cc",
@@ -520,6 +559,7 @@ cc_library(
     deps = [
         ":constants",
         ":fingerprinting_x_platform_utils",
+        ":singleprint",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
@@ -555,7 +595,9 @@ cc_library(
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
-    deps = if_static([
+    deps = [
+        ":singleprint",
+    ] + if_static([
         ":fingerprinting_impl",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/status:statusor",
@@ -680,6 +722,8 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:status_matchers",
     ],
 )
 

@@ -43,8 +43,16 @@ TEST(XlaOpUtilsTest, IsFrameworkRematerialization) {
       "test_function_name/rematted_computation/dot_general"));
   EXPECT_FALSE(
       IsFrameworkRematerialization("test_function_name/fusion/dot_general"));
-  EXPECT_FALSE(IsFrameworkRematerialization(
+  // The scope is matched anywhere in the name, including when it appears as a
+  // substring of a larger identifier.
+  EXPECT_TRUE(IsFrameworkRematerialization(
       "test_function_name_rematted_computation/reshape/dot_general"));
+  // Under jax_remat3 the scope may be wrapped in autodiff transform names.
+  EXPECT_TRUE(IsFrameworkRematerialization(
+      "jit(f)/transpose(jvp(rematted_computation))/dot_general"));
+  EXPECT_TRUE(IsFrameworkRematerialization(
+      "jit(f)/checkpoint/rematted_computation/rematted_computation/"
+      "dot_general"));
 }
 
 TEST(XlaOpUtilsTest, IsRematerialization) {

@@ -15,13 +15,25 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -45,6 +57,13 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 3, FeatureExtension::kAcceleratedFeatures}),
             "sm_103a");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 7}), "sm_107");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
+                10, 7, FeatureExtension::kAcceleratedFeatures}),
+            "sm_107a");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
+                10, 7, FeatureExtension::kFamilyCompatibleFeatures}),
+            "sm_107f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 11, 0, FeatureExtension::kAcceleratedFeatures}),
             "sm_110a");
@@ -56,10 +75,10 @@ TEST(UtilsTest, TestGetSmName) {
             "sm_121a");
   // Do not use the extension for a yet-unknown compute capability.
   // https://docs.nvidia.com/cuda/parallel-thread-execution/#release-notes-ptx-release-history
-  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 9}), "sm_103f");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 9}), "sm_107f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 9, FeatureExtension::kAcceleratedFeatures}),
-            "sm_103f");
+            "sm_107f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{12, 9}), "sm_121f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{13, 0}), "sm_121");
 }
@@ -74,11 +93,11 @@ TEST(UtilsTest, UnknownCapabilityFallsBackToFamilyCompatible) {
   // An unknown compute capability within a known major version falls back to
   // the latest supported minor version with the family compatible extension.
   // This mirrors a yet-unreleased device (e.g. sm_1099a) where ptxas only knows
-  // about sm_103f.
+  // about sm_107f.
   EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
                 10, 99, FeatureExtension::kAcceleratedFeatures}),
             (se::CudaComputeCapability{
-                10, 3, FeatureExtension::kFamilyCompatibleFeatures}));
+                10, 7, FeatureExtension::kFamilyCompatibleFeatures}));
   // When no family-compatible extension is available, don't use any.
   EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
                 9, 99, FeatureExtension::kAcceleratedFeatures}),
@@ -116,6 +135,12 @@ INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
                              {{12, 6, 0}, {8, 5, 0}},
                              {{12, 8, 0}, {8, 7, 0}},
                              {{12, 9, 0}, {8, 8, 0}},
+                             // CUDA 13
+                             {{13, 0, 0}, {9, 0, 0}},
+                             {{13, 1, 0}, {9, 1, 0}},
+                             {{13, 2, 0}, {9, 2, 0}},
+                             {{13, 3, 0}, {9, 3, 0}},
+                             {{13, 4, 0}, {9, 4, 0}},
                          }),
                          [](::testing::TestParamInfo<VersionPair> data) {
                            se::SemanticVersion cuda_version = data.param.first;
@@ -123,6 +148,22 @@ INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
                                "cuda_", cuda_version.major_version(), "_",
                                cuda_version.minor_version());
                          });
+
+TEST(UtilsTest, CompileToPtxCapsAtMaxPtxIsaVersion) {
+  llvm::LLVMContext context;
+  llvm::Module module("test", context);
+  new llvm::GlobalVariable(
+      module, llvm::Type::getInt32Ty(context), true,
+      llvm::GlobalValue::ExternalLinkage,
+      llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0), "gv");
+
+  absl::StatusOr<std::string> ptx = nvptx::CompileToPtx(
+      &module, se::GpuComputeCapability(se::CudaComputeCapability::Ampere()),
+      DebugOptions(), /*configure_target=*/nullptr,
+      /*max_ptx_isa_version=*/80);
+  ASSERT_THAT(ptx, ::absl_testing::IsOk());
+  EXPECT_THAT(*ptx, ::testing::HasSubstr(".version 8.0"));
+}
 
 }  // namespace
 }  // namespace gpu

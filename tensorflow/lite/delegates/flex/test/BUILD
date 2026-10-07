@@ -65,6 +65,8 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
+        "noasan",  # b/494579957: JVM shutdown rseq crash under ASAN.
+        "notsan",  # b/494579957: JVM shutdown rseq crash under TSAN.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
@@ -91,6 +93,8 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
+        "noasan",  # b/494579957: JVM shutdown rseq crash under ASAN.
+        "notsan",  # b/494579957: JVM shutdown rseq crash under TSAN.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexWithCustomOpsTest",
     visibility = ["//visibility:private"],

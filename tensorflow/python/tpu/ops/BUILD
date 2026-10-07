@@ -79,6 +79,8 @@ tf_gen_op_wrapper_py(
         "XlaSparseDenseMatmulWithCsrInput",
         "XlaSparseDenseMatmulIntWithCsrInput",
         "XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput",
+        "XlaSparseDenseMatmulPositionalWeightedWithCsrInput",
+        "XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInput",
         "XlaSparseDenseMatmulGrad",
         "XlaSparseDenseMatmulIntGradWithCsrInput",
         "XlaSparseDenseMatmulGradWithCsrInput",

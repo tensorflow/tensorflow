@@ -19,9 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -102,7 +102,7 @@ absl::StatusOr<bool> GpuCopyAsyncWrapper::RunImpl(
         continue;
       }
 
-      RETURN_IF_ERROR(computation
+      ABSL_RETURN_IF_ERROR(computation
                           ->CreateAsyncInstructions(
                               instr, {ShapeUtil::MakeScalarShape(U32)})
                           .status());

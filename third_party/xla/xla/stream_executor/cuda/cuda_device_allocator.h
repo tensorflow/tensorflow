@@ -19,9 +19,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -48,6 +53,10 @@ class CudaDeviceAllocator : public MemoryAllocator {
 
     // Whether to mark allocations as GPUDirect RDMA capable.
     bool enable_rdma = false;
+
+    // Whether to use CUDA Virtual Memory Management (VMM) APIs. If false,
+    // falls back to legacy cuMemAlloc / cuMemFree APIs.
+    bool use_vmm = true;
   };
 
   explicit CudaDeviceAllocator(StreamExecutor* executor);
@@ -58,9 +67,32 @@ class CudaDeviceAllocator : public MemoryAllocator {
 
   const Options& options() const { return options_; }
 
+  static void EnterStreamCapture(StreamExecutor* executor);
+  static void ExitStreamCapture(StreamExecutor* executor);
+
  private:
   StreamExecutor* executor_;
   Options options_;
+};
+
+class CudaDeviceMemoryAllocation : public MemoryAllocation {
+ public:
+  CudaDeviceMemoryAllocation(StreamExecutor* executor, void* ptr,
+                             uint64_t requested_size, uint64_t padded_size,
+                             CUmemGenericAllocationHandle handle);
+
+  ~CudaDeviceMemoryAllocation() final;
+
+  DeviceAddressBase address() const final;
+
+  std::string ToString() const final;
+
+ private:
+  StreamExecutor* executor_;
+  void* ptr_;
+  uint64_t requested_size_;
+  uint64_t padded_size_;
+  CUmemGenericAllocationHandle handle_;
 };
 
 CUmemAllocationProp BuildVmmAllocationProp(

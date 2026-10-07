@@ -46,6 +46,7 @@ exports_files(glob([
     "testdata/*.csv",
     "models/testdata/*",
 ]) + [
+    "METADATA",
     "create_op_resolver.h",
     "create_op_resolver_with_selected_ops.cc",
 ])

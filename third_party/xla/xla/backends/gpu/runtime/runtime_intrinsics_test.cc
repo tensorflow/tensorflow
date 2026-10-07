@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "tsl/platform/path.h"
@@ -56,12 +55,12 @@ ReadTFRecordIOLiteral(const std::string& dir) {
   auto* env = tsl::Env::Default();
 
   std::vector<std::string> files;
-  RETURN_IF_ERROR(env->GetChildren(dir, &files));
+  ABSL_RETURN_IF_ERROR(env->GetChildren(dir, &files));
 
   std::vector<std::pair<std::string, Literal>> result;
   for (const std::string& path : files) {
     std::unique_ptr<tsl::RandomAccessFile> file;
-    RETURN_IF_ERROR(tsl::Env::Default()->NewRandomAccessFile(
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->NewRandomAccessFile(
         tsl::io::JoinPath(dir, path), &file));
     tsl::io::RecordReader reader(file.get());
 
@@ -74,10 +73,10 @@ ReadTFRecordIOLiteral(const std::string& dir) {
       if (absl::IsOutOfRange(status)) {
         break;
       }
-      RETURN_IF_ERROR(status);
+      ABSL_RETURN_IF_ERROR(status);
 
-      RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
-      ASSIGN_OR_RETURN(Literal literal, Literal::DeserializeFromString(record));
+      ABSL_RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
+      ABSL_ASSIGN_OR_RETURN(Literal literal, Literal::DeserializeFromString(record));
       result.emplace_back(metadata, std::move(literal));
     }
   }
@@ -93,8 +92,8 @@ ENTRY e {
   ROOT nop_return_token = token[] custom-call(constant), custom_call_target="NopReturnToken", custom_call_has_side_effect=true, api_version=API_VERSION_STATUS_RETURNING
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   // The parameter of the NopReturnToken is not removed.
   EXPECT_EQ(module->entry_computation()->instruction_count(), 2);
@@ -111,8 +110,8 @@ ENTRY e {
   ROOT nop_return_token = token[] custom-call(constant), backend_config="{error_msg = \"1\"}", custom_call_target="__xla_gpu_assert", custom_call_has_side_effect=true, api_version=API_VERSION_TYPED_FFI
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   // The parameter of the NopReturnToken is not removed.
   EXPECT_EQ(module->entry_computation()->instruction_count(), 2);
@@ -129,8 +128,8 @@ ENTRY e {
   ROOT nop_return_token = token[] custom-call(constant), backend_config="{error_msg = \"1\"}", custom_call_target="__xla_gpu_assert", custom_call_has_side_effect=true, api_version=API_VERSION_TYPED_FFI
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   // The parameter of the NopReturnToken is not removed.
   EXPECT_EQ(module->entry_computation()->instruction_count(), 2);
@@ -170,8 +169,8 @@ ENTRY e {
     api_version=API_VERSION_TYPED_FFI
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   // The parameters of the custom call are not removed.
   EXPECT_EQ(module->entry_computation()->instruction_count(), 3);
@@ -190,7 +189,7 @@ ENTRY e {
 }
 
 TEST_F(RuntimeIntrinsicsTest, AppendToFile) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto temp_dir,
       tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
 
@@ -209,20 +208,20 @@ ENTRY e {
 
   Literal expected = LiteralUtil::CreateR1<float>({1.0f, 2.0f});
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(hlo));
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
 
   std::vector<std::pair<std::string, Literal>> literals;
-  TF_ASSERT_OK_AND_ASSIGN(literals, ReadTFRecordIOLiteral(temp_dir.path()));
+  ASSERT_OK_AND_ASSIGN(literals, ReadTFRecordIOLiteral(temp_dir.path()));
   EXPECT_EQ(literals.size(), 1);
   EXPECT_EQ(literals[0].first, "op.1");
   EXPECT_EQ(literals[0].second, expected);
 
   // Verify that append works.
-  TF_ASSERT_OK_AND_ASSIGN(module, GetOptimizedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(module, GetOptimizedModule(hlo));
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(literals, ReadTFRecordIOLiteral(temp_dir.path()));
+  ASSERT_OK_AND_ASSIGN(literals, ReadTFRecordIOLiteral(temp_dir.path()));
   EXPECT_EQ(literals.size(), 2);
 }
 

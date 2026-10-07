@@ -24,13 +24,13 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "include/dlpack/dlpack.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "dlpack/dlpack.h"
 #include "mlir/Support/LLVM.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/ndarray.h"
@@ -83,7 +83,7 @@ inline Py_hash_t AbslHashToPythonHash(size_t h) {
 
 absl::StatusOr<nb::dlpack::dtype> PrimitiveTypeToNbDLDataType(
     xla::PrimitiveType type) {
-  ASSIGN_OR_RETURN(DLDataType dl_type, PrimitiveTypeToDLDataType(type));
+  ABSL_ASSIGN_OR_RETURN(DLDataType dl_type, PrimitiveTypeToDLDataType(type));
 
   nb::dlpack::dtype nb_type;
   nb_type.lanes = dl_type.lanes;
@@ -122,20 +122,20 @@ absl::StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
   if (!proto.ParseFromString(absl::string_view(bytes.c_str(), bytes.size()))) {
     return InvalidArgument("Failed to deserialize HloModuleProto");
   }
-  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+  ABSL_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                    HloModule::CreateModuleConfigFromProto(
                        proto, GetDebugOptionsFromFlags()));
-  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    HloModule::CreateFromProto(proto, module_config));
   return std::shared_ptr<HloModule>(std::move(module));
 }
 
 absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule(
     const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+  ABSL_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                    HloModule::CreateModuleConfigFromProto(
                        computation.proto(), GetDebugOptionsFromFlags()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), module_config));
   return std::shared_ptr<HloModule>(std::move(module));
@@ -144,7 +144,7 @@ absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule(
 // Converts a computation to textual HLO form.
 absl::StatusOr<std::string> GetComputationHloText(
     const XlaComputation& computation, bool print_large_constants = false) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   HloPrintOptions options;
   options = HloPrintOptions::ShortParsable();
@@ -155,7 +155,7 @@ absl::StatusOr<std::string> GetComputationHloText(
 // Converts a computation to HLO dot graph form.
 absl::StatusOr<std::string> GetComputationHloDotGraph(
     const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
                      hlo_module->config().debug_options(),
@@ -164,7 +164,7 @@ absl::StatusOr<std::string> GetComputationHloDotGraph(
 
 // Hashes the HLO module.
 absl::StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
-  ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                    GetHloModule(computation));
   return absl::HashOf(*hlo_module);
 }
@@ -177,15 +177,15 @@ absl::StatusOr<Shape> MakeShapeWithDenseLayout(
     std::optional<const std::vector<bool>> dynamic_dimensions) {
   Shape shape;
   if (dynamic_dimensions) {
-    ASSIGN_OR_RETURN(shape,
+    ABSL_ASSIGN_OR_RETURN(shape,
                      ShapeUtil::MakeValidatedShape(element_type, dims,
                                                    dynamic_dimensions.value()));
   } else {
-    ASSIGN_OR_RETURN(shape, ShapeUtil::MakeValidatedShape(element_type, dims));
+    ABSL_ASSIGN_OR_RETURN(shape, ShapeUtil::MakeValidatedShape(element_type, dims));
   }
   if (minor_to_major) {
     *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
-    RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
+    ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
   }
 
   return shape;
@@ -540,6 +540,7 @@ NB_MODULE(_hlo, m) {
           "Constructs a scalar shape.", nb::arg("type"))
       .def("dimensions",
            [](const Shape& shape) { return SpanToNbTuple(shape.dimensions()); })
+      .def("has_layout", &Shape::has_layout)
       .def("layout",
            [](const Shape& shape) -> Layout { return shape.layout(); })
       .def("xla_element_type", &Shape::element_type)
@@ -737,6 +738,7 @@ NB_MODULE(_hlo, m) {
     absl::string_view name() const { return inst_->name(); }
     std::string to_string() const { return inst_->ToString(); }
     xla::HloOpcode opcode() const { return inst_->opcode(); }
+    const Shape& shape() const { return inst_->shape(); }
     std::vector<std::shared_ptr<InstructionWrapper>> users() const {
       std::vector<std::shared_ptr<InstructionWrapper>> users;
       for (const HloInstruction* user : inst_->users()) {
@@ -751,6 +753,15 @@ NB_MODULE(_hlo, m) {
             std::make_shared<InstructionWrapper>(operand, module_));
       }
       return operands;
+    }
+    std::vector<std::shared_ptr<InstructionWrapper>> control_predecessors()
+        const {
+      std::vector<std::shared_ptr<InstructionWrapper>> predecessors;
+      for (const HloInstruction* predecessor : inst_->control_predecessors()) {
+        predecessors.push_back(
+            std::make_shared<InstructionWrapper>(predecessor, module_));
+      }
+      return predecessors;
     }
 
     const HloInstruction* inst() const { return inst_; }
@@ -797,6 +808,14 @@ NB_MODULE(_hlo, m) {
       }
       return *cores;
     }
+    nb::bytes as_serialized_proto() const {
+      std::string result;
+      HloInstructionProto proto = inst_->ToProto();
+      if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+        throw XlaRuntimeError("Failed to serialize the HloInstructionProto.");
+      }
+      return nb::bytes(result.data(), result.size());
+    }
     Py_hash_t hash() const { return AbslHashToPythonHash(absl::HashOf(inst_)); }
     bool operator==(const InstructionWrapper& other) const {
       return inst_ == other.inst_;
@@ -811,8 +830,10 @@ NB_MODULE(_hlo, m) {
   hlo_instruction_class.def_prop_ro("name", &InstructionWrapper::name)
       .def("to_string", &InstructionWrapper::to_string)
       .def_prop_ro("opcode", &InstructionWrapper::opcode)
+      .def_prop_ro("shape", &InstructionWrapper::shape)
       .def("users", &InstructionWrapper::users)
       .def("operands", &InstructionWrapper::operands)
+      .def("control_predecessors", &InstructionWrapper::control_predecessors)
       .def("async_wrapped_root", &InstructionWrapper::async_wrapped_root)
       .def("get_frontend_attribute",
            &InstructionWrapper::get_frontend_attribute, nb::arg("key"))
@@ -822,6 +843,7 @@ NB_MODULE(_hlo, m) {
       .def("set_core_assignment", &InstructionWrapper::set_core_assignment,
            nb::arg("core_ids"))
       .def("core_assignment", &InstructionWrapper::core_assignment)
+      .def("as_serialized_proto", &InstructionWrapper::as_serialized_proto)
       .def("__hash__", &InstructionWrapper::hash)
       .def("__eq__", &InstructionWrapper::operator==);
 
@@ -1248,7 +1270,7 @@ NB_MODULE(_hlo, m) {
                 -> absl::StatusOr<std::shared_ptr<HloModule>> {
               auto hlo_module =
                   xla::ParseAndReturnUnverifiedModule(hlo_module_text);
-              RETURN_IF_ERROR(hlo_module.status());
+              ABSL_RETURN_IF_ERROR(hlo_module.status());
               std::shared_ptr<HloModule> result(std::move(*hlo_module));
               return result;
             }));

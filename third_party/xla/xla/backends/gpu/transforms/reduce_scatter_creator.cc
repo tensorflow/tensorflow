@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -122,12 +122,12 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
       // Note that RemoveInstructionAndUnusedOperands may not always remove the
       // all-reduce operand of the dynamic-slice, so remove all the dead
       // instructions manually.
-      RETURN_IF_ERROR(ds->ReplaceAllUsesWith(result));
-      RETURN_IF_ERROR(computation->RemoveInstruction(ds));
+      ABSL_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(result));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ds));
       if (reshape) {
-        RETURN_IF_ERROR(computation->RemoveInstruction(reshape));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(reshape));
       }
-      RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ar));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ar));
       changed = true;
     }
   }

@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/allocator_memory_registration.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/collectives_test_util.h"
@@ -166,13 +166,13 @@ TEST(GpuCollectivesTest, GroupLaunchMultipleCommunicators) {
     GpuCollectives::Executor executor2(streams[2].get());
     GpuCollectives::Executor executor3(streams[3].get());
 
-    RETURN_IF_ERROR(comms01[0]->LaunchAllReduce(send_buffers[0],
+    ABSL_RETURN_IF_ERROR(comms01[0]->LaunchAllReduce(send_buffers[0],
                                                 recv_buffers[0], F32, kCount,
                                                 ReductionKind::SUM, executor0));
-    RETURN_IF_ERROR(comms01[1]->LaunchAllReduce(send_buffers[1],
+    ABSL_RETURN_IF_ERROR(comms01[1]->LaunchAllReduce(send_buffers[1],
                                                 recv_buffers[1], F32, kCount,
                                                 ReductionKind::SUM, executor1));
-    RETURN_IF_ERROR(comms23[0]->LaunchAllReduce(send_buffers[2],
+    ABSL_RETURN_IF_ERROR(comms23[0]->LaunchAllReduce(send_buffers[2],
                                                 recv_buffers[2], F32, kCount,
                                                 ReductionKind::SUM, executor2));
     return comms23[1]->LaunchAllReduce(send_buffers[3], recv_buffers[3], F32,
@@ -429,8 +429,13 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
   if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
     GTEST_SKIP() << "Test requires peer access between devices";
   }
-  if (auto cc = executors[0]->GetDeviceDescription().gpu_compute_capability();
-      cc.IsCuda() && !cc.cuda_compute_capability()->IsAtLeastHopper()) {
+
+  // TODO(rocm): API available in RCCL 2.30, should be enabled in the future
+  auto cc = executors[0]->GetDeviceDescription().gpu_compute_capability();
+  if (!cc.IsCuda()) {
+    GTEST_SKIP() << "Test requires CUDA";
+  }
+  if (!cc.cuda_compute_capability()->IsAtLeastHopper()) {
     GTEST_SKIP() << "Test requires at least Hopper architecture";
   }
 
@@ -477,7 +482,7 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   auto f0 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
     GpuCollectives::Executor gpu_exec(stream0.get());
-    RETURN_IF_ERROR(comms[0]
+    ABSL_RETURN_IF_ERROR(comms[0]
                         ->Put(send0_addr, symm_recv[0].get(), 0, kNumBytes,
                               RankId(1), gpu_exec)
                         .Await());
@@ -486,7 +491,7 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   auto f1 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
     GpuCollectives::Executor gpu_exec(stream1.get());
-    RETURN_IF_ERROR(comms[1]
+    ABSL_RETURN_IF_ERROR(comms[1]
                         ->Put(send1_addr, symm_recv[1].get(), 0, kNumBytes,
                               RankId(0), gpu_exec)
                         .Await());
@@ -676,6 +681,44 @@ TEST(GpuCollectivesTest, AllocatorMemoryRegistrationRegistersWithClique) {
                    std::make_shared<CancellationToken>());
 
   ASSERT_OK(registration->RegisterWithClique(clique));
+}
+
+// Smoke test for the MORI backbone: creates a MORI communicator and exercises
+// MoriCollectives::Allocate/Deallocate. MORI is a ROCm-only backend and the
+// current implementation is bindings-free (stubbed), so this only verifies the
+// plumbing is reachable and does not crash.
+TEST(GpuCollectivesTest, MoriCreateCommunicatorAndAllocate) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("gpu"));
+
+  // MORI is a ROCm-only backend; skip on any other platform.
+  if (platform->Name() != "ROCM") {
+    GTEST_SKIP() << "MORI is only available on the ROCM platform";
+  }
+
+  if (platform->VisibleDeviceCount() < 4) {
+    GTEST_SKIP() << "Test requires at least 4 GPUs";
+  }
+
+  auto* mori = xla::gpu::GpuCollectives::Resolve("ROCM", "mori");
+  ASSERT_NE(mori, nullptr);
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 4));
+  ASSERT_OK_AND_ASSIGN(
+      auto comms,
+      CreateCommunicators(executors, {kD0, kD1, kD2, kD3}, /*blocking=*/true,
+                          /*num_ids=*/1, mori));
+  ASSERT_EQ(comms.size(), 4u);
+  ASSERT_NE(comms[0], nullptr);
+  ASSERT_OK_AND_ASSIGN(size_t num_ranks, comms[0]->NumRanks());
+  EXPECT_EQ(num_ranks, 4u);
+
+  // Exercise Allocate/Deallocate wiring. The bindings-free stubs are inert
+  // (Allocate returns an error, Deallocate is unimplemented), so we only verify
+  // the calls are reachable and do not crash.
+  auto buffer_or = mori->Allocate(1024);
+  void* buffer = buffer_or.ok() ? *buffer_or : nullptr;
+  ASSERT_OK(mori->Deallocate(buffer));
 }
 
 }  // namespace

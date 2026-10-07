@@ -61,6 +61,12 @@ struct CopyKernel {
       TypedKernel<DeviceAddress<std::byte>, std::array<std::byte, 16>>;
 };
 
+struct DynShmemKernel {
+  using KernelType =
+      TypedKernel<DeviceAddress<uint8_t>, DeviceAddress<uint32_t>,
+                  DeviceAddress<uint32_t>>;
+};
+
 }  // namespace internal
 }  // namespace stream_executor::gpu
 

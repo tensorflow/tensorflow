@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/testlib/test.h"
@@ -86,10 +86,10 @@ class TestDevice : public PjRtDevice {
 absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> MakeArray(
     const Shape& shape, LocalClient* client) {
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> device_buffers;
-  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
-        ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             se::ScopedDeviceAddress<uint8_t> device_memory,
             client->backend().memory_allocator()->Allocate(
                 /*device_ordinal=*/0,

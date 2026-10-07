@@ -289,8 +289,10 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     const int is_nan = abnormality_indicators(0);
     const int is_inf = abnormality_indicators(1);
     if (is_nan || is_inf) {
-      LOG(ERROR) << "abnormal_detected_host @" << abnormality_indicators.data()
-                 << " = {" << is_nan << ", " << is_inf << "} " << message_;
+      // Not LOG(ERROR): the InvalidArgumentError set below already reports
+      // this to the caller, so logging per detection would duplicate it.
+      VLOG(1) << "abnormal_detected_host @" << abnormality_indicators.data()
+              << " = {" << is_nan << ", " << is_inf << "} " << message_;
 
       std::string anomalies;
       if (is_nan && is_inf) {

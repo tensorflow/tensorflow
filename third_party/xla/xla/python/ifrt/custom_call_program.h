@@ -21,19 +21,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/cord.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
 // Wraps a custom call program that expresses a runtime-specific execution.
-struct CustomCallProgram
-    : public llvm::RTTIExtends<CustomCallProgram, Program> {
+struct CustomCallProgram : public RTTIExtends<CustomCallProgram, Program> {
   // Specification for a single array. The sharding of all input and output
   // specs must use only the devices in `devices`.
   CustomCallProgram(std::string type, std::string name,
@@ -76,7 +75,7 @@ struct CustomCallProgram
 // the custom call program does not use any other runtime objects for
 // compilation.
 struct CustomCallCompileOptions
-    : llvm::RTTIExtends<CustomCallCompileOptions, CompileOptions> {
+    : RTTIExtends<CustomCallCompileOptions, CompileOptions> {
   CustomCallCompileOptions() = default;
   ~CustomCallCompileOptions() override = default;
 

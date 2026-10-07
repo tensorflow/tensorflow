@@ -166,6 +166,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int input_channels = SizeOfDimension(input, 3);
   const int output_channels = SizeOfDimension(filter, 3);
   TF_LITE_ENSURE_EQ(context, output_channels % input_channels, 0);
+  TF_LITE_ENSURE(context, output_channels / input_channels <= INT16_MAX);
 
   if (has_bias) {
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBiasTensor, &bias));
@@ -199,6 +200,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                  params->dilation_width_factor, height, width,
                                  filter_height, filter_width, padding,
                                  &out_height, &out_width, &data->padding));
+  TF_LITE_ENSURE_STATUS(ValidatePaddingValuesForInt16(data->padding));
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training or
@@ -331,7 +333,9 @@ TfLiteStatus ComputeDepthMultiplier(TfLiteContext* context,
   int num_input_channels = SizeOfDimension(input, 3);
   TF_LITE_ENSURE(context, num_input_channels != 0);
   TF_LITE_ENSURE_EQ(context, num_filter_channels % num_input_channels, 0);
-  *depth_multiplier = num_filter_channels / num_input_channels;
+  const int multiplier = num_filter_channels / num_input_channels;
+  TF_LITE_ENSURE(context, multiplier <= INT16_MAX);
+  *depth_multiplier = static_cast<int16_t>(multiplier);
   return kTfLiteOk;
 }
 
@@ -504,8 +508,8 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus EvalQuantizedPerChannel16x8(
-    const TfLiteDepthwiseConvParams* params, const OpData* data,
-    const TfLiteTensor* input, const TfLiteTensor* filter,
+    TfLiteContext* context, const TfLiteDepthwiseConvParams* params,
+    const OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
     const TfLiteTensor* bias, TfLiteTensor* output) {
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
@@ -515,7 +519,8 @@ TfLiteStatus EvalQuantizedPerChannel16x8(
   op_params.stride_height = params->stride_height;
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.dilation_height_factor = params->dilation_height_factor;
-  op_params.depth_multiplier = params->depth_multiplier;
+  TF_LITE_ENSURE_STATUS(ComputeDepthMultiplier(context, input, filter,
+                                               &op_params.depth_multiplier));
   op_params.weights_offset = 0;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
@@ -576,7 +581,8 @@ TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.stride_height = params->stride_height;
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.dilation_height_factor = params->dilation_height_factor;
-  op_params.depth_multiplier = params->depth_multiplier;
+  TF_LITE_ENSURE_STATUS(ComputeDepthMultiplier(context, input, filter,
+                                               &op_params.depth_multiplier));
 
   op_params.weights_offset = 0;
   op_params.float_activation_min = output_activation_min;
@@ -647,8 +653,8 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
                                                   input, filter, bias, output);
       break;
     case kTfLiteInt16:
-      return EvalQuantizedPerChannel16x8(params, data, input, filter, bias,
-                                         output);
+      return EvalQuantizedPerChannel16x8(context, params, data, input, filter,
+                                         bias, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",

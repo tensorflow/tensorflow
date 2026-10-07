@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -47,13 +49,18 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithSourceTargetPairs) {
     ROOT out = f32[] get-tuple-element(recv-done), index=0
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kHloStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kHloStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kSendDone);
+    EXPECT_NE(instr->opcode(), HloOpcode::kRecvDone);
+  }
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    CHECK: %[[WRAPPED_SEND_RECV:.*]] (param0: f32[], param1: token[], param2: token[]) ->
+    CHECK: %[[WRAPPED_SEND_RECV:send_recv_group_[0-9]+]] (param0: f32[], param1: token[], param2: token[]) ->
     CHECK-SAME: ((f32[], u32[], token[]), (f32[], u32[], token[]))
     CHECK-NEXT: %[[PARAM0:.*]] = f32[] parameter(0)
     CHECK: %[[PARAM1:.*]] = token[] parameter(1)
@@ -66,8 +73,9 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithSourceTargetPairs) {
     CHECK: ENTRY %[[MAIN:.*]] () -> f32[]
     CHECK: %[[DATA:.*]] = {{.*}} constant(5)
     CHECK: %[[RECV_START:.*]] = {{.*}} after-all()
-    CHECK: %[[TUPLE_START:.*]] = {{.*}} async-start(%[[DATA]], %[[RECV_START]], %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]]
-    CHECK-NEXT: %[[TUPLE_DONE:.*]] = {{.*}} async-done(%[[TUPLE_START]])
+    CHECK: %[[TUPLE_START:send_recv_group_[0-9]+\.start]] = {{.*}} async-start(%[[DATA]], %[[RECV_START]], %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]]
+    CHECK-SAME: frontend_attributes={_collectives_group=""}
+    CHECK-NEXT: %[[TUPLE_DONE:send_recv_group_[0-9]+\.done]] = {{.*}} async-done(%[[TUPLE_START]])
     CHECK %[[GTE2:.*]] = {{.*}} get-tuple-element(%[[TUPLE_DONE]]), index=1
     CHECK %[[GTE3:.*]] = {{.*}} get-tuple-element(%[[GTE2]]), index=0
     CHECK %[[GTE4:.*]] = {{.*}} get-tuple-element(%[[GTE2]]), index=2
@@ -86,10 +94,10 @@ TEST_F(CollectiveSendRecvCombinerTest, TrivialNoTransform) {
     ROOT out = f32[] add(zero, five)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kHloStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kHloStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -127,10 +135,10 @@ TEST_F(CollectiveSendRecvCombinerTest, PartiallyPipelinedSendRecvNoTransform) {
       send_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
       ROOT send_done = (f32[16], token[]) send-done(send_ctx), channel_id=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kModuleStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -147,13 +155,13 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithControlDependency) {
     ROOT out = f32[] get-tuple-element(recv-done), index=0
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kHloStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kHloStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    CHECK: %[[WRAPPED_SEND_RECV:.*]] (param0: f32[], param1: token[], param2: token[]) -> ((f32[], u32[], token[]), (f32[], u32[], token[])) {
+    CHECK: %[[WRAPPED_SEND_RECV:send_recv_group_[0-9]+]] (param0: f32[], param1: token[], param2: token[]) -> ((f32[], u32[], token[]), (f32[], u32[], token[])) {
 
     CHECK: %[[PARAM0:.*]] = f32[] parameter(0)
     CHECK: %[[PARAM1:.*]] = token[] parameter(1)
@@ -165,8 +173,8 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithControlDependency) {
     CHECK: ENTRY %[[MAIN:.*]] () -> f32[] {
     CHECK: %[[DATA:.*]] = f32[] constant(5)
     CHECK: %[[RECV_START:.*]] = token[] after-all()
-    CHECK: %[[TUPLE_START:.*]] = ((f32[], token[], token[]), ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[]) async-start(%[[DATA]], %[[RECV_START]], %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]]
-    CHECK: %[[TUPLE_DONE:.*]] = ((f32[], u32[], token[]), (f32[], u32[], token[])) async-done(%[[TUPLE_START]])
+    CHECK: %[[TUPLE_START:send_recv_group_[0-9]+\.start]] = ((f32[], token[], token[]), ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[]) async-start(%[[DATA]], %[[RECV_START]], %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]]
+    CHECK: %[[TUPLE_DONE:send_recv_group_[0-9]+\.done]] = ((f32[], u32[], token[]), (f32[], u32[], token[])) async-done(%[[TUPLE_START]])
     CHECK %[[GTE2:.*]] = (f32[], u32[], token[]) get-tuple-element(%[[TUPLE_DONE]], index=1)
     CHECK %[[GTE3:.*]] = f32[] get-tuple-element(%[[GTE2]], index=0)
     CHECK %[[GTE4:.*]] = token[] get-tuple-element(%[[GTE2]], index=2)
@@ -199,13 +207,13 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithMultipleSendRecv) {
     ROOT out = (f32[], f32[]) tuple(data-out-1, data-out-2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kHloStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kHloStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    CHECK: %[[WRAPPED_SEND_RECV:.*]] (param0: f32[], param1: token[],
+    CHECK: %[[WRAPPED_SEND_RECV:send_recv_group_[0-9]+]] (param0: f32[], param1: token[],
     CHECK-SAME: param2: f32[], param3: token[], param4: token[], param5: token[]) ->
     CHECK-SAME: ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
     CHECK-SAME: (f32[], u32[], token[]))
@@ -226,8 +234,8 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithMultipleSendRecv) {
     CHECK: %[[AFTER_ALL1:.*]] = {{.*}} after-all()
     CHECK: %[[DATA2:.*]] = {{.*}} constant(2)
     CHECK: %[[AFTER_ALL2:.*]] = {{.*}} after-all()
-    CHECK: %[[TUPLE_START:.*]] = {{.*}} async-start{{.*}}calls=%[[WRAPPED_SEND_RECV]]
-    CHECK: %[[TUPLE_DONE:.*]] = {{.*}} async-done(%[[TUPLE_START]])
+    CHECK: %[[TUPLE_START:send_recv_group_[0-9]+\.start]] = {{.*}} async-start{{.*}}calls=%[[WRAPPED_SEND_RECV]]
+    CHECK: %[[TUPLE_DONE:send_recv_group_[0-9]+\.done]] = {{.*}} async-done(%[[TUPLE_START]])
     CHECK %[[GTE4:.*]] = {{.*}} get-tuple-element(%[[TUPLE_DONE]]), index=2
     CHECK %[[GTE5:.*]] = {{.*}} get-tuple-element(%[[GTE4]]), index=0
     CHECK %[[GTE6:.*]] = {{.*}} get-tuple-element(%[[GTE4]]), index=2

@@ -129,6 +129,11 @@ class TestCoordinationClient : public CoordinationClient {
               (tsl::CallOptions * call_opts, const PollForErrorRequest*,
                PollForErrorResponse*, tsl::StatusCallback),
               (override));
+  MOCK_METHOD(void, ReportErrorToServiceAsync,
+              (const ReportErrorToServiceRequest*,
+               ReportErrorToServiceResponse*,
+               std::function<void(const absl::Status&)>),
+              (override));
 };
 
 class CoordinationServiceAgentTest : public ::testing::Test {

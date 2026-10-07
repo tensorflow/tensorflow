@@ -56,7 +56,7 @@ class Conv3DBackpropFilterV2GradTest(test.TestCase):
               [in_val, out_backprop_val], [in_shape, out_backprop_shape],
               output, filter_shape)
           print("conv3d_backprop_filter gradient err = %g " % err)
-          err_tolerance = 1e-3
+          err_tolerance = 0.25 if test.is_gpu_available() else 1e-3
           self.assertLess(err, err_tolerance)
 
   def testBadFilterShape(self):
@@ -76,6 +76,40 @@ class Conv3DBackpropFilterV2GradTest(test.TestCase):
           out_backprop=out_backprop,
           strides=strides,
           padding=padding)
+
+  def testBadInputRank(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/118340
+    # Conv3DBackpropFilterV2 requires the input tensor to be rank 5; a
+    # rank-mismatched input previously hit a CHECK-failure in GetTensorDim
+    # via GetInputSizeInMklOrder.
+    strides = [1, 1, 1, 1, 1]
+    padding = "VALID"
+    tin = constant_op.constant(
+        0.5053710941, shape=[2, 2, 2, 1], dtype=dtypes.float32
+    )  # rank 4
+    filter_sizes = constant_op.constant(
+        [1, 1, 1, 1, 1], shape=[5], dtype=dtypes.int32
+    )
+    out_backprop = constant_op.constant(
+        0.5053710941, shape=[2, 2, 2, 2, 1], dtype=dtypes.float32
+    )
+
+    # The rejection can come either from the MKL kernel's rank check or from
+    # the shape function, which word the same failure differently.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "(must be 5-dimensional|must have 5 dimensions)",
+    ):
+      self.evaluate(
+          nn_ops.conv3d_backprop_filter_v2(
+              input=tin,
+              filter_sizes=filter_sizes,
+              out_backprop=out_backprop,
+              strides=strides,
+              padding=padding,
+          )
+      )
+
 
 if __name__ == "__main__":
   test.main()

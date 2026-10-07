@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
@@ -45,7 +46,9 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_host_allocator.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
+#include "xla/stream_executor/cuda/green_context.h"
 #include "xla/stream_executor/cuda/host_callback_registry.h"
+#include "xla/stream_executor/cuda/locality_domain.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
@@ -106,6 +109,8 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const KernelLoaderSpec& spec) override;
   void UnloadKernel(const Kernel* kernel) override;
+  absl::Status UpdateMaxDynamicSharedMemoryBytes(
+      const Kernel* kernel, int32_t shared_memory_bytes) override;
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
@@ -154,6 +159,31 @@ class CudaExecutor : public GpuExecutor {
       std::optional<std::variant<StreamPriority, int>> priority,
       CudaStreamType type);
 
+  // Creates a green context over (at least) `sm_count` SMs of this device.
+  // Green contexts are a general SM-partitioning mechanism, independent of
+  // locality domains. The device's primary context is made current for the
+  // duration of the call.
+  absl::StatusOr<std::unique_ptr<GreenContext>> CreateGreenContext(
+      int sm_count);
+
+  // Creates a stream whose work is launched onto `green_context`'s SM
+  // partition. `green_context` must outlive the returned stream.
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInGreenContext(
+      const GreenContext& green_context,
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+
+  // Returns this device's locality domains in domain-id order, created lazily
+  // on first call. Locality domains are a CUDA 13.4+ feature; on an older
+  // toolkit this returns an unimplemented error.
+  absl::StatusOr<absl::Span<const std::unique_ptr<LocalityDomain>>>
+  GetLocalityDomains();
+
+  // Creates a stream whose work is launched onto the SM partition of locality
+  // domain `locality_domain_id`.
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
+      int locality_domain_id,
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
@@ -175,6 +205,9 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<size_t> GetVmmGranularity() const;
 
   int GetGpuStreamPriority(StreamPriority priority) override;
+
+  void EnterStreamCapture() { CudaDeviceAllocator::EnterStreamCapture(this); }
+  void ExitStreamCapture() { CudaDeviceAllocator::ExitStreamCapture(this); }
 
   // RAII wrapper for a VMM memory handle.
   class VmmMemoryHandle {
@@ -236,6 +269,14 @@ class CudaExecutor : public GpuExecutor {
     return device_allocator_options_.enable_fabric_handle;
   }
 
+  absl::StatusOr<DeviceAddressBase> GetAllocationRange(
+      void* ptr) const override;
+
+  absl::StatusOr<std::string> ExportFabricHandle(void* ptr) const override;
+
+  absl::StatusOr<DeviceAddressBase> ImportFabricHandle(
+      absl::string_view serialized) override;
+
  private:
   // Allocates memory using the given allocator and tracks the resulting
   // allocation. Returns an empty DeviceAddressBase on failure.
@@ -274,13 +315,25 @@ class CudaExecutor : public GpuExecutor {
   std::map<const absl::uint128, std::weak_ptr<DeviceAddressBase>>
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
+  struct LoadedModule {
+    CUmodule module = nullptr;
+    uint64_t refcount = 0;
+    absl::flat_hash_map<CUfunction, int32_t> max_dynamic_shared_memory_bytes;
+  };
+
   // Kernel -> loaded GPU module. Many kernels may load the same binary.
   absl::flat_hash_map<const Kernel*, ModuleHandle> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
-  // Loaded GPU module handle -> {CUDA module, reference count}.
-  absl::flat_hash_map<ModuleHandle, std::pair<CUmodule, uint64_t>>
-      gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
+  // Loaded GPU module handle -> LoadedModule.
+  absl::flat_hash_map<ModuleHandle, LoadedModule> gpu_binary_to_module_
+      ABSL_GUARDED_BY(in_memory_modules_mu_);
+
+  // Dynamic shared memory limit for in-process symbol kernels (not belonging to
+  // a loaded module).
+  absl::flat_hash_map<CUfunction, int32_t>
+      in_process_max_dynamic_shared_memory_bytes_
+          ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Set of loaded kernels. This contains all kernels loaded by this executor,
   // including in-process kernels.
@@ -337,6 +390,13 @@ class CudaExecutor : public GpuExecutor {
   bool stream_priority_query_ok_ = false;
   absl::flat_hash_map<int, bool> peer_access_cache_;
   std::unique_ptr<HostCallbackRegistry> host_callback_registry_{nullptr};
+
+  // Locality domains for this device, created lazily by GetLocalityDomains().
+  absl::Mutex locality_domains_mu_;
+  bool locality_domains_initialized_ ABSL_GUARDED_BY(locality_domains_mu_) =
+      false;
+  std::vector<std::unique_ptr<LocalityDomain>> locality_domains_
+      ABSL_GUARDED_BY(locality_domains_mu_);
 };
 
 }  // namespace stream_executor::gpu

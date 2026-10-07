@@ -348,7 +348,7 @@ class _HistogramMseMaxFrequency(_HistogramCalibrationAlgorithmBase):
     """
     # Find the index of max frequency.
     freq_max_idx = np.argmax(self._hist_freq)
-    return self._get_min_max_value_by_expanding_range(freq_max_idx)
+    return self._get_min_max_value_by_expanding_range(freq_max_idx)  # pyrefly: ignore[bad-argument-type]
 
 
 @_implements(_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC)

@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/optimized/reduce_utils.h"
 
+#include <limits>
+#include <vector>
+
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 namespace tflite {
 namespace reduce_utils {
@@ -33,9 +37,10 @@ void TestFunction(const std::vector<int>& axis_in,
   int actual_out_num_axis;
   std::vector<int> actual_shape_out(num_dims);
   std::vector<int> actual_axis_out(num_dims);
-  ResolveAxis(shape_in.size(), axis_in.data(), axis_in.size(),
-              actual_axis_out.data(), actual_out_num_axis, shape_in.data(),
-              actual_shape_out.data(), actual_out_num_dims);
+  ASSERT_TRUE(ResolveAxis(shape_in.size(), axis_in.data(), axis_in.size(),
+                          actual_axis_out.data(), actual_out_num_axis,
+                          shape_in.data(), actual_shape_out.data(),
+                          actual_out_num_dims));
   EXPECT_EQ(expected_out_num_dims, actual_out_num_dims);
   EXPECT_EQ(expected_out_num_axis, actual_out_num_axis);
   EXPECT_THAT(expected_shape_out,
@@ -130,6 +135,22 @@ TEST(ResolveAxisTest, InterleavedSize1Dim) {
   const std::vector<int> expected_shape_out{8, 7};
   const std::vector<int> expected_axis_out{0};
   TestFunction(axis_in, shape_in, expected_axis_out, expected_shape_out);
+}
+
+TEST(ResolveAxisTest, RejectsFlattenedDimensionOverflow) {
+  const std::vector<int> axis_in = {0, 1};
+  const std::vector<int> shape_in = {std::numeric_limits<int>::max(),
+                                     std::numeric_limits<int>::max(), 0};
+  const int num_dims = shape_in.size();
+  int actual_out_num_dims;
+  int actual_out_num_axis;
+  std::vector<int> actual_shape_out(num_dims);
+  std::vector<int> actual_axis_out(num_dims);
+
+  EXPECT_FALSE(ResolveAxis(num_dims, axis_in.data(), axis_in.size(),
+                           actual_axis_out.data(), actual_out_num_axis,
+                           shape_in.data(), actual_shape_out.data(),
+                           actual_out_num_dims));
 }
 
 }  // namespace

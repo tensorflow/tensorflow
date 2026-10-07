@@ -28,11 +28,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -337,7 +337,7 @@ absl::Status CallGraph::VisitNodesInternal(
   }
 
   for (const HloComputation* computation : node.callees()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         VisitNodesInternal(visitor_func, GetNode(computation), visited));
   }
 
@@ -355,13 +355,13 @@ absl::StatusOr<bool> CallGraph::VisitNodesInternal(
 
   bool changed = false;
   for (const HloComputation* computation : node.callees()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool node_changed,
         VisitNodesInternal(visitor_func, GetNode(computation), visited));
     changed |= node_changed;
   }
 
-  ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
+  ABSL_ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
   changed |= node_changed;
   return changed;
 }
@@ -373,12 +373,12 @@ absl::Status CallGraph::VisitNodes(VisitorFunction visitor_func,
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
       if (node.callers().empty()) {
-        RETURN_IF_ERROR(VisitNodesInternal(visitor_func, node, &visited));
+        ABSL_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, node, &visited));
       }
     }
   } else {
     // Traverse only from the entry computation.
-    RETURN_IF_ERROR(VisitNodesInternal(
+    ABSL_RETURN_IF_ERROR(VisitNodesInternal(
         visitor_func, GetNode(module_->entry_computation()), &visited));
   }
 
@@ -393,14 +393,14 @@ absl::StatusOr<bool> CallGraph::VisitNodesWithReturn(
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {
       if (node.callers().empty()) {
-        ASSIGN_OR_RETURN(bool node_changed,
+        ABSL_ASSIGN_OR_RETURN(bool node_changed,
                          VisitNodesInternal(visitor_func, node, &visited));
         changed |= node_changed;
       }
     }
   } else {
     // Traverse only from the entry computation.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         changed,
         VisitNodesInternal(visitor_func, GetNode(module_->entry_computation()),
                            &visited));
@@ -418,6 +418,34 @@ bool CallGraph::IsFlattened() const {
         !node.computation()->IsAsyncComputation() &&
         node.caller_callsites().size() > 1) {
       return false;
+    }
+  }
+  return true;
+}
+
+bool CallGraph::IsFlatOnControlFlow() const {
+  for (const CallGraphNode& node : nodes_) {
+    for (const CallSite& callsite : node.callsites()) {
+      if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+        HloComputation* body = callsite.instruction()->while_body();
+        HloComputation* cond = callsite.instruction()->while_condition();
+        if (body == cond || GetNode(body).caller_callsites().size() > 1 ||
+            GetNode(cond).caller_callsites().size() > 1) {
+          return false;
+        }
+        continue;
+      }
+      if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
+        absl::flat_hash_set<const HloComputation*> seen_branches;
+        for (HloComputation* branch :
+             callsite.instruction()->called_computations()) {
+          if (!seen_branches.insert(branch).second ||
+              GetNode(branch).caller_callsites().size() > 1) {
+            return false;
+          }
+        }
+        continue;
+      }
     }
   }
   return true;
@@ -444,6 +472,11 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
     const CallGraphNode& node = GetNode(instruction->parent());
     if (node.caller_callsites().size() != 1) {
       if (instruction->parent()->IsAsyncComputation()) {
+        for (const CallSite& callsite : node.caller_callsites()) {
+          if (callsite.instruction()->opcode() == HloOpcode::kAsyncStart) {
+            return callsite.instruction();
+          }
+        }
         return node.caller_callsites()[0].instruction();
       }
       return nullptr;
@@ -455,25 +488,19 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
   // element.
   HloInstruction* a_ancestor = a;
   HloInstruction* b_ancestor = b;
-  int a_depth = GetNode(a->parent()).depth();
-  int b_depth = GetNode(b->parent()).depth();
 
   // Advance a_ancestor (b_ancestor) up the call chain until the call depth of
-  // a_ancestor or b_ancestor are the same. Necessarily each call to next_caller
-  // reduces the depth by exactly one.
-  if (a_depth > b_depth) {
-    for (int i = 0; i < a_depth - b_depth; ++i) {
+  // a_ancestor or b_ancestor are the same. Compare depths dynamically at each
+  // step because a loop-crossing async computation may have caller callsites at
+  // different depths (e.g., kAsyncStart in ENTRY and kAsyncDone in while_body).
+  while (a_ancestor != nullptr && b_ancestor != nullptr &&
+         GetNode(a_ancestor->parent()).depth() !=
+             GetNode(b_ancestor->parent()).depth()) {
+    if (GetNode(a_ancestor->parent()).depth() >
+        GetNode(b_ancestor->parent()).depth()) {
       a_ancestor = next_caller(a_ancestor);
-      if (a_ancestor == nullptr) {
-        return {nullptr, nullptr};
-      }
-    }
-  } else if (b_depth > a_depth) {
-    for (int i = 0; i < b_depth - a_depth; ++i) {
+    } else {
       b_ancestor = next_caller(b_ancestor);
-      if (b_ancestor == nullptr) {
-        return {nullptr, nullptr};
-      }
     }
   }
 

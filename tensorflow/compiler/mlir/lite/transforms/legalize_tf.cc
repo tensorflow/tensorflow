@@ -22,9 +22,9 @@ limitations under the License.
 // constant folding support for the TensorFlow ops.
 
 #include <algorithm>
-#include <climits>
 #include <complex>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -112,10 +112,38 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
       rewriter.getBoolAttr(false));
 }
 
+Value CreateStridedSliceIndexToInt32(Value val, Location loc,
+                                     PatternRewriter& rewriter) {
+  DenseIntElementsAttr value_attr;
+  if (matchPattern(val, m_Constant(&value_attr))) {
+    auto new_type = mlir::cast<ShapedType>(value_attr.getType())
+                        .clone(rewriter.getIntegerType(32));
+    auto clamp_to_int32 = [](const APInt& value) {
+      return static_cast<int32_t>(std::clamp<int64_t>(
+          value.getSExtValue(), std::numeric_limits<int32_t>::min(),
+          std::numeric_limits<int32_t>::max()));
+    };
+    if (value_attr.isSplat()) {
+      return arith::ConstantOp::create(
+          rewriter, loc,
+          DenseIntElementsAttr::get(
+              new_type, {clamp_to_int32(value_attr.getSplatValue<APInt>())}));
+    }
+    SmallVector<int32_t, 4> values;
+    values.reserve(value_attr.getNumElements());
+    for (const APInt& value : value_attr.getValues<APInt>()) {
+      values.push_back(clamp_to_int32(value));
+    }
+    return arith::ConstantOp::create(
+        rewriter, loc, DenseIntElementsAttr::get(new_type, values));
+  }
+  return CreateCastToInt32(val, loc, rewriter);
+}
+
 // Utility function to-
 // 1. Create a tfl.const op with an int32_t values, from an MLIR Value, if the
 // `Value` can be matched to a Constant DenseIntElementsAttr.
-// This will make sure the dynamic dimensions are asigned to be `-1`
+// This will make sure the dynamic dimensions are assigned to be `-1`
 // 2. In the default case, cast the `Value` to an int32_t.
 Value CreateInt32ConstOrCast(Value val, Location loc,
                              PatternRewriter& rewriter) {
@@ -385,7 +413,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
     return {success(), output};
   };
 
-  // TODO(jpienaar): Remove once handled via dailect conversion.
+  // TODO(jpienaar): Remove once handled via dialect conversion.
   if (tf_matmul_op.getTransposeA()) {
     LogicalResult result = success();
     std::tie(result, lhs) = transpose(lhs);
@@ -702,7 +730,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
   }
 };
 
-// Legalize unidirectional seqeucen rnn.
+// Legalize unidirectional sequence rnn.
 struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
   explicit LegalizeUnidirectionalSequenceRnn(MLIRContext* context)
       : RewritePattern(kUnidirectionalSequenceRnn, 1, context) {}

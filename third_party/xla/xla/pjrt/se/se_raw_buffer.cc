@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
@@ -44,13 +44,14 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace {
 static absl::StatusOr<xla::BufferSequencingEventRef>
 GetOrCreateAllocationReadyEvent(const xla::RawSEDeviceMemory& device_buffer,
                                 xla::PjRtStreamExecutorRawClient* client,
                                 xla::LocalDeviceState* local_device) {
-  ASSIGN_OR_RETURN(auto result,
+  ABSL_ASSIGN_OR_RETURN(auto result,
                    device_buffer.GetDefinitionEvent(client->async_work_runner(),
                                                     /*nullptr_if_past=*/false));
   if (!result) {
@@ -60,7 +61,7 @@ GetOrCreateAllocationReadyEvent(const xla::RawSEDeviceMemory& device_buffer,
         result, local_device, stream.get(),
         "PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent");
     local_device->ReturnStreamToPool(std::move(stream));
-    RETURN_IF_ERROR(status);
+    ABSL_RETURN_IF_ERROR(status);
   }
   return result;
 }
@@ -133,7 +134,7 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     }
     std::shared_ptr<void> staging_buffer;
     auto status = [&]() -> absl::Status {
-      RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
+      ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
       if (transfer_size > 0) {
         if (client->ShouldStageHostToDeviceTransfers(src, transfer_size)) {
           if (client->GetHostMemoryAllocator() == nullptr) {
@@ -146,15 +147,26 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
           alloc_opts.local_device_id = local_device->local_device_id();
           staging_buffer = client->GetHostMemoryAllocator()->Allocate(
               transfer_size, alloc_opts);
+          if (staging_buffer == nullptr) {
+            return ResourceExhausted(
+                "Failed to allocate a %d-byte pinned host staging buffer for "
+                "a host-to-device transfer. The pinned host pool may be "
+                "exhausted or fragmented (see "
+                "XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the underlying pinned "
+                "allocation failed; check earlier allocator warnings for the "
+                "root cause.",
+                transfer_size);
+          }
           auto copy_to_staging_buffer = [src, transfer_size,
                                          staging_buffer]() mutable {
+            tsl::profiler::TraceMe trace("H2D Copy To Staging Buffer");
             std::memcpy(staging_buffer.get(), src, transfer_size);
           };
-          RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
+          ABSL_RETURN_IF_ERROR(
               stream->Memcpy(&sub_buffer, staging_buffer.get(), transfer_size));
         } else {
-          RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, src, transfer_size));
+          ABSL_RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, src, transfer_size));
         }
       }
       return absl::OkStatus();
@@ -172,6 +184,9 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     }
   };
 
+  // `run_transfer` may be deferred until `dependencies` are ready, so record
+  // the allocation event now.
+  client_->MaterializeAllocationEvent(*this);
   ExecuteWhenReady(dependencies, client_->async_work_runner(),
                    std::move(run_transfer));
 
@@ -203,7 +218,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     }
     std::shared_ptr<void> staging_buffer;
     auto status = [&]() -> absl::Status {
-      RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
+      ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
       if (transfer_size > 0) {
         if (client->ShouldStageHostToDeviceTransfers(dst, transfer_size)) {
           if (client->GetHostMemoryAllocator() == nullptr) {
@@ -216,16 +231,27 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
           alloc_opts.local_device_id = local_device->local_device_id();
           staging_buffer = client->GetHostMemoryAllocator()->Allocate(
               transfer_size, alloc_opts);
-          RETURN_IF_ERROR(
+          if (staging_buffer == nullptr) {
+            return ResourceExhausted(
+                "Failed to allocate a %d-byte pinned host staging buffer for "
+                "a device-to-host transfer. The pinned host pool may be "
+                "exhausted or fragmented (see "
+                "XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the underlying pinned "
+                "allocation failed; check earlier allocator warnings for the "
+                "root cause.",
+                transfer_size);
+          }
+          ABSL_RETURN_IF_ERROR(
               stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
           auto copy_from_staging_buffer = [dst, transfer_size,
                                            staging_buffer]() mutable {
+            tsl::profiler::TraceMe trace("D2H Copy From Staging Buffer");
             std::memcpy(dst, staging_buffer.get(), transfer_size);
           };
           // TODO(parkers): This failing maybe consitutes a race.
-          RETURN_IF_ERROR(stream->DoHostCallback(copy_from_staging_buffer));
+          ABSL_RETURN_IF_ERROR(stream->DoHostCallback(copy_from_staging_buffer));
         } else {
-          RETURN_IF_ERROR(stream->Memcpy(dst, sub_buffer, transfer_size));
+          ABSL_RETURN_IF_ERROR(stream->Memcpy(dst, sub_buffer, transfer_size));
         }
       }
       return absl::OkStatus();
@@ -243,6 +269,9 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     }
   };
 
+  // `run_transfer` may be deferred until `dependencies` are ready, so record
+  // the allocation event now.
+  client_->MaterializeAllocationEvent(*this);
   ExecuteWhenReady(dependencies, client_->async_work_runner(),
                    std::move(run_transfer));
 
@@ -263,7 +292,7 @@ absl::Status PjRtStreamExecutorRawBuffer::ValidateSlice(int64_t offset,
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawBuffer::Slice(
     int64_t offset, int64_t size) {
-  RETURN_IF_ERROR(ValidateSlice(offset, size));
+  ABSL_RETURN_IF_ERROR(ValidateSlice(offset, size));
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       client_, memory_space_, local_device_,
       RawSEDeviceMemory::CreateSlice(device_buffer_, offset, size), size);
@@ -272,7 +301,7 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawBuffer::Slice(
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
   if (device_buffer_.IsConcrete()) {
-    ASSIGN_OR_RETURN(auto result, GetOrCreateAllocationReadyEvent(
+    ABSL_ASSIGN_OR_RETURN(auto result, GetOrCreateAllocationReadyEvent(
                                       *device_buffer_, client_, local_device_));
     return PjRtDeviceEventRef(std::move(result));
   }
@@ -280,10 +309,10 @@ PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
     return device_buffer_.GetError();
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto promise_and_event,
       client_->CreateLinkedEventPromise(
-          memory_space_,
+          local_device_->local_device_id(), memory_space_->kind_id(),
           "PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent"));
   auto [promise, event] = std::move(promise_and_event);
 
@@ -364,6 +393,18 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     std::shared_ptr<void> staging_buffer =
         client_->GetHostMemoryAllocator()->Allocate(GetOnDeviceSizeInBytes(),
                                                     alloc_opts);
+    if (GetOnDeviceSizeInBytes() > 0 && staging_buffer == nullptr) {
+      absl::Status s = ResourceExhausted(
+          "Failed to allocate a %d-byte pinned host staging buffer for a "
+          "device-to-device transfer. The pinned host pool may be exhausted or "
+          "fragmented (see XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the "
+          "underlying pinned allocation failed; check earlier allocator "
+          "warnings for the root cause.",
+          GetOnDeviceSizeInBytes());
+      definition_event_promise.SetError(s);
+      src_usage_event_promise.SetError(s);
+      return;
+    }
     auto d2h_event = CopyRawDeviceToHostAndReturnEvent(
         staging_buffer.get(), 0, GetOnDeviceSizeInBytes(), {});
     if (!d2h_event.ok()) {
@@ -405,6 +446,10 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
     PjRtDeviceEventPromiseRef src_usage_event_promise,
     absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
+    // The copy is deferred to `async_work_runner()`, so record the allocation
+    // events now.
+    client_->MaterializeAllocationEvent(*this);
+    client_->MaterializeAllocationEvent(*dst_raw_buffer);
     client_->async_work_runner()->Execute(
         [this_ref = tsl::FormRef(this),
          transfer_dependency_events = std::move(transfer_dependency_events),
@@ -434,6 +479,11 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
       BufferSequencingEvent::Create(client_->async_work_runner());
 
   PjRtDeviceEventSpan deps_span(dependencies);
+
+  // `task` may be deferred until `dependencies` are ready, so record the
+  // allocation events now.
+  client_->MaterializeAllocationEvent(*this);
+  client_->MaterializeAllocationEvent(*dst_raw_buffer);
 
   auto task = [client = client_, local_device = local_device_,
                src_buffer = device_buffer_,
@@ -466,7 +516,7 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
         }
       }
 
-      ASSIGN_OR_RETURN(EventPool::Handle event,
+      ABSL_ASSIGN_OR_RETURN(EventPool::Handle event,
                        local_device->event_pool().AllocateEvent(
                            client->async_work_runner(), stream->parent()));
 
@@ -483,10 +533,10 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
       }
       auto dst_buffer = dst_cpp_buffer->device_buffer();
       auto dst_buffer_mem = dst_buffer->mem();
-      RETURN_IF_ERROR(client->WaitForAllocation(stream, *src_raw_buffer));
-      RETURN_IF_ERROR(client->WaitForAllocation(stream, *dst_raw_buffer));
+      ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *src_raw_buffer));
+      ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *dst_raw_buffer));
       if (dst_buffer_mem.size() > 0) {
-        RETURN_IF_ERROR(stream->MemcpyD2D(&dst_buffer_mem, src_buffer->mem(),
+        ABSL_RETURN_IF_ERROR(stream->MemcpyD2D(&dst_buffer_mem, src_buffer->mem(),
                                           dst_buffer_mem.size()));
       }
       client->ThenRecordEvent(usage_event, local_device, std::move(event),

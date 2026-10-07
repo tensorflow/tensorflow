@@ -57,7 +57,10 @@ get_targets_from_diff() {
   
   # Populate global TARGETS variable
   # We use readarray to handle multi-line output from bazel cquery
-  readarray -t TARGETS < <($BAZEL_CMD cquery --output=starlark --starlark:expr="target.label" --config="$CONFIG" "$QUERY")
+  CQUERY_OUT=$($BAZEL_CMD cquery --output=starlark --starlark:expr="target.label" --config="$CONFIG" "$QUERY")
+  if [ -n "$CQUERY_OUT" ]; then
+    readarray -t TARGETS <<< "$CQUERY_OUT"
+  fi
   
   if [ ${#TARGETS[@]} -eq 0 ]; then
     set +x

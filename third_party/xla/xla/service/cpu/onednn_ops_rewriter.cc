@@ -17,12 +17,13 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -546,14 +547,14 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     OneDnnNormConfig* ln_config =
         backend_config.mutable_onednn_layer_norm_config();
     ln_config->set_rescale(OneDnnNormConfig::SCALE_AND_SHIFT);
-    ln_config->set_epsilon_typecast(*(reinterpret_cast<int32_t*>(&eps)));
-    RETURN_IF_ERROR(ln_call->set_backend_config(backend_config));
+    ln_config->set_epsilon_typecast(absl::bit_cast<int32_t>(eps));
+    ABSL_RETURN_IF_ERROR(ln_call->set_backend_config(backend_config));
 
     if (convert_instr != nullptr && is_bf16orfp16_convert &&
         is_producer_bf16orfp16) {
-      RETURN_IF_ERROR(ReplaceInstruction(convert_instr, ln_call));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(convert_instr, ln_call));
     } else {
-      RETURN_IF_ERROR(ReplaceInstruction(instr, ln_call));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(instr, ln_call));
     }
 
     return absl::OkStatus();
@@ -590,7 +591,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
       newoperands.at(0) = newinp;
       HloInstruction* updated_call = instr->AddInstruction(
           custom_call->CloneWithNewOperands(instr->shape(), newoperands));
-      RETURN_IF_ERROR(ReplaceInstruction(instr, updated_call));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(instr, updated_call));
     }
 
     return absl::OkStatus();
@@ -615,10 +616,10 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     OneDnnSoftmaxConfig* softmax_config =
         backend_config.mutable_onednn_softmax_config();
     softmax_config->set_softmax_axis(axis);
-    RETURN_IF_ERROR(softmax_call->set_backend_config(backend_config));
+    ABSL_RETURN_IF_ERROR(softmax_call->set_backend_config(backend_config));
     xla::Cast<HloCallableInstruction>(softmax_call)
         ->set_output_to_operand_aliasing({{{}, {0, {}}}});
-    RETURN_IF_ERROR(ReplaceInstruction(divide_instr, softmax_call));
+    ABSL_RETURN_IF_ERROR(ReplaceInstruction(divide_instr, softmax_call));
 
     return absl::OkStatus();
   }
@@ -630,7 +631,7 @@ absl::StatusOr<bool> OneDnnOpsRewriter::RunImpl(
   XLA_VLOG_LINES(
       3, "OneDnnOpsRewriter::RunImpl(), before:\n" + module->ToString());
   OneDnnOpsRewriterVisitor visitor;
-  ASSIGN_OR_RETURN(auto result, visitor.RunOnModule(module, execution_threads));
+  ABSL_ASSIGN_OR_RETURN(auto result, visitor.RunOnModule(module, execution_threads));
   XLA_VLOG_LINES(3,
                  "OneDnnOpsRewriter::RunImpl(), after:\n" + module->ToString());
   return result;

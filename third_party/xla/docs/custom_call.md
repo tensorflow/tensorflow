@@ -233,6 +233,29 @@ dimensions must have the same size. The `Match` call above therefore accepts
 only square matrices. Dimension captures are written only after the complete
 pattern succeeds and are unchanged on failure.
 
+Whole-buffer relationships do not require capturing every dimension.
+`WithShapeOf` matches the complete runtime shape of another buffer while
+allowing a different dtype. `Like` also requires the same dtype:
+
+```c++
+Error VerifySortBuffers(AnyBuffer keys, AnyBuffer values,
+                        Result<AnyBuffer> keys_output) {
+  Error error =
+      Verify("values", values, m::Buffer().WithShapeOf(keys));
+  if (error.failure()) {
+    return error;
+  }
+
+  return Verify("keys output", *keys_output, m::Buffer().Like(keys));
+}
+```
+
+Both modifiers copy the reference buffer's metadata when the pattern is built;
+the pattern does not retain a reference to the buffer. Because these are runtime
+constraints, they do not refine an `AnyBuffer` to a concrete return type. They
+are primarily useful with `Verify`, or with `Match` when the input buffer
+already has a concrete type.
+
 Use `Verify` when the buffer should keep its existing type, or when a pattern
 accepts more than one data type or rank. For example, an index buffer can accept
 either `S32` or `S64` and dispatch on its data type after verification:
@@ -285,9 +308,9 @@ The external FFI API in `xla/ffi/api/ffi.h` returns `Error` from `Verify` and
 `absl::StatusOr<T>`:
 
 ```c++
-ASSIGN_OR_RETURN(BufferR2<F32> input,
-                 Match("input", buffer, m::Buffer<F32, 2>()));
-RETURN_IF_ERROR(Verify(
+ABSL_ASSIGN_OR_RETURN(BufferR2<F32> input,
+                      Match("input", buffer, m::Buffer<F32, 2>()));
+ABSL_RETURN_IF_ERROR(Verify(
     "input", input,
     m::Buffer().WithDims(expected_rows, m::Dim())));
 ```
@@ -403,6 +426,33 @@ auto handler = Ffi::Bind().Attrs().To([](Dictionary attrs) -> Error {
   return Error::Success();
 });
 ```
+
+### Per-execution Custom Options
+
+FFI handlers can access runtime custom options as a `Dictionary` by binding
+`Ctx<CustomOptions>()`. In JAX, pass options with `jax.execution_options`:
+
+```python
+with jax.execution_options(custom_options={"foo": 42}):
+    result = compiled_fn(x)
+```
+
+Python integer options decode as `int64_t`:
+
+```c++
+auto handler =
+    Ffi::Bind().Ctx<CustomOptions>().To([](Dictionary options) -> Error {
+      ErrorOr<int64_t> foo = options.get<int64_t>("foo");
+      return Error::Success();
+    });
+```
+
+**WARNING:** GPU command buffers can replay recorded or captured work without
+invoking the FFI handler again. Changing custom options does not trigger a
+command buffer update or invalidate the stream-capture cache, so replay may use
+work recorded with earlier option values. Custom calls whose recorded work
+depends on options that change between executions must stay out of GPU command
+buffers until this is supported.
 
 ### User-defined Struct Attributes
 

@@ -172,7 +172,7 @@ std::vector<bfloat16> GenerateMinCombinedOutput(const QuantizedRange &range) {
 // TF quantize op defined in: third_party/tensorflow/core/kernels/quantize_op.cc
 
 using DequantizeTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST(PackTest, PackUint8ToUint32) {
   std::vector<uint8_t> input = {0xAB, 0x0B, 0x00, 0xF0, 0x01};

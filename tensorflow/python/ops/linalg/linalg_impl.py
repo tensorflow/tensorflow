@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
@@ -68,35 +67,38 @@ triangular_solve = linalg_ops.matrix_triangular_solve
 @tf_export('linalg.logdet')
 @dispatch.add_dispatch_support
 def logdet(matrix, name=None):
-  """Computes log of the determinant of a hermitian positive definite matrix.
+  """Computes log of the absolute value of the determinant of a square matrix.
+
+  This uses LU decomposition internally, so it works for general square
+  matrices and not just hermitian positive definite ones.
 
   ```python
   # Compute the determinant of a matrix while reducing the chance of over- or
-  underflow:
-  A = ... # shape 10 x 10
-  det = tf.exp(tf.linalg.logdet(A))  # scalar
+  # underflow:
+  A = tf.constant([[4., -1.], [2., 5.]])
+  tf.linalg.logdet(A)  # Yields 3.421000
+  tf.exp(tf.linalg.logdet(A))  # Yields 22.0
   ```
 
   Args:
-    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
-      or `complex128` with shape `[..., M, M]`.
+    matrix:  A `Tensor`. Must be `Float` or `Complex`. A shape `[..., M, M]`
+      tensor.
     name:  A name to give this `Op`.  Defaults to `logdet`.
 
   Returns:
-    The natural log of the determinant of `matrix`.
+    The natural log of the absolute value of the determinant of `matrix`.
+    For a singular matrix (determinant = 0), returns -inf.
 
   @compatibility(numpy)
-  Equivalent to numpy.linalg.slogdet, although no sign is returned since only
-  hermitian positive definite matrices are supported.
+  Equivalent to np.linalg.slogdet, returning only the log of the absolute
+  determinant without the sign.
   @end_compatibility
   """
-  # This uses the property that the log det(A) = 2*sum(log(real(diag(C))))
-  # where C is the cholesky decomposition of A.
+  # Use LU decomposition via slogdet to support general square matrices,
+  # not just hermitian positive definite ones.
   with ops.name_scope(name, 'logdet', [matrix]):
-    chol = gen_linalg_ops.cholesky(matrix)
-    return 2.0 * math_ops.reduce_sum(
-        math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        axis=[-1])
+    _, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
+    return log_abs_det
 
 
 @tf_export('linalg.adjoint')
@@ -132,39 +134,39 @@ def adjoint(matrix, name=None):
 # https://eigen.tuxfamily.org/dox/unsupported/MatrixExponential_8h_source.html
 def _matrix_exp_pade3(matrix):
   """3rd-order Pade approximant for matrix exponential."""
-  b = [120.0, 60.0, 12.0]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  b = [120.0, 60.0, 12.0, 1.0]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
       dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
-  tmp = matrix_2 + b[1] * ident
+  tmp = c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = b[2] * matrix_2 + b[0] * ident
+  matrix_v = c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
 def _matrix_exp_pade5(matrix):
   """5th-order Pade approximant for matrix exponential."""
-  b = [30240.0, 15120.0, 3360.0, 420.0, 30.0]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  b = [30240.0, 15120.0, 3360.0, 420.0, 30.0, 1.0]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
       dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
-  tmp = matrix_4 + b[3] * matrix_2 + b[1] * ident
+  tmp = c[5] * matrix_4 + c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = b[4] * matrix_4 + b[2] * matrix_2 + b[0] * ident
+  matrix_v = c[4] * matrix_4 + c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
 def _matrix_exp_pade7(matrix):
   """7th-order Pade approximant for matrix exponential."""
-  b = [17297280.0, 8648640.0, 1995840.0, 277200.0, 25200.0, 1512.0, 56.0]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  b = [17297280.0, 8648640.0, 1995840.0, 277200.0, 25200.0, 1512.0, 56.0, 1.0]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
@@ -172,19 +174,27 @@ def _matrix_exp_pade7(matrix):
   matrix_2 = math_ops.matmul(matrix, matrix)
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
-  tmp = matrix_6 + b[5] * matrix_4 + b[3] * matrix_2 + b[1] * ident
+  tmp = c[7] * matrix_6 + c[5] * matrix_4 + c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = b[6] * matrix_6 + b[4] * matrix_4 + b[2] * matrix_2 + b[0] * ident
+  matrix_v = c[6] * matrix_6 + c[4] * matrix_4 + c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
 def _matrix_exp_pade9(matrix):
   """9th-order Pade approximant for matrix exponential."""
   b = [
-      17643225600.0, 8821612800.0, 2075673600.0, 302702400.0, 30270240.0,
-      2162160.0, 110880.0, 3960.0, 90.0
+      17643225600.0,
+      8821612800.0,
+      2075673600.0,
+      302702400.0,
+      30270240.0,
+      2162160.0,
+      110880.0,
+      3960.0,
+      90.0,
+      1.0,
   ]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
@@ -194,23 +204,42 @@ def _matrix_exp_pade9(matrix):
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
   matrix_8 = math_ops.matmul(matrix_6, matrix_2)
   tmp = (
-      matrix_8 + b[7] * matrix_6 + b[5] * matrix_4 + b[3] * matrix_2 +
-      b[1] * ident)
+      c[9] * matrix_8
+      + c[7] * matrix_6
+      + c[5] * matrix_4
+      + c[3] * matrix_2
+      + c[1] * ident
+  )
   matrix_u = math_ops.matmul(matrix, tmp)
   matrix_v = (
-      b[8] * matrix_8 + b[6] * matrix_6 + b[4] * matrix_4 + b[2] * matrix_2 +
-      b[0] * ident)
+      c[8] * matrix_8
+      + c[6] * matrix_6
+      + c[4] * matrix_4
+      + c[2] * matrix_2
+      + ident
+  )
   return matrix_u, matrix_v
 
 
 def _matrix_exp_pade13(matrix):
   """13th-order Pade approximant for matrix exponential."""
   b = [
-      64764752532480000.0, 32382376266240000.0, 7771770303897600.0,
-      1187353796428800.0, 129060195264000.0, 10559470521600.0, 670442572800.0,
-      33522128640.0, 1323241920.0, 40840800.0, 960960.0, 16380.0, 182.0
+      64764752532480000.0,
+      32382376266240000.0,
+      7771770303897600.0,
+      1187353796428800.0,
+      129060195264000.0,
+      10559470521600.0,
+      670442572800.0,
+      33522128640.0,
+      1323241920.0,
+      40840800.0,
+      960960.0,
+      16380.0,
+      182.0,
+      1.0,
   ]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
@@ -219,13 +248,23 @@ def _matrix_exp_pade13(matrix):
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
   tmp_u = (
-      math_ops.matmul(matrix_6, matrix_6 + b[11] * matrix_4 + b[9] * matrix_2) +
-      b[7] * matrix_6 + b[5] * matrix_4 + b[3] * matrix_2 + b[1] * ident)
+      math_ops.matmul(
+          matrix_6, c[13] * matrix_6 + c[11] * matrix_4 + c[9] * matrix_2
+      )
+      + c[7] * matrix_6
+      + c[5] * matrix_4
+      + c[3] * matrix_2
+      + c[1] * ident
+  )
   matrix_u = math_ops.matmul(matrix, tmp_u)
-  tmp_v = b[12] * matrix_6 + b[10] * matrix_4 + b[8] * matrix_2
+  tmp_v = c[12] * matrix_6 + c[10] * matrix_4 + c[8] * matrix_2
   matrix_v = (
-      math_ops.matmul(matrix_6, tmp_v) + b[6] * matrix_6 + b[4] * matrix_4 +
-      b[2] * matrix_2 + b[0] * ident)
+      math_ops.matmul(matrix_6, tmp_v)
+      + c[6] * matrix_6
+      + c[4] * matrix_4
+      + c[2] * matrix_2
+      + ident
+  )
   return matrix_u, matrix_v
 
 
@@ -1298,6 +1337,14 @@ def eigh_tridiagonal(alpha,
 
   """
   with ops.name_scope(name or 'eigh_tridiagonal'):
+    if select in ('i', 'v') and select_range is None:
+      # Both of these select modes index into select_range below. Reject the
+      # missing value here rather than letting it surface as a TypeError from
+      # subscripting None.
+      raise ValueError(
+          f"select_range must be specified when select is '{select}'; it is "
+          "only optional for select='a'."
+      )
 
     def _compute_eigenvalues(alpha, beta):
       """Computes all eigenvalues of a Hermitian tridiagonal matrix."""
@@ -1305,7 +1352,9 @@ def eigh_tridiagonal(alpha,
       def _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, x):
         """Implements the Sturm sequence recurrence."""
         with ops.name_scope('sturm'):
-          n = alpha.shape[0]
+          n = tensor_shape.dimension_value(alpha.shape[0])
+          if n is None:
+            n = array_ops.shape(alpha)[0]
           zeros = array_ops.zeros(array_ops.shape(x), dtype=dtypes.int32)
           ones = array_ops.ones(array_ops.shape(x), dtype=dtypes.int32)
 
@@ -1333,21 +1382,37 @@ def eigh_tridiagonal(alpha,
           blocksize = 16
           i = 1
           peel = (n - 1) % blocksize
-          unroll_cnt = peel
 
-          def unrolled_steps(start, q, count):
-            for j in range(unroll_cnt):
-              q, count = sturm_step(start + j, q, count)
-            return start + unroll_cnt, q, count
+          def make_unrolled_steps(unroll_cnt):
 
-          i, q, count = unrolled_steps(i, q, count)
+            def unrolled_steps(start, q, count):
+              for j in range(unroll_cnt):
+                q, count = sturm_step(start + j, q, count)
+              return start + unroll_cnt, q, count
+
+            return unrolled_steps
+
+          if isinstance(peel, int):
+            i, q, count = make_unrolled_steps(peel)(i, q, count)
+          else:
+            # n is only known at runtime, and so is the number of steps to peel
+            # off, so take them one at a time in a loop.
+            i, q, count = while_loop.while_loop(
+                lambda i, q, count: math_ops.less(i, 1 + peel),
+                make_unrolled_steps(1),
+                [i, q, count],
+                back_prop=False,
+            )
 
           # Run the remaining steps of the Sturm sequence using a partially
           # unrolled while loop.
-          unroll_cnt = blocksize
           cond = lambda i, q, count: math_ops.less(i, n)
           _, _, count = while_loop.while_loop(
-              cond, unrolled_steps, [i, q, count], back_prop=False)
+              cond,
+              make_unrolled_steps(blocksize),
+              [i, q, count],
+              back_prop=False,
+          )
           return count
 
       with ops.name_scope('compute_eigenvalues'):
@@ -1398,10 +1463,13 @@ def eigh_tridiagonal(alpha,
               message='Got empty index range in select_range.')
           target_counts = math_ops.range(select_range[0], select_range[1] + 1)
         elif select == 'v':
+          select_min = math_ops.cast(select_range[0], alpha.dtype)
+          select_max = math_ops.cast(select_range[1], alpha.dtype)
           asserts = check_ops.assert_less(
-              select_range[0],
-              select_range[1],
-              message='Got empty interval in select_range.')
+              select_min,
+              select_max,
+              message='Got empty interval in select_range.',
+          )
         else:
           raise ValueError("'select must have a value in {'a', 'i', 'v'}.")
 
@@ -1419,8 +1487,8 @@ def eigh_tridiagonal(alpha,
           upper = lambda_est_max + norm_slack + fudge * pivmin
         else:
           # Count the number of eigenvalues in the given range.
-          lower = select_range[0] - norm_slack - 2 * fudge * pivmin
-          upper = select_range[1] + norm_slack + fudge * pivmin
+          lower = select_min - norm_slack - 2 * fudge * pivmin
+          upper = select_max + norm_slack + fudge * pivmin
           first = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, lower)
           last = _sturm(alpha, beta_sq, pivmin, alpha0_perturbation, upper)
           target_counts = math_ops.range(first, last)
@@ -1473,8 +1541,9 @@ def eigh_tridiagonal(alpha,
         # eigenvalues are sorted in non-decreasing order.
         gap = eigvals[1:] - eigvals[:-1]
         eps = np.finfo(eigvals.dtype.as_numpy_dtype).eps
-        t_norm = math_ops.maximum(
-            math_ops.abs(eigvals[0]), math_ops.abs(eigvals[-1]))
+        # The eigenvalues are sorted, so this is the larger of the first and
+        # last one in magnitude, without indexing them when there are none.
+        t_norm = math_ops.reduce_max(math_ops.abs(eigvals))
         gaptol = np.sqrt(eps) * t_norm
         # Find the beginning and end of runs of eigenvectors corresponding
         # to eigenvalues closer than "gaptol", which will need to be
@@ -1500,7 +1569,7 @@ def eigh_tridiagonal(alpha,
             dtype=beta.dtype)
         nrm_v = norm(v0, axis=1)
         v0 = v0 / nrm_v[:, array_ops.newaxis]
-        zero_nrm = constant_op.constant(0, shape=nrm_v.shape, dtype=nrm_v.dtype)
+        zero_nrm = array_ops.zeros_like(nrm_v)
 
         # Replicate alpha-eigvals(ik) and beta across the k eigenvectors so we
         # can solve the k systems
@@ -1510,7 +1579,13 @@ def eigh_tridiagonal(alpha,
         alpha_shifted = (
             alpha[array_ops.newaxis, :] - eigvals_cast[:, array_ops.newaxis])
         beta = array_ops.tile(beta[array_ops.newaxis, :], [k, 1])
-        diags = [beta, alpha_shifted, math_ops.conj(beta)]
+        # Pad the off-diagonals to length n, since tridiagonal_solve only pads
+        # them itself when n is known statically.
+        diags = [
+            array_ops.pad(beta, [[0, 0], [0, 1]]),
+            alpha_shifted,
+            array_ops.pad(math_ops.conj(beta), [[0, 0], [1, 0]]),
+        ]
 
         def orthogonalize_close_eigenvectors(eigenvectors):
           # Eigenvectors corresponding to a cluster of close eigenvalues are not
@@ -1571,18 +1646,52 @@ def eigh_tridiagonal(alpha,
                                                [0, v0, nrm_v, zero_nrm])
         return transpose(v)
 
+    def _compute_trivial(alpha):
+      """Handles a matrix with at most one row."""
+      eigvals = math_ops.real(alpha)
+      if select == 'v':
+        # Keep the eigenvalue only if it's in the interval (min, max].
+        selected = math_ops.logical_and(
+            math_ops.greater(
+                eigvals, math_ops.cast(select_range[0], eigvals.dtype)
+            ),
+            math_ops.less_equal(
+                eigvals, math_ops.cast(select_range[1], eigvals.dtype)
+            ),
+        )
+        eigvals = array_ops.boolean_mask(eigvals, selected)
+      if eigvals_only:
+        return eigvals
+      num_rows = tensor_shape.dimension_value(alpha.shape[0])
+      if num_rows is None:
+        num_rows = array_ops.size(alpha)
+      eigvectors = eye(num_rows, dtype=alpha.dtype)
+      if select == 'v':
+        eigvectors = array_ops.boolean_mask(eigvectors, selected, axis=1)
+      return eigvals, eigvectors
+
+    def _compute(alpha, beta):
+      eigvals = _compute_eigenvalues(alpha, beta)
+      if eigvals_only:
+        return eigvals
+
+      eigvectors = _compute_eigenvectors(alpha, beta, eigvals)
+      return eigvals, eigvectors
+
     alpha = ops.convert_to_tensor(alpha, name='alpha')
-    n = alpha.shape[0]
-    if n <= 1:
-      return math_ops.real(alpha)
+    n = tensor_shape.dimension_value(alpha.shape[0])
+    if n is not None and n <= 1:
+      return _compute_trivial(alpha)
     beta = ops.convert_to_tensor(beta, name='beta')
 
     if alpha.dtype != beta.dtype:
       raise ValueError("'alpha' and 'beta' must have the same type.")
 
-    eigvals = _compute_eigenvalues(alpha, beta)
-    if eigvals_only:
-      return eigvals
-
-    eigvectors = _compute_eigenvectors(alpha, beta, eigvals)
-    return eigvals, eigvectors
+    if n is not None:
+      return _compute(alpha, beta)
+    # The size of the matrix is only known at runtime, e.g. in a tf.function
+    # whose input signature leaves it unknown.
+    n = array_ops.shape(alpha)[0]
+    return tf_cond.cond(
+        n <= 1, lambda: _compute_trivial(alpha), lambda: _compute(alpha, beta)
+    )

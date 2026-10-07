@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -114,7 +114,7 @@ class OwningScratchAllocator : public ScratchAllocator {
       return absl::InvalidArgumentError(
           absl::StrCat("byte_size must be non-negative, but got ", byte_size));
     }
-    ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> buffer,
+    ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> buffer,
                      allocator_->Allocate(device_ordinal_, byte_size,
                                           /*retry_on_failure=*/false));
     buffers_.push_back(std::move(buffer));

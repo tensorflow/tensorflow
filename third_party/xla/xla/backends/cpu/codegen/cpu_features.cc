@@ -57,6 +57,8 @@ absl::string_view CpuTargetFromMaxFeature(CPUFeature max_feature) {
       return "sapphirerapids";
     case CPUFeature::AMX_FP16:
       return "graniterapids";
+    case CPUFeature::AMX_FP8:
+      return "diamondrapids";
 
     //===------------------------------------------------------------------===//
     // AArch64
@@ -90,6 +92,7 @@ std::optional<CPUFeature> CpuFeatureFromString(absl::string_view cpu_feature) {
          {"AVX512_BF16", CPUFeature::AVX512_BF16},
          {"AMX", CPUFeature::AMX_BF16},  // Includes AMX_INT8.
          {"AMX_FP16", CPUFeature::AMX_FP16},
+         {"AMX_FP8", CPUFeature::AMX_FP8},
          //===-------------------------------------------------------------===//
          // AArch64
          //===-------------------------------------------------------------===//
@@ -158,6 +161,19 @@ static bool ShouldEnableX86CpuFeature(absl::string_view feature,
       if (feature == "amx-fp16") return false;
       [[fallthrough]];
 
+    case CPUFeature::AMX_FP16:
+      // Suppress DMR-and-newer additions over GNR: AVX10.2, remaining AMX
+      // tiles, and APX extensions.
+      if (feature == "amx-fp8" || feature == "amx-tf32" ||
+          feature == "amx-avx512" || feature == "amx-movrs" ||
+          absl::StartsWith(feature, "avx10.2") || feature == "egpr" ||
+          feature == "ndd" || feature == "ccmp" || feature == "nf" ||
+          feature == "zu" || feature == "ppx" || feature == "push2pop2" ||
+          feature == "movrs" || feature == "jmpabs") {
+        return false;
+      }
+      [[fallthrough]];
+
     default:
       // Leave all other features enabled.
       return true;
@@ -205,11 +221,12 @@ DetectedMachineAttributes DetectMachineAttributes(
       !max_feature.has_value() ||
       !(tsl::port::IsX86CPU() || tsl::port::IsAarch64CPU());
   for (const auto& [feature, enabled] : llvm::sys::getHostCPUFeatures()) {
+    absl::string_view feature_view(feature.data(), feature.size());
     bool should_enable =
         enabled && (no_feature_constraint ||
-                    ShouldEnableCpuFeature(feature, *max_feature));
+                    ShouldEnableCpuFeature(feature_view, *max_feature));
     result.features.push_back(
-        absl::StrCat(should_enable ? "+" : "-", std::string(feature)));
+        absl::StrCat(should_enable ? "+" : "-", feature_view));
     result.num_filtered_features += (should_enable != enabled);
   }
   absl::c_sort(result.features);

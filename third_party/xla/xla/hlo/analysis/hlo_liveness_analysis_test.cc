@@ -26,8 +26,6 @@ limitations under the License.
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -673,6 +671,38 @@ ENTRY %main (p0: s32[], p1: s32[], p2: s32[], p3: s32[]) -> s32[] {
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p1"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p2"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p3"), {}));
+}
+
+TEST_F(HloLivenessAnalysisTest, DisabledWhileLoopDce) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add.0 = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply.0 = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple.0 = (s32[], s32[3]{0}) tuple(add.0, multiply.0)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(5)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(0)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    while.0 = (s32[], s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body, frontend_attributes={xla_disable_while_loop_dce="true"}
+    ROOT get-tuple-element.4 = s32[] get-tuple-element(while.0), index=0
+  })"));
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "while.0"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "while.0"), {0}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "while.0"), {1}));
 }
 
 }  // namespace

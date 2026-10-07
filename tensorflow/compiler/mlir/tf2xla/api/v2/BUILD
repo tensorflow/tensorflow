@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -29,13 +30,13 @@ cc_library(
     name = "legalize_tf",
     srcs = ["legalize_tf.cc"],
     hdrs = ["legalize_tf.h"],
-    visibility = [
+    visibility = internal_visibility([
         "//learning/brain/google/xla:__pkg__",
         "//learning/brain/mlir/bridge:__pkg__",
         "//tensorflow/compiler/mlir/quantization/stablehlo:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api/v2/testing:__pkg__",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:__pkg__",
-    ],
+    ]),
     deps = [
         ":device_type_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
@@ -351,7 +352,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/translate:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tf2xla/internal:graph_to_tf_executor_util",
         "//tensorflow/compiler/mlir/tf2xla/internal:node_order",

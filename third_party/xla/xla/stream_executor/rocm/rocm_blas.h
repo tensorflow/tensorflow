@@ -185,10 +185,6 @@ class ROCMBlas : public blas::BlasSupport {
   // container holding solutions vector (to avoid reallocating it each time)
   std::vector<rocblas_int> solutions_;
 
-  void MaybeLogGemmOp(StreamExecutor::GemmCallTrace::GemmType op,
-                      blas::CallContext context, uint64_t size1,
-                      uint64_t size2);
-
   rocm::BlasLt blas_lt_;
 
   ROCMBlas(const ROCMBlas &) = delete;

@@ -112,6 +112,7 @@ cc_library(
         ":lrn_ops",
         ":matmul_op",
         ":matrix_band_part_op",
+        ":matrix_determinant_op",
         ":matrix_diag_ops",
         ":matrix_inverse_op",
         ":matrix_solve_op",
@@ -174,6 +175,7 @@ cc_library(
         ":uniform_quantized_ops",
         ":unique_op",
         ":unpack_op",
+        ":unravel_index_op",
         ":variable_ops",
         ":where_op",
         ":while_op",
@@ -383,6 +385,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/common:passes",
         "@shardy//shardy/dialect/sdy/transforms/import:passes",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
@@ -504,6 +507,7 @@ tf_kernel_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@xla//xla:literal",
         "@xla//xla:shape_util",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
@@ -630,7 +634,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder/lib:math",
@@ -847,6 +854,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder/lib:constants",
@@ -878,6 +887,7 @@ tf_kernel_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -1026,6 +1036,26 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "matrix_determinant_op",
+    srcs = ["matrix_determinant_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:logdet",
+    ],
+)
+
+tf_kernel_library(
     name = "matrix_inverse_op",
     srcs = ["matrix_inverse_op.cc"],
     deps = [
@@ -1082,6 +1112,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:types",
         "@xla//xla:literal",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
@@ -1321,6 +1352,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@xla//xla:shape_util",
@@ -1541,6 +1573,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:qr",
     ],
@@ -1561,6 +1595,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
@@ -1847,6 +1882,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status:statusor",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
@@ -2096,8 +2132,10 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@xla//xla:literal_util",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -2614,7 +2652,6 @@ tf_kernel_library(
     name = "lower_upper_bound_ops",
     srcs = ["lower_upper_bound_ops.cc"],
     deps = [
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2624,10 +2661,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@xla//xla:comparison_util",
         "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -3145,6 +3182,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
@@ -3253,6 +3291,26 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@xla//xla/hlo/builder:xla_builder",
+    ],
+)
+
+tf_kernel_library(
+    name = "unravel_index_op",
+    srcs = ["unravel_index_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
     ],
 )

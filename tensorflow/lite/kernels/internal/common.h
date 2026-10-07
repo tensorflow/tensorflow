@@ -84,6 +84,24 @@ inline T WrappingMul(T a, T b) {
   }
 }
 
+// Tensor value arithmetic helpers for ops where integer overflow is documented
+// numeric behavior and not used for memory allocation, indexing, shape
+// computation, or control-flow bounds. These intentionally preserve the direct
+// arithmetic expression and only suppress UBSan's integer-overflow diagnostic.
+// Do not use these helpers for shape, element count, allocation, or pointer
+// offset arithmetic; those paths need checked integer helpers instead.
+template <typename T>
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline T
+AddTensorValuesWithExpectedOverflow(T a, T b) {
+  return a + b;
+}
+
+template <typename T>
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW inline T
+MulTensorValuesWithExpectedOverflow(T a, T b) {
+  return a * b;
+}
+
 // Reduces and compresses dimensions so that broadcast handling becomes more
 // efficient. Returns true if the output shape is broadcastable; it doesn't
 // contain any degenerate dimension, i.e. shape dimension = 0. False otherwise.

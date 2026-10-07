@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_STRIDED_SLICE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_STRIDED_SLICE_H_
 
-#include <functional>
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <type_traits>
 #include <vector>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
@@ -97,7 +100,9 @@ inline void StridedSlice(const DynamicStridedSliceParams& op_params,
   const int dims = input_shape.DimensionsCount();
   std::vector<int> starts(dims);
   std::vector<int> stops(dims);
-  std::vector<int> input_strides(dims);
+  // Strides accumulate the product of trailing dimensions, so they must be
+  // 64-bit to avoid overflow when the tensor has more than INT_MAX elements.
+  std::vector<int64_t> input_strides(dims);
   if (dims == 0) {
     writer->Write(0);
     return;
@@ -106,26 +111,74 @@ inline void StridedSlice(const DynamicStridedSliceParams& op_params,
   for (int i = dims - 2; i >= 0; --i) {
     input_strides[i] = input_strides[i + 1] * input_shape.Dims(i + 1);
   }
+  auto loop_condition = [](int64_t index, int64_t stop, int stride) {
+    return stride > 0 ? index < stop : index > stop;
+  };
   for (int axis = 0; axis < dims; ++axis) {
     starts[axis] = StartForAxis(op_params, input_shape, axis);
     stops[axis] = EndForAxis(op_params, input_shape, axis, starts[axis]);
-  }
-
-  auto loop_condition = [](int index, int stop, int stride) {
-    return stride > 0 ? index < stop : index > stop;
-  };
-  std::function<void(int, int)> write_slice = [&](int axis, int input_index) {
-    if (axis == dims) {
-      writer->Write(input_index);
+    if (!loop_condition(starts[axis], stops[axis], op_params.strides[axis])) {
       return;
     }
-    for (int offset = starts[axis];
-         loop_condition(offset, stops[axis], op_params.strides[axis]);
-         offset += op_params.strides[axis]) {
-      write_slice(axis + 1, input_index + offset * input_strides[axis]);
+  }
+
+  int inner_contig_axis = dims;
+  while (
+      inner_contig_axis > 1 && op_params.strides[inner_contig_axis - 1] == 1 &&
+      starts[inner_contig_axis - 1] == 0 &&
+      stops[inner_contig_axis - 1] == input_shape.Dims(inner_contig_axis - 1)) {
+    --inner_contig_axis;
+  }
+  const int last_loop_axis = inner_contig_axis - 1;
+  const bool last_loop_stride_is_1 = op_params.strides[last_loop_axis] == 1;
+  const int64_t last_loop_contig_len =
+      last_loop_stride_is_1 ? (static_cast<int64_t>(stops[last_loop_axis]) -
+                               static_cast<int64_t>(starts[last_loop_axis])) *
+                                  input_strides[last_loop_axis]
+                            : 0;
+
+  auto write_contiguous = [&](int64_t pos, int64_t count) {
+    if constexpr (std::is_trivially_copyable_v<T>) {
+      if (count > 1) {
+        constexpr int64_t kMaxChunk =
+            std::numeric_limits<int>::max() / static_cast<int64_t>(sizeof(T));
+        while (count > 0) {
+          const int chunk =
+              static_cast<int>(std::min<int64_t>(count, kMaxChunk));
+          writer->WriteN(pos, chunk);
+          pos += chunk;
+          count -= chunk;
+        }
+        return;
+      }
+    }
+    for (int64_t i = 0; i < count; ++i) {
+      writer->Write(pos + i);
     }
   };
-  write_slice(/*axis=*/0, /*input_index=*/0);
+
+  auto write_slice = [&](auto& self, int axis, int64_t input_index) -> void {
+    if (axis == last_loop_axis) {
+      if (last_loop_stride_is_1) {
+        write_contiguous(input_index + starts[axis] * input_strides[axis],
+                         last_loop_contig_len);
+      } else {
+        for (int64_t offset = starts[axis];
+             loop_condition(offset, stops[axis], op_params.strides[axis]);
+             offset += op_params.strides[axis]) {
+          write_contiguous(input_index + offset * input_strides[axis],
+                           input_strides[axis]);
+        }
+      }
+      return;
+    }
+    for (int64_t offset = starts[axis];
+         loop_condition(offset, stops[axis], op_params.strides[axis]);
+         offset += op_params.strides[axis]) {
+      self(self, axis + 1, input_index + offset * input_strides[axis]);
+    }
+  };
+  write_slice(write_slice, /*axis=*/0, /*input_index=*/0);
 }
 
 template <typename T>
@@ -188,7 +241,7 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
   const int stop_4 = strided_slice::StridedSliceEndForAxis(
       params_copy, input_shape, 4, start_4);
 
-  auto lc = [&](int end, int stride, int index) {
+  auto lc = [&](int64_t end, int stride, int64_t index) {
     if (stride < 0) {
       return index > end;
     } else {
@@ -203,33 +256,34 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
   const int* stride = reinterpret_cast<const int*>(params_copy.strides);
   const bool inner_stride_is_1 = params_copy.strides[4] == 1;
 
-  for (int offset_0 = start_0; lc(stop_0, stride[0], offset_0);
+  for (int64_t offset_0 = start_0; lc(stop_0, stride[0], offset_0);
        offset_0 += stride[0]) {
-    for (int offset_1 = start_1; lc(stop_1, stride[1], offset_1);
+    for (int64_t offset_1 = start_1; lc(stop_1, stride[1], offset_1);
          offset_1 += stride[1]) {
-      for (int offset_2 = start_2; lc(stop_2, stride[2], offset_2);
+      for (int64_t offset_2 = start_2; lc(stop_2, stride[2], offset_2);
            offset_2 += stride[2]) {
-        for (int offset_3 = start_3; lc(stop_3, stride[3], offset_3);
+        for (int64_t offset_3 = start_3; lc(stop_3, stride[3], offset_3);
              offset_3 += stride[3]) {
           // When the stride is 1, the inner loop is equivalent to the
           // optimized slice inner loop. Otherwise, it is identical to the
           // strided_slice reference implementation inner loop.
           if (inner_stride_is_1) {
             const int len = stop_4 - start_4;
-            int index = start_4 + offset_3 * shape[4] +
-                        offset_2 * shape[3] * shape[4] +
-                        offset_1 * shape[2] * shape[3] * shape[4] +
-                        offset_0 * shape[1] * shape[2] * shape[3] * shape[4];
+            int64_t index =
+                start_4 + offset_3 * shape[4] + offset_2 * shape[3] * shape[4] +
+                offset_1 * shape[2] * shape[3] * shape[4] +
+                offset_0 * shape[1] * shape[2] * shape[3] * shape[4];
             if (len > 0) {
               writer->WriteN(index, len);
             }
           } else {
-            for (int offset_4 = start_4; lc(stop_4, stride[4], offset_4);
+            for (int64_t offset_4 = start_4; lc(stop_4, stride[4], offset_4);
                  offset_4 += stride[4]) {
-              int index = offset_4 + offset_3 * shape[4] +
-                          offset_2 * shape[3] * shape[4] +
-                          offset_1 * shape[2] * shape[3] * shape[4] +
-                          offset_0 * shape[1] * shape[2] * shape[3] * shape[4];
+              int64_t index =
+                  offset_4 + offset_3 * shape[4] +
+                  offset_2 * shape[3] * shape[4] +
+                  offset_1 * shape[2] * shape[3] * shape[4] +
+                  offset_0 * shape[1] * shape[2] * shape[3] * shape[4];
               writer->Write(index);
             }
           }

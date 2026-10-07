@@ -22,9 +22,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -46,7 +46,7 @@ class GpuAllGatherOptimizerTest : public HloHardwareIndependentTestBase {
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
-    ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
 
     auto changed = AllGatherOptimizer().Run(module.get());
@@ -85,10 +85,10 @@ add.1 = bf16[8,128,1024]{2,1,0} add(all-gather.1, all-gather.2)
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*expect_change=*/true));
   // graph should contain 1 all-gather but since the node removal piece
   // is diferred, they still exist at this stage
   EXPECT_EQ(CollectiveCount<HloOpcode::kAllGather>(module), 3);
@@ -108,10 +108,10 @@ ENTRY %main.6_spmd (param: f32[4,8], param.1: f32[4,8]) -> f32[8,8] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/2,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/2,
+                                            /*expect_change=*/true));
   EXPECT_EQ(CollectiveCount<HloOpcode::kAllGather>(module), 1);
 }
 
@@ -140,10 +140,10 @@ add.2 = bf16[8,128,1024]{2,1,0} add(all-gather.1, all-gather.2)
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*expect_change=*/false));
   // see the comment for BranchesOptimized test
   EXPECT_EQ(CollectiveCount<HloOpcode::kAllGather>(module), 3);
   EXPECT_EQ(CollectiveCount<HloOpcode::kReduceScatter>(module), 3);
@@ -173,10 +173,10 @@ add.2 = bf16[8,128,1024]{2,1,0} add(all-gather.1, all-gather.3)
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*expect_change=*/true));
   EXPECT_EQ(CollectiveCount<HloOpcode::kAllGather>(module), 3);
   EXPECT_EQ(CollectiveCount<HloOpcode::kReduceScatter>(module), 3);
 }
@@ -203,10 +203,10 @@ add.2 = bf16[8,128,1024]{2,1,0} add(all-gather, add.1)
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*expect_change=*/false));
   EXPECT_EQ(CollectiveCount<HloOpcode::kAllGather>(module), 1);
   EXPECT_EQ(CollectiveCount<HloOpcode::kReduceScatter>(module), 1);
 }
@@ -224,10 +224,10 @@ add.1 = bf16[8,128,128]{2,1,0} add(all-gather.1, all-gather.2)
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*expect_change=*/false));
 }
 
 TEST_F(GpuAllGatherOptimizerTest, CollectiveGroupKeyConstrainsOptimization) {

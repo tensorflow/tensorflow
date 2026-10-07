@@ -14,12 +14,14 @@
 # ==============================================================================
 """Tests for tensorflow.python.ops.linalg_ops."""
 
+import functools
 import itertools
 
 from absl.testing import parameterized
 import numpy as np
 import scipy.linalg
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -60,7 +62,12 @@ class CholeskySolveTest(test.TestCase):
             with self.subTest(n=n, np_type=np_type, atol=atol, k=k):
               rhs = self.rng.randn(2, n, k).astype(np_type)
               x = linalg_ops.cholesky_solve(chol, rhs)
-              self.assertAllClose(rhs, math_ops.matmul(array, x), atol=atol)
+              rhs_pred = (
+                  test_util.matmul_without_tf32(array, x)
+                  if test.is_gpu_available()
+                  else math_ops.matmul(array, x)
+              )
+              self.assertAllClose(rhs, rhs_pred, atol=atol)
 
 
 class LogdetTest(test.TestCase):
@@ -90,6 +97,90 @@ class LogdetTest(test.TestCase):
       with self.subTest(np_dtype=np_dtype, atol=atol):
         matrix = (np.eye(20) * 1e-6).astype(np_dtype)
         _, logdet_np = np.linalg.slogdet(matrix)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+
+  def test_singular_matrices_return_neg_inf(self):
+    """Test that singular matrices return -inf instead of NaN."""
+    for np_dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+      with self.subTest(np_dtype=np_dtype):
+        # Rank-1 singular matrix (determinant = 0)
+        matrix = np.ones((8, 8), dtype=np_dtype)
+        _, logdet_np = np.linalg.slogdet(matrix)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          result = self.evaluate(logdet_tf)
+          self.assertEqual(result, logdet_np)
+          self.assertEqual(result, -np.inf)
+
+  def test_singular_matrices_batch(self):
+    """Test that batches of singular matrices return -inf."""
+    for np_dtype in [np.float32, np.float64]:
+      with self.subTest(np_dtype=np_dtype):
+        # Batch of singular matrices
+        matrices = np.ones((2, 4, 4), dtype=np_dtype)
+        with self.session():
+          logdet_tf = linalg.logdet(matrices)
+          result = self.evaluate(logdet_tf)
+          # All should be -inf for rank-1 singular matrices
+          np.testing.assert_array_equal(result, [-np.inf, -np.inf])
+
+  def test_works_with_general_square_matrices(self):
+    """Test that logdet works on matrices that are not hermitian pos. def."""
+    for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        # Non-symmetric matrices with a positive determinant; Cholesky (the
+        # previous implementation) does not apply to these.
+        for matrix in [
+            np.array([[4.0, 1.0], [2.0, 3.0]], dtype=np_dtype),
+            np.array(
+                [[2.0, 1.0, 0.0], [0.0, 3.0, 1.0], [1.0, 0.0, 2.0]],
+                dtype=np_dtype,
+            ),
+        ]:
+          _, logdet_np = np.linalg.slogdet(matrix)
+          with self.session():
+            logdet_tf = linalg.logdet(matrix)
+            self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+
+  def test_returns_log_abs_det_for_negative_determinant(self):
+    """Test that a negative determinant returns log(|det|), not NaN."""
+    for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        # det = -1, so the log determinant is not real valued.
+        matrix = np.array([[-1.0, 0.0], [0.0, 1.0]], dtype=np_dtype)
+        sign_np, logdet_np = np.linalg.slogdet(matrix)
+        self.assertLess(sign_np, 0)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+
+  def test_works_with_complex_matrices(self):
+    """Test that logdet works on complex matrices with positive real det."""
+    for np_dtype, atol in [(np.complex64, 0.05), (np.complex128, 1e-5)]:
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        # A complex matrix whose determinant has a positive real part.
+        matrix = np.array(
+            [[1.0 + 1.0j, 0.5 - 0.5j], [-0.2 + 0.1j, 2.0 + 0.0j]],
+            dtype=np_dtype,
+        )
+        sign_np, logdet_np = np.linalg.slogdet(matrix)
+        self.assertGreater(np.real(sign_np), 0)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+
+  def test_returns_log_abs_det_for_complex_negative_real_determinant(self):
+    """Test that logdet returns log(|det|) when the real part of the det is <= 0."""
+    for np_dtype, atol in [(np.complex64, 0.05), (np.complex128, 1e-5)]:
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        # A complex matrix whose determinant has a negative real part.
+        matrix = np.array(
+            [[-1.0 + 0.0j, 0.0j], [0.0j, 1.0 + 0.0j]], dtype=np_dtype
+        )  # det = -1 + 0j
+        sign_np, logdet_np = np.linalg.slogdet(matrix)
+        self.assertLessEqual(np.real(sign_np), 0)
         with self.session():
           logdet_tf = linalg.logdet(matrix)
           self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
@@ -351,7 +442,10 @@ class _PinvTest(object):
     expected_a_pinv_ = self.expected_pinv(a_, rcond)
     a_pinv = linalg.pinv(a, rcond, validate_args=True)
     a_pinv_ = self.evaluate(a_pinv)
-    self.assertAllClose(expected_a_pinv_, a_pinv_, atol=2e-5, rtol=2e-5)
+    use_tf32_tol = self.dtype == np.float32 and test.is_gpu_available()
+    atol = 3e-3 if use_tf32_tol else 2e-5
+    rtol = 1e-3 if use_tf32_tol else 2e-5
+    self.assertAllClose(expected_a_pinv_, a_pinv_, atol=atol, rtol=rtol)
     if not self.use_static_shape:
       return
     self.assertAllEqual(expected_a_pinv_.shape, a_pinv.shape)
@@ -369,7 +463,10 @@ class _PinvTest(object):
     expected_a_pinv_ = self.expected_pinv(a_, rcond)
     a_pinv = linalg.pinv(a, rcond, validate_args=True)
     a_pinv_ = self.evaluate(a_pinv)
-    self.assertAllClose(expected_a_pinv_, a_pinv_, atol=1e-5, rtol=1e-4)
+    use_tf32_tol = self.dtype == np.float32 and test.is_gpu_available()
+    atol = 1e-3 if use_tf32_tol else 1e-5
+    rtol = 1e-3 if use_tf32_tol else 1e-4
+    self.assertAllClose(expected_a_pinv_, a_pinv_, atol=atol, rtol=rtol)
     if not self.use_static_shape:
       return
     self.assertAllEqual(expected_a_pinv_.shape, a_pinv.shape)
@@ -652,6 +749,24 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(
             eigvals_all[first:(last + 1)], eigvals_value, atol=atol)
 
+  @parameterized.parameters("i", "v")
+  def test_select_range_required(self, select):
+    # Regression test for GitHub issue 113321: both of these select modes
+    # index into select_range, so omitting it surfaced as a TypeError from
+    # subscripting None rather than naming the missing argument.
+    alpha = np.array([1.0, 2.0, 3.0], np.float32)
+    beta = np.array([0.5, 0.5], np.float32)
+    with self.assertRaisesRegex(ValueError, "select_range must be specified"):
+      linalg.eigh_tridiagonal(alpha, beta, select=select)
+
+  def test_select_range_not_required_for_a(self):
+    # select='a' ignores select_range and must keep working without it.
+    alpha = np.array([1.0, 2.0, 3.0], np.float32)
+    beta = np.array([0.5, 0.5], np.float32)
+    self.assertAllEqual(
+        [3], linalg.eigh_tridiagonal(alpha, beta, select="a").shape
+    )
+
   @parameterized.parameters((np.float32), (np.float64), (np.complex64),
                             (np.complex128))
   def test_extreme_eigenvalues_test(self, dtype):
@@ -684,6 +799,157 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
     alpha = np.ones(n).astype(dtype)
     beta = 0.01 * np.sqrt(eps) * np.ones((n - 1)).astype(dtype)
     self.run_test(alpha, beta, eigvals_only=False)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_eigenvectors_select_by_value(self, dtype):
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
+      return
+    # The number of eigenvalues in the range is only known at runtime, which
+    # computing their eigenvectors in a graph used to fail on.
+    n = 8
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    if np.issubdtype(dtype, np.complexfloating):
+      beta += 1j * np.random.uniform(size=(n - 1,)).astype(dtype)
+    matrix = np.diag(alpha) + np.diag(beta, 1) + np.diag(np.conj(beta), -1)
+    eigvals_all = np.linalg.eigvalsh(matrix)
+    eigvals, eigvectors = linalg.eigh_tridiagonal(
+        alpha,
+        beta,
+        eigvals_only=False,
+        select="v",
+        select_range=(
+            (eigvals_all[1] + eigvals_all[2]) / 2,
+            (eigvals_all[5] + eigvals_all[6]) / 2,
+        ),
+    )
+
+    eps = np.finfo(dtype).eps
+    atol = n * eps * np.amax(np.abs(eigvals_all))
+    self.assertAllClose(eigvals_all[2:6], eigvals, atol=atol)
+    self.check_orthogonality(eigvectors, 2 * np.sqrt(n) * eps)
+    self.check_residual(matrix, eigvals, eigvectors, atol)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_eigenvectors_of_trivial_matrix(self, dtype):
+    # Matrices with at most one row used to return only their eigenvalues.
+    for n in [0, 1]:
+      alpha = 3 * np.ones([n], dtype=dtype)
+      beta = np.ones([0], dtype=dtype)
+      eigvals, eigvectors = linalg.eigh_tridiagonal(
+          alpha, beta, eigvals_only=False
+      )
+      self.assertAllEqual(np.real(alpha), eigvals)
+      self.assertAllEqual(np.eye(n, dtype=dtype), eigvectors)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_select_by_value_of_trivial_matrix(self, dtype):
+    # The eigenvalue of a matrix with one row is only selected if it's in the
+    # interval, and a matrix with no rows has no eigenvalue to select.
+    beta = np.ones([0], dtype=dtype)
+    for alpha, select_range, expected in (
+        ([3], (0.0, 1.0), []),
+        ([3], (2.0, 4.0), [3.0]),
+        ([], (2.0, 4.0), []),
+    ):
+      alpha = np.array(alpha, dtype=dtype)
+      eigvals, eigvectors = linalg.eigh_tridiagonal(
+          alpha, beta, eigvals_only=False, select="v", select_range=select_range
+      )
+      self.assertAllEqual(expected, eigvals)
+      self.assertAllEqual(
+          np.eye(len(alpha), dtype=dtype)[:, : len(expected)], eigvectors
+      )
+
+  def test_select_range_of_other_dtype(self):
+    # select_range can be a tensor of another floating-point type than the
+    # matrix, whatever its size.
+    select_range = constant_op.constant([2.0, 4.0], dtype=dtypes.float32)
+    for alpha, beta, expected in (
+        ([3.0], [], [3.0]),
+        ([3.0, 3.0, 3.0], [0.0, 0.0], [3.0, 3.0, 3.0]),
+    ):
+      eigvals = linalg.eigh_tridiagonal(
+          np.array(alpha, dtype=np.float64),
+          np.array(beta, dtype=np.float64),
+          select="v",
+          select_range=select_range,
+      )
+      self.assertAllClose(expected, eigvals)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_eigenvectors_select_empty_interval(self, dtype):
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
+      return
+    # Computing the eigenvectors used to index the first eigenvalue, which
+    # fails when the interval has none.
+    n = 4
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    eigvals, eigvectors = linalg.eigh_tridiagonal(
+        alpha, beta, eigvals_only=False, select="v", select_range=(100.0, 200.0)
+    )
+    self.assertEqual((0,), self.evaluate(eigvals).shape)
+    self.assertEqual((n, 0), self.evaluate(eigvectors).shape)
+
+  @parameterized.parameters(
+      (np.float32), (np.float64), (np.complex64), (np.complex128)
+  )
+  def test_dynamic_length(self, dtype):
+    # Regression test for GitHub issue 128429: in a tf.function whose input
+    # signature leaves the length of alpha unknown, eigh_tridiagonal used to
+    # fail on Python arithmetic with that length.
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
+      all_kwargs = [
+          {},
+          {"select": "i", "select_range": (0, 0)},
+          {"select": "v", "select_range": (0.25, 0.75)},
+      ]
+    else:
+      all_kwargs = [
+          {},
+          {"eigvals_only": False},
+          {"eigvals_only": False, "select": "i", "select_range": (0, 0)},
+          {
+              "eigvals_only": False,
+              "select": "v",
+              "select_range": (0.25, 0.75),
+          },
+      ]
+    # Lengths of at most 1 are handled separately. The others peel 1, 4, 15,
+    # 0, 1, and 0 steps off the Sturm sequence's 16-way unrolled loop, which
+    # then runs 0, 0, 0, 1, 1, and 2 times.
+    inputs = {}
+    for n in [0, 1, 2, 5, 16, 17, 18, 33]:
+      alpha = np.random.uniform(size=(n,)).astype(dtype)
+      beta = np.random.uniform(size=(max(n - 1, 0),)).astype(dtype)
+      if np.issubdtype(dtype, np.complexfloating):
+        beta += 1j * np.random.uniform(size=beta.shape).astype(dtype)
+      inputs[n] = (alpha, beta)
+
+    spec = tensor.TensorSpec([None], dtype)
+    checks = []
+    for kwargs in all_kwargs:
+      eigh_tridiagonal = def_function.function(
+          functools.partial(linalg.eigh_tridiagonal, **kwargs),
+          input_signature=[spec, spec],
+      )
+      for n in [0, 1, 2, 5, 16, 17, 18, 33]:
+        alpha, beta = inputs[n]
+        checks.append((
+            linalg.eigh_tridiagonal(alpha, beta, **kwargs),
+            eigh_tridiagonal(alpha, beta),
+        ))
+    for expected, actual in self.evaluate(checks):
+      self.assertAllClose(expected, actual)
 
 
 if __name__ == "__main__":

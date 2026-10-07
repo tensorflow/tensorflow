@@ -37,9 +37,7 @@ class OnecclCollectives : public GpuCollectives {
  public:
   bool IsImplemented() const final { return true; }
 
-  absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final {
-    return absl::OkStatus();
-  }
+  absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
 
   // TODO(Intel-tf): CreateCommunicatorsWithCancel is not supported yet. Will
   // add support once we have onecclCommAbort and onecclCommGetAsyncError
@@ -54,6 +52,8 @@ class OnecclCollectives : public GpuCollectives {
     return absl::UnimplementedError("Not implemented");
   }
 
+  // TODO(Intel-tf): SplitCommunicators is not support yet. Will add support
+  // once we have onecclCommSplit working.
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,
       absl::Span<const RankId> keys, const Collectives::Config& config,

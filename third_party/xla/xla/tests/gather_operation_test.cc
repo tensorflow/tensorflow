@@ -45,8 +45,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class GatherOperationTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class GatherOperationTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunTest(const std::string& hlo_text, Literal* operand,
                Literal* start_indices) {

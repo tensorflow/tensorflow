@@ -20,8 +20,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
+#include "xla/ffi/attributes_storage.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -65,6 +66,20 @@ class CallFrameBuilder {
     // This overload is only necessary to support older GCC versions.
     void Insert(std::string name, const char* attr) {
       Insert(std::move(name), Attribute{std::string(attr)});
+    }
+
+    // An exact-match overload for bool is required on MSVC-compatible
+    // compilers (MSVC, clang-cl): there the boolean literals `true`/`false`
+    // convert to a null pointer via a legacy extension, so
+    // `Insert(name, false)` would otherwise select the `const char*`
+    // overload above with a null pointer and crash in `strlen`. It must be
+    // constrained to exactly `bool`: a plain `Insert(std::string, bool)`
+    // overload would also capture other integral types through the standard
+    // integral-to-bool conversion, which outranks the user-defined
+    // conversion to `Attribute`.
+    template <typename T, typename = std::enable_if_t<std::is_same_v<T, bool>>>
+    void Insert(std::string name, T attr) {
+      Insert(std::move(name), Attribute{Scalar{attr}});
     }
 
     AttributesMap Build();
@@ -129,34 +144,20 @@ class CallFrame {
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
   XLA_FFI_CallFrame Build(
-      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      const XLA_FFI_Api* api, XLA_FFI_InvokeContext* ctx,
       XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
 
  private:
   friend class CallFrameBuilder;
 
-  // Declare implementation detail structs to grant access to private members.
-  struct AttributeStorage;
-  struct AttributeType;
-  struct ConvertAttribute;
-  struct FixUpAttribute;
-
   // Declare implementation detail structs for call frame storage.
   struct Arguments;
-  struct Array;
-  struct Attributes;
   struct Buffer;
-  struct Dictionary;
-  struct NamedAttribute;
   struct Results;
-  struct Scalar;
-  struct String;
-
-  using Attribute = std::variant<Scalar, Array, String, Dictionary>;
 
   CallFrame(std::unique_ptr<Arguments> arguments,
             std::unique_ptr<Results> results,
-            std::shared_ptr<Attributes> attributes);
+            std::shared_ptr<const AttributesStorage> attributes);
 
   static Buffer ConvertBuffer(const CallFrameBuilder::Buffer& buffer);
 
@@ -186,22 +187,12 @@ class CallFrame {
   // pointers into storage objects.
   static std::unique_ptr<Results> FixUpRets(std::unique_ptr<Results> rets);
 
-  //===----- Call frame attributes ----------------------------------------===//
-
-  // Creates call frame attributes from the call frame builder attributes.
-  static std::unique_ptr<Attributes> CreateAttrs(const AttributesMap& attrs);
-
-  // Fixes up call frame attributes by initializing XLA FFI structs with valid
-  // pointers into storage objects.
-  static std::unique_ptr<Attributes> FixUpAttrs(
-      std::unique_ptr<Attributes> attrs);
-
   std::unique_ptr<Arguments> arguments_;
   std::unique_ptr<Results> results_;
 
   // Attributes are defined at compile time and can be shared between multiple
   // instances of a call frame (see `Update` above).
-  std::shared_ptr<Attributes> attributes_;
+  std::shared_ptr<const AttributesStorage> attributes_;
 };
 
 }  // namespace xla::ffi

@@ -44,13 +44,10 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -280,6 +277,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kAtan2: {
       return {"__nv_atan2", "__ocml_atan2", "_Z17__spirv_ocl_atan2"};
     }
+    case TargetDeviceFunctionID::kAtan: {
+      return {"__nv_atan", "__ocml_atan", "_Z16__spirv_ocl_atan"};
+    }
     case TargetDeviceFunctionID::kAsin: {
       return {"__nv_asin", "__ocml_asin", "_Z16__spirv_ocl_asin"};
     }
@@ -301,6 +301,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kExp: {
       return {"__nv_exp", "__ocml_exp", "_Z15__spirv_ocl_exp"};
     }
+    case TargetDeviceFunctionID::kExp2: {
+      return {"__nv_exp2", "__ocml_exp2", "_Z16__spirv_ocl_exp2"};
+    }
     case TargetDeviceFunctionID::kExpm1: {
       return {"__nv_expm1", "__ocml_expm1", "_Z17__spirv_ocl_expm1"};
     }
@@ -315,6 +318,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     }
     case TargetDeviceFunctionID::kLog1p: {
       return {"__nv_log1p", "__ocml_log1p", "_Z17__spirv_ocl_log1p"};
+    }
+    case TargetDeviceFunctionID::kLog2: {
+      return {"__nv_log2", "__ocml_log2", "_Z16__spirv_ocl_log2"};
     }
     case TargetDeviceFunctionID::kPow: {
       return {"__nv_pow", "__ocml_pow", "_Z15__spirv_ocl_pow"};
@@ -344,6 +350,7 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
       return {"__nv_rint", "__ocml_rint", "_Z16__spirv_ocl_rint"};
     }
   }
+  LOG(FATAL) << "Invalid TargetDeviceFunctionID: " << static_cast<int>(func_id);
 }
 }  // namespace
 
@@ -351,14 +358,17 @@ bool HasF16Implementation(TargetDeviceFunctionID func_id,
                           llvm::Triple target_triple) {
   return target_triple.isAMDGPU() &&
          (func_id == TargetDeviceFunctionID::kAtan2 ||
+          func_id == TargetDeviceFunctionID::kAtan ||
           func_id == TargetDeviceFunctionID::kCbrt ||
           func_id == TargetDeviceFunctionID::kCos ||
           func_id == TargetDeviceFunctionID::kExp ||
+          func_id == TargetDeviceFunctionID::kExp2 ||
           func_id == TargetDeviceFunctionID::kExpm1 ||
           func_id == TargetDeviceFunctionID::kFmod ||
           func_id == TargetDeviceFunctionID::kHypot ||
           func_id == TargetDeviceFunctionID::kLog ||
           func_id == TargetDeviceFunctionID::kLog1p ||
+          func_id == TargetDeviceFunctionID::kLog2 ||
           func_id == TargetDeviceFunctionID::kPow ||
           func_id == TargetDeviceFunctionID::kRsqrt ||
           func_id == TargetDeviceFunctionID::kSin ||

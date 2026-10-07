@@ -686,9 +686,19 @@ bool MMapWeightCacheProvider::MapTensorIdentifiers(
     XNNPACK_RETURN_CHECK(index < size,
                          "Tensor index corresponds to a non existing tensor.");
     const TfLiteTensor& t = tensors[index];
-    buffer_address_to_identifier_.emplace(
-        t.data.data, OriginalBufferMetadata{identifier, t.bytes});
+    XNNPACK_RETURN_CHECK(MapBufferIdentifier(t.data.data, t.bytes, identifier));
   }
+  return true;
+}
+
+bool MMapWeightCacheProvider::MapBufferIdentifier(const void* buffer,
+                                                  size_t size,
+                                                  uint64_t identifier) {
+  if (!buffer) {
+    return false;
+  }
+  buffer_address_to_identifier_.emplace(
+      buffer, OriginalBufferMetadata{identifier, size});
   return true;
 }
 

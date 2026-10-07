@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/util.h"
+#include "xla/tsl/util/maybe_owning.h"
 
 namespace xla {
 
@@ -118,14 +118,7 @@ class AbstractTrackedDeviceBuffer {
   absl::Status BlockForOperationsToComplete(PjRtMemorySpace* memory_space);
 
   absl::StatusOr<PjRtDeviceEventRef> GetDefinitionEvent(
-      PjRtMemorySpace* memory_space) {
-    if (definition_events().size() != 1) {
-      return absl::InternalError(
-          "GetMergedDefinitionEvent only supported on TPU for buffers with "
-          "exactly 1 definition event.");
-    }
-    return definition_events_[0];
-  }
+      PjRtMemorySpace* memory_space);
 
   absl::Status WaitUntilBufferReadyOnStream(PjRtMemorySpace* memory_space,
                                             std::intptr_t stream);
@@ -234,10 +227,15 @@ class CommonPjRtBuffer : public PjRtBuffer {
     bool ok() const { return state_ == kValid; }
 
     // Access to the underlying device buffer storage. Requires this->ok().
-    AbstractTrackedDeviceBuffer* buffer() const {
+    AbstractTrackedDeviceBuffer* buffer() {
       CHECK_EQ(state_, kValid);
-      CHECK_NE(buffer_ptr_, nullptr);
-      return buffer_ptr_;
+      CHECK_NE(buffer_.get(), nullptr);
+      return buffer_.get_mutable();
+    }
+    const AbstractTrackedDeviceBuffer* buffer() const {
+      CHECK_EQ(state_, kValid);
+      CHECK_NE(buffer_.get(), nullptr);
+      return buffer_.get();
     }
     CommonPjRtBuffer* parent() const { return parent_; }
 
@@ -278,15 +276,12 @@ class CommonPjRtBuffer : public PjRtBuffer {
     CommonPjRtBuffer* const parent_;
     const Type type_;
 
-    // There is an invariant that if ok() then buffer_.value() != nullptr.
+    // There is an invariant that if ok() then buffer_.get() != nullptr.
     State state_;
     absl::Status status_;
-    // The non-owning pointer to the underlying buffer. It is not nullptr for
-    // all types of holds.
-    AbstractTrackedDeviceBuffer* buffer_ptr_ = nullptr;
-    // If it is a donation hold, `buffer_` will not be nullptr. Otherwise, it is
-    // a nullptr.
-    std::unique_ptr<AbstractTrackedDeviceBuffer> buffer_;
+    // Holds the underlying buffer, either owned (donation hold) or borrowed
+    // (usage or external reference hold).
+    tsl::MaybeOwning<AbstractTrackedDeviceBuffer> buffer_;
   };
 
   bool IsDeleted() const override;
@@ -391,8 +386,6 @@ class CommonPjRtBuffer : public PjRtBuffer {
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
 };
-
-
 
 }  // namespace xla
 

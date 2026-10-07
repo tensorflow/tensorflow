@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/tsl/concurrency/future.h"
 
@@ -40,7 +40,7 @@ namespace ifrt {
 // Implements the IFRT IR compiler. Accepts `IfrtIRProgram` and returns a
 // `LoadedExecutable` that runs the compiled IR program.
 class IfrtIrProgramCompiler final
-    : public llvm::RTTIExtends<IfrtIrProgramCompiler, Compiler> {
+    : public RTTIExtends<IfrtIrProgramCompiler, Compiler> {
  public:
   static char ID;  // NOLINT
 

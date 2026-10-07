@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/python/profiler:__pkg__",
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
         "//tensorflow/python/kernel_tests/linalg/sparse:__pkg__",
+        "//tensorflow/python/kernel_tests/image_ops:__pkg__",
     ]),
     deps = [
         ":xla_cpu_device",
@@ -587,10 +588,9 @@ cc_library(
 tf_cuda_cc_test(
     name = "pjrt_compile_util_test",
     srcs = ["pjrt_compile_util_test.cc"],
-    tags = [
+    tags = tf_cuda_tests_tags() + [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
         "xla",
     ],
     deps = [
@@ -1718,6 +1718,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
@@ -1974,10 +1975,9 @@ tf_cc_test(
 tf_cuda_cc_test(
     name = "device_compiler_test",
     srcs = ["device_compiler_test.cc"],
-    tags = [
+    tags = tf_cuda_tests_tags() + [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
         "xla",
     ],
     deps = [

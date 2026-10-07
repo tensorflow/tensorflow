@@ -19,12 +19,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/plugin_program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 
 namespace xla {
@@ -35,8 +33,7 @@ namespace {
 constexpr absl::string_view kSerializationPrefix =
     "__serialized_plugin_program ";
 
-class PluginProgramSerDes
-    : public llvm::RTTIExtends<PluginProgramSerDes, SerDes> {
+class PluginProgramSerDes : public RTTIExtends<PluginProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::PluginProgram";
@@ -47,7 +44,7 @@ class PluginProgramSerDes
       std::unique_ptr<SerializeOptions>) override {
     // PluginProgram does not support versioning. `options` is ignored.
     absl::Cord serialized(kSerializationPrefix);
-    serialized.Append(llvm::cast<PluginProgram>(serializable).data);
+    serialized.Append(cast<PluginProgram>(serializable).data);
     return serialized;
   }
 
@@ -76,7 +73,7 @@ bool register_plugin_program_serdes = ([]() {
 }(), true);
 
 class PluginCompileOptionsSerDes
-    : public llvm::RTTIExtends<PluginCompileOptionsSerDes, SerDes> {
+    : public RTTIExtends<PluginCompileOptionsSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::PluginCompileOptions";

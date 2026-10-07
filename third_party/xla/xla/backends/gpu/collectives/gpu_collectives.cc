@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <optional>
+#include <string>
 
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
+#include "xla/debug_options_flags.h"
 #include "xla/runtime/device_id.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
@@ -47,6 +49,25 @@ GpuCollectives* GpuCollectives::Default(absl::string_view platform_name) {
     return gpu_collectives;
   }
 
+  LOG(FATAL) << "Unsupported collectives implementation for GPU";
+}
+
+GpuCollectives* GpuCollectives::Resolve(absl::string_view platform_name,
+                                        std::optional<std::string> impl) {
+  auto debug_options = xla::GetDebugOptionsFromFlags();
+  if (!impl.has_value() &&
+      !debug_options.xla_gpu_collectives_implementation().empty()) {
+    impl = debug_options.xla_gpu_collectives_implementation();
+  }
+  auto collectives_or = impl.has_value()
+                            ? CollectivesRegistry::Get(platform_name, *impl)
+                            : CollectivesRegistry::Default(platform_name);
+
+  CHECK_OK(collectives_or) << "Failed to get GPU collectives implementation: "
+                           << impl.value_or("default");
+  if (auto* gpu_coll = absl::down_cast<GpuCollectives*>(*collectives_or)) {
+    return gpu_coll;
+  }
   LOG(FATAL) << "Unsupported collectives implementation for GPU";
 }
 

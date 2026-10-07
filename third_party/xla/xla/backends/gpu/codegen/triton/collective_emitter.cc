@@ -17,25 +17,28 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <optional>
+#include <limits>
+#include <numeric>
 #include <string>
-#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
@@ -46,6 +49,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -58,12 +62,15 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
+#include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -71,6 +78,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -82,6 +90,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -92,6 +101,7 @@ namespace xla::gpu {
 namespace {
 
 using ::xla::se::gpu::AllReduceStrategy;
+using ::xla::xtile::BlockLevelFusionConfig;
 
 namespace ttir = ::mlir::triton;
 namespace mtx = ::mlir::triton::xla;
@@ -101,82 +111,98 @@ using ReductionComputationEmitter = absl::AnyInvocable<xtile::TensorValue(
     mlir::ImplicitLocOpBuilder&, xtile::TensorValue, xtile::TensorValue)>;
 
 // The main memory space on a device (HBM).
-// Use GPU dialect address space which is platform-independent.
-static constexpr auto kGlobalAddressSpace =
-    static_cast<std::underlying_type_t<mlir::gpu::AddressSpace>>(
-        mlir::gpu::AddressSpace::Global);
+static constexpr auto kGlobalAddressSpace = ttir::PtrAddrSpace::Global;
 
 // Metadata arguments for the collective emitter.
 // device_rank, signal_value, signal_buffers.
 static constexpr int32_t kNumCollectiveMetadataArgs = 3;
 static constexpr int32_t kNumTileIndexArgs = 1;
 
-// Common context for all reduce emitters.
-struct AllReduceEmitterContext {
-  mlir::stablehlo::AllReduceOp op;
+// Common context for reduction emitters (all-reduce and reduce-scatter).
+struct ReductionEmitterContext {
+  mlir::Operation* op = nullptr;
   int32_t num_input_output_args{0};
   int32_t num_scratch_buffers{0};
-  // The entry function of the all reduce op.
+  bool has_invocation_count{true};
+  // The entry function of the collective op.
   xtile::EntryFuncOp xtile_entry_fn;
-  // The input tile to all reduce.
+  // The input tile to the collective op.
   xtile::TensorValue input_tile;
   // The extract tile op that produced the input tile.
   xtile::ExtractTileOp input_extract;
-  // The entire shape of the input to all reduce.
+  // The entire shape of the input to the collective op.
   llvm::SmallVector<int64_t, 4> non_tiled_input_shape;
   PrimitiveType element_type;
-  // The total number of devices in the all reduce.
+  // The total number of devices in the collective group.
   int64_t world_size{0};
-  AllReduceStrategy strategy;
-  // Total number of elements in the input to all reduce.
+  // Total number of elements in the input to the collective op.
   int64_t num_elements{0};
 };
 
-absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
-    mlir::stablehlo::AllReduceOp op) {
-  AllReduceEmitterContext ctx;
-  if (op.getOperands().size() != 1) {
+struct AllReduceEmitterContext : public ReductionEmitterContext {
+  AllReduceStrategy strategy;
+};
+
+struct ReduceScatterEmitterContext : public ReductionEmitterContext {
+  uint64_t scatter_dimension{0};
+  int64_t shard_size{0};
+  int64_t signal_stride{0};
+  llvm::SmallVector<int64_t, 4> output_tile_shape;
+};
+
+template <typename ContextT, typename OpTy>
+absl::StatusOr<ContextT> CreateReductionEmitterContext(
+    OpTy op, bool has_invocation_count = true) {
+  ContextT ctx;
+  if (op->getNumOperands() != 1) {
     return absl::InvalidArgumentError(
-        "AllReduce op must have exactly one operand in order to be lowered "
+        "Collective op must have exactly one operand in order to be lowered "
         "to triton.");
   }
   // operand(0) is xtile.extract op.
   mlir::Type element_type =
-      mlir::cast<mlir::ShapedType>(op.getOperand(0).getType()).getElementType();
+      mlir::cast<mlir::ShapedType>(op->getOperand(0).getType())
+          .getElementType();
   ctx.element_type = xla::ConvertMlirTypeToPrimitiveType(element_type);
   if (ctx.element_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) {
     std::string type_string;
     llvm::raw_string_ostream stream(type_string);
-    op.getOperand(0).print(stream);
+    op->getOperand(0).print(stream);
     return absl::InvalidArgumentError(absl::StrFormat(
         "Could not convert operand type to a valid PrimitiveType."
         "Operand Type: %s",
         type_string));
   }
-  ctx.xtile_entry_fn = op->getParentOfType<xtile::EntryFuncOp>();
+  ctx.xtile_entry_fn = op->template getParentOfType<xtile::EntryFuncOp>();
   if (!ctx.xtile_entry_fn) {
     return absl::InvalidArgumentError(
-        "AllReduce op must be in an XTile entry function in order to be "
+        "Collective op must be in an XTile entry function in order to be "
         "lowered to triton.");
   }
   // Variadics are not supported yet so we can fix inputs to 1.
-  // Which means 2 arguments for input/output one for scratch buffers and
-  // 3 metadata arguments. Plus 1 for the tile index for a total of 7.
+  // Which means 2 arguments for input/output, one for scratch buffers,
+  // metadata arguments (3 with invocation count, 2 without), plus 1 for the
+  // tile index.
   ctx.num_input_output_args = op->getNumOperands() * 2;
   ctx.num_scratch_buffers = op->getNumOperands();
-  const int32_t expected_num_args =
-      ctx.num_input_output_args + ctx.num_scratch_buffers +
-      kNumCollectiveMetadataArgs + kNumTileIndexArgs;
+  ctx.has_invocation_count = has_invocation_count;
+  const int32_t num_metadata_args = has_invocation_count
+                                        ? kNumCollectiveMetadataArgs
+                                        : kNumCollectiveMetadataArgs - 1;
+  const int32_t expected_num_args = ctx.num_input_output_args +
+                                    ctx.num_scratch_buffers +
+                                    num_metadata_args + kNumTileIndexArgs;
   if (ctx.xtile_entry_fn.getNumArguments() != expected_num_args) {
     return absl::InvalidArgumentError(
-        absl::StrCat("AllReduce op must have ", expected_num_args,
+        absl::StrCat("Collective op must have ", expected_num_args,
                      " arguments in order to "
                      "be lowered to triton, but it has ",
                      ctx.xtile_entry_fn.getNumArguments()));
   }
   ctx.input_tile = mlir::cast<xtile::TensorValue>(op->getOperand(0));
-  // We assume the input to all reduce is an xtile::ExtractTileOp, or that the
-  // parent of the input is an xtile::ExtractTileOp (edge case for booleans).
+  // We assume the input to the reduction collective is an xtile::ExtractTileOp,
+  // or that the parent of the input is an xtile::ExtractTileOp (edge case for
+  // booleans).
   ctx.input_extract =
       llvm::dyn_cast<xtile::ExtractTileOp>(ctx.input_tile.getDefiningOp());
   if (!ctx.input_extract &&
@@ -190,96 +216,199 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
   }
   if (!ctx.input_extract) {
     return absl::InvalidArgumentError(
-        "AllReduce op must have an extract tile op as operand in order to be "
+        "Collective op must have an extract tile op as operand in order to be "
         "lowered to triton.");
   }
   // The source for the extract is the non-tiled input (memref).
   ctx.non_tiled_input_shape = llvm::SmallVector<int64_t, 4>(
       ctx.input_extract.getSource().getType().getShape());
   ctx.num_elements = Product(ctx.non_tiled_input_shape);
+  ctx.op = op.getOperation();
+  ABSL_ASSIGN_OR_RETURN(auto replica_groups,
+                   xla::ConvertReplicaGroups(op.getReplicaGroups(), op));
+  ctx.world_size = replica_groups->num_devices_per_group();
+  return ctx;
+}
+
+absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
+    mlir::stablehlo::AllReduceOp op) {
+  ABSL_ASSIGN_OR_RETURN(AllReduceEmitterContext ctx,
+                   CreateReductionEmitterContext<AllReduceEmitterContext>(op));
   int64_t input_byte_size =
       ctx.num_elements *
       llvm::divideCeil(mlir::cast<mlir::ShapedType>(ctx.input_tile.getType())
                            .getElementTypeBitWidth(),
                        8);
-  ctx.strategy = GetAllReduceStrategy(input_byte_size,
+  ctx.strategy = GetAllReduceStrategy(input_byte_size, ctx.world_size,
                                       /*is_multimem_enabled=*/false);
-  ctx.op = op;
-
   return ctx;
 }
 
-// The logic here is very naive and assumes a monotonic layout
-// where only the last dimension is used as a tiling dimension.
-absl::StatusOr<std::optional<BlockLevelFusionConfig>>
-GetBlockLevelFusionConfigForAllReduce(
-    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
-    const DeviceAssignment* device_assignment) {
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                   all_reduce->backend_config<GpuBackendConfig>());
-  if (!IsTritonCollectiveKernel(
-          gpu_config.collective_backend_config().kernel_strategy())) {
-    VLOG(3) << "All-reduce is not annotated with Triton strategy. Skipping.";
-    return std::nullopt;
+// Validates the preconditions for emitting a reduce-scatter (actual validation
+// happens when the collective fusion is formed) and creates the
+// ReduceScatterEmitterContext.
+absl::StatusOr<ReduceScatterEmitterContext> CreateReduceScatterEmitterContext(
+    mlir::stablehlo::ReduceScatterOp op) {
+  ABSL_ASSIGN_OR_RETURN(ReduceScatterEmitterContext ctx,
+                   CreateReductionEmitterContext<ReduceScatterEmitterContext>(
+                       op, /*has_invocation_count=*/false));
+  const llvm::ArrayRef<int64_t> input_tile_shape =
+      ctx.input_tile.getType().getShape();
+  const llvm::ArrayRef<int64_t> input_shape = ctx.non_tiled_input_shape;
+  const uint64_t scatter_dim = op.getScatterDimension();
+  if (input_shape.empty() || scatter_dim >= input_shape.size() ||
+      input_tile_shape.size() != input_shape.size()) {
+    return absl::InvalidArgumentError(
+        "Invalid scatter dimension for reduce-scatter.");
   }
-
-  absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
-      /*is_collective_kernel_enabled=*/absl::c_linear_search(
-          all_reduce->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_experimental_use_collective_kernels(),
-          static_cast<int>(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE)),
-      /*is_multimem_enabled=*/false, gpu_topology, all_reduce,
-      device_assignment);
-  if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
-    VLOG(3) << "Codegen for all-reduce is not supported: "
-            << maybe_all_reduce_info.status();
-    return std::nullopt;
+  if (ctx.world_size <= 0 || input_shape[scatter_dim] % ctx.world_size != 0) {
+    return absl::InvalidArgumentError(
+        "Reduce-scatter scatter dimension is not divisible by world size.");
   }
-  ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
-                   std::move(maybe_all_reduce_info));
-  const Shape& output_shape = all_reduce->shape();
-  const se::DeviceDescription& device_info =
-      gpu_topology.gpu_target_config().device_description;
-  const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
-      all_reduce_info.num_elements, all_reduce_info.num_devices,
-      all_reduce_info.all_reduce_strategy, device_info);
-  BlockLevelFusionConfig block_level_config;
-  block_level_config.set_num_warps(xla::CeilOfRatio(
-      static_cast<int64_t>(launch_dims.num_threads_per_block()),
-      WarpSize(device_info)));
-  block_level_config.set_num_ctas(1);    // No block-level clustering.
-  block_level_config.set_num_stages(1);  // No pipelining of loops.
-  Tile* output_tile = block_level_config.add_output_tiles();
-  const llvm::SmallVector<int64_t> tile_sizes =
-      GreedyPowerOfTwoTiles(output_shape, launch_dims.num_blocks());
-  output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
-  const int64_t linear_tile_size = Product(tile_sizes);
-  if (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot &&
-      linear_tile_size % all_reduce_info.num_devices != 0) {
-    VLOG(3) << "Two-shot all-reduce linear_tile_size(" << linear_tile_size
-            << ") % num_devices(" << all_reduce_info.num_devices
-            << ") != 0. Codegen will not be supported.";
-    return std::nullopt;
+  const int64_t shard_size = input_shape[scatter_dim] / ctx.world_size;
+  if (input_tile_shape[scatter_dim] != shard_size) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Reduce-scatter input tile must cover exactly one shard along the "
+        "scatter dimension. Tile size: ",
+        input_tile_shape[scatter_dim], ", shard size: ", shard_size));
   }
-  VLOG(3) << "Block level fusion config for " << all_reduce->name() << ": "
-          << block_level_config;
-  return block_level_config;
+  for (auto [dim_size, tile_size] :
+       llvm::zip(input_shape.take_front(scatter_dim),
+                 input_tile_shape.take_front(scatter_dim))) {
+    if (xla::CeilOfRatio(dim_size, tile_size) != 1) {
+      return absl::InvalidArgumentError(
+          "Reduce-scatter requires dimensions major to the scatter "
+          "dimension to be covered by a single tile.");
+    }
+  }
+  int64_t signal_stride = 1;
+  for (auto [dim_size, tile_size] :
+       llvm::zip(input_shape.drop_front(scatter_dim + 1),
+                 input_tile_shape.drop_front(scatter_dim + 1))) {
+    signal_stride *= xla::CeilOfRatio(dim_size, tile_size);
+  }
+  if (signal_stride * ctx.world_size > std::numeric_limits<int32_t>::max()) {
+    return absl::InvalidArgumentError("Too many reduce-scatter programs.");
+  }
+  ctx.scatter_dimension = scatter_dim;
+  ctx.shard_size = shard_size;
+  ctx.signal_stride = signal_stride;
+  const llvm::ArrayRef<int64_t> output_tile_shape =
+      mlir::cast<mlir::RankedTensorType>(op.getType()).getShape();
+  ctx.output_tile_shape.assign(output_tile_shape.begin(),
+                               output_tile_shape.end());
+  return ctx;
 }
 
-absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
+using InfoStruct =
+    std::variant<AllReduceInfo, AllGatherInfo, ReduceScatterInfo>;
+
+// Builds helper struct for the given collective instruction.
+absl::StatusOr<InfoStruct> GetCollectiveInfo(
+    const HloInstruction* instr, const GpuTopology& gpu_topology,
+    const DeviceAssignment* device_assignment) {
+  switch (instr->opcode()) {
+    case HloOpcode::kAllReduce: {
+      const HloAllReduceInstruction* all_reduce =
+          Cast<HloAllReduceInstruction>(instr);
+      ABSL_ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
+                       BuildAllReduceInfo(
+                           /*is_collective_kernel_enabled=*/true,
+                           /*is_multimem_enabled=*/false, gpu_topology,
+                           all_reduce, device_assignment));
+      return all_reduce_info;
+    }
+    case HloOpcode::kAllGather: {
+      const HloAllGatherInstruction* all_gather =
+          Cast<HloAllGatherInstruction>(instr);
+      ABSL_ASSIGN_OR_RETURN(AllGatherInfo all_gather_info,
+                       BuildAllGatherInfo(
+                           /*is_collective_kernel_enabled=*/true, gpu_topology,
+                           all_gather, device_assignment));
+      return all_gather_info;
+    }
+    case HloOpcode::kReduceScatter: {
+      ABSL_ASSIGN_OR_RETURN(
+          ReduceScatterInfo reduce_scatter_info,
+          BuildReduceScatterInfo(
+              /*is_collective_kernel_enabled=*/true, gpu_topology,
+              Cast<HloReduceScatterInstruction>(instr), device_assignment));
+      return reduce_scatter_info;
+    }
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported collective opcode: ", instr->opcode()));
+  }
+}
+
+absl::StatusOr<LaunchDimensions> GetLaunchDimensions(
+    const InfoStruct& collective_info, const GpuTopology& gpu_topology) {
+  const se::DeviceDescription& device_info =
+      gpu_topology.gpu_target_config().device_description;
+  return std::visit(
+      absl::Overload{[&](const AllReduceInfo& all_reduce_info) {
+                       return AllReduceLaunchDimensions(
+                           all_reduce_info.num_elements,
+                           all_reduce_info.num_devices,
+                           all_reduce_info.all_reduce_strategy, device_info);
+                     },
+                     [&](const AllGatherInfo& all_gather_info) {
+                       return AllGatherLaunchDimensions(
+                           all_gather_info.num_elements,
+                           all_gather_info.num_devices, device_info);
+                     },
+                     [&](const ReduceScatterInfo& reduce_scatter_info) {
+                       return ReduceScatterLaunchDimensions(
+                           reduce_scatter_info.num_output_elements,
+                           reduce_scatter_info.num_devices, device_info);
+                     }},
+      collective_info);
+}
+
+absl::Status ValidateBlockLevelFusionConfig(
+    const BlockLevelFusionConfig& block_level_config,
+    const InfoStruct& collective_info) {
+  TF_RET_CHECK(block_level_config.output_tiles_size() == 1)
+      << "expected 1 output tile, but got "
+      << block_level_config.output_tiles_size();
+  const int64_t linear_tile_size =
+      Product(block_level_config.output_tiles(0).sizes());
+  if (std::holds_alternative<AllReduceInfo>(collective_info)) {
+    const AllReduceInfo& all_reduce_info =
+        std::get<AllReduceInfo>(collective_info);
+    if (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot &&
+        linear_tile_size % all_reduce_info.num_devices != 0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Two-shot all-reduce linear_tile_size(%d) %% num_devices(%d) != 0. "
+          "Codegen will not be supported.",
+          linear_tile_size, all_reduce_info.num_devices));
+    }
+  }
+  return absl::OkStatus();
+}
+
+// Unmanaged kernel arguments of collectives that use the AllReduce argument
+// layout: rank, signal value (except for reduce-scatter), signal buffers and
+// one remote buffer per parameter.
+absl::StatusOr<std::vector<Shape>> GetRemoteBufferUnmanagedKernelArguments(
     const HloComputation* computation,
-    const HloAllReduceInstruction* all_reduce) {
+    const HloCollectiveInstruction* collective) {
   const int32_t num_devices =
-      all_reduce->device_list()->num_devices_per_group();
+      collective->device_list()->num_devices_per_group();
+  const bool has_invocation_count =
+      collective->opcode() != HloOpcode::kReduceScatter;
+  const int32_t num_metadata_args = has_invocation_count
+                                        ? kNumCollectiveMetadataArgs
+                                        : kNumCollectiveMetadataArgs - 1;
   std::vector<Shape> unmanaged_arguments;
   unmanaged_arguments.reserve(computation->num_parameters() +
-                              kNumCollectiveMetadataArgs);
+                              num_metadata_args);
 
-  // rank and signal_value
+  // rank (and signal_value when present)
   unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
-  unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  if (has_invocation_count) {
+    unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  }
   // The shape for signal and scratch buffers does not really matter in the end
   // because this would just be a pointer. For documentation purposes we add
   // the correct shape which would be
@@ -296,16 +425,16 @@ absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
     unmanaged_arguments.push_back(shape);
   }
   TF_RET_CHECK(unmanaged_arguments.size() ==
-               computation->num_parameters() + kNumCollectiveMetadataArgs);
+               computation->num_parameters() + num_metadata_args);
   return unmanaged_arguments;
 }
 
 mlir::LogicalResult PopulateReductionComputation(
-    mlir::PatternRewriter& rewriter, mlir::stablehlo::AllReduceOp op,
+    mlir::PatternRewriter& rewriter, mlir::Operation* op,
     ReductionComputationEmitter& computation_emitter) {
   // At the moment we expect only one operation in the reduction computation
   // to be relevant.
-  auto& reduction_computation_region = op.getComputation();
+  auto& reduction_computation_region = op->getRegion(0);
   int num_ops_to_emit = 0;
   for (auto& block : reduction_computation_region.getBlocks()) {
     for (auto& block_op : block.without_terminator()) {
@@ -355,11 +484,359 @@ mlir::LogicalResult PopulateReductionComputation(
   return mlir::success();
 }
 
-class AllReduceEmitter {
+// Emits code that reads the last barrier signal value posted by this block from
+// its own slot in the local rank's signal buffer and returns `last + 1` as the
+// signal value for this launch's first barrier. It replaces the host-provided
+// invocation count argument (see `CollectiveCodegenConfig::device_sync_count`).
+//
+// Arguments:
+// - `signal_buffers`: `!tt.ptr<i64>` table of the per-rank signal buffers.
+// - `rank`: i32 rank of this device in the replica group.
+// - `block_id`: i32 program id of this block.
+// - `world_size`: number of ranks in the replica group.
+// - `signal_slot`, `signal_stride`: See `BlockBarrierOp` for details.
+//   If not set, we use the default indexing of
+//   SignalBuffers[rank][block_id * world_size + rank].
+//
+// After a local CTA barrier, `BlockBarrierOp` writes the barrier signal value
+// into this slot of `SignalBuffers[0..world_size]`, and no other rank or block
+// ever writes to this slot of `SignalBuffers[rank]`.
+// For two-shot `AllReduce`, the second barrier writes `signal_value + 1`, so
+// the slot advances by 2 across launches and adding 1 at entry yields the next
+// launch's first signal value. Signal buffers are allocated and zeroed once per
+// executor, so the counter persists across executions (including CUDA graph
+// replays and device-side loops) without any extra store or thread barrier.
+mlir::Value EmitDeviceInvocationCount(mlir::ImplicitLocOpBuilder& b,
+                                      mlir::Value signal_buffers,
+                                      mlir::Value rank, mlir::Value block_id,
+                                      int64_t world_size,
+                                      mlir::Value signal_slot = nullptr,
+                                      int64_t signal_stride = 0) {
+  CHECK_EQ(signal_slot != nullptr, signal_stride > 0)
+      << "signal_slot and signal_stride must be set together";
+  const auto ptr_to_i32_type =
+      ttir::PointerType::get(b.getI32Type(), kGlobalAddressSpace);
+  const auto ptr_to_i64_type =
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
+  mlir::Value signal_buffers_i64 =
+      ttir::BitcastOp::create(b, ptr_to_i64_type, signal_buffers);
+  // SignalBuffers[rank]
+  mlir::Value local_signal_buffer_i64 = ttir::LoadOp::create(
+      b, ttir::AddPtrOp::create(b, ptr_to_i64_type, signal_buffers_i64, rank),
+      /*isVolatile=*/false);
+  mlir::Value local_signal_buffer =
+      ttir::IntToPtrOp::create(b, ptr_to_i32_type, local_signal_buffer_i64);
+  mlir::Value world_size_op = arith::ConstantOp::create(
+      b, b.getI32IntegerAttr(static_cast<int32_t>(world_size)));
+  mlir::Value counter_index;
+  if (signal_slot != nullptr) {
+    // Computes:
+    // counter_index = ((block_id - signal_slot * signal_stride +
+    //                   rank * signal_stride) * world_size) + signal_slot
+    // See LowerBlockBarrierOp in triton_xla_lower_block_barrier_pass.cc for
+    // details on the asymmetric barrier indexing.
+    mlir::Value stride_op = arith::ConstantOp::create(
+        b, b.getI32IntegerAttr(static_cast<int32_t>(signal_stride)));
+    mlir::Value slot_offset = arith::MulIOp::create(b, signal_slot, stride_op);
+    mlir::Value base_block = arith::SubIOp::create(b, block_id, slot_offset);
+    mlir::Value rank_offset = arith::MulIOp::create(b, rank, stride_op);
+    mlir::Value target_block =
+        arith::AddIOp::create(b, base_block, rank_offset);
+    mlir::Value target_block_offset =
+        arith::MulIOp::create(b, target_block, world_size_op);
+    counter_index = arith::AddIOp::create(b, target_block_offset, signal_slot);
+  } else {
+    // SignalBuffers[rank][block_id * world_size + rank]
+    counter_index = arith::AddIOp::create(
+        b, arith::MulIOp::create(b, block_id, world_size_op), rank);
+  }
+  mlir::Value counter_ptr = ttir::AddPtrOp::create(
+      b, ptr_to_i32_type, local_signal_buffer, counter_index);
+  // Volatile to make sure that every launch reads the counter from memory.
+  mlir::Value counter =
+      ttir::LoadOp::create(b, counter_ptr, /*isVolatile=*/true);
+  return arith::AddIOp::create(
+      b, counter, arith::ConstantOp::create(b, b.getI32IntegerAttr(1)));
+}
+
+// Returns the element offset of the active half of a double buffer that holds
+// `num_elements` elements of `element_type` per half. The lowest bit of
+// `signal_value` selects the half.
+mlir::Value EmitDoubleBufferOffset(mlir::ImplicitLocOpBuilder& b,
+                                   mlir::Value signal_value,
+                                   int64_t num_elements,
+                                   PrimitiveType element_type) {
+  const mlir::Type i64_type = b.getI64Type();
+  mlir::Value signal_value_i64 =
+      arith::ExtSIOp::create(b, i64_type, signal_value);
+  mlir::Value one =
+      arith::ConstantOp::create(b, i64_type, b.getI64IntegerAttr(1));
+  mlir::Value buffer_index = arith::AndIOp::create(b, signal_value_i64, one);
+  // The allocated double buffer size in bytes is aligned to
+  // kXlaAllocatedBufferAlignBytes. To get the offset to the second buffer, we
+  // divide the buffer size by 2 and then divide by the element size to get
+  // the number of elements in the buffer. Its important to do this to make
+  // sure that start of the buffers are always aligned to 16 bytes.
+  const int64_t element_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  const int64_t buffer_size = xla::RoundUpTo<uint64_t>(
+      num_elements * element_size, kXlaAllocatedBufferAlignBytes);
+  const int64_t elements_per_buffer = buffer_size / element_size;
+  mlir::Value elements_per_buffer_op = arith::ConstantOp::create(
+      b, i64_type, b.getI64IntegerAttr(elements_per_buffer));
+  return arith::MulIOp::create(b, buffer_index, elements_per_buffer_op);
+}
+
+// Emits instructions to get the pointer to the remote buffer of the given
+// rank.
+// We have a !tt.ptr<i64> pointing to the base of the remote
+// buffers. We add the rank index to the base pointer and load to get to the
+// base pointer of the remote buffer of the given rank. Then we add the buffer
+// offset to get the pointer to the correct buffer inside (double buffering).
+// Note that the returned pointer is of the storage type not the logical type.
+mlir::Value EmitRemoteBufferPtr(mlir::ImplicitLocOpBuilder& b,
+                                mlir::Value remote_buffers, mlir::Value rank,
+                                mlir::Value buffer_offset,
+                                mlir::Type elem_storage_type) {
+  const auto ptr_to_i64_type =
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
+  const auto ptr_to_elem_type =
+      ttir::PointerType::get(elem_storage_type, kGlobalAddressSpace);
+  mlir::Value remote_buf_ptr_addr =
+      ttir::AddPtrOp::create(b, ptr_to_i64_type, remote_buffers, rank);
+  mlir::Value remote_buf_i64 =
+      ttir::LoadOp::create(b,                             //
+                           remote_buf_ptr_addr,           //
+                           /*isVolatile=*/false);         //
+  mlir::Value remote_buf_ptr_base = ttir::IntToPtrOp::create(
+      b, ptr_to_elem_type, remote_buf_i64,
+      llvm::ArrayRef<mlir::NamedAttribute>{xtile::GetDivisibilityAttr(b)});
+  return ttir::AddPtrOp::create(b, ptr_to_elem_type, remote_buf_ptr_base,
+                                buffer_offset);
+}
+
+// Emits a barrier between this block and the matching blocks of the other
+// ranks. All threads in the block should have completed their writes before we
+// proceed with a block barrier.
+// Otherwise, remote ranks might start reading the data before it is ready.
+void EmitBlockBarrier(
+    mlir::ImplicitLocOpBuilder& b, mlir::Value signal_buffers, mlir::Value rank,
+    mlir::Value signal_value, int64_t world_size,
+    mlir::Value signal_slot = nullptr, int64_t signal_stride = 0,
+    mtx::BarrierMode barrier_mode = mtx::BarrierMode::kSymmetric) {
+  mlir::triton::gpu::BarrierOp::create(b, mlir::triton::gpu::AddrSpace::Local);
+  mtx::BlockBarrierOp::create(
+      b, signal_buffers, rank, signal_value, signal_slot,
+      b.getI32IntegerAttr(static_cast<int32_t>(world_size)),
+      signal_stride > 0
+          ? b.getI32IntegerAttr(static_cast<int32_t>(signal_stride))
+          : mlir::IntegerAttr(),
+      mtx::BarrierModeAttr::get(b.getContext(), barrier_mode));
+}
+
+class ReductionEmitter {
+ protected:
+  ReductionEmitter(ReductionEmitterContext& ctx,
+                   mlir::PatternRewriter& rewriter)
+      : base_ctx_(ctx),
+        rewriter_(rewriter),
+        builder_(base_ctx_.op->getLoc(), rewriter) {}
+
+  ~ReductionEmitter() = default;
+
+  absl::Status Initialize(bool is_two_shot = false) {
+    CHECK(!initialized_);
+    // NB: This must be done before any other IR is emitted so that we can bail
+    // out in case it fails.
+    // Otherwise, the IR is considered modified and we end up in an infinite
+    // loop.
+    if (mlir::failed(PopulateReductionComputation(
+            rewriter_, base_ctx_.op, reduce_computation_emitter_))) {
+      return absl::InternalError("Failed to populate reduction computation.");
+    }
+    // 1. Opaque arguments. They start after the input/output arguments.
+    const int32_t start_idx = base_ctx_.num_input_output_args;
+    device_rank_ = base_ctx_.xtile_entry_fn.getArgument(start_idx);
+    CHECK(device_rank_.getType().isInteger(32));
+    // When present (e.g. AllReduce), the invocation count argument at
+    // `start_idx + 1` is unused: the signal value comes from a counter in
+    // device memory (see Emit setup IR below).
+    const int32_t buffers_start_idx =
+        start_idx + (base_ctx_.has_invocation_count ? 2 : 1);
+    // !tt.ptr<i64>
+    signal_buffers_ = base_ctx_.xtile_entry_fn.getArgument(buffers_start_idx);
+    // !tt.ptr<i64>
+    remote_input_buffers_ =
+        base_ctx_.xtile_entry_fn.getArgument(buffers_start_idx + 1);
+
+    // 2. Constants and types.
+    elem_type_ = mlir::getElementTypeOrSelf(base_ctx_.input_tile.getType());
+    elem_storage_type_ = xtile::StorageType(elem_type_);
+    ptr_to_i64_type_ =
+        ttir::PointerType::get(builder_.getI64Type(), kGlobalAddressSpace);
+    ptr_to_elem_type_ =
+        ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
+    ABSL_ASSIGN_OR_RETURN(layout_,
+                     xtile::GetPermutationMinorToMajor(
+                         base_ctx_.input_extract.getSource().getType()));
+
+    // 3. Emit setup IR.
+    mlir::Value block_id = ttir::GetProgramIdOp::create(builder_, 0);
+    signal_value_ =
+        EmitDeviceInvocationCount(builder_, signal_buffers_, device_rank_,
+                                  block_id, base_ctx_.world_size);
+    if (remote_input_buffers_.getType() == ptr_to_i64_type_) {
+      remote_input_buffers_i64_ = remote_input_buffers_;
+    } else {
+      remote_input_buffers_i64_ = ttir::BitcastOp::create(
+          builder_, ptr_to_i64_type_, remote_input_buffers_);
+    }
+    mlir::Value signal_value = signal_value_;
+    if (is_two_shot) {
+      // For two-shot signal value is always incremented by 2.
+      // So we need to right shift it by 1 to get the buffer index.
+      signal_value = arith::ShRSIOp::create(
+          builder_, signal_value_.getType(), signal_value_,
+          arith::ConstantOp::create(builder_, signal_value_.getType(),
+                                    builder_.getI32IntegerAttr(1)));
+    }
+    buffer_offset_ = EmitDoubleBufferOffset(
+        builder_, signal_value, base_ctx_.num_elements, base_ctx_.element_type);
+    initialized_ = true;
+    return absl::OkStatus();
+  }
+
+  // Returns the pointer to the active remote buffer of the given rank. See
+  // EmitRemoteBufferPtr.
+  mlir::Value GetRemoteBufferPtr(mlir::Value rank_idx) {
+    CHECK(initialized_);
+    return EmitRemoteBufferPtr(builder_, remote_input_buffers_i64_, rank_idx,
+                               buffer_offset_, elem_storage_type_);
+  }
+
+  // Loads a tile from the remote buffer of the given rank.
+  // Offsets must be global offsets ie, from the beginning of the remote buffer.
+  // Shape must be exact shape of the tile to be loaded.
+  xtile::TensorValue LoadTileForRank(mlir::Value rank_idx,
+                                     mlir::ValueRange offsets,
+                                     llvm::ArrayRef<int64_t> strides,
+                                     llvm::ArrayRef<int64_t> shape) {
+    CHECK(initialized_);
+    mlir::Value remote_buf_ptr = GetRemoteBufferPtr(rank_idx);
+    auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
+        builder_,                         //
+        remote_buf_ptr,                   // The rank-specific base pointer
+        base_ctx_.non_tiled_input_shape,  // The full global shape
+        layout_,                          // The layout of the input tensor
+        offsets,                          // The global base offsets of the tile
+        // The full tile shape. This is the same as the input shape plus 1 for
+        // every dimension that is reduced. Since we are not reducing any
+        // dimensions, this is the same as the input shape.
+        shape,                //
+        strides,              //
+        /*reduced_dims=*/{},  // Not reducing for gather
+        shape                 //
+    );
+    // tensor<tile_shape, elem_storage_type>
+    auto next_tile = mlir::cast<xtile::TensorValue>(
+        ttir::LoadOp::create(builder_,                 //
+                             ptrs,                     //
+                             mask,                     //
+                             /*other=*/mlir::Value(),  //
+                             /*isVolatile=*/false)
+            .getResult());
+    // Workaround(i1_to_i8_workaround) as in fusion_emitter.
+    // See fusion emitter for more details.
+    if (elem_storage_type_ != elem_type_) {
+      next_tile = mlir::cast<xtile::TensorValue>(
+          arith::TruncIOp::create(
+              builder_, next_tile.getType().clone(elem_type_), next_tile)
+              .getResult());
+    }
+    return next_tile;
+  }
+
+  // Overload for integer rank.
+  xtile::TensorValue LoadTileForRank(int32_t rank, mlir::ValueRange offsets,
+                                     llvm::ArrayRef<int64_t> strides,
+                                     llvm::ArrayRef<int64_t> shape) {
+    mlir::Value rank_idx = arith::ConstantOp::create(
+        builder_, builder_.getI64Type(), builder_.getI64IntegerAttr(rank));
+    return LoadTileForRank(rank_idx, offsets, strides, shape);
+  }
+
+  // Stores an entire tile to the symmetric buffer of device_rank_.
+  mlir::LogicalResult EmitCopyToSymmetric(mlir::Value tile_to_store,
+                                          mlir::ValueRange offsets,
+                                          llvm::ArrayRef<int64_t> strides,
+                                          llvm::ArrayRef<int64_t> shape) {
+    CHECK(initialized_);
+    mlir::Value remote_buf_ptr = GetRemoteBufferPtr(device_rank_);
+
+    // Workaround(i1_to_i8_workaround) as in fusion_emitter.
+    // The parameter extraction casts the storage type to the logical type.
+    // But for copying to the remote buffer we need to cast it back to the
+    // storage type. Downstream passes should be able to optimize this away.
+    mlir::Value storage_tile = tile_to_store;
+    if (elem_storage_type_ != elem_type_) {
+      auto shaped_type = mlir::cast<mlir::ShapedType>(tile_to_store.getType());
+      storage_tile = arith::ExtUIOp::create(
+          builder_, shaped_type.clone(elem_storage_type_), tile_to_store);
+    }
+    auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
+        builder_,                         //
+        remote_buf_ptr,                   // The rank-specific base pointer
+        base_ctx_.non_tiled_input_shape,  // The full global shape
+        layout_,                          // The layout of the input tensor
+        offsets,                          // The global base offsets of the tile
+        shape,                            // The full tile shape. Same as
+                                          // input shape since no
+                                          // dimensions are reduced.
+        strides,                          //
+        /*reduced_dims=*/{},              // Not reducing scatter.
+        shape                             // The tile shape.
+    );
+    ttir::StoreOp::create(builder_, ptrs, storage_tile,
+                          /*mask=*/mask);
+    return mlir::success();
+  }
+
+  mlir::LogicalResult EmitSync(mlir::Value signal_value) {
+    CHECK(initialized_);
+    EmitBlockBarrier(builder_, signal_buffers_, device_rank_, signal_value,
+                     base_ctx_.world_size);
+    return mlir::success();
+  }
+
+  ReductionEmitterContext& base_ctx_;
+  mlir::PatternRewriter& rewriter_;
+  mlir::ImplicitLocOpBuilder builder_;
+
+  ReductionComputationEmitter reduce_computation_emitter_{nullptr};
+
+  mlir::Value device_rank_;
+  mlir::Value signal_value_;
+  mlir::Value signal_buffers_;
+  mlir::Value remote_input_buffers_;
+
+  mlir::Value remote_input_buffers_i64_;
+  mlir::Value buffer_offset_;
+
+  // Layout of the input tensor in minor-to-major order.
+  llvm::SmallVector<int64_t> layout_;
+
+  mlir::Type elem_type_;
+  mlir::Type elem_storage_type_;
+  ttir::PointerType ptr_to_i64_type_;
+  ttir::PointerType ptr_to_elem_type_;
+
+  bool initialized_ = false;
+};
+
+class AllReduceEmitter : public ReductionEmitter {
  public:
   static mlir::LogicalResult Emit(AllReduceEmitterContext ctx,
                                   mlir::PatternRewriter& rewriter) {
-    AllReduceEmitter emitter(std::move(ctx), rewriter);
+    AllReduceEmitter emitter(ctx, rewriter);
     if (auto result = emitter.Initialize(); !result.ok()) {
       LOG(ERROR) << "Failed to initialize AllReduceEmitter: "
                  << result.message();
@@ -378,50 +855,13 @@ class AllReduceEmitter {
   }
 
  private:
-  AllReduceEmitter(AllReduceEmitterContext ctx, mlir::PatternRewriter& rewriter)
-      : ctx_(std::move(ctx)),
-        rewriter_(rewriter),
-        builder_(ctx_.op->getLoc(), rewriter) {}
+  AllReduceEmitter(AllReduceEmitterContext& ctx,
+                   mlir::PatternRewriter& rewriter)
+      : ReductionEmitter(ctx, rewriter), ctx_(ctx) {}
 
   absl::Status Initialize() {
-    CHECK(!initialized_);
-    // NB: This must be done before any other IR is emitted so that we can bail
-    // out in case it fails.
-    // Otherwise, the IR is considered modified and we end up in an infinite
-    // loop.
-    if (mlir::failed(PopulateReductionComputation(
-            rewriter_, ctx_.op, reduce_computation_emitter_))) {
-      return absl::InternalError("Failed to populate reduction computation.");
-    }
-    // 1. Opaque arguments. They start after the input/output arguments.
-    const int32_t start_idx = ctx_.num_input_output_args;
-    device_rank_ = ctx_.xtile_entry_fn.getArgument(start_idx);
-    CHECK(device_rank_.getType().isInteger(32));
-    signal_value_ = ctx_.xtile_entry_fn.getArgument(start_idx + 1);
-    CHECK(signal_value_.getType().isInteger(32));
-    // !tt.ptr<!tt.ptr<i32>>
-    signal_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 2);
-    // !tt.ptr<!tt.ptr<i64>>
-    remote_input_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 3);
-
-    // 2. Constants and types.
-    auto replica_groups =
-        xla::ConvertReplicaGroups(ctx_.op.getReplicaGroups(), ctx_.op);
-    if (!replica_groups.ok()) {
-      ctx_.op.emitOpError(replica_groups.status().ToString());
-      return absl::InternalError(replica_groups.status().ToString());
-    }
-    ctx_.world_size = (*replica_groups)->num_devices_per_group();
-
-    elem_type_ = mlir::getElementTypeOrSelf(ctx_.input_tile.getType());
-    elem_storage_type_ = xtile::StorageType(elem_type_);
-    ptr_to_i64_type_ =
-        ttir::PointerType::get(builder_.getI64Type(), kGlobalAddressSpace);
-    ptr_to_elem_type_ =
-        ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
-    ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
-                                  ctx_.input_extract.getSource().getType()));
-
+    ABSL_RETURN_IF_ERROR(ReductionEmitter::Initialize(
+        /*is_two_shot=*/ctx_.strategy == AllReduceStrategy::kTwoShot));
     const llvm::ArrayRef<int64_t>& input_tile_shape_dims =
         ctx_.input_tile.getType().getShape();
     Shape input_tile_shape = ShapeUtil::MakeShapeWithDenseLayout(
@@ -442,171 +882,7 @@ class AllReduceEmitter {
           << "Input tile shape: " << input_tile_shape
           << "Subtile shape: " << absl::StrJoin(subtile_shape_, ",");
     }
-    // 3. Emit setup IR.
-    remote_input_buffers_i64_ = ttir::BitcastOp::create(
-        builder_, ptr_to_i64_type_, remote_input_buffers_);
-    const mlir::Type i64_type = builder_.getI64Type();
-    // Check if last bit of signal_value is 0 or 1.
-    mlir::Value signal_value = signal_value_;
-    // For two-shot signal value is always incremented by 2.
-    // So we need to right shift it by 1 to get the buffer index.
-    if (ctx_.strategy == AllReduceStrategy::kTwoShot) {
-      signal_value = arith::ShRSIOp::create(
-          builder_, signal_value.getType(), signal_value,
-          arith::ConstantOp::create(builder_, signal_value.getType(),
-                                    builder_.getI32IntegerAttr(1)));
-    }
-    mlir::Value buffer_index = arith::AndIOp::create(
-        builder_, i64_type,
-        arith::ExtSIOp::create(builder_, i64_type, signal_value),  // i32->i64
-        arith::ConstantOp::create(builder_, i64_type,
-                                  builder_.getI64IntegerAttr(1)));
-    // The allocated double buffer size in bytes is aligned to
-    // kXlaAllocatedBufferAlignBytes. To get the offset to the second buffer, we
-    // divide the buffer size by 2 and then divide by the element size to get
-    // the number of elements in the buffer. Its important to do this to make
-    // sure that start of the buffers are always aligned to 16 bytes.
-    const int64_t buffer_size = xla::RoundUpTo<uint64_t>(
-        ctx_.num_elements *
-            ShapeUtil::ByteSizeOfPrimitiveType(ctx_.element_type),
-        kXlaAllocatedBufferAlignBytes);
-    const int64_t elements_per_buffer =
-        buffer_size / ShapeUtil::ByteSizeOfPrimitiveType(ctx_.element_type);
-    buffer_offset_ = arith::MulIOp::create(
-        builder_, i64_type, buffer_index,
-        arith::ConstantOp::create(
-            builder_, i64_type,
-            builder_.getI64IntegerAttr(elements_per_buffer)));
-    initialized_ = true;
     return absl::OkStatus();
-  }
-
-  // Emits instructions to get the pointer to the remote buffer of the given
-  // rank.
-  // We have a !tt.ptr<!tt.ptr<i64>> pointing to the base of the remote
-  // buffers. We add the rank index to the base pointer and load to get to the
-  // base pointer of the remote buffer of the given rank. Then we add the buffer
-  // offset to get the pointer to the correct buffer inside (double buffering).
-  // Note that the returned pointer is of the storage type not the logical type.
-  mlir::Value GetRemoteBufferPtr(mlir::Value rank_idx) {
-    CHECK(initialized_);
-    mlir::Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
-        builder_, ptr_to_i64_type_, remote_input_buffers_i64_, rank_idx);
-    mlir::Value remote_buf_i64 =
-        ttir::LoadOp::create(builder_,                      //
-                             remote_buf_ptr_addr,           //
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             /*isVolatile=*/false);         //
-    mlir::Value remote_buf_ptr_base =
-        ttir::IntToPtrOp::create(builder_, ptr_to_elem_type_, remote_buf_i64,
-                                 llvm::ArrayRef<mlir::NamedAttribute>{
-                                     xtile::GetDivisibilityAttr(builder_)});
-    mlir::Value remote_buf_ptr = ttir::AddPtrOp::create(
-        builder_, ptr_to_elem_type_, remote_buf_ptr_base, buffer_offset_);
-    return remote_buf_ptr;
-  }
-
-  // Loads a tile from the remote buffer of the given rank.
-  // Offsets must be global offsets ie, from the beginning of the remote buffer.
-  // Shape must be exact shape of the tile to be loaded.
-  // For 1-shot this is the entire tile shape. For two-shot this is the subtile
-  // shape.
-  xtile::TensorValue LoadTileForRank(mlir::Value rank_idx,
-                                     mlir::ValueRange offsets,
-                                     llvm::ArrayRef<int64_t> strides,
-                                     llvm::ArrayRef<int64_t> shape) {
-    CHECK(initialized_);
-    mlir::Value remote_buf_ptr = GetRemoteBufferPtr(rank_idx);
-    auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
-        builder_,        //
-        remote_buf_ptr,  // The tensor of rank-specific base pointers
-        ctx_.non_tiled_input_shape,  // The full global shape
-        layout_,                     // The layout of the input tensor
-        offsets,                     // The global base offsets of the tile
-        // The full tile shape. This is the same as the input shape plus 1 for
-        // every dimension that is reduced. Since we are not reducing any
-        // dimensions, this is the same as the input shape.
-        shape,                //
-        strides,              //
-        /*reduced_dims=*/{},  // Not reducing for gather
-        shape                 //
-    );
-    // tensor<tile_shape, elem_storage_type>
-    auto next_tile = mlir::cast<xtile::TensorValue>(
-        ttir::LoadOp::create(builder_,                      //
-                             ptrs,                          //
-                             mask,                          //
-                             /*other=*/mlir::Value(),       //
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             /*isVolatile=*/false)
-            .getResult());
-    // Workaround(i1_to_i8_workaround) as in fusion_emitter.
-    // See fusion emitter for more details.
-    if (elem_storage_type_ != elem_type_) {
-      next_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, next_tile, elem_type_));
-    }
-    return next_tile;
-  }
-
-  // Overload for integer rank.
-  xtile::TensorValue LoadTileForRank(int32_t rank, mlir::ValueRange offsets,
-                                     llvm::ArrayRef<int64_t> strides,
-                                     llvm::ArrayRef<int64_t> sub_tile_shape) {
-    mlir::Value rank_idx = arith::ConstantOp::create(
-        builder_, builder_.getI64Type(), builder_.getI64IntegerAttr(rank));
-    return LoadTileForRank(rank_idx, offsets, strides, sub_tile_shape);
-  }
-
-  // Stores an entire tile to the symmetric buffer of device_rank_.
-  mlir::LogicalResult EmitCopyToSymmetric(mlir::Value tile_to_store,
-                                          mlir::ValueRange offsets,
-                                          llvm::ArrayRef<int64_t> strides,
-                                          llvm::ArrayRef<int64_t> shape) {
-    CHECK(initialized_);
-    mlir::Value remote_buf_ptr = GetRemoteBufferPtr(device_rank_);
-
-    // Workaround(i1_to_i8_workaround) as in fusion_emitter.
-    // The parameter extraction casts the storage type to the logical type.
-    // But for copying to the remote buffer we need to cast it back to the
-    // storage type. Downstream passes should be able to optimize this away.
-    mlir::Value storage_tile = tile_to_store;
-    if (elem_storage_type_ != elem_type_) {
-      storage_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, tile_to_store, elem_storage_type_));
-    }
-    auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
-        builder_,        //
-        remote_buf_ptr,  // The tensor of rank-specific base pointers
-        ctx_.non_tiled_input_shape,  // The full global shape
-        layout_,                     // The layout of the input tensor
-        offsets,                     // The global base offsets of the tile
-        shape,                       // The full tile shape. Same as
-                                     // input shape since no
-                                     // dimensions are reduced.
-        strides,                     //
-        /*reduced_dims=*/{},         // Not reducing scatter.
-        shape                        // The tile shape.
-    );
-    ttir::StoreOp::create(builder_, ptrs, storage_tile,
-                          /*mask=*/mask, ttir::CacheModifier::NONE,
-                          ttir::EvictionPolicy::NORMAL);
-    return mlir::success();
-  }
-
-  mlir::LogicalResult EmitSync(mlir::Value signal_value) {
-    CHECK(initialized_);
-    // All threads in the block should have completed their writes before we
-    // proceed with a block barrier.
-    // Otherwise, remote ranks might start reading the data before it is ready.
-    mlir::triton::gpu::BarrierOp::create(builder_,
-                                         mlir::triton::gpu::AddrSpace::Local);
-    mtx::BlockBarrierOp::create(builder_, signal_buffers_, device_rank_,
-                                signal_value,
-                                builder_.getI32IntegerAttr(ctx_.world_size));
-    return mlir::success();
   }
 
   // Returns the offsets of the sub-tile that the given rank is responsible for.
@@ -706,12 +982,10 @@ class AllReduceEmitter {
                                remote_buffers, rank_ids_i64);
     // Load the 64-bit addresses from the table
     // tensor<world_size x i64>
-    remote_buffers = ttir::LoadOp::create(builder_,                      //
-                                          remote_buffers,                //
-                                          /*mask=*/mlir::Value(),        //
-                                          /*other=*/mlir::Value(),       //
-                                          ttir::CacheModifier::NONE,     //
-                                          ttir::EvictionPolicy::NORMAL,  //
+    remote_buffers = ttir::LoadOp::create(builder_,                 //
+                                          remote_buffers,           //
+                                          /*mask=*/mlir::Value(),   //
+                                          /*other=*/mlir::Value(),  //
                                           /*isVolatile=*/false)
                          .getResult();
     // tensor<world_size x !ptr<elem_type>>
@@ -790,12 +1064,10 @@ class AllReduceEmitter {
         tile_shape);
     // The final gather load tensor<tile_shape x elem_type>
     return mlir::cast<xtile::TensorValue>(
-        ttir::LoadOp::create(builder_,                      //
-                             final_ptrs,                    //
-                             mask,                          //
-                             /*other=*/mlir::Value(),       //
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
+        ttir::LoadOp::create(builder_,                 //
+                             final_ptrs,               //
+                             mask,                     //
+                             /*other=*/mlir::Value(),  //
                              /*isVolatile=*/false)
             .getResult());
   }
@@ -900,37 +1172,110 @@ class AllReduceEmitter {
     return mlir::success();
   }
 
-  AllReduceEmitterContext ctx_;
-  mlir::PatternRewriter& rewriter_;
-  mlir::ImplicitLocOpBuilder builder_;
-
-  ReductionComputationEmitter reduce_computation_emitter_{nullptr};
-
-  mlir::Value device_rank_;
-  mlir::Value signal_value_;
-  mlir::Value signal_buffers_;
-  mlir::Value remote_input_buffers_;
-
-  mlir::Value remote_input_buffers_i64_;
-  mlir::Value buffer_offset_;
-
-  // Layout of the input tensor in minor-to-major order.
-  llvm::SmallVector<int64_t> layout_;
+  AllReduceEmitterContext& ctx_;
   // Calculated sub-tile shape for the all reduce.
   // For 1-shot this is the same as the tile shape. Since each rank operates on
   // the entire tile.
   // For 2-shot: The sub-tile is the tile shape divided by the
   // number of devices. Since tile shape is a power of 2 and the number of
-  // devices is a power of 2, the sub-tile shape will also be a power of 2  and
+  // devices is a power of 2, the sub-tile shape will also be a power of 2 and
   // consequently work with the tiling infra.
   llvm::SmallVector<int64_t> subtile_shape_;
+};
 
-  mlir::Type elem_type_;
-  mlir::Type elem_storage_type_;
-  ttir::PointerType ptr_to_i64_type_;
-  ttir::PointerType ptr_to_elem_type_;
+class ReduceScatterEmitter : public ReductionEmitter {
+ public:
+  static mlir::LogicalResult Emit(ReduceScatterEmitterContext ctx,
+                                  mlir::PatternRewriter& rewriter) {
+    ReduceScatterEmitter emitter(ctx, rewriter);
+    if (auto result = emitter.Initialize(); !result.ok()) {
+      LOG(ERROR) << "Failed to initialize ReduceScatterEmitter: "
+                 << result.message();
+      return mlir::failure();
+    }
+    return emitter.EmitImpl();
+  }
 
-  bool initialized_ = false;
+ private:
+  ReduceScatterEmitter(ReduceScatterEmitterContext& ctx,
+                       mlir::PatternRewriter& rewriter)
+      : ReductionEmitter(ctx, rewriter), ctx_(ctx) {}
+
+  // Pull-based one-shot reduce-scatter.
+  //
+  // The input is [world_size * shard_size, ...] and the output is
+  // [shard_size, ...] (scatter dimension `d`). The tiling guarantees that the
+  // input tile of every program (`output_tile[d] * world_size` rows starting at
+  // `output_offset[d] * world_size`) lies within a single shard, so program
+  // `pid` produces a tile destined to exactly one rank.
+  //   1. Copy phase: every program copies its local input tile into the local
+  //      rank's symmetric buffer. This replaces a host-launched D2D copy of the
+  //      input into the scratch buffer.
+  //   2. Sync phase: a producer-symmetric block barrier. Every program signals
+  //      its own slot, and waits only for the (unique) program on every peer
+  //      that staged the input tile this program reduces.
+  //   3. Reduce phase: pull the output tile from the symmetric buffers of all
+  //      ranks (at shard `rank`) and reduce them in rank order.
+  mlir::LogicalResult EmitImpl() {
+    CHECK(initialized_);
+    llvm::SmallVector<mlir::Value> offsets = ctx_.input_extract.getOffsets();
+    llvm::SmallVector<int64_t> strides{ctx_.input_extract.getStrides()};
+    const llvm::ArrayRef<int64_t> input_tile_shape =
+        ctx_.input_tile.getType().getShape();
+    const uint64_t scatter_dim = ctx_.scatter_dimension;
+
+    // 1. CopyPhase: local input tile to the symmetric buffer of this rank.
+    if (mlir::failed(EmitCopyToSymmetric(ctx_.input_tile, offsets, strides,
+                                         input_tile_shape))) {
+      return rewriter_.notifyMatchFailure(ctx_.op,
+                                          "Failed to emit copy to symmetric");
+    }
+
+    // 2. Synchronization phase: wait for the producers of our input tiles.
+    mlir::triton::gpu::BarrierOp::create(builder_,
+                                         mlir::triton::gpu::AddrSpace::Local);
+    mlir::Value block_id = ttir::GetProgramIdOp::create(builder_, 0);
+    mlir::Value signal_slot = arith::DivUIOp::create(
+        builder_, block_id,
+        arith::ConstantOp::create(
+            builder_, builder_.getI32IntegerAttr(
+                          static_cast<int32_t>(ctx_.signal_stride))));
+    mtx::BlockBarrierOp::create(
+        builder_, signal_buffers_, device_rank_, signal_value_, signal_slot,
+        builder_.getI32IntegerAttr(ctx_.world_size),
+        builder_.getI32IntegerAttr(static_cast<int32_t>(ctx_.signal_stride)),
+        mtx::BarrierModeAttr::get(builder_.getContext(),
+                                  mtx::BarrierMode::kProducerSymmetric));
+
+    // 3. Reduce phase: pull the output tile from shard `rank` of every peer.
+    llvm::SmallVector<mlir::Value> pull_offsets = offsets;
+    mlir::Value output_offset = arith::DivUIOp::create(
+        builder_, pull_offsets[scatter_dim],
+        arith::ConstantIndexOp::create(builder_, ctx_.world_size));
+    mlir::Value rank_index = arith::IndexCastOp::create(
+        builder_, builder_.getIndexType(), device_rank_);
+    mlir::Value rank_shard_offset = arith::MulIOp::create(
+        builder_, rank_index,
+        arith::ConstantIndexOp::create(builder_, ctx_.shard_size));
+    pull_offsets[scatter_dim] =
+        arith::AddIOp::create(builder_, rank_shard_offset, output_offset);
+
+    // Accumulate in the element type (rounding after every step) to match the
+    // numerics of NCCL and the Triton all-reduce kernel.
+    auto load = [&](int32_t rank) -> xtile::TensorValue {
+      return LoadTileForRank(rank, pull_offsets, strides,
+                             ctx_.output_tile_shape);
+    };
+    xtile::TensorValue accumulator = load(0);
+    for (int32_t rank = 1; rank < ctx_.world_size; ++rank) {
+      accumulator =
+          reduce_computation_emitter_(builder_, accumulator, load(rank));
+    }
+    rewriter_.replaceOp(ctx_.op, accumulator);
+    return mlir::success();
+  }
+
+  ReduceScatterEmitterContext& ctx_;
 };
 
 }  // namespace
@@ -962,7 +1307,7 @@ absl::Status FlattenCollectiveFusion(
       fusion_operand->shape().element_type(), {total_elements}, {0});
   HloInstruction* bitcast_to_1d = entry_computation->AddInstruction(
       HloInstruction::CreateBitcast(flat_input_shape, fusion_operand));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_1d));
   HloInstruction* bitcast_to_original_shape = entry_computation->AddInstruction(
       HloInstruction::CreateBitcast(original_shape, fusion_instr));
@@ -1002,41 +1347,88 @@ llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
   return tile_sizes;
 }
 
-absl::StatusOr<std::optional<BlockLevelFusionConfig>>
-GetCollectiveBlockLevelFusionConfig(const GpuTopology& gpu_topology,
-                                    const HloFusionInstruction* fusion_instr,
-                                    const DeviceAssignment* device_assignment) {
-  const HloInstruction* root = fusion_instr->fused_expression_root();
-  switch (root->opcode()) {
-    case HloOpcode::kAllReduce:
-      return GetBlockLevelFusionConfigForAllReduce(
-          gpu_topology, Cast<HloAllReduceInstruction>(root), device_assignment);
-    default:
-      return std::nullopt;
+absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
+    const GpuTopology& gpu_topology, const HloFusionInstruction* fusion_instr,
+    const DeviceAssignment* device_assignment) {
+  const HloInstruction* instr = fusion_instr->fused_expression_root();
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr->backend_config<GpuBackendConfig>());
+  if (!IsTritonCollectiveKernel(
+          gpu_config.collective_backend_config().kernel_strategy())) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Instruction was not annotated with Triton strategy but still called "
+        "for "
+        "Triton codegen. %s",
+        instr->ToString()));
   }
+  ABSL_ASSIGN_OR_RETURN(InfoStruct collective_info,
+                   GetCollectiveInfo(instr, gpu_topology, device_assignment));
+  ABSL_ASSIGN_OR_RETURN(const LaunchDimensions launch_dims,
+                   GetLaunchDimensions(collective_info, gpu_topology));
+  const Shape& output_shape = instr->shape();
+  const se::DeviceDescription& device_info =
+      gpu_topology.gpu_target_config().device_description;
+  BlockLevelFusionConfig block_level_config;
+  block_level_config.set_num_warps(xla::CeilOfRatio(
+      static_cast<int64_t>(launch_dims.num_threads_per_block()),
+      WarpSize(device_info)));
+  block_level_config.set_num_ctas(1);    // No block-level clustering.
+  block_level_config.set_num_stages(1);  // No pipelining of loops.
+  xtile::Tile* output_tile = block_level_config.add_output_tiles();
+  llvm::SmallVector<int64_t> tile_sizes =
+      GreedyPowerOfTwoTiles(output_shape, launch_dims.num_blocks());
+  // For AllGather, the tile on the gather dimension must not exceed the
+  // per-rank size. Otherwise a single tile would span multiple replicas,
+  // but the tiling framework assigns a single replica_id per tile.
+  if (instr->opcode() == HloOpcode::kAllGather) {
+    const auto* all_gather = Cast<HloAllGatherInstruction>(instr);
+    const int64_t gather_dim = all_gather->all_gather_dimension();
+    const int64_t num_devices =
+        std::get<AllGatherInfo>(collective_info).num_devices;
+    const int64_t per_rank_size =
+        output_shape.dimensions(gather_dim) / num_devices;
+    tile_sizes[gather_dim] = std::min(
+        tile_sizes[gather_dim], static_cast<int64_t>(llvm::bit_floor(
+                                    static_cast<uint64_t>(per_rank_size))));
+  } else if (instr->opcode() == HloOpcode::kReduceScatter) {
+    // The pull-based reduce-scatter kernel requires the input tile of every
+    // program to cover exactly one shard along the scatter dimension, i.e. an
+    // output tile of `shard_size / num_devices` along the scatter dimension.
+    // FlattenReduceScatterFusion reshapes the fusion so that this is 1.
+    const auto* rs = Cast<HloReduceScatterInstruction>(instr);
+    const int64_t scatter_dim = rs->scatter_dimension();
+    const int64_t num_devices =
+        std::get<ReduceScatterInfo>(collective_info).num_devices;
+    TF_RET_CHECK(output_shape.dimensions(scatter_dim) % num_devices == 0)
+        << "Reduce-scatter output scatter dimension "
+        << output_shape.dimensions(scatter_dim)
+        << " is not divisible by the number of devices " << num_devices;
+    tile_sizes[scatter_dim] =
+        output_shape.dimensions(scatter_dim) / num_devices;
+  }
+  output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
+  ABSL_RETURN_IF_ERROR(
+      ValidateBlockLevelFusionConfig(block_level_config, collective_info));
+  VLOG(3) << "Block level fusion config for " << instr->name() << ": "
+          << block_level_config;
+  return block_level_config;
 }
 
-absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
+absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment) {
-  ASSIGN_OR_RETURN(const std::optional<BlockLevelFusionConfig> block_config,
+  ABSL_ASSIGN_OR_RETURN(BlockLevelFusionConfig block_config,
                    GetCollectiveBlockLevelFusionConfig(
                        gpu_topology, fusion_instr, device_assignment));
-  if (!block_config.has_value()) {
-    VLOG(3) << "No block level fusion config calculated for collective: "
-            << fusion_instr->ToString()
-            << ". Not using Triton collective fusion.";
-    return false;
-  }
-  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                    fusion_instr->backend_config<GpuBackendConfig>());
   gpu_backend_config.mutable_fusion_backend_config()->set_kind(
       kTritonCollectiveFusionKind);
   *gpu_backend_config.mutable_fusion_backend_config()
-       ->mutable_block_level_fusion_config() = *std::move(block_config);
-  RETURN_IF_ERROR(
+       ->mutable_block_level_fusion_config() = std::move(block_config);
+  ABSL_RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
-  return true;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
@@ -1045,8 +1437,10 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
   const HloInstruction* root = computation->root_instruction();
   switch (root->opcode()) {
     case HloOpcode::kAllReduce:
-      return GetAllReduceUnmanagedKernelArguments(
-          computation, Cast<HloAllReduceInstruction>(root));
+    case HloOpcode::kAllGather:
+    case HloOpcode::kReduceScatter:
+      return GetRemoteBufferUnmanagedKernelArguments(
+          computation, Cast<HloCollectiveInstruction>(root));
     default:
       return std::vector<Shape>();
   }
@@ -1055,33 +1449,30 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     llvm::SmallVector<mlir::Type>& fn_arg_types, mlir::ImplicitLocOpBuilder& b,
     const HloComputation* hlo_computation) {
+  const bool has_invocation_count =
+      hlo_computation->root_instruction()->opcode() !=
+      HloOpcode::kReduceScatter;
   // rank: i32
   fn_arg_types.push_back(b.getI32Type());
-  // signal_value: i32
-  fn_arg_types.push_back(b.getI32Type());
-  // signal_buffers: !tt.ptr<!tt.ptr<i32>>
-  fn_arg_types.push_back(ttir::PointerType::get(
-      ttir::PointerType::get(b.getI32Type(), kGlobalAddressSpace),
-      kGlobalAddressSpace));
-  for (HloInstruction* p : hlo_computation->parameter_instructions()) {
-    PrimitiveType type = p->shape().element_type();
-    mlir::Type ir_type;
-    if (type == U16) {
-      ir_type = b.getI16Type();
-    } else if (type == S4) {
-      ir_type = b.getI4Type();
-    } else {
-      ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
-    }
-    // Also add the remote/scratch buffers for collectives.
-    // !tt.ptr<!tt.ptr<type>>
-    fn_arg_types.push_back(ttir::PointerType::get(
-        ttir::PointerType::get(xtile::StorageType(ir_type),
-                               kGlobalAddressSpace),
-        kGlobalAddressSpace));
+  if (has_invocation_count) {
+    // signal_value: i32
+    fn_arg_types.push_back(b.getI32Type());
   }
-  // num_metadata_args =
-  return hlo_computation->num_parameters() + kNumCollectiveMetadataArgs;
+  // signal_buffers: !tt.ptr<i64>
+  fn_arg_types.push_back(
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace));
+
+  for (HloInstruction* p : hlo_computation->parameter_instructions()) {
+    (void)p;
+    // Also add the remote/scratch buffers for collectives.
+    // !tt.ptr<i64>
+    fn_arg_types.push_back(
+        ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace));
+  }
+  const int32_t num_metadata_args = has_invocation_count
+                                        ? kNumCollectiveMetadataArgs
+                                        : kNumCollectiveMetadataArgs - 1;
+  return hlo_computation->num_parameters() + num_metadata_args;
 }
 
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
@@ -1098,24 +1489,426 @@ mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
   }
   VLOG(3) << "AllReduceEmitter::Emit using strategy: "
           << maybe_context->strategy;
-  return AllReduceEmitter::Emit(maybe_context.value(), rewriter);
+  return AllReduceEmitter::Emit(*std::move(maybe_context), rewriter);
+}
+
+mlir::LogicalResult RewriteReduceScatter(mlir::stablehlo::ReduceScatterOp op,
+                                         mlir::PatternRewriter& rewriter) {
+  const mlir::Location loc = op->getLoc();
+  absl::StatusOr<ReduceScatterEmitterContext> maybe_context =
+      CreateReduceScatterEmitterContext(op);
+  if (!maybe_context.ok()) {
+    VLOG(3) << "Failed to create ReduceScatterEmitterContext: "
+            << maybe_context.status().message();
+    return rewriter.notifyMatchFailure(
+        loc, absl::StrCat("Failed to create ReduceScatterEmitterContext: ",
+                          maybe_context.status().message()));
+  }
+  return ReduceScatterEmitter::Emit(*std::move(maybe_context), rewriter);
+}
+
+absl::StatusOr<SymmetricMemoryType> GetSymmetricMemoryType(
+    const GpuTopology& gpu_topology, const HloInstruction& instr,
+    const DeviceAssignment* device_assignment) {
+  const HloInstruction* collective = &instr;
+  if (instr.opcode() == HloOpcode::kFusion) {
+    collective = instr.fused_instructions_computation()->root_instruction();
+  }
+  ABSL_ASSIGN_OR_RETURN(
+      const bool is_collective_single_host,
+      IsCollectiveSingleHost(gpu_topology, *collective, device_assignment));
+  ABSL_ASSIGN_OR_RETURN(const bool is_cross_host_possible,
+                   IsCrossHostCollectiveKernelPossible(
+                       gpu_topology, *collective, device_assignment));
+  const bool is_lsa_possible = IsLsaPossible(gpu_topology);
+
+  if (!is_collective_single_host) {
+    if (is_cross_host_possible && is_lsa_possible) {
+      return SymmetricMemoryType::kLoadStoreAccessible;
+    }
+    return absl::UnimplementedError(
+        "Cross-host symmetric memory collectives are not supported.");
+  }
+  return is_lsa_possible ? SymmetricMemoryType::kLoadStoreAccessible
+                         : SymmetricMemoryType::kXlaRendezvous;
 }
 
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type) {
   const HloInstruction* collective = instr;
   if (instr->opcode() == HloOpcode::kFusion) {
     collective = instr->fused_instructions_computation()->root_instruction();
   }
   switch (collective->opcode()) {
     case HloOpcode::kAllReduce:
-      return CreateAllReduceKernelSpec(collective, launch_dimensions);
+      return CreateAllReduceKernelSpec(collective, launch_dimensions,
+                                       scratch_memory_type);
+    case HloOpcode::kAllGather:
+      return CreateAllGatherKernelSpec(collective, launch_dimensions,
+                                       scratch_memory_type);
+    case HloOpcode::kReduceScatter:
+      return CreateReduceScatterKernelSpec(collective, launch_dimensions,
+                                           scratch_memory_type);
     default:
       return absl::UnimplementedError(
           absl::StrFormat("CollectiveKernelSpec creation not implemented for "
                           "opcode: %s",
                           HloOpcodeString(collective->opcode())));
   }
+}
+
+namespace {
+
+struct AllGatherRewriteContext {
+  mlir::stablehlo::AllGatherOp op;
+  xtile::ExtractTileOp input_extract;
+  // Local input buffer read by `input_extract`.
+  mlir::TypedValue<mlir::MemRefType> input_buffer;
+  mlir::Value rank_arg;
+  mlir::Value signal_buffers_arg;
+  // !tt.ptr<i64> table of the gathered parameter's per-rank remote buffers.
+  mlir::Value remote_buffers_arg;
+  int64_t world_size = 0;
+  int64_t gather_dim = 0;
+  int64_t split_dim = -1;
+  int64_t signal_stride = 0;
+  PrimitiveType element_type = PrimitiveType::PRIMITIVE_TYPE_INVALID;
+  llvm::ArrayRef<int64_t> per_rank_shape;
+  llvm::ArrayRef<int64_t> tile_sizes;
+};
+
+absl::StatusOr<AllGatherRewriteContext> BuildAllGatherContext(
+    mlir::stablehlo::AllGatherOp op) {
+  if (op.getOperands().size() != 1) {
+    return absl::InvalidArgumentError(
+        "AllGather op must have exactly one operand.");
+  }
+  auto entry_func = op->getParentOfType<xtile::EntryFuncOp>();
+  if (!entry_func) {
+    return absl::InvalidArgumentError(
+        "AllGather op must be in an XTile entry function.");
+  }
+  // The peer rank is derived from the program id (see EmitPeerReplicaId). This
+  // requires one tile per program, i.e. no tile loop around the op.
+  if (op->getParentOp() != entry_func.getOperation()) {
+    return absl::InvalidArgumentError(
+        "AllGather op must be directly nested in the XTile entry function.");
+  }
+  // Same layout as AllReduce: the collective metadata arguments followed by one
+  // remote buffer argument per fusion parameter.
+  auto num_opaque_attr =
+      entry_func->getAttrOfType<mlir::IntegerAttr>("num_opaque_args");
+  if (!num_opaque_attr ||
+      num_opaque_attr.getInt() <= kNumCollectiveMetadataArgs) {
+    return absl::InvalidArgumentError(
+        "EntryFuncOp must have the collective metadata arguments followed by "
+        "the remote buffer arguments.");
+  }
+
+  mlir::Value input_tile = op.getOperand(0);
+  auto input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
+      input_tile.getDefiningOp());
+  if (!input_extract && input_tile.getDefiningOp() &&
+      input_tile.getDefiningOp()->getNumOperands() > 0) {
+    // Workaround(i1_to_i8_workaround): booleans are stored as i8 and cast to
+    // i1 after ExtractTileOp.
+    input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
+        input_tile.getDefiningOp()->getOperand(0).getDefiningOp());
+  }
+  if (!input_extract) {
+    return absl::InvalidArgumentError(
+        "AllGather operand must be defined by xtile::ExtractTileOp.");
+  }
+
+  // The gathered operand must be read from a fusion parameter. Its argument
+  // number selects the matching remote buffer argument.
+  auto input_arg =
+      mlir::dyn_cast<mlir::BlockArgument>(input_extract.getSource());
+  const int64_t num_parameters =
+      num_opaque_attr.getInt() - kNumCollectiveMetadataArgs;
+  if (!input_arg ||
+      input_arg.getOwner()->getParentOp() != entry_func.getOperation() ||
+      input_arg.getArgNumber() >= num_parameters) {
+    return absl::InvalidArgumentError(
+        "AllGather operand must be extracted from a fusion parameter.");
+  }
+  // `input_extract` is redirected to the peer's buffer below, so the local
+  // tile must not have other users.
+  if (!input_extract->hasOneUse() || !input_tile.hasOneUse()) {
+    return absl::InvalidArgumentError(
+        "AllGather input tile must only be used by the AllGather op.");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto replica_groups,
+                   xla::ConvertReplicaGroups(op.getReplicaGroups(), op));
+  if (replica_groups->replica_groups().empty()) {
+    return absl::InvalidArgumentError(
+        "AllGather replica groups must not be empty.");
+  }
+
+  PrimitiveType element_type = xla::ConvertMlirTypeToPrimitiveType(
+      input_extract.getType().getElementType());
+  if (element_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) {
+    return absl::InvalidArgumentError(
+        "Could not convert AllGather element type to PrimitiveType.");
+  }
+
+  AllGatherRewriteContext ctx;
+  ctx.op = op;
+  ctx.input_extract = input_extract;
+  ctx.input_buffer = input_extract.getSource();
+  ctx.world_size = replica_groups->num_devices_per_group();
+  ctx.gather_dim = op.getAllGatherDim();
+  ctx.element_type = element_type;
+  ctx.per_rank_shape = ctx.input_buffer.getType().getShape();
+  ctx.tile_sizes = input_extract.getFullTileShape();
+
+  // Every tile must be gathered from a single rank (see EmitPeerReplicaId).
+  const int64_t per_rank_size = ctx.per_rank_shape[ctx.gather_dim];
+  const int64_t tile_size = ctx.tile_sizes[ctx.gather_dim];
+  if (per_rank_size % tile_size != 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "AllGather tile size (%d) must divide the per-rank size (%d) along the "
+        "gather dimension.",
+        tile_size, per_rank_size));
+  }
+
+  int32_t total_args = entry_func.getNumArguments();
+  int32_t metadata_args_start =
+      total_args - num_opaque_attr.getInt() - kNumTileIndexArgs;
+  // Layout: opaque[0]=rank, opaque[1]=invocation count (unused, the signal
+  // value comes from a counter in device memory), opaque[2]=signal_buffers,
+  // opaque[3 + i]=remote buffers of parameter i (same as AllReduce).
+  ctx.rank_arg = entry_func.getArgument(metadata_args_start);
+  ctx.signal_buffers_arg = entry_func.getArgument(metadata_args_start + 2);
+  ctx.remote_buffers_arg =
+      entry_func.getArgument(metadata_args_start + kNumCollectiveMetadataArgs +
+                             input_arg.getArgNumber());
+
+  // Find a dimension to split the tile size across `world_size` to balance
+  // the in-kernel D2D subtile copy work across participating ranks.
+  // We prefer splitting along `gather_dim`, but fallback to the innermost
+  // cleanly divisible dimension. If none are found, split_dim remains -1
+  // (unsplit).
+  if (ctx.tile_sizes[ctx.gather_dim] >= ctx.world_size &&
+      ctx.tile_sizes[ctx.gather_dim] % ctx.world_size == 0) {
+    ctx.split_dim = ctx.gather_dim;
+  } else {
+    for (int64_t d = static_cast<int64_t>(ctx.tile_sizes.size()) - 1; d >= 0;
+         --d) {
+      if (ctx.tile_sizes[d] >= ctx.world_size &&
+          ctx.tile_sizes[d] % ctx.world_size == 0) {
+        ctx.split_dim = d;
+        break;
+      }
+    }
+  }
+
+  ctx.signal_stride =
+      ctx.per_rank_shape[ctx.gather_dim] / ctx.tile_sizes[ctx.gather_dim];
+  for (int64_t j = ctx.gather_dim + 1;
+       j < static_cast<int64_t>(ctx.per_rank_shape.size()); ++j) {
+    ctx.signal_stride *=
+        xla::CeilOfRatio(ctx.per_rank_shape[j], ctx.tile_sizes[j]);
+  }
+  return ctx;
+}
+
+// Returns the rank whose output slice contains this program's tile. Programs
+// enumerate output tiles in row-major order (same assumption as
+// `signal_stride` and the asymmetric barrier), so each run of `signal_stride`
+// consecutive programs covers one rank's slice along `gather_dim`.
+mlir::Value EmitPeerReplicaId(mlir::ImplicitLocOpBuilder& b,
+                              const AllGatherRewriteContext& ctx,
+                              mlir::Value block_id) {
+  mlir::Value stride_op = arith::ConstantOp::create(
+      b, b.getI32IntegerAttr(static_cast<int32_t>(ctx.signal_stride)));
+  mlir::Value world_size_op = arith::ConstantOp::create(
+      b, b.getI32IntegerAttr(static_cast<int32_t>(ctx.world_size)));
+  mlir::Value tile_group = arith::DivUIOp::create(b, block_id, stride_op);
+  return arith::RemUIOp::create(b, tile_group, world_size_op);
+}
+
+// Returns the active slot of `rank`'s remote buffer as a memref with the type
+// of the local input buffer.
+mlir::Value EmitRemoteBufferMemref(mlir::ImplicitLocOpBuilder& b,
+                                   const AllGatherRewriteContext& ctx,
+                                   mlir::Value rank,
+                                   mlir::Value buffer_offset) {
+  const mlir::MemRefType memref_type = ctx.input_buffer.getType();
+  mlir::Value ptr =
+      EmitRemoteBufferPtr(b, ctx.remote_buffers_arg, rank, buffer_offset,
+                          memref_type.getElementType());
+  return mtx::PtrToMemrefOp::create(b, memref_type, ptr);
+}
+
+void CopySubtileToScratch(mlir::ImplicitLocOpBuilder& b,
+                          AllGatherRewriteContext& ctx,
+                          mlir::Value peer_replica_id,
+                          mlir::Value buffer_offset) {
+  llvm::SmallVector<mlir::Value> stage_offsets(
+      ctx.input_extract.getOffsets().begin(),
+      ctx.input_extract.getOffsets().end());
+  llvm::SmallVector<int64_t> subtile_shape(ctx.tile_sizes.begin(),
+                                           ctx.tile_sizes.end());
+  if (ctx.split_dim != -1) {
+    const int64_t subtile_size = ctx.tile_sizes[ctx.split_dim] / ctx.world_size;
+    mlir::Value subtile_size_val =
+        arith::ConstantIndexOp::create(b, subtile_size);
+    mlir::Value peer_replica_idx =
+        arith::IndexCastOp::create(b, b.getIndexType(), peer_replica_id);
+    mlir::Value subtile_off =
+        arith::MulIOp::create(b, peer_replica_idx, subtile_size_val);
+    stage_offsets[ctx.split_dim] =
+        arith::AddIOp::create(b, stage_offsets[ctx.split_dim], subtile_off);
+    subtile_shape[ctx.split_dim] = subtile_size;
+  }
+
+  auto subtile_tensor_type = mlir::RankedTensorType::get(
+      subtile_shape, ctx.input_extract.getType().getElementType());
+  auto subtile = xtile::ExtractTileOp::create(
+      b, subtile_tensor_type, ctx.input_buffer, stage_offsets, subtile_shape,
+      ctx.input_extract.getStrides());
+
+  mlir::Value own_scratch_slot =
+      EmitRemoteBufferMemref(b, ctx, ctx.rank_arg, buffer_offset);
+  xtile::InsertTileOp::create(b, subtile, own_scratch_slot, stage_offsets,
+                              subtile_shape, ctx.input_extract.getStrides());
+}
+
+}  // namespace
+
+mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
+                                     mlir::PatternRewriter& rewriter) {
+  absl::StatusOr<AllGatherRewriteContext> maybe_ctx = BuildAllGatherContext(op);
+  if (!maybe_ctx.ok()) {
+    return rewriter.notifyMatchFailure(op, maybe_ctx.status().message());
+  }
+  AllGatherRewriteContext& ctx = *maybe_ctx;
+
+  mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+  builder.setInsertionPoint(ctx.input_extract);
+
+  mlir::Value block_id = ttir::GetProgramIdOp::create(builder, 0);
+  mlir::Value peer_replica_id = EmitPeerReplicaId(builder, ctx, block_id);
+  mlir::Value signal_value = EmitDeviceInvocationCount(
+      builder, ctx.signal_buffers_arg, ctx.rank_arg, block_id, ctx.world_size,
+      /*signal_slot=*/peer_replica_id, ctx.signal_stride);
+  mlir::Value buffer_offset = EmitDoubleBufferOffset(
+      builder, signal_value, Product(ctx.per_rank_shape), ctx.element_type);
+
+  // Copy this program's subtile of the local tile to this rank's remote buffer.
+  CopySubtileToScratch(builder, ctx, peer_replica_id, buffer_offset);
+  // Wait until the peer has staged the whole tile.
+  EmitBlockBarrier(builder, ctx.signal_buffers_arg, ctx.rank_arg, signal_value,
+                   ctx.world_size, /*signal_slot=*/peer_replica_id,
+                   ctx.signal_stride, mtx::BarrierMode::kConsumerSymmetric);
+  // Pull the tile from the peer's remote buffer.
+  mlir::Value pull_scratch_slot =
+      EmitRemoteBufferMemref(builder, ctx, peer_replica_id, buffer_offset);
+  rewriter.modifyOpInPlace(ctx.input_extract, [&]() {
+    ctx.input_extract.getSourceMutable().assign(pull_scratch_slot);
+  });
+  rewriter.replaceOp(op, op.getOperand(0));
+
+  return mlir::success();
+}
+
+absl::Status FlattenReduceScatterFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr) {
+  HloComputation* parent = fusion_instr->parent();
+  HloComputation* fused_computation =
+      fusion_instr->fused_instructions_computation();
+  auto* rs = DynCast<HloReduceScatterInstruction>(
+      fused_computation->root_instruction());
+  TF_RET_CHECK(rs != nullptr) << "Expected a reduce-scatter fusion root.";
+  TF_RET_CHECK(fused_computation->num_parameters() == 1 &&
+               rs->operand(0) == fused_computation->parameter_instruction(0))
+      << "Expected a single parameter feeding the reduce-scatter.";
+  TF_RET_CHECK(IsReduceScatterFlattenable(rs))
+      << "Reduce-scatter is not flattenable.";
+  const Shape original_input_shape = rs->operand(0)->shape();
+  const Shape original_output_shape = rs->shape();
+  const int64_t num_devices = rs->device_list()->num_devices_per_group();
+  TF_RET_CHECK(num_devices > 0);
+  const int64_t num_output_elements =
+      ShapeUtil::ElementsIn(original_output_shape);
+  TF_RET_CHECK(num_output_elements % num_devices == 0)
+      << "Reduce-scatter output element count " << num_output_elements
+      << " is not divisible by the number of devices " << num_devices;
+  const int64_t inner_elements = num_output_elements / num_devices;
+  const PrimitiveType element_type = original_output_shape.element_type();
+  // When `inner_elements` is not a power of two (e.g. 12288), a 2D
+  // [R, OutputSize / R] shape rounds the inner tile size up to a power of two
+  // in GreedyPowerOfTwoTiles, which can drop the grid below the target block
+  // count from ReduceScatterLaunchDimensions (e.g. 48 blocks instead of 64).
+  // Factor out up to `kReduceScatterMaxBlocksPerGrid / R` blocks into a middle
+  // dimension [R, B, OutputSize / (R * B)] so GreedyPowerOfTwoTiles can assign
+  // blocks along that dimension without rounding `inner_elements` as a single
+  // power of two.
+  const int64_t max_blocks_per_rank =
+      std::max<int64_t>(1, kReduceScatterMaxBlocksPerGrid / num_devices);
+  const int64_t inner_blocks =
+      llvm::has_single_bit(static_cast<uint64_t>(inner_elements))
+          ? 1
+          : std::gcd(inner_elements, max_blocks_per_rank);
+  Shape flat_input_shape;
+  Shape flat_output_shape;
+  if (inner_blocks > 1) {
+    flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        element_type,
+        {num_devices * num_devices, inner_blocks,
+         inner_elements / inner_blocks},
+        {2, 1, 0});
+    flat_output_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        element_type,
+        {num_devices, inner_blocks, inner_elements / inner_blocks}, {2, 1, 0});
+  } else {
+    // Input [R * R, OutputSize / R] and output [R, OutputSize / R]: shard `s`
+    // of the input is rows [s * R, (s + 1) * R) and every output row is reduced
+    // from one input row of each rank.
+    flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        element_type, {num_devices * num_devices, inner_elements}, {1, 0});
+    flat_output_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        element_type, {num_devices, inner_elements}, {1, 0});
+  }
+  if (original_input_shape == flat_input_shape &&
+      original_output_shape == flat_output_shape &&
+      rs->scatter_dimension() == 0) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* param = fused_computation->parameter_instruction(0);
+  *param->mutable_shape() = flat_input_shape;
+  HloInstruction* flat_rs =
+      fused_computation->AddInstruction(HloInstruction::CreateReduceScatter(
+          flat_output_shape, {param}, rs->to_apply(), rs->device_list(),
+          rs->constrain_layout(), rs->channel_id(), rs->use_global_device_ids(),
+          /*scatter_dimension=*/0));
+  flat_rs->CopyBackendConfigFrom(rs);
+  flat_rs->set_metadata(rs->metadata());
+  flat_rs->set_frontend_attributes(rs->frontend_attributes());
+  fused_computation->set_root_instruction(flat_rs,
+                                          /*accept_different_shape=*/true);
+  const std::string rs_name(rs->name());
+  ABSL_RETURN_IF_ERROR(fused_computation->RemoveInstruction(rs));
+  // Keep the original name so that the flattened reduce-scatter can still be
+  // matched to the original HLO (e.g. in profiles).
+  flat_rs->SetAndSanitizeName(rs_name);
+
+  *fusion_instr->mutable_shape() = flat_output_shape;
+  HloInstruction* bitcast_to_flat =
+      parent->AddInstruction(HloInstruction::CreateBitcast(
+          flat_input_shape, fusion_instr->mutable_operand(0)));
+  ABSL_RETURN_IF_ERROR(
+      fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_flat));
+  HloInstruction* bitcast_to_original = parent->AddInstruction(
+      HloInstruction::CreateBitcast(original_output_shape, fusion_instr));
+  VLOG(3) << "Flattened reduce-scatter fusion " << fusion_instr->name()
+          << " from " << original_input_shape.ToString() << " -> "
+          << original_output_shape.ToString();
+  return fusion_instr->ReplaceAllUsesWithDifferentShape(bitcast_to_original);
 }
 
 }  // namespace xla::gpu

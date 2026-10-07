@@ -1,0 +1,70 @@
+/* Filename is kept stale intentionally for benchmark tracking purposes. */
+HloModule ynn_parallel_dots
+
+ynn_fusion_0 {
+  %a = f32[512,512] parameter(0)
+  %b = f32[512,512] parameter(1)
+  ROOT %dot = f32[512,512] dot(%a, %b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ynn_fusion_1 {
+  %a = f32[512,512] parameter(0)
+  %b = f32[512,512] parameter(1)
+  ROOT %dot = f32[512,512] dot(%a, %b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ynn_fusion_2 {
+  %a = f32[512,512] parameter(0)
+  %b = f32[512,512] parameter(1)
+  ROOT %dot = f32[512,512] dot(%a, %b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ynn_fusion_3 {
+  %a = f32[512,512] parameter(0)
+  %b = f32[512,512] parameter(1)
+  ROOT %dot = f32[512,512] dot(%a, %b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+%reduce_add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  %p0 = f32[512,512] parameter(0)
+  %p1 = f32[512,512] parameter(1)
+  %p2 = f32[512,512] parameter(2)
+  %p3 = f32[512,512] parameter(3)
+  %p4 = f32[512,512] parameter(4)
+
+  %f0 = f32[512,512] fusion(%p0, %p1),
+    kind=kCustom, calls=ynn_fusion_0,
+    backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+
+  %f1 = f32[512,512] fusion(%p0, %p2),
+    kind=kCustom, calls=ynn_fusion_1,
+    backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+
+  %f2 = f32[512,512] fusion(%p0, %p3),
+    kind=kCustom, calls=ynn_fusion_2,
+    backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+
+  %f3 = f32[512,512] fusion(%p0, %p4),
+    kind=kCustom, calls=ynn_fusion_3,
+    backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+
+  %c0 = f32[] constant(0.0)
+  %r0 = f32[512] reduce(%f0, %c0), dimensions={1}, to_apply=%reduce_add
+  %r1 = f32[512] reduce(%f1, %c0), dimensions={1}, to_apply=%reduce_add
+  %r2 = f32[512] reduce(%f2, %c0), dimensions={1}, to_apply=%reduce_add
+  %r3 = f32[512] reduce(%f3, %c0), dimensions={1}, to_apply=%reduce_add
+
+  %a0 = f32[512] add(%r0, %r1)
+  %a1 = f32[512] add(%r2, %r3)
+  ROOT %a2 = f32[512] add(%a0, %a1)
+}

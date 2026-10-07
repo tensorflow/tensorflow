@@ -24,12 +24,14 @@ limitations under the License.
 
 namespace xla {
 
-// Rewrites global AR if it is in the form of AR + DS and matches existing
-// replica groups into a logical RS followed by AR.
+// Rewrites AR + DS into a logical RS followed by AR when the dynamic-slice
+// implies that only a subset of the reduced data is needed per device.
 //
-// If the pass detects AR followed by DS, then it checks whether
-// it is profitable to break it down into a logical RS (but AR + DS still),
-// followed by an AR to keep the rewrite numerically equivalent.
+// Supports both:
+//   1. A single replica group spanning all partitions (classic HSDP case).
+//   2. Uniform subgroup ARs (e.g. DP x FSDP within each TP plane), where the
+//      split is applied independently inside every input replica group using
+//      the dynamic-slice offset -> shard map.
 //
 // Consider following example:
 //
@@ -53,10 +55,12 @@ namespace xla {
 //     ds = dynamic-slice(ar, pointer(partition_id)), dynamic_slice_sizes={8}
 //     ar.2 = bf16[32] all-reduce(ds), replica_groups={{0,4},{1,5},{2,6},{3,7}}
 //
-// In addition the pass does the rewrite only if it finds it profitable to do
-// so. The profitability function is simple, and just checks whether there are
+// By default the pass only rewrites when it finds it profitable to do so.
+// The profitability function is simple, and just checks whether there are
 // any collectives with same replica groups. If there are then the combiner pass
-// can pick it up, and fuse it into the same NCCL call.
+// can pick it up, and fuse it into the same NCCL call. Pass
+// ignore_profitability_check=true (or the corresponding XLA flag) to split
+// regardless.
 //
 // While the solution is orthogonal to existing known distribution patterns, in
 // practice it is profitable for HSDP style communication pattern.
@@ -64,12 +68,18 @@ namespace xla {
 //
 class AllReduceSplitter : public HloModulePass {
  public:
+  explicit AllReduceSplitter(bool ignore_profitability_check = false)
+      : ignore_profitability_check_(ignore_profitability_check) {}
+
   absl::string_view name() const override { return "all-reduce-splitter"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  const bool ignore_profitability_check_;
 };
 
 }  // namespace xla

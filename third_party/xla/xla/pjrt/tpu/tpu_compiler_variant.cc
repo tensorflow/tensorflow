@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_compiler_variant.h"
 
@@ -34,7 +34,7 @@ bool RegisterTpuVariantPicker() {
   PjRtRegisterCompilerVariantPicker(
       "tpu",
       []() -> absl::StatusOr<std::string> {
-        ASSIGN_OR_RETURN(PjRtCompilerVariant variant, PickTpuCompilerVariant(),
+        ABSL_ASSIGN_OR_RETURN(PjRtCompilerVariant variant, PickTpuCompilerVariant(),
                          _);
         std::string compiler_variant = CompilerVariantToString(variant);
         return compiler_variant == kLinkedVariant ? "" : compiler_variant;

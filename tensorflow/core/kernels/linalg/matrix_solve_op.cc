@@ -34,6 +34,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/kernels/linalg/matrix_solve_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 #endif
@@ -132,8 +133,6 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const Tensor& rhs = context->input(1);
     const int ndims = input.dims();
-    const int64_t n = input.dim_size(ndims - 1);
-    const int64_t nrhs = rhs.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(context, ndims >= 2,
                       absl::InvalidArgumentError(absl::StrCat(
@@ -144,9 +143,11 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                           "Input and right-hand side must have same rank, got ",
                           ndims, " != ", rhs.dims())),
                       done);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t nrhs = rhs.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be squares, got ",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
     OP_REQUIRES_ASYNC(context, rhs.dim_size(ndims - 2) == n,
@@ -259,6 +260,16 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
             done);
       }
     }
+
+    // 1b. Check the diagonal of the LU factorization for exact zeros to detect
+    // singular matrices. cuBLAS getrfBatched may not always report singularity
+    // via its info output, so we explicitly check for zero pivots on the
+    // diagonal of the factored matrix.
+    functor::CheckLUDiagonalForZerosFunctor<GPUDevice, Scalar> check_diag;
+    check_diag(device,
+               const_cast<const Tensor*>(&input_copy)
+                   ->template flat_inner_dims<Scalar, 3>(),
+               dev_info.back().mutable_data());
 
     // 2. Make a transposed copy of the right-hand sides. This is necessary
     // because cuBLAS/rocSolver assumes column-major storage while TensorFlow TF

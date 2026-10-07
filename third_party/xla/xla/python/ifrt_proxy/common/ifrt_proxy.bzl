@@ -35,5 +35,7 @@ def ifrt_proxy_cc_test(
 
 default_ifrt_proxy_visibility = ["//visibility:public"]
 
+ifrt_proxy_grpc_client_visibility = default_ifrt_proxy_visibility
+
 def cc_library(**attrs):
     _cc_library(**attrs)

@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/lib/slicing.h"
@@ -36,7 +36,7 @@ namespace xla {
 QrDecomposition Qr(XlaOp a) {
   auto result = [&]() -> absl::StatusOr<QrDecomposition> {
     XlaBuilder* builder = a.builder();
-    ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int num_dims = a_shape.dimensions().size();
     if (num_dims < 2) {
       return InvalidArgument(
@@ -69,8 +69,8 @@ QrDecomposition Qr(XlaOp a) {
 XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
+    ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ABSL_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
     if (a_shape.dimensions().size() < 2) {
       return InvalidArgument(
           "Matrix `a` must have >= 2 dimensions: got shape %s",

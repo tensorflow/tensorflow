@@ -38,10 +38,10 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
+        "@grpc//:grpc++",
         "@tsl//tsl/platform:protobuf",
     ],
 )
@@ -60,9 +60,9 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/protobuf:coordination_service_cc_grpc_proto",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@grpc//:grpc++",
     ],
 )

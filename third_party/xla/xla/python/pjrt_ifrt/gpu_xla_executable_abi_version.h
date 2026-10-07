@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
 
 namespace xla {
@@ -28,11 +28,11 @@ namespace xla {
 // GPU specific implementation of XlaExecutableAbiVersion necessary to support
 // GPU specific serialization via GpuXlaExecutableAbiVersionSerDes.
 struct GpuXlaExecutableAbiVersion
-    : public llvm::RTTIExtends<GpuXlaExecutableAbiVersion,
+    : public ifrt::RTTIExtends<GpuXlaExecutableAbiVersion,
                                ifrt::XlaExecutableAbiVersion> {
   explicit GpuXlaExecutableAbiVersion(
       std::unique_ptr<xla::PjRtExecutableAbiVersion> version)
-      : llvm::RTTIExtends<GpuXlaExecutableAbiVersion,
+      : ifrt::RTTIExtends<GpuXlaExecutableAbiVersion,
                           ifrt::XlaExecutableAbiVersion>(std::move(version)) {}
   static char ID;  // NOLINT
 };

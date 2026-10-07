@@ -22,11 +22,11 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -180,20 +180,20 @@ absl::Status EmitCompareLoopBody(
 
     // if (index_is_inbounds)
     KernelSupportLibrary ksl(b);
-    RETURN_IF_ERROR(ksl.IfWithStatus(
+    ABSL_RETURN_IF_ERROR(ksl.IfWithStatus(
         "smaller_comparison_index", index_is_inbounds, [&]() -> absl::Status {
           std::vector<llvm::Value*> values_to_compare;
           std::vector<llvm::Type*> values_to_compare_types;
           values_to_compare.reserve(num_values * 2);
           values_to_compare_types.reserve(num_values * 2);
           for (int i = 0; i < num_values; ++i) {
-            ASSIGN_OR_RETURN(llvm::Value * address,
+            ABSL_ASSIGN_OR_RETURN(llvm::Value * address,
                              element_address(i, compare_keys_index));
             values_to_compare.push_back(address);
             values_to_compare_types.push_back(
                 element_address_pointee_type(i, compare_keys_index));
 
-            ASSIGN_OR_RETURN(address, element_address(i, current_keys_index));
+            ABSL_ASSIGN_OR_RETURN(address, element_address(i, current_keys_index));
             values_to_compare.push_back(address);
             values_to_compare_types.push_back(
                 element_address_pointee_type(i, current_keys_index));
@@ -203,7 +203,7 @@ absl::Status EmitCompareLoopBody(
           llvm::Value* compare_return_buffer =
               llvm_ir::EmitAllocaAtFunctionEntry(pred_type,
                                                  "compare_return_buffer", b);
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               emit_compare_callback(values_to_compare, compare_return_buffer));
           llvm::Value* result = b->CreateLoad(pred_type, compare_return_buffer);
 
@@ -286,7 +286,7 @@ absl::Status EmitTiledCompareLoop(
           b->CreateAdd(base_keys_index, offset, "current_keys_index",
                        /*HasNUW=*/true, /*HasNSW=*/true);
       // We check whether the index position is within bounds.
-      RETURN_IF_ERROR(ksl.IfWithStatus(
+      ABSL_RETURN_IF_ERROR(ksl.IfWithStatus(
           "smaller_keys_index",
           b->CreateICmpSLT(current_keys_index,
                            tiled_keys_index.GetConstantWithIndexType(
@@ -304,7 +304,7 @@ absl::Status EmitTiledCompareLoop(
   // Copy operand tiles from the operand buffers to shared memory.
   std::vector<llvm::Value*> keys_multi_index = tiled_keys_index.multidim();
   for (int64_t i = 0; i < params.size(); ++i) {
-    RETURN_IF_ERROR(copy_loop_body([&](llvm::Value* cache_index,
+    ABSL_RETURN_IF_ERROR(copy_loop_body([&](llvm::Value* cache_index,
                                        llvm::Value* index) {
       keys_multi_index[dimension_to_sort] = index;
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
@@ -312,7 +312,7 @@ absl::Status EmitTiledCompareLoop(
       llvm::Value* value;
       if (emit_iota_operands &&
           HloPredicateIsOp<HloOpcode::kIota>(sort->operand(i))) {
-        ASSIGN_OR_RETURN(value,
+        ABSL_ASSIGN_OR_RETURN(value,
                          EmitIota(sort->operand(i), keys_index, module, b));
       } else {
         value = params[i].EmitReadArrayElement(keys_index, b);
@@ -367,7 +367,7 @@ absl::Status EmitTiledCompareLoop(
     if (dimension_to_sort_bound % tile_size) {
       // Otherwise we need a bounds check for the last tile. The last tile has
       // size 'dimension_to_sort_bound' % 'tile_size'.
-      RETURN_IF_ERROR(ksl.IfWithStatus(
+      ABSL_RETURN_IF_ERROR(ksl.IfWithStatus(
           "is_last_tile",
           b->CreateICmpUGE(
               b->CreateMul(
@@ -392,7 +392,7 @@ absl::Status EmitTiledCompareLoop(
                 /*needs_bounds_checks=*/false);
           }));
     } else {
-      RETURN_IF_ERROR(EmitCompareLoopBody(
+      ABSL_RETURN_IF_ERROR(EmitCompareLoopBody(
           tile_size, num_threads, unroll_factor / 2, params.size(),
           element_pair_index, xor_mask, tiled_keys_index.GetType(),
           element_address, element_address_pointee_type, write_element,
@@ -406,7 +406,7 @@ absl::Status EmitTiledCompareLoop(
 
   // Copy the operand tiles back from shared memory to the operand buffers.
   for (int64_t i = 0; i < params.size(); ++i) {
-    RETURN_IF_ERROR(copy_loop_body([&](llvm::Value* cache_index,
+    ABSL_RETURN_IF_ERROR(copy_loop_body([&](llvm::Value* cache_index,
                                        llvm::Value* index) {
       keys_multi_index[dimension_to_sort] = index;
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
@@ -514,7 +514,7 @@ absl::Status EmitSortInPlace(
     if (xor_masks.size() > 1) {
       IrArray::Index keys_index(keys_multi_index, values_arrays[0].GetShape(),
                                 tiles_index.GetType());
-      RETURN_IF_ERROR(EmitTiledCompareLoop(
+      ABSL_RETURN_IF_ERROR(EmitTiledCompareLoop(
           keys_index, sort, dimension_to_sort_bound, num_threads, xor_masks,
           values_arrays, emit_iota_operands, param_shmem_buffers, tile_size,
           unroll_factor, emit_compare_callback, module, b));
@@ -531,7 +531,7 @@ absl::Status EmitSortInPlace(
         llvm::Value* element;
         if (emit_iota_operands &&
             HloPredicateIsOp<HloOpcode::kIota>(sort->operand(operand))) {
-          ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               element, EmitIota(sort->operand(operand), keys_index, module, b));
         } else {
           if (!primitive_util::IsSubByteNonPredType(element_type)) {
@@ -558,7 +558,7 @@ absl::Status EmitSortInPlace(
                                   tiles_index.GetType());
         values_arrays[operand].EmitWriteArrayElement(keys_index, value, b);
       };
-      RETURN_IF_ERROR(EmitCompareLoopBody(
+      ABSL_RETURN_IF_ERROR(EmitCompareLoopBody(
           dimension_to_sort_bound, /*num_threads=*/1, unroll_factor / 2,
           values_arrays.size(), tiles_index[rank - 1], xor_masks[0],
           tiles_index.GetType(), element_address, element_address_pointee_type,

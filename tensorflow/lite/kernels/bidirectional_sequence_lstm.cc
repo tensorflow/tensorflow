@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/lstm_eval.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -414,6 +414,92 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+// Validates the dimensions of optional auxiliary input and weight tensors
+// for both forward and backward LSTM cells. Returns kTfLiteError if shapes
+// are mismatched or invalid.
+TfLiteStatus CheckAuxInputTensorDimensions(TfLiteContext* context,
+                                           TfLiteNode* node, int n_input,
+                                           int n_fw_cell, int n_bw_cell) {
+  const TfLiteTensor* aux_input =
+      GetOptionalInputTensor(context, node, kAuxInputTensor);
+  const TfLiteTensor* fw_aux_input_to_forget_weights =
+      GetOptionalInputTensor(context, node, kFwAuxInputToForgetWeightsTensor);
+  const bool has_aux_input = (fw_aux_input_to_forget_weights != nullptr);
+
+  if (has_aux_input) {
+    const TfLiteTensor* input;
+    TF_LITE_ENSURE_OK(context,
+                      GetInputSafe(context, node, kInputTensor, &input));
+    TF_LITE_ENSURE(context, aux_input != nullptr);
+    TF_LITE_ENSURE_EQ(context, aux_input->dims->size, 3);
+    // Check that aux_input has the same dimensions (except last) as the input.
+    TF_LITE_ENSURE_EQ(context, aux_input->dims->data[0], input->dims->data[0]);
+    TF_LITE_ENSURE_EQ(context, aux_input->dims->data[1], input->dims->data[1]);
+    const int aux_input_size = aux_input->dims->data[2];
+
+    auto check_weights = [context, aux_input_size](
+                             const TfLiteTensor* input_weights,
+                             const TfLiteTensor* forget_weights,
+                             const TfLiteTensor* cell_weights,
+                             const TfLiteTensor* output_weights,
+                             int expected_cell_dim) {
+      for (const TfLiteTensor* weight_tensor :
+           {forget_weights, cell_weights, output_weights}) {
+        TF_LITE_ENSURE_EQ(context, weight_tensor->dims->size, 2);
+        TF_LITE_ENSURE_EQ(context, weight_tensor->dims->data[0],
+                          expected_cell_dim);
+        TF_LITE_ENSURE_EQ(context, weight_tensor->dims->data[1],
+                          aux_input_size);
+      }
+      if (input_weights != nullptr) {
+        TF_LITE_ENSURE_EQ(context, input_weights->dims->size, 2);
+        TF_LITE_ENSURE_EQ(context, input_weights->dims->data[0],
+                          expected_cell_dim);
+        TF_LITE_ENSURE_EQ(context, input_weights->dims->data[1],
+                          aux_input_size);
+      }
+      return kTfLiteOk;
+    };
+
+    TF_LITE_ENSURE_OK(
+        context,
+        check_weights(GetOptionalInputTensor(context, node,
+                                             kFwAuxInputToInputWeightsTensor),
+                      GetOptionalInputTensor(context, node,
+                                             kFwAuxInputToForgetWeightsTensor),
+                      GetOptionalInputTensor(context, node,
+                                             kFwAuxInputToCellWeightsTensor),
+                      GetOptionalInputTensor(context, node,
+                                             kFwAuxInputToOutputWeightsTensor),
+                      n_fw_cell));
+    TF_LITE_ENSURE_OK(
+        context,
+        check_weights(GetOptionalInputTensor(context, node,
+                                             kBwAuxInputToInputWeightsTensor),
+                      GetOptionalInputTensor(context, node,
+                                             kBwAuxInputToForgetWeightsTensor),
+                      GetOptionalInputTensor(context, node,
+                                             kBwAuxInputToCellWeightsTensor),
+                      GetOptionalInputTensor(context, node,
+                                             kBwAuxInputToOutputWeightsTensor),
+                      n_bw_cell));
+    return kTfLiteOk;
+  }
+
+  // When no auxiliary weights are provided, any auxiliary input tensor present
+  // must match all primary input dimensions.
+  if (aux_input != nullptr) {
+    TF_LITE_ENSURE_EQ(context, aux_input->dims->size, 3);
+    const TfLiteTensor* input;
+    TF_LITE_ENSURE_OK(context,
+                      GetInputSafe(context, node, kInputTensor, &input));
+    TF_LITE_ENSURE_EQ(context, aux_input->dims->data[0], input->dims->data[0]);
+    TF_LITE_ENSURE_EQ(context, aux_input->dims->data[1], input->dims->data[1]);
+    TF_LITE_ENSURE_EQ(context, aux_input->dims->data[2], n_input);
+  }
+  return kTfLiteOk;
+}
+
 // Resize the output and scratch tensors based on the sizes of the input
 // tensors. Also check that the size of the input tensors match each other.
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -521,11 +607,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const bool has_aux_input = (fw_aux_input_to_forget_weights != nullptr);
 
-  if (has_aux_input) {
-    // Check that aux_input has the same dimensions (except last) as the input.
-    TF_LITE_ASSERT_EQ(aux_input->dims->data[0], input->dims->data[0]);
-    TF_LITE_ASSERT_EQ(aux_input->dims->data[1], input->dims->data[1]);
-  }
+  TF_LITE_ENSURE_OK(context, CheckAuxInputTensorDimensions(
+                                 context, node, n_input, n_fw_cell, n_bw_cell));
 
   // Get the pointer to output, activation_state and cell_state buffer tensors.
   TfLiteTensor* fw_output;

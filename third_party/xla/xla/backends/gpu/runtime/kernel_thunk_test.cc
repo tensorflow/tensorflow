@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
@@ -39,10 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/literal.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -52,6 +48,7 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -61,8 +58,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -82,7 +77,8 @@ TEST(KernelThunkTest, CreateWithDefaultValues) {
                     /*launch_dimensions=*/LaunchDimensions(),
                     /*cluster_dim=*/se::ClusterDim(),
                     /*shmem_bytes=*/0,
-                    /*tma_metadata=*/se::gpu::TmaMetadata());
+                    /*tma_metadata=*/se::gpu::TmaMetadata(),
+                    /*devices_per_host=*/1);
   EXPECT_EQ(thunk.kind(), Kind::kKernel);
   EXPECT_TRUE(thunk.kernel_name().empty());
   EXPECT_TRUE(thunk.arguments().empty());
@@ -124,7 +120,8 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
                     /*launch_dimensions=*/launch_dimensions,
                     /*cluster_dim=*/se::ClusterDim(1, 1, 1),
                     /*shmem_bytes=*/1024,
-                    /*tma_metadata=*/se::gpu::TmaMetadata());
+                    /*tma_metadata=*/se::gpu::TmaMetadata(),
+                    /*devices_per_host=*/1);
   EXPECT_EQ(thunk.kind(), Kind::kKernel);
   EXPECT_EQ(thunk.kernel_name(), "kernel123");
   EXPECT_EQ(thunk.arguments(),
@@ -181,6 +178,7 @@ TEST(KernelThunkTest, ToProto) {
                     /*cluster_dim=*/se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
                     /*tma_metadata=*/tma_metadata,
+                    /*devices_per_host=*/1,
                     /*zeroed_output_buffer_indices=*/{},
                     /*use_pdl=*/true);
   ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
@@ -276,13 +274,15 @@ TEST(KernelThunkTest, ToAndFromProto) {
 
   KernelThunk thunk(thunk_info, std::string{kKernelName}, kernel_arguments,
                     launch_dimensions, cluster_dim, kSharedMemoryBytes,
-                    tma_metadata, /*zeroed_output_buffer_indices=*/{},
+                    tma_metadata, /*devices_per_host=*/1,
+                    /*zeroed_output_buffer_indices=*/{},
                     /*use_pdl=*/true);
   ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_kernel_thunk());
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<KernelThunk> reconstructed_thunk,
-      KernelThunk::FromProto(thunk_info, proto.kernel_thunk(), allocations));
+      KernelThunk::FromProto(thunk_info, proto.kernel_thunk(), allocations,
+                             /*devices_per_host=*/1));
 
   EXPECT_THAT(reconstructed_thunk->cluster_dim(), cluster_dim);
   EXPECT_THAT(reconstructed_thunk->kernel_name(), kKernelName);
@@ -313,6 +313,7 @@ TEST(KernelThunkTest, ConvertToCommandsPropagatesUsePdl) {
       /*cluster_dim=*/se::ClusterDim(),
       /*shmem_bytes=*/0,
       /*tma_metadata=*/se::gpu::TmaMetadata(),
+      /*devices_per_host=*/1,
       /*zeroed_output_buffer_indices=*/std::vector<int64_t>{},
       /*use_pdl=*/true);
 
@@ -346,7 +347,7 @@ TEST(KernelThunkTest, BufferUsesReturnsCorrectBuffers) {
   emitters::KernelArguments kernel_arguments({arg0, arg1});
   KernelThunk thunk(Thunk::ThunkInfo(), "kernel", kernel_arguments,
                     LaunchDimensions(), se::ClusterDim(), /*shmem_bytes=*/0,
-                    se::gpu::TmaMetadata());
+                    se::gpu::TmaMetadata(), /*devices_per_host=*/1);
 
   Thunk::BufferUses buffers = thunk.buffer_uses();
 
@@ -367,7 +368,7 @@ TEST(KernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {
   emitters::KernelArguments kernel_arguments({arg0, arg1});
   KernelThunk thunk(Thunk::ThunkInfo(), "kernel", kernel_arguments,
                     LaunchDimensions(), se::ClusterDim(), /*shmem_bytes=*/0,
-                    se::gpu::TmaMetadata());
+                    se::gpu::TmaMetadata(), /*devices_per_host=*/1);
 
   Thunk::BufferUses buffers1 = thunk.buffer_uses();
   Thunk::BufferUses buffers2 = thunk.buffer_uses();
@@ -472,7 +473,7 @@ class KernelThunkTmaPTXTest : public ::testing::TestWithParam<bool> {
 
     return KernelThunk::FromProto(Thunk::ThunkInfo(),
                                   tma_kernel_thunk_proto.kernel_thunk(),
-                                  allocations_);
+                                  allocations_, /*devices_per_host=*/1);
   }
 
   std::vector<BufferAllocation> allocations_;
@@ -513,13 +514,17 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
       /*memory_allocator=*/nullptr);
 
   initialize_params.buffer_allocations = &buffer_allocations;
+  initialize_params.persistent_alloc_indices.emplace();
 
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());
 
   auto execute_params = Thunk::ExecuteParams::Create(
       run_options, buffer_allocations, stream.get(), nullptr, nullptr, nullptr,
-      nullptr, {});
+      nullptr, {},
+      /*execution_scoped_state=*/nullptr,
+      /*persistent_alloc_indices=*/
+      initialize_params.persistent_alloc_indices);
 
   const bool use_command_buffer = GetParam();
 
@@ -536,7 +541,8 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
         Thunk::ThunkInfo(), std::move(thunk_sequence));
 
     auto cmd_buffer_thunk = std::make_unique<CommandBufferThunk>(
-        std::move(cmds), Thunk::ThunkInfo(), std::move(sequential_thunk), true);
+        std::move(cmds), Thunk::ThunkInfo(), /*devices_in_process=*/1,
+        std::move(sequential_thunk), true);
 
     ASSERT_OK(cmd_buffer_thunk->Initialize(initialize_params));
     ASSERT_OK(cmd_buffer_thunk->ExecuteOnStream(execute_params));
@@ -590,7 +596,8 @@ static absl::StatusOr<std::unique_ptr<KernelThunk>> MakeAddI32KernelThunk(
       use_cluster_dim ? std::make_optional(se::ClusterDim(1, 1, 1))
                       : std::nullopt,
       /*shmem_bytes=*/0,
-      /*tma_metadata=*/se::gpu::TmaMetadata());
+      /*tma_metadata=*/se::gpu::TmaMetadata(),
+      /*devices_per_host=*/1);
 }
 
 TEST(KernelThunkTest, RecordCommandBuffer) {
@@ -883,6 +890,63 @@ TEST(KernelThunkTest, RecordFailsWithoutInitialize) {
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.status().message(),
               ::testing::HasSubstr("Kernel not loaded"));
+}
+
+TEST(KernelThunkTest, ExecuteFailsWithoutInitialize) {
+  ASSERT_OK_AND_ASSIGN(std::string platform_name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
+  auto name = absl::AsciiStrToUpper(platform_name);
+  if (name == "ROCM" || name == "SYCL") {
+    GTEST_SKIP() << "AddI32 PTX kernel not supported on ROCm or oneAPI.";
+  }
+  se::StreamExecutor* executor = GpuExecutor();
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  se::DeviceAddress<int32_t> a_dev = executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceAddress<int32_t> b_dev = executor->AllocateArray<int32_t>(1, 0);
+  se::DeviceAddress<int32_t> c_dev = executor->AllocateArray<int32_t>(1, 0);
+
+  int32_t sentinel = 99;
+  ASSERT_OK(stream->Memcpy(&c_dev, &sentinel, sizeof(int32_t)));
+
+  std::vector<BufferAllocation> allocs = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),
+      BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),
+  };
+  emitters::KernelArgument arg_a(ShapeUtil::MakeShape(S32, {1}),
+                                 BufferAllocation::Slice(&allocs[0], 0, 4));
+  emitters::KernelArgument arg_b(ShapeUtil::MakeShape(S32, {1}),
+                                 BufferAllocation::Slice(&allocs[1], 0, 4));
+  emitters::KernelArgument arg_c(ShapeUtil::MakeShape(S32, {1}),
+                                 BufferAllocation::Slice(&allocs[2], 0, 4));
+  arg_a.set_written(false);
+  arg_b.set_written(false);
+  arg_c.set_written(true);
+
+  KernelThunk thunk(
+      Thunk::ThunkInfo(), /*kernel_name=*/"AddI32",
+      emitters::KernelArguments({arg_a, arg_b, arg_c}),
+      LaunchDimensions(se::BlockDim(1, 1, 1), se::ThreadDim(1, 1, 1)),
+      /*cluster_dim=*/std::nullopt, /*shmem_bytes=*/0, se::gpu::TmaMetadata(),
+      /*devices_per_host=*/1, /*zeroed_output_buffer_indices=*/{2});
+  // Intentionally skip Initialize().
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations buffer_allocations({a_dev, b_dev, c_dev}, 0, &allocator);
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  auto execute_params = Thunk::ExecuteParams::Create(
+      run_options, buffer_allocations, stream.get(), nullptr, nullptr, nullptr,
+      nullptr, {});
+
+  auto status = thunk.ExecuteOnStream(execute_params);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Kernel not loaded"));
+
+  int32_t observed = 0;
+  ASSERT_OK(stream->Memcpy(&observed, c_dev, sizeof(int32_t)));
+  EXPECT_EQ(observed, sentinel);
 }
 
 }  // namespace

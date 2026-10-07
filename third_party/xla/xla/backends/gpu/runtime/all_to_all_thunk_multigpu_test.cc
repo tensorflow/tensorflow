@@ -24,15 +24,15 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk_multigpu_test_utils.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
@@ -44,8 +44,6 @@ namespace xla::gpu {
 namespace {
 
 static constexpr int kNumDevices = 2;
-static constexpr int64_t kLength = 4;
-static constexpr int64_t kByteLength = sizeof(float) * kLength;
 static constexpr int kNumBuffers = kNumDevices;
 
 static AllToAllConfig MakeAllToAllConfig() {
@@ -67,7 +65,7 @@ static std::vector<BufferAllocation> MakeThunkBufferAllocations() {
   std::vector<BufferAllocation> allocations;
   allocations.reserve(2 * kNumBuffers);
   for (int i = 0; i < 2 * kNumBuffers; ++i) {
-    allocations.emplace_back(/*index=*/i, kByteLength, /*color=*/0);
+    allocations.emplace_back(/*index=*/i, kFloatByteLength, /*color=*/0);
   }
   return allocations;
 }
@@ -77,12 +75,12 @@ static AllToAllThunk MakeThunk(absl::Span<const BufferAllocation> allocations) {
   buffers.reserve(kNumBuffers);
   for (int i = 0; i < kNumBuffers; ++i) {
     ShapedSlice src_slice{
-        BufferAllocation::Slice(&allocations[i], 0, kByteLength),
-        ShapeUtil::MakeShape(F32, {kLength})};
-    ShapedSlice dst_slice{
-        BufferAllocation::Slice(&allocations[kNumBuffers + i], 0, kByteLength),
-        ShapeUtil::MakeShape(F32, {kLength})};
-    buffers.push_back(CollectiveThunk::Buffer{.element_count = kLength,
+        BufferAllocation::Slice(&allocations[i], 0, kFloatByteLength),
+        ShapeUtil::MakeShape(F32, {kNumElements})};
+    ShapedSlice dst_slice{BufferAllocation::Slice(&allocations[kNumBuffers + i],
+                                                  0, kFloatByteLength),
+                          ShapeUtil::MakeShape(F32, {kNumElements})};
+    buffers.push_back(CollectiveThunk::Buffer{.element_count = kNumElements,
                                               .source_buffer = src_slice,
                                               .destination_buffer = dst_slice,
                                               .source_memory_space = 0,
@@ -97,7 +95,7 @@ static AllToAllThunk MakeThunk(absl::Span<const BufferAllocation> allocations) {
 using DeviceTestSlot = CollectiveThunkMultiGpuTestState;
 
 static std::vector<int64_t> DeviceBufferSizes() {
-  return std::vector<int64_t>(2 * kNumBuffers, kByteLength);
+  return std::vector<int64_t>(2 * kNumBuffers, kFloatByteLength);
 }
 
 static std::vector<BufferAllocation::Index> AllAllocationIndices() {
@@ -126,7 +124,7 @@ static float SourceValue(int source_rank, int target_rank, int phase) {
 static absl::Status FillDeviceBufferWithValue(se::Stream& stream,
                                               se::DeviceAddressBase buffer,
                                               float value) {
-  std::vector<float> data(kLength, value);
+  std::vector<float> data(kNumElements, value);
   return FillDeviceBuffer(stream, buffer, data);
 }
 
@@ -134,7 +132,7 @@ static absl::Status FillSourceBuffers(
     se::Stream& stream, absl::Span<const se::DeviceAddressBase> src,
     int device_ordinal, int phase) {
   for (int target_rank = 0; target_rank < kNumBuffers; ++target_rank) {
-    RETURN_IF_ERROR(FillDeviceBufferWithValue(
+    ABSL_RETURN_IF_ERROR(FillDeviceBufferWithValue(
         stream, src[target_rank],
         SourceValue(/*source_rank=*/device_ordinal, target_rank, phase)));
   }
@@ -145,7 +143,7 @@ static absl::Status FillDestinationBuffers(
     se::Stream& stream, absl::Span<const se::DeviceAddressBase> dst,
     float value) {
   for (se::DeviceAddressBase buffer : dst) {
-    RETURN_IF_ERROR(FillDeviceBufferWithValue(stream, buffer, value));
+    ABSL_RETURN_IF_ERROR(FillDeviceBufferWithValue(stream, buffer, value));
   }
   return absl::OkStatus();
 }
@@ -153,7 +151,7 @@ static absl::Status FillDestinationBuffers(
 static absl::Status PrepareInputs(
     se::Stream& stream, absl::Span<const se::DeviceAddressBase> buffers,
     int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       FillSourceBuffers(stream, SourceBuffers(buffers), device_ordinal, phase));
   return FillDestinationBuffers(stream, DestinationBuffers(buffers), -1.0f);
 }
@@ -164,9 +162,9 @@ static absl::Status VerifyOutput(se::Stream& stream,
   for (int source_rank = 0; source_rank < kNumBuffers; ++source_rank) {
     float expected =
         SourceValue(source_rank, /*target_rank=*/device_ordinal, phase);
-    ASSIGN_OR_RETURN(std::vector<float> output,
-                     ReadDeviceBuffer(stream, dst[source_rank], kLength));
-    for (int i = 0; i < kLength; ++i) {
+    ABSL_ASSIGN_OR_RETURN(std::vector<float> output,
+                     ReadDeviceBuffer(stream, dst[source_rank], kNumElements));
+    for (int i = 0; i < kNumElements; ++i) {
       if (output[i] != expected) {
         return absl::InternalError(absl::StrFormat(
             "dst[%d][%d] on device %d = %g, expected %g", source_rank, i,
@@ -188,21 +186,21 @@ static absl::Status SetupDeviceSlot(int device_ordinal, DeviceTestSlot& slot,
 static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
                                             AllToAllThunk& thunk,
                                             int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
   BufferAllocations allocations =
       MakeBufferAllocations(slot, slot.create_buffers);
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
-  RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
   return VerifyOutput(*slot.stream, DestinationBuffers(slot.create_buffers),
                       device_ordinal, phase);
 }
 
 static absl::Status RunCreatePhase(DeviceTestSlot& slot, AllToAllThunk& thunk,
                                    int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
   BufferAllocations allocations =
@@ -211,28 +209,28 @@ static absl::Status RunCreatePhase(DeviceTestSlot& slot, AllToAllThunk& thunk,
 
   // Warm up NCCL outside stream capture. Reset destination buffers afterward so
   // correctness is verified from command-buffer execution, not from warm-up.
-  RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
-  RETURN_IF_ERROR(FillDestinationBuffers(
+  ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(FillDestinationBuffers(
       *slot.stream, DestinationBuffers(slot.create_buffers), -1.0f));
 
-  RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyOutput(*slot.stream, DestinationBuffers(slot.create_buffers),
                       device_ordinal, phase);
 }
 
 static absl::Status RunUpdatePhase(DeviceTestSlot& slot, AllToAllThunk& thunk,
                                    int device_ordinal, int phase) {
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.update_buffers, device_ordinal, phase));
 
   BufferAllocations allocations =
       MakeBufferAllocations(slot, slot.update_buffers);
   Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
 
-  RETURN_IF_ERROR(RecordCommandBufferUpdate(slot, thunk, execute_params,
+  ABSL_RETURN_IF_ERROR(RecordCommandBufferUpdate(slot, thunk, execute_params,
                                             AllAllocationIndices()));
-  RETURN_IF_ERROR(SubmitCommandBuffer(slot));
+  ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
   return VerifyOutput(*slot.stream, DestinationBuffers(slot.update_buffers),
                       device_ordinal, phase);
 }
@@ -250,7 +248,7 @@ TEST(AllToAllThunkMultiGpuTest, ExecuteOnStream) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "alltoall_execute", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         return RunExecuteOnStreamPhase(slots[d], thunk, d,
                                        /*phase=*/1);
       }));
@@ -272,7 +270,7 @@ TEST(AllToAllThunkMultiGpuTest, RecordCommandBufferCreate) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "alltoall_create", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         return RunCreatePhase(slots[d], thunk, d,
                               /*phase=*/2);
       }));
@@ -294,7 +292,7 @@ TEST(AllToAllThunkMultiGpuTest, RecordCommandBufferUpdate) {
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "alltoall_create", [&](int d) -> absl::Status {
-        RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         return RunCreatePhase(slots[d], thunk, d,
                               /*phase=*/2);
       }));

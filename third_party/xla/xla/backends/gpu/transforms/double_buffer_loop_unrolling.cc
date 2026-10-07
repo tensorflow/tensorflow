@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,15 +61,56 @@ DynamicSliceConfig DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
   }
   DynamicSliceConfig new_config = config;
   if (const auto* dyn = std::get_if<DynamicLoopIteration>(&loop_iteration)) {
-    new_config.set_byte_offset(config.byte_offset() +
-                               dyn->start_iteration * config.byte_stride());
-    new_config.set_byte_stride(config.byte_stride() * dyn->iteration_stride);
+    if (config.has_linear()) {
+      auto* linear = new_config.mutable_linear();
+      linear->set_byte_offset(config.linear().byte_offset() +
+                              dyn->start_iteration *
+                                  config.linear().byte_stride());
+      linear->set_byte_stride(config.linear().byte_stride() *
+                              dyn->iteration_stride);
+      return new_config;
+    }
+
+    auto* offsets = new_config.mutable_table()->mutable_offsets();
+    offsets->Clear();
+    for (int64_t i = dyn->start_iteration; i < config.table().offsets_size();
+         i += dyn->iteration_stride) {
+      offsets->Add(config.table().offsets(i));
+    }
+
+    // Unrolling can turn a non-linear table into a linear subsequence.
+    CHECK_GT(offsets->size(), 0);
+    int64_t stride = offsets->size() > 1 ? (*offsets)[1] - (*offsets)[0] : 0;
+    for (int64_t i = 2; i < offsets->size(); ++i) {
+      if ((*offsets)[i] - (*offsets)[i - 1] != stride) {
+        return new_config;
+      }
+    }
+
+    int64_t byte_offset = (*offsets)[0];
+    auto* linear = new_config.mutable_linear();
+    linear->set_byte_offset(byte_offset);
+    linear->set_byte_stride(stride);
+    // A zero stride is a loop-invariant offset and must not reference the loop.
+    if (stride == 0) {
+      new_config.clear_loop_index();
+    }
     return new_config;
   }
+
   const auto& stat = std::get<StaticLoopIteration>(loop_iteration);
-  new_config.set_byte_offset(config.byte_offset() +
-                             stat.iteration * config.byte_stride());
-  new_config.set_byte_stride(0);
+  int64_t byte_offset;
+  if (config.has_table()) {
+    CHECK_GE(stat.iteration, 0);
+    CHECK_LT(stat.iteration, config.table().offsets_size());
+    byte_offset = config.table().offsets(stat.iteration);
+  } else {
+    byte_offset = config.linear().byte_offset() +
+                  stat.iteration * config.linear().byte_stride();
+  }
+  auto* linear = new_config.mutable_linear();
+  linear->set_byte_offset(byte_offset);
+  linear->set_byte_stride(0);
   new_config.clear_loop_index();
   return new_config;
 }
@@ -139,17 +180,18 @@ absl::Status AdjustDynamicSliceConfig(HloInstruction* instr,
       });
 }
 
-// Adjusts the DS/DUS DynamicSliceConfig on `instr` and, if it is a fusion,
-// recurses into its fused computation. Fusion computations are cloned with the
-// fusion instruction, so each clone has its own private fused computation and
-// no cross-clone deduplication is needed.
+// Adjusts the DS/DUS DynamicSliceConfig on `instr` and recurses into private
+// computations cloned together with the instruction. Fusion and async-start
+// clones each own a distinct computation, so no cross-clone deduplication is
+// needed.
 absl::Status AdjustDynamicSliceConfigsForInstruction(
     HloInstruction* instr, const LoopIteration& loop_iteration) {
-  RETURN_IF_ERROR(AdjustDynamicSliceConfig(instr, loop_iteration));
-  if (instr->opcode() == HloOpcode::kFusion) {
+  ABSL_RETURN_IF_ERROR(AdjustDynamicSliceConfig(instr, loop_iteration));
+  if (instr->opcode() == HloOpcode::kFusion ||
+      instr->opcode() == HloOpcode::kAsyncStart) {
     for (HloComputation* called_computation : instr->called_computations()) {
       for (HloInstruction* nested : called_computation->instructions()) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             AdjustDynamicSliceConfigsForInstruction(nested, loop_iteration));
       }
     }
@@ -220,9 +262,9 @@ absl::Status HandleControlDependencies(
         new_control_pred.push_back(old_to_new_map.at(pred));
       }
 
-      RETURN_IF_ERROR(new_instr->DropAllControlDeps());
+      ABSL_RETURN_IF_ERROR(new_instr->DropAllControlDeps());
       for (HloInstruction* new_pred : new_control_pred) {
-        RETURN_IF_ERROR(new_pred->AddControlDependencyTo(new_instr));
+        ABSL_RETURN_IF_ERROR(new_pred->AddControlDependencyTo(new_instr));
         VLOG(2) << "Adding " << new_pred->ToString()
                 << " to control dependency of " << new_instr->ToString();
       }
@@ -236,7 +278,7 @@ absl::Status HandleControlDependencies(
                 skip_control_dep_injection.end() &&
             !IsCollective(old_input)) {
           for (HloInstruction* old_root : *old_loop_roots) {
-            RETURN_IF_ERROR(old_root->AddControlDependencyTo(new_input));
+            ABSL_RETURN_IF_ERROR(old_root->AddControlDependencyTo(new_input));
           }
         }
       }
@@ -260,7 +302,7 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
   absl::flat_hash_set<HloInstruction*> skip_control_dep_injection;
   std::string clone_suffix = "full_unroll_clone";
 
-  ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
+  ABSL_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
                    while_instr->backend_config<WhileLoopBackendConfig>());
   std::vector<HloInstruction*> ops_to_clone;
   ops_to_clone.reserve(while_body->MakeInstructionPostOrder().size());
@@ -322,7 +364,7 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
     VLOG(2) << "Replaced with new root "
             << while_body->root_instruction()->ToString();
 
-    RETURN_IF_ERROR(HandleControlDependencies(while_body, old_to_new_map,
+    ABSL_RETURN_IF_ERROR(HandleControlDependencies(while_body, old_to_new_map,
                                               &loop_roots, old_input_parameter,
                                               skip_control_dep_injection));
 
@@ -338,18 +380,18 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
   }
 
   for (const auto& [instr, iteration] : static_iteration_for) {
-    RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
+    ABSL_RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
         instr, StaticLoopIteration{iteration}));
   }
 
   WhileLoopBackendConfig old_config;
-  ASSIGN_OR_RETURN(old_config,
+  ABSL_ASSIGN_OR_RETURN(old_config,
                    while_instr->backend_config<WhileLoopBackendConfig>());
 
   WhileLoopBackendConfig new_config = old_config;
   new_config.mutable_known_trip_count()->set_n(1);
 
-  RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
+  ABSL_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
 
   return changed;
 }
@@ -382,7 +424,7 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
             old_instr->shape(), new_operands, suffix));
 
     SetChannelIdForNewCollective(new_instr, module);
-    RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
+    ABSL_RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
         new_instr, StaticLoopIteration{0}));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString()
@@ -393,7 +435,7 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
   for (HloInstruction* instr : old_loop_roots) {
     new_roots.push_back(old_to_new_map[instr]);
   }
-  RETURN_IF_ERROR(while_instr->ReplaceOperandWith(
+  ABSL_RETURN_IF_ERROR(while_instr->ReplaceOperandWith(
       0, old_to_new_map[while_body->root_instruction()]));
   VLOG(2) << "Replaced with new input tuple "
           << while_instr->operand(0)->ToString();
@@ -410,9 +452,9 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
         new_control_pred.push_back(old_to_new_map[pred]);
       }
 
-      RETURN_IF_ERROR(new_instr->DropAllControlDeps());
+      ABSL_RETURN_IF_ERROR(new_instr->DropAllControlDeps());
       for (HloInstruction* new_pred : new_control_pred) {
-        RETURN_IF_ERROR(new_pred->AddControlDependencyTo(new_instr));
+        ABSL_RETURN_IF_ERROR(new_pred->AddControlDependencyTo(new_instr));
         VLOG(2) << "Adding " << new_pred->ToString()
                 << " to control dependency of peeled instruction: "
                 << new_instr->ToString();
@@ -426,7 +468,7 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
 // a separate function.
 absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
                                            HloModule* module) {
-  ASSIGN_OR_RETURN(auto config,
+  ABSL_ASSIGN_OR_RETURN(auto config,
                    while_instr->backend_config<WhileLoopBackendConfig>());
 
   CHECK(config.has_known_trip_count())
@@ -449,7 +491,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
   if (peel_one_iteration) {
     VLOG(2) << "Found loops with odd trip count, 1 iteration will be peeled "
                "outside of the main body.";
-    RETURN_IF_ERROR(PeelInstructionsForOddTripCount(module, while_instr));
+    ABSL_RETURN_IF_ERROR(PeelInstructionsForOddTripCount(module, while_instr));
     exact_trip_count -= 1;
   }
 
@@ -480,7 +522,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
       skip_control_dep_injection.insert(old_instr);
     }
     SetChannelIdForNewCollective(new_instr, module);
-    RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
+    ABSL_RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
         new_instr, DynamicLoopIteration{/*start_iteration=*/peel_one_iteration +
                                             kSecondUnrollCopy,
                                         /*iteration_stride=*/kUnrollFactor}));
@@ -491,7 +533,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
   // Originals stay in the unrolled loop and execute the first copy of every
   // pair, with stride doubled.
   for (HloInstruction* old_instr : old_instructions) {
-    RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
+    ABSL_RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
         old_instr, DynamicLoopIteration{/*start_iteration=*/peel_one_iteration +
                                             kFirstUnrollCopy,
                                         /*iteration_stride=*/kUnrollFactor}));
@@ -503,7 +545,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
           << while_body->root_instruction()->ToString();
 
   // Handle existing control dependencies.
-  RETURN_IF_ERROR(HandleControlDependencies(while_body, old_to_new_map,
+  ABSL_RETURN_IF_ERROR(HandleControlDependencies(while_body, old_to_new_map,
                                             &old_loop_roots, input_parameter,
                                             skip_control_dep_injection));
 
@@ -529,7 +571,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
     }
   }
 
-  RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
+  ABSL_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
   return true;  // changed
 }
 
@@ -564,7 +606,7 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
   VLOG(2) << "Processing " << while_instrs.size() << " while loops.";
 
   for (HloInstruction* while_instr : while_instrs) {
-    ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
+    ABSL_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
                      while_instr->backend_config<WhileLoopBackendConfig>());
     if (!config.has_known_trip_count()) {
       VLOG(2) << while_instr->ToString()
@@ -592,18 +634,18 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
       }
     }
     if (unroll_strategy_ == UnrollStrategy::kFullUnroll) {
-      ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
+      ABSL_ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kDoubleBuffer) {
-      ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
+      ABSL_ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kAuto) {
-      ASSIGN_OR_RETURN(changed, AutoUnroll(while_instr, module));
+      ABSL_ASSIGN_OR_RETURN(changed, AutoUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kManual) {
       if (absl::EqualsIgnoreCase(manual_unroll_attr_val, kManualUnrollFull)) {
-        ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
+        ABSL_ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
       }
       if (absl::EqualsIgnoreCase(manual_unroll_attr_val,
                                  kManualUnrollDoubleBuffer)) {
-        ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
+        ABSL_ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
       }
     } else {
       LOG(FATAL) << absl::StrCat("Unhandled unrolling strategy: ",
@@ -619,7 +661,7 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
     // The call graph will not be flat if one of the loops that was unrolled
     // contains any kind of call to another computation---since the call will
     // be duplicated, thereby adding a second callsite for that computation.
-    RETURN_IF_ERROR(FlattenCallGraph().Run(module, execution_threads).status());
+    ABSL_RETURN_IF_ERROR(FlattenCallGraph().Run(module, execution_threads).status());
   }
 
   return changed;

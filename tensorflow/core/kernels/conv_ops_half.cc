@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <array>
+
 #include "tensorflow/core/kernels/conv_ops_impl.h"
 
 namespace tensorflow {

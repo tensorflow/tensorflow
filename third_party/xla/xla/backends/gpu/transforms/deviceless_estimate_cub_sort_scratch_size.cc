@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/libraries/cub/cub_scratch_size_deviceless_lookup.h"
 #include "xla/backends/gpu/libraries/cub/cub_sort_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -46,7 +46,7 @@ absl::StatusOr<int64_t>
 DevicelessEstimateCubSortScratchSize::CalculateDevicelessScratchSize(
     HloCustomCallInstruction* custom_call, const Shape& key_shape,
     bool is_pairs, int64_t num_items, int64_t batch_size) {
-  ASSIGN_OR_RETURN(const CubScratchSizeDevicelessLookup& registry,
+  ABSL_ASSIGN_OR_RETURN(const CubScratchSizeDevicelessLookup& registry,
                    CubScratchSizeDevicelessLookup::GetInstance());
 
   int32_t key_type_size =
@@ -79,13 +79,13 @@ absl::Status DevicelessEstimateCubSortScratchSize::RunOnSortInstruction(
   bool is_pairs = custom_call->operand_count() == 2;
   int64_t num_items = Product(key_shape.dimensions());
   int64_t batch_size = num_items / key_shape.dimensions().back();
-  ASSIGN_OR_RETURN(int64_t scratch_size, CalculateDevicelessScratchSize(
+  ABSL_ASSIGN_OR_RETURN(int64_t scratch_size, CalculateDevicelessScratchSize(
                                              custom_call, key_shape, is_pairs,
                                              num_items, batch_size));
 
   absl::string_view ffi_target =
       is_pairs ? kCubDeviceRadixSortPairsTarget : kCubDeviceRadixSortKeysTarget;
-  ASSIGN_OR_RETURN(SortOptions sort_options,
+  ABSL_ASSIGN_OR_RETURN(SortOptions sort_options,
                    custom_call->backend_config<SortOptions>());
   return CreateCubSortCustomCall(custom_call, scratch_size, ffi_target,
                                  sort_options.descending(), batch_size);
@@ -104,7 +104,7 @@ absl::StatusOr<bool> DevicelessEstimateCubSortScratchSize::RunOnComputation(
   }
   bool changed = false;
   for (auto* call : custom_calls) {
-    RETURN_IF_ERROR(RunOnSortInstruction(call));
+    ABSL_RETURN_IF_ERROR(RunOnSortInstruction(call));
     changed = true;
   }
   return changed;
@@ -119,7 +119,7 @@ absl::StatusOr<bool> DevicelessEstimateCubSortScratchSize::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   XLA_VLOG_LINES(3,

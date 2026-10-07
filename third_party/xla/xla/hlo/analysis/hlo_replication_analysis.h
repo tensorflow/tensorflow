@@ -26,11 +26,15 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/shape_util.h"
+#include "xla/tuple_tree.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -123,13 +127,17 @@ class HloReplicationAnalysis {
     bool operator==(const HloReplication& rhs) const;
     bool IsReplicatedOnAllDevices() const;
     bool IsUniqueOnAllDevices() const;
+    bool IsPartiallyReplicated() const;
     bool IsReplicatedWithinSubgroup(absl::Span<const int64_t> device_ids) const;
     std::string ToString() const;
 
     template <typename H>
     friend H AbslHashValue(H h, const HloReplication& r) {
-      return H::combine(std::move(h), r.state_,
-                        *r.device_set_root_per_replica_);
+      h = H::combine(std::move(h), r.state_);
+      if (r.device_set_root_per_replica_ != nullptr) {
+        h = H::combine(std::move(h), *r.device_set_root_per_replica_);
+      }
+      return h;
     }
 
    private:
@@ -138,8 +146,10 @@ class HloReplicationAnalysis {
       kUniqueOnAllDevices = 1,
       kPartiallyReplicated = 2,
     };
+    // Only partially replicated values carry device sets; the other two states
+    // share a null pointer so that copying them is a plain state copy.
+    explicit HloReplication(State state);
     explicit HloReplication(
-        State state,
         absl::Span<const std::vector<int64_t>> device_set_root_per_replica);
     State state_;
     // Helper class that subclasses T, and computes the hash once on
@@ -161,15 +171,17 @@ class HloReplicationAnalysis {
         return H::combine(std::move(h), r.hash_);
       }
     };
-    // Empty if state_ is kReplicatedOnAllDevices or kUniqueOnAllDevices.
-
-    // If cross_partition_spmd is true, groups_for_replicas_[k]'s size equals
-    // the number of partitions, and within replica k, groups_for_replicas_[k]
-    // maps each partition ID to the smallest partition ID in the set.
+    // Null if state_ is kReplicatedOnAllDevices or kUniqueOnAllDevices.
     //
-    // If cross_partition_spmd is false, groups_for_replicas_[k]'s size equals
-    // the number of replicas, and within partition k, groups_for_replicas_[k]
-    // maps each replica to the smallest replica ID in the set.
+    // If cross_partition_spmd is true, device_set_root_per_replica_[k]'s size
+    // equals the number of partitions, and within replica k,
+    // device_set_root_per_replica_[k] maps each partition ID to the smallest
+    // partition ID in the set.
+    //
+    // If cross_partition_spmd is false, device_set_root_per_replica_[k]'s size
+    // equals the number of replicas, and within partition k,
+    // device_set_root_per_replica_[k] maps each replica to the smallest replica
+    // ID in the set.
     std::shared_ptr<const HashOnConstruction<std::vector<std::vector<int64_t>>>>
         device_set_root_per_replica_;
   };
@@ -182,6 +194,13 @@ class HloReplicationAnalysis {
 
   HloReplication MergeReplications(const HloReplication& replication_a,
                                    const HloReplication& replication_b) {
+    // Merging with a value that is replicated or unique on all devices is a
+    // copy of one side; only merges of two partially replicated values are
+    // worth memoizing.
+    if (!replication_a.IsPartiallyReplicated() ||
+        !replication_b.IsPartiallyReplicated()) {
+      return replication_a.Merge(replication_b);
+    }
     std::pair<HloReplication, HloReplication> key = {replication_a,
                                                      replication_b};
 
@@ -214,6 +233,47 @@ class HloReplicationAnalysis {
   bool ComputeHloReplicationOnComputation(const HloComputation* computation,
                                           bool mark_everything_not_replicated);
 
+  // Records that the replication of `inst` changed: its users, and the callers
+  // of its computation if it is the root, have to be evaluated again.
+  void OnReplicationChanged(const HloInstruction* inst);
+
+  // Marks the users of `inst`, and the callers of its computation if it is the
+  // root, dirty, unless the visit in progress evaluates them anyway.
+  void MarkDependentsDirty(const HloInstruction* inst);
+
+  // Adds `inst` to dirty_ if it has been evaluated before. The first dirty
+  // instruction of a computation also makes the callers of that computation
+  // dirty, since the pending evaluation runs when a caller visits the
+  // computation again.
+  void MarkDirty(const HloInstruction* inst);
+
+  // Called after `inst` was evaluated: `inst` stays or becomes dirty if a
+  // computation it calls has dirty instructions, and leaves dirty_ otherwise.
+  void MarkEvaluated(const HloInstruction* inst);
+
+  // Returns the replication of `inst`, which must have been computed already.
+  const TupleTree<HloReplication>& GetReplication(
+      const HloInstruction* inst) const;
+
+  // Merges `source` into `dest` element by element. Returns whether anything
+  // changed.
+  bool CombineReplication(const TupleTree<HloReplication>& source,
+                          TupleTree<HloReplication>* dest);
+
+  // Assigns `replication` to `dest` if it has none yet, or combines it with
+  // the existing one. Returns whether anything changed.
+  bool AssignOrCombineReplication(TupleTree<HloReplication> replication,
+                                  const HloInstruction* dest);
+
+  // Assigns or combines the replication of `source` to `dest`. Returns whether
+  // anything changed; nothing changes if `source` has no replication yet.
+  bool PropagateReplication(const HloInstruction* source,
+                            const HloInstruction* dest);
+
+  // Marks `inst` unique on all devices at every index. Returns whether
+  // anything changed.
+  bool MarkNotReplicated(const HloInstruction* inst);
+
   // Builds the replica group dedup map that allows caching replication
   // calculations for all-reduce/all-gather that share the same replica groups.
   // This can significantly help in compile times when replica groups are very
@@ -243,11 +303,47 @@ class HloReplicationAnalysis {
   // Capture the number of partitions / replicas for the module.
   const int64_t num_partitions_, replica_count_;
 
-  // A map from each analyzed HLO instruction to a shape tree that represents
-  // whether the instruction outputs the same value across replicas or
-  // partitions at each shape index.
-  absl::flat_hash_map<const HloInstruction*, ShapeTree<HloReplication>>
+  // A map from each analyzed HLO instruction to a tree that represents whether
+  // the instruction outputs the same value across replicas or partitions at
+  // each shape index. The trees hold no Shape, so they stay valid when callers
+  // change shapes or delete instructions while they hold the analysis.
+  absl::flat_hash_map<const HloInstruction*, TupleTree<HloReplication>>
       hlo_replication_;
+
+  struct ComputationState {
+    // The module does not change during the analysis, so the post order is
+    // computed once.
+    std::vector<HloInstruction*> post_order;
+    // Whether a visit of the computation has completed.
+    bool visited = false;
+    // Number of instructions of the computation in dirty_.
+    int64_t num_dirty = 0;
+  };
+  // The values must not move when the map grows, since a visit of a nested
+  // computation adds an entry while the caller iterates over its post order.
+  absl::node_hash_map<const HloComputation*, ComputationState>
+      computation_states_;
+
+  // Instructions whose operands, or the roots of the computations they call,
+  // changed after their last evaluation, and instructions that call a
+  // computation with dirty instructions. Without partial replication, a repeat
+  // visit of a computation that is not marked evaluates only these: any other
+  // instruction would compute its old value again.
+  absl::flat_hash_set<const HloInstruction*> dirty_;
+
+  // The computation of the innermost visit in progress, and whether that visit
+  // evaluates every instruction.
+  const HloComputation* visiting_computation_ = nullptr;
+  bool visiting_all_instructions_ = false;
+
+  // Computations already visited with mark_everything_not_replicated set.
+  // That visit marks the parameters and every ordinary instruction unique,
+  // infeeds included; tuples, get-tuple-elements, optimization barriers and
+  // nested calls derive from those values, and replication only moves towards
+  // unique, so a repeat visit with the flag set would recompute the same values
+  // and is skipped.
+  absl::flat_hash_set<const HloComputation*>
+      computations_marked_not_replicated_;
 
   // Replications for all-reduce/all-gather that have the same replica groups is
   // usually identical. We use the following data structures to memoize the

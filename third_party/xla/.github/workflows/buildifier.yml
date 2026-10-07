@@ -21,10 +21,6 @@ on:
     branches:
       - main
 
-env:
-  # Have `go install` place binaries in $PATH
-  GOBIN: "/usr/local/bin"
-
 jobs:
   buildifier-lint:
     runs-on: ubuntu-22.04
@@ -34,10 +30,8 @@ jobs:
     timeout-minutes: 6
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: "Install buildifier"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/buildtools/buildifier@433ea85 # 6.4.0
       - name: "Run buildifier"
-        run: buildifier --lint=warn --warnings=-out-of-order-load -r xla/
+        run: ./build_tools/ci/run_buildifier.sh

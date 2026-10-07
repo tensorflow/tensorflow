@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -54,9 +55,9 @@ absl::StatusOr<HloDotInstruction*> MakeDotWithSwappedOperands(
     HloInstruction* dot) {
   HloComputation* computation = dot->parent();
 
-  ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
+  ABSL_ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
                    DotOperandDims::FromDotOperand(dot, 0));
-  ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
+  ABSL_ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
                    DotOperandDims::FromDotOperand(dot, 1));
 
   const size_t num_batch_dims = lhs_dims.Rank(DotOperandDims::kBatch);
@@ -82,14 +83,25 @@ absl::StatusOr<HloDotInstruction*> MakeDotWithSwappedOperands(
   const Shape new_dot_shape =
       ShapeUtil::ReorderLogicalDimensions(dot->shape(), out_shape_permutation);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       DotDimensionNumbers new_dot_dims,
       DotOperandDims::CreateDotDimensionNumbers(rhs_dims, lhs_dims));
+
+  PrecisionConfig new_precision_config = dot->precision_config();
+  const int precision_count = new_precision_config.operand_precision_size();
+  TF_RET_CHECK(precision_count <= 2)
+      << "Dot has " << precision_count
+      << " operand precision entries; expected at most 2.";
+  if (precision_count != 0) {
+    new_precision_config.mutable_operand_precision()->Resize(
+        2, PrecisionConfig::DEFAULT);
+    new_precision_config.mutable_operand_precision()->SwapElements(0, 1);
+  }
 
   return DynCast<HloDotInstruction>(computation->AddInstruction(
       HloInstruction::CreateDot(new_dot_shape, dot->mutable_operand(1),
                                 dot->mutable_operand(0), new_dot_dims,
-                                dot->precision_config()),
+                                new_precision_config),
       &dot->metadata()));
 }
 
@@ -99,12 +111,12 @@ absl::StatusOr<HloDotInstruction*> MakeDotWithSwappedOperands(
 absl::Status SwapDotOperandsInFusion(HloComputation* computation) {
   HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
-  ASSIGN_OR_RETURN(HloDotInstruction * new_dot,
+  ABSL_ASSIGN_OR_RETURN(HloDotInstruction * new_dot,
                    MakeDotWithSwappedOperands(dot));
   HloInstruction* new_bitcast = computation->AddInstruction(
       HloInstruction::CreateBitcast(dot->shape(), new_dot), &dot->metadata());
-  RETURN_IF_ERROR(dot->ReplaceAllUsesWith(new_bitcast));
-  RETURN_IF_ERROR(computation->RemoveInstruction(dot));
+  ABSL_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(new_bitcast));
+  ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
   return absl::OkStatus();
 }
 
@@ -146,9 +158,9 @@ absl::StatusOr<bool> ShouldSwapOperands(const HloInstruction* instr) {
   const bool lhs_has_code = HasCodeGeneratingInstructions(dot->operand(0));
   const bool rhs_has_code = HasCodeGeneratingInstructions(dot->operand(1));
 
-  ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
+  ABSL_ASSIGN_OR_RETURN(DotOperandDims lhs_dims,
                    DotOperandDims::FromDotOperand(dot, /*operand_number=*/0));
-  ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
+  ABSL_ASSIGN_OR_RETURN(DotOperandDims rhs_dims,
                    DotOperandDims::FromDotOperand(dot, /*operand_number=*/1));
   const int64_t lhs_size = lhs_dims.TotalSize(DotOperandDims::kNonContracting);
   const int64_t rhs_size = rhs_dims.TotalSize(DotOperandDims::kNonContracting);
@@ -168,11 +180,11 @@ absl::StatusOr<bool> MaybeSwapOperands(HloComputation* computation) {
   if (dot == nullptr) {
     return false;
   }
-  ASSIGN_OR_RETURN(const bool should_swap_operands, ShouldSwapOperands(dot));
+  ABSL_ASSIGN_OR_RETURN(const bool should_swap_operands, ShouldSwapOperands(dot));
   if (!should_swap_operands) {
     return false;
   }
-  RETURN_IF_ERROR(SwapDotOperandsInFusion(computation));
+  ABSL_RETURN_IF_ERROR(SwapDotOperandsInFusion(computation));
   return true;
 }
 
@@ -187,7 +199,7 @@ absl::StatusOr<bool> GemmFusionSwapOperands::RunImpl(
     if (!IsTritonFusedComputation(*computation)) {
       continue;
     }
-    ASSIGN_OR_RETURN(const bool changed, MaybeSwapOperands(computation));
+    ABSL_ASSIGN_OR_RETURN(const bool changed, MaybeSwapOperands(computation));
     any_changed |= changed;
   }
   return any_changed;

@@ -20,13 +20,30 @@ limitations under the License.
 
 namespace xla {
 
-inline riegeli::RecordWriterBase::Options GetSplitProtoRiegeliOptions() {
+enum class SplitProtoCompression {
+  kNone,          // No per-record compression.
+  kSnappyLevel2,  // Snappy compression at level 2 (fast decompression).
+};
+
+inline riegeli::RecordWriterBase::Options GetSplitProtoRiegeliOptions(
+    SplitProtoCompression compression) {
   riegeli::RecordWriterBase::Options options;
-  // We mainly want to optimize for reading speed, over compression ratio.
-  // In our benchmarks Snappy level 2 showed the fastest decompression speeds,
-  // which also aligns with the recommendations in go/fast/68.
-  options.set_snappy(2);
+  switch (compression) {
+    case SplitProtoCompression::kNone:
+      options.set_uncompressed();
+      break;
+    case SplitProtoCompression::kSnappyLevel2:
+      options.set_snappy(2);
+      break;
+  }
   return options;
+}
+
+inline riegeli::RecordWriterBase::Options GetGpuSplitProtoOptions() {
+  // In XLA GPU, we mainly want to optimize for reading speed over compression
+  // ratio. In our benchmarks Snappy level 2 showed the fastest decompression
+  // speeds, which also aligns with the recommendations in go/fast/68.
+  return GetSplitProtoRiegeliOptions(SplitProtoCompression::kSnappyLevel2);
 }
 
 }  // namespace xla

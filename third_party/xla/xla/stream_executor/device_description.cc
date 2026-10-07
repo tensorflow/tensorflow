@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -101,6 +101,8 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.shared_memory_per_block_ = proto.shared_memory_per_block();
   device_description.shared_memory_per_block_optin_ =
       proto.shared_memory_per_block_optin();
+  device_description.oversized_shared_memory_per_block_ =
+      proto.oversized_shared_memory_per_block();
   device_description.reserved_shared_memory_per_block_ =
       proto.reserved_shared_memory_per_block();
   device_description.max_blocks_per_multiprocessor_ =
@@ -108,7 +110,7 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.clock_rate_ghz_ = proto.clock_rate_ghz();
 
   if (proto.has_cuda_compute_capability()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.gpu_compute_capability_,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
   }
@@ -124,47 +126,49 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.fpus_per_core_ = proto.fpus_per_core();
 
   if (proto.has_scalar_unit_description()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.scalar_unit_description_,
         ExecutionUnitDescription::FromProto(proto.scalar_unit_description()));
   }
   if (proto.has_matrix_unit_description()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.matrix_unit_description_,
         ExecutionUnitDescription::FromProto(proto.matrix_unit_description()));
   }
   if (!proto.driver_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.driver_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.driver_version_,
                      SemanticVersion::ParseFromString(proto.driver_version()));
   }
   if (!proto.kernel_mode_driver_version().empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.kernel_mode_driver_version_,
         SemanticVersion::ParseFromString(proto.kernel_mode_driver_version()));
   }
   if (!proto.runtime_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.runtime_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.runtime_version_,
                      SemanticVersion::ParseFromString(proto.runtime_version()));
   }
   if (!proto.compile_time_toolkit_version().empty()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         device_description.compile_time_toolkit_version_,
         SemanticVersion::ParseFromString(proto.compile_time_toolkit_version()));
   }
   if (!proto.dnn_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.dnn_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.dnn_version_,
                      SemanticVersion::ParseFromString(proto.dnn_version()));
   }
   if (!proto.cub_version().empty()) {
-    ASSIGN_OR_RETURN(device_description.cub_version_,
+    ABSL_ASSIGN_OR_RETURN(device_description.cub_version_,
                      SemanticVersion::ParseFromString(proto.cub_version()));
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       device_description.interconnect_info_,
       DeviceInterconnectInfo::FromProto(proto.device_interconnect_info()));
 
   device_description.collective_memory_granularity_ =
       proto.collective_memory_granularity();
+  device_description.confidential_computing_enabled_ =
+      proto.confidential_computing_enabled();
   return device_description;
 }
 
@@ -193,6 +197,8 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   proto.set_threads_per_warp(threads_per_warp_);
   proto.set_shared_memory_per_block(shared_memory_per_block_);
   proto.set_shared_memory_per_block_optin(shared_memory_per_block_optin_);
+  proto.set_oversized_shared_memory_per_block(
+      oversized_shared_memory_per_block_);
   proto.set_reserved_shared_memory_per_block(reserved_shared_memory_per_block_);
   proto.set_max_blocks_per_multiprocessor(max_blocks_per_multiprocessor_);
   proto.set_shared_memory_per_core(shared_memory_per_core_);
@@ -244,6 +250,7 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
     *proto.mutable_device_interconnect_info() = interconnect_info_.ToProto();
   }
   proto.set_collective_memory_granularity(collective_memory_granularity_);
+  proto.set_confidential_computing_enabled(confidential_computing_enabled_);
   return proto;
 }
 
@@ -333,8 +340,12 @@ bool DeviceDescription::EqualsTo(
          shared_memory_per_block_ == other.shared_memory_per_block_ &&
          shared_memory_per_block_optin_ ==
              other.shared_memory_per_block_optin_ &&
+         oversized_shared_memory_per_block_ ==
+             other.oversized_shared_memory_per_block_ &&
          scalar_unit_description_ == other.scalar_unit_description_ &&
          matrix_unit_description_ == other.matrix_unit_description_ &&
+         confidential_computing_enabled_ ==
+             other.confidential_computing_enabled_ &&
          interconnect_info_.active_links ==
              other.interconnect_info_.active_links;
 }
@@ -415,7 +426,7 @@ GpuComputeCapabilityProto GpuComputeCapability::ToProto() const {
 absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
     const GpuComputeCapabilityProto& proto) {
   if (proto.has_cuda_compute_capability()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         CudaComputeCapability cuda_compute_capability,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
     return GpuComputeCapability(cuda_compute_capability);

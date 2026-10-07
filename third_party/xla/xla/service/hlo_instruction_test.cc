@@ -52,8 +52,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/shuffle.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -681,8 +680,8 @@ TEST_F(HloInstructionTest, PostProcessAllVisitedNodesMultiComputation) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* add1 = FindInstruction(module.get(), "add.1");
   EXPECT_EQ(add1, module->entry_computation()->root_instruction());
 
@@ -895,7 +894,7 @@ TEST_F(HloInstructionTest, AsyncOp) {
       r0f32_, HloOpcode::kAdd, constant1, constant2));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* async_done,
       computation->CreateAsyncInstructions(
           add, {ShapeUtil::MakeScalarShape(U32)}, "parallel_thread"));
@@ -939,13 +938,13 @@ TEST_F(HloInstructionTest, AsyncOpWithDeps) {
       r0f32_, HloOpcode::kAdd, constant1, constant2));
 
   // control chain is add1 <- add <- add2
-  TF_ASSERT_OK(add1->AddControlDependencyTo(add));
+  ASSERT_OK(add1->AddControlDependencyTo(add));
 
-  TF_ASSERT_OK(add->AddControlDependencyTo(add2));
+  ASSERT_OK(add->AddControlDependencyTo(add2));
 
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* async_done,
       computation->CreateAsyncInstructions(
           add, {ShapeUtil::MakeScalarShape(U32)}, "parallel_thread"));
@@ -1218,6 +1217,20 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
       Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
                 *HloInstruction::CreateUnary(shape, HloOpcode::kNegate, op1)));
 
+  // Shuffle.
+  EXPECT_TRUE(Identical(*HloInstruction::CreateShuffle(shape, op1, {0, 1},
+                                                       shuffle::Rotate({2, 3})),
+                        *HloInstruction::CreateShuffle(
+                            shape, op1, {0, 1}, shuffle::Rotate({2, 3}))));
+  EXPECT_FALSE(Identical(*HloInstruction::CreateShuffle(
+                             shape, op1, {0, 1}, shuffle::Rotate({2, 3})),
+                         *HloInstruction::CreateShuffle(
+                             shape, op1, {0, 1}, shuffle::Rotate({3, 2}))));
+  EXPECT_FALSE(Identical(*HloInstruction::CreateShuffle(
+                             shape, op1, {0, 1}, shuffle::Rotate({2, 3})),
+                         *HloInstruction::CreateShuffle(
+                             shape, op1, {1, 0}, shuffle::Rotate({2, 3}))));
+
   // Tuples.
   EXPECT_TRUE(Identical(*HloInstruction::CreateTuple({op1, op2}),
                         *HloInstruction::CreateTuple({op1, op2})));
@@ -1269,8 +1282,8 @@ ENTRY entry (param: f32[]) -> (f32[], f32[], f32[]) {
   ROOT t = (f32[], f32[], f32[]) tuple(t1, t2, t3)
  }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto* root = module->entry_computation()->root_instruction();
   auto* t1 = root->operand(0);
@@ -1543,8 +1556,7 @@ TEST_F(HloInstructionTest, FuseInstructionKeepsInstruction) {
     mul = f32[32,32]{1,0} multiply(p2, p3)
     ROOT add = f32[32,32]{1,0} fusion(mul, broadcast), kind=kLoop, calls=fused_add
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloInstruction* fused_add = module->entry_computation()->root_instruction();
   HloInstruction* mul = fused_add->mutable_operand(0);
   EXPECT_EQ(1, mul->user_count());
@@ -1572,8 +1584,7 @@ TEST_F(HloInstructionTest, FuseInstructionIntoMultiOutputKeepsInstruction) {
     add = f32[32,32]{1,0} fusion(mul, broadcast), kind=kLoop, calls=fused_add
     ROOT root = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(mul, add)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloInstruction* mul = root->mutable_operand(0);
   HloInstruction* fused_add = root->mutable_operand(1);
@@ -2460,8 +2471,8 @@ ENTRY entry (param: s32[]) -> s32[] {
 )";
   // Check that deep clones really deep clones every instruction and
   // computations, without leaving dangling pointers to the old module.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   std::unique_ptr<HloModule> clone = module->Clone();
   for (HloComputation* computation : clone->computations()) {
     EXPECT_EQ(computation->parent(), clone.get());
@@ -2577,8 +2588,7 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
     ROOT conv = f32[1,2,1] convolution(arg0, arg1), window={size=1},
       dim_labels=b0f_0io->b0f, operand_precision={high,default}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   auto* conv = module->entry_computation()->root_instruction();
 
   auto clone = conv->Clone();
@@ -2603,8 +2613,7 @@ TEST_F(HloInstructionTest, ReuseReshapeOfFusionParameter) {
     p = f32[3,2] parameter(0)
     ROOT fusion = f32[2,3] fusion(p), calls=f, kind=kLoop
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_FALSE(root->ReusesOperandElements(0));
 }
@@ -2626,8 +2635,7 @@ TEST_F(HloInstructionTest, ReuseMultipleReshapesOfFusionParameter) {
     p = f32[3,2] parameter(0)
     ROOT fusion = (f32[2,3], f32[6,1]) fusion(p), calls=f, kind=kLoop
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_TRUE(root->ReusesOperandElements(0));
 }
@@ -2639,8 +2647,7 @@ TEST_F(HloInstructionTest, BitcastDoesNotReuseElements) {
     p = f32[3,2]{0,1} parameter(0)
     ROOT bitcast = f32[6] bitcast(p)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_FALSE(root->ReusesOperandElements(0));
 }
@@ -2657,8 +2664,7 @@ TEST_F(HloInstructionTest, GatherDoesNotReuseElements) {
       start_index_map={0,1,2,3,4}, index_vector_dim=4,
       slice_sizes={30,29,28,27,26}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_FALSE(root->ReusesOperandElements(0));
   EXPECT_FALSE(root->ReusesOperandElements(1));
@@ -2678,10 +2684,10 @@ TEST_F(HloInstructionTest, BackendConfigCanContainNonFiniteFloats) {
       *gpu_config.mutable_gemm_backend_config();
   orig_config.set_alpha_real(std::numeric_limits<double>::infinity());
   orig_config.set_alpha_imag(std::numeric_limits<double>::quiet_NaN());
-  TF_ASSERT_OK(dot->set_backend_config(gpu_config));
+  ASSERT_OK(dot->set_backend_config(gpu_config));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto new_gpu_config,
-                          dot->backend_config<gpu::GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto new_gpu_config,
+                       dot->backend_config<gpu::GpuBackendConfig>());
   EXPECT_GT(new_gpu_config.gemm_backend_config().alpha_real(),
             std::numeric_limits<double>::max());
   EXPECT_NE(new_gpu_config.gemm_backend_config().alpha_imag(),
@@ -2783,8 +2789,7 @@ TEST_F(HloInstructionTest, PrintCycle) {
     recv-done = (f32[1, 1024, 1024], token[]) recv-done(recv), channel_id=2
     ROOT recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done), index=0
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloInstruction* recv = FindInstruction(module.get(), "recv");
   HloInstruction* send_done = FindInstruction(module.get(), "send-done");
   ASSERT_IS_OK(send_done->AddControlDependencyTo(recv));
@@ -2991,7 +2996,7 @@ TEST_F(HloInstructionTest, BackendConfigCopiedToDerived) {
 
   gpu::GpuBackendConfig gpu_config;
   gpu_config.set_operation_queue_id(2);
-  TF_ASSERT_OK(add->set_backend_config(gpu_config));
+  ASSERT_OK(add->set_backend_config(gpu_config));
   auto add2 = b.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
   add->SetupDerivedInstruction(add2);
@@ -3010,7 +3015,7 @@ TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithDiffOpcode) {
 
   gpu::GpuBackendConfig gpu_config;
   gpu_config.set_operation_queue_id(2);
-  TF_ASSERT_OK(or1->set_backend_config(gpu_config));
+  ASSERT_OK(or1->set_backend_config(gpu_config));
   auto add2 = b.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
   or1->SetupDerivedInstruction(add2);
@@ -3030,10 +3035,10 @@ TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithConfig) {
   gpu_config0.set_operation_queue_id(2);
   gpu_config1.set_operation_queue_id(3);
 
-  TF_ASSERT_OK(add->set_backend_config(gpu_config0));
+  ASSERT_OK(add->set_backend_config(gpu_config0));
   auto add2 = b.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
-  TF_ASSERT_OK(add2->set_backend_config(gpu_config1));
+  ASSERT_OK(add2->set_backend_config(gpu_config1));
 
   add->SetupDerivedInstruction(add2);
   auto backend_config = add2->backend_config<gpu::GpuBackendConfig>();
@@ -3078,8 +3083,8 @@ TEST_F(HloInstructionTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* producer = FindInstruction(module.get(), "producer");
   HloInstruction* consumer = FindInstruction(module.get(), "consumer");
   consumer->MergeFusionInstructionIntoMultiOutput(producer);
@@ -3133,8 +3138,8 @@ TEST_F(HloInstructionTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* producer = FindInstruction(module.get(), "producer");
   HloInstruction* consumer = FindInstruction(module.get(), "consumer");
   consumer->MergeFusionInstructionIntoMultiOutput(producer);
@@ -3184,8 +3189,8 @@ TEST_F(HloInstructionTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* sibling1 = FindInstruction(module.get(), "sibling1");
   HloInstruction* sibling2 = FindInstruction(module.get(), "sibling2");
   sibling2->MergeFusionInstructionIntoMultiOutput(sibling1);
@@ -3199,6 +3204,112 @@ TEST_F(HloInstructionTest,
               GmockMatch(m::Tuple(m::Multiply(m::Parameter(0), m::Parameter(1)),
                                   m::Parameter(1),
                                   m::Add(m::Parameter(0), m::Parameter(1)))));
+}
+
+// Tests that MergeFusionInstructionIntoMultiOutput relays control dependencies
+// from both instruction_to_merge and its GTE users to the destination fusion
+// before removal.
+//
+// Before merge:
+//
+//        +---------+                 +----------+
+//        | pred_op |                 | gte_pred |
+//        +----+----+                 +----+-----+
+//             | (control)                 | (control)
+//             v                           v
+//       +-----+----+       (data)    +----+---+          +----------+
+//       | sibling1 |---------------->|  gte0  |          | sibling2 |
+//       +-----+----+                 +----+---+          +----+-----+
+//             | (control)                 | (control)         | (data)
+//             v                           v                   v
+//        +----+----+                 +----+-----+          +--+--+
+//        | succ_op |                 | gte_succ |          | res |
+//        +---------+                 +----------+          +-----+
+//
+// After sibling2->MergeFusionInstructionIntoMultiOutput(sibling1):
+//
+//        +---------+                 +----------+
+//        | pred_op |                 | gte_pred |
+//        +----+----+                 +----+-----+
+//             |                           |
+//             \-------+           +-------/
+//            (control)|           |(control)
+//                     v           v
+//              +------+-----------+------+
+//              |    sibling2+sibling1    | (merged MOF)
+//              +------+-----------+------+
+//                     |     |     \ (data)
+//            (control)|     |      \
+//            +--------/     |       v
+//            |      (control|     +---+---+
+//            v              v     |  res  |
+//       +----+----+   +-----+----+|       |
+//       | succ_op |   | gte_succ |+-------+
+//       +---------+   +----------+
+//
+//   sibling1 and gte0 are removed; their control predecessors (pred_op,
+//   gte_pred) and successors (succ_op, gte_succ) are rewired to sibling2.
+TEST_F(HloInstructionTest, MergeFusionWithControlDependencies) {
+  const std::string& hlo_string = R"(
+    HloModule mof
+    mof_sibling1 {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      mul = f32[10]{0} multiply(p0, p1)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(mul, p1)
+    }
+
+    mof_sibling2 {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      add = f32[10]{0} add(p0, p1)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(p1, add)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      pred_op = f32[10]{0} negate(p0)
+      gte_pred = f32[10]{0} abs(p0)
+      sibling1 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_sibling1, control-predecessors={pred_op}
+      gte0 = f32[10]{0} get-tuple-element(sibling1), index=0, control-predecessors={gte_pred}
+      gte1 = f32[10]{0} get-tuple-element(sibling1), index=1
+      sibling2 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=mof_sibling2
+      gte2 = f32[10]{0} get-tuple-element(sibling2), index=0
+      gte3 = f32[10]{0} get-tuple-element(sibling2), index=1
+      succ_op = f32[10]{0} floor(p0), control-predecessors={sibling1}
+      gte_succ = f32[10]{0} ceil(p0), control-predecessors={gte0}
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(gte0, gte1, gte2, gte3, pred_op, succ_op, gte_pred, gte_succ)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* pred_op = FindInstruction(module.get(), "pred_op");
+  HloInstruction* gte_pred = FindInstruction(module.get(), "gte_pred");
+  HloInstruction* sibling1 = FindInstruction(module.get(), "sibling1");
+  HloInstruction* gte0 = FindInstruction(module.get(), "gte0");
+  HloInstruction* sibling2 = FindInstruction(module.get(), "sibling2");
+  HloInstruction* succ_op = FindInstruction(module.get(), "succ_op");
+  HloInstruction* gte_succ = FindInstruction(module.get(), "gte_succ");
+
+  EXPECT_THAT(sibling1->control_predecessors(), ElementsAre(pred_op));
+  EXPECT_THAT(succ_op->control_predecessors(), ElementsAre(sibling1));
+  EXPECT_THAT(gte0->control_predecessors(), ElementsAre(gte_pred));
+  EXPECT_THAT(gte_succ->control_predecessors(), ElementsAre(gte0));
+  EXPECT_THAT(sibling2->control_predecessors(), ::testing::IsEmpty());
+  EXPECT_THAT(sibling2->control_successors(), ::testing::IsEmpty());
+
+  sibling2->MergeFusionInstructionIntoMultiOutput(sibling1);
+
+  // Both sibling1 and gte0 are removed; sibling2 inherits all incoming and
+  // outgoing control dependencies from both.
+  EXPECT_THAT(sibling2->control_predecessors(),
+              UnorderedElementsAre(pred_op, gte_pred));
+  EXPECT_THAT(sibling2->control_successors(),
+              UnorderedElementsAre(succ_op, gte_succ));
+  EXPECT_THAT(succ_op->control_predecessors(), ElementsAre(sibling2));
+  EXPECT_THAT(gte_succ->control_predecessors(), ElementsAre(sibling2));
 }
 
 TEST_F(HloInstructionTest, UnfuseInstruction) {
@@ -3221,13 +3332,13 @@ TEST_F(HloInstructionTest, UnfuseInstruction) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* fusion = FindInstruction(module.get(), "fusion.1");
   HloInstruction* add = fusion->fused_instructions_computation()
                             ->root_instruction()
                             ->mutable_operand(1);
-  TF_ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
+  ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
   EXPECT_THAT(unfused, GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
 }
 
@@ -3252,8 +3363,8 @@ TEST_F(HloInstructionTest, UnfuseInstruction2) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* fusion = FindInstruction(module.get(), "fusion.1");
   HloInstruction* add2 = fusion->fused_instructions_computation()
                              ->root_instruction()
@@ -3263,7 +3374,7 @@ TEST_F(HloInstructionTest, UnfuseInstruction2) {
   // add2 is not unfusable since it has non-const non-parameter operands.
   EXPECT_FALSE(fusion->UnfuseInstruction(add2).ok());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
+  ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
   EXPECT_THAT(unfused, GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
 }
 
@@ -3289,13 +3400,13 @@ TEST_F(HloInstructionTest, UnfuseInstructionWithConstantOperand) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* fusion = FindInstruction(module.get(), "fusion.1");
   HloInstruction* add = fusion->fused_instructions_computation()
                             ->root_instruction()
                             ->mutable_operand(1);
-  TF_ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
+  ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
   EXPECT_THAT(unfused,
               GmockMatch(m::Add(m::Parameter(0), m::Broadcast(m::Constant()))));
 }
@@ -3309,8 +3420,7 @@ TEST_F(HloInstructionTest, RaggedDotHasPrecisionConfig) {
     c = u32[3] parameter(2)
     ROOT dot = f32[11,7] ragged-dot(a, b, c), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   auto* ragged_dot = module->entry_computation()->root_instruction();
 
   EXPECT_THAT(ragged_dot->precision_config().operand_precision(),
@@ -3375,7 +3485,7 @@ TEST_F(HloInstructionTest, CreateFromProtoExp) {
   r.mutable_tolerance()->set_rtol(0.4);
   r.mutable_tolerance()->set_atol(0.0);  // NOLINT
   r.mutable_tolerance()->set_ulps(1);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloInstruction> hlo,
       HloInstruction::CreateFromProto(
           proto_valid,
@@ -3556,8 +3666,7 @@ TEST_F(HloInstructionTest, FusionPermuteOperandsTest) {
     p2 = f32[32,32] parameter(2)
     ROOT root = f32[32,32] fusion(p0, p1, p2), kind=kLoop, calls=fusion_computation
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_OK(fusion->PermuteFusionOperands({1, 2, 0}));
@@ -3569,6 +3678,49 @@ TEST_F(HloInstructionTest, FusionPermuteOperandsTest) {
               GmockMatch(m::Add(m::Subtract(m::Broadcast(m::Parameter(1)),
                                             m::Broadcast(m::Parameter(2))),
                                 m::Parameter(0))));
+}
+
+TEST_F(HloInstructionTest, SetupDerivedInstructionResultAccuracy) {
+  ResultAccuracy result_accuracy_highest;
+  result_accuracy_highest.set_mode(ResultAccuracy::HIGHEST);
+
+  HloComputation::Builder builder("Tanh");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+  HloInstruction* tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  tanh->set_result_accuracy(result_accuracy_highest);
+
+  std::unique_ptr<HloInstruction> derived_exp =
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, x);
+  tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_TRUE(derived_exp->has_result_accuracy());
+  EXPECT_EQ(derived_exp->result_accuracy().mode(), ResultAccuracy::HIGHEST);
+
+  std::unique_ptr<HloInstruction> derived_convert =
+      HloInstruction::CreateConvert(r0f32_, x);
+  tanh->SetupDerivedInstruction(derived_convert.get());
+  EXPECT_FALSE(derived_convert->has_result_accuracy());
+
+  HloInstruction* plain_tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  plain_tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_FALSE(derived_exp->has_result_accuracy());
+
+  derived_exp->set_result_accuracy(result_accuracy_highest);
+  EXPECT_TRUE(derived_exp->has_result_accuracy());
+
+  HloInstruction* attr_tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["key"] = "val";
+  attr_tanh->set_frontend_attributes(attributes);
+  EXPECT_FALSE(attr_tanh->frontend_attributes().map().empty());
+  EXPECT_FALSE(attr_tanh->has_result_accuracy());
+
+  attr_tanh->SetupDerivedInstruction(derived_exp.get());
+  EXPECT_FALSE(derived_exp->has_result_accuracy());
+  EXPECT_EQ(derived_exp->frontend_attributes().map().at("key"), "val");
 }
 
 }  // namespace

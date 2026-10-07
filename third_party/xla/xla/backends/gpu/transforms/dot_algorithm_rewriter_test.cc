@@ -22,6 +22,9 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -44,13 +47,16 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_text, config));
-  ASSERT_OK_AND_ASSIGN(auto pass_result,
-                       RunHloPass(DotAlgorithmRewriter(), module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      auto pass_result,
+      RunHloPass(DotAlgorithmRewriter(
+                     stream_executor::CudaComputeCapability::Hopper()),
+                 module.get()));
   EXPECT_TRUE(pass_result);
 
   const char* expected = R"(
@@ -81,14 +87,17 @@ TEST_F(DotAlgorithmRewriterTest, NoDefaultToBF16) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(false);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_text, config));
 
-  ASSERT_OK_AND_ASSIGN(bool pass_result,
-                       RunHloPass(DotAlgorithmRewriter(), module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      bool pass_result,
+      RunHloPass(DotAlgorithmRewriter(
+                     stream_executor::CudaComputeCapability::Hopper()),
+                 module.get()));
   EXPECT_FALSE(pass_result);
 }
 
@@ -107,13 +116,16 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Result) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_text, config));
-  ASSERT_OK_AND_ASSIGN(auto pass_result,
-                       RunHloPass(DotAlgorithmRewriter(), module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      auto pass_result,
+      RunHloPass(DotAlgorithmRewriter(
+                     stream_executor::CudaComputeCapability::Hopper()),
+                 module.get()));
   EXPECT_FALSE(pass_result);
 }
 
@@ -132,13 +144,16 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Operands) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_text, config));
-  ASSERT_OK_AND_ASSIGN(auto pass_result,
-                       RunHloPass(DotAlgorithmRewriter(), module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      auto pass_result,
+      RunHloPass(DotAlgorithmRewriter(
+                     stream_executor::CudaComputeCapability::Hopper()),
+                 module.get()));
   EXPECT_FALSE(pass_result);
 }
 
@@ -158,14 +173,129 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_HighestPrecision) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
                        ParseAndReturnVerifiedModule(hlo_text, config));
-  ASSERT_OK_AND_ASSIGN(auto pass_result,
-                       RunHloPass(DotAlgorithmRewriter(), module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      auto pass_result,
+      RunHloPass(DotAlgorithmRewriter(
+                     stream_executor::CudaComputeCapability::Hopper()),
+                 module.get()));
   EXPECT_FALSE(pass_result);
+}
+
+TEST_F(DotAlgorithmRewriterTest, SkipOnP100) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(
+      auto pass_result,
+      RunHloPass(DotAlgorithmRewriter(
+                     stream_executor::CudaComputeCapability::Pascal()),
+                 module.get()));
+  EXPECT_FALSE(pass_result);
+}
+
+TEST_F(DotAlgorithmRewriterTest, SkipOnV100) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(
+      auto pass_result,
+      RunHloPass(
+          DotAlgorithmRewriter(stream_executor::CudaComputeCapability::Volta()),
+          module.get()));
+  EXPECT_FALSE(pass_result);
+}
+
+TEST_F(DotAlgorithmRewriterTest, SkipOnTuring) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(
+      auto pass_result,
+      RunHloPass(
+          DotAlgorithmRewriter(stream_executor::CudaComputeCapability{7, 5}),
+          module.get()));
+  EXPECT_FALSE(pass_result);
+}
+
+TEST_F(DotAlgorithmRewriterTest, RunOnA100) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(
+      auto pass_result,
+      RunHloPass(DotAlgorithmRewriter(
+                     stream_executor::CudaComputeCapability::Ampere()),
+                 module.get()));
+  EXPECT_TRUE(pass_result);
 }
 
 }  // namespace

@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
@@ -234,7 +234,7 @@ absl::Status GpuExecutableVaRemapAllocator::VaRemapExecutionScope::Prepare(
     remapping_->allocation_to_mapping_size[idx] = mapping_size;
     remapping_->total_size = remapping_->total_size + mapping_size;
   }
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       remapping_->va_reservation,
       vmm_allocator_->CreateReservation(run_options->stream()->parent(),
                                         remapping_->total_size));
@@ -331,14 +331,14 @@ absl::StatusOr<BufferAllocations> GpuExecutableVaRemapAllocator::
           "but its buffer is null for this execution",
           allocation.index());
     }
-    ASSIGN_OR_RETURN(uint64_t va_offset,
+    ABSL_ASSIGN_OR_RETURN(uint64_t va_offset,
                      remapping_->GetReservationOffset(allocation.index()));
-    ASSIGN_OR_RETURN(uint64_t mapping_size,
+    ABSL_ASSIGN_OR_RETURN(uint64_t mapping_size,
                      remapping_->GetMappingSize(allocation.index()));
     // Map() reactivates a matching stale mapping from the previous execution,
     // so an input/output that keeps its address across executions performs no
     // VMM driver calls here.
-    RETURN_IF_ERROR(vmm_allocator_->Map(device_ordinal, buffer,
+    ABSL_RETURN_IF_ERROR(vmm_allocator_->Map(device_ordinal, buffer,
                                         remapping_->va_reservation.get(),
                                         va_offset, mapping_size));
     RecordStepAlias(device_ordinal, va_offset, mapping_size);
@@ -352,7 +352,7 @@ absl::StatusOr<se::ScopedDeviceAddress<uint8_t>>
 GpuExecutableVaRemapAllocator::VaRemapExecutionScope::AllocateBuffer(
     int device_ordinal, const BufferAllocation& allocation,
     int64_t buffer_size) {
-  ASSIGN_OR_RETURN(uint64_t va_offset,
+  ABSL_ASSIGN_OR_RETURN(uint64_t va_offset,
                    remapping_->GetReservationOffset(allocation.index()));
   uint64_t mapping_size = RoundUpToGranularity(
       static_cast<uint64_t>(buffer_size), remapping_->granularity);
@@ -371,7 +371,7 @@ GpuExecutableVaRemapAllocator::VaRemapExecutionScope::AllocateTransientBuffer(
     return ExecutionScope::AllocateTransientBuffer(
         device_ordinal, allocation, buffer_size, memory_allocator);
   }
-  ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
+  ABSL_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
                    AllocateBuffer(device_ordinal, allocation, buffer_size));
   return buffer.Release();
 }
@@ -391,7 +391,7 @@ absl::Status GpuExecutableVaRemapAllocator::VaRemapExecutionScope::
       // Profiling executions must pass std::nullopt: the persistent
       // allocation indices may transition from absent to present only once,
       // and the profiled set is not known yet.
-      RETURN_IF_ERROR(execute(owning_buffer_allocations, std::nullopt));
+      ABSL_RETURN_IF_ERROR(execute(owning_buffer_allocations, std::nullopt));
       ObserveAllocationAddresses(owning_buffer_allocations);
       ++remapping_->profiled_steps;
       XLA_VLOG_DEVICE(3, device_ordinal) << absl::StreamFormat(
@@ -441,7 +441,7 @@ absl::Status GpuExecutableVaRemapAllocator::VaRemapExecutionScope::
                   "after execution failed for module "
                << owner_->module_name() << ": " << release_status;
   }
-  RETURN_IF_ERROR(execute_status);
+  ABSL_RETURN_IF_ERROR(execute_status);
   return release_status;
 }
 
@@ -637,7 +637,7 @@ GpuExecutableVaRemapAllocator::CreateExecutionScope(
     return scope_without_remapping();
   }
 
-  ASSIGN_OR_RETURN(se::Stream * allocator_stream,
+  ABSL_ASSIGN_OR_RETURN(se::Stream * allocator_stream,
                    vmm_allocator->GetStream(device_ordinal));
   if (allocator_stream != run_options->stream()) {
     return Internal(

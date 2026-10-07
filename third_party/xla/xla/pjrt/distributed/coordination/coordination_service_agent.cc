@@ -134,9 +134,8 @@ absl::Status CoordinationServiceAgent::Connect() {
   request.set_incarnation(incarnation_id_.value());
   RegisterTaskResponse response;
 
-  // Give 5 seconds for any service-related timeouts to propagate.
-  const absl::Time deadline =
-      absl::Now() + config_.cluster_register_timeout + absl::Seconds(5);
+  const absl::Time deadline = absl::Now() + config_.cluster_register_timeout +
+                              config_.extra_error_propagation_time;
   int attempt = 0;
   std::default_random_engine generator;
   std::uniform_real_distribution<double> distribution(0.0, 1.0);
@@ -399,9 +398,9 @@ absl::Status CoordinationServiceAgent::Shutdown() {
     incarnations->set_service_incarnation(service_incarnation_.value());
     ShutdownTaskResponse response;
     tsl::CallOptions call_opts;
-    // Add 5s for service-related errors to propagate.
     const int64_t shutdown_timeout =
-        absl::ToInt64Milliseconds(config_.shutdown_barrier_timeout) + 5 * 1000;
+        absl::ToInt64Milliseconds(config_.shutdown_barrier_timeout +
+                                  config_.extra_error_propagation_time);
     call_opts.SetTimeout(shutdown_timeout);
 
     absl::Notification n;
@@ -988,6 +987,55 @@ absl::StatusOr<tsl::Env*> CoordinationServiceAgent::GetEnv() {
                            "initialized with a valid tsl::Env* object."));
   }
   return env_;
+}
+
+absl::Status CoordinationServiceAgent::ReportError(const absl::Status& error) {
+  {
+    absl::MutexLock l(state_mu_);
+    if (state_ == xla::coordination::TaskState::UNINITIALIZED) {
+      return MakeCoordinationError(FailedPrecondition(
+          "Coordination service agent must be initialized first before "
+          "reporting error."));
+    }
+    if (state_ == xla::coordination::TaskState::ERROR) {
+      return MakeCoordinationError(FailedPrecondition(
+          "Coordination service agent is already in error state."));
+    }
+  }
+  SetError(MakeCoordinationError(error, task_id_, /*is_reported_error=*/true));
+  VLOG(5) << "Reporting error to coordination service: " << error;
+
+  ReportErrorToServiceRequest request;
+  request.set_error_code(error.raw_code());
+  request.set_error_message(std::string(error.message()));
+  request.set_source_task_id(task_id_);
+  xla::coordination::Incarnations* incarnations =
+      request.mutable_incarnations();
+  incarnations->set_task_id(task_id_);
+  incarnations->set_task_incarnation(incarnation_id_.value());
+  incarnations->set_service_incarnation(service_incarnation_.value());
+  VLOG(5) << "ReportErrorToServiceRequest: " << request.DebugString();
+  ReportErrorToServiceResponse response;
+
+  absl::Notification n;
+  leader_client_->ReportErrorToServiceAsync(
+      &request, &response, [&](const absl::Status& s) {
+        VLOG(5) << "ReportErrorToServiceResponse: " << s;
+        if (!s.ok()) {
+          LOG(ERROR)
+              << "Encountered another error when reporting error to "
+                 "coordination service: "
+              << s
+              << "\nThis is usually caused by an earlier error during "
+                 "execution. Check the logs of (a) this task, (b) the "
+                 "leader (usually slice 0 task 0) and (c) the scheduler "
+                 "(e.g. preemption, eviction) for an earlier error to debug "
+                 "further.";
+        }
+        n.Notify();
+      });
+  n.WaitForNotification();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

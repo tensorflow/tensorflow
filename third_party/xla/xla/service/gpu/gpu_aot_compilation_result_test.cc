@@ -24,10 +24,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
@@ -108,13 +109,18 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     Thunk::ThunkInfo thunk_info;
     thunk_info.thunk_id = 123;
 
+    GpuTopology gpu_topology(/*platform_version=*/"", /*num_partitions=*/1,
+                             /*num_hosts_per_partition=*/1,
+                             /*num_devices_per_host=*/1);
+
     ThunkSequence thunk_sequence;
     thunk_sequence.Emplace<KernelThunk>(
         thunk_info,
         /*kernel_name=*/"test_kernel", emitters::KernelArguments({}),
         LaunchDimensions(),
         /*cluster_dim=*/std::nullopt,
-        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata());
+        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata(),
+        gpu_topology.num_devices_per_host());
     CustomKernel custom_kernel{
         "custom_kernel_name",
         stream_executor::KernelLoaderSpec::
@@ -123,8 +129,9 @@ class GpuAotCompilationResultTest : public ::testing::Test {
                 /*arity=*/42),
         stream_executor::BlockDim(), stream_executor::ThreadDim(),
         /*shared_memory_bytes=*/23};
-    thunk_sequence.Emplace<CustomKernelThunk>(thunk_info, custom_kernel,
-                                              emitters::KernelArguments({}));
+    thunk_sequence.Emplace<CustomKernelThunk>(
+        thunk_info, custom_kernel, emitters::KernelArguments({}),
+        gpu_topology.num_devices_per_process());
 
     auto hlo_module = std::make_unique<HloModule>("test_module_with_shape",
                                                   HloModuleConfig());
@@ -142,11 +149,12 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.executable =
         std::make_unique<ThunkExecutor>(std::move(thunk_sequence));
     params.device_description = device_description_;
+    params.gpu_topology = gpu_topology;
 
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.allocations = {BufferAllocation(0, 1024, 0)};
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(
             device_description_));
@@ -162,7 +170,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         )pb");
     params.buffer_allocations_debug_summary = "dummy_summary";
 
-    ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
                      GpuExecutable::Create(std::move(params)));
     return executable->ToProto();
   }
@@ -178,8 +186,8 @@ class GpuAotCompilationResultTest : public ::testing::Test {
                 AnyOf(IsOkAndHolds(kCudaSymbol),
                       StatusIs(absl::StatusCode::kNotFound)));
     if (!registry.FindSymbol("persistent_kernel_name", platform_id_).ok()) {
-      TF_ASSERT_OK(registry.RegisterSymbol("persistent_kernel_name",
-                                           platform_id_, kCudaSymbol));
+      ASSERT_OK(registry.RegisterSymbol("persistent_kernel_name", platform_id_,
+                                        kCudaSymbol));
     }
   }
 
@@ -236,10 +244,14 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
 
   EnsureCudaSymbolIsRegistered();
 
+  std::shared_ptr<HloModule> expected_module =
+      result->shared_optimized_module();
+
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       std::move(*result).LoadExecutable(platform_.id(), GetDeviceDescription(),
                                         DebugOptions()));
+  EXPECT_EQ(executable->shared_module(), expected_module);
 
   {
     ASSERT_OK_AND_ASSIGN(

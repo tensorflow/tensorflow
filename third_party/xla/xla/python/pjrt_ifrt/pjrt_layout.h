@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 
@@ -41,8 +41,7 @@ namespace ifrt {
 // `xla::Layout`, we strongly suggest using only a small subset of `xla::Layout`
 // features (`minor_to_major`, `tiles`, and `element_size_in_bits`) that are
 // approved for use in PjRt C API and less commonly used features.
-class PjRtLayout final
-    : public llvm::RTTIExtends<xla::ifrt::PjRtLayout, Layout> {
+class PjRtLayout final : public RTTIExtends<xla::ifrt::PjRtLayout, Layout> {
  public:
   // Creates a PjRtLayout.
   //

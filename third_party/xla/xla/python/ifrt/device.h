@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
@@ -40,7 +40,7 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(DeviceId, int32_t);
 
 // `Device` represents a single device that can run computations. The types of
 // supported computations depend on the runtime.
-class Device : public llvm::RTTIExtends<Device, llvm::RTTIRoot> {
+class Device : public RTTIExtends<Device, RTTIRoot> {
  public:
   Device() = default;
 

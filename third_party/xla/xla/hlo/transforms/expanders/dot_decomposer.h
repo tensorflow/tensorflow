@@ -31,6 +31,18 @@ class DotDecomposer : public HloModulePass {
  public:
   absl::string_view name() const override { return "dot_decomposer"; }
 
+  // Runs DotDecomposer on a single computation.
+  //
+  // Note that unlike the module-scoped Run() API (which only runs on non-fusion
+  // computations in the module), this method operates on any computation passed
+  // to it, including fusion computations. It transforms only immediate kDot
+  // instructions in `computation` and does not recurse into called computations
+  // (e.g., kWhile bodies, kCall targets, or kConditional branches).
+  //
+  // Returns true if one or more non-canonical kDot instructions were
+  // canonicalized; returns false otherwise.
+  static absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
+
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
