@@ -833,8 +833,11 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
       if axis is None:
         n = array_ops.size(input_tensor)
       else:
-        if axis < 0:
-          axis += array_ops.rank(input_tensor)
+        # axis can be an int or a sequence of ints.
+        axis = math_ops.cast(axis, dtypes.int32)
+        axis = array_ops.where_v2(
+            axis < 0, axis + array_ops.rank(input_tensor), axis
+        )
         n = math_ops.reduce_prod(
             array_ops.gather(array_ops.shape(input_tensor), axis)
         )
