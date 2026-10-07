@@ -2422,12 +2422,14 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_xla("Xla does not raise error on out of bounds access")
   def testAvgPoolGradMismatchedGradShapeRaisesError(self):
-    # Each grad has more channels than the input. The CPU kernel used to write
-    # past the end of its output buffer instead of raising an error.
+    # Each grad has a different number of channels than the input. With more
+    # channels, the CPU kernel used to write past the end of its output buffer
+    # instead of raising an error.
     for orig_input_shape, grad_shape, ksize, expected in (
         ([1, 28, 28, 3], [1, 14, 14, 6], 2, r"\[1,14,14,3\], but got "
          r"\[1,14,14,6\]"),
         ([2, 2, 2, 2], [2, 3, 3, 3], 1, r"\[2,2,2,2\], but got \[2,3,3,3\]"),
+        ([1, 10, 10, 3], [1, 5, 5, 0], 2, r"\[1,5,5,3\], but got \[1,5,5,0\]"),
     ):
       with self.assertRaisesRegex(
           (errors_impl.InvalidArgumentError, ValueError),
@@ -2443,11 +2445,16 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAvgPoolGradEmptyTensorFastExit(self):
-    for empty_shape in ([0, 10, 10, 3], [1, 0, 10, 3], [1, 10, 10, 0]):
+    for empty_input_shape, empty_grad_shape in (
+        ([0, 10, 10, 3], [0, 5, 5, 3]),
+        ([1, 0, 10, 3], [1, 0, 5, 3]),
+        ([1, 10, 10, 0], [1, 5, 5, 0]),
+        ([1, 1, 10, 3], [1, 0, 5, 3]),
+    ):
       self.evaluate(
           gen_nn_ops.AvgPoolGrad(
-              orig_input_shape=empty_shape,
-              grad=array_ops.zeros(empty_shape),
+              orig_input_shape=empty_input_shape,
+              grad=array_ops.zeros(empty_grad_shape),
               ksize=[1, 2, 2, 1],
               strides=[1, 2, 2, 1],
               padding="VALID",

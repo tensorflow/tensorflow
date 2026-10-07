@@ -279,7 +279,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
 
-      if (output_shape.num_elements() == 0 || grad_tensor.NumElements() == 0) {
+      if (output_shape.num_elements() == 0) {
         return;
       }
 
