@@ -1864,6 +1864,92 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array((3, 7, 8, 9), dtype=np.int32),
           expected=np.tile(x, (1, 7, 8, 9)))
 
+  def testBroadcastToRejectsIncompatibleShapes(self):
+    # xla::BroadcastTo tiles an input dimension into an output dimension that
+    # is a multiple of it, but TensorFlow only broadcasts dimensions of size 1.
+    for shape in ([2, 6], [2, 4]):
+      with self.subTest(shape=shape):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Incompatible shapes: \[1,2\] vs\. \[%d,%d\]" % tuple(shape),
+        ):
+          self._testBinary(
+              array_ops.broadcast_to,
+              np.array([[1, 2]], dtype=np.float32),
+              np.array(shape, dtype=np.int32),
+              expected=None,
+          )
+    # A shape of unknown length keeps graph shape inference from checking the
+    # ranks first.
+    with self.session() as session:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.float32, [2, 2, 3])
+        shape = array_ops.placeholder(dtypes.int32, [None])
+        output = array_ops.broadcast_to(x, shape)
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"Rank of input \(3\) must be no greater than rank of output "
+          r"shape \(2\)",
+      ):
+        session.run(
+            output,
+            {
+                x: np.ones([2, 2, 3], dtype=np.float32),
+                shape: np.array([2, 3], dtype=np.int32),
+            },
+        )
+
+  def testBroadcastToEmptyOutput(self):
+    # Only a dimension of size 1 can be broadcast to size 0.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"Incompatible shapes: \[2\] vs\. \[0\]"
+    ):
+      self._testBinary(
+          array_ops.broadcast_to,
+          np.array([1, 2], dtype=np.float32),
+          np.array([0], dtype=np.int32),
+          expected=None,
+      )
+    self._testBinary(
+        array_ops.broadcast_to,
+        np.array([7], dtype=np.float32),
+        np.array([0], dtype=np.int32),
+        expected=np.zeros([0], dtype=np.float32),
+    )
+    self._testBinary(
+        array_ops.broadcast_to,
+        np.zeros([0], dtype=np.float32),
+        np.array([2, 0], dtype=np.int32),
+        expected=np.zeros([2, 0], dtype=np.float32),
+    )
+
+  def testBroadcastToDynamicOutputDimension(self):
+    if "GPU" in self.device:
+      self.skipTest(
+          "XLA:GPU's dynamic padder doesn't support the dynamic "
+          "select that boolean_mask produces."
+      )
+
+    # n is only known at run time, where it equals the input dimension 2, but
+    # its bound is 4, so comparing bounds would wrongly reject this broadcast.
+    # Taking n from a shape keeps XLA from compiling mask as a constant.
+    @def_function.function(jit_compile=True)
+    def f(x, mask):
+      n = array_ops.shape(array_ops.boolean_mask(mask, mask))[0]
+      return array_ops.broadcast_to(
+          x, array_ops.concat([[3], array_ops.reshape(n, [1])], 0)
+      )
+
+    with self.session() as session:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.float32, shape=[2])
+        mask = array_ops.placeholder(dtypes.bool, shape=[4])
+        output = f(x, mask)
+      result = session.run(
+          output, {x: [1.0, 2.0], mask: [True, False, True, False]}
+      )
+    self.assertAllClose(result, [[1.0, 2.0]] * 3)
+
   def testMulGradientOnBoundedDynamicDimension(self):
     # tf.slice(x, [0], [n]), where n is itself only known at runtime, has an
     # output size that's bounded by x's static shape but not statically
