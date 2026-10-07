@@ -410,6 +410,8 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   PJRT_ASSIGN_OR_RETURN(
       auto gpu_target_config,
       xla::Compiler::GpuTargetConfig::FromProto(target_config_proto));
+  const std::string platform_version =
+      xla::GetGpuPlatformVersion(gpu_target_config.device_description);
 
   PJRT_ASSIGN_OR_RETURN(
       auto host_target_machine_options,
@@ -436,7 +438,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   }
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
-          platform_id, platform_name, std::move(gpu_topology),
+          platform_id, platform_name, platform_version, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
               {"target_config", std::move(target_config_attr)},
               {"host_target_machine_options",

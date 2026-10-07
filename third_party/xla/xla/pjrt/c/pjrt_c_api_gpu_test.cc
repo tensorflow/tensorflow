@@ -1125,27 +1125,28 @@ constexpr char const* kTargetConfigString = R"(gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
   shared_memory_per_block: 49152
-  shared_memory_per_core: 98304
+  shared_memory_per_core: 167936
   threads_per_core_limit: 2048
-  core_count: 80
+  core_count: 108
   fpus_per_core: 64
   block_dim_limit_x: 2147483647
   block_dim_limit_y: 65535
   block_dim_limit_z: 65535
-  memory_bandwidth: 898048000000
-  l2_cache_size: 6291456
-  clock_rate_ghz: 1.53
-  device_memory_size: 34072559616
-  shared_memory_per_block_optin: 98304
+  memory_bandwidth: 2039040000000
+  l2_cache_size: 41943040
+  clock_rate_ghz: 1.41
+  device_memory_size: 85100068864
+  shared_memory_per_block_optin: 166912
   cuda_compute_capability {
-    major: 7
+    major: 8
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
   dnn_version: "9.3.0"
 }
 platform_name: "CUDA"
-device_description_str: "Tesla V100-SXM2-32GB"
+device_description_str: "NVIDIA A100-SXM4-80GB"
+runtime_version { major: 13 minor: 4 patch: 0 }
 )";
 
 constexpr char const* kHostTargetMachineOptionsString =
@@ -1160,8 +1161,8 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
       {"host_target_machine_options",
        static_cast<std::string>(kHostTargetMachineOptionsString)},
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
 
   PJRT_TopologyDescription_Create_Args args;
   args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
@@ -1184,10 +1185,11 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
               (pjrt_topology->topology->platform_id() == xla::OneapiId() &&
                pjrt_topology->topology->platform_name() == xla::OneapiName()));
 
+  EXPECT_EQ(pjrt_topology->topology->platform_version(), "cuda 13040");
   EXPECT_EQ(pjrt_topology->topology->ProcessCount().value(), 16 * 2);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions().size(), 16 * 2 * 4);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[0]->device_kind(),
-            "Tesla V100-SXM2-32GB");
+            "NVIDIA A100-SXM4-80GB");
   for (int i = 0; i < pjrt_topology->topology->DeviceDescriptions().size() - 1;
        ++i) {
     EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[i]->id(), i);

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -218,6 +219,9 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env,
       }
       std::swap(expand_queue, next_expand_queue);
     }
+    // Sort so that the results don't depend on the order in which `fs` lists
+    // directory entries.
+    absl::c_sort(*results);
     return absl::OkStatus();
   }
 
@@ -300,6 +304,9 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env,
     std::swap(expand_queue, next_expand_queue);
   }
 
+  // Sort so that the results don't depend on the order in which `fs` lists
+  // directory entries, or in which the threads above finish.
+  absl::c_sort(*results);
   return absl::OkStatus();
 }
 

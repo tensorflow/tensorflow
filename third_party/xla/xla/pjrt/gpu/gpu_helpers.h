@@ -29,12 +29,19 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/gpu/allocator_config.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/types.h"
 
 namespace xla {
+
+// Formats the runtime software version for both GPU clients and topologies.
+// The description may come from a live device or a serialized target config;
+// this function does not initialize a GPU runtime.
+std::string GetGpuPlatformVersion(
+    const stream_executor::DeviceDescription& device_description);
 
 // Builds an xla::LocalClient for the GPU platform.
 absl::StatusOr<LocalClient*> GetGpuXlaClient(

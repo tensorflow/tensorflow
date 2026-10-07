@@ -49,8 +49,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: "Run bazel build --nobuild //xla/... with retries"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --nobuild //xla/...
       - name: "Run bazel query //xla/..."
         run: bazel query //xla/... > /dev/null
       - name: "Run bazel query deps(//xla/...)"

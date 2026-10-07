@@ -78,6 +78,7 @@ using ::testing::Property;
 using ::testing::Return;
 
 constexpr absl::string_view kFakeDeviceName = "Fake_device";
+constexpr absl::string_view kFakePlatformVersion = "cuda 12030";
 
 constexpr absl::string_view kProgram = R"(HloModule Computation
 
@@ -125,7 +126,8 @@ std::shared_ptr<xla::GpuTopology> GetGpuTopology(
 TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
   StreamExecutorGpuCompiler compiler(CudaId());
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), kFakePlatformVersion,
+      GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
@@ -136,7 +138,8 @@ TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   StreamExecutorGpuCompiler compiler(CudaId());
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), kFakePlatformVersion,
+      GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -179,7 +182,8 @@ TEST(StreamExecutorGpuCompilerTest, NoClientMlir) {
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
 
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), kFakePlatformVersion,
+      GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(),
                                MaybeOwningMlirModule(std::move(context),
@@ -199,7 +203,8 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
 
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), kFakePlatformVersion,
+      GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -253,7 +258,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlirCanBeSerialized) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
 
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), kFakePlatformVersion,
+      GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::PjRtExecutable> executable,
@@ -342,7 +348,7 @@ TEST(StreamExecutorGpuCompilerTest, DevicelessCompilation) {
       GetSingleDeviceGpuTopology(CudaName(), gpu_target_config));
 
   StreamExecutorGpuTopologyDescription topology_description(
-      CudaId(), CudaName(), gpu_topology);
+      CudaId(), CudaName(), kFakePlatformVersion, gpu_topology);
 
   auto hlo_module = std::make_shared<HloModule>("name", HloModuleConfig());
 
@@ -380,7 +386,7 @@ TEST(StreamExecutorGpuCompilerTest, CrossCompilation) {
       CudaName(), gpu_target_config, host_target_machine_options));
 
   StreamExecutorGpuTopologyDescription topology_description(
-      CudaId(), CudaName(), gpu_topology);
+      CudaId(), CudaName(), kFakePlatformVersion, gpu_topology);
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                        GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -454,7 +460,7 @@ TEST(StreamExecutorGpuCompilerTest, AutoLayoutIsPropagatedInCrossCompilation) {
                        GetSampleH100basedGpuTopology());
 
   StreamExecutorGpuTopologyDescription topology_description(
-      CudaId(), CudaName(), gpu_topology);
+      CudaId(), CudaName(), kFakePlatformVersion, gpu_topology);
 
   EXPECT_CALL(mock_compiler_ref, PlatformId)
       .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
@@ -493,7 +499,7 @@ TEST(StreamExecutorGpuCompilerTest,
                        GetSampleH100basedGpuTopology());
 
   StreamExecutorGpuTopologyDescription topology_description(
-      CudaId(), CudaName(), std::move(gpu_topology));
+      CudaId(), CudaName(), kFakePlatformVersion, std::move(gpu_topology));
 
   EXPECT_CALL(mock_compiler_ref, PlatformId)
       .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
@@ -530,7 +536,7 @@ TEST(StreamExecutorGpuCompilerTest,
                        GetSampleH100basedGpuTopology());
 
   StreamExecutorGpuTopologyDescription topology_description(
-      CudaId(), CudaName(), std::move(gpu_topology));
+      CudaId(), CudaName(), kFakePlatformVersion, std::move(gpu_topology));
 
   EXPECT_CALL(mock_compiler_ref, PlatformId)
       .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
@@ -575,8 +581,8 @@ TEST(StreamExecutorGpuCompilerTest, DisjointDeviceAssignmentCompile) {
                                     /*num_hosts_per_partition=*/2,
                                     /*num_devices_per_host=*/1,
                                     /*gpu_target_config=*/std::nullopt);
-  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
-                                                gpu_topology);
+  StreamExecutorGpuTopologyDescription topology(
+      CudaId(), CudaName(), kFakePlatformVersion, gpu_topology);
 
   xla::CompileOptions options;
   xla::DeviceAssignment assignment(1, 1);
@@ -592,7 +598,8 @@ TEST(StreamExecutorGpuCompilerTest, DisjointDeviceAssignmentCompile) {
 
 TEST(StreamExecutorGpuCompilerTest, DeserializePjRtTopologyDescriptionSuccess) {
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
+      CudaId(), CudaName(), kFakePlatformVersion,
+      GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
   ASSERT_OK_AND_ASSIGN(auto proto, topology.ToProto());
 
   std::string serialized_proto;
@@ -605,6 +612,7 @@ TEST(StreamExecutorGpuCompilerTest, DeserializePjRtTopologyDescriptionSuccess) {
 
   EXPECT_EQ(deserialized_topology->platform_name(), topology.platform_name());
   EXPECT_EQ(deserialized_topology->platform_id(), topology.platform_id());
+  EXPECT_EQ(deserialized_topology->platform_version(), kFakePlatformVersion);
   EXPECT_EQ(deserialized_topology->DeviceDescriptions().size(),
             topology.DeviceDescriptions().size());
 }
@@ -668,7 +676,7 @@ TEST(StreamExecutorGpuCompilerTest,
                        GetSampleH100basedGpuTopology());
 
   StreamExecutorGpuTopologyDescription topology_description(
-      CudaId(), CudaName(), std::move(gpu_topology));
+      CudaId(), CudaName(), kFakePlatformVersion, std::move(gpu_topology));
 
   EXPECT_CALL(mock_compiler_ref, PlatformId)
       .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
@@ -707,7 +715,7 @@ TEST(StreamExecutorGpuCompilerTest, MutuallyExclusiveEarlyExitFlagsError) {
                        GetSampleH100basedGpuTopology());
 
   StreamExecutorGpuTopologyDescription topology_description(
-      CudaId(), CudaName(), std::move(gpu_topology));
+      CudaId(), CudaName(), kFakePlatformVersion, std::move(gpu_topology));
 
   CompileOptions options{};
   options.executable_build_options.mutable_debug_options()

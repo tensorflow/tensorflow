@@ -27,14 +27,16 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/testing/temporary_directory.h"
+#include "tsl/platform/null_file_system.h"
 #include "tsl/platform/path.h"
 
 namespace tsl {
 namespace {
 
 using absl_testing::IsOk;
-using ::testing::UnorderedElementsAre;
+using ::testing::ElementsAre;
 
 TEST(EnvTest, StartDetachedThread) {
   Env* env = Env::Default();
@@ -142,13 +144,48 @@ TEST(EnvTest, GetMatchingPaths) {
     std::vector<std::string> results;
     EXPECT_THAT(env->GetMatchingPaths(pattern, &results, multithreaded),
                 IsOk());
-    EXPECT_THAT(results, UnorderedElementsAre(file_1, file_2));
+    EXPECT_THAT(results, ElementsAre(file_1, file_2));
 
     results.clear();
     EXPECT_THAT(env->GetMatchingPaths(pattern_sv, &results, multithreaded),
                 IsOk());
-    EXPECT_THAT(results, UnorderedElementsAre(file_1, file_2));
+    EXPECT_THAT(results, ElementsAre(file_1, file_2));
   }
+}
+
+// Returns the matches in reverse lexicographic order.
+class ReverseOrderFileSystem : public NullFileSystem {
+ public:
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                std::vector<std::string>* results) override {
+    *results = {"c", "b", "a"};
+    return absl::OkStatus();
+  }
+};
+
+// Uses `fs` for all paths.
+class SingleFileSystemEnv : public EnvWrapper {
+ public:
+  explicit SingleFileSystemEnv(FileSystem* fs)
+      : EnvWrapper(Env::Default()), fs_(fs) {}
+
+  absl::Status GetFileSystemForFile(absl::string_view fname,
+                                    FileSystem** result) override {
+    *result = fs_;
+    return absl::OkStatus();
+  }
+
+ private:
+  FileSystem* fs_;
+};
+
+TEST(EnvTest, GetMatchingPathsSortsResultsOfAnyFileSystem) {
+  ReverseOrderFileSystem fs;
+  SingleFileSystemEnv env(&fs);
+
+  std::vector<std::string> results;
+  ASSERT_OK(env.GetMatchingPaths("*", &results));
+  EXPECT_THAT(results, ElementsAre("a", "b", "c"));
 }
 
 #if defined(__linux__)
