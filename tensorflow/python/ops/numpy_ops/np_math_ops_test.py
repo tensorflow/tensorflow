@@ -899,6 +899,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
       # inf ** (1/3) == inf; NaN ** (1/3) == NaN
       # Negative sign bit for -inf is preserved.
       self.assertAllEqual(np_math_ops.signbit(out_edge[0:2]), [True, False])
+      self.assertAllEqual(math_ops.is_nan(out_edge[2]), True)
 
   def testSinc(self):
     for dtype in (dtypes.float32, dtypes.float64):
