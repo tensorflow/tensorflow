@@ -23,7 +23,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/substitute.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/tsl/platform/env.h"
@@ -159,6 +163,50 @@ TEST(DebugOptions, AllFieldsHavePresence) {
   EXPECT_THAT(fields_missing_presence, IsEmpty())
       << "All scalar fields in DebugOptions must have presence defined by "
          "being labeled `optional`.";
+}
+
+// Fields numbered at or above this must list their stages (see
+// `DebugOptionsFieldOptions` in xla.proto). Never bump: that would silently
+// drop enforcement for fields that are already annotated.
+constexpr int kFirstFieldRequiringAnnotation = 555;
+
+TEST(DebugOptions, NewFieldsDeclareStages) {
+  std::vector<const tsl::protobuf::FieldDescriptor*> missing;
+  const tsl::protobuf::Descriptor* debug_options = DebugOptions::descriptor();
+  for (int i = 0; i < debug_options->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor* field = debug_options->field(i);
+    if (field->number() < kFirstFieldRequiringAnnotation) {
+      continue;
+    }
+    const DebugOptionsFieldOptions& options =
+        field->options().GetExtension(debug_options_field);
+    if (options.stages().empty() ||
+        absl::c_linear_search(options.stages(),
+                              DebugOptionsFieldOptions::STAGE_UNSPECIFIED)) {
+      missing.push_back(field);
+    }
+  }
+  if (missing.empty()) {
+    return;
+  }
+
+  ADD_FAILURE() << absl::Substitute(
+      "New DebugOptions fields must declare when they are read.\n\n"
+      "Missing an annotation:\n$0\n\n"
+      "Annotate each one in xla.proto, e.g.:\n"
+      "  $1 = $2 [(debug_options_field) = { stages: [ RUNTIME ] }];\n\n"
+      "  COMPILE  read only while compiling; values copied into HLO or\n"
+      "           thunks count as COMPILE\n"
+      "  RUNTIME  read while loading or running an executable, or via\n"
+      "           GetDebugOptionsFromFlags()\n"
+      "  both     [ COMPILE, RUNTIME ] if read in both, or if unsure\n\n"
+      "See `DebugOptionsFieldOptions` in xla.proto for examples.",
+      absl::StrJoin(
+          missing, "\n",
+          [](std::string* out, const tsl::protobuf::FieldDescriptor* field) {
+            absl::StrAppend(out, "  ", field->name(), " = ", field->number());
+          }),
+      missing.front()->name(), missing.front()->number());
 }
 
 TEST(DebugOptions, EnableNcclSymmetricBuffersForCollectives) {
