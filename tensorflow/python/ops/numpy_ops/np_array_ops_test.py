@@ -1481,6 +1481,9 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, axis=2)
     _test(a, axis=-1)
     _test(a, axis=-3)
+    # 0-D and 1-D ndarray axes.
+    _test(a, axis=np.array(1))
+    _test(a, axis=np.array([0, 2]))
     # A tuple, list or range of axes, including negative values.
     _test(a, axis=(0, 1))
     _test(a, axis=(-1, -3))
@@ -1500,6 +1503,8 @@ class ArrayMethodsTest(test.TestCase):
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(np_array_ops.flip(a, axis=[0, -4]))
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(np_array_ops.flip(a, axis=np.array(3)))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(np_array_ops.flip(a, axis=np.array([3])))
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(np_array_ops.flip(a, axis=range(4)))
@@ -1516,6 +1521,14 @@ class ArrayMethodsTest(test.TestCase):
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
     )
     self.assertAllEqual(np.flip(a, -1), flip_unknown_rank(a))
+
+    # Unknown-rank inputs raise InvalidArgumentError for out-of-bounds axes.
+    flip_unknown_rank_invalid = def_function.function(
+        lambda x: np_array_ops.flip(x, axis=-4),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
+    )
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(flip_unknown_rank_invalid(a))
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))
