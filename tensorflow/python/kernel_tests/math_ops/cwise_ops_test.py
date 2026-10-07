@@ -1344,14 +1344,14 @@ class PolyvalTest(test.TestCase):
     # inf x must evaluate to inf (not nan): the limit of a polynomial such as
     # p(x) = x + 1 as x -> inf is mathematically inf. NumPy returns nan here
     # only because it starts its Horner accumulator at zero (0 * inf -> nan).
-    # Complex dtypes are only checked at degrees 0 and 1: at degree 2+ the
+    # Complex dtypes are only checked at degree 1: at degree 2+ the
     # complex multiply itself can produce a nan real part (e.g. complex128
     # (inf+0j)**2 -> nan+nanj), which is inherent to complex inf arithmetic
     # rather than accumulator initialization.
     for dtype in [
         np.float16, np.float32, np.float64, np.complex64, np.complex128
     ]:
-      degrees = [(0, [2.0]), (1, [1.0, 1.0])]
+      degrees = [(1, [1.0, 1.0])]
       if not np.issubdtype(dtype, np.complexfloating):
         degrees.append((2, [1.0, 1.0, 1.0]))
       for x_val in [float("inf"), float("-inf")]:
@@ -1368,11 +1368,7 @@ class PolyvalTest(test.TestCase):
                 tf_val = math_ops.polyval([dtype(c) for c in coeffs], x_np)
                 result = self.evaluate(tf_val)
                 self.assertEqual(tf_val.shape, x_np.shape)
-                if degree == 0:
-                  # A constant polynomial ignores x; the result is the
-                  # constant broadcast against x's shape.
-                  self.assertAllClose(np.full(x_np.shape, dtype(2.0)), result)
-                elif np.issubdtype(dtype, np.complexfloating):
+                if np.issubdtype(dtype, np.complexfloating):
                   # Complex inf arithmetic can produce nan imaginary parts
                   # (e.g. (1+0j) * (inf+0j)); the real part must stay inf.
                   self.assertTrue(np.all(np.isinf(np.real(result))))

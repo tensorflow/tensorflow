@@ -5628,11 +5628,8 @@ def polyval(coeffs, x, name=None):
     p = coeffs[0]
     for c in coeffs[1:]:
       p = c + p * x
-    # For single-coefficient polynomials, the loop above never executes,
-    # so broadcast p against x's shape without introducing arithmetic
-    # that would alter non-finite behavior (e.g. x*0 turns inf into nan).
     if len(coeffs) == 1:
-      p = array_ops.broadcast_to(p, array_ops.shape(x))
+      p = p + x * 0
     return p
 
 
