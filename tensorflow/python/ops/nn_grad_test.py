@@ -403,6 +403,39 @@ class SwishGradOpTest(test.TestCase):
     self.assertFalse(np.isnan(second_derivative))
     self.assertEqual(0.0, second_derivative)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishBetaGradientPreservesNegativeExtreme(self):
+    features = constant_op.constant(-709.0, dtypes.float64)
+    beta = constant_op.constant(1.0, dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(beta)
+      output = nn_impl.swish(features, beta=beta)
+    beta_grad = self.evaluate(tape.gradient(output, beta))
+
+    self.assertAllClose(
+        6.116525645041329e-303,
+        beta_grad,
+        rtol=1e-6,
+        atol=0.0,
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishDoubleGradientMixedTensor(self):
+    features = constant_op.constant(
+        [-709.0, -500.0, -1.0, 0.0, 1.0, 1500.0], dtype=dtypes.float64
+    )
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+    self.assertFalse(np.any(np.isnan(self.evaluate(first_derivative))))
+    self.assertFalse(np.any(np.isnan(second_derivative)))
+
 
 class SoftmaxVJPFloat64InvarianceTest(test.TestCase):
   """Regression tests for GitHub issue #126525.
