@@ -142,18 +142,19 @@ class ExtractImagePatches(xla_test.XLATestCase):
 
   def testInvalidKernelSize(self):
     """Test that zero kernel size is rejected by shape inference."""
-    image_placeholder = array_ops.placeholder(dtypes.float32)
-    with self.assertRaisesRegex(
-        ValueError,
-        "ExtractImagePatches requires spatial ksizes to be positive",
-    ):
-      array_ops.extract_image_patches(
-          image_placeholder,
-          ksizes=[1, 0, 2, 1],
-          strides=[1, 1, 1, 1],
-          rates=[1, 1, 1, 1],
-          padding="VALID",
-      )
+    with self.session():
+      image_placeholder = array_ops.placeholder(dtypes.float32)
+      with self.assertRaisesRegex(
+          ValueError,
+          "ExtractImagePatches requires spatial ksizes to be positive",
+      ):
+        array_ops.extract_image_patches(
+            image_placeholder,
+            ksizes=[1, 0, 2, 1],
+            strides=[1, 1, 1, 1],
+            rates=[1, 1, 1, 1],
+            padding="VALID",
+        )
 
 
 if __name__ == "__main__":
