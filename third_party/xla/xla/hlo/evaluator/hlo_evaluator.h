@@ -487,6 +487,39 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // This lets you calculate LI given the multidimensional indices in any order.
   static DimensionVector MakeDimMultipliers(const Shape& shape);
 
+  static absl::Status UnsupportedTypeError(const HloInstruction* instruction);
+
+  // Returns `shape`, if it has a layout, or a copy of `shape` with the default
+  // layout if it doesn't. Some functions require shapes to have layouts, so we
+  // simply always set one.
+  static Shape GetShapeWithLayout(const Shape& shape);
+
+  bool TryEvaluateDotFastPathF32(const HloInstruction* dot);
+
+  struct ShapeInfo {
+    static std::pair<DimensionVector, DimensionVector> dims(
+        const DimensionVector& dim_indexes, const Shape& literal_shape,
+        const Shape& scale_shape);
+
+    ShapeInfo(const Literal& literal, const Literal& scale_literal,
+              absl::Span<const int64_t> contracting_dims_field,
+              absl::Span<const int64_t> batch_dims_field);
+    ~ShapeInfo();
+
+    const int64_t rank;
+    DimensionVector batch_dim_indexes;
+    DimensionVector batch_dim_sizes;
+    DimensionVector batch_dim_scale_divisors;
+
+    DimensionVector non_contracting_dim_indexes;
+    DimensionVector non_contracting_dim_sizes;
+    DimensionVector non_contracting_dim_scale_divisors;
+
+    DimensionVector contracting_dim_indexes;
+    DimensionVector contracting_dim_sizes;
+    DimensionVector contracting_dim_scale_divisors;
+  };
+
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
   //
