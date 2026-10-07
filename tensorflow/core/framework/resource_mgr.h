@@ -119,8 +119,8 @@ class ScopedStepContainer {
 
   // Pass through to MakeResourceHandle with the container name
   template <typename T>
-  ResourceHandle MakeResourceHandle(
-      const std::string& name, const DeviceBase& device) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT ResourceHandle
+  MakeResourceHandle(const std::string& name, const DeviceBase& device);
   // Pass through to ResourceMgr::Create with the container name
   template <typename T>
   absl::Status Create(ResourceMgr* rm, const std::string& name, T* resource);
@@ -340,12 +340,11 @@ class ResourceMgr {
 
 // Makes a resource handle with the specified type for a given container /
 // name.
-ResourceHandle MakeResourceHandle(
+TF_MUST_USE_RESULT ResourceHandle MakeResourceHandle(
     const std::string& container, const std::string& name,
     const DeviceBase& device, const TypeIndex& type_index,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
-    const std::optional<ManagedStackTrace>& definition_stack_trace = {})
-    TF_MUST_USE_RESULT;
+    const std::optional<ManagedStackTrace>& definition_stack_trace = {});
 
 template <typename T>
 ResourceHandle MakeResourceHandle(

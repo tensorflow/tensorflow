@@ -198,6 +198,67 @@ class OpsSet(enum.Enum):
     return [str(option) for option in list(OpsSet)]
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL, SubComponent.UNSPECIFIED)
+def flatbuffer_to_mlir(
+    model_content,
+    input_is_filepath=False,
+    bytecode=False,
+    cl_options=None,
+):
+  """Converts a TFLite FlatBuffer model to MLIR string or bytecode.
+
+  Args:
+    model_content: A TFLite FlatBuffer as bytes, or a path to a TFLite file if
+      input_is_filepath is True.
+    input_is_filepath: If True, model_content is treated as a file path.
+    bytecode: If True, returns MLIR bytecode (.mlirc / .mlirbc) as bytes.
+      Otherwise returns textual MLIR as a string.
+    cl_options: Sequence of MLIR command-line printing options to forward.
+
+  Returns:
+    str if bytecode=False, bytes if bytecode=True.
+  """
+  return wrap_converter.wrapped_flat_buffer_file_to_mlir(
+      model_content,
+      input_is_filepath=input_is_filepath,
+      bytecode=bytecode,
+      cl_options=cl_options,
+  )
+
+
+@convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.UNSPECIFIED)
+def mlir_to_flatbuffer(
+    mlir_content,
+    input_is_filepath=False,
+    emit_builtin_tflite_ops=True,
+    emit_select_tf_ops=False,
+    emit_custom_ops=True,
+    emit_stablehlo_ops=False,
+):
+  """Converts an MLIR source (textual or bytecode) to a TFLite FlatBuffer.
+
+  Args:
+    mlir_content: MLIR source as a string (textual IR) or bytes (bytecode), or a
+      file path if input_is_filepath is True.
+    input_is_filepath: If True, mlir_content is treated as a file path.
+    emit_builtin_tflite_ops: Whether to emit builtin TFLite operations.
+    emit_select_tf_ops: Whether to emit Select TF operations (Flex ops).
+    emit_custom_ops: Whether to allow custom operations.
+    emit_stablehlo_ops: Whether to serialize StableHLO operations.
+
+  Returns:
+    TFLite FlatBuffer as bytes.
+  """
+  return wrap_converter.wrapped_mlir_to_flat_buffer(
+      mlir_content,
+      input_is_filepath=input_is_filepath,
+      emit_builtin_tflite_ops=emit_builtin_tflite_ops,
+      emit_select_tf_ops=emit_select_tf_ops,
+      emit_custom_ops=emit_custom_ops,
+      emit_stablehlo_ops=emit_stablehlo_ops,
+  )
+
+
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.QUANTIZE)
 def mlir_quantize(
     input_data_str,

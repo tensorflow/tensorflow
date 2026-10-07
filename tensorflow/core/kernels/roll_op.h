@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 namespace functor {

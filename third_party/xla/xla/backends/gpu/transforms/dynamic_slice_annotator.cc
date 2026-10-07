@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/dynamic_slice_annotator.h"
 
-#include <string>
+#include <variant>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -44,7 +44,8 @@ absl::StatusOr<bool> DynamicSliceAnnotator::RunImpl(
         continue;
       }
 
-      ABSL_ASSIGN_OR_RETURN(auto descriptor, AnalyzeDynamicSlice(instr));
+      ABSL_ASSIGN_OR_RETURN(auto descriptor,
+                       AnalyzeDynamicSlice(instr, enable_table_offsets_));
       if (!descriptor) {
         continue;
       }
@@ -52,20 +53,28 @@ absl::StatusOr<bool> DynamicSliceAnnotator::RunImpl(
       ABSL_ASSIGN_OR_RETURN(auto backend_config,
                        instr->backend_config<GpuBackendConfig>());
       auto* ds_config = backend_config.mutable_dynamic_slice_config();
+      ds_config->Clear();
       if (descriptor->loop_index.has_value()) {
         ds_config->set_loop_index(*descriptor->loop_index);
       }
-      ds_config->set_byte_offset(descriptor->byte_offset);
-      ds_config->set_byte_stride(descriptor->byte_stride);
+
+      if (const auto* linear = std::get_if<DynamicSliceDescriptor::Linear>(
+              &descriptor->offsets)) {
+        auto* linear_config = ds_config->mutable_linear();
+        linear_config->set_byte_offset(linear->byte_offset);
+        linear_config->set_byte_stride(linear->byte_stride);
+      } else {
+        const auto& offsets =
+            std::get<DynamicSliceDescriptor::Table>(descriptor->offsets)
+                .byte_offsets;
+        ds_config->mutable_table()->mutable_offsets()->Assign(offsets.begin(),
+                                                              offsets.end());
+      }
+
       ABSL_RETURN_IF_ERROR(instr->set_backend_config(backend_config));
 
-      VLOG(2) << "Annotated " << instr->name() << " with DynamicSliceConfig:"
-              << " loop_index="
-              << (descriptor->loop_index.has_value()
-                      ? std::to_string(*descriptor->loop_index)
-                      : "none")
-              << ", offset=" << descriptor->byte_offset
-              << ", stride=" << descriptor->byte_stride;
+      VLOG(2) << "Annotated " << instr->name()
+              << " with DynamicSliceConfig: " << ds_config->ShortDebugString();
       has_changed = true;
     }
   }

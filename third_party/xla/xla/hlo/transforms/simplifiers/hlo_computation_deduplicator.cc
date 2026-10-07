@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/hlo_computation_deduplicator.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -58,7 +60,7 @@ absl::StatusOr<bool> HloComputationDeduplicator::RunImpl(
       HloPrintOptions::PrintSubcomputationMode::kOff);
   options.set_print_infeed_outfeed_config(false);
   options.set_print_only_essential_constants(true);
-  options.set_print_operand_shape(true);
+  options.set_print_operand_shape(!deduplicate_large_computations_);
   options.set_print_ids(false);
   options.set_print_backend_config(true);
   options.set_canonicalize_computations(true);
@@ -87,15 +89,31 @@ absl::StatusOr<bool> HloComputationDeduplicator::RunImpl(
     }
     return false;
   };
-  for (HloComputation* comp :
-       module->MakeComputationPostOrder(execution_threads)) {
+
+  std::vector<HloComputation*> post_order =
+      module->MakeComputationPostOrder(execution_threads);
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int> signature_counts;
+  if (deduplicate_large_computations_) {
+    signature_counts.reserve(post_order.size());
+    for (HloComputation* comp : post_order) {
+      if (!comp->IsEntryComputation()) {
+        ++signature_counts[{comp->instruction_count(), comp->num_parameters()}];
+      }
+    }
+  }
+
+  for (HloComputation* comp : post_order) {
     // Ignore entry computation since it is called from outside and computations
     // with large number of instructions or large-size constants due to increase
     // in time taken to stringify. Also ignore fusion computations, which need
     // to have a 1:1 relationship between caller and computation, except if we
     // run in the mode where we want to annotate duplicate fusion computations.
-    if (comp->IsEntryComputation() || comp->instruction_count() > 128 ||
-        ContainsLargeConstants(comp) ||
+    if (comp->IsEntryComputation() ||
+        (deduplicate_large_computations_ &&
+         signature_counts[{comp->instruction_count(), comp->num_parameters()}] <
+             2) ||
+        (!deduplicate_large_computations_ &&
+         (comp->instruction_count() > 128 || ContainsLargeConstants(comp))) ||
         (!mark_fusion_duplications_ && comp->IsFusionComputation())) {
       continue;
     }

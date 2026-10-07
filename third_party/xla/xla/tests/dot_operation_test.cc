@@ -105,6 +105,122 @@ TEST_F(DotOperationTest, DotOfInputTupleElem) {
                            &expected_literal.shape());
 }
 
+// Deterministic, wrap-sensitive data for the mixed-precision integer dot
+// regression tests below. All values are in [-100, 100] so that individual
+// products (up to 10000) and the running partial sums immediately exceed the
+// int8 range: if accumulation happens in the promoted operand (int8) type
+// instead of the wider s32 result type, the result diverges sharply.
+constexpr int64_t kMixedDotK = 16;
+constexpr int64_t kMixedDotM = 128;
+constexpr int64_t kMixedDotN = 64;
+
+Array2D<int8_t> MakeMixedDotOperand(int64_t dim0, int64_t dim1, int64_t factor0,
+                                    int64_t factor1) {
+  Array2D<int8_t> arr(dim0, dim1);
+  for (int64_t d0 = 0; d0 < dim0; ++d0) {
+    for (int64_t d1 = 0; d1 < dim1; ++d1) {
+      arr(d0, d1) =
+          static_cast<int8_t>(((d0 * factor0 + d1 * factor1) % 201) - 100);
+    }
+  }
+  return arr;
+}
+
+Array2D<int8_t> MakeMixedDotLhs() {
+  return MakeMixedDotOperand(kMixedDotK, kMixedDotM, 7, 3);
+}
+
+Array2D<int8_t> MakeMixedDotRhs() {
+  return MakeMixedDotOperand(kMixedDotK, kMixedDotN, 5, 11);
+}
+
+// expected(i, j) = sum_k lhs(k, i) * rhs(k, j), computed exactly in int32.
+Array2D<int32_t> MakeMixedDotExpected(const Array2D<int8_t>& lhs,
+                                      const Array2D<int8_t>& rhs) {
+  Array2D<int32_t> expected(kMixedDotM, kMixedDotN);
+  for (int64_t i = 0; i < kMixedDotM; ++i) {
+    for (int64_t j = 0; j < kMixedDotN; ++j) {
+      int32_t acc = 0;
+      for (int64_t k = 0; k < kMixedDotK; ++k) {
+        acc +=
+            static_cast<int32_t>(lhs(k, i)) * static_cast<int32_t>(rhs(k, j));
+      }
+      expected(i, j) = acc;
+    }
+  }
+  return expected;
+}
+
+// Correctness test: a non-canonical mixed-precision integer dot
+// (s8[16,128] x s8[16,64] contracting dim 0 of each -> s32[128,64]). HLO
+// semantics require accumulation in the wider s32 result type; a prior CPU
+// backend accumulated in the int8 operand type when
+// TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL is not defined and produced wrong
+// values.
+TEST_F(DotOperationTest, MixedPrecisionS8S8S32NonCanonical) {
+  if (test::DeviceTypeIs(test::kGpu) &&
+      execution_options().debug_options().xla_gpu_autotune_level() == 0) {
+    GTEST_SKIP()
+        << "cuBLASLt heuristic algorithm 0 on Hopper computes 2x for s8->s32 "
+           "when autotuning is disabled.";
+  }
+  XlaBuilder builder("MixedPrecisionS8S8S32NonCanonical");
+  auto lhs = Parameter(
+      &builder, 0, ShapeUtil::MakeShape(S8, {kMixedDotK, kMixedDotM}), "lhs");
+  auto rhs = Parameter(
+      &builder, 1, ShapeUtil::MakeShape(S8, {kMixedDotK, kMixedDotN}), "rhs");
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(0);
+  dnums.add_rhs_contracting_dimensions(0);
+  DotGeneral(lhs, rhs, dnums, /*precision_config=*/nullptr,
+             /*preferred_element_type=*/S32);
+
+  Array2D<int8_t> lhs_array = MakeMixedDotLhs();
+  Array2D<int8_t> rhs_array = MakeMixedDotRhs();
+  Literal lhs_data = LiteralUtil::CreateR2FromArray2D<int8_t>(lhs_array);
+  Literal rhs_data = LiteralUtil::CreateR2FromArray2D<int8_t>(rhs_array);
+  Literal expected = LiteralUtil::CreateR2FromArray2D<int32_t>(
+      MakeMixedDotExpected(lhs_array, rhs_array));
+
+  ComputeAndCompareLiteral(&builder, expected, {&lhs_data, &rhs_data});
+}
+
+// Correctness test for the exact pipeline path that originally triggered the
+// bug: a transpose feeding a canonical mixed-precision dot. operand_upcaster
+// leaves the mixed dot un-upcasted (the YNN individual-dot library path claims
+// support), then TransposeFolding folds the transpose into the dot, making it
+// non-canonical at thunk-emission time so it lands in the plain DotThunk
+// MatMul. The mathematical result is identical to the non-canonical form above.
+TEST_F(DotOperationTest, MixedPrecisionS8S8S32TransposeFold) {
+  if (test::DeviceTypeIs(test::kGpu) &&
+      execution_options().debug_options().xla_gpu_autotune_level() == 0) {
+    GTEST_SKIP()
+        << "cuBLASLt heuristic algorithm 0 on Hopper computes 2x for s8->s32 "
+           "when autotuning is disabled.";
+  }
+  XlaBuilder builder("MixedPrecisionS8S8S32TransposeFold");
+  auto lhs = Parameter(
+      &builder, 0, ShapeUtil::MakeShape(S8, {kMixedDotK, kMixedDotM}), "lhs");
+  auto rhs = Parameter(
+      &builder, 1, ShapeUtil::MakeShape(S8, {kMixedDotK, kMixedDotN}), "rhs");
+  auto lhs_t = Transpose(lhs, {1, 0});  // s8[128, 16], canonical LHS below.
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+  DotGeneral(lhs_t, rhs, dnums, /*precision_config=*/nullptr,
+             /*preferred_element_type=*/S32);
+
+  Array2D<int8_t> lhs_array = MakeMixedDotLhs();
+  Array2D<int8_t> rhs_array = MakeMixedDotRhs();
+  Literal lhs_data = LiteralUtil::CreateR2FromArray2D<int8_t>(lhs_array);
+  Literal rhs_data = LiteralUtil::CreateR2FromArray2D<int8_t>(rhs_array);
+  // transpose(lhs) then contracting its new minor dim == contracting lhs dim 0.
+  Literal expected = LiteralUtil::CreateR2FromArray2D<int32_t>(
+      MakeMixedDotExpected(lhs_array, rhs_array));
+
+  ComputeAndCompareLiteral(&builder, expected, {&lhs_data, &rhs_data});
+}
+
 template <typename T>
 class DotOperationTest_F16F32F64CF64 : public DotOperationTest {
  protected:

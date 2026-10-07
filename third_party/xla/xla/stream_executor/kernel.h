@@ -92,6 +92,17 @@ namespace stream_executor {
 // Kernel
 //===----------------------------------------------------------------------===//
 
+// Platform-agnostic wrapper for an externally-managed native device function
+// pointer (e.g. CUfunction or hipFunction_t).
+struct NativeKernel {
+  void* device_fn = nullptr;
+  std::string kernel_name;
+  bool pdl = false;
+
+  absl::string_view name() const { return kernel_name; }
+  bool use_pdl() const { return pdl; }
+};
+
 // A data-parallel kernel (code entity) for launching via the StreamExecutor,
 // analogous to a void* device function pointer. See TypedKernel for the typed
 // variant.

@@ -76,7 +76,7 @@
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
 common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
-common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
+common --repo_env=ML_WHEEL_VERSION_SUFFIX="-rc0"
 
 common --incompatible_default_to_explicit_init_py
 
@@ -174,6 +174,13 @@ common --enable_workspace
 
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
+
+# external_include_paths feature forces passing external repositories headers
+# via -isystem alters how Clang resolves their file paths. This feature with
+# old versions of rules_cc triggering errors.
+# Following lines can be removed after rules_cc will be updated to >= 0.2.22
+common --features=-external_include_paths
+common --host_features=-external_include_paths
 
 # TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
 common:clang_local --noincompatible_enable_cc_toolchain_resolution
@@ -578,6 +585,7 @@ common:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/wi
 common:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+common:windows_x86_cpu_2022 --features=with_wrapper
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
@@ -708,6 +716,7 @@ common:rbe_win_base --nobuild_runfile_links
 common:rbe_win_base --define=override_eigen_strong_inline=true
 
 common:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
+common:rbe_windows_x86_cpu_2022 --features=-with_wrapper
 
 # Override the remote instance and BES instance names to use the new RBE pools
 common:rbe_windows_x86_cpu_2022 --remote_instance_name=projects/ml-oss-rbe-general/instances/default_instance
@@ -942,7 +951,7 @@ test:macos_x86_wheel_test --@xla//third_party/py:wheel_dependency=true --config=
 test:windows_x86_cpu_2022_wheel_test_filters --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu,-benchmark-test,-v1only
 test:windows_x86_cpu_2022_wheel_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-benchmark-test,-v1only
 test:windows_x86_cpu_2022_wheel_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
-test:windows_x86_cpu_2022_wheel_test --build_tests_only --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
+test:windows_x86_cpu_2022_wheel_test --build_tests_only --config=windows_x86_cpu_2022_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
 
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.

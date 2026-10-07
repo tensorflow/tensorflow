@@ -70,7 +70,7 @@ HloProto GetProtoWithoutComputations(const HloProto& hlo_proto) {
 absl::Status WriteSplitHloProto(const HloProto& hlo_proto,
                                 std::unique_ptr<riegeli::Writer> writer) {
   riegeli::RecordWriter record_writer(std::move(writer),
-                                      GetSplitProtoRiegeliOptions());
+                                      GetGpuSplitProtoOptions());
   SplitProtoManifest manifest =
       BuildManifest(hlo_proto.hlo_module().computations_size());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(

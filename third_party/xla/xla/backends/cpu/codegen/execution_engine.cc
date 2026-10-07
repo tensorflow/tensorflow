@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/jit_memory_mapper.h"
+#include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 
 namespace xla::cpu {
 
@@ -37,8 +39,10 @@ static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
 CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
   return std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
       execution_session, [](const llvm::MemoryBuffer& obj) {
+        absl::string_view memory_region_name =
+            ExtractMemoryRegionName(obj.getBufferIdentifier());
         return std::make_unique<ContiguousSectionMemoryManager>(
-            GetJitMemoryMapper(obj.getBufferIdentifier()));
+            GetJitMemoryMapper(memory_region_name));
       });
 }
 

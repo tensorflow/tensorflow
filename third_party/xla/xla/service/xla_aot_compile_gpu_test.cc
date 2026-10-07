@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -47,8 +47,8 @@ class XlaCompileTest : public HloTestBase {
         tsl::testing::XlaSrcRoot(), "service",
         absl::StrCat(path_to_serialized_aot_result, "_", test_device));
     std::string serialized_aot_result;
-    TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), path,
-                                       &serialized_aot_result));
+    ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), path,
+                                    &serialized_aot_result));
 
     auto* pjrt_runner = absl::down_cast<HloRunner*>(&test_runner());
     ASSERT_TRUE(pjrt_runner != nullptr);

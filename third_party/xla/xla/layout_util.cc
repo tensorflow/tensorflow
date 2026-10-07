@@ -230,6 +230,11 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     return absl::OkStatus();
   }
 
+  if (layout.minor_to_major().empty() && layout.memory_space() != 0) {
+    // AUTO layout with non-default memory space is allowed.
+    return absl::OkStatus();
+  }
+
   if (layout.minor_to_major().size() != shape.dimensions().size()) {
     return InvalidArgument(
         "layout minor_to_major field contains %d elements, "
@@ -399,6 +404,33 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     return true;
   }
   return shape.has_layout();
+}
+
+/* static */ bool LayoutUtil::HasMinorToMajorSetInLayout(const Shape& shape) {
+  if (shape.IsTuple()) {
+    return absl::c_all_of(shape.tuple_shapes(), [](const Shape& s) {
+      return HasMinorToMajorSetInLayout(s);
+    });
+  }
+  if (!shape.IsArray()) {
+    return true;
+  }
+  return shape.has_layout() && (shape.dimensions().empty() ||
+                                !shape.layout().minor_to_major().empty());
+}
+
+/* static */ bool LayoutUtil::HasAnyMinorToMajorSetInLayout(
+    const Shape& shape) {
+  if (shape.IsTuple()) {
+    return absl::c_any_of(shape.tuple_shapes(), [](const Shape& s) {
+      return HasAnyMinorToMajorSetInLayout(s);
+    });
+  }
+  if (!shape.IsArray()) {
+    return true;
+  }
+  return shape.has_layout() && (shape.dimensions().empty() ||
+                                !shape.layout().minor_to_major().empty());
 }
 
 /* static */ bool LayoutUtil::HasLayout(const ProgramShape& program_shape) {

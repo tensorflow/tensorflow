@@ -98,6 +98,34 @@ def wrapped_retrieve_collected_errors():
   return _pywrap_converter_api.RetrieveCollectedErrors()
 
 
-def wrapped_flat_buffer_file_to_mlir(model, input_is_filepath):
-  """Wraps FlatBufferFileToMlir with lazy loader."""
-  return _pywrap_converter_api.FlatBufferToMlir(model, input_is_filepath)
+def wrapped_flat_buffer_file_to_mlir(
+    model,
+    input_is_filepath=False,
+    bytecode=False,
+    cl_options=None,
+):
+  """Wraps FlatBufferToMlir with lazy loader."""
+  if cl_options is None:
+    cl_options = []
+  return _pywrap_converter_api.FlatBufferToMlir(
+      model, input_is_filepath, bytecode, cl_options
+  )
+
+
+def wrapped_mlir_to_flat_buffer(
+    mlir,
+    input_is_filepath=False,
+    emit_builtin_tflite_ops=True,
+    emit_select_tf_ops=False,
+    emit_custom_ops=True,
+    emit_stablehlo_ops=False,
+):
+  """Wraps MlirToFlatBuffer with lazy loader."""
+  return _pywrap_converter_api.MlirToFlatBuffer(
+      mlir,
+      input_is_filepath,
+      emit_builtin_tflite_ops,
+      emit_select_tf_ops,
+      emit_custom_ops,
+      emit_stablehlo_ops,
+  )

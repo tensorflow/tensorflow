@@ -1,5 +1,5 @@
 // RUN: gpu_test_correctness %s
-// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: gpu_fusion_to_mlir %s | FileCheck %s
 
 region {
   param_0 = f32[] parameter(0)

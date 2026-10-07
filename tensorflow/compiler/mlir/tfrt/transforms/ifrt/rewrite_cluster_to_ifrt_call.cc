@@ -120,8 +120,8 @@ class RewriteClusterToIfrtCallPass
 
   mlir::LogicalResult GetTpuCompileMetadata(
       mlir::tf_device::ClusterFuncOp cluster_func,
-      mlir::TF::RuntimeDevices &devices,
-      tensorflow::tpu::TPUCompileMetadataProto *metadata) {
+      mlir::TF::RuntimeDevices& devices,
+      tensorflow::tpu::TPUCompileMetadataProto* metadata) {
     // Collect `num_replicas` and `num_cores_per_replica` attributes.
     int num_replicas = 1;
     mlir::tf_device::ReplicateOp replicate =
@@ -311,6 +311,9 @@ class RewriteClusterToIfrtCallPass
         callee_func.getFunctionType());
     mlir::IRMapping mapper;
     callee_func.cloneInto(cloned_ifrt_program, mapper);
+    // cloneInto only copies discardable attributes, so copy arg/result attrs.
+    cloned_ifrt_program.setArgAttrsAttr(callee_func.getArgAttrsAttr());
+    cloned_ifrt_program.setResAttrsAttr(callee_func.getResAttrsAttr());
 
     tensorflow::tpu::TPUCompileMetadataProto metadata;
     if (mlir::failed(GetTpuCompileMetadata(cluster_func, devices, &metadata))) {

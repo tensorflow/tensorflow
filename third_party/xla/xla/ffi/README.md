@@ -79,3 +79,39 @@ simply copy XLA FFI headers to your project.
 * `xla::ffi::DataType` vs `xla::PrimitiveType` - similar to `Error`, `DataType`
   is a mirror of the enum defined in XLA.
 
+## Per-execution custom options
+
+Custom options passed to an executable can be read as a `Dictionary` using
+`.Ctx<ffi::CustomOptions>()`. They are separate from the static HLO attributes
+bound with `.Attr<T>(name)` or `.Attrs()`:
+
+```cpp
+namespace ffi = xla::ffi;
+
+ffi::Error Execute(ffi::Dictionary attrs, ffi::Dictionary options) {
+  if (options.contains("priority")) {
+    auto priority = options.get<int64_t>("priority");
+    if (!priority) {
+      return priority.error();
+    }
+    // Use *priority for this invocation.
+  }
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER(kExecute, Execute,
+                      ffi::Ffi::Bind().Attrs().Ctx<ffi::CustomOptions>());
+```
+
+Handlers bound to `ffi::Context` can also use
+`context.get<ffi::CustomOptions>()`. The C API exposes the same dictionary
+through `XLA_FFI_CustomOptions_Get`. Absent or empty options produce an empty
+dictionary without allocating storage. Supported values are `bool`, `int64_t`,
+`float`, strings, and arrays of `int64_t`. The external API decodes strings as
+`std::string_view` and arrays as `ffi::Span<const int64_t>`; the internal API
+uses the corresponding Abseil views.
+
+The dictionary and its borrowed views are valid only during the handler call,
+including for handlers that return a future. Copy string and array contents into
+owned storage before returning if asynchronous work needs them. Copying a
+`Dictionary`, string view, or span does not extend the lifetime of its contents.

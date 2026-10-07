@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <ios>
 #include <limits>
-#include <list>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -31,8 +30,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/per_thread.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -356,7 +356,9 @@ void SetKernelEventUponApiExit(CuptiTracerEvent& event, uint32_t device_id,
                                uint64_t start_time, uint64_t end_time) {
   event.type = CuptiTracerEventType::Kernel;
   event.source = CuptiTracerEventSource::DriverCallback;
-  event.name = cbdata->symbolName ? cbdata->symbolName : cbdata->functionName;
+  event.name = cbdata->symbolName
+                   ? cbdata->symbolName
+                   : (cbdata->functionName ? cbdata->functionName : "");
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
   event.thread_id = Env::Default()->GetCurrentThreadId();
@@ -807,10 +809,12 @@ void SetCudaGraphNodeEventUponApiExit(CuptiTracerEvent& event,
   event.graph_id = graph_id_info.graph_id;
   // TODO(rahulnayar): Re-enable this check once the bug is fixed.
   // DCHECK_EQ(graph_id_info.node_id_map.size(), 1);
-  event.graph_node_id = graph_id_info.node_id_map.begin()->first;
   event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
-  event.cuda_graph_info.orig_graph_node_id =
-      graph_id_info.node_id_map.begin()->second;
+  if (!graph_id_info.node_id_map.empty()) {
+    event.graph_node_id = graph_id_info.node_id_map.begin()->first;
+    event.cuda_graph_info.orig_graph_node_id =
+        graph_id_info.node_id_map.begin()->second;
+  }
   VLOG(3) << "Observed CudaGraphNode API exit."
           << " name=" << cbdata->functionName;
   graph_id_info.node_id_map.clear();
@@ -834,18 +838,8 @@ void SetGenericEventUponApiExit(CuptiTracerEvent& event, uint32_t device_id,
           << " name=" << cbdata->functionName;
 }
 
-// Supporting CUPTI paired with CUDA, and hence the value of
-// CUPTI_DRIVER_TRACE_CBID_SIZE in cupti_driver_cbid.h are as follows
-// corresponding to different CUDA version: CUDA version -->
-// CUPTI_DRIVER_TRACE_CBID_SIZE
-//   11.0 --> 579
-//   12.0 --> 701
-//   12.8 --> 782
-//   12.9 --> 784
-//   13.0 -->
-// CUDA versions that are impacting code logic here are
-// (11.0), 12.0, 12.8 with their corresponding
-// CUPTI_DRIVER_TRACE_CBID_SIZE value (579), 701, 782 respectively.
+// CUDA 11.0 callbacks are handled by the switch below. Later callbacks are
+// categorized by the CUDA 12.0 and 12.3 version helpers.
 
 // As this is the call back function, no need to check the CUDA
 // runtime/driver version. CBIDs are naturally valid here.
@@ -858,7 +852,7 @@ void SetCallbackEventUponApiExit(
   static absl::NoDestructor<
       std::vector<cuda_versions::CbidCategoryMap const*>> const
       kExtraCbidCategories(
-          {&cuda_versions::GetExtraCallbackIdCategories12080(),
+          {&cuda_versions::GetExtraCallbackIdCategories12030(),
            &cuda_versions::GetExtraCallbackIdCategories12000()});
 
   // Find the category of the CBID, checking newer CUDA version earlier than
@@ -1118,13 +1112,6 @@ const char* GetCuptiErrorString(CuptiInterface* cupti_interface,
     cupti_interface->GetResultString(err, &err_str);
   }
   return err_str;
-}
-
-bool& IsCuptiHardwareEventSystemEnabled() {
-  // This flag can not flip to true once per process. Once enabled, it will stay
-  // enabled until the process is terminated.
-  static bool is_enabled = false;
-  return is_enabled;
 }
 
 }  // namespace
@@ -1453,7 +1440,7 @@ CuptiTracer::CreateDefaultCallbackIds() {
   // Adding default Callback cbids according to the CUDA version, considering
   // both compilation and runtime/driver version.
   for (const auto& id_categories :
-       {cuda_versions::GetExtraCallbackIdCategories12080(),
+       {cuda_versions::GetExtraCallbackIdCategories12030(),
         cuda_versions::GetExtraCallbackIdCategories12000()}) {
     for (const auto& [cbid, category] : id_categories) {
       if (category != cuda_versions::CbidCategory::kNone) {
@@ -1553,6 +1540,7 @@ absl::Status CuptiTracer::PrepareSubscriberForSession(
   }
   if (!use_v2_subscriber) {
     if (subscribe_status == CUPTI_ERROR_NOT_SUPPORTED ||
+        subscribe_status == CUPTI_ERROR_NOT_COMPATIBLE ||
         subscribe_status == CUPTI_ERROR_UNKNOWN) {
       subscribe_status = cupti_interface_->Subscribe(
           &subscriber_, (CUpti_CallbackFunc)ApiCallback, this);
@@ -1677,31 +1665,6 @@ absl::Status CuptiTracer::EnableActivityTracing() {
         LOG(WARNING) << "Fail to use per-thread activity buffer, cupti trace "
                         "overhead may be big. CUPTI ERROR CODE:"
                      << err;
-      }
-    }
-    if (option_->enable_activity_hardware_tracing) {
-      if (IsCuptiHardwareEventSystemEnabled()) {
-        LOG(INFO) << "CUPTI activity HW trace already enabled.";
-      } else {
-        auto err = cupti_interface_->ActivityEnableHWTrace(true);
-        if (err == CUPTI_ERROR_NOT_SUPPORTED) {
-          LOG(INFO)
-              << "CUPTI activity HW trace not enabled due to not supported on "
-                 "this platform!";
-        } else if (err != CUPTI_SUCCESS) {
-          LOG(WARNING)
-              << "Fail to enable CUPTI activity HW trace, CUPTI ERROR CODE:"
-              << err << " (" << GetCuptiErrorString(cupti_interface_, err)
-              << ")";
-        } else {
-          LOG(INFO) << "CUPTI activity HW trace successfully enabled.";
-          IsCuptiHardwareEventSystemEnabled() = true;
-        }
-      }
-    } else {
-      if (IsCuptiHardwareEventSystemEnabled()) {
-        LOG(INFO)
-            << "CUPTI activity HW trace already enabled, continue with it.";
       }
     }
 
@@ -2071,6 +2034,66 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
         "Insufficient privilege to run libcupti (you need root permission).");
   }
   return "";
+}
+
+/*static*/ absl::Status CuptiTracer::EnableHES() {
+  static absl::Mutex mu(absl::kConstInit);
+  static bool is_hes_enabled ABSL_GUARDED_BY(mu) = false;
+
+  absl::MutexLock lock(mu);
+  if (is_hes_enabled) {
+    LOG(INFO) << "CUPTI activity HW trace already enabled.";
+    return absl::OkStatus();
+  }
+
+  CUresult cu_err = cuInit(0);
+  if (cu_err != CUDA_SUCCESS) {
+    return absl::InternalError(absl::StrCat(
+        "cuInit(0) failed with error code: ", static_cast<int>(cu_err)));
+  }
+
+  CUcontext ctx = nullptr;
+  if (cuCtxGetCurrent(&ctx) == CUDA_SUCCESS && ctx != nullptr) {
+    return absl::FailedPreconditionError(
+        "Cannot enable HES: a CUDA context is already active on the current "
+        "thread.");
+  }
+
+  int gpu_count = NumGpus();
+  for (int i = 0; i < gpu_count; ++i) {
+    CUdevice dev;
+    if (cuDeviceGet(&dev, i) == CUDA_SUCCESS) {
+      unsigned int flags = 0;
+      int active = 0;
+      if (cuDevicePrimaryCtxGetState(dev, &flags, &active) == CUDA_SUCCESS &&
+          active) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Cannot enable HES: active primary CUDA context found on device ",
+            i));
+      }
+    }
+  }
+
+  CuptiInterface* cupti_interface = GetCuptiInterface();
+  auto err = cupti_interface->ActivityEnableHWTrace(true);
+  if (err == CUPTI_ERROR_NOT_SUPPORTED) {
+    LOG(INFO)
+        << "CUPTI activity HW trace not enabled due to not supported on this "
+           "platform!";
+    return absl::UnimplementedError(
+        "CUPTI activity HW trace not supported on this platform.");
+  }
+  if (err != CUPTI_SUCCESS) {
+    LOG(WARNING) << "Fail to enable CUPTI activity HW trace, CUPTI ERROR CODE: "
+                 << err << " (" << GetCuptiErrorString(cupti_interface, err)
+                 << ")";
+    return absl::InternalError(
+        absl::StrCat("Fail to enable CUPTI activity HW trace: ",
+                     GetCuptiErrorString(cupti_interface, err)));
+  }
+  LOG(INFO) << "CUPTI activity HW trace successfully enabled.";
+  is_hes_enabled = true;
+  return absl::OkStatus();
 }
 
 std::vector<CallbackAnnotationsAndEvents>

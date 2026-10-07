@@ -199,9 +199,8 @@ mlir::WalkResult setManualAxes(
     ManualComputationToParentManualAxes& parentManualCompAxes) {
   if (auto manualCompOp = mlir::dyn_cast<ManualComputationOp>(op)) {
     // Record parent manual axes for this manualCompOp and process its body.
-    SmallVector<StringAttr>& parentAxes = parentManualCompAxes[manualCompOp];
-    parentAxes.assign(manualAxes.getValue().begin(),
-                      manualAxes.getValue().end());
+    parentManualCompAxes[manualCompOp].assign(manualAxes.getValue().begin(),
+                                              manualAxes.getValue().end());
     setManualAxesForOpsInBody(manualCompOp, symbolTable, parentManualCompAxes);
     return mlir::WalkResult::skip();
   }
@@ -495,10 +494,14 @@ class ShardMapExportPass
     // walk.
     module->walk<mlir::WalkOrder::PreOrder>([&](ManualComputationOp op) {
       if (auto parentOp = op->getParentOfType<ManualComputationOp>()) {
-        SmallVector<StringAttr>& parentAxes = parentManualCompAxes[op];
-        parentAxes = parentManualCompAxes[parentOp];
-        parentAxes.insert(parentAxes.end(), parentOp.getManualAxes().begin(),
+        SmallVector<StringAttr> parentAxes;
+        if (auto it = parentManualCompAxes.find(parentOp);
+            it != parentManualCompAxes.end()) {
+          parentAxes = it->second;
+        }
+        parentAxes.append(parentOp.getManualAxes().begin(),
                           parentOp.getManualAxes().end());
+        parentManualCompAxes[op] = std::move(parentAxes);
       }
       setManualAxesForOpsInBody(op, symbolTable, parentManualCompAxes);
     });

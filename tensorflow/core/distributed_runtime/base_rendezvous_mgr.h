@@ -278,8 +278,8 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
 
 class BaseRecvTensorCall {
  public:
-  BaseRecvTensorCall() {}
-  virtual ~BaseRecvTensorCall() {}
+  BaseRecvTensorCall() = default;
+  virtual ~BaseRecvTensorCall() = default;
 
   virtual void Start(std::function<void()> recv_done) = 0;
 

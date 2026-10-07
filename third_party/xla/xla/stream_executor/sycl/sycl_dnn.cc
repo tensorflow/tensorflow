@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "dnnl.hpp"
@@ -53,8 +54,12 @@ absl::Status OnednnSupport::DoConvolveWithGpuConfig(
     Stream* stream, const xla::gpu::GpuConvConfig& config,
     absl::Span<const DeviceMemoryBase> operand_se_buffers,
     DeviceMemoryBase result_se_buffer, ScratchAllocator* scratch_allocator) {
-  return absl::UnimplementedError(
-      "DoConvolveWithGpuConfig is not implemented for SYCL oneDNN");
+  ABSL_ASSIGN_OR_RETURN(
+      auto onednn_primitive,
+      CreateOneDnnConvPrimitive(config, operand_se_buffers, result_se_buffer,
+                                stream, scratch_allocator));
+  ABSL_RETURN_IF_ERROR(DoOnednnConv(onednn_primitive));
+  return absl::OkStatus();
 }
 
 void initialize_onednn() {

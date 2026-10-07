@@ -169,11 +169,27 @@ class CommandBuffer {
       const KernelArgs& args, absl::Span<const Command* const> dependencies,
       StreamPriority priority = StreamPriority::Default) = 0;
 
+  // Creates a kernel launch command from an externally-managed native function.
+  // Nolint because it matches existing CreateLaunch virtual method signature
+  // precedent for default arguments.
+  // NOLINTNEXTLINE
+  virtual absl::StatusOr<const Command*> CreateLaunch(
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args,
+      absl::Span<const Command* const> dependencies,
+      StreamPriority priority = StreamPriority::Default) = 0;
+
   // Updates a kernel launch command.
   virtual absl::Status UpdateLaunch(
       const Command* command, const ThreadDim& threads, const BlockDim& blocks,
       const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgs& args) = 0;
+
+  virtual absl::Status UpdateLaunch(
+      const Command* command, const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
 
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
@@ -327,6 +343,13 @@ class CommandBuffer {
                                    DeviceAddress<bool> pred,
                                    UpdateCommands update_cond,
                                    UpdateCommands update_body) = 0;
+
+  // Adds a host node (callback) to the command buffer.
+  // The `callback` will be executed on the CPU (host) when this node is
+  // processed during command buffer execution.
+  virtual absl::StatusOr<const Command*> CreateHost(
+      absl::AnyInvocable<void()> callback,
+      absl::Span<const Command* const> dependencies) = 0;
 
   // Set the priority of all nodes in the command buffer.
   virtual absl::Status SetPriority(StreamPriority priority) = 0;

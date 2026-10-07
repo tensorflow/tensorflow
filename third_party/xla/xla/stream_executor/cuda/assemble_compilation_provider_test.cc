@@ -21,7 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -81,7 +81,7 @@ TEST(AssembleCompilationProviderTest,
       /*cuda_data_dir=*/"/does/not/exist",
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
       AssembleCompilationProvider(options));
 
@@ -104,7 +104,7 @@ TEST(AssembleCompilationProviderTest,
       /*cuda_data_dir=*/cuda_dir,
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
       AssembleCompilationProvider(options));
 
@@ -126,7 +126,7 @@ TEST(
       /*cuda_data_dir=*/"/does/not/exist",
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
       AssembleCompilationProvider(options));
 
@@ -151,7 +151,7 @@ TEST(AssembleCompilationProviderTest,
       /*cuda_data_dir=*/"/does/not/exist",
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
       AssembleCompilationProvider(options));
 

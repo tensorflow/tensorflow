@@ -36,7 +36,64 @@ def _AddTest(test, op_name, testcase_name, fn):
 
 
 class MatrixBandPartTest(test_lib.TestCase):
-  pass  # Filled in below
+
+  def testNumLowerAndNumUpperExceedingMatrixDimensions(self) -> None:
+    """Out-of-range band limits are clamped instead of rejected."""
+    matrix = constant_op.constant(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtypes_lib.int32
+    )
+    # Both limits exceed the matrix, so every element is kept.
+    self.assertAllEqual(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+        self.evaluate(array_ops.matrix_band_part(matrix, 6, 6)),
+    )
+    # Only `num_lower` is out of range: the lower triangle is kept.
+    self.assertAllEqual(
+        [[1, 0, 0], [4, 5, 0], [7, 8, 9]],
+        self.evaluate(array_ops.matrix_band_part(matrix, 6, 0)),
+    )
+    # Only `num_upper` is out of range: the upper triangle is kept.
+    self.assertAllEqual(
+        [[1, 2, 3], [0, 5, 6], [0, 0, 9]],
+        self.evaluate(array_ops.matrix_band_part(matrix, 0, 6)),
+    )
+
+  def testNumLowerAndNumUpperClampedToInnermostDimensions(self) -> None:
+    """Batched, non-square inputs clamp against the two innermost dimensions."""
+    # Two 2x3 matrices, so the row and column counts differ.
+    batch = constant_op.constant(
+        [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
+        dtype=dtypes_lib.int32,
+    )
+    self.assertAllEqual(
+        [[[1, 0, 0], [4, 5, 0]], [[7, 0, 0], [10, 11, 0]]],
+        self.evaluate(array_ops.matrix_band_part(batch, 100, 0)),
+    )
+    self.assertAllEqual(
+        [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
+        self.evaluate(array_ops.matrix_band_part(batch, 100, 100)),
+    )
+
+  def testNumLowerAndNumUpperOutsideInt32RangeDoNotWrapAround(self) -> None:
+    """Limits far outside the `int32` range are clamped, not truncated."""
+    matrix = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes_lib.int32)
+    huge = constant_op.constant(2**40, dtype=dtypes_lib.int64)
+    tiny = constant_op.constant(-(2**40), dtype=dtypes_lib.int64)
+    zero = constant_op.constant(0, dtype=dtypes_lib.int64)
+    self.assertAllEqual(
+        [[1, 2], [3, 4]],
+        self.evaluate(array_ops.matrix_band_part(matrix, huge, huge)),
+    )
+    # Every negative limit keeps the entire triangle, so this is the lower
+    # triangle rather than just the diagonal.
+    self.assertAllEqual(
+        [[1, 0], [3, 4]],
+        self.evaluate(array_ops.matrix_band_part(matrix, tiny, zero)),
+    )
+    self.assertAllEqual(
+        [[1, 2], [0, 4]],
+        self.evaluate(array_ops.matrix_band_part(matrix, zero, huge)),
+    )
 
 
 def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):

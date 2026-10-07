@@ -386,6 +386,21 @@ TEST(PjRtCApiClientTest, TopologyPlatformIdAndName) {
   EXPECT_EQ(topology->platform_id(), xla::CpuId());
 }
 
+// Regression test: the client and its topology must report the same
+// platform_version. A mismatch causes cross-compilation to skip the real
+// backend, which can lead to timeouts and hangs.
+TEST(PjRtCApiClientTest, ClientAndTopologyPlatformVersionMatch) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+
+  EXPECT_EQ(client->platform_version(), topology->platform_version());
+}
+
 TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
   SetUpCpuPjRtApi();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -570,6 +585,23 @@ TEST(PjRtClientTest, CompileMlirModule) {
                        client->Compile(MaybeOwningMlirModule(std::move(context),
                                                              std::move(module)),
                                        options));
+  EXPECT_NE(executable.get(), nullptr);
+}
+
+TEST(PjRtClientTest, CompileXlaComputation) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  XlaBuilder builder("add_one");
+  auto input = Parameter(&builder, 0, shape, "input");
+  auto one = ConstantR0<int32_t>(&builder, 1);
+  auto add = Add(input, one);
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build(add));
+
+  CompileOptions options;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                       client->Compile(computation, options));
   EXPECT_NE(executable.get(), nullptr);
 }
 
@@ -1118,6 +1150,13 @@ TEST(PjRtCApiClientTest, MakeCanonicalShapeForMemorySpace) {
   EXPECT_TRUE(canonical_shape_specific.has_layout());
   EXPECT_EQ(canonical_shape_specific.layout().minor_to_major(),
             specific_layout.minor_to_major());
+}
+
+TEST(PjRtCApiClientTest, IsCApi) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  EXPECT_TRUE(client->IsCApi());
 }
 
 }  // namespace

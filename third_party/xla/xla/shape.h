@@ -266,7 +266,7 @@ class Shape {
   // Precondition: this is an array shape or a buffer shape.
   PrimitiveType element_type() const {
     if (const auto* const state = if_buffer_state()) {
-      return state->buffer_shape->element_type();
+      return state->buffer_shape->element_type_;
     }
     return element_type_;
   }

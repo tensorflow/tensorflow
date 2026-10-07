@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
@@ -50,8 +51,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
@@ -86,7 +85,9 @@ namespace gpu_plugin {
 #if TENSORFLOW_USE_ROCM
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "ROCM"
 #elif TENSORFLOW_USE_SYCL
-#define PJRT_GPU_PLUGIN_PLATFORM_NAME "ONEAPI"
+// TODO(Intel-tf)  this will be changed to ONEAPI
+// when the SYCL backend has been renamed to ONEAPI.
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "SYCL"
 #else
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 #endif
@@ -116,6 +117,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"abort_collectives_on_failure",
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"abort_collectives_timeout",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"use_tfrt_gpu_client", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
@@ -189,6 +192,15 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     abort_collectives_on_failure = std::get<bool>(it->second);
   }
+  absl::Duration abort_collectives_timeout = absl::InfiniteDuration();
+  if (auto it = create_options.find("abort_collectives_timeout");
+      it != create_options.end()) {
+    const auto& timeout = std::get<std::string>(it->second);
+    if (!absl::ParseDuration(timeout, &abort_collectives_timeout)) {
+      return StatusToPjRtError(absl::InvalidArgumentError(absl::StrFormat(
+          "Failed to parse abort_collectives_timeout: %s", timeout)));
+    }
+  }
   bool use_tfrt_gpu_client = false;
   if (auto it = create_options.find("use_tfrt_gpu_client");
       it != create_options.end()) {
@@ -227,6 +239,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.should_stage_host_to_device_transfers =
       should_stage_host_to_device_transfers;
   options.abort_collectives_on_failure = abort_collectives_on_failure;
+  options.abort_collectives_timeout = abort_collectives_timeout;
   options.use_tfrt_gpu_client = use_tfrt_gpu_client;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
@@ -339,7 +352,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   if (plugin_platform == "ROCM") {
     platform_id = xla::RocmId();
     platform_name = xla::RocmName();
-  } else if (plugin_platform == "ONEAPI") {
+  } else if (plugin_platform == "SYCL") {
     platform_id = xla::OneapiId();
     platform_name = xla::OneapiName();
   } else {
@@ -619,11 +632,9 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
       pjrt::CreateMemoryDescriptionsExtension(&ffi_extension.base);
 
-  static PJRT_Triton_Extension triton_extension =
-      pjrt::CreateTritonExtension(&memory_descriptions_extension.base);
-
   static PJRT_CrossHostTransfers_Extension cross_host_transfers_extension =
-      pjrt::CreateCrossHostTransfersExtension(&triton_extension.base);
+      pjrt::CreateCrossHostTransfersExtension(
+          &memory_descriptions_extension.base);
 
   static PJRT_Shardings_Extension shardings_extension =
       pjrt::CreateShardingsExtension(&cross_host_transfers_extension.base);

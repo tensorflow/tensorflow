@@ -217,6 +217,12 @@ class NcclCommunicator : public GpuCommunicator {
                                PrimitiveType dtype, size_t count, RankId root,
                                const Executor& executor) final;
 
+  absl::Status LaunchReduce(se::DeviceAddressBase send_buffer,
+                            se::DeviceAddressBase recv_buffer,
+                            PrimitiveType dtype, size_t count,
+                            ReductionKind reduction_kind, RankId root,
+                            const Executor& executor) final;
+
   absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
                                    se::DeviceAddressBase recv_buffer,
                                    PrimitiveType dtype, size_t count,

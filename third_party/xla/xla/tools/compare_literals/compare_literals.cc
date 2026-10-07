@@ -54,7 +54,7 @@ ComparisonResult CompareArrayValues(const LiteralSlice& clean,
       comparator.RecordElement(i, clean_span[i], dirty_span[i]);
     }
   } else {
-    std::vector<int64_t> multi_index(clean.shape().dimensions_size(), 0);
+    std::vector<int64_t> multi_index(clean.shape().dimensions().size(), 0);
     const int64_t num_elements = ShapeUtil::ElementsIn(clean.shape());
     for (int64_t i = 0; i < num_elements; ++i) {
       comparator.RecordElement(i, clean.Get<NativeT>(multi_index),

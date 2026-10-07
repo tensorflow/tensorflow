@@ -876,10 +876,13 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   // Based on the instruction type, start indices start from index 1 or 2 of the
   // operands.
   int64_t start_indices_offset;
+  const Shape* slice_shape;
   if (instr->opcode() == HloOpcode::kDynamicSlice) {
     start_indices_offset = 1;
+    slice_shape = &instr->shape();
   } else if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
     start_indices_offset = 2;
+    slice_shape = &instr->operand(1)->shape();
   } else {
     return std::nullopt;
   }
@@ -928,23 +931,19 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
 
-  if (opcode == HloOpcode::kDynamicSlice) {
-    const Shape& result_shape = instr->shape();
-    if (result_shape.dimensions(dynamic_index) != 1) {
-      VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
-      return std::nullopt;
-    }
+  if (slice_shape->dimensions(dynamic_index) != 1) {
+    VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
+    return std::nullopt;
+  }
 
-    const Shape& operand_shape = operand->shape();
-    CHECK_EQ(result_shape.dimensions().size(),
-             operand_shape.dimensions().size());
-    for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
-      if (i != dynamic_index &&
-          result_shape.dimensions(i) != operand_shape.dimensions(i)) {
-        VLOG(3) << "The slice sizes must match the operand-shape on "
-                   "non-dynamic-index dimensions.";
-        return std::nullopt;
-      }
+  const Shape& operand_shape = operand->shape();
+  CHECK_EQ(slice_shape->dimensions().size(), operand_shape.dimensions().size());
+  for (int64_t i = 0; i < slice_shape->dimensions().size(); ++i) {
+    if (i != dynamic_index &&
+        slice_shape->dimensions(i) != operand_shape.dimensions(i)) {
+      VLOG(3) << "The slice sizes must match the operand-shape on "
+                 "non-dynamic-index dimensions.";
+      return std::nullopt;
     }
   }
 

@@ -28,6 +28,8 @@ license(
     license_kinds = ["@rules_license//licenses/spdx:Apache-2.0"],
 )
 
+exports_files([".bant-macros"])
+
 filegroup(
     name = "clang_tidy_config",
     srcs = [".clang-tidy"],

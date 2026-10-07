@@ -26,7 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_address.h"
@@ -56,9 +56,9 @@ class RocmStreamTest : public ::testing::Test {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                            stream_executor::PlatformManager::PlatformWithId(
-                                stream_executor::rocm::kROCmPlatformId));
+    ASSERT_OK_AND_ASSIGN(Platform * platform,
+                         stream_executor::PlatformManager::PlatformWithId(
+                             stream_executor::rocm::kROCmPlatformId));
     executor_.emplace(platform, 0);
     ASSERT_THAT(executor_->Init(), absl_testing::IsOk());
   }
@@ -69,9 +69,9 @@ TEST_F(RocmStreamTest, Memset32) {
   DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
   // Should fail due to the invalid size parameter.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
@@ -103,9 +103,9 @@ TEST_F(RocmStreamTest, MemZero) {
   DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
@@ -136,9 +136,9 @@ TEST_F(RocmStreamTest, MemcpyHostToDeviceAndBack) {
   DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
   std::array<uint32_t, kBufferNumElements> src_buffer;
   std::generate(src_buffer.begin(), src_buffer.end(),
@@ -162,9 +162,9 @@ TEST_F(RocmStreamTest, MemcpyDeviceToDevice) {
   DeviceAddress<uint32_t> buffer2 =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
   EXPECT_THAT(stream->Memset32(&buffer1, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
@@ -183,9 +183,9 @@ TEST_F(RocmStreamTest, MemcpyDeviceToDevice) {
 }
 
 TEST_F(RocmStreamTest, DoHostCallback) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
   bool callback_called = false;
   EXPECT_THAT(
@@ -197,11 +197,11 @@ TEST_F(RocmStreamTest, DoHostCallback) {
 }
 
 TEST_F(RocmStreamTest, LaunchKernel) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(&executor_.value()));
+  ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(&executor_.value()));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
@@ -226,9 +226,9 @@ TEST_F(RocmStreamTest, LaunchKernel) {
 }
 
 TEST_F(RocmStreamTest, SetName) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
   constexpr absl::string_view kStreamName = "Test stream";
   stream->SetName(std::string(kStreamName));
@@ -236,11 +236,11 @@ TEST_F(RocmStreamTest, SetName) {
 }
 
 TEST_F(RocmStreamTest, WaitForEvent) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RocmEvent event,
       RocmEvent::Create(&executor_.value(), /*allow_timing=*/false));
 
@@ -257,14 +257,14 @@ TEST_F(RocmStreamTest, WaitForEvent) {
 }
 
 TEST_F(RocmStreamTest, WaitForOtherStream) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream1,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream2,
-                          RocmStream::Create(&executor_.value(),
-                                             /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream1,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream2,
+                       RocmStream::Create(&executor_.value(),
+                                          /*priority=*/std::nullopt));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RocmEvent event,
       RocmEvent::Create(&executor_.value(), /*allow_timing=*/false));
 
@@ -310,7 +310,7 @@ TEST_F(RocmStreamTest, WaitForOtherStream) {
 // is placed in the cache and returned by the very next Create() call that uses
 // the same (device, flags, priority) key.
 TEST_F(RocmStreamTest, StreamHandleIsReusedAfterDestruction) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<RocmStream> stream,
       RocmStream::Create(&executor_.value(), /*priority=*/std::nullopt));
   hipStream_t original_handle = stream->stream_handle();
@@ -320,7 +320,7 @@ TEST_F(RocmStreamTest, StreamHandleIsReusedAfterDestruction) {
 
   // The very next Create() with identical parameters must return the cached
   // handle rather than allocating a new one.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<RocmStream> new_stream,
       RocmStream::Create(&executor_.value(), /*priority=*/std::nullopt));
 
@@ -339,7 +339,7 @@ TEST_F(RocmStreamTest, MultipleStreamHandlesAreCachedAndReused) {
     std::vector<std::unique_ptr<RocmStream>> streams;
     streams.reserve(kNumStreams);
     for (int i = 0; i < kNumStreams; ++i) {
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           auto s,
           RocmStream::Create(&executor_.value(), /*priority=*/std::nullopt));
       original_handles.push_back(s->stream_handle());
@@ -355,7 +355,7 @@ TEST_F(RocmStreamTest, MultipleStreamHandlesAreCachedAndReused) {
     std::vector<std::unique_ptr<RocmStream>> streams;
     streams.reserve(kNumStreams);
     for (int i = 0; i < kNumStreams; ++i) {
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           auto s,
           RocmStream::Create(&executor_.value(), /*priority=*/std::nullopt));
       reused_handles.push_back(s->stream_handle());
@@ -373,13 +373,13 @@ TEST_F(RocmStreamTest, MultipleStreamHandlesAreCachedAndReused) {
 TEST_F(RocmStreamTest, ReusedStreamIsFullyFunctional) {
   // Deposit one default-priority handle into the cache.
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<RocmStream> stream,
         RocmStream::Create(&executor_.value(), /*priority=*/std::nullopt));
   }
 
   // This stream is obtained from the cache (not freshly created).
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<RocmStream> stream,
       RocmStream::Create(&executor_.value(), /*priority=*/std::nullopt));
 
@@ -417,10 +417,10 @@ TEST_F(RocmStreamTest, ReusedStreamIsFullyFunctional) {
 //   - new_highest pops Hh (top of shared bucket) ✓
 //   - new_default  pops Hd (next item)            ✓
 TEST_F(RocmStreamTest, CacheIsolatesStreamsByPriority) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<RocmStream> default_stream,
       RocmStream::Create(&executor_.value(), StreamPriority::Default));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<RocmStream> highest_stream,
       RocmStream::Create(&executor_.value(), StreamPriority::Highest));
 
@@ -432,10 +432,10 @@ TEST_F(RocmStreamTest, CacheIsolatesStreamsByPriority) {
   highest_stream.reset();
 
   // Create in reverse order: highest first, default second.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<RocmStream> new_highest,
       RocmStream::Create(&executor_.value(), StreamPriority::Highest));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<RocmStream> new_default,
       RocmStream::Create(&executor_.value(), StreamPriority::Default));
 

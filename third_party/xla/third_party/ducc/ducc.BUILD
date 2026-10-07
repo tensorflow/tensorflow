@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@xla//xla/tsl:tsl.bzl", "if_macos")
+load("@xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -81,6 +82,8 @@ cc_library(
         # Required for custom threadpool usage:
         "@eigen_archive//:eigen3",
         "@tsl//tsl/platform:mutex",
+        "@xla//xla/backends/cpu/runtime:work_queue",
+        "@xla//xla/tsl/concurrency:async_value",
     ],
 )
 

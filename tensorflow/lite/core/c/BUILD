@@ -31,11 +31,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
-    default_visibility = [
-        # "//litert:__subpackages__",  # copybara:uncomment
-        # copybara:uncomment "//third_party/odml/litert:__subpackages__",
-        "//tensorflow/lite:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow/lite:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -50,7 +46,12 @@ exports_files(
         "operator.h",
     ],
     visibility = [
-        "//tensorflow/lite:__subpackages__",
+        # copybara:uncomment_begin(google-only)
+        # "//third_party/odml/litert/litert/swift:__subpackages__",
+        # "//tensorflow/lite:__subpackages__",
+        # copybara:uncomment_end_and_comment_begin
+        "//visibility:public",
+        # copybara:comment_end
     ],
 )
 
@@ -320,7 +321,6 @@ tflite_cc_library_with_c_headers_test(
     visibility = [
         # "//litert:__subpackages__",  # copybara:uncomment
         # copybara:uncomment "//third_party/odml/litert/litert:__subpackages__",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ] + c_api_visibility_allowlist(),
     deps = [

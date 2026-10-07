@@ -44,11 +44,10 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
     return false;
   }
   HloComputation* computation = instr->parent();
-  ABSL_ASSIGN_OR_RETURN(
-      HloInstruction * done,
-      computation->CreateAsyncInstructions(
-          instr, {}, StreamAttributeAsyncWrapper::kParallelExecutionThread,
-          /*replace=*/true));
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * done,
+                   computation->CreateAsyncInstructions(
+                       instr, {}, HloInstruction::kParallelExecutionThread,
+                       /*replace=*/true));
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    done->backend_config<GpuBackendConfig>());
   // Set the false delay of done op to be false so it can be scheduled

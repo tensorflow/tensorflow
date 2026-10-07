@@ -307,8 +307,10 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
   if (num_nodes == 1) {
     LocalTopologyProto* topology = global_topology->add_processes();
     *topology = local_topology;
-    for (DeviceProto& device : *topology->mutable_devices()) {
-      device.set_global_device_id(device.local_device_ordinal());
+    if (assign_global_device_ids) {
+      for (int i = 0; i < topology->devices_size(); ++i) {
+        topology->mutable_devices(i)->set_global_device_id(i);
+      }
     }
     return absl::OkStatus();
   }

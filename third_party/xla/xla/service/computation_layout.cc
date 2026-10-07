@@ -59,6 +59,20 @@ bool ComputationLayout::AnyLayoutSet() const {
              [](const ShapeLayout& s) { return s.AnyLayoutIsSet(); }) ||
          result_layout_.AnyLayoutIsSet();
 }
+bool ComputationLayout::MinorToMajorInLayoutIsSet() const {
+  return absl::c_all_of(parameter_layouts_,
+                        [](const ShapeLayout& s) {
+                          return s.MinorToMajorInLayoutIsSet();
+                        }) &&
+         result_layout_.MinorToMajorInLayoutIsSet();
+}
+bool ComputationLayout::AnyMinorToMajorInLayoutIsSet() const {
+  return absl::c_any_of(parameter_layouts_,
+                        [](const ShapeLayout& s) {
+                          return s.AnyMinorToMajorInLayoutIsSet();
+                        }) ||
+         result_layout_.AnyMinorToMajorInLayoutIsSet();
+}
 
 absl::StatusOr<std::vector<Layout>>
 ComputationLayout::FlattenedParameterLayouts() const {

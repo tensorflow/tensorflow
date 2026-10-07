@@ -97,6 +97,7 @@ tf_py_strict_test(
     name = "map_fusion_test",
     size = "medium",
     srcs = ["map_fusion_test.py"],
+    shard_count = 8,
     deps = [
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",

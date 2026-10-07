@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
+#include "xla/custom_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/future.h"
@@ -73,6 +76,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
+#include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
@@ -80,7 +84,9 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
+#include "xla/python/pjrt_ifrt/tpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_version.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/runtime/device_id.h"
@@ -99,6 +105,40 @@ namespace ifrt {
 namespace {
 
 static const MemoryKind kDefaultMemoryKind("device");
+
+absl::StatusOr<std::unique_ptr<XlaExecutableVersion>> GetXlaExecutableVersion(
+    xla::PjRtExecutable* pjrt_executable) {
+  if (pjrt_executable == nullptr) {
+    return absl::InvalidArgumentError("pjrt_executable must not be null.");
+  }
+  auto abi_version = pjrt_executable->GetAbiVersion();
+  if (absl::IsUnimplemented(abi_version.status())) {
+    // If the underlying PjRtExecutable does not implement GetAbiVersion (e.g.
+    // CPU), return an XlaExecutableVersion without an ABI version so that
+    // serialization and execution version queries still succeed.
+    return std::make_unique<XlaExecutableVersion>();
+  }
+  ABSL_RETURN_IF_ERROR(abi_version.status());
+  if (*abi_version == nullptr) {
+    return absl::InvalidArgumentError(
+        "PjRtExecutable returned null ABI version.");
+  }
+  uint64_t platform_id = (*abi_version)->platform_id();
+  std::unique_ptr<XlaExecutableAbiVersion> xla_abi_version;
+  if (platform_id == xla::TpuId()) {
+    xla_abi_version = std::make_unique<xla::TpuXlaExecutableAbiVersion>(
+        *std::move(abi_version));
+  } else if (platform_id == xla::CudaId() || platform_id == xla::RocmId() ||
+             platform_id == xla::OneapiId()) {
+    xla_abi_version = std::make_unique<xla::GpuXlaExecutableAbiVersion>(
+        *std::move(abi_version));
+  } else {
+    return absl::UnimplementedError(absl::StrCat(
+        "Unsupported platform ID for XlaExecutableAbiVersion: ", platform_id));
+  }
+  return std::make_unique<XlaExecutableVersion>(platform_id,
+                                                std::move(xla_abi_version));
+}
 
 // Returns a pair of flat lists of IFRT dtypes and shapes from XLA shapes
 // extracted from an MLIR module's signature.
@@ -378,6 +418,21 @@ std::vector<PjRtHloOutputLoadedHostCallback*> GatherHloOutputCallbacks(
   return hlo_output_callbacks;
 }
 
+// Converts IFRT custom options to XLA custom options forwarded to the runtime.
+// Options consumed by the PjRt-IFRT layer itself are not forwarded.
+xla::CustomOptions::Map ToCustomOptionsMap(const AttributeMap& attribute_map) {
+  xla::CustomOptions::Map custom_options;
+  custom_options.reserve(attribute_map.size());
+  attribute_map.ForEach([&](const std::string& name,
+                            const AttributeMap::Value& value) {
+    std::visit([&](const auto& v) { custom_options.insert({name, v.value}); },
+               value);
+  });
+  custom_options.erase("use_output_arena");
+  custom_options.erase(PjRtCompatibleLoadedExecutable::kCallLocation);
+  return custom_options;
+}
+
 }  // namespace
 
 char PjRtCompatibleExecutable::ID = 0;
@@ -460,8 +515,8 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
   metadata.set_ifrt_version_number(serdes_version.version_number().value());
   metadata.set_runtime_name(PjRtClient::kRuntimeType);
 
-  // PjRt-IFRT currently does not track XLA executable versions.
-  auto xla_executable_version = std::make_unique<XlaExecutableVersion>();
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<XlaExecutableVersion> xla_executable_version,
+                   GetXlaExecutableVersion(pjrt_executable));
   ABSL_ASSIGN_OR_RETURN(SerializedXlaExecutableVersion serialized_executable_version,
                    xla_executable_version->ToProto(serdes_version));
   *metadata.mutable_executable_version() = serialized_executable_version;
@@ -950,6 +1005,15 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     opts.context = context.get();
   }
 
+  if (options.custom_options.has_value()) {
+    xla::CustomOptions::Map custom_options =
+        ToCustomOptionsMap(*options.custom_options);
+    if (!custom_options.empty()) {
+      opts.custom_options =
+          std::make_shared<const xla::CustomOptions>(std::move(custom_options));
+    }
+  }
+
   // When using host callbacks on CPU, we need to use synchronous dispatch to
   // avoid deadlocks with reentrant callbacks. Note that this option only
   // affects the CPU runtime.
@@ -1143,8 +1207,11 @@ absl::StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint()
 absl::StatusOr<std::shared_ptr<const ExecutableVersion>>
 PjRtLoadedExecutable::executable_version() const {
   DCHECK(this);
-  // PjRt-IFRT currently does not track XLA executable versions.
-  return std::make_shared<XlaExecutableVersion>();
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<XlaExecutableVersion> xla_executable_version,
+      GetXlaExecutableVersion(pjrt_loaded_executable_->GetExecutable()));
+  return std::shared_ptr<const ExecutableVersion>(
+      std::move(xla_executable_version));
 }
 
 absl::StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {

@@ -220,6 +220,10 @@ class NanoIfrtClient
 
   ifrt::Compiler* GetDefaultCompiler() override;
 
+  absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>> Load(
+      absl::Span<const ifrt::ExecutableRef> executables,
+      absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) override;
+
   absl::StatusOr<std::shared_ptr<ifrt::Topology>> GetTopologyForDevices(
       const ifrt::DeviceListRef& devices) const override;
 

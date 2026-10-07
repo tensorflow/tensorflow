@@ -199,13 +199,6 @@ struct MinProvider {
   NativeT<kType> operator()() const { return GetMinImpl<NativeT<kType>>(); }
 };
 
-template <PrimitiveType kType>
-struct FirstElementProvider {
-  NativeT<kType> operator()(const LiteralBase& literal) const {
-    return literal.GetFirstElement<NativeT<kType>>();
-  }
-};
-
 template <typename NativeT>
 std::enable_if_t<IsReal<NativeT>::value, NativeT> GetMaxElementImpl(
     const LiteralBase& literal) {
@@ -225,38 +218,6 @@ struct MaxElementProvider {
     return GetMaxElementImpl<NativeT<kType>>(literal);
   }
 };
-
-template <typename NativeT>
-std::enable_if_t<IsValidScalarType<NativeT>::value, NativeT>
-GetElementAtIndexImpl(const LiteralBase* literal,
-                      absl::Span<const int64_t> multi_index) {
-  return literal->Get<NativeT>(multi_index);
-}
-
-template <typename NativeT>
-std::enable_if_t<!IsValidScalarType<NativeT>::value, NativeT>
-GetElementAtIndexImpl(const LiteralBase* literal,
-                      absl::Span<const int64_t> multi_index) {
-  LOG(FATAL) << "Not a valid scalar element type.";
-}
-
-template <PrimitiveType kType>
-struct GetElementAtIndexProvider {
-  NativeT<kType> operator()(const LiteralBase* literal,
-                            absl::Span<const int64_t> multi_index) const {
-    DCHECK_EQ(literal->shape().element_type(), kType);
-    return GetElementAtIndexImpl<NativeT<kType>>(literal, multi_index);
-  }
-};
-
-template <PrimitiveType kType>
-void SetScalarAtIndexImpl(MutableLiteralBase& literal,
-                          absl::Span<const int64_t> multi_index,
-                          const LiteralBase& scalar) {
-  DCHECK_EQ(literal.shape().element_type(), kType);
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<kType>::type;
-  literal.Set<NativeT>(multi_index, scalar.Get<NativeT>({}));
-}
 
 template <typename FloatT>
 void PopulateWithIntNext(Literal* literal) {
@@ -838,25 +799,25 @@ void PopulateWithRandomIntegralDataWithBounds(
   *shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
 
   // Copy data into new literal, element-by-element.
-  for (int64_t i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
-    auto from_multi_index =
-        IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
-    auto to_multi_index =
-        IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
-    primitive_util::PrimitiveTypeSwitch<void>(
-        [&](auto primitive_type_constant) -> void {
-          if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-            using NativeT = typename primitive_util::PrimitiveTypeToNative<
-                primitive_type_constant>::type;
-            new_literal.Set<NativeT>(to_multi_index,
-                                     literal.Get<NativeT>(from_multi_index));
-            return;
-          }
-          LOG(FATAL) << "Unhandled primitive element type: "
-                     << PrimitiveType_Name(literal.shape().element_type());
-        },
-        literal.shape().element_type());
-  }
+  const int64_t num_elements = ShapeUtil::ElementsIn(literal.shape());
+  primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> void {
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        const auto* src_data =
+            static_cast<const NativeT*>(literal.untyped_data());
+        auto* dst_data = static_cast<NativeT*>(new_literal.untyped_data());
+        for (int64_t i = 0; i < num_elements; ++i) {
+          auto from_multi_index =
+              IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
+          auto to_multi_index = IndexUtil::LinearIndexToMultidimensionalIndex(
+              shape_with_layout, i);
+          dst_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+              new_literal.shape(), to_multi_index)] =
+              src_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+                  literal.shape(), from_multi_index)];
+        }
+      },
+      literal.shape().element_type());
 
   return new_literal;
 }
@@ -865,28 +826,46 @@ void PopulateWithRandomIntegralDataWithBounds(
     const LiteralSlice& literal) {
   CHECK(literal.shape().IsArray());
   CHECK_GT(ShapeUtil::ElementsIn(literal.shape()), 0);
-  return CreateScalar<FirstElementProvider>(literal.shape().element_type(),
-                                            literal);
+  Literal scalar(ShapeUtil::MakeScalarShape(literal.shape().element_type()));
+  primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> void {
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        *static_cast<NativeT*>(scalar.untyped_data()) =
+            *static_cast<const NativeT*>(literal.untyped_data());
+      },
+      literal.shape().element_type());
+  return scalar;
 }
 
 /*static*/ Literal LiteralUtil::GetScalarLiteral(
     const LiteralBase& literal, absl::Span<const int64_t> multi_index) {
-  return CreateScalar<GetElementAtIndexProvider>(literal.shape().element_type(),
-                                                 &literal, multi_index);
+  CHECK(literal.shape().IsArray());
+  Literal scalar(ShapeUtil::MakeScalarShape(literal.shape().element_type()));
+  const int64_t linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+      literal.shape(), multi_index);
+  primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> void {
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        *static_cast<NativeT*>(scalar.untyped_data()) =
+            static_cast<const NativeT*>(literal.untyped_data())[linear_index];
+      },
+      literal.shape().element_type());
+  return scalar;
 }
 
 /*static*/ void LiteralUtil::SetScalarLiteral(
     MutableLiteralBase& literal, absl::Span<const int64_t> multi_index,
     const LiteralBase& scalar) {
-  primitive_util::PrimitiveTypeSwitch<void>(
+  CHECK(literal.shape().IsArray());
+  CHECK(ShapeUtil::IsScalar(scalar.shape()));
+  CHECK_EQ(literal.shape().element_type(), scalar.shape().element_type());
+  const int64_t linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+      literal.shape(), multi_index);
+  primitive_util::ByteWidthTypeSwitch(
       [&](auto primitive_type_constant) -> void {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          SetScalarAtIndexImpl<primitive_type_constant>(literal, multi_index,
-                                                        scalar);
-          return;
-        }
-        LOG(FATAL) << "Unsupported element type: "
-                   << literal.shape().element_type();
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        static_cast<NativeT*>(literal.untyped_data())[linear_index] =
+            *static_cast<const NativeT*>(scalar.untyped_data());
       },
       literal.shape().element_type());
 }

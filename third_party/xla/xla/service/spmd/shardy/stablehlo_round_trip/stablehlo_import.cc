@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/shape.h"
@@ -329,22 +330,29 @@ TensorShardingAttr convertToSdySharding(
   if (hloSharding.UseNamedShardingLeaf()) {
     const xla::NamedSharding& namedSharding = hloSharding.named_sharding();
     SmallVector<DimensionShardingAttr, 4> dimShardings;
-    for (const auto& dimSharding : namedSharding.dim_shardings()) {
-      SmallVector<AxisRefAttr, 4> axes;
-      for (const auto& axis : dimSharding.axes()) {
-        int64_t index = axis.mesh_axis_index();
-        if (index < globalMesh.getAxes().size()) {
-          StringRef axisName = globalMesh.getAxes()[index].getName();
-          if (axis.sub_axis_info().has_value()) {
-            axes.push_back(AxisRefAttr::get(ctx, axisName, axis.pre_size(),
-                                            axis.size(namedSharding.mesh())));
-          } else {
-            axes.push_back(AxisRefAttr::get(ctx, axisName));
+    if (namedSharding.dim_shardings().empty() &&
+        (namedSharding.IsReplicated() || namedSharding.IsManual() ||
+         namedSharding.IsUnreduced())) {
+      dimShardings.assign(
+          rank, DimensionShardingAttr::get(ctx, {}, /*isClosed=*/!openDims));
+    } else {
+      for (const auto& dimSharding : namedSharding.dim_shardings()) {
+        SmallVector<AxisRefAttr, 4> axes;
+        for (const auto& axis : dimSharding.axes()) {
+          int64_t index = axis.mesh_axis_index();
+          if (index < globalMesh.getAxes().size()) {
+            StringRef axisName = globalMesh.getAxes()[index].getName();
+            if (axis.sub_axis_info().has_value()) {
+              axes.push_back(AxisRefAttr::get(ctx, axisName, axis.pre_size(),
+                                              axis.size(namedSharding.mesh())));
+            } else {
+              axes.push_back(AxisRefAttr::get(ctx, axisName));
+            }
           }
         }
+        dimShardings.push_back(DimensionShardingAttr::get(
+            ctx, axes, dimSharding.is_closed() || !openDims));
       }
-      dimShardings.push_back(DimensionShardingAttr::get(
-          ctx, axes, dimSharding.is_closed() || !openDims));
     }
 
     SmallVector<AxisRefAttr, 4> replicatedAxes;
@@ -744,6 +752,8 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
                                 ArrayRef<bool> allowPropagationToResults,
                                 bool enableHloShardingV3) {
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
   addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,

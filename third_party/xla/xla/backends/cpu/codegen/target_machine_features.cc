@@ -37,10 +37,12 @@ TargetMachineFeatures::TargetMachineFeatures(
   // Calling virtual methods in the constructor is discouraged, so we don't
   // call `get_target_feature_string` here.
   if (target_machine_) {
-    has_avx512bf16_ = absl::StrContains(
-        target_machine_->getTargetFeatureString().str(), "+avx512bf16");
-    has_avx512fp16_ = absl::StrContains(
-        target_machine_->getTargetFeatureString().str(), "+avx512fp16");
+    const std::string feature_string =
+        target_machine_->getTargetFeatureString().str();
+    has_avx512bf16_ = absl::StrContains(feature_string, "+avx512bf16");
+    has_avx512fp16_ = absl::StrContains(feature_string, "+avx512fp16");
+    has_amx_fp16_ = absl::StrContains(feature_string, "+amx-fp16");
+    has_amx_fp8_ = absl::StrContains(feature_string, "+amx-fp8");
   }
 }
 

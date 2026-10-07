@@ -24,6 +24,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 

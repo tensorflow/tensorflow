@@ -49,6 +49,8 @@ enum class GpuApi {
 };
 
 enum class AdrenoGpu {
+  // Adreno 8xx series
+  kAdreno831,
   // Adreno 7xx series
   kAdreno750,
   kAdreno740,
@@ -129,6 +131,7 @@ struct AdrenoInfo {
   bool IsAdreno5xx() const;
   bool IsAdreno6xx() const;
   bool IsAdreno7xx() const;
+  bool IsAdreno8xx() const;
   bool IsAdreno6xxOrHigher() const;
   bool IsBetterThan(AdrenoGpu gpu) const;
 

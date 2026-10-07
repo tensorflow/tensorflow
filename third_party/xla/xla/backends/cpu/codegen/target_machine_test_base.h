@@ -65,10 +65,16 @@ class TargetMachineTestBase : public HloHardwareIndependentTestBase {
   std::unique_ptr<TargetMachineFeatures> CreateTargetMachineFeatures(
       absl::string_view triple_string, absl::string_view cpu_name,
       absl::string_view features) {
-    std::unique_ptr<llvm::TargetMachine> target_machine =
-        CreateTargetMachine(triple_string, cpu_name, features);
-    return std::make_unique<TargetMachineFeatures>(target_machine.get());
+    llvm::TargetMachine* target_machine =
+        target_machines_
+            .emplace_back(
+                CreateTargetMachine(triple_string, cpu_name, features))
+            .get();
+    return std::make_unique<TargetMachineFeatures>(target_machine);
   }
+
+ private:
+  std::vector<std::unique_ptr<llvm::TargetMachine>> target_machines_;
 };
 
 }  // namespace xla::cpu

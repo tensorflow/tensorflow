@@ -82,7 +82,7 @@ TEST(ThunkExecutorDefinitionTrackerTest, InvokesCallbackAfterLastUse) {
   ThunkSequence sequence;
   const Thunk* while_ptr = sequence.Emplace<WhileThunk>(
       ThunkInfo("while"), slice0, ThunkSequence(), std::move(body),
-      /*trip_count=*/1);
+      /*trip_count=*/1, /*devices_per_host=*/1);
 
   ThunkExecutor executor(std::move(sequence));
   ThunkExecutor::DefinitionPlan plan =
@@ -139,7 +139,7 @@ TEST(ThunkExecutorDefinitionTrackerTest, BuildsDefinitionPlan) {
       body.Emplace<MemzeroThunk>(ThunkInfo("body"), ShapedSlice{slice1, shape});
   const Thunk* while_ptr = sequence.Emplace<WhileThunk>(
       ThunkInfo("while"), slice0, ThunkSequence(), std::move(body),
-      /*trip_count=*/1);
+      /*trip_count=*/1, /*devices_per_host=*/1);
 
   const Thunk* last_ptr = sequence.Emplace<MemzeroThunk>(
       ThunkInfo("last"), ShapedSlice{slice0, shape});
@@ -290,7 +290,8 @@ TEST(SequentialThunkProgressTrackerTest, TrackWhileLoopNest) {
 
   ThunkSequence outer_sequence = ThunkSequence::Of<WhileThunk>(
       ThunkInfo("while_loop"), slice, std::move(condition_thunks),
-      std::move(body_thunks), /*trip_count=*/kTripCount);
+      std::move(body_thunks), /*trip_count=*/kTripCount,
+      /*devices_per_host=*/1);
 
   ThunkExecutor executor(std::move(outer_sequence));
   ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedProgressTracker tracker,

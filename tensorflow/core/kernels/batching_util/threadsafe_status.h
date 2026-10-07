@@ -40,7 +40,7 @@ namespace tensorflow {
 //   When updated in a multi-threading setup, only the first error is retained.
 class ThreadSafeStatus {
  public:
-  const absl::Status& status() const& TF_LOCKS_EXCLUDED(mutex_);
+  absl::Status status() const& TF_LOCKS_EXCLUDED(mutex_);
   absl::Status status() && TF_LOCKS_EXCLUDED(mutex_);
 
   // Retains the first error status: replaces the current status with

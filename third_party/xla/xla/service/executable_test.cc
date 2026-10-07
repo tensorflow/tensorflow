@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
 
@@ -63,8 +63,8 @@ TEST_F(ExecutableTest, HloProtoGetterIsThreadCompatible) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
   TestExecutable executable(module);
 

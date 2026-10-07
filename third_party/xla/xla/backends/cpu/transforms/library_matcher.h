@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
+#include "xla/backends/cpu/custom_fusion_configs.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -89,7 +89,7 @@ class LibraryMatcher {
 
   // Returns the maximum number of instructions allowed in a fusion for the
   // library.
-  virtual int MaxFusionSize() const { return kMaxFusionSize; }
+  virtual int MaxFusionSize() const { return kMaxLibraryFusionSize; }
 
   // Returns true if the HLO instruction should be fused into the given fusion.
   virtual bool ShouldFuse(const HloFusionInstruction* fusion,

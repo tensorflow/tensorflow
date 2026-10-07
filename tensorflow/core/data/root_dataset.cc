@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/rewrite_utils.h"
@@ -31,12 +33,14 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tsl/platform/context.h"
 #include "tsl/platform/host_info.h"
 
 namespace tensorflow {
@@ -346,24 +350,26 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     mutex_lock l(mu_);
     if (!model_thread_) {
       RunMode run_mode = ctx->run_mode();
-      model_thread_ = ctx->StartThread("tf_data_model", [this, run_mode]() {
-        RootDataset::Params params = dataset()->params_;
-        std::function<int64_t(int64_t)> ram_budget_func;
-        std::optional<int64_t> raw_ram_budget;
-        if (params.autotune_ram_budget_from_options > 0) {
-          raw_ram_budget = params.autotune_ram_budget_from_options;
-        } else if (run_mode != RunMode::STANDALONE) {
-          // Dynamic RAM budget should only apply to tf.data service.
-          raw_ram_budget = params.ComputeInitialAutotuneRamBudget();
-        }
-        absl::Status status = model_->OptimizeLoop(
-            params.autotune_algorithm, params.autotune_cpu_budget_func,
-            params.ram_budget_share, raw_ram_budget, *ram_budget_manager_,
-            cancellation_manager_.get());
-        if (!status.ok()) {
-          LOG(WARNING) << "Optimization loop failed: " << status;
-        }
-      });
+      model_thread_.reset(Env::Default()->StartThread(
+          /*thread_options=*/{}, "tf_data_model",
+          tsl::WithCurrentContext([this, run_mode]() {
+            RootDataset::Params params = dataset()->params_;
+            std::function<int64_t(int64_t)> ram_budget_func;
+            std::optional<int64_t> raw_ram_budget;
+            if (params.autotune_ram_budget_from_options > 0) {
+              raw_ram_budget = params.autotune_ram_budget_from_options;
+            } else if (run_mode != RunMode::STANDALONE) {
+              // Dynamic RAM budget should only apply to tf.data service.
+              raw_ram_budget = params.ComputeInitialAutotuneRamBudget();
+            }
+            absl::Status status = model_->OptimizeLoop(
+                params.autotune_algorithm, params.autotune_cpu_budget_func,
+                params.ram_budget_share, raw_ram_budget, *ram_budget_manager_,
+                cancellation_manager_.get());
+            if (!status.ok()) {
+              LOG(WARNING) << "Optimization loop failed: " << status;
+            }
+          })));
     }
     return absl::OkStatus();
   }

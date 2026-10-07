@@ -78,8 +78,8 @@ TEST(GpuNormRunnerTest, GpuNormDescriptorToFromProto) {
     }
   )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuNormDescriptor descriptor,
-                          GpuNormDescriptor::FromProto(descriptor_proto));
+  ASSERT_OK_AND_ASSIGN(GpuNormDescriptor descriptor,
+                       GpuNormDescriptor::FromProto(descriptor_proto));
   EXPECT_THAT(descriptor.ToProto(), EqualsProto(descriptor_proto));
 }
 

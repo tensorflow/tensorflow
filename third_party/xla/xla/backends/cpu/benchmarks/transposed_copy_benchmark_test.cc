@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -31,55 +32,63 @@ limitations under the License.
 
 namespace xla::cpu {
 
+template <PrimitiveType type>
 static void BM_TransposeAndCopy(benchmark::State& state,
-                                HloBenchmarkOptions options) {
+                                const HloBenchmarkOptions& options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
-    HloModule transpose_and_copy_$d0
+    HloModule transpose_and_copy_$type_$d0
 
     ENTRY e {
-      p0 = f32[$d0,1000] parameter(0)
-      transpose = f32[1000,$d0] transpose(p0), dimensions={1,0}
-      ROOT copy = f32[1000,$d0] copy(transpose)
+      p0 = $type[$d0,1000] parameter(0)
+      transpose = $type[1000,$d0] transpose(p0), dimensions={1,0}
+      ROOT copy = $type[1000,$d0] copy(transpose)
     }
   )";
 
   std::minstd_rand0 engine;
 
-  auto input_shape = ShapeUtil::MakeShape(F32, {d0, 1000});
+  auto input_shape = ShapeUtil::MakeShape(type, {d0, 1000});
   auto p0 =
-      *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
+      *LiteralUtil::CreateRandomLiteral<type>(input_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0};
-  CHECK_OK(
-      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, args,
+      {{"$d0", absl::StrCat(d0)},
+       {"$type", primitive_util::LowercasePrimitiveTypeName(type)}},
+      options));
 }
 
 // It is useful to also have a benchmark where the minor dimension is a power of
 // two as it suffers from cache aliasing which then shows different performance
 // characteristics.
+template <PrimitiveType type>
 static void BM_TransposeAndCopySquare(benchmark::State& state,
-                                      HloBenchmarkOptions options) {
+                                      const HloBenchmarkOptions& options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
-    HloModule transpose_and_copy_square_$d0
+    HloModule transpose_and_copy_square_$type_$d0
 
     ENTRY e {
-      p0 = f32[$d0,$d0] parameter(0)
-      transpose = f32[$d0,$d0] transpose(p0), dimensions={1,0}
-      ROOT copy = f32[$d0,$d0] copy(transpose)
+      p0 = $type[$d0,$d0] parameter(0)
+      transpose = $type[$d0,$d0] transpose(p0), dimensions={1,0}
+      ROOT copy = $type[$d0,$d0] copy(transpose)
     }
   )";
 
   std::minstd_rand0 engine;
 
-  auto input_shape = ShapeUtil::MakeShape(F32, {d0, d0});
+  auto input_shape = ShapeUtil::MakeShape(type, {d0, d0});
   auto p0 =
-      *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
+      *LiteralUtil::CreateRandomLiteral<type>(input_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0};
-  CHECK_OK(
-      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, args,
+      {{"$d0", absl::StrCat(d0)},
+       {"$type", primitive_util::LowercasePrimitiveTypeName(type)}},
+      options));
 }
 
 #define REGISTER_BENCHMARK(NAME) \
@@ -91,7 +100,21 @@ static void BM_TransposeAndCopySquare(benchmark::State& state,
       ->Arg(1024)                \
       ->Arg(4096);
 
-REGISTER_BENCHMARK(BM_TransposeAndCopy);
-REGISTER_BENCHMARK(BM_TransposeAndCopySquare);
+#define BENCHMARK_TRANSPOSE_AND_COPY(TYPE)                                    \
+  static void BM_TransposeAndCopy##TYPE(benchmark::State& state,              \
+                                        const HloBenchmarkOptions& options) { \
+    BM_TransposeAndCopy<TYPE>(state, options);                                \
+  }                                                                           \
+  static void BM_TransposeAndCopySquare##TYPE(                                \
+      benchmark::State& state, const HloBenchmarkOptions& options) {          \
+    BM_TransposeAndCopySquare<TYPE>(state, options);                          \
+  }                                                                           \
+  REGISTER_BENCHMARK(BM_TransposeAndCopy##TYPE);                              \
+  REGISTER_BENCHMARK(BM_TransposeAndCopySquare##TYPE);
+
+BENCHMARK_TRANSPOSE_AND_COPY(BF16);
+BENCHMARK_TRANSPOSE_AND_COPY(F16);
+BENCHMARK_TRANSPOSE_AND_COPY(F32);
+BENCHMARK_TRANSPOSE_AND_COPY(F64);
 
 }  // namespace xla::cpu

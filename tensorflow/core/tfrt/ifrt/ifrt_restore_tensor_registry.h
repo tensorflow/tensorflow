@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -27,8 +27,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.pb.h"
-
 namespace tensorflow {
 namespace ifrt_serving {
 
@@ -59,6 +57,10 @@ class IfrtRestoreTensorRegistry {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::StatusOr<DtypeAndShape> GetDtypeAndShape(absl::string_view name) const
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Returns all variable names that were marked as used by host.
+  absl::flat_hash_set<std::string> GetUsedByHostNames() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Part of freezing the model is to release the host tensors that are used by

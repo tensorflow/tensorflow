@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -655,6 +656,9 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
     auto filtered = b->AddInstruction(HloInstruction::CreateTernary(
         pgather->shape(), HloOpcode::kSelect, broadcast_filter,
         CreateZero(pgather->shape(), b), pgather));
+    if (gather->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+      filtered->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+    }
     // All-reduce along trivially sliced dimensions.
     auto ar = operand.state().partitioner->AllReduceAlongShardingDims(
         b, filtered, original_operand_sharding, operand.state().next_channel_id,
@@ -1088,6 +1092,9 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
   HloInstruction* filtered = b->AddInstruction(HloInstruction::CreateTernary(
       pgather->shape(), HloOpcode::kSelect, broadcast_filter,
       CreateZero(pgather->shape(), b), pgather));
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    filtered->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   HloInstruction* ar = operand.state().partitioner->AllReduceAlongShardingDims(
       b, filtered, operand.sharding(), operand.state().next_channel_id,
@@ -1531,7 +1538,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
 
 HloInstruction* SelectOperandForScatterIndexPassthroughDimensions(
     const HloScatterInstruction* scatter, const PartitionedHlo& indices,
-    const PartitionedHlo& per_group_operand, SpmdBuilder* b) {
+    const PartitionedHlo& per_group_operand,
+    absl::Span<const int64_t> index_passthrough_indices_dims, SpmdBuilder* b) {
   std::optional<ReductionKind> reduction_kind =
       MatchReductionComputation(scatter->to_apply());
   if (!reduction_kind) {
@@ -1546,17 +1554,26 @@ HloInstruction* SelectOperandForScatterIndexPassthroughDimensions(
   }
   HloInstruction* identity = CreateConstant(per_group_operand.hlo()->shape(),
                                             std::move(*identity_literal), b);
-  // Update partition_id for partial replicate.
+  // Update partition_id for partial replicate or non-passthrough sharded dims.
   auto partition_id = indices.state().partition_id;
-  if (indices.sharding().HasPartialReplication()) {
+  if (!indices.sharding().IsReplicatedOrSingleDevice()) {
     HloSharding tiled_sharding =
         indices.sharding().UseNamedShardingLeaf()
             ? HloSharding::V3ToV2Sharding(indices.sharding().named_sharding())
             : indices.sharding();
-    auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
-        tiled_sharding, {tiled_sharding.SubgroupReplicationDim()});
-    partition_id =
-        GetInGroupPartitionId(partition_id, sharding_grouped.device_groups, b);
+    std::vector<int64_t> group_dims;
+    for (int64_t i = 0; i < tiled_sharding.num_dimensions(); ++i) {
+      if (tiled_sharding.dimension(i) > 1 &&
+          !absl::c_linear_search(index_passthrough_indices_dims, i)) {
+        group_dims.push_back(i);
+      }
+    }
+    if (!group_dims.empty()) {
+      auto sharding_grouped =
+          hlo_sharding_util::GroupShardingOnDims(tiled_sharding, group_dims);
+      partition_id = GetInGroupPartitionId(partition_id,
+                                           sharding_grouped.device_groups, b);
+    }
   }
   // To avoid accumulating the initial operand multiple times during all-reduce,
   // we use identity operands for all non-zero partitions.
@@ -1721,8 +1738,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
       PerGroupPartitionedHlo(operands[0], operand_grouped, b, clean_ups);
 
   HloInstruction* select_operand =
-      SelectOperandForScatterIndexPassthroughDimensions(scatter, indices,
-                                                        per_group_operand, b);
+      SelectOperandForScatterIndexPassthroughDimensions(
+          scatter, indices, per_group_operand,
+          index_passthrough_dims.indices_dims, b);
   if (select_operand == nullptr) {
     return nullptr;
   }
@@ -2101,7 +2119,7 @@ absl::Status SpmdPartitioningVisitor::HandleScatterWithoutConflicts(
   if (indices.sharding().NumTiles(index_passthrough_dims.indices_dims) != 1 ||
       updates[0].sharding().NumTiles(index_passthrough_dims.output_dims) != 1) {
     select_operand = SelectOperandForScatterIndexPassthroughDimensions(
-        scatter, indices, operands[0], b);
+        scatter, indices, operands[0], index_passthrough_dims.indices_dims, b);
     if (!select_operand) {
       return absl::InternalError(
           "Failed to find a reduction identity for sharded scatter implicit "

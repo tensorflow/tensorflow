@@ -52,8 +52,9 @@ END
   attr {
     name: "data_format"
     description: <<END
-Used to set the data format. By default `CHANNELS_FIRST`, uses 
-`NHWC (2D) / NDHWC (3D)` or if `CHANNELS_LAST`, uses `NCHW (2D) / NCDHW (3D)`.
+Used to set the data format. By default `CHANNELS_LAST`, uses 
+`NHWC (2D) / NDHWC (3D)` or if `CHANNELS_FIRST`, uses `NCHW (2D) / NCDHW (3D)`.
+Without oneDNN, CPU kernels support only "CHANNELS_LAST".
 END
   }
   attr {

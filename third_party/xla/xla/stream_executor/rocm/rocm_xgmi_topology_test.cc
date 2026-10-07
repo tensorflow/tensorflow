@@ -23,17 +23,14 @@ TEST(XgmiTopologyInfoTest, DefaultValues) {
   EXPECT_EQ(info.hive_id, 0);
 }
 
-TEST(GetRocmXgmiTopologyTest, InvalidBdfReturnsDefault) {
-  // An invalid PCI bus ID should return default topology (0 links).
-  XgmiTopologyInfo info = GetRocmXgmiTopology("invalid");
-  EXPECT_EQ(info.active_links, 0);
-  EXPECT_EQ(info.hive_id, 0);
+TEST(GetRocmXgmiTopologyTest, InvalidBdfFails) {
+  // An unparsable PCI bus ID cannot name a device, so the query fails rather
+  // than reporting an empty topology.
+  EXPECT_FALSE(GetRocmXgmiTopology("invalid").ok());
 }
 
-TEST(GetRocmXgmiTopologyTest, EmptyBdfReturnsDefault) {
-  XgmiTopologyInfo info = GetRocmXgmiTopology("");
-  EXPECT_EQ(info.active_links, 0);
-  EXPECT_EQ(info.hive_id, 0);
+TEST(GetRocmXgmiTopologyTest, EmptyBdfFails) {
+  EXPECT_FALSE(GetRocmXgmiTopology("").ok());
 }
 
 }  // namespace

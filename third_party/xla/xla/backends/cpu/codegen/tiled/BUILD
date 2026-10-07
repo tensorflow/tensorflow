@@ -37,6 +37,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/codegen:kernel_definition",

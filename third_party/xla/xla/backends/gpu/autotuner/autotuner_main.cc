@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/directory_store.h"
@@ -47,14 +48,15 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/autotuner/tiered_cache.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/config_assigner_pass.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -144,6 +146,7 @@ struct AutotunerEnvironment {
   // For codegen backends.
   std::unique_ptr<GpuCompiler> compiler;
   std::unique_ptr<mlir::MLIRContext> mlir_context;
+  std::unique_ptr<MlirContextPool> mlir_context_pool;
   std::unique_ptr<AliasInfo> alias_info;
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   // For profiling.
@@ -227,6 +230,7 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
 
   auto mlir_context = std::make_unique<mlir::MLIRContext>();
   xla::RegisterSymbolicExprStorage(mlir_context.get());
+  auto mlir_context_pool = std::make_unique<MlirContextPool>(CreateMlirContext);
 
   auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
       tsl::Env::Default(), "autotuner", tsl::port::MaxParallelism());
@@ -258,7 +262,8 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
       ConfigAssignerPass::GetEnabledBackends(
           stream_executor_0, allocator.get(), target_config.get(),
           alias_info.get(), debug_options, mlir_context.get(),
-          compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id()));
+          compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id(),
+          thread_pool.get(), mlir_context_pool.get()));
 
   AutotuneCacheContext ctx = AutotuneCacheContext::Create(
       target_config->device_description, autotuner_backends);
@@ -275,9 +280,11 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
                                      autotuner_options, thread_pool.get()));
 
   return AutotunerEnvironment{
-      std::move(compiler),      std::move(mlir_context), std::move(alias_info),
-      std::move(target_config), std::move(streams),      std::move(allocator),
-      std::move(ctx),           std::move(thread_pool),  std::move(autotuner)};
+      std::move(compiler),          std::move(mlir_context),
+      std::move(mlir_context_pool), std::move(alias_info),
+      std::move(target_config),     std::move(streams),
+      std::move(allocator),         std::move(ctx),
+      std::move(thread_pool),       std::move(autotuner)};
 }
 
 absl::Status InsertTuningResultsToCache(
@@ -306,7 +313,7 @@ absl::Status InsertTuningResultsToCache(
                        &status_mu, &insert_status]() {
       absl::Status s = autotuner_cache->Insert(instr, cached_config);
       if (!s.ok()) {
-        absl::MutexLock lock(&status_mu);
+        absl::MutexLock lock(status_mu);
         insert_status.Update(s);
       }
       counter.DecrementCount();

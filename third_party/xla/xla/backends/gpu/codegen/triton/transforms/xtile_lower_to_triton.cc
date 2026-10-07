@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVectorExtras.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
@@ -329,25 +331,15 @@ class LowerScan : public mlir::OpRewritePattern<::xla::xtile::ScanOp> {
   static SmallVector<Value> FoldInitValues(::xla::xtile::ScanOp op,
                                            ttir::ScanOp triton_scan_op,
                                            mlir::PatternRewriter& rewriter) {
-    int32_t axis = op.getDimension();
     SmallVector<Value> init_and_results;
     init_and_results.reserve(triton_scan_op.getNumResults() * 2);
 
+    // The init only has a unit dimension along the scan dimension and is
+    // combined with every element of the scan result.
     for (auto [result, init_val] :
          llvm::zip_equal(triton_scan_op.getResults(), op.getInits())) {
-      auto result_type = mlir::cast<mlir::RankedTensorType>(result.getType());
-
-      SmallVector<int64_t> bcast_dims;
-      bcast_dims.reserve(result_type.getRank() - 1);
-      for (int64_t d = 0; d < result_type.getRank(); ++d) {
-        if (d != axis) {
-          bcast_dims.push_back(d);
-        }
-      }
-
-      init_and_results.push_back(mlir::stablehlo::BroadcastInDimOp::create(
-          rewriter, op.getLoc(), result_type, init_val,
-          rewriter.getDenseI64ArrayAttr(bcast_dims)));
+      init_and_results.push_back(ttir::BroadcastOp::create(
+          rewriter, op.getLoc(), result.getType(), init_val));
     }
 
     llvm::append_range(init_and_results, triton_scan_op.getResults());
@@ -363,42 +355,115 @@ class LowerScan : public mlir::OpRewritePattern<::xla::xtile::ScanOp> {
     return tensor_outputs;
   }
 
+  // Returns a tensor of the same shape as `type` with the index along `axis`.
+  static Value CreateIota(mlir::RankedTensorType type, int32_t axis,
+                          mlir::Location loc, mlir::PatternRewriter& rewriter) {
+    mlir::Type i32_type = rewriter.getI32Type();
+    int64_t axis_size = type.getDimSize(axis);
+    Value iota = ttir::MakeRangeOp::create(
+        rewriter, loc, mlir::RankedTensorType::get({axis_size}, i32_type),
+        /*start=*/0, /*end=*/axis_size);
+    // Inserting the unit dimensions in increasing order leaves the range in
+    // dimension `axis`.
+    for (int32_t dim = 0; dim < type.getRank(); ++dim) {
+      if (dim != axis) {
+        iota = ttir::ExpandDimsOp::create(rewriter, loc, iota, dim);
+      }
+    }
+    return ttir::BroadcastOp::create(rewriter, loc, type.clone(i32_type), iota);
+  }
+
+  // Returns the last element that the scan produces along `axis`, which is the
+  // element at index 0 for reverse scans and at the last index otherwise,
+  // keeping `axis` as a unit dimension.
+  //
+  // `tt.scan` does not return the final carry, and extracting it with a
+  // `tt.gather` would write the entire tile to shared memory (see
+  // GatherLoweringHelper::getScratchSizeInBytes()). Instead, mask all other
+  // elements to zero and combine them with an `or` reduction over the bitcast
+  // integer values. Zero is the neutral element of `or`, so the reduction
+  // returns the single unmasked element, and because `or` is idempotent it does
+  // so no matter in which order and how often a layout combines the elements.
+  // PyTorch inductor uses the same approach (see triton_helpers.select_one).
+  static Value ExtractCarry(Value value, int32_t axis, bool is_reverse,
+                            mlir::Location loc,
+                            mlir::PatternRewriter& rewriter) {
+    auto type = mlir::cast<mlir::RankedTensorType>(value.getType());
+    mlir::Type element_type = type.getElementType();
+    mlir::Type int_type =
+        rewriter.getIntegerType(element_type.getIntOrFloatBitWidth());
+
+    int32_t index =
+        is_reverse ? 0 : static_cast<int32_t>(type.getDimSize(axis) - 1);
+    Value iota = CreateIota(type, axis, loc, rewriter);
+    Value indices = mlir::arith::ConstantOp::create(
+        rewriter, loc,
+        mlir::DenseElementsAttr::get(
+            mlir::cast<mlir::ShapedType>(iota.getType()), index));
+    Value mask = mlir::arith::CmpIOp::create(
+        rewriter, loc, mlir::arith::CmpIPredicate::eq, iota, indices);
+
+    mlir::RankedTensorType int_tensor_type = type.clone(int_type);
+    if (int_type != element_type) {
+      value = ttir::BitcastOp::create(rewriter, loc, int_tensor_type, value);
+    }
+    Value zero = mlir::arith::ConstantOp::create(
+        rewriter, loc, rewriter.getZeroAttr(int_tensor_type));
+    Value masked =
+        mlir::arith::SelectOp::create(rewriter, loc, mask, value, zero);
+
+    // `tt.reduce` drops the reduced dimension and returns a scalar for rank-1
+    // inputs.
+    SmallVector<int64_t> reduced_shape(type.getShape());
+    reduced_shape.erase(reduced_shape.begin() + axis);
+    mlir::Type reduced_type =
+        reduced_shape.empty()
+            ? int_type
+            : mlir::RankedTensorType::get(reduced_shape, int_type);
+    auto reduce_op =
+        ttir::ReduceOp::create(rewriter, loc, reduced_type, masked, axis);
+    {
+      mlir::OpBuilder::InsertionGuard guard(rewriter);
+      mlir::Block* block = rewriter.createBlock(
+          &reduce_op.getCombineOp(), reduce_op.getCombineOp().begin(),
+          {int_type, int_type}, {loc, loc});
+      Value combined = mlir::arith::OrIOp::create(
+          rewriter, loc, block->getArgument(0), block->getArgument(1));
+      ttir::ReduceReturnOp::create(rewriter, loc, combined);
+    }
+
+    // Restore the scan dimension as a unit dimension.
+    SmallVector<int64_t> carry_shape(type.getShape());
+    carry_shape[axis] = 1;
+    Value carry = reduce_op.getResult().front();
+    if (reduced_shape.empty()) {
+      carry = ttir::SplatOp::create(
+          rewriter, loc, mlir::RankedTensorType::get(carry_shape, int_type),
+          carry);
+    } else {
+      carry = ttir::ExpandDimsOp::create(rewriter, loc, carry, axis);
+    }
+    if (int_type != element_type) {
+      carry = ttir::BitcastOp::create(
+          rewriter, loc, mlir::RankedTensorType::get(carry_shape, element_type),
+          carry);
+    }
+    return carry;
+  }
+
   static SmallVector<Value> ExtractCarries(::xla::xtile::ScanOp op,
                                            ArrayRef<Value> outputs,
                                            mlir::PatternRewriter& rewriter) {
-    int32_t axis = op.getDimension();
-    bool reverse = op.getIsReverse();
-
-    SmallVector<Value> carries;
-    carries.reserve(op.getCarries().size());
-    for (auto [output, carry] : llvm::zip(outputs, op.getCarries())) {
-      auto result_type = mlir::cast<mlir::RankedTensorType>(output.getType());
-      SmallVector<OpFoldResult> offsets, sizes, strides;
-      offsets.reserve(result_type.getRank());
-      sizes.reserve(result_type.getRank());
-      strides.reserve(result_type.getRank());
-
-      for (int64_t d = 0; d < result_type.getRank(); ++d) {
-        if (d == axis) {
-          int64_t start_idx = reverse ? 0 : (result_type.getDimSize(d) - 1);
-          offsets.push_back(rewriter.getIndexAttr(start_idx));
-          sizes.push_back(rewriter.getIndexAttr(1));
-        } else {
-          offsets.push_back(rewriter.getIndexAttr(0));
-          sizes.push_back(rewriter.getIndexAttr(result_type.getDimSize(d)));
-        }
-        strides.push_back(rewriter.getIndexAttr(1));
-      }
-      auto carry_type = mlir::cast<mlir::RankedTensorType>(carry.getType());
-
-      carries.push_back(mlir::tensor::ExtractSliceOp::create(
-          rewriter, op.getLoc(), carry_type, output, offsets, sizes, strides));
-    }
-    return carries;
+    return llvm::map_to_vector(outputs, [&](Value output) {
+      return ExtractCarry(output, op.getDimension(), op.getIsReverse(),
+                          op.getLoc(), rewriter);
+    });
   }
 
   mlir::LogicalResult matchAndRewrite(
       ::xla::xtile::ScanOp op, mlir::PatternRewriter& rewriter) const override {
+    // `xtile.scan` verifies that the inits and carries keep the scan dimension
+    // as a unit dimension, which the lowering below relies on.
     ttir::ScanOp triton_scan_op = CreateTritonScan(op, rewriter);
 
     rewriter.setInsertionPointAfter(triton_scan_op);

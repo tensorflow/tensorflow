@@ -2708,6 +2708,17 @@ func.func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // -----
 
+// CHECK-LABEL: @random_shuffle_float_vector
+func.func @random_shuffle_float_vector(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: "mhlo.sort"
+  // CHECK: ^bb0([[KEY_LHS:%.*]]: tensor<i32>, [[KEY_RHS:%.*]]: tensor<i32>, {{.*}}: tensor<f32>, {{.*}}: tensor<f32>):
+  // CHECK: mhlo.compare  LT, [[KEY_LHS]], [[KEY_RHS]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  %0 = "tf.RandomShuffle"(%arg0) {seed = 1 : i64, seed2 = 2 : i64} : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @sigmoid
 func.func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: mhlo.logistic
@@ -2798,4 +2809,3 @@ func.func @func_xla_sharding_consistent(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi
   %1 = "tf.A"(%0) : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
   func.return %1 : tensor<4x8xi32>
 }
-

@@ -29,14 +29,62 @@ body {
   font-family: monospace;
   margin: 0;
   padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+#app-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: #fff;
+}
+#main-view {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+:root {
+  --graph-container-width: 65%;
+  --tensor-inspector-width: 35%;
+  --tensor-3d-zoom: 1.42;
+}
+#top-pane {
+  --graph-container-width: 65%;
+  --tensor-inspector-width: 35%;
+  --tensor-3d-zoom: 1.42;
+  height: 60vh;
+  min-height: 50px;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  position: relative;
+  background: #fff;
 }
 #graph-container {
-  height: 55vh;
-  min-height: 50px;
+  flex: 1 1 var(--graph-container-width);
+  width: var(--graph-container-width);
+  height: 100%;
+  min-width: 100px;
   overflow: hidden;
+  position: relative;
+}
+#graph-module-title,
+.graph-module-title {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #3c4043;
+  z-index: 5;
+  pointer-events: none;
+  user-select: none;
 }
 #histogram-container {
   height: 300px;
@@ -179,3 +227,450 @@ pre {
   border-radius: 5px;
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
+
+#splitter-sidebar {
+  width: 8px;
+  cursor: ew-resize;
+  background: #eee;
+  border-left: 1px solid #ccc;
+  border-right: 1px solid #ccc;
+  flex-shrink: 0;
+  display: none;
+}
+
+#splitter-sidebar:hover {
+  background: #ddd;
+}
+
+#tensor-inspector {
+  --tensor-3d-zoom: 1.42;
+  width: var(--tensor-inspector-width);
+  min-width: 200px;
+  max-width: 75%;
+  display: none;
+  flex-direction: column;
+  flex: 0 0 var(--tensor-inspector-width);
+  height: 100%;
+  background: #fff;
+  border-left: none;
+  color: #202124;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+  font-size: 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+#tensor-inspector-header {
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.tensor-inspector-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+#tensor-inspector-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #202124;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tensor-close-btn {
+  background: transparent;
+  border: none;
+  color: #5f6368;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.tensor-close-btn:hover {
+  background: #f1f3f4;
+  color: #202124;
+}
+
+.tensor-meta-item {
+  font-size: 11px;
+  color: #5f6368;
+  margin-top: 3px;
+  word-break: break-all;
+}
+
+#tensor-instr-name {
+  font-weight: 600;
+  color: #1a73e8;
+}
+
+#tensor-slice-controls {
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slice-status-header {
+  font-size: 11px;
+  color: #3c4043;
+}
+
+.slice-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.slice-slider-row label {
+  min-width: 40px;
+  color: #3c4043;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.slice-slider-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.slice-step-btn {
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 3px;
+  color: #3c4043;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: bold;
+  height: 22px;
+  width: 20px;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
+  transition: background-color 0.1s, border-color 0.1s;
+}
+
+.slice-step-btn:hover:not(:disabled) {
+  background: #f1f3f4;
+  border-color: #bdc1c6;
+  color: #202124;
+}
+
+.slice-step-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.slice-slider-row input[type="range"] {
+  flex: 1;
+  accent-color: #1a73e8;
+}
+
+.slice-jump-btn {
+  font-size: 10px;
+  width: 22px;
+  color: #ea4335;
+}
+
+.slice-jump-btn:hover:not(:disabled) {
+  background: #fce8e6;
+  border-color: #fad2cf;
+  color: #c5221f;
+}
+
+.slice-continuous-track-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 100px;
+  height: 22px;
+}
+
+.slice-mismatch-ticks {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.slice-mismatch-tick {
+  position: absolute;
+  width: 3px;
+  height: 12px;
+  top: -3px;
+  background: #ea4335;
+  border-radius: 1px;
+  transform: translateX(-50%);
+  opacity: 0.85;
+}
+
+.slice-mismatch-tick.downstream-mismatch {
+  background: #f29900;
+}
+
+.slice-mismatch-tick.active-mismatch {
+  background: #ea4335;
+}
+
+.slice-continuous-track-container input[type="range"] {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  margin: 0;
+  cursor: pointer;
+  background: transparent;
+}
+
+.slice-number-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.slice-number-input {
+  width: 48px;
+  height: 22px;
+  padding: 0 4px;
+  font-family: monospace;
+  font-size: 11px;
+  border: 1px solid #dadce0;
+  border-radius: 3px;
+  text-align: right;
+  color: #202124;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.slice-number-input:focus {
+  border-color: #1a73e8;
+  outline: none;
+}
+
+.slice-total-label {
+  font-family: monospace;
+  font-size: 10px;
+  color: #5f6368;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.slice-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.slice-selection-title {
+  font-size: 11px;
+  color: #202124;
+  white-space: nowrap;
+}
+
+.slice-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.slice-global-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #1a73e8;
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.slice-global-btn:hover:not(:disabled) {
+  background: #f1f3f4;
+  border-color: #1a73e8;
+  color: #174ea6;
+}
+
+.slice-global-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #f8f9fa;
+  border-color: #e8eaed;
+  color: #80868b;
+}
+
+.slice-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-weight: 500;
+  text-align: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.slice-badge-mismatch {
+  background: #fce8e6;
+  color: #c5221f;
+  border: 1px solid #fad2cf;
+}
+
+.slice-badge-pass {
+  background: #e6f4ea;
+  color: #137333;
+  border: 1px solid #ceead6;
+}
+
+#tensor-canvas-container {
+  flex: 1;
+  position: relative;
+  min-height: 180px;
+  background: #fff;
+  overflow: hidden;
+}
+
+#tensor-3d-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#tensor-3d-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+}
+
+.tensor-ctrl-btn {
+  background: #fff;
+  color: #3c4043;
+  border: 1px solid #dadce0;
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.1);
+}
+
+.tensor-ctrl-btn:hover {
+  background: #f1f3f4;
+  color: #202124;
+}
+
+#tensor-inspector-details {
+  padding: 8px 12px;
+  background: #fff;
+  border-top: 1px solid #e0e0e0;
+  font-size: 11px;
+  color: #3c4043;
+  flex-shrink: 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.pattern-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fce8e6;
+  color: #c5221f;
+  border: 1px solid #fad2cf;
+  margin-left: 4px;
+}
+
+#graph-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.graph-ctrl-btn {
+  background: #fff;
+  color: #3c4043;
+  border: 1px solid #dadce0;
+  border-radius: 3px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  user-select: none;
+  transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.graph-ctrl-btn:hover {
+  background: #f1f3f4;
+  border-color: #bdc1c6;
+  color: #202124;
+}
+
+.graph-ctrl-btn:active {
+  background: #e8eaed;
+}
+
+#zoom-in-btn,
+#zoom-out-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+#zoom-fit-btn {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+

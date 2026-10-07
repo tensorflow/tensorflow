@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tuple_tree.h"
 #include "xla/util.h"
@@ -2209,14 +2210,15 @@ TEST(XlaBuilderTest, SetAndGetSharding) {
             hlo_sharding_2);
 }
 
-TEST(XlaBuilderTest, ComparisonType) {
+TEST(XlaBuilderTest, ComparisonOrder) {
   XlaBuilder b(TestName());
   (void)Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   const HloInstruction* root = GetRoot(*module);
   ASSERT_THAT(root, GmockMatch(m::Compare(m::Constant(), m::Constant())));
-  EXPECT_EQ(Comparison::Type::kSigned,
-            DynCast<HloCompareInstruction>(root)->type());
+  const auto* compare = DynCast<HloCompareInstruction>(root);
+  EXPECT_EQ(S32, compare->comparison().GetPrimitiveType());
+  EXPECT_EQ(ComparisonOrder::kTotal, compare->order());
 }
 
 TEST(XlaBuilderTest, StableLookUpInstructionByHandle) {
@@ -3581,6 +3583,20 @@ TEST(XlaBuilderTest, UnboundedReverse) {
   Rev(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0, 1});
   TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
                           BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedShuffle) {
+  XlaBuilder b(TestName());
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+
+  Shuffle(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0, 1},
+          shuffle::Rotate(/*shifts=*/{1, 3}));
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       BuildHloModule(b));
+
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
