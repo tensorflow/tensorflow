@@ -212,9 +212,6 @@ class CpuOptProvider : public CompiledOptProvider {
   llvm::TargetOptions CompilerTargetOptions(
       const HloModuleConfig& module_config) {
     llvm::TargetOptions target_options;
-    // Always allow FMA fusion. This increases precision instead of decreasing
-    // it.
-    target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
     return target_options;
   }
 };

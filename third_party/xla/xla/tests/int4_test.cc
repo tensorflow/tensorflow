@@ -356,12 +356,14 @@ class ElementwiseTest : public HloInterpreterReferenceMixin<HloTestBase>,
       case HloOpcode::kSinh:
       case HloOpcode::kErf:
       case HloOpcode::kExp:
+      case HloOpcode::kExp2:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
       case HloOpcode::kImag:
       case HloOpcode::kIsFinite:
       case HloOpcode::kLog:
       case HloOpcode::kLog1p:
+      case HloOpcode::kLog2:
       case HloOpcode::kLogistic:
       case HloOpcode::kPower:
       case HloOpcode::kReal:

@@ -656,14 +656,12 @@ class InferenceContext {
   // return true.  Return false otherwise.
   //
   // See 'MergeInput' function for full details and examples.
-  bool MergeInputHandleShapesAndTypes(
-      int idx,
-      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool MergeInputHandleShapesAndTypes(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types);
 
   // As MergeInputHandleShapesAndTypes, but for an output.
-  bool MergeOutputHandleShapesAndTypes(
-      int idx,
-      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool MergeOutputHandleShapesAndTypes(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types);
 
   // Relaxes the stored shapes and types corresponding to the input handle in
   // position idx with the specified shapes and types. This requires idx to be
@@ -674,14 +672,12 @@ class InferenceContext {
   // Return false otherwise.
   //
   // See 'RelaxInput' function for full details and examples.
-  bool RelaxInputHandleShapesAndMergeTypes(
-      int idx,
-      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool RelaxInputHandleShapesAndMergeTypes(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types);
 
   // As RelaxInputHandleShapesAndTypes, but for an output.
-  bool RelaxOutputHandleShapesAndMergeTypes(
-      int idx,
-      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool RelaxOutputHandleShapesAndMergeTypes(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types);
 
   void set_input_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
@@ -815,14 +811,14 @@ class InferenceContext {
 
   // Used to implement MergeInputHandleShapesAndTypes and
   // MergeOutputHandleShapesAndTypes.
-  bool MergeHandleShapesAndTypes(
+  TF_MUST_USE_RESULT bool MergeHandleShapesAndTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
-      std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+      std::vector<ShapeAndType>* to_update);
   // Used to implement RelaxInputHandleShapesAndMergeTypes and
   // RelaxOutputHandleShapesAndMergeTypes.
-  bool RelaxHandleShapesAndMergeTypes(
+  TF_MUST_USE_RESULT bool RelaxHandleShapesAndMergeTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
-      std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+      std::vector<ShapeAndType>* to_update);
 
   // Forget all the previous merged shapes and dims.
   void ForgetMerges() {

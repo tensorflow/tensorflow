@@ -17,8 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -32,8 +36,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -101,8 +103,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
       while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
       init_value));
   HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -158,8 +160,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
       while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
       init_value));
   HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -214,8 +216,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
 
   m->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(), Contains(op::Add()));
@@ -253,8 +255,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
       init_value));
 
   m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(), Contains(op::Add()));
@@ -298,8 +300,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
       HloInstruction::CreateGetTupleElement(scalar_s32, while_inst, 0));
   m->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   ASSERT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(),
@@ -352,8 +354,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
 
   m->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(),
@@ -397,8 +399,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
 
   HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -430,7 +432,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistControlDependencies) {
     HloInstruction* add_result =
         builder.AddInstruction(HloInstruction::CreateBinary(
             scalar_s32, HloOpcode::kAdd, gte_0, gte_1));
-    TF_ASSERT_OK(param->AddControlDependencyTo(add_result));
+    ASSERT_OK(param->AddControlDependencyTo(add_result));
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, add_result}));
 
@@ -444,8 +446,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistControlDependencies) {
       while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
       init_value));
   m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -472,8 +474,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, BodyHasNonTupleRoot) {
       while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
       init_value));
   m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -501,9 +503,10 @@ ENTRY entry {
 )";
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
-  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kConstantHoistingTestCase));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopInvariantCodeMotion{/*hoist_constants=*/true}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
@@ -533,10 +536,11 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistConstantByDefault) {
-  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kConstantHoistingTestCase));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -566,11 +570,11 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoNotHoistOutOfSingleIteration) {
       while_init = (f32[2], f32[2], f32[2], s32[]) tuple(param.0, param.0, param.0, param.1)
       ROOT while = (f32[2], f32[2], f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -605,9 +609,10 @@ ENTRY entry {
 )";
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
-  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kInflatingTestCase));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopInvariantCodeMotion(/*hoist_constants=*/true).Run(m.get()));
   EXPECT_TRUE(simplified_loop);
@@ -617,16 +622,259 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
   EXPECT_THAT(while_body->instructions(), Not(Contains(op::Iota())));
 }
 
+// The previous call misbound its positional arguments (1.0 landed on
+// hoist_other), so the ratio was never set and the check never ran.
 TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
-  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kInflatingTestCase));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
-      WhileLoopInvariantCodeMotion(/*hoist_constants=*/false,
-                                   /*hoist_non_constants=*/true,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/true,
+                                   /*hoist_reshapes=*/false,
+                                   /*hoist_other=*/true,
                                    /*hoist_size_inflation_ratio=*/1.0)
           .Run(m.get()));
-  EXPECT_FALSE(simplified_loop);
+  // The constant is hoisted; the iota inflates and stays in the loop.
+  EXPECT_TRUE(simplified_loop);
+
+  HloComputation* while_body = m->GetComputationWithName("wide.body");
+  ASSERT_NE(while_body, nullptr);
+  EXPECT_THAT(while_body->instructions(), Contains(op::Iota()));
+  EXPECT_THAT(while_body->instructions(), Not(Contains(op::Constant())));
+}
+
+const char* const kInflatingChainTestCase = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[8], f32[8], f32[8,1024]) parameter(0)
+  invariant = f32[8] get-tuple-element(p_body), index=0
+  negate = f32[8] negate(invariant)
+  broadcast = f32[8,1024] broadcast(invariant), dimensions={0}
+  negate_broadcast = f32[8,1024] negate(broadcast)
+  ROOT root = (f32[8], f32[8], f32[8,1024]) tuple(invariant, negate, negate_broadcast)
+}
+
+condition {
+  p_cond = (f32[8], f32[8], f32[8,1024]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  param = (f32[8], f32[8], f32[8,1024]) parameter(0)
+  ROOT while = (f32[8], f32[8], f32[8,1024]) while(param), condition=condition, body=body
+}
+)";
+
+TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingChainWithoutRatio) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kInflatingChainTestCase));
+
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloInstruction* transformed_while;
+  FindOnlyWhileInstruction(m->entry_computation(), &transformed_while);
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(AnyOf(op::Negate(), op::Broadcast()))));
+  EXPECT_THAT(m->entry_computation()->instructions(),
+              Contains(op::Negate(op::Broadcast())));
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest,
+       SizeInflationRatioRejectsOnlyInflatingInstructions) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kInflatingChainTestCase));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/false,
+                                   /*hoist_reshapes=*/false,
+                                   /*hoist_other=*/true,
+                                   /*hoist_size_inflation_ratio=*/1.0)
+          .Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  // negate(invariant) does not inflate and is hoisted. The broadcast inflates
+  // and stays in the loop, so its negate has an unhoisted operand and stays
+  // too.
+  HloInstruction* transformed_while;
+  FindOnlyWhileInstruction(m->entry_computation(), &transformed_while);
+  EXPECT_THAT(
+      m->entry_computation()->instructions(),
+      AllOf(Contains(op::Negate(op::GetTupleElement(op::Parameter(0), 0))),
+            Not(Contains(op::Broadcast()))));
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              AllOf(Contains(op::Negate(op::Broadcast())),
+                    Each(Not(op::Negate(op::GetTupleElement())))));
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest,
+       SizeInflationRatioNeverHoistsLoopVaryingOperands) {
+  // Both converts shrink their input, so the ratio permits them; only the one
+  // with an invariant operand may be hoisted.
+  const char* const kHloModule = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[8,128], f32[8,128], bf16[8,128], bf16[8,128]) parameter(0)
+  invariant = f32[8,128] get-tuple-element(p_body), index=0
+  varying = f32[8,128] get-tuple-element(p_body), index=1
+  convert_invariant = bf16[8,128] convert(invariant)
+  convert_varying = bf16[8,128] convert(varying)
+  negate = f32[8,128] negate(varying)
+  ROOT root = (f32[8,128], f32[8,128], bf16[8,128], bf16[8,128]) tuple(invariant, negate, convert_invariant, convert_varying)
+}
+
+condition {
+  p_cond = (f32[8,128], f32[8,128], bf16[8,128], bf16[8,128]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  param = (f32[8,128], f32[8,128], bf16[8,128], bf16[8,128]) parameter(0)
+  ROOT while = (f32[8,128], f32[8,128], bf16[8,128], bf16[8,128]) while(param), condition=condition, body=body
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kHloModule));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/false,
+                                   /*hoist_reshapes=*/false,
+                                   /*hoist_other=*/true,
+                                   /*hoist_size_inflation_ratio=*/1.0)
+          .Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloInstruction* transformed_while;
+  FindOnlyWhileInstruction(m->entry_computation(), &transformed_while);
+  EXPECT_THAT(m->entry_computation()->instructions(),
+              Contains(op::Convert(op::GetTupleElement(op::Parameter(0), 0))));
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Contains(op::Convert(op::GetTupleElement(op::Parameter(0), 1))));
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::Convert(op::GetTupleElement(op::Parameter(0), 0)))));
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest,
+       SizeInflationCountsAllLeavesOfTupleOperands) {
+  // get-tuple-element(custom-call), index=1 produces 2048 bytes out of a 2080
+  // byte tuple operand: hoistable at ratio 1.0 only if the operand tuple's
+  // leaves are summed; a tuple counted as size 0 rejects it.
+  const char* const kHloModule = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[8], f32[8,64], f32[8,64]) parameter(0)
+  invariant_a = f32[8] get-tuple-element(p_body), index=0
+  invariant_b = f32[8,64] get-tuple-element(p_body), index=1
+  custom_call = (f32[8], f32[8,64]) custom-call(invariant_a, invariant_b), custom_call_target="Foo"
+  element = f32[8,64] get-tuple-element(custom_call), index=1
+  negate = f32[8,64] negate(element)
+  ROOT root = (f32[8], f32[8,64], f32[8,64]) tuple(invariant_a, invariant_b, negate)
+}
+
+condition {
+  p_cond = (f32[8], f32[8,64], f32[8,64]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  param = (f32[8], f32[8,64], f32[8,64]) parameter(0)
+  ROOT while = (f32[8], f32[8,64], f32[8,64]) while(param), condition=condition, body=body
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kHloModule));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/false,
+                                   /*hoist_reshapes=*/false,
+                                   /*hoist_other=*/true,
+                                   /*hoist_size_inflation_ratio=*/1.0)
+          .Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloInstruction* transformed_while;
+  FindOnlyWhileInstruction(m->entry_computation(), &transformed_while);
+  EXPECT_THAT(m->entry_computation()->instructions(),
+              Contains(op::Negate(op::GetTupleElement(op::CustomCall(), 1))));
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(AnyOf(op::CustomCall(), op::Negate()))));
+}
+
+// Runs the pass with hoist_size_inflation_ratio = 1.0 and counts the
+// shape_size_function calls, which is how often the size inflation test
+// visits an array leaf.
+class ShapeSizeCallCountTest : public WhileLoopInvariantCodeMotionTest {
+ protected:
+  static constexpr int kStateWidth = 64;
+  // Loose linear bound on shape_size_function calls: the fixed pass makes
+  // 2 * kStateWidth + 2 calls in the test below; a walk of the tuple shape per
+  // user makes about kStateWidth * kStateWidth.
+  static constexpr int kMaxLinearCalls = 4 * kStateWidth + 16;
+
+  absl::StatusOr<bool> RunWithCountingShapeSizeFunction(HloModule* module) {
+    return WhileLoopInvariantCodeMotion(
+               /*hoist_constants=*/false, /*hoist_reshapes=*/false,
+               /*hoist_other=*/true, /*hoist_size_inflation_ratio=*/1.0,
+               /*shape_size_function=*/
+               [this](const Shape& shape) {
+                 ++shape_size_calls_;
+                 return ShapeUtil::ByteSizeOfElements(shape);
+               })
+        .Run(module);
+  }
+
+  int64_t shape_size_calls_ = 0;
+};
+
+TEST_F(ShapeSizeCallCountTest, LinearInLoopStateWidth) {
+  auto m = CreateNewVerifiedModule();
+  Shape array_f32 = ShapeUtil::MakeShape(F32, {8});
+  Shape while_shape =
+      ShapeUtil::MakeTupleShape(std::vector<Shape>(kStateWidth, array_f32));
+
+  // All state elements are loop invariant except the last, which receives
+  // negate(element 0): the single hoisting candidate.
+  HloComputation* while_body = [&]() {
+    HloComputation::Builder builder(TestName() + ".while_body");
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, while_shape, "param"));
+    std::vector<HloInstruction*> root_operands;
+    for (int i = 0; i + 1 < kStateWidth; ++i) {
+      root_operands.push_back(builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(array_f32, param, i)));
+    }
+    root_operands.push_back(builder.AddInstruction(HloInstruction::CreateUnary(
+        array_f32, HloOpcode::kNegate, root_operands.front())));
+    builder.AddInstruction(HloInstruction::CreateTuple(root_operands));
+    return m->AddEmbeddedComputation(builder.Build());
+  }();
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* init_value = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, while_shape, "init_value"));
+  builder.AddInstruction(HloInstruction::CreateWhile(
+      while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
+      init_value));
+  HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
+
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       RunWithCountingShapeSizeFunction(m.get()));
+  EXPECT_TRUE(simplified_loop);
+  EXPECT_THAT(entry_computation->instructions(), Contains(op::Negate()));
+
+  // Every get-tuple-element of the state has the parameter as its operand and
+  // cannot be hoisted. Walking the kStateWidth element parameter shape for
+  // each of them would cost kStateWidth * kStateWidth calls.
+  EXPECT_GT(shape_size_calls_, 0);
+  EXPECT_LE(shape_size_calls_, kMaxLinearCalls);
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistSPMDFullToShardShape) {
@@ -675,8 +923,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistSPMDFullToShardShape) {
       init_value));
   m->AddEntryComputation(builder.Build());
   LOG(INFO) << "my_test: " << m->ToString();
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -710,11 +958,11 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
       while_init = (f32[2], f32[2], s32[]) tuple(param.0, param.0, param.1)
       ROOT while = (f32[2], f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -760,10 +1008,10 @@ TEST_F(WhileLoopInvariantCodeMotionTest, RespectFrontendAttrDisablingHoisting) {
     ROOT %tuple.39 = (f32[], f32[], f32[10,10]{1,0}) tuple(%get-tuple-element.36, %get-tuple-element.37, %Arg_2.3)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -790,11 +1038,11 @@ ENTRY entry {
   ROOT while0 = (s32[2], s32[2]) while(while_init), condition=cond, body=body, origin={({"while.5" {0}},{"while.5" {1}})}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* body = m->GetComputationWithName("body");
   HloInstruction* c = body->GetInstructionWithName("c");
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopInvariantCodeMotion{/*hoist_constants=*/true}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
@@ -825,6 +1073,67 @@ ENTRY entry {
             "{\"while.5#*/add.1\"})");
 }
 
+TEST_F(WhileLoopInvariantCodeMotionTest,
+       HoistWithOriginalValueAndCallHierarchy) {
+  const char* const hlo_string = R"(
+HloModule licm_ov_call_hierarchy_test
+
+body {
+  p_body = (s32[2], s32[2]) parameter(0)
+  gte0 = s32[2] get-tuple-element(p_body), index=0
+  c = s32[2] constant({1, 1}), origin={{"c.1"}}
+  add = s32[2] add(gte0, c), origin={{"add.1"},["inner#$"]}
+  ROOT tuple = (s32[2], s32[2]) tuple(gte0, add)
+}
+
+cond {
+  p_cond = (s32[2], s32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p_entry_0 = s32[2] parameter(0)
+  while_init = (s32[2], s32[2]) tuple(p_entry_0, p_entry_0)
+  ROOT while0 = (s32[2], s32[2]) while(while_init), condition=cond, body=body, origin={({"while.5" {0}}, {"while.5" {1}}),["w1#$"]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = m->GetComputationWithName("body");
+  HloInstruction* c = body->GetInstructionWithName("c");
+
+  ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion{/*hoist_constants=*/true}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloInstruction* transformed_while;
+  FindOnlyWhileInstruction(m->entry_computation(), &transformed_while);
+
+  HloInstruction* hoisted_c = nullptr;
+  HloInstruction* hoisted_add = nullptr;
+  for (auto* instr : m->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kConstant &&
+        instr->shape() == c->shape()) {
+      hoisted_c = instr;
+    }
+    if (instr->opcode() == HloOpcode::kAdd) {
+      hoisted_add = instr;
+    }
+  }
+  ASSERT_NE(hoisted_c, nullptr);
+  ASSERT_NE(hoisted_add, nullptr);
+  ASSERT_NE(hoisted_c->original_value(), nullptr);
+  EXPECT_EQ(hoisted_c->original_value()->ToString(),
+            "{\"w1#*/c.1\"},[\"w1#*\"]");
+  ASSERT_NE(hoisted_add->original_value(), nullptr);
+  EXPECT_EQ(hoisted_add->original_value()->ToString(),
+            "{\"w1#*/add.1\"},[\"w1#*/inner#$\"]");
+  ASSERT_NE(transformed_while->original_value(), nullptr);
+  EXPECT_EQ(transformed_while->original_value()->ToString(),
+            "({\"while.5\" {0}}, {\"while.5\" {1}}, {\"w1#*/c.1\"}, "
+            "{\"w1#*/add.1\"}),[\"w1#$\"]");
+}
+
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsGetRngSeed) {
   const char* const hlo_string = R"(
 HloModule licm_get_rng_seed_test
@@ -848,10 +1157,10 @@ ENTRY entry {
   ROOT while0 = (u64[1], u64[1]) while(p_entry_0), condition=cond, body=body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   EXPECT_THAT(m->entry_computation()->instructions(),
@@ -891,9 +1200,9 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   EXPECT_THAT(RunFileCheck(m->ToString(), hlo_string),
@@ -937,9 +1246,9 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(RunFileCheck(m->ToString(), hlo_string),
@@ -991,9 +1300,9 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   EXPECT_THAT(RunFileCheck(m->ToString(), hlo_string),

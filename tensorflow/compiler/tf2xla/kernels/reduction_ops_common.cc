@@ -49,6 +49,12 @@ XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
       ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
 }
 
+// The default pre-processor directly returns the data. This can be overridden.
+xla::XlaOp XlaReductionOp::PreprocessInput(xla::XlaBuilder* /*builder*/,
+                                           const xla::XlaOp& data) {
+  return data;
+}
+
 // The default finalizer converts the results back into the input type. This can
 // be overridden.
 xla::XlaOp XlaReductionOp::BuildFinalizer(
@@ -128,6 +134,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   CHECK_OK(DataTypeToPrimitiveType(reduction_type_, &type));
 
   auto data = xla::ConvertElementType(ctx->Input(0), type);
+  auto processed_input = PreprocessInput(b, data);
   // Call virtual method to get the initial value.
   auto initial = xla::ConvertElementType(InitialValue(b), type);
   // Make two scalar parameters of the desired type for the lambda.
@@ -137,7 +144,8 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   BuildReducer(&r, rx, ry);
   xla::XlaComputation reduction_computation = r.Build().value();
 
-  auto reduce = xla::Reduce(data, initial, reduction_computation, xla_axes);
+  auto reduce =
+      xla::Reduce(processed_input, initial, reduction_computation, xla_axes);
   auto finalized = BuildFinalizer(b, data, reduce, xla_axes);
   auto result = keep_dims_ ? xla::Reshape(finalized, final_shape) : finalized;
   ctx->SetOutput(0, result);

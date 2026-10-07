@@ -16,14 +16,19 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 
 namespace xla {
@@ -71,6 +76,35 @@ std::string HloBuffer::ToDebugString() const {
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer) {
   out << buffer.ToString();
   return out;
+}
+
+int64_t HloBuffer::ComputeSize(const BufferValue::SizeFunction& size_fn) const {
+  int64_t max_size = 0;
+  for (const HloValue* value : values_) {
+    max_size = std::max(max_size, size_fn(*value));
+  }
+  return max_size;
+}
+
+bool HloBuffer::IsHeapPressureImpacting(
+    const HloValue& value, bool alloc_constants,
+    const absl::flat_hash_set<const HloValue*>* buffers_to_assign) {
+  if (!alloc_constants &&
+      value.instruction()->opcode() == HloOpcode::kConstant) {
+    return false;
+  }
+  if (buffers_to_assign != nullptr && !buffers_to_assign->contains(&value)) {
+    return false;
+  }
+  return true;
+}
+
+bool HloBuffer::IsHeapPressureImpacting(
+    bool alloc_constants,
+    const absl::flat_hash_set<const HloValue*>* buffers_to_assign) const {
+  return absl::c_any_of(values_, [&](const HloValue* value) {
+    return IsHeapPressureImpacting(*value, alloc_constants, buffers_to_assign);
+  });
 }
 
 }  // namespace xla

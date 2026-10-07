@@ -139,8 +139,7 @@ absl::StatusOr<Assembly> CachingCompilationProvider::CompileAndLink(
 }
 
 absl::StatusOr<int> CachingCompilationProvider::GetLatestPtxIsaVersion() const {
-  return absl::UnimplementedError(
-      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
+  return delegate_->GetLatestPtxIsaVersion();
 }
 
 }  // namespace stream_executor::cuda

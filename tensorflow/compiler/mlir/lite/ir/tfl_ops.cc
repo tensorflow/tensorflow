@@ -32,13 +32,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
-#include "absl/synchronization/mutex.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -1785,10 +1783,53 @@ OpFoldResult GatherOp::fold(GatherOp::FoldAdaptor adaptor) {
 // GatherNd op
 //===----------------------------------------------------------------------===//
 
+// Returns true if `indices`, read in order, list every coordinate of the
+// leading `indices.shape[-1]` dimensions of `params_type` exactly once in
+// row-major order, and `result_type` equals `params_type`. Such a gather copies
+// `params` unchanged.
+static bool IsIdentityGatherNd(DenseIntElementsAttr indices,
+                               ShapedType params_type, Type result_type) {
+  if (!params_type.hasStaticShape() || result_type != params_type) {
+    return false;
+  }
+  auto indices_shape = indices.getType().getShape();
+  if (indices_shape.empty()) return false;
+  const int64_t depth = indices_shape.back();
+  auto params_shape = params_type.getShape();
+  if (depth <= 0 || depth > static_cast<int64_t>(params_shape.size())) {
+    return false;
+  }
+  // indices.shape[:-1] must equal params.shape[:depth] for the result shape to
+  // match params; the type equality above already guarantees the element type.
+  if (!llvm::equal(indices_shape.drop_back(), params_shape.take_front(depth))) {
+    return false;
+  }
+  llvm::SmallVector<int64_t> coord(depth, 0);
+  auto it = indices.getValues<APInt>().begin();
+  const int64_t num_indices = indices.getNumElements() / depth;
+  for (int64_t i = 0; i < num_indices; ++i) {
+    for (int64_t j = 0; j < depth; ++j, ++it) {
+      if ((*it).getSExtValue() != coord[j]) return false;
+    }
+    // Advance the expected row-major coordinate.
+    for (int64_t j = depth - 1; j >= 0; --j) {
+      if (++coord[j] < params_shape[j]) break;
+      coord[j] = 0;
+    }
+  }
+  return true;
+}
+
 OpFoldResult GatherNdOp::fold(GatherNdOp::FoldAdaptor adaptor) {
   auto params = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getParams());
   auto indices =
       mlir::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getIndices());
+
+  if (indices &&
+      IsIdentityGatherNd(indices, mlir::cast<ShapedType>(getParams().getType()),
+                         getType())) {
+    return getParams();
+  }
 
   if (!params || !indices) {
     return nullptr;
@@ -1970,6 +2011,121 @@ LogicalResult BatchMatMulOp::verify() {
            << "found invalid output dimension on col, expected "
            << expected_out_col_dim << " but got " << out_col_dim;
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BlockwiseQuantizeOp / BlockwiseDequantizeOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Returns the shape of the scale/zero-point grid implied by tiling `type` with
+// `block_shape`, or failure (after emitting a diagnostic on `op`) if the two
+// are not compatible.
+FailureOr<SmallVector<int64_t>> GetBlockGridShape(Operation* op,
+                                                  ShapedType type,
+                                                  ArrayAttr block_shape) {
+  if (!type.hasStaticShape()) {
+    return op->emitOpError("expects a statically shaped tensor, got ") << type;
+  }
+  ArrayRef<int64_t> shape = type.getShape();
+  if (block_shape.size() != shape.size()) {
+    return op->emitOpError("expects block_shape of rank ")
+           << shape.size() << ", got " << block_shape;
+  }
+
+  SmallVector<int64_t> grid_shape;
+  grid_shape.reserve(shape.size());
+  for (auto [dim, dim_size] : llvm::enumerate(shape)) {
+    auto block_attr = mlir::dyn_cast<IntegerAttr>(block_shape[dim]);
+    if (!block_attr) {
+      return op->emitOpError("expects an integer block_shape, got ")
+             << block_shape;
+    }
+    const int64_t block_size = block_attr.getInt();
+    if (block_size <= 0) {
+      return op->emitOpError("expects a positive block_shape, got ")
+             << block_shape;
+    }
+    if (dim_size % block_size != 0) {
+      return op->emitOpError("expects dimension ")
+             << dim << " (" << dim_size << ") to be divisible by block_shape["
+             << dim << "] (" << block_size << ")";
+    }
+    grid_shape.push_back(dim_size / block_size);
+  }
+  return grid_shape;
+}
+
+// Verifies that `value`, if present, is shaped like the block grid. A
+// dimension of size 1 is accepted anywhere as a broadcast.
+LogicalResult VerifyBlockGridOperand(Operation* op, Value value,
+                                     ArrayRef<int64_t> grid_shape,
+                                     StringRef name) {
+  if (!value || mlir::isa<NoneType>(value.getType())) return success();
+  auto type = mlir::dyn_cast<RankedTensorType>(value.getType());
+  if (!type) return success();
+
+  if (type.getRank() != static_cast<int64_t>(grid_shape.size())) {
+    return op->emitOpError("expects ")
+           << name << " of rank " << grid_shape.size() << ", got " << type;
+  }
+  for (auto [dim, dim_size] : llvm::enumerate(type.getShape())) {
+    if (dim_size != 1 && dim_size != grid_shape[dim]) {
+      return op->emitOpError("expects ")
+             << name << " dimension " << dim << " to be 1 or "
+             << grid_shape[dim] << ", got " << type;
+    }
+  }
+  return success();
+}
+
+}  // namespace
+
+LogicalResult BlockwiseQuantizeOp::verify() {
+  auto grid_shape = GetBlockGridShape(
+      *this, mlir::cast<ShapedType>(getInput().getType()), getBlockShape());
+  if (failed(grid_shape)) return failure();
+
+  if (failed(VerifyBlockGridOperand(*this, getScale(), *grid_shape, "scale")) ||
+      failed(VerifyBlockGridOperand(*this, getZeroPoint(), *grid_shape,
+                                    "zero_point"))) {
+    return failure();
+  }
+
+  if (getScaleType() !=
+      mlir::cast<ShapedType>(getScale().getType()).getElementType()) {
+    return emitOpError("expects the scale element type to match scale_type (")
+           << getScaleType() << ")";
+  }
+  return success();
+}
+
+LogicalResult BlockwiseDequantizeOp::verify() {
+  auto grid_shape = GetBlockGridShape(
+      *this, mlir::cast<ShapedType>(getInput().getType()), getBlockShape());
+  if (failed(grid_shape)) return failure();
+
+  if (failed(
+          VerifyBlockGridOperand(*this, getScales(), *grid_shape, "scales")) ||
+      failed(VerifyBlockGridOperand(*this, getZeroPoints(), *grid_shape,
+                                    "zero_points"))) {
+    return failure();
+  }
+
+  if (getSymmetric() && getZeroPoints() &&
+      !mlir::isa<NoneType>(getZeroPoints().getType())) {
+    auto zero_points = mlir::dyn_cast_or_null<DenseElementsAttr>(
+        getZeroPoints().getDefiningOp()
+            ? getZeroPoints().getDefiningOp()->getAttrOfType<ElementsAttr>(
+                  "value")
+            : nullptr);
+    if (zero_points && !zero_points.isSplat()) {
+      return emitOpError(
+          "expects a per-tensor zero_point when symmetric is set");
+    }
+  }
   return success();
 }
 
@@ -2811,20 +2967,8 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   } else if (auto dense_resource_elements =
                  mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
                      operands[0])) {
-    if (AsmResourceBlob* blob =
-            dense_resource_elements.getRawHandle().getBlob()) {
-      auto key = dense_resource_elements.getRawHandle().getKey();
-      if (getInput().hasOneUse()) {
-        return DenseResourceElementsAttr::get(result_type, key,
-                                              std::move(*blob));
-      }
-      auto new_blob = mlir::HeapAsmResourceBlob::allocate(
-          blob->getData().size(), /*align=*/64, true);
-      memcpy(const_cast<char*>(new_blob.getData().data()),
-             blob->getData().data(), blob->getData().size());
-      return DenseResourceElementsAttr::get(result_type, key,
-                                            std::move(new_blob));
-    }
+    return DenseResourceElementsAttr::get(
+        result_type, dense_resource_elements.getRawHandle());
   }
 
   return nullptr;
@@ -5179,7 +5323,6 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
     }
   }
 }
-
 }  // namespace
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
@@ -5222,6 +5365,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
     output_shape.push_back(input_shape[perms[i]]);
   }
 
+  const int bit_width = input_tensor.getElementType().getIntOrFloatBitWidth();
+
   if (auto dense_elements =
           mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0])) {
     // If the input tensor values are splat, then it has exactly one value.
@@ -5232,10 +5377,9 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
     }
 
     // MLIR implementation pads elements < 8 bits to 8 bits and pads non byte
-    // aligned to the nearest byte. So this is allowed.
+    // aligned to the nearest byte.
     const char* raw_input = dense_elements.getRawData().data();
-    const int element_byte_size =
-        dense_elements.getElementType().getIntOrFloatBitWidth() / 8;
+    const int element_byte_size = std::max(1, bit_width / 8);
 
     // Hold current ND index in input tensor when computing
     // permutation.
@@ -5260,43 +5404,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
         RankedTensorType::get(output_shape, input_tensor.getElementType());
     return DenseElementsAttr::getFromRawBuffer(result_type, raw_output_arr);
 
-  } else if (auto dense_resource_elements =
-                 mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
-                     operands[0])) {
-    if (AsmResourceBlob* blob =
-            dense_resource_elements.getRawHandle().getBlob()) {
-      const int element_byte_size =
-          input_tensor.getElementType().getIntOrFloatBitWidth() / 8;
-
-      // Hold current ND index in input tensor when computing
-      // permutation.
-      llvm::SmallVector<uint64_t> current_input_index(input_type.getRank());
-
-      // Allocate raw data and retrieve address of the first char in its raw
-      // buffer.
-      auto result_type =
-          RankedTensorType::get(output_shape, input_tensor.getElementType());
-      auto raw_output_blob =
-          mlir::HeapAsmResourceBlob::allocate(GetSizeInBytes(result_type),
-                                              /*align=*/64,
-                                              /*dataIsMutable=*/true);
-      ArrayRef<char> data = raw_output_blob.getDataAs<char>();
-      llvm::MutableArrayRef<char> raw_output_arr = mlir::MutableArrayRef<char>(
-          const_cast<char*>(data.data()), data.size());
-      char* raw_output = (char*)raw_output_arr.data();
-      const char* raw_input = blob->getData().data();
-      if (raw_input != nullptr) {
-        static absl::Mutex compute_permutation_mutex(absl::kConstInit);
-        absl::MutexLock lock(compute_permutation_mutex);
-        // Compute the result and write to `raw_output`.
-        ComputePermutation(perms, output_shape, raw_input, element_byte_size,
-                           /*current_axis=*/0, raw_output, current_input_index,
-                           input_type);
-        return DenseResourceElementsAttr::get(result_type,
-                                              "tfl_transpose_op_fold_result",
-                                              std::move(raw_output_blob));
-      }
-    }
+  } else if (mlir::isa<DenseResourceElementsAttr>(operands[0])) {
+    return nullptr;
   }
 
   return nullptr;

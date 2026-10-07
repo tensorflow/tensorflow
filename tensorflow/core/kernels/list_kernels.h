@@ -1012,8 +1012,24 @@ class TensorListScatter : public OpKernel {
           highest_index = i;
         }
       }
-      output_list.tensors().resize(std::max(highest_index + 1, num_elements),
-                                   Tensor(DT_INVALID));
+      // TensorListLength returns int32, so highest_index + 1 must be
+      // representable as int32 before the list is resized. Same guard as
+      // TensorListScatterIntoExistingList (#list_kernels.h).
+      OP_REQUIRES(
+          c, highest_index < std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "TensorListScatter: index ", highest_index,
+              " would produce a list length that is not representable as "
+              "int32")));
+      // Compute the required size as size_t: highest_index == INT32_MAX would
+      // overflow the signed `highest_index + 1` (undefined behavior).
+      const size_t needed_from_indices =
+          highest_index < 0 ? 0 : static_cast<size_t>(highest_index) + 1;
+      const size_t needed =
+          num_elements > 0
+              ? std::max(needed_from_indices, static_cast<size_t>(num_elements))
+              : needed_from_indices;
+      output_list.tensors().resize(needed, Tensor(DT_INVALID));
     }
 
     OP_REQUIRES_OK(c,

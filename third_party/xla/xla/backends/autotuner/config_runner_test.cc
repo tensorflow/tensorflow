@@ -43,6 +43,8 @@ namespace {
 
 using absl_testing::StatusIs;
 using ::testing::_;
+using ::testing::HasSubstr;
+using ::testing::Not;
 using ::testing::Return;
 using ::testing::SizeIs;
 
@@ -185,6 +187,72 @@ TEST_F(ConfigRunnerTest, ProfileAllRedzoneCheckFailed) {
             ConfigRunner::FailureKind::kRedzoneCheckFailed);
 }
 
+TEST_F(ConfigRunnerTest, ProfileAllWarmupRedzoneCheckFailed) {
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _)).WillOnce([] {
+    return std::make_unique<InputBuffers>();
+  });
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(absl::InternalError(
+          "Autotuning candidate rejected: kernel wrote past its allocated "
+          "buffer. Redzone mismatch in LHS redzone of buffer 0x30fd08000")));
+  EXPECT_CALL(*profiler, CheckInputBuffers(_))
+      .WillOnce(Return(absl::OkStatus()));
+
+  ConfigRunner::CorrectnessCheckOptions options;
+  options.enable_correctness_check = true;
+  ASSERT_OK_AND_ASSIGN(auto runner,
+                       ConfigRunner::Create(std::move(profiler), options));
+
+  MockCodegenBackend backend;
+  std::vector<ConfigRunner::ExecutableCandidate> candidates;
+  candidates.push_back({
+      /*config=*/{&backend, GetTestConfig("test_config_1")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+
+  ASSERT_OK_AND_ASSIGN(auto profiles,
+                       runner->ProfileAll(std::move(candidates)));
+  ASSERT_THAT(profiles, SizeIs(1));
+  ASSERT_TRUE(profiles[0].failure.has_value());
+  EXPECT_EQ(profiles[0].failure->kind,
+            ConfigRunner::FailureKind::kRedzoneCheckFailed);
+  EXPECT_EQ(profiles[0].ToProto().failure().kind(),
+            AutotuneResult::REDZONE_MODIFIED);
+  EXPECT_EQ(profiles[0].ToFailedConfigsProto().kind(),
+            autotuner::FailedConfigs::REDZONE_CHECK_FAILED);
+}
+
+TEST_F(ConfigRunnerTest, ProfileAllExecutionErrorWithInputRedzoneModified) {
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _)).WillOnce([] {
+    return std::make_unique<InputBuffers>();
+  });
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(absl::InternalError("execution crash")));
+  EXPECT_CALL(*profiler, CheckInputBuffers(_))
+      .WillOnce(Return(absl::InternalError("input redzone modified")));
+
+  ConfigRunner::CorrectnessCheckOptions options;
+  options.enable_correctness_check = true;
+  ASSERT_OK_AND_ASSIGN(auto runner,
+                       ConfigRunner::Create(std::move(profiler), options));
+
+  MockCodegenBackend backend;
+  std::vector<ConfigRunner::ExecutableCandidate> candidates;
+  candidates.push_back({
+      /*config=*/{&backend, GetTestConfig("test_config_1")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+
+  ASSERT_OK_AND_ASSIGN(auto profiles,
+                       runner->ProfileAll(std::move(candidates)));
+  ASSERT_THAT(profiles, SizeIs(1));
+  ASSERT_TRUE(profiles[0].failure.has_value());
+  EXPECT_EQ(profiles[0].failure->kind,
+            ConfigRunner::FailureKind::kRedzoneCheckFailed);
+}
+
 TEST_F(ConfigRunnerTest, FiltersWrongResultsAgainstTrusted) {
   ConfigRunner::CorrectnessCheckOptions options;
   options.enable_correctness_check = true;
@@ -225,6 +293,7 @@ TEST_F(ConfigRunnerTest, FiltersWrongResultsAgainstTrusted) {
   ASSERT_TRUE(profiles[1].failure.has_value());
   EXPECT_EQ(profiles[1].failure->kind,
             ConfigRunner::FailureKind::kWrongResults);
+  EXPECT_THAT(profiles[1].failure->message, HasSubstr("Don't match"));
 }
 
 TEST_F(ConfigRunnerTest, ClustersOutputsWhenAllBackendsUntrusted) {
@@ -274,6 +343,7 @@ TEST_F(ConfigRunnerTest, ClustersOutputsWhenAllBackendsUntrusted) {
   ASSERT_TRUE(profiles[2].failure.has_value());
   EXPECT_EQ(profiles[2].failure->kind,
             ConfigRunner::FailureKind::kWrongResults);
+  EXPECT_THAT(profiles[2].failure->message, HasSubstr("minority"));
 }
 
 TEST_F(ConfigRunnerTest, TrustedClusterWinsOverLargerUntrustedCluster) {
@@ -435,10 +505,18 @@ TEST_F(ConfigRunnerTest, UntrustedVotesForTrustedCluster) {
                        runner->ProfileAll(std::move(candidates)));
   ASSERT_THAT(profiles, SizeIs(4));
   // trusted_a is demoted because trusted_b cluster has 2 votes.
-  EXPECT_TRUE(profiles[0].failure.has_value());
+  ASSERT_TRUE(profiles[0].failure.has_value());
+  EXPECT_THAT(profiles[0].failure->message,
+              HasSubstr("Output disagrees with winning cluster"));
   EXPECT_FALSE(profiles[1].failure.has_value());
   EXPECT_FALSE(profiles[2].failure.has_value());
-  EXPECT_TRUE(profiles[3].failure.has_value());
+  ASSERT_TRUE(profiles[3].failure.has_value());
+  EXPECT_THAT(profiles[3].failure->message,
+              HasSubstr("Output disagrees with winning cluster"));
+  // When cluster 0 is not the winner, no diff report against cluster 0 is
+  // appended to avoid misleading mismatch reports.
+  EXPECT_THAT(profiles[3].failure->message,
+              Not(HasSubstr("untrusted_none vs trusted_a")));
 }
 
 TEST_F(ConfigRunnerTest, ClustersUntrustedWhenTrustedReferenceFails) {

@@ -540,6 +540,7 @@ NB_MODULE(_hlo, m) {
           "Constructs a scalar shape.", nb::arg("type"))
       .def("dimensions",
            [](const Shape& shape) { return SpanToNbTuple(shape.dimensions()); })
+      .def("has_layout", &Shape::has_layout)
       .def("layout",
            [](const Shape& shape) -> Layout { return shape.layout(); })
       .def("xla_element_type", &Shape::element_type)
@@ -737,6 +738,7 @@ NB_MODULE(_hlo, m) {
     absl::string_view name() const { return inst_->name(); }
     std::string to_string() const { return inst_->ToString(); }
     xla::HloOpcode opcode() const { return inst_->opcode(); }
+    const Shape& shape() const { return inst_->shape(); }
     std::vector<std::shared_ptr<InstructionWrapper>> users() const {
       std::vector<std::shared_ptr<InstructionWrapper>> users;
       for (const HloInstruction* user : inst_->users()) {
@@ -751,6 +753,15 @@ NB_MODULE(_hlo, m) {
             std::make_shared<InstructionWrapper>(operand, module_));
       }
       return operands;
+    }
+    std::vector<std::shared_ptr<InstructionWrapper>> control_predecessors()
+        const {
+      std::vector<std::shared_ptr<InstructionWrapper>> predecessors;
+      for (const HloInstruction* predecessor : inst_->control_predecessors()) {
+        predecessors.push_back(
+            std::make_shared<InstructionWrapper>(predecessor, module_));
+      }
+      return predecessors;
     }
 
     const HloInstruction* inst() const { return inst_; }
@@ -797,6 +808,14 @@ NB_MODULE(_hlo, m) {
       }
       return *cores;
     }
+    nb::bytes as_serialized_proto() const {
+      std::string result;
+      HloInstructionProto proto = inst_->ToProto();
+      if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+        throw XlaRuntimeError("Failed to serialize the HloInstructionProto.");
+      }
+      return nb::bytes(result.data(), result.size());
+    }
     Py_hash_t hash() const { return AbslHashToPythonHash(absl::HashOf(inst_)); }
     bool operator==(const InstructionWrapper& other) const {
       return inst_ == other.inst_;
@@ -811,8 +830,10 @@ NB_MODULE(_hlo, m) {
   hlo_instruction_class.def_prop_ro("name", &InstructionWrapper::name)
       .def("to_string", &InstructionWrapper::to_string)
       .def_prop_ro("opcode", &InstructionWrapper::opcode)
+      .def_prop_ro("shape", &InstructionWrapper::shape)
       .def("users", &InstructionWrapper::users)
       .def("operands", &InstructionWrapper::operands)
+      .def("control_predecessors", &InstructionWrapper::control_predecessors)
       .def("async_wrapped_root", &InstructionWrapper::async_wrapped_root)
       .def("get_frontend_attribute",
            &InstructionWrapper::get_frontend_attribute, nb::arg("key"))
@@ -822,6 +843,7 @@ NB_MODULE(_hlo, m) {
       .def("set_core_assignment", &InstructionWrapper::set_core_assignment,
            nb::arg("core_ids"))
       .def("core_assignment", &InstructionWrapper::core_assignment)
+      .def("as_serialized_proto", &InstructionWrapper::as_serialized_proto)
       .def("__hash__", &InstructionWrapper::hash)
       .def("__eq__", &InstructionWrapper::operator==);
 

@@ -76,6 +76,7 @@ def if_rocm_hipblaslt(x):
 
 def rocm_library(copts = [], deps = [], **kwargs):
     """Wrapper over cc_library which adds default ROCm options."""
+    deps = list(deps)
     if "@local_config_rocm//rocm:rocm_headers" not in deps:
         deps.append("@local_config_rocm//rocm:rocm_headers")
     cc_library(copts = rocm_default_copts() + copts, deps = deps, **kwargs)

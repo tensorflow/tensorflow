@@ -101,13 +101,13 @@ struct OpData {
   int32_t output_activation_max;
   // Indexes are the offset to the memory buffer in the array used to keep track
   // of the allocated temporaries.
-  int32_t im2col_index;
-  int32_t hwcn_weights_index;
-  int32_t input_quantized_index;
-  int32_t scaling_factors_index;
-  int32_t accum_scratch_index;
-  int32_t input_offset_index;
-  int32_t row_sums_index;
+  int32_t im2col_index = kTensorNotAllocated;
+  int32_t hwcn_weights_index = kTensorNotAllocated;
+  int32_t input_quantized_index = kTensorNotAllocated;
+  int32_t scaling_factors_index = kTensorNotAllocated;
+  int32_t accum_scratch_index = kTensorNotAllocated;
+  int32_t input_offset_index = kTensorNotAllocated;
+  int32_t row_sums_index = kTensorNotAllocated;
 
   bool need_hwcn_weights = false;
   bool have_weights_been_transposed = false;
@@ -469,6 +469,22 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     }
   }
 
+  if (is_hybrid && data->groups != 1) {
+    TF_LITE_ENSURE(context,
+                   filter->type == kTfLiteInt8 || filter->type == kTfLiteInt4);
+    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                      kTfLiteAffineQuantization);
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    TF_LITE_ENSURE(context, affine_quantization != nullptr);
+    TF_LITE_ENSURE(context, affine_quantization->scale != nullptr);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
+                      filter->dims->data[0]);
+    data->is_hybrid_per_channel = true;
+  }
+
   // The multi-threaded kernel supports neither dilation nor hybrid kernels, and
   // is incompatible with mutable input filters that might change between evals.
   data->supports_multithreaded_kernel =
@@ -732,9 +748,9 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
               filter->quantization.params);
       TF_LITE_ENSURE(context, affine_quantization);
       TF_LITE_ENSURE(context, affine_quantization->scale);
-      TF_LITE_ENSURE_EQ(
-          context, affine_quantization->scale->size,
-          filter->dims->data[affine_quantization->quantized_dimension]);
+      TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
+      TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
+                        filter->dims->data[0]);
       node->temporaries->data[data->input_offset_index] = data->input_offset_id;
       TfLiteTensor* input_offsets;
       TF_LITE_ENSURE_OK(

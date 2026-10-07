@@ -76,6 +76,14 @@ class HoistFusedBitcastsReshapeTest
   HoistFusedBitcastsReshapeTest() {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_gemm_fusion_v2(false);
+    return debug_options;
+  }
+
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};
@@ -121,6 +129,154 @@ ENTRY main (p0: f8e4m3fn[32,5120], p1: f8e4m3fn[5120,5120], p2: f8e4m3fn[5120,51
 )";
 
   std::unique_ptr<VerifiedHloModule> module = RunHoistFusedBitcasts(hlo);
+}
+
+// Test that callers of fusion computations have their sharding annotations
+// cleared to avoid them being assigned a sharding incompatible with their new
+// shape.
+TEST_P(HoistFusedBitcastsReshapeTest,
+       ShardingIsNotPreservedForFusionInstruction) {
+  HloOpcode opcode = GetParam();
+  absl::string_view hlo = R"(
+dot {
+  lhs = f32[4,8]{0,1} parameter(0)
+  rhs = f32[8,4]{0,1} parameter(1)
+  dot = f32[4,4]{0,1} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT output = f32[1,4,4]{0,1,2} $0(dot)
+}
+
+ENTRY entry {
+  p0 = f32[4,8]{0,1} parameter(0)
+  p1 = f32[8,4]{0,1} parameter(1)
+  ROOT fusion = f32[1,4,4] fusion(p0, p1),
+    kind=kCustom, calls=dot,
+    sharding={devices=[1,2,1]<=[2]},
+    backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"32", "block_n":"64", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+}
+)";
+
+  // HLO Verifier will throw an error if the fusion instruction has an
+  // incompatible sharding attached to it.
+  std::unique_ptr<VerifiedHloModule> module =
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+}
+
+// An inserted fusion root bitcast must not inherit the old root's sharding,
+// which may be incompatible with its new shape.
+TEST_P(HoistFusedBitcastsReshapeTest,
+       ShardingIsNotPreservedForInsertedRootBitcast) {
+  HloOpcode opcode = GetParam();
+  // This HLO is constructed so that:
+  // - ComputeRootShapeAfterHoistingBitcasts succeeds, ensuring
+  //   MaybeInsertRootBitcast inserts a bitcast at fusion's root.
+  // - Hoisting fails at concat, so after RunHoistFusedBitcasts, we observe
+  //   the result of running MaybeInsertRootBitcast.
+  absl::string_view hlo = R"(
+fusion_computation {
+  a = f32[4,8]{0,1} parameter(0)
+  b = f32[8,4]{0,1} parameter(1)
+  dot = f32[4,4]{0,1} dot(a, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_reshaped = f32[1,16]{0,1} $0(dot)
+
+  c = f32[1,8]{0,1} parameter(2)
+  d = f32[1,8]{0,1} parameter(3)
+  concat = f32[1,16]{0,1} concatenate(c, d), dimensions={1}
+
+  ROOT output = f32[1,16]{0,1} add(dot_reshaped, concat),
+    sharding={devices=[1,16]<=[16]}
+}
+
+ENTRY entry {
+  p0 = f32[4,8]{0,1} parameter(0)
+  p1 = f32[8,4]{0,1} parameter(1)
+  p2 = f32[1,8]{0,1} parameter(2)
+  p3 = f32[1,8]{0,1} parameter(3)
+  ROOT fusion = f32[1,16] fusion(p0, p1, p2, p3),
+    kind=kCustom, calls=fusion_computation,
+    backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"32", "block_n":"64", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+}
+)";
+
+  // The verifier accepts {devices=[1,16]<=[16]} for [4,4]. We manually check
+  // that the sharding is cleared afterwards.
+  std::unique_ptr<VerifiedHloModule> module =
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+
+  HloComputation* computation =
+      module->GetComputationWithName("fusion_computation");
+  ASSERT_NE(computation, nullptr);
+
+  HloInstruction* inserted_root = computation->root_instruction();
+  EXPECT_EQ(inserted_root->opcode(), HloOpcode::kBitcast);
+
+  // The original root retains its sharding, but the inserted root does not.
+  EXPECT_TRUE(inserted_root->operand(0)->has_sharding());
+  EXPECT_FALSE(inserted_root->has_sharding());
+}
+
+// Bitcasts inserted on fusion operands must not inherit the fusion caller's
+// output sharding because their shapes may differ.
+TEST_P(HoistFusedBitcastsReshapeTest,
+       ShardingIsNotPreservedForBitcastsInsertedAtCallers) {
+  HloOpcode opcode = GetParam();
+  absl::string_view hlo = R"(
+dot {
+  original_lhs = f32[1,12]{0,1} parameter(0)
+  lhs = f32[4,3]{0,1} $0(original_lhs)
+  rhs = f32[3,4]{0,1} parameter(1)
+  ROOT dot = f32[4,4]{0,1} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = f32[1,12]{0,1} parameter(0)
+  p1 = f32[3,4]{0,1} parameter(1)
+  ROOT fusion = f32[4,4] fusion(p0, p1),
+    kind=kCustom, calls=dot,
+    sharding={devices=[1,2]<=[2]},
+    backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"32", "block_n":"64", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+}
+)";
+
+  // The verifier accepts {devices=[1,2]<=[2]} for [4,3]. We manually check
+  // that the sharding is cleared afterwards.
+  std::unique_ptr<VerifiedHloModule> module =
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+
+  HloComputation* computation = module->GetComputationWithName("entry");
+  ASSERT_NE(computation, nullptr);
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_TRUE(root->has_sharding());
+
+  // The inserted operand bitcast does not inherit the fusion's sharding.
+  const HloInstruction* inserted_bitcast = root->operand(0);
+  EXPECT_EQ(inserted_bitcast->opcode(), HloOpcode::kBitcast);
+  EXPECT_FALSE(inserted_bitcast->has_sharding());
 }
 
 // Tests hoisting of bitcasts which would otherwise trigger unsatisfiable

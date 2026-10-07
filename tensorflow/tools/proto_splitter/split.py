@@ -271,7 +271,7 @@ class ComposableSplitter(Splitter):
 
     # Use the address of each chunk (python `id`) as lookup keys to the
     # ordered chunk indices.
-    chunk_indices = {id(chunk): i for i, chunk in enumerate(self._chunks)}  # pyrefly: ignore[bad-argument-type]
+    chunk_indices = {id(chunk): i for i, chunk in enumerate(self._chunks)}  # pyrefly: ignore[bad-argument-type, not-iterable]
 
     to_fix = [self._chunked_message]
     while to_fix:

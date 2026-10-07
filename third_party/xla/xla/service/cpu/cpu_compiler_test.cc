@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -44,8 +43,8 @@ TEST_F(CpuCompilerTest, RecordsStreamzStackTrace) {
     GTEST_SKIP() << "Streamz is not supported in OSS.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
     HloModule test
     ENTRY main {
       p = f32[10]{0} parameter(0)
@@ -80,8 +79,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
 
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
@@ -100,6 +99,7 @@ ENTRY main {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.add_xla_cpu_experimental_ynn_fusion_type(
       xla::DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  debug_options.set_xla_cpu_experimental_onednn_custom_call(false);
   debug_options.mutable_xla_backend_extra_options()->insert(
       {"xla_is_host_offload", "true"});
   config.set_debug_options(debug_options);
@@ -127,7 +127,7 @@ TEST_F(CpuCompilerTest, PermutationSortConvertedToScatter) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     compare2 {
@@ -163,6 +163,22 @@ TEST_F(CpuCompilerTest, PermutationSortConvertedToScatter) {
   EXPECT_EQ(sort_count, 1);
 
   EXPECT_TRUE(Run(hlo, /*run_hlo_passes=*/true));
+}
+
+TEST_F(CpuCompilerTest, CompilesElementalOpsWithFusionWrapperPassDisabled) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    HloModule test
+    ENTRY main {
+      p0 = f32[8]{0} parameter(0)
+      p1 = f32[8]{0} parameter(1)
+      ROOT add = f32[8]{0} add(p0, p1)
+    }
+  )"));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "fusion-wrapper");
+
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
 
 }  // namespace

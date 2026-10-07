@@ -47,7 +47,9 @@ namespace gpu {
 
 using CudnnBackendConfig = stream_executor::dnn::AlgorithmProto;
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::Gt;
+using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -101,6 +103,22 @@ absl::string_view kTritonGemmFusionHlo = R"hlo(
     p0 = f32[3,28,32] parameter(0)
     p1 = f32[3,28,32] parameter(1)
     _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
+      backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
+  })hlo";
+
+absl::string_view kF64GemmFusionHlo = R"hlo(
+  fusion1 {
+    p0 = f64[3,28,32] parameter(0)
+    p1 = f64[3,28,32] parameter(1)
+    ROOT d = f64[3,32,32] dot(p0, p1),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  }
+
+  e {
+    p0 = f64[3,28,32] parameter(0)
+    p1 = f64[3,28,32] parameter(1)
+    ROOT _ = f64[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
       backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
   })hlo";
 
@@ -213,6 +231,15 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromTritonGemmFusion) {
       backend_->GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
+}
+
+TEST_F(CudnnBackendTest, GetSupportedConfigsFromF64GemmFusionReturnsEmpty) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kF64GemmFusionHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_->GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()));
+  EXPECT_THAT(configs, IsOkAndHolds(IsEmpty()));
 }
 
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromScaledDotGemmFusion) {

@@ -215,8 +215,8 @@ struct Result {
 
 class RaggedDotDimensionAdapter {
   explicit RaggedDotDimensionAdapter(const HloInstruction& ragged_dot,
-                                     RaggedDotDimensionNumbers dums)
-      : ragged_dot_(ragged_dot), dums_(dums) {}
+                                     RaggedDotDimensionNumbers dnums)
+      : ragged_dot_(ragged_dot), dnums_(dnums) {}
 
  public:
   const HloInstruction& ragged_dot_;
@@ -239,6 +239,11 @@ class RaggedDotDimensionAdapter {
     return RaggedDotDimensionAdapter{*maybe_ragged_dot, dnums};
   }
 
+  // Returns true if this is a weight gradient (wgrad) ragged dot, i.e. the
+  // ragged dimension is also the contracting dimension (kRaggedContracting
+  // mode).
+  bool IsWgrad() const { return IsRaggedDotWgrad(dnums_); }
+
   std::optional<Result> DimensionsAndStrides(const HloInstruction& hlo) {
     // placeholder FP32 data type here, it is not used
     auto desc = se::dnn::TensorDescriptor::For(
@@ -256,29 +261,69 @@ class RaggedDotDimensionAdapter {
     if (!is_output) {
       operand_idx = ragged_dot_.operand_index(&hlo);
     }
-    if (is_output || operand_idx == 0) {
-      // input & output
-      fixed_dims = {1, dims[0], dims[1]};
-      fixed_strides = {dims[0] * strides[0], strides[0], strides[1]};
-    } else if (operand_idx == 1) {
-      // weight
-      const auto& dot_dims = dums_.dot_dimension_numbers();
-      const int rhs_contracting_dim = dot_dims.rhs_contracting_dimensions()[0];
-      const int rhs_non_contracting_dim =
-          GetNonContractingDims(ragged_dot_.operand(1)->shape(),
-                                dums_.rhs_group_dimensions(),
-                                dot_dims.rhs_contracting_dimensions())
-              .value()[0];
-      fixed_dims = {dims[0], dims[rhs_contracting_dim],
-                    dims[rhs_non_contracting_dim]};
-      fixed_strides = {strides[0], strides[rhs_contracting_dim],
-                       strides[rhs_non_contracting_dim]};
-    } else if (operand_idx == 2) {
-      // group size
-      fixed_dims = {dims[0], 1, 1};
-      fixed_strides = {1, 1, 1};
+
+    if (IsWgrad()) {
+      // Wgrad (kRaggedContracting): operand(0)=input [M,K],
+      // operand(1)=doutput [M,N], operand(2)=group_offset [G],
+      // output=dweight [G,K,N].
+      if (is_output) {
+        // dweight [G, K, N]
+        fixed_dims = dims;
+        fixed_strides = strides;
+      } else if (operand_idx == 0 || operand_idx == 1) {
+        // input [M, K] or doutput [M, N] → [1, M, K_or_N]. M isn't
+        // guaranteed to be dim 0: PadWgradForCuDNNAlignment (in
+        // ragged_dot_fusion_rewriter.cc) may transpose an operand so that M
+        // ends up at dim 1 instead, so locate it via dnums rather than
+        // assuming a fixed position.
+        int m_dim = operand_idx == 0 ? dnums_.lhs_ragged_dimensions()[0]
+                                     : dnums_.dot_dimension_numbers()
+                                           .rhs_contracting_dimensions()[0];
+        int other_dim = 1 - m_dim;
+        fixed_dims = {1, dims[m_dim], dims[other_dim]};
+        fixed_strides = {strides[m_dim] > strides[other_dim]
+                             ? dims[m_dim] * strides[m_dim]
+                             : dims[other_dim] * strides[other_dim],
+                         strides[m_dim], strides[other_dim]};
+      } else if (operand_idx == 2) {
+        // group_offset [G] → [G, 1, 1]
+        fixed_dims = {dims[0], 1, 1};
+        fixed_strides = {1, 1, 1};
+      } else {
+        return std::nullopt;
+      }
     } else {
-      return std::nullopt;
+      // Forward (kRaggedNonContracting): operand(0)=input [M,K],
+      // operand(1)=weight [G,K,N], operand(2)=group_offset [G],
+      // output [M,N].
+      if (is_output || operand_idx == 0) {
+        // input [M, K] & output [M, N]  → [1, M, K_or_N]
+        int m_dim = operand_idx == 0 ? dnums_.lhs_ragged_dimensions()[0] : 0;
+        int other_dim = 1 - m_dim;
+        fixed_dims = {1, dims[m_dim], dims[other_dim]};
+        fixed_strides = {strides[m_dim] > strides[other_dim]
+                             ? dims[m_dim] * strides[m_dim]
+                             : dims[other_dim] * strides[other_dim],
+                         strides[m_dim], strides[other_dim]};
+      } else if (operand_idx == 1) {
+        // weight [G, K, N]
+        const auto& dot_dims = dnums_.dot_dimension_numbers();
+        const int g_dim = dnums_.rhs_group_dimensions()[0];
+        const int k_dim = dot_dims.rhs_contracting_dimensions()[0];
+        const int n_dim =
+            GetNonContractingDims(ragged_dot_.operand(1)->shape(),
+                                  dnums_.rhs_group_dimensions(),
+                                  dot_dims.rhs_contracting_dimensions())
+                .value()[0];
+        fixed_dims = {dims[g_dim], dims[k_dim], dims[n_dim]};
+        fixed_strides = {strides[g_dim], strides[k_dim], strides[n_dim]};
+      } else if (operand_idx == 2) {
+        // group_offset [G] → [G, 1, 1]
+        fixed_dims = {dims[0], 1, 1};
+        fixed_strides = {1, 1, 1};
+      } else {
+        return std::nullopt;
+      }
     }
 
     Result result;
@@ -288,7 +333,7 @@ class RaggedDotDimensionAdapter {
   }
 
  private:
-  RaggedDotDimensionNumbers dums_;
+  RaggedDotDimensionNumbers dnums_;
 };
 
 class GemmDimensionAdapter {
@@ -453,6 +498,16 @@ class GemmDimensionAdapter {
       result.strides[one_sized_dim_idx] = result.sizes[1] * result.sizes[2];
     }
 
+    // For 2D tensors with an implicit batch dimension, set the batch stride to
+    // the total packed size of the non-batch dimensions as required by cuDNN
+    // for operations like block-scale dequantization.
+    if (dim_indices[kBatchDimensionIndex] == -1 &&
+        result.sizes[kBatchDimensionIndex] == 1) {
+      result.strides[kBatchDimensionIndex] =
+          std::max(result.sizes[1] * result.strides[1],
+                   result.sizes[2] * result.strides[2]);
+    }
+
     if (!slicing_is_present) {
       result.slices.reset();
     }
@@ -529,6 +584,32 @@ class ConvDimensionAdapter {
     return -1;
   }
 
+  const HloInstruction* get_broadcast_user(const HloInstruction* hlo) {
+    // Trace through single-user chains that preserve the 1D dimensions
+    // (e.g. hlo -> elementwise -> ... -> broadcast).
+    const HloInstruction* current = hlo;
+    while (current->user_count() == 1) {
+      const HloInstruction* user = current->users()[0];
+      if (user->IsElementwise() &&
+          ShapeUtil::SameDimensions(user->shape(), hlo->shape())) {
+        current = user;
+        continue;
+      }
+      break;
+    }
+
+    auto all_users_are_broadcast =
+        !current->users().empty() &&
+        absl::c_all_of(current->users(), [](const HloInstruction* u) {
+          return u->opcode() == HloOpcode::kBroadcast;
+        });
+    if (all_users_are_broadcast) {
+      return current->users()[0];
+    }
+
+    return nullptr;
+  };
+
   std::optional<Result> DimensionsAndStrides(const HloInstruction& hlo) {
     int64_t spatial_dims =
         std::max<int64_t>(2, dums_.input_spatial_dimensions_size());
@@ -549,9 +630,8 @@ class ConvDimensionAdapter {
 
       // If the parameter is consumed by a broadcast, map its dimensions to the
       // corresponding cuDNN canonical axes (N, C, spatial...).
-      if (hlo.user_count() == 1 &&
-          hlo.users()[0]->opcode() == HloOpcode::kBroadcast) {
-        const auto& bcast_dims = hlo.users()[0]->dimensions();
+      if (const HloInstruction* broadcast = get_broadcast_user(&hlo)) {
+        const auto& bcast_dims = broadcast->dimensions();
         for (int i = 0; i < bcast_dims.size(); ++i) {
           int64_t cudnn_dim = HloDimToCudnnDim(bcast_dims[i]);
           if (cudnn_dim >= 0 && cudnn_dim < cudnn_rank) {
@@ -559,15 +639,18 @@ class ConvDimensionAdapter {
             result.strides[cudnn_dim] = 1;
           }
         }
-      } else if (hlo.shape().dimensions().size() == 1) {
-        // Fallback for un-broadcasted 1D parameters: assume channel bias [1, C,
-        // 1, 1].
+        return result;
+      }
+
+      // Fallback for un-broadcasted 1D parameters: assume channel bias [1, C,
+      // 1, 1].
+      if (hlo.shape().dimensions().size() == 1) {
         result.sizes[1] = hlo.shape().dimensions(0);
         result.strides[1] = 1;
-      } else {
-        return std::nullopt;
+        return result;
       }
-      return result;
+
+      return std::nullopt;
     }
     // Placeholder FP32 data type here, it is not used.
     auto desc = se::dnn::TensorDescriptor::For(
@@ -831,10 +914,14 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
       // and int32 = conv(int8, int8)
       hlo_to_cudnn[hlo] = operand(0);
       continue;
-    } else if (HloPredicateIsOp<HloOpcode::kParameter>(hlo)) {
+    }
+
+    if (HloPredicateIsOp<HloOpcode::kParameter>(hlo)) {
       CHECK(hlo_to_cudnn.contains(hlo));
       continue;
-    } else if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
+    }
+
+    if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
       if (hlo->user_count() != 1 ||
           !IsWorkspaceAllocationRoot(*hlo->users()[0])) {
         return absl::UnimplementedError(
@@ -843,7 +930,9 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
                          hlo->ToString()));
       }
       continue;
-    } else if (HloPredicateIsOp<HloOpcode::kTuple>(hlo)) {
+    }
+
+    if (HloPredicateIsOp<HloOpcode::kTuple>(hlo)) {
       if (!IsWorkspaceAllocationRoot(*hlo) && !IsAmaxRoot(*hlo)) {
         return absl::UnimplementedError(
             absl::StrCat("Tuples are only expected at outputs for workspace "
@@ -851,9 +940,17 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
                          hlo->ToString()));
       }
       continue;
-    } else if (HloPredicateIsOp<HloOpcode::kConstant>(hlo)) {
+    }
+
+    if (HloPredicateIsOp<HloOpcode::kConstant>(hlo)) {
+      const Shape& root_shape = computation.root_instruction()->shape();
+      const Shape& output_shape =
+          root_shape.IsTuple() ? root_shape.tuple_shapes(0) : root_shape;
+      int64_t rank = std::max<int64_t>(3, output_shape.dimensions().size());
       ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
-                       HandleConstantHloToCudnnGraph(*hlo, graph));
+                       HandleConstantHloToCudnnGraph(*hlo, graph, rank));
+      ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+                       HandleConstantHloToCudnnGraph(*hlo, graph, rank));
     } else if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
                                 HloOpcode::kTranspose, HloOpcode::kCopy,
                                 HloOpcode::kSlice>(hlo)) {
@@ -1064,14 +1161,29 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
                          PrimitiveType_Name(hlo->shape().element_type()),
                          " in instruction: ", hlo->ToString()));
       }
-      auto moe_grouped_matmul_attr =
-          graph::Moe_grouped_matmul_attributes()
-              .set_mode(fe::MoeGroupedMatmulMode_t::NONE)
-              .set_compute_data_type(compute_dtype.value())
-              .set_top_k(1);
-      hlo_to_cudnn[hlo] =
-          graph.moe_grouped_matmul(operand(0), operand(1), operand(2), nullptr,
-                                   nullptr, moe_grouped_matmul_attr);
+      if (ragged_dot_adapter->IsWgrad()) {
+        // Wgrad: operand(0)=input/token, operand(1)=doutput,
+        // operand(2)=first_token_offset. cuDNN takes (doutput, token, offset).
+        // moe_grouped_matmul_bwd was added to the cuDNN frontend in v1.22.1.
+#if CUDNN_FRONTEND_VERSION >= 12201
+        hlo_to_cudnn[hlo] = graph.moe_grouped_matmul_bwd(
+            operand(1), operand(0), operand(2),
+            graph::Moe_grouped_matmul_bwd_attributes().set_compute_data_type(
+                compute_dtype.value()));
+#else
+        return absl::UnimplementedError(
+            "moe_grouped_matmul_bwd requires cuDNN frontend 1.22.1+.");
+#endif  // CUDNN_FRONTEND_VERSION >= 12201
+      } else {
+        auto moe_grouped_matmul_attr =
+            graph::Moe_grouped_matmul_attributes()
+                .set_mode(fe::MoeGroupedMatmulMode_t::NONE)
+                .set_compute_data_type(compute_dtype.value())
+                .set_top_k(1);
+        hlo_to_cudnn[hlo] =
+            graph.moe_grouped_matmul(operand(0), operand(1), operand(2),
+                                     nullptr, nullptr, moe_grouped_matmul_attr);
+      }
     } else if (HloPredicateIsOp<HloOpcode::kReduce>(hlo)) {
       hlo_to_cudnn[hlo] = graph.reduction(
           operand(0), graph::Reduction_attributes()

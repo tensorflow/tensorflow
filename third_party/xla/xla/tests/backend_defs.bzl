@@ -17,10 +17,7 @@
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_google")
-load(
-    "//xla/tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
+load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -34,6 +31,7 @@ NVIDIA_GPU_BACKENDS = [
     "b200",
     "gb200",
     "gb300",
+    "vr200",
 ] + if_google([], ["rtx6000pro"])
 
 # The generic "gpu" backend includes the actual backends in this list.
@@ -44,6 +42,7 @@ NVIDIA_GPU_DEFAULT_BACKENDS = [
     "b200",
     "gb200",
     "gb300",
+    "vr200",
 ] + if_google([], ["rtx6000pro"])
 
 AMD_GPU_DEFAULT_BACKENDS = ["amdgpu_any"]
@@ -74,7 +73,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         new_disabled_backends.extend(NVIDIA_GPU_BACKENDS)
 
     new_backend_tags = {key: value for key, value in backend_tags.items() if key != "gpu"}
-    gpu_backend_tags = backend_tags.get("gpu", tf_gpu_tests_tags())
+    gpu_backend_tags = backend_tags.get("gpu", if_google(["gpu", "notsan"], tf_gpu_tests_tags()))
     for key in NVIDIA_GPU_BACKENDS:
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 
@@ -93,6 +92,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         "b200": (10, 0),
         "gb200": (10, 0),
         "gb300": (10, 3),
+        "vr200": (10, 7),
         "rtx6000pro": (12, 0),
     }
     for gpu_backend in NVIDIA_GPU_BACKENDS:

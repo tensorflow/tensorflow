@@ -1565,7 +1565,6 @@ cc_library(
         "@xla//xla/service:hlo_proto_cc_impl",
         "@xla//xla/service:metrics_proto_cc_impl",
         "@xla//xla/service:buffer_assignment_proto_cc_impl",
-        "@xla//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "@xla//xla/service/gpu:backend_configs_cc_impl",
         "@xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@xla//xla/stream_executor:device_description_proto_cc_impl",

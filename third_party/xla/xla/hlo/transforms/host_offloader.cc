@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -139,8 +140,13 @@ bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
     const HloInstruction* instruction) const {
   if (instruction->opcode() == HloOpcode::kReduce) {
     // TODO(b/333902007): Remove this once trivial reduces no longer appear.
+    // A variadic reduce has a tuple shape; the verifier guarantees all its
+    // elements have the same dimensions, so the first one is representative.
+    const Shape& output_shape = instruction->shape().IsTuple()
+                                    ? instruction->shape().tuple_shapes(0)
+                                    : instruction->shape();
     return ShapeUtil::TrueNumDimensions(instruction->operand(0)->shape()) ==
-           ShapeUtil::TrueNumDimensions(instruction->shape());
+           ShapeUtil::TrueNumDimensions(output_shape);
   }
   if (instruction->opcode() == HloOpcode::kReshape) {
     return ShapeUtil::ReshapeIsBitcast(instruction->operand(0)->shape(),
@@ -179,6 +185,8 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   // std::vector<HloInstruction*> move_to_host_dynamic_update_slices;
   HloInstruction* starting_instruction =
       starting_instruction_and_index.instruction;
+  const CallGraph& call_graph =
+      GetOrBuildCallGraph(starting_instruction->GetModule());
   std::queue<InstructionAndShapeIndex> queue;
   absl::flat_hash_map<InstructionAndShapeIndex, InstructionAndShapeIndex>
       previous;
@@ -230,10 +238,8 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
         // When setting the memory space of a parameter, also set the memory
         // space of the call site of the computation with this parameter if that
         // caller is an async-start.
-        std::unique_ptr<CallGraph> call_graph =
-            CallGraph::Build(instruction->GetModule());
         std::vector<HloInstruction*> callers =
-            call_graph->GetComputationCallers(instruction->parent());
+            call_graph.GetComputationCallers(instruction->parent());
         for (HloInstruction* caller : callers) {
           if (caller->opcode() == HloOpcode::kAsyncStart) {
             ShapeIndex tmp_index = instruction_and_shape_index.shape_index;
@@ -338,9 +344,18 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       const Shape& output_shape = ShapeUtil::GetSubshape(
           instruction->GetModule()->entry_computation_layout().result_shape(),
           instruction_and_shape_index.shape_index);
-      CHECK(output_shape.has_layout())
-          << "Expecting output shape of entry computation to have a layout.";
-      if (output_shape.layout().memory_space() == Layout::kHostMemorySpace) {
+      // The output may be a tuple (e.g. a variadic reduce is the root); it is
+      // output streamed when every leaf is in host memory.
+      bool output_in_host_memory = true;
+      ShapeUtil::ForEachLeafShape(
+          output_shape, [&](const Shape& leaf, const ShapeIndex&) {
+            CHECK(leaf.has_layout())
+                << "Expecting output shape of entry computation to have a "
+                   "layout.";
+            output_in_host_memory &=
+                leaf.layout().memory_space() == Layout::kHostMemorySpace;
+          });
+      if (output_in_host_memory) {
         VLOG(2) << absl::StreamFormat(
             "Memory offloaded starting from %s is output streamed",
             starting_instruction_and_index.ToString());
@@ -357,9 +372,9 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           starting_instruction->name());
     }
     // Push successors onto the queue to be visited.
-    ABSL_ASSIGN_OR_RETURN(
-        const std::vector<InstructionAndShapeIndex> successors,
-        host_offload_utils::GetSuccessors(instruction_and_shape_index));
+    ABSL_ASSIGN_OR_RETURN(const std::vector<InstructionAndShapeIndex> successors,
+                     host_offload_utils::GetSuccessors(
+                         instruction_and_shape_index, call_graph));
     for (const InstructionAndShapeIndex& successor : successors) {
       if (VLOG_IS_ON(1)) {
         previous.emplace(successor, instruction_and_shape_index);
@@ -385,6 +400,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   if (insert_copy_before) {
     const std::vector<InstructionAndShapeIndex> predecessors =
         host_offload_utils::GetPredecessors(starting_instruction_and_index,
+                                            call_graph,
                                             operand_index.value_or(0));
     CHECK_EQ(predecessors.size(), 1);
     ABSL_ASSIGN_OR_RETURN(
@@ -607,10 +623,9 @@ absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
     // To insert a copy between an instruction and a parameter means we actually
     // want to insert a copy between the instruction and the call site of the
     // computation with this parameter.
-    std::unique_ptr<CallGraph> call_graph =
-        CallGraph::Build(after_instruction->GetModule());
-    auto callers =
-        call_graph->GetComputationCallers(after_instruction->parent());
+    const std::vector<HloInstruction*> callers =
+        GetOrBuildCallGraph(after_instruction->GetModule())
+            .GetComputationCallers(after_instruction->parent());
     for (HloInstruction* caller : callers) {
       const auto indices =
           caller->OperandIndices(before_instruction_and_index.instruction);
@@ -686,10 +701,12 @@ HostOffloader::GetStartingInstructions(
   // 2. Does "normal" memory offloading.
   std::vector<InstructionAndShapeIndex> result;
   std::queue<InstructionAndShapeIndex> queue;
+  const CallGraph& call_graph =
+      GetOrBuildCallGraph(custom_call_instruction->GetModule());
   ABSL_ASSIGN_OR_RETURN(
       const std::vector<InstructionAndShapeIndex> successors_of_custom_call,
       host_offload_utils::GetSuccessors(
-          InstructionAndShapeIndex(custom_call_instruction)));
+          InstructionAndShapeIndex(custom_call_instruction), call_graph));
   for (const InstructionAndShapeIndex& successor : successors_of_custom_call) {
     queue.push(successor);
   }
@@ -708,8 +725,9 @@ HostOffloader::GetStartingInstructions(
       continue;
     }
     // Is a logical bitcast/reshape, we won't offload this yet.
-    ABSL_ASSIGN_OR_RETURN(const std::vector<InstructionAndShapeIndex> successors,
-                     host_offload_utils::GetSuccessors(instruction_and_shape));
+    ABSL_ASSIGN_OR_RETURN(
+        const std::vector<InstructionAndShapeIndex> successors,
+        host_offload_utils::GetSuccessors(instruction_and_shape, call_graph));
     for (const InstructionAndShapeIndex& successor : successors) {
       queue.push(successor);
     }
@@ -725,9 +743,11 @@ absl::StatusOr<bool> HostOffloader::SliceLeadsToMoveToDeviceCustomCall(
         slice->opcode() == HloOpcode::kSlice)
       << "This function must only be called with a slice or dynamic slice.";
   std::queue<InstructionAndShapeIndex> queue;
+  const CallGraph& call_graph = GetOrBuildCallGraph(slice->GetModule());
   ABSL_ASSIGN_OR_RETURN(
       const std::vector<InstructionAndShapeIndex> successors_of_slice,
-      host_offload_utils::GetSuccessors(InstructionAndShapeIndex(slice)));
+      host_offload_utils::GetSuccessors(InstructionAndShapeIndex(slice),
+                                        call_graph));
   for (const InstructionAndShapeIndex& successor : successors_of_slice) {
     queue.push(successor);
   }
@@ -750,8 +770,9 @@ absl::StatusOr<bool> HostOffloader::SliceLeadsToMoveToDeviceCustomCall(
           HloOpcodeString(slice->opcode()), slice->name(), slice->name());
       return false;
     }
-    ABSL_ASSIGN_OR_RETURN(const std::vector<InstructionAndShapeIndex> successors,
-                     host_offload_utils::GetSuccessors(instruction_and_shape));
+    ABSL_ASSIGN_OR_RETURN(
+        const std::vector<InstructionAndShapeIndex> successors,
+        host_offload_utils::GetSuccessors(instruction_and_shape, call_graph));
     for (const InstructionAndShapeIndex& successor : successors) {
       queue.push(successor);
     }
@@ -773,6 +794,8 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
   // Walk the graph up. We expect to find a broadcast. Also, while walking up
   // the graph, set host memory space on everything between the AllocateBuffer
   // and the DynamicUpdateSlice.
+  const CallGraph& call_graph =
+      GetOrBuildCallGraph(dynamic_update_slice->GetModule());
   std::queue<InstructionAndShapeIndex> queue;
   queue.push(InstructionAndShapeIndex(dynamic_update_slice));
   std::optional<InstructionAndShapeIndex> previous_instruction_and_shape =
@@ -807,19 +830,17 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // Buffer comes from one parameter. Stop the process.
           return absl::OkStatus();
         }
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Entry computation parameter \"%s\" (shape index "
-                            "%s) is not in host memory space.",
-                            instruction->name(), shape_index.ToString()));
+        return InvalidArgument(
+            "Entry computation parameter \"%s\" (shape index "
+            "%s) is not in host memory space.",
+            instruction->name(), shape_index.ToString());
       }
 
       // If this is a parameter of a while_body, we also need to find the
       // matching parameter in the while_condition and set the memory spaces
       // there.
-      std::unique_ptr<CallGraph> call_graph =
-          CallGraph::Build(instruction->GetModule());
       const std::vector<HloInstruction*> callers =
-          call_graph->GetComputationCallers(instruction->parent());
+          call_graph.GetComputationCallers(instruction->parent());
       for (HloInstruction* caller : callers) {
         if (caller->opcode() == HloOpcode::kWhile) {
           // This parameter belongs to a while.
@@ -851,10 +872,10 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
             nested_queue.pop();
             if (!host_offload_utils::IsValidDuringPureMemoryOffload(
                     nested_instruction_and_shape.instruction)) {
-              return absl::InvalidArgumentError(absl::StrFormat(
+              return InvalidArgument(
                   "Tensor which is moved to host is used by an invalid "
                   "instruction (\"%s\") during while condition body.",
-                  nested_instruction_and_shape.instruction->name()));
+                  nested_instruction_and_shape.instruction->name());
             }
             SetMemorySpace(
                 ShapeUtil::GetMutableSubshape(
@@ -863,8 +884,8 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                 Layout::kHostMemorySpace);
             ABSL_ASSIGN_OR_RETURN(
                 const std::vector<InstructionAndShapeIndex> successors,
-                host_offload_utils::GetSuccessors(
-                    nested_instruction_and_shape));
+                host_offload_utils::GetSuccessors(nested_instruction_and_shape,
+                                                  call_graph));
             for (const InstructionAndShapeIndex& successor : successors) {
               nested_queue.push(successor);
             }
@@ -888,9 +909,10 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       // instruction that we're walking up the graph from.
       CHECK(previous_instruction_and_shape.has_value())
           << "We expect to have a previous instruction at this point.";
-      ABSL_ASSIGN_OR_RETURN(std::vector<InstructionAndShapeIndex> successors,
-                       host_offload_utils::GetSuccessors(
-                           InstructionAndShapeIndex(instruction, shape_index)));
+      ABSL_ASSIGN_OR_RETURN(
+          std::vector<InstructionAndShapeIndex> successors,
+          host_offload_utils::GetSuccessors(
+              InstructionAndShapeIndex(instruction, shape_index), call_graph));
       for (const InstructionAndShapeIndex& successor : successors) {
         if (ShapeUtil::GetSubshape(successor.instruction->shape(),
                                    successor.shape_index)
@@ -944,7 +966,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       return absl::OkStatus();
     }
     const std::vector<InstructionAndShapeIndex> predecessors =
-        host_offload_utils::GetPredecessors(instruction_and_shape);
+        host_offload_utils::GetPredecessors(instruction_and_shape, call_graph);
     for (const InstructionAndShapeIndex& predecessor : predecessors) {
       HloInstruction* predecessor_instruction = predecessor.instruction;
       if (predecessor_instruction->opcode() == HloOpcode::kBroadcast) {
@@ -1024,10 +1046,10 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
     }
   }
   if (!found_broadcast) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("DynamicUpdateSlice \"%s\"'s first operand is not the "
-                        "result of a broadcast.",
-                        dynamic_update_slice->name()));
+    return InvalidArgument(
+        "DynamicUpdateSlice \"%s\"'s first operand is not the "
+        "result of a broadcast.",
+        dynamic_update_slice->name());
   }
   return absl::OkStatus();
 }
@@ -1116,9 +1138,8 @@ absl::Status ValidateAsyncComputationStructure(HloComputation* computation) {
       continue;
     }
 
-    return absl::InternalError(
-        absl::StrCat("Unexpected instruction found in async computation: ",
-                     instr->ToString()));
+    return InternalStrCat("Unexpected instruction found in async computation: ",
+                          instr->ToString());
   }
 
   return absl::OkStatus();
@@ -1243,6 +1264,7 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
   const Shape& entry_computation_shape =
       module->entry_computation_layout().result_layout().shape();
+  const CallGraph& call_graph = GetOrBuildCallGraph(module);
 
   // We collect all usages per output index, stopping at any non host
   // instruction.
@@ -1306,11 +1328,12 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
             }
           }
 
-          ABSL_ASSIGN_OR_RETURN(
-              std::vector<InstructionAndShapeIndex> successors,
-              host_offload_utils::GetSuccessors(InstructionAndShapeIndex(
-                  instruction_and_shape_index.instruction,
-                  instruction_and_shape_index.shape_index)));
+          ABSL_ASSIGN_OR_RETURN(std::vector<InstructionAndShapeIndex> successors,
+                           host_offload_utils::GetSuccessors(
+                               InstructionAndShapeIndex(
+                                   instruction_and_shape_index.instruction,
+                                   instruction_and_shape_index.shape_index),
+                               call_graph));
 
           // Check if any of the successors needs to be on device.
           for (InstructionAndShapeIndex& successor : successors) {
@@ -1495,9 +1518,19 @@ absl::StatusOr<bool> HostOffloader::HandlePallasKernels(HloModule* module) {
   return changed;
 }
 
+const CallGraph& HostOffloader::GetOrBuildCallGraph(const HloModule* module) {
+  if (call_graph_ == nullptr) {
+    call_graph_ = CallGraph::Build(module);
+  }
+  return *call_graph_;
+}
+
 absl::StatusOr<bool> HostOffloader::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Dropped on every exit so that no run sees another run's graph.
+  absl::Cleanup drop_call_graph = [this] { call_graph_.reset(); };
+
   // Start by removing all host memory space from all shapes. Host memory space
   // might have been set by other passes, however, this pass is the one which is
   // solely responsible for the propagation of host memory space throughout the

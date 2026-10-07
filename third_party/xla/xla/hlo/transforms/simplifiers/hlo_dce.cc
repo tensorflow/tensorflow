@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -42,6 +43,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/shape.h"
@@ -168,6 +171,31 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
                         : ShapeUtil::MakeTupleShape(tuple_shapes);
   *fusion_instruction->mutable_shape() = std::move(new_shape);
 
+  if (std::shared_ptr<OriginalValue> old_original_value =
+          fusion_instruction->original_value()) {
+    if (!old_original_value->is_synthetic_call()) {
+      if (tuple_shapes.size() == 1) {
+        int64_t old_idx = *used_tuple_elements.begin();
+        auto new_original_value =
+            std::make_shared<OriginalValue>(fusion_instruction->shape());
+        if (old_original_value->tree().find({old_idx}) !=
+            old_original_value->tree().end()) {
+          new_original_value->mutable_tree()->CopySubtreeFrom(
+              old_original_value->tree(), {old_idx}, {});
+          fusion_instruction->set_original_value(new_original_value);
+        }
+      } else {
+        absl::flat_hash_map<int64_t, int64_t> old_to_new_tuple_idx;
+        int64_t new_idx = 0;
+        for (int64_t old_idx : used_tuple_elements) {
+          old_to_new_tuple_idx[old_idx] = new_idx++;
+        }
+        CopyOriginalValue(fusion_instruction, fusion_instruction,
+                          old_to_new_tuple_idx);
+      }
+    }
+  }
+
   // Update the users of the old fusion instruction.
   ABSL_RETURN_IF_ERROR(
       UpdateFusionUsers(fusion_instruction, used_tuple_elements, tuple_shapes));
@@ -200,7 +228,8 @@ bool CanRemoveInstruction(
     bool remove_cross_partition_collective_ops,
     const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
         computation_callers) {
-  if (!instruction->IsDead() || HasDisableWhileLoopDceAttr(instruction)) {
+  if (instruction->parent() == nullptr || !instruction->IsDead() ||
+      HasDisableWhileLoopDceAttr(instruction)) {
     return false;
   }
 
@@ -222,18 +251,42 @@ bool CanRemoveInstruction(
        instruction->operand(0)->user_count() != 1)) {
     return false;
   }
+  auto has_dce_side_effect_attr = [](const HloInstruction* inst,
+                                     absl::string_view value) {
+    if (inst == nullptr) {
+      return false;
+    }
+    auto it =
+        inst->frontend_attributes().map().find(kDceSideEffectFrontendAttribute);
+    return it != inst->frontend_attributes().map().end() && it->second == value;
+  };
+  // Reverse postorder visits async-done before async-start. If "false" is
+  // set on async-start, async-done must inspect async_chain_start().
+  // otherwise only async-done will be removed, leaving a dangling async-start
+  if (has_dce_side_effect_attr(instruction, "false") ||
+      has_dce_side_effect_attr(instruction->async_chain_start(), "false")) {
+    return false;
+  }
   if (instruction->HasSideEffect()) {
-    auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
+    auto maybe_collective_op = DynCast<HloCollectiveInstruction>(
+        instruction->async_wrapped_instruction()
+            ? instruction->async_wrapped_instruction()
+            : instruction);
     bool allow_collective = remove_cross_partition_collective_ops &&
                             maybe_collective_op &&
                             !maybe_collective_op->constrain_layout();
     bool allow_while =
         IsRemovableWhile(instruction, remove_cross_partition_collective_ops);
-    bool allow_custom_call = instruction->IsCustomCall("tpu_custom_call") &&
-                             instruction->frontend_attributes().map().contains(
-                                 kDceSideEffectFrontendAttribute) &&
-                             instruction->frontend_attributes().map().at(
-                                 kDceSideEffectFrontendAttribute) == "true";
+    // Reverse postorder visits async-done before async-start. If "true" is
+    // set on async-start, async-done must inspect
+    // async_chain_start(). otherwise async-done is kept
+    // alive, which keeps async-start used (user_count > 0) and prevents
+    // either from being removed.
+    bool allow_custom_call =
+        (instruction->IsCustomCall("tpu_custom_call") ||
+         instruction->IsAsynchronous()) &&
+        (has_dce_side_effect_attr(instruction, "true") ||
+         has_dce_side_effect_attr(instruction->async_chain_start(), "true"));
     if (!allow_collective && !allow_while && !allow_custom_call) {
       return false;
     }
@@ -246,27 +299,25 @@ absl::StatusOr<bool> RemoveDeadRoots(
     const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
         computation_callers) {
   bool changed = false;
-  std::vector<HloInstruction*> dead_roots;
-  for (auto* instruction : computation->instructions()) {
+  auto post_order = computation->MakeInstructionPostOrder();
+  for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
+    HloInstruction* instruction = *it;
     if (!CanRemoveInstruction(instruction,
                               remove_cross_partition_collective_ops,
                               computation_callers)) {
       continue;
     }
-    dead_roots.push_back(instruction);
-  }
-
-  for (HloInstruction* dead_root : dead_roots) {
-    VLOG(1) << "Removing dead root " << dead_root->ToString()
+    VLOG(1) << "Removing dead root " << instruction->ToString()
             << " and its unused operands";
     ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
-        dead_root, /*cleanup=*/std::nullopt,
+        instruction, /*cleanup=*/std::nullopt,
         /*ignore_control_dependencies=*/false,
         /*computation_callers=*/computation_callers));
     changed = true;
   }
   return changed;
 }
+
 absl::Status RemoveDeadParametersFromEntryComputationLayout(
     HloModule* module, std::vector<int64_t>& dead_parameter_indexes) {
   if (dead_parameter_indexes.empty()) {

@@ -1066,7 +1066,7 @@ TEST_F(WhileLoopAnalysisTest, GetIndvarIndexShouldWorkWhenParamIsCopied) {
 }
 
 TEST_F(WhileLoopAnalysisTest,
-       MatchTrivialLoopCountFailsWhenIndvarIsNotIncrementedByConstant) {
+       MatchTrivialLoopFailsWhenIndvarIsNotIncrementedByConstant) {
   absl::string_view hlo_with_constant = R"(
   HloModule test
   body {
@@ -1125,6 +1125,7 @@ TEST_F(WhileLoopAnalysisTest,
       MatchTrivialLoopTripCount(while_op_without_constant, 0,
                                 LiteralUtil::CreateR0<int32_t>(0));
   EXPECT_EQ(trip_count_without_constant, std::nullopt);
+  EXPECT_EQ(MatchTrivialLoopRange(while_op_without_constant), std::nullopt);
 }
 
 TEST_F(WhileLoopAnalysisTest,

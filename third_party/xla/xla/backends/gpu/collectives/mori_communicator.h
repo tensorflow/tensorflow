@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
@@ -32,20 +33,44 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
+namespace mori::collective {
+class CollectivesFacade;
+}  // namespace mori::collective
+
 namespace xla::gpu {
 
 class MoriCollectives;
 
+// Dummy symmetric memory for the MORI backend. MORI collective buffers are
+// allocated directly from the symmetric shmem heap, so the local device
+// address doubles as the symmetric handle and no separate registration is
+// required. This simply returns the address it was created with.
+class MoriSymmetricMemory : public SymmetricMemory {
+ public:
+  explicit MoriSymmetricMemory(se::DeviceAddressBase addr) : addr_(addr) {}
+
+  se::DeviceAddressBase addr() const final { return addr_; }
+
+  std::string ToString() const final {
+    return absl::StrFormat("MoriSymmetricMemory(addr=%p, size=%d)",
+                           addr_.opaque(), addr_.size());
+  }
+
+  PackedKernelArg PackKernelArg() const final { return addr_.opaque(); }
+
+ private:
+  se::DeviceAddressBase addr_;
+};
+
 // XLA collectives communicator wrapping a MORI communicator.
 class MoriCommunicator : public GpuCommunicator {
  public:
-  constexpr static uint32_t kMaxTeams = 24;
-
   friend class MoriCollectives;
   ~MoriCommunicator() override;
 
@@ -62,6 +87,14 @@ class MoriCommunicator : public GpuCommunicator {
   absl::Status Abort() final;
   absl::StatusOr<size_t> NumRanks() const final;
   absl::StatusOr<size_t> CurrentRank() final;
+
+  absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
+      se::DeviceAddressBase addr) final {
+    // Dummy implementation: MORI buffers are already allocated from the
+    // symmetric shmem heap, so the local device address is the symmetric
+    // handle. Just wrap and return it unchanged.
+    return std::make_unique<MoriSymmetricMemory>(addr);
+  }
 
   absl::Status Barrier(const Executor& executor) final;
 
@@ -98,21 +131,9 @@ class MoriCommunicator : public GpuCommunicator {
                              const Executor& executor) final;
 
   Future<> Send(se::DeviceAddressBase send_buffer, PrimitiveType dtype,
-                size_t count, RankId peer, const Executor& executor) final {
-    return absl::UnimplementedError("Not implemented");
-  }
-
-  Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
-                size_t count, RankId peer, const Executor& executor) final {
-    return absl::UnimplementedError("Not implemented");
-  }
-
-  Future<> Send(se::DeviceAddressBase recv_buffer,
-                se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                 size_t count, RankId peer, const Executor& executor) final;
 
-  Future<> Recv(se::DeviceAddressBase recv_buffer,
-                se::DeviceAddressBase send_buffer, PrimitiveType dtype,
+  Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                 size_t count, RankId peer, const Executor& executor) final;
 
   // Polls the communicator until any pending non-blocking operations are done
@@ -149,9 +170,7 @@ class MoriCommunicator : public GpuCommunicator {
   absl::Status LaunchAllToAll(
       absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
       absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
-      PrimitiveType dtype, size_t count, const Executor& executor) final {
-    return absl::UnimplementedError("Not implemented");
-  }
+      PrimitiveType dtype, size_t count, const Executor& executor) final;
 
   absl::Status LaunchCollectivePermute(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
@@ -162,15 +181,11 @@ class MoriCommunicator : public GpuCommunicator {
 
   absl::Status LaunchSend(se::DeviceAddressBase send_buffer,
                           PrimitiveType dtype, size_t count, RankId peer,
-                          const Executor& executor) final {
-    return absl::UnimplementedError("Not implemented");
-  }
+                          const Executor& executor) final;
 
   absl::Status LaunchRecv(se::DeviceAddressBase recv_buffer,
                           PrimitiveType dtype, size_t count, RankId peer,
-                          const Executor& executor) final {
-    return absl::UnimplementedError("Not implemented");
-  }
+                          const Executor& executor) final;
 
   absl::Status Quiet(const Executor& executor) final;
 
@@ -186,22 +201,16 @@ class MoriCommunicator : public GpuCommunicator {
                    std::shared_ptr<CancellationToken> cancel)
       : collectives_(coll), cancel_(std::move(cancel)) {}
 
-  enum class P2PType : int32_t { Send, Recv };
-
-  absl::Status P2P(P2PType p2p_type, PrimitiveType type,
-                   se::DeviceAddressBase recv_buffer,
-                   se::DeviceAddressBase send_buffer, size_t count, RankId peer,
-                   const Executor& executor);
-
-  static absl::StatusOr<se::Stream*> ToStream(const Executor& executor);
-
   MoriCollectives* collectives_;  // Parent MoriCollectives instance
 
   // This communicator's participant set (NOT the global MORI clique). `rank_`
-  // is this rank within the collective, `num_ranks_` the participant count, and
-  // `rank_to_pe_dev_` a device array mapping collective rank -> global MORI PE.
+  // is this rank within the collective, `num_ranks_` the participant count.
   int rank_ = 0;
   int num_ranks_ = 0;
+  // Owns this communicator's staging buffer + group counters (created in
+  // Create(), freed by the facade dtor before ShmemFinalize). Header-only
+  // facade.
+  std::unique_ptr<::mori::collective::CollectivesFacade> facade_;
   // Should all pending collectives cancel?
   std::shared_ptr<CancellationToken> cancel_;
   bool aborted_ = false;  // Has Abort() been called?

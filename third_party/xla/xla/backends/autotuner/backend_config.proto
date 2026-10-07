@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.autotuner;
 
 import "xla/autotuning.proto";
+import "xla/backends/cpu/ynn_fusion_options.proto";
 import "xla/codegen/xtile/xtile_config.proto";
 import "xla/service/cpu/backend_config.proto";
 import "xla/service/gpu/backend_configs.proto";
@@ -34,5 +35,6 @@ message BackendConfig {
     stream_executor.dnn.AlgorithmProto algorithm = 4;
     xla.cpu.LlvmKernelOptions llvm_kernel = 5;
     xla.gpu.NativeEmitterBackendConfig native_emitter = 6;
+    xla.cpu.YnnFusionOptions ynn_fusion = 7;
   }
 }

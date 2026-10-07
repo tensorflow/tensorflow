@@ -294,8 +294,8 @@ class HloRematerialization : public HloPassInterface {
   // Updates the schedule to mirror the provided instruction sequence. This is
   // used to update the schedule after each rematerialization due to the memory
   // tracker requiring the schedule to be in sync with the instruction sequence
-  // and computation.
-  absl::Status UpdateScheduleFromSequence(
+  // and computation. Returns the peak memory usage and instruction.
+  absl::StatusOr<MemoryUsageAndInstruction> UpdateScheduleFromSequence(
       HloComputation* computation, HloSchedule* schedule,
       const HloInstructionSequence& sequence,
       const absl::flat_hash_set<absl::string_view>& execution_threads);

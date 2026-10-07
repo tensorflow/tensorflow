@@ -313,14 +313,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   std::string ToString() const;
 
-  // Returns true if 'user' cannot possibly use the buffer at 'index' in
-  // 'operand'. Returns false otherwise.
-  //
-  // REQUIRES: 'operand' is an operand of 'user'.
-  bool DoesNotUseOperandBuffer(const HloInstruction* operand,
-                               const ShapeIndex& index,
-                               const HloInstruction* user) const;
-
  private:
   explicit TuplePointsToAnalysis(
       const HloModule* module,

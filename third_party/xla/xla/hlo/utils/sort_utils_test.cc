@@ -127,7 +127,7 @@ compare {
   rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
   rhs_no_neg_zero = f32[] select(rhs_is_zero, c_zero, rhs)
   rhs_canonical = f32[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
-  ROOT cmp = pred[] compare(lhs_canonical, rhs_canonical), direction=LT, type=TOTALORDER
+  ROOT cmp = pred[] compare(lhs_canonical, rhs_canonical), direction=LT, order=TOTAL
 }
 
 ENTRY main {
@@ -201,7 +201,7 @@ HloModule test_module
 compare {
   p0 = f32[] parameter(0)
   p1 = f32[] parameter(1)
-  ROOT cmp = pred[] compare(p0, p1), direction=LT, type=TOTALORDER
+  ROOT cmp = pred[] compare(p0, p1), direction=LT, order=TOTAL
 }
 
 ENTRY main {
@@ -269,7 +269,7 @@ compare {
   lhs_no_neg_zero = f32[] select(lhs_is_zero, c_zero, lhs)
   rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
   rhs_no_neg_zero = f32[] select(rhs_is_zero, c_zero, rhs)
-  ROOT cmp = pred[] compare(lhs_no_neg_zero, rhs_no_neg_zero), direction=LT, type=TOTALORDER
+  ROOT cmp = pred[] compare(lhs_no_neg_zero, rhs_no_neg_zero), direction=LT, order=TOTAL
 }
 
 ENTRY main {
@@ -307,7 +307,7 @@ compare {
   rhs_no_neg_zero = f32[] select(rhs_is_zero, c_zero, rhs)
   rhs_canonical = f32[] select(rhs_is_nan, c_not_nan, rhs_no_neg_zero)
 
-  ROOT cmp = pred[] compare(lhs_canonical, rhs_canonical), direction=LT, type=TOTALORDER
+  ROOT cmp = pred[] compare(lhs_canonical, rhs_canonical), direction=LT, order=TOTAL
 }
 
 ENTRY main {
@@ -412,7 +412,7 @@ compare {
   p1_zero_sel = bf16[] select(p1_eq_zero, c_zero, p1)
   p1_canon = bf16[] select(p1_ne, c_nan, p1_zero_sel)
 
-  ROOT cmp = pred[] compare(p0_canon, p1_canon), direction=LT, type=TOTALORDER
+  ROOT cmp = pred[] compare(p0_canon, p1_canon), direction=LT, order=TOTAL
 }
 
 ENTRY main {
@@ -426,6 +426,32 @@ ENTRY main {
   const auto* compare = Cast<HloCompareInstruction>(
       module->GetComputationWithName("compare")->root_instruction());
 
+  EXPECT_EQ(MatchNumpySortComparator(compare),
+            std::make_pair(int64_t{0}, int64_t{1}));
+}
+
+TEST_F(SortUtilsTest, MatchWeakOrderIsNumpyOrder) {
+  constexpr char kHlo[] = R"(
+HloModule test_module
+
+compare {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT cmp = pred[] compare(p0, p1), direction=LT, order=WEAK
+}
+
+ENTRY main {
+  x = f32[10] parameter(0)
+  ROOT sort = f32[10] sort(x), dimensions={0}, to_apply=compare
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const auto* compare = Cast<HloCompareInstruction>(
+      module->GetComputationWithName("compare")->root_instruction());
+
+  EXPECT_EQ(MatchSimpleSortComparator(compare),
+            std::make_pair(int64_t{-1}, int64_t{-1}));
   EXPECT_EQ(MatchNumpySortComparator(compare),
             std::make_pair(int64_t{0}, int64_t{1}));
 }

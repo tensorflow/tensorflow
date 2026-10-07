@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/memory_space_propagation.h"
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 
@@ -31,9 +32,15 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
+namespace {
+
+constexpr HloCallBoundaryOptions kFusionBoundaryOptions(
+    /*include_calls_in=*/false, /*include_control_flow_in=*/false,
+    /*include_fusions_in=*/true);
+
+}  // namespace
 
 bool MemorySpacePropagation::RunOnComputation(HloComputation* computation) {
   CHECK(dataflow_analysis_ != nullptr);
@@ -77,30 +84,32 @@ absl::StatusOr<bool> MemorySpacePropagation::RunImpl(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kFusion) {
-        // Propagate the operand subshapes.
-        for (int operand_idx = 0;
-             operand_idx < instruction->fused_parameters().size();
-             ++operand_idx) {
-          ShapeUtil::ForEachLeafShape(
-              instruction->operand(operand_idx)->shape(),
-              [&](const Shape& sub_shape, const ShapeIndex& index) {
-                absl::flat_hash_set<const HloValue*> visited;
-                modified |=
-                    Propagate(index, instruction->fused_parameter(operand_idx),
-                              sub_shape, visited);
-              });
-        }
+      HloDataflowPropagation::ForEachCallBoundary(
+          instruction,
+          [&](const HloCallBoundary& boundary) {
+            // Propagate the operand subshapes.
+            for (int64_t operand_idx = 0;
+                 operand_idx < boundary.num_parameters(); ++operand_idx) {
+              ShapeUtil::ForEachLeafShape(
+                  boundary.caller_operand(operand_idx)->shape(),
+                  [&](const Shape& sub_shape, const ShapeIndex& index) {
+                    absl::flat_hash_set<const HloValue*> visited;
+                    modified |=
+                        Propagate(index, boundary.callee_parameter(operand_idx),
+                                  sub_shape, visited);
+                  });
+            }
 
-        // Propagate output subshapes.
-        ShapeUtil::ForEachLeafShape(
-            instruction->shape(),
-            [&](const Shape& sub_shape, const ShapeIndex& index) {
-              absl::flat_hash_set<const HloValue*> visited;
-              modified |= Propagate(index, instruction->fused_expression_root(),
-                                    sub_shape, visited);
-            });
-      }
+            // Propagate output subshapes.
+            ShapeUtil::ForEachLeafShape(
+                instruction->shape(),
+                [&](const Shape& sub_shape, const ShapeIndex& index) {
+                  absl::flat_hash_set<const HloValue*> visited;
+                  modified |= Propagate(index, boundary.callee_root(),
+                                        sub_shape, visited);
+                });
+          },
+          kFusionBoundaryOptions);
     }
   }
   return modified;
@@ -145,41 +154,46 @@ bool MemorySpacePropagation::Propagate(
     }
 
     // For fusion outputs, propagate the memory space to the fusion root.
-    if (instruction->opcode() == HloOpcode::kFusion) {
-      modified |=
-          Propagate(position.index, instruction->fused_expression_root(),
-                    src_shape, visited);
-    }
+    HloDataflowPropagation::ForEachCallBoundary(
+        instruction,
+        [&](const HloCallBoundary& boundary) {
+          modified |= Propagate(position.index, boundary.callee_root(),
+                                src_shape, visited);
+        },
+        kFusionBoundaryOptions);
 
-    const HloInstruction* parent_fusion =
-        instruction->parent()->FusionInstruction();
-    // For nested fusion roots, pop one level up and propagate the memory space
-    // to the output of the calling fusion instruction.
-    if (parent_fusion != nullptr &&
-        instruction == instruction->parent()->root_instruction() &&
-        parent_fusion->parent()->IsFusionComputation()) {
-      modified |= Propagate(position.index, parent_fusion, src_shape, visited);
-    }
-
-    // For nested fusion parameters, pop one level up and propagate the memory
-    // space to the operand of the calling fusion instruction.
-    if (instruction->opcode() == HloOpcode::kParameter &&
-        parent_fusion != nullptr &&
-        parent_fusion->parent()->IsFusionComputation()) {
-      const HloInstruction* fusion_operand =
-          parent_fusion->operand(instruction->parameter_number());
-      modified |= Propagate(position.index, fusion_operand, src_shape, visited);
-    }
+    // For nested fusion roots and parameters, pop one level up and propagate
+    // the memory space to the output or operand of the calling fusion
+    // instruction.
+    HloDataflowPropagation::ForEachCallerBoundary(
+        instruction->parent(),
+        [&](const HloCallBoundary& boundary) {
+          if (!boundary.callsite->parent()->IsFusionComputation()) {
+            return;
+          }
+          if (instruction == boundary.callee_root()) {
+            modified |= Propagate(position.index, boundary.callsite, src_shape,
+                                  visited);
+          }
+          if (instruction->opcode() == HloOpcode::kParameter &&
+              instruction->parameter_number() < boundary.num_parameters()) {
+            modified |= Propagate(
+                position.index,
+                boundary.caller_operand(instruction->parameter_number()),
+                src_shape, visited);
+          }
+        },
+        kFusionBoundaryOptions);
   }
 
   for (const HloUse& use : value.GetUses()) {
     // For fusion uses, propagate the memory space to the fusion parameter.
-    if (use.instruction->opcode() == HloOpcode::kFusion) {
-      modified |=
-          Propagate(use.operand_index,
-                    use.instruction->fused_parameter(use.operand_number),
-                    src_shape, visited);
-    }
+    HloDataflowPropagation::ForEachCalledParameter(
+        use.instruction, use.operand_number,
+        [&](HloInstruction* param) {
+          modified |= Propagate(use.operand_index, param, src_shape, visited);
+        },
+        kFusionBoundaryOptions);
   }
   return modified;
 }

@@ -80,6 +80,9 @@ struct RaggedAllToAllConfig {
   // If set, this will be used to determine if optimized kernels that assume a
   // fast interconnect can be used.
   std::optional<int64_t> fast_interconnect_slice_size_override = std::nullopt;
+
+  // Whether the GXL backend is enabled for this ragged all-to-all operation.
+  bool enable_gxl = false;
 };
 
 // Contains the values that are passed between host threads with rendezvous.

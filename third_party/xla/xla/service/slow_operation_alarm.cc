@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -161,25 +162,25 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
     context_msg = absl::StrCat("[", context, "] ");
   }
 
-#if NDEBUG
-  return std::make_unique<SlowOperationAlarm>(
-      absl::Duration(absl::Minutes(2)),
-      absl::StrCat(
-          separator, "\n", context_msg,
-          "Very slow compile? If you want to file a bug, run with envvar "
-          "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.",
-          separator),
-      counter);
-#else
-  return std::make_unique<SlowOperationAlarm>(
-      absl::Duration(absl::Seconds(10)),
-      absl::StrCat(
-          separator, "\n", context_msg,
-          "Slow compile? XLA was built without compiler optimizations, which "
-          "can be slow. Try rebuilding with -c opt.",
-          separator),
-      counter);
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    return std::make_unique<SlowOperationAlarm>(
+        absl::Duration(absl::Seconds(10)),
+        absl::StrCat(
+            separator, "\n", context_msg,
+            "Slow compile? XLA was built without compiler optimizations, which "
+            "can be slow. Try rebuilding with -c opt.",
+            separator),
+        counter);
+  } else {
+    return std::make_unique<SlowOperationAlarm>(
+        absl::Duration(absl::Minutes(2)),
+        absl::StrCat(
+            separator, "\n", context_msg,
+            "Very slow compile? If you want to file a bug, run with envvar "
+            "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.",
+            separator),
+        counter);
+  }
 }
 
 }  // namespace xla

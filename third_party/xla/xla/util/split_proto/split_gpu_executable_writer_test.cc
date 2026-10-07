@@ -220,5 +220,44 @@ TEST(SplitGpuExecutableWriterTest,
             read_comp->instructions(1).backend_config_payload().id());
 }
 
+TEST(SplitGpuExecutableWriterTest, MetadataPayloadsArePreserved) {
+  GpuExecutableProto proto;
+  HloModuleProto* module =
+      proto.mutable_hlo_module_with_config()->mutable_hlo_module();
+
+  module->add_payloads("backend_config");  // ID 0: backend config
+  module->add_payloads("metadata_0");      // ID 1: metadata
+  module->add_payloads("metadata_1");      // ID 2: metadata
+
+  HloComputationProto* comp = module->add_computations();
+  HloInstructionProto* instr0 = comp->add_instructions();
+  instr0->mutable_backend_config_payload()->set_id(0);
+  instr0->mutable_metadata()->mutable_metadata_payload()->set_id(2);
+  HloInstructionProto* instr1 = comp->add_instructions();
+  instr1->mutable_metadata()->mutable_metadata_payload()->set_id(1);
+
+  std::string serialized;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      proto, riegeli::Maker<riegeli::StringWriter>(&serialized)));
+
+  GpuExecutableProto deserialized;
+  ASSERT_OK(ReadSplitProto(riegeli::Maker<riegeli::StringReader>(serialized),
+                           deserialized));
+
+  const HloModuleProto& read_module =
+      deserialized.hlo_module_with_config().hlo_module();
+  ASSERT_EQ(read_module.payloads_size(), 3);
+  const HloComputationProto& read_comp = read_module.computations(0);
+  EXPECT_EQ(read_module.payloads(
+                read_comp.instructions(0).backend_config_payload().id()),
+            "backend_config");
+  EXPECT_EQ(read_module.payloads(
+                read_comp.instructions(0).metadata().metadata_payload().id()),
+            "metadata_1");
+  EXPECT_EQ(read_module.payloads(
+                read_comp.instructions(1).metadata().metadata_payload().id()),
+            "metadata_0");
+}
+
 }  // namespace
 }  // namespace xla

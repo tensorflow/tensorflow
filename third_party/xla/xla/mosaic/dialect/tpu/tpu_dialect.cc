@@ -50,10 +50,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep.
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/layout.h"
@@ -77,6 +80,61 @@ llvm::hash_code hash_value(const ::xla::Tile& p) { return absl::HashOf(p); }
 
 namespace mlir::tpu {
 
+namespace {
+
+// Folds div(rem(x, c), c) to 0.
+template <typename DivOp, typename RemOp>
+LogicalResult foldDivOfRem(DivOp div_op, ArrayRef<Attribute> operands,
+                           SmallVectorImpl<OpFoldResult>& results) {
+  CHECK_EQ(operands.size(), 2);
+  auto rem_op = div_op.getLhs().template getDefiningOp<RemOp>();
+  if (!rem_op) {
+    return failure();
+  }
+  Attribute div_cst = operands[1];
+  Attribute rem_cst;
+  matchPattern(rem_op.getRhs(), m_Constant(&rem_cst));
+
+  const bool divisors_match =
+      rem_op.getRhs() == div_op.getRhs() || (div_cst && div_cst == rem_cst);
+  if (!divisors_match) {
+    return failure();
+  }
+  Type type = div_op.getType();
+  if (auto shaped_type = dyn_cast<ShapedType>(type)) {
+    // OpBuilder::getZeroAttr asserts that the type has a static shape. This
+    // can only be triggered by tensor types, which Mosaic does not use.
+    if (!shaped_type.hasStaticShape()) {
+      return failure();
+    }
+  }
+  Attribute zero_attr = Builder(div_op.getContext()).getZeroAttr(type);
+  if (!zero_attr) {
+    return failure();
+  }
+  results.push_back(zero_attr);
+  return success();
+}
+
+struct TpuDialectFoldInterface : public DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
+
+  LogicalResult fold(Operation* op, ArrayRef<Attribute> operands,
+                     SmallVectorImpl<OpFoldResult>& results) const final {
+    if (auto div_op = dyn_cast<arith::DivUIOp>(op)) {
+      return foldDivOfRem<arith::DivUIOp, arith::RemUIOp>(div_op, operands,
+                                                          results);
+    }
+    if (auto div_op = dyn_cast<arith::DivSIOp>(op)) {
+      return foldDivOfRem<arith::DivSIOp, arith::RemSIOp>(div_op, operands,
+                                                          results);
+    }
+    return failure();
+  }
+};
+
+}  // namespace
+
 void TPUDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
@@ -90,6 +148,14 @@ void TPUDialect::initialize() {
 #define GET_OP_LIST
 #include "xla/mosaic/dialect/tpu/tpu_ops.cc.inc"
       >();
+  addInterfaces<TpuDialectFoldInterface>();
+
+  DialectRegistry registry;
+  registry.addExtension(
+      +[](MLIRContext* ctx, arith::ArithDialect* arith_dialect) {
+        arith_dialect->addInterfaces<TpuDialectFoldInterface>();
+      });
+  getContext()->appendDialectRegistry(registry);
 }
 
 Operation* TPUDialect::materializeConstant(OpBuilder& builder, Attribute value,
@@ -405,7 +471,6 @@ int64_t TiledLayoutAttr::getUntiledRank() const {
   return mlir::tpu::getUntiledRank(getTiles(), getRank());
 }
 
-namespace {
 FailureOr<SmallVector<int64_t>> getExpandedShape(
     const ArrayRef<int64_t> untiled_shape, const ArrayRef<xla::Tile> tiles,
     const bool require_alignment) {
@@ -433,7 +498,6 @@ FailureOr<SmallVector<int64_t>> getExpandedShape(
   }
   return shape;
 }
-}  // namespace
 
 SmallVector<int64_t> TiledLayoutAttr::getContiguousTileStrides(
     const ArrayRef<xla::Tile> tiles, const ArrayRef<int64_t> shape) {
@@ -510,27 +574,26 @@ SmallVector<int64_t> TiledLayoutAttr::getExpandedShape(
                                       /*require_alignment=*/false);
 }
 
-SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
-  if (getTiles().empty()) {
-    return SmallVector<int64_t>(getTileStrides());
+FailureOr<SmallVector<int64_t>> getExpandedStrides(
+    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides) {
+  if (tiles.empty()) {
+    return SmallVector<int64_t>(tile_strides);
   }
-  SmallVector<int64_t> strides(getTileStrides());
+  SmallVector<int64_t> strides(tile_strides);
   // Expand front tile
-  const xla::Tile& first_tile = getTiles().front();
-  const FailureOr<SmallVector<int64_t>> failure_or_expanded_tile =
-      mlir::tpu::getExpandedShape(first_tile.dimensions(),
-                                  getTiles().drop_front(),
-                                  /*require_alignment=*/true);
-  // Verification should ensure this:
-  assert(succeeded(failure_or_expanded_tile));
-  const SmallVector<int64_t>& expanded_tile = *failure_or_expanded_tile;
-  strides.resize_for_overwrite(getRank() + expanded_tile.size());
+  const xla::Tile& first_tile = tiles.front();
+  FAILUREOR_ASSIGN_OR_RETURN(
+      SmallVector<int64_t> expanded_tile,
+      mlir::tpu::getExpandedShape(first_tile.dimensions(), tiles.drop_front(),
+                                  /*require_alignment=*/true));
+  const int64_t rank = tile_strides.size();
+  strides.resize_for_overwrite(rank + expanded_tile.size());
   int64_t first_tile_size = llvm::product_of(first_tile.dimensions());
   int64_t tile_size = 1;
   for (int64_t d = strides.size() - 1; d >= 0; --d) {
-    if (d >= getRank()) {
+    if (d >= rank) {
       const int64_t new_stride = tile_size;
-      tile_size *= expanded_tile[d - getRank()];
+      tile_size *= expanded_tile[d - rank];
       strides[d] = new_stride;
     } else {
       if (ShapedType::isStatic(strides[d])) {
@@ -541,11 +604,17 @@ SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
   return strides;
 }
 
-SmallVector<int64_t> TiledLayoutAttr::getSubtileUnit(
+SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
+  auto strides = mlir::tpu::getExpandedStrides(getTiles(), getTileStrides());
+  CHECK(succeeded(strides));
+  return *strides;
+}
+
+SmallVector<int64_t> TiledLayoutAttr::getUnitSubtile(
     const ArrayRef<xla::Tile> tiles) {
   assert(!tiles.empty());
   const int64_t first_tile_rank = tiles.front().dimensions().size();
-  SmallVector<int64_t> subtile_unit(first_tile_rank, 1);
+  SmallVector<int64_t> unit_subtile(first_tile_rank, 1);
 
   size_t current_tiled_rank = first_tile_rank;
   for (const xla::Tile& tile : tiles.drop_front()) {
@@ -555,12 +624,12 @@ SmallVector<int64_t> TiledLayoutAttr::getSubtileUnit(
     for (int64_t i = 0; i < tile_rank; ++i) {
       const int64_t tiled_dim = current_tiled_rank - tile_rank + i;
       if (tiled_dim < first_tile_rank) {
-        subtile_unit[tiled_dim] *= tile.dimension(i);
+        unit_subtile[tiled_dim] *= tile.dimension(i);
       }
     }
     current_tiled_rank += tile_rank;
   }
-  return subtile_unit;
+  return unit_subtile;
 }
 
 bool TiledLayoutAttr::hasDynamicStrides() const {
@@ -610,6 +679,37 @@ LogicalResult TiledLayoutAttr::verifyLayout(
     return emitError() << "Layout rank does not match shape rank";
   }
   return success();
+}
+
+LogicalResult MemorySpaceAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, MemorySpace value,
+    std::optional<CoreType> core_type) {
+  if (!core_type.has_value()) {
+    return success();
+  }
+  switch (value) {
+    case MemorySpace::kAny:
+    case MemorySpace::kHbm:
+    case MemorySpace::kHost:
+    case MemorySpace::kVmemShared:
+      return emitError() << "Memory space " << value
+                         << " cannot be owned by a core";
+    case MemorySpace::kVmem:
+      if (*core_type == CoreType::kScScalarSubcore) {
+        return emitError() << "Memory space " << value
+                           << " cannot be owned by core " << *core_type;
+      }
+      return success();
+    case MemorySpace::kCmem:
+      if (*core_type != CoreType::kTc) {
+        return emitError() << "Memory space " << value
+                           << " cannot be owned by core " << *core_type;
+      }
+      return success();
+    case MemorySpace::kSmem:
+    case MemorySpace::kSemaphoreMem:
+      return success();
+  }
 }
 
 MemRefType getMemRefType(Value value) {
@@ -711,8 +811,8 @@ std::optional<bool> isStructurallyDivisible(Value value, int64_t divisor,
     return true;
   }
   if (auto block_arg = dyn_cast<BlockArgument>(value)) {
-    if (auto for_op =
-            dyn_cast<scf::ForOp>(block_arg.getOwner()->getParentOp())) {
+    if (auto for_op = dyn_cast_if_present<scf::ForOp>(
+            block_arg.getOwner()->getParentOp())) {
       if (for_op.getInductionVar() == value) {
         return areAllDivisible(for_op.getLowerBound(), for_op.getStep(),
                                divisor, fuel);

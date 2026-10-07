@@ -257,6 +257,12 @@ ENTRY test_computation {
 
   se::StreamExecutor* executor = backend().default_stream_executor();
 
+  if (executor->GetDeviceDescription()
+          .gpu_compute_capability()
+          .oneapi_compute_capability()) {
+    GTEST_SKIP() << "oneAPI command buffers are not implemented yet.";
+  }
+
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> compiled_module,
       backend().compiler()->RunHloPasses(module->Clone(), executor,

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -121,6 +122,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     const absl::flat_hash_set<std::string>& nodes_blocklist = {});
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateFoldStablehloConstantTransformsPass();
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateFuseA4W2DRQFullyConnectedPass();
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerQuantAnnotationsPass();
 

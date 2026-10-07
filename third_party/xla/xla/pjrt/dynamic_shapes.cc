@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/dynamic_shapes.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <new>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -138,6 +141,23 @@ void StripMetadataForLogicalShape(xla::Shape& shape) {
   }
 }
 
+absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataPrefixIfPresent(
+    PjRtRawBufferRef raw_buffer, const xla::Shape& device_shape) {
+  auto device_requirements = PjRtShapeAndMetadataTransferRequirements::Get(
+      device_shape, PjRtDynamicShapeKind::kPrefix);
+  if (device_requirements.metadata_size == 0) {
+    return raw_buffer;
+  }
+  size_t total_size = raw_buffer->GetOnDeviceSizeInBytes();
+  if (total_size < device_requirements.metadata_size) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Buffer size (%d) is smaller than metadata size (%d)",
+                        total_size, device_requirements.metadata_size));
+  }
+  return raw_buffer->Slice(device_requirements.array_offset,
+                           total_size - device_requirements.metadata_size);
+}
+
 absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
     PjRtRawBufferRef raw_buffer, const xla::Shape& device_shape,
     const xla::Shape& logical_shape, PjRtDynamicShapeKind kind) {
@@ -155,7 +175,8 @@ absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
 
 void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
                       tsl::AsyncValueRef<xla::Shape> output_shape,
-                      xla::Shape shape, PjRtDynamicShapeKind kind) {
+                      xla::Shape shape, PjRtDynamicShapeKind kind,
+                      size_t host_alignment_bytes) {
   auto requirements =
       PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
   if (requirements.metadata_size == 0) {
@@ -180,7 +201,8 @@ void ReadDynamicShape(PjRtRawBufferRef raw_buffer,
 
   void* scratch = tsl::port::AlignedMalloc(
       requirements.metadata_size,
-      static_cast<std::align_val_t>(requirements.metadata_alignment));
+      static_cast<std::align_val_t>(
+          std::max(requirements.metadata_alignment, host_alignment_bytes)));
   if (scratch == nullptr) {
     output_shape.SetError(absl::ResourceExhaustedError("AlignedMalloc failed"));
     return;

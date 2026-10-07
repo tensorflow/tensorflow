@@ -75,9 +75,12 @@ constexpr char kCacheDataset[] = "CacheDataset";
 constexpr char kIncompleteCacheErrorMessage[] =
     "The calling iterator did not fully read the dataset being cached. In "
     "order to avoid unexpected truncation of the dataset, the partially cached "
-    "contents of the dataset  will be discarded. This can happen if you have "
-    "an input pipeline similar to `dataset.cache().take(k).repeat()`. You "
-    "should use `dataset.take(k).cache().repeat()` instead.";
+    "contents of the dataset will be discarded. This can happen if you have "
+    "an input pipeline similar to `dataset.cache().take(k).repeat()`, or if "
+    "downstream operations drop elements (e.g., `batch(drop_remainder=True)`). "
+    "You should use `dataset.take(k).cache().repeat()` instead, or place the "
+    "cache after the batching operation (e.g., `dataset.batch(...).cache()`).";
+constexpr size_t kMaxItems = 10000000;  // 10 million
 }  // namespace
 
 class DatasetRandomAccessCache {
@@ -89,14 +92,14 @@ class DatasetRandomAccessCache {
   // out_tensors with the element at that index.
   absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) {
+    if (index < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected index >= 0; Received index: ", index));
+    }
     if (!iter_resource_) {
       TF_ASSIGN_OR_RETURN(iter_resource_,
                           GetIteratorResourceFromDataset(ctx, input_));
       TF_RETURN_IF_ERROR(iter_resource_->SetIteratorFromDataset(ctx, input_));
-    }
-    if (index < 0) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Expected index >= 0; Received index: ", index));
     }
     if (index >= static_cast<int64_t>(cache_.size())) {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
@@ -159,10 +162,23 @@ class IteratorRandomAccessCache {
                        element_position));
     }
 
+    if (static_cast<size_t>(element_position) ==
+            std::numeric_limits<size_t>::max() ||
+        static_cast<size_t>(element_position) >= cache_.max_size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Element position too large or invalid."));
+    }
+
     if (element_position < static_cast<int64_t>(cache_.size()) &&
         !cache_[element_position].empty()) {
       *out_tensors = cache_[element_position];
       return absl::OkStatus();
+    }
+
+    if (element_position >= kMaxItems) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Requested element_position ", element_position,
+          " exceeds the maximum allowed cache size of ", kMaxItems));
     }
 
     TF_RETURN_IF_ERROR(input_->Get(ctx, element_position, out_tensors));
@@ -338,8 +354,15 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
             iteration_completed_(false) {}
 
       ~FileWriterIterator() override {
-        if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
+        mutex_lock l(mu_);
+        if (!iteration_completed_ &&
+            !dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
           LOG(WARNING) << kIncompleteCacheErrorMessage;
+
+          // Close any open file handles before attempting deletion.
+          // This is required on Windows to avoid PermissionDenied errors.
+          writer_.reset();
+
           std::vector<std::string> cache_files;
           absl::Status s = dataset()->env_->GetMatchingPaths(
               absl::StrCat(filename_, "*"), &cache_files);
@@ -349,7 +372,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           }
           for (const std::string& path : cache_files) {
             s = dataset()->env_->DeleteFile(path);
-            if (!s.ok()) {
+            if (!s.ok() && !absl::IsNotFound(s)) {
               LOG(WARNING) << "Failed to delete " << path << " : "
                            << s.ToString();
             }
@@ -555,7 +578,6 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       }
 
       absl::Status Finish() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        iteration_completed_ = true;
         // Flush the current bundle.
         TF_RETURN_IF_ERROR(writer_->Finish());
         // Merge all the bundles.
@@ -579,6 +601,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(dataset()->env_->DeleteFile(
               absl::StrCat(dataset()->filename_, "_", i, kLockFileSuffix)));
         }
+        iteration_completed_ = true;
         return absl::OkStatus();
       }
 
@@ -721,7 +744,6 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
   Env* const env_;
   const size_t num_tensors_;
   const size_t tensor_index_padding_size_;
-  static constexpr size_t kMaxItems = 10000000;  // 10 million
   const size_t item_index_padding_size_;
 };  // FileDatasetBase
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -181,6 +182,13 @@ class PjRtCompilerRegistry {
   absl::StatusOr<PjRtCompiler*> GetCompiler(absl::string_view platform_name,
                                             absl::string_view variant_name);
 
+  // Returns true if a compiler instance or a compiler factory is registered
+  // for the given platform and variant. Unlike GetCompiler(), this never
+  // instantiates the compiler.
+  bool IsCompilerRegistered(absl::string_view platform_name,
+                            absl::string_view variant_name)
+      ABSL_LOCKS_EXCLUDED(compiler_mutex_, factory_mutex_);
+
   // Explicitly initializes a compiler with a given variant.
   absl::Status InitializeVariant(absl::string_view platform_name,
                                  absl::string_view variant_name);
@@ -245,6 +253,12 @@ absl::Status PjRtInitializeCompilerVariant(absl::string_view platform_name,
 
 // Initializes all compiler variants.
 absl::Status PjRtInitializeCompilerVariants();
+
+// Returns true if a compiler or a compiler factory is registered
+// for the given platform and variant, i.e. if the variant can be served by
+// this binary. Does not instantiate the compiler.
+bool PjRtIsCompilerVariantRegistered(absl::string_view platform_name,
+                                     absl::string_view variant_name);
 
 class PjRtClient;
 
@@ -466,6 +480,10 @@ class PjRtTopologyDescription {
 
   // GetMemorySpaceKindIds()[0] should be the default memory space id.
   int GetDefaultMemorySpaceKindId() const { return GetMemorySpaceKindIds()[0]; }
+
+  virtual bool IsMemorySpaceOnCpu(int memory_space_kind_id) const {
+    return false;
+  }
 
   virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
     return absl::UnimplementedError("ToProto is unsupported.");

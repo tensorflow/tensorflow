@@ -196,6 +196,21 @@ auto positiveMod(U a, V b) {
 SmallVector<Value> fillPositions(ValueRange values, ArrayRef<int32_t> positions,
                                  int size, Value missing = nullptr);
 
+// Returns the tiled layout of `memref_type`. Memrefs with an identity layout
+// are described by an equivalent untiled layout. Returns an error if the layout
+// is neither identity nor tiled.
+FailureOr<tpu::TiledLayoutAttr> getTiledLayout(Location loc,
+                                               MemRefType memref_type);
+
+// Returns true if the minormost dimension of a memref with the given shape and
+// tiled layout is both sequential (successive elements along that dimension
+// have a physical stride of 1) and contiguous (no intervening padding or
+// non-adjacent runs).
+//
+// This is best-effort and might return false negatives.
+bool keepsMinorDimSequentialAndContiguous(ArrayRef<int64_t> shape,
+                                          tpu::TiledLayoutAttr layout);
+
 }  // namespace mlir::tpu
 
 #endif  // XLA_MOSAIC_DIALECT_TPU_UTIL_H_

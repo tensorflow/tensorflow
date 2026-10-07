@@ -153,6 +153,10 @@ class IfrtLoadedVariableRegistry {
   absl::StatusOr<LoadedVariable> GetLoadedVariable(KeyView key_view) const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Returns all input_names of variables currently loaded in the registry.
+  absl::flat_hash_set<std::string> GetLoadedVariableNames() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
  private:
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<Key, LoadedVariable, KeyHash, KeyEq> loaded_variable_map_

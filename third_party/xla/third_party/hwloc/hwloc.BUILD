@@ -50,9 +50,12 @@ _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef hwloc_pid_t": "#define hwloc_pid_t pid_t",
     "#undef hwloc_thread_t": "#define hwloc_thread_t pthread_t",
     "#  undef HWLOC_HAVE_STDINT_H": "#  define HWLOC_HAVE_STDINT_H 1",
-    "#undef HWLOC_SYM_TRANSFORM": "#define HWLOC_SYM_TRANSFORM 0",
-    "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS HWLOC_",
-    "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX hwloc_",
+    # Prefix bundled APIs (tf_hwloc_*) so they cannot interpose system hwloc
+    # (openxla/xla#39355, tensorflow#125854). Public symbols must stay visible
+    # across DSOs (libplatform_port.so vs libtensorflow_framework.so).
+    "#undef HWLOC_SYM_TRANSFORM": "#define HWLOC_SYM_TRANSFORM 1",
+    "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS TF_",
+    "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX tf_",
 }
 
 _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS = dict(_INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS)
@@ -176,9 +179,9 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HWLOC_HAVE_X86_CPUID": "#define HWLOC_HAVE_X86_CPUID 1",
     "#undef HWLOC_SIZEOF_UNSIGNED_INT": "#define HWLOC_SIZEOF_UNSIGNED_INT 4",
     "#undef HWLOC_SIZEOF_UNSIGNED_LONG": "#define HWLOC_SIZEOF_UNSIGNED_LONG 8",
-    "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS HWLOC_",
-    "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX hwloc_",
-    "#undef HWLOC_SYM_TRANSFORM": "#define HWLOC_SYM_TRANSFORM 0",
+    "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS TF_",
+    "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX tf_",
+    "#undef HWLOC_SYM_TRANSFORM": "#define HWLOC_SYM_TRANSFORM 1",
     "#undef HWLOC_USE_NCURSES": "#define HWLOC_USE_NCURSES 1",
     "#undef HWLOC_VERSION_GREEK": "#define HWLOC_VERSION_GREEK \"\"",
     "#undef HWLOC_VERSION_MAJOR": "#define HWLOC_VERSION_MAJOR 2",

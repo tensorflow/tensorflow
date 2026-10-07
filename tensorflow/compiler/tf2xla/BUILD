@@ -437,6 +437,12 @@ cc_library(
 #         "//tensorflow/core/platform:thread_annotations",
 #         "//tensorflow/core/platform:tstring",
 #         "//tensorflow/core/platform:types",
+#         "@xla//xla/backends/cpu/runtime:work_queue",
+#         "@xla//xla/tsl/concurrency:async_value",
+#         "@xla//xla/tsl/concurrency:concurrent_vector",
+#         "@xla//xla/tsl/concurrency:executor",
+#         "@xla//xla/tsl/concurrency:ref_count",
+#         "@xla//xla/tsl/util:safe_reinterpret_cast",
 #         "@xla//xla/tsl:empty",
 #     ]),
 #     dont_match_regexp = "|".join(["//tensorflow"]),
@@ -1643,11 +1649,13 @@ tf_cc_test(
     srcs = ["xla_op_registry_test.cc"],
     deps = [
         ":xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest",
     ],
 )
 

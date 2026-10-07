@@ -15,6 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <type_traits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/xent_op.h"

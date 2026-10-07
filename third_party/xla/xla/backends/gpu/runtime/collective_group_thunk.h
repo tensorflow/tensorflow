@@ -22,10 +22,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/command_buffer.h"
 
 namespace xla::gpu {
 
@@ -33,15 +36,23 @@ namespace xla::gpu {
 // operations into a single group call in order for them to be dispatched
 // together. Implementation is backend-specific and might not be supported by
 // all collective implementations.
-class CollectiveGroupThunk : public Thunk {
+class CollectiveGroupThunk : public TracedCommand {
  public:
   CollectiveGroupThunk(ThunkInfo thunk_info, Thunk::Kind kind,
                        ThunkSequence thunks);
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const ExecuteParams& execute_params, const RecordParams& record_params,
+      RecordAction record_action, se::CommandBuffer* command_buffer) override;
 
-  BufferUses buffer_uses() const override { return {}; }
+  bool requires_update_on_initialize() const override { return true; }
+  bool requires_warmup() const override { return true; }
+
+  BufferUses buffer_uses() const override;
+
+  const ThunkSequence& thunks() const { return executor_.thunks(); }
 
   absl::Status WalkNested(Walker pre_order, Walker post_order) override;
   absl::Status TransformNested(Transformer callback) override;

@@ -17,13 +17,18 @@ limitations under the License.
 
 #include <stddef.h>
 #include <stdint.h>
+#if defined(__linux__)
+#include <unistd.h>
+#endif
 
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -52,9 +57,7 @@ limitations under the License.
 #include "xla/tsl/lib/io/buffered_file.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/stringpiece.h"
 
 // IWYU pragma: no_include "util/regexp/re2/re2.h"
 
@@ -166,12 +169,14 @@ std::string Sanitize(absl::string_view string) {
 // instrumentation dumps MLIR to external directories for convenience.
 class DumpInstrumentation : public mlir::PassInstrumentation {
  public:
-  explicit DumpInstrumentation(absl::string_view dump_dir,
-                               absl::string_view dump_pass_regex,
-                               absl::string_view dump_func_regex)
+  explicit DumpInstrumentation(
+      absl::string_view dump_dir, absl::string_view dump_pass_regex,
+      absl::string_view dump_func_regex,
+      mlir::OpPrintingFlags flags = mlir::OpPrintingFlags())
       : dump_dir_(dump_dir),
         dump_pass_re_(std::make_unique<RE2>(dump_pass_regex)),
-        dump_func_re_(std::make_unique<RE2>(dump_func_regex)) {}
+        dump_func_re_(std::make_unique<RE2>(dump_func_regex)),
+        op_printing_flags_(flags) {}
 
   DumpInstrumentation(const DumpInstrumentation& other) = delete;
   DumpInstrumentation& operator=(const DumpInstrumentation& other) = delete;
@@ -257,17 +262,52 @@ class DumpInstrumentation : public mlir::PassInstrumentation {
     file = std::make_unique<tsl::BufferedWritableFile>(std::move(file));
 
     WritableFileRawStream os(std::move(file));
-    op->print(os);
+    op->print(os, op_printing_flags_);
   }
 
   const std::string dump_dir_;
   const std::unique_ptr<RE2> dump_pass_re_;
   const std::unique_ptr<RE2> dump_func_re_;
+  mlir::OpPrintingFlags op_printing_flags_;
 
   // Counter used for pass name prefix to signify sequence
   int pass_counter_ = 0;
 
   bool printed_ = false;
+};
+
+double GetCurrentRssMb() {
+#if defined(__linux__)
+  std::ifstream statm("/proc/self/statm");
+  if (!statm.is_open()) return 0.0;
+  int64_t pages = 0;
+  int64_t rss_pages = 0;
+  if (statm >> pages >> rss_pages) {
+    int64_t page_size = sysconf(_SC_PAGESIZE);
+    return static_cast<double>(rss_pages * page_size) / (1024.0 * 1024.0);
+  }
+#endif
+  return 0.0;
+}
+
+class RssLoggingInstrumentation : public mlir::PassInstrumentation {
+ public:
+  void runBeforePass(mlir::Pass* pass, mlir::Operation* op) override {
+    pass_start_rss_[pass] = GetCurrentRssMb();
+  }
+
+  void runAfterPass(mlir::Pass* pass, mlir::Operation* op) override {
+    double end_rss = GetCurrentRssMb();
+    auto node = pass_start_rss_.extract(pass);
+    double start_rss = node.empty() ? 0.0 : node.mapped();
+    double delta = end_rss - start_rss;
+    LOG(INFO) << "[MLIR RSS] After pass '" << pass->getName().str() << "' on '"
+              << op->getName().getStringRef().str() << "': RSS = " << end_rss
+              << " MB (Delta: " << (delta >= 0 ? "+" : "") << delta << " MB)";
+  }
+
+ private:
+  absl::flat_hash_map<mlir::Pass*, double> pass_start_rss_;
 };
 
 std::function<bool(mlir::Pass*, mlir::Operation*)> CreatePrintIRFun(
@@ -296,10 +336,18 @@ void InitPassManager(mlir::PassManager& pm,
   bool print_to_stdout =
       !options.print_ir_before().empty() || !options.print_ir_after().empty();
 
-  if (dump_to_dir || print_to_stdout) {
-    // Necessary for maintaining sequence of passes when dumping MLIR to files
-    // or stdout.
+  if (dump_to_dir || print_to_stdout || options.log_rss()) {
+    // Necessary for maintaining sequence of passes when dumping MLIR to files,
+    // stdout, or logging RSS memory.
     pm.getContext()->disableMultithreading();
+  }
+
+  mlir::OpPrintingFlags opPrintingFlags = mlir::OpPrintingFlags();
+  if (options.has_elide_elementsattrs_if_larger()) {
+    opPrintingFlags.elideLargeElementsAttrs(
+        options.elide_elementsattrs_if_larger());
+    opPrintingFlags.elideLargeResourceString(
+        options.elide_elementsattrs_if_larger());
   }
 
   if (dump_to_dir) {
@@ -321,7 +369,8 @@ void InitPassManager(mlir::PassManager& pm,
     }
 
     pm.addInstrumentation(std::make_unique<DumpInstrumentation>(
-        dump_dir, options.ir_dump_pass_regex(), options.ir_dump_func_regex()));
+        dump_dir, options.ir_dump_pass_regex(), options.ir_dump_func_regex(),
+        opPrintingFlags));
   }
 
   if (print_to_stdout) {
@@ -331,18 +380,15 @@ void InitPassManager(mlir::PassManager& pm,
     std::function<bool(mlir::Pass*, mlir::Operation*)>
         should_print_ir_after_pass(CreatePrintIRFun(options.print_ir_after()));
 
-    mlir::OpPrintingFlags opPrintingFlags = mlir::OpPrintingFlags();
-
-    if (options.has_elide_elementsattrs_if_larger()) {
-      opPrintingFlags.elideLargeElementsAttrs(
-          options.elide_elementsattrs_if_larger());
-    }
-
     pm.enableIRPrinting(should_print_ir_before_pass, should_print_ir_after_pass,
                         options.print_ir_module_scope(),
                         /*printAfterOnlyOnChange=*/true,
                         /*printAfterOnlyOnFailure=*/false, out,
                         opPrintingFlags);
+  }
+
+  if (options.log_rss()) {
+    pm.addInstrumentation(std::make_unique<RssLoggingInstrumentation>());
   }
 
   // Enable pass timing. Note: MLIR expects `mlir::PassManager::enableTiming` to

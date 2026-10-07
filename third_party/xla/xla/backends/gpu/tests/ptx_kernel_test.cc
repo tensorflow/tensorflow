@@ -15,11 +15,11 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -47,9 +47,8 @@ TEST_F(PtxKernelE2ETest, ScalarAdd) {
         }"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
   EXPECT_EQ(result.Get<float>({}), 7.0f);
 }
 
@@ -73,9 +72,8 @@ TEST_F(PtxKernelE2ETest, TensorAdd) {
         }"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
 
   EXPECT_EQ(result.Get<float>({0}), 6.0f);
   EXPECT_EQ(result.Get<float>({1}), 8.0f);
@@ -102,9 +100,8 @@ TEST_F(PtxKernelE2ETest, TensorAddWithoutOutputIndices) {
         }"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
 
   EXPECT_EQ(result.Get<float>({0}), 6.0f);
   EXPECT_EQ(result.Get<float>({1}), 8.0f);
@@ -132,9 +129,8 @@ TEST_F(PtxKernelE2ETest, TensorAddWithNonTrivialOutputIndices) {
         }"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
 
   EXPECT_EQ(result.Get<float>({0}), 6.0f);
   EXPECT_EQ(result.Get<float>({1}), 8.0f);

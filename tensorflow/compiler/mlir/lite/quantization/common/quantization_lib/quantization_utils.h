@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -51,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -662,8 +664,24 @@ class QuantizationPattern : public RewritePattern {
         for (int i = 0, e = quantized_op->getNumOperands(); i < e; ++i) {
           auto def = quantized_op->getOperand(i).getDefiningOp();
           if (auto q = llvm::dyn_cast_or_null<QuantizeOpT>(def)) {
-            DenseFPElementsAttr attr;
+            ElementsAttr attr;
             if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
+              continue;
+            }
+            if (auto resourceAttr =
+                    mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
+              if (AsmResourceBlob* blob =
+                      resourceAttr.getRawHandle().getBlob()) {
+                ArrayRef<char> ptr = blob->getData();
+                if (DenseElementsAttr::isValidRawBuffer(resourceAttr.getType(),
+                                                        ptr)) {
+                  attr = DenseElementsAttr::getFromRawBuffer(
+                      resourceAttr.getType(), ptr);
+                }
+              }
+            }
+            if (!mlir::isa<FloatType>(
+                    mlir::getElementTypeOrSelf(attr.getType()))) {
               continue;
             }
             auto cst = arith::ConstantOp::create(rewriter,

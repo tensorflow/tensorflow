@@ -43,6 +43,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using MissReason = AutotunerCacheInterface::MissReason;
+
 const char* kHlo1 = R"(
 HloModule module1
 ENTRY entry {
@@ -99,6 +101,22 @@ class RecordingStore : public AutotuneCacheStore {
   int read_count = 0;                            // NOLINT
   int write_count = 0;                           // NOLINT
   autotuner::AutotuneTargetKey last_target_key;  // NOLINT
+};
+
+// A store whose reads always fail, used to exercise the read error miss reason.
+class FailingStore : public AutotuneCacheStore {
+ public:
+  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> Read(
+      const autotuner::AutotuneTargetKey& target_key) override {
+    return absl::InternalError("read failed");
+  }
+  absl::Status Write(const autotuner::AutotuneEntry& entry) override {
+    return absl::OkStatus();
+  }
+  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> ReadAll() override {
+    return absl::InternalError("read failed");
+  }
+  CacheMode GetMode() const override { return CacheMode::kReadWrite; }
 };
 
 class TieredCacheTest : public HloHardwareIndependentTestBase {
@@ -167,6 +185,7 @@ TEST_F(TieredCacheTest, PromotesToHotterTierOnColdHit) {
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(result->codegen_backend, autotuner::Backend::TRITON);
   EXPECT_EQ(cache->GetCacheStats().hits, 1);
+  EXPECT_EQ(cache->GetCacheStats().in_memory_hits, 0);
   EXPECT_EQ(cache->GetCacheStats().misses, 0);
 
   // The entry should have been promoted into the in-memory tier.
@@ -177,6 +196,7 @@ TEST_F(TieredCacheTest, PromotesToHotterTierOnColdHit) {
   // 4. Second lookup hits the hot in-memory tier.
   EXPECT_TRUE(cache->Lookup(instr1).has_value());
   EXPECT_EQ(cache->GetCacheStats().hits, 2);
+  EXPECT_EQ(cache->GetCacheStats().in_memory_hits, 1);
   EXPECT_EQ(cache->GetCacheStats().misses, 0);
 }
 
@@ -382,6 +402,214 @@ TEST_F(TieredCacheTest, WriteOnlySecondarySkipsLookupButAllowsInsert) {
                      std::move(secondary2));
   EXPECT_TRUE(cache2.Lookup(instr1).has_value());
   EXPECT_EQ(cache2.GetCacheStats().hits, 1);
+}
+
+TEST_F(TieredCacheTest, StrictHitVsLooseHitStats) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* instr1 =
+      module->entry_computation()->root_instruction();
+  AutotunerCacheInterface::Config config =
+      CreateTestConfig(autotuner::Backend::TRITON);
+
+  InMemoryStore::Clear();
+
+  // 1. Insert with Context A (Triton "triton_v1").
+  AutotuneCacheContext ctx_A = CreateCacheContext(
+      "v1.0", 108, {{autotuner::Backend::TRITON, "triton_v1"}}, "test_gpu");
+  {
+    auto primary = std::make_unique<InMemoryStore>();
+    TieredCache cache_A(ctx_A, KeyMatchingMode::kLoose, std::move(primary));
+    EXPECT_OK(cache_A.Insert(instr1, config));
+  }
+
+  // 2. Strict Hit: Lookup with Context A (identical context).
+  {
+    auto primary = std::make_unique<InMemoryStore>();
+    TieredCache cache_strict(ctx_A, KeyMatchingMode::kLoose,
+                             std::move(primary));
+    EXPECT_TRUE(cache_strict.Lookup(instr1).has_value());
+    EXPECT_EQ(cache_strict.GetCacheStats().hits, 1);
+    EXPECT_EQ(cache_strict.GetCacheStats().strict_hits, 1);
+    EXPECT_EQ(cache_strict.GetCacheStats().in_memory_hits, 1);
+    EXPECT_EQ(cache_strict.GetCacheStats().misses, 0);
+  }
+
+  // 3. Loose Hit: Lookup with Context B (Triton "triton_v1", cuBLAS
+  // "cublas_v2"). Codegen version differs, but Triton version matches.
+  AutotuneCacheContext ctx_B =
+      CreateCacheContext("v1.0", 108,
+                         {{autotuner::Backend::TRITON, "triton_v1"},
+                          {autotuner::Backend::CUBLASLT, "cublas_v2"}},
+                         "test_gpu");
+  {
+    auto primary = std::make_unique<InMemoryStore>();
+    TieredCache cache_loose(ctx_B, KeyMatchingMode::kLoose, std::move(primary));
+    EXPECT_TRUE(cache_loose.Lookup(instr1).has_value());
+    EXPECT_EQ(cache_loose.GetCacheStats().hits, 1);
+    EXPECT_EQ(cache_loose.GetCacheStats().strict_hits, 0);
+    EXPECT_EQ(cache_loose.GetCacheStats().in_memory_hits, 1);
+    EXPECT_EQ(cache_loose.GetCacheStats().misses, 0);
+  }
+}
+
+TEST_F(TieredCacheTest, MissReasonsCategorization) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* instr1 =
+      module->entry_computation()->root_instruction();
+  AutotunerCacheInterface::Config config =
+      CreateTestConfig(autotuner::Backend::TRITON);
+
+  InMemoryStore::Clear();
+
+  // 1. NotFound: Instruction never inserted.
+  AutotuneCacheContext ctx_A = CreateCacheContext(
+      "v1.0", 108, {{autotuner::Backend::TRITON, "triton_v1"}}, "test_gpu");
+  {
+    auto primary = std::make_unique<InMemoryStore>();
+    TieredCache cache(ctx_A, KeyMatchingMode::kLoose, std::move(primary));
+    EXPECT_FALSE(cache.Lookup(instr1).has_value());
+    EXPECT_EQ(cache.GetCacheStats().misses, 1);
+    EXPECT_EQ(cache.GetCacheStats().miss_not_found, 1);
+    EXPECT_EQ(cache.GetCacheStats().miss_version_mismatch, 0);
+    EXPECT_EQ(cache.GetCacheStats().miss_read_error, 0);
+  }
+
+  // Insert entry into store with Context A.
+  {
+    auto primary = std::make_unique<InMemoryStore>();
+    TieredCache cache(ctx_A, KeyMatchingMode::kLoose, std::move(primary));
+    EXPECT_OK(cache.Insert(instr1, config));
+  }
+
+  // 2. VersionMismatch: Lookup in Strict mode with different codegen context.
+  AutotuneCacheContext ctx_B =
+      CreateCacheContext("v1.0", 108,
+                         {{autotuner::Backend::TRITON, "triton_v1"},
+                          {autotuner::Backend::CUBLASLT, "cublas_v2"}},
+                         "test_gpu");
+  {
+    auto primary = std::make_unique<InMemoryStore>();
+    TieredCache cache_strict(ctx_B, KeyMatchingMode::kStrict,
+                             std::move(primary));
+    EXPECT_FALSE(cache_strict.Lookup(instr1).has_value());
+    EXPECT_EQ(cache_strict.GetCacheStats().misses, 1);
+    EXPECT_EQ(cache_strict.GetCacheStats().miss_not_found, 0);
+    EXPECT_EQ(cache_strict.GetCacheStats().miss_version_mismatch, 1);
+    EXPECT_EQ(cache_strict.GetCacheStats().miss_read_error, 0);
+  }
+
+  // 3. VersionMismatch: Lookup in Loose mode with different backend version.
+  AutotuneCacheContext ctx_C =
+      CreateCacheContext("v1.0", 108,
+                         {{autotuner::Backend::TRITON, "triton_v2"},
+                          {autotuner::Backend::CUBLASLT, "cublas_v2"}},
+                         "test_gpu");
+  {
+    auto primary = std::make_unique<InMemoryStore>();
+    TieredCache cache_loose(ctx_C, KeyMatchingMode::kLoose, std::move(primary));
+    EXPECT_FALSE(cache_loose.Lookup(instr1).has_value());
+    EXPECT_EQ(cache_loose.GetCacheStats().misses, 1);
+    EXPECT_EQ(cache_loose.GetCacheStats().miss_not_found, 0);
+    EXPECT_EQ(cache_loose.GetCacheStats().miss_version_mismatch, 1);
+    EXPECT_EQ(cache_loose.GetCacheStats().miss_read_error, 0);
+  }
+
+  // 4. VersionMismatch: Lookup in Loose mode where the backend is absent.
+  AutotuneCacheContext ctx_D = CreateCacheContext(
+      "v1.0", 108, {{autotuner::Backend::CUBLASLT, "cublas_v2"}}, "test_gpu");
+  {
+    auto primary = std::make_unique<InMemoryStore>();
+    TieredCache cache_unsupported(ctx_D, KeyMatchingMode::kLoose,
+                                  std::move(primary));
+    EXPECT_FALSE(cache_unsupported.Lookup(instr1).has_value());
+    EXPECT_EQ(cache_unsupported.GetCacheStats().misses, 1);
+    EXPECT_EQ(cache_unsupported.GetCacheStats().miss_not_found, 0);
+    EXPECT_EQ(cache_unsupported.GetCacheStats().miss_version_mismatch, 1);
+    EXPECT_EQ(cache_unsupported.GetCacheStats().miss_read_error, 0);
+  }
+}
+
+TEST_F(TieredCacheTest, CacheStatsToStringFormat) {
+  AutotunerCacheInterface::CacheStats stats;
+  stats.hits = 10;
+  stats.strict_hits = 8;
+  stats.in_memory_hits = 7;
+  stats.RecordMiss(MissReason::kNotFound);
+  stats.RecordMiss(MissReason::kVersionMismatch);
+  stats.RecordMiss(MissReason::kVersionMismatch);
+
+  std::string formatted = stats.ToString();
+  EXPECT_EQ(formatted,
+            "hits=10, misses=3 (strict_hits=8, in_memory_hits=7, "
+            "miss_reasons: not_found=1, version_mismatch=2, read_error=0)");
+}
+
+TEST_F(TieredCacheTest, CacheStatsToStringWithoutMisses) {
+  AutotunerCacheInterface::CacheStats stats;
+  stats.hits = 10;
+  stats.strict_hits = 8;
+  stats.in_memory_hits = 7;
+
+  EXPECT_EQ(stats.ToString(),
+            "hits=10, misses=0 (strict_hits=8, in_memory_hits=7, "
+            "miss_reasons: not_found=0, version_mismatch=0, read_error=0)");
+}
+
+TEST_F(TieredCacheTest, ReadErrorFromSecondaryIsRecordedAsMissReason) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* instr1 =
+      module->entry_computation()->root_instruction();
+  AutotuneCacheContext ctx = CreateCacheContext("v1.0");
+
+  // The primary tier is empty, so the miss reason comes from the failing
+  // secondary tier.
+  TieredCache cache(ctx, KeyMatchingMode::kLoose,
+                    std::make_unique<InMemoryStore>(),
+                    std::make_unique<FailingStore>());
+
+  EXPECT_FALSE(cache.Lookup(instr1).has_value());
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+  EXPECT_EQ(cache.GetCacheStats().miss_not_found, 0);
+  EXPECT_EQ(cache.GetCacheStats().miss_version_mismatch, 0);
+  EXPECT_EQ(cache.GetCacheStats().miss_read_error, 1);
+}
+
+TEST_F(TieredCacheTest, VersionMismatchTakesPrecedenceOverReadError) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo1));
+  const HloInstruction* instr1 =
+      module->entry_computation()->root_instruction();
+  // The explicit version is part of the target key, so it is held fixed here.
+  // Varying the set of backends instead changes only the codegen version, which
+  // is what makes a cached entry unusable rather than unfindable.
+  AutotuneCacheContext ctx = CreateCacheContext(
+      "v1.0", 108, {{autotuner::Backend::TRITON, "triton_v1"}}, "test_gpu");
+
+  // Cache an entry so that the primary tier reports a version mismatch rather
+  // than a plain miss.
+  {
+    TieredCache cache(ctx, KeyMatchingMode::kStrict,
+                      std::make_unique<InMemoryStore>());
+    EXPECT_OK(cache.Insert(instr1, CreateTestConfig()));
+  }
+
+  AutotuneCacheContext newer_ctx =
+      CreateCacheContext("v1.0", 108,
+                         {{autotuner::Backend::TRITON, "triton_v1"},
+                          {autotuner::Backend::CUBLASLT, "cublas_v2"}},
+                         "test_gpu");
+  TieredCache cache(newer_ctx, KeyMatchingMode::kStrict,
+                    std::make_unique<InMemoryStore>(),
+                    std::make_unique<FailingStore>());
+
+  EXPECT_FALSE(cache.Lookup(instr1).has_value());
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+  EXPECT_EQ(cache.GetCacheStats().miss_not_found, 0);
+  EXPECT_EQ(cache.GetCacheStats().miss_version_mismatch, 1);
+  EXPECT_EQ(cache.GetCacheStats().miss_read_error, 0);
 }
 
 }  // namespace

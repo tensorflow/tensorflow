@@ -115,8 +115,7 @@ TEST(GemmConfigTest, ProtoConversion) {
   };
 
   xla::GemmConfigProto proto = original_config.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
-                          GemmConfig::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto round_tripped_config, GemmConfig::FromProto(proto));
 
   ExpectGemmConfigEq(original_config, round_tripped_config);
 }
@@ -149,8 +148,7 @@ TEST(GemmConfigTest, ProtoConversionWithOptionals) {
   };
 
   xla::GemmConfigProto proto = original_config.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
-                          GemmConfig::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto round_tripped_config, GemmConfig::FromProto(proto));
 
   ExpectGemmConfigEq(original_config, round_tripped_config);
 }
@@ -186,8 +184,8 @@ TEST(GroupedGemmConfigTest, ProtoConversionWithOptionals) {
   };
 
   xla::GroupedGemmConfigProto proto = original_config.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
-                          GroupedGemmConfig::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
+                       GroupedGemmConfig::FromProto(proto));
 
   ExpectGroupedGemmConfigEq(original_config, round_tripped_config);
 }
@@ -223,7 +221,7 @@ using EpilogueFromProtoTest =
     ::testing::TestWithParam<xla::BlasLtEpilogueProto>;
 
 TEST_P(EpilogueFromProtoTest, SucceedsForValidValue) {
-  TF_EXPECT_OK(BlasLt::EpilogueFromProto(GetParam()));
+  EXPECT_OK(BlasLt::EpilogueFromProto(GetParam()));
 }
 
 std::vector<xla::BlasLtEpilogueProto> EnumerateBlasLtEpilogueProtoValues() {
@@ -277,7 +275,7 @@ using RaggedDotModeFromProtoTest =
     ::testing::TestWithParam<xla::RaggedDotModeProto>;
 
 TEST_P(RaggedDotModeFromProtoTest, SucceedsForValidValue) {
-  TF_EXPECT_OK(RaggedDotModeFromProto(GetParam()));
+  EXPECT_OK(RaggedDotModeFromProto(GetParam()));
 }
 
 std::vector<xla::RaggedDotModeProto> EnumerateRaggedDotModeValues() {

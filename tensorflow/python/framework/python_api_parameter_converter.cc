@@ -94,7 +94,7 @@ void RaiseTypeError(Args... args) {
 
 // Returns the DataType for a `tf.dtypes.DType` object (or DT_INVALID if it
 // is not a valid DType object).
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 DataType DataTypeFromPyDType(PyObject* dtype) {
   if (!dtype) {
     return DT_INVALID;
@@ -111,7 +111,7 @@ DataType DataTypeFromPyDType(PyObject* dtype) {
 // `dtype == DT_INVALID` and `value` is a `Tensor`, then set `dtype` to
 // `value.dtype`.  (If `dtype` is not `DT_INVALID`, or `value` is not a
 // tensor, then do nothing.)  Returns false on exception.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool InferDType(PyObject* value, DataType& dtype) {
   if (dtype != DT_INVALID) return true;  // Already have dtype.
 
@@ -130,7 +130,7 @@ bool InferDType(PyObject* value, DataType& dtype) {
 }
 
 // Returns true if `dtype` is in `ok_dtypes`, or `ok_dtypes` is null or empty.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool IsOkDType(DataType dtype, const std::vector<DataType>* ok_dtypes) {
   return (ok_dtypes == nullptr || ok_dtypes->empty() ||
           std::find(ok_dtypes->begin(), ok_dtypes->end(), dtype) !=
@@ -161,7 +161,7 @@ struct DataTypeFormatter {
 //   ok_dtypes: List of valid dtypes for conversion (optional).
 //   default_dtype: Default dtype -- used if converting the value to a tensor
 //     with unconstrained dtype returns a value not in ok_dtypes.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertToTensorInPlace(PyObject*& src, DataType& dtype,
                             const PythonTensorConverter& tensor_converter,
                             const PythonAPIInfo& api_info, int param_index,
@@ -203,7 +203,7 @@ bool ConvertToTensorInPlace(PyObject*& src, DataType& dtype,
 // Converts the specified attribute parameter to the expected type.  Modifies
 // `params` in-place.  Returns true on success, or sets an exception and
 // returns false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertAttribute(const Attribute& attr, const PythonAPIInfo& api_info,
                       absl::Span<PyObject*> params) {
   if (attr.index == -1) return true;  // Inferred attribute.
@@ -224,7 +224,7 @@ bool ConvertAttribute(const Attribute& attr, const PythonAPIInfo& api_info,
 // Converts the specified fixed-dtype input parameter to a Tensor with the
 // expected dtype.  Modifies `params` in-place.  Returns true on success, or
 // sets an exception and returns false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertInputWithFixedDType(const InputWithFixedDType& input,
                                 const PythonTensorConverter& tensor_converter,
                                 const PythonAPIInfo& api_info,
@@ -251,7 +251,7 @@ bool ConvertInputWithFixedDType(const InputWithFixedDType& input,
 // Tensors) with that dtype. Modifies `params` in-place, and updates
 // `inferred_attrs` with the inferred dtype (if it's not null).  Returns true
 // on success, or sets an exception and returns false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertInputsWithTypeAttr(const InputsWithTypeAttr& input,
                                const PythonTensorConverter& tensor_converter,
                                const PythonAPIInfo& api_info,
@@ -326,7 +326,7 @@ bool ConvertInputsWithTypeAttr(const InputsWithTypeAttr& input,
 // of Tensors with those dtypes. Modifies `params` in-place, and updates
 // `inferred_attrs` with the inferred dtypes (if it's not null).  Returns true
 // on success, or sets an exception and returns false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertInputsWithTypeListAttr(
     const InputsWithTypeListAttr& input,
     const PythonTensorConverter& tensor_converter,
@@ -406,7 +406,7 @@ bool ConvertInputsWithTypeListAttr(
 // if multiple Tensor-list parameters have the same length attribute but
 // different lengths. Returns true on success, or sets an exception and returns
 // false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool InferLengthAttributes(const absl::Span<PyObject*> params,
                            const PythonAPIInfo& api_info,
                            std::vector<int64_t>& inferred_length_attrs) {

@@ -44,12 +44,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/hlo/transforms/collectives/collective_permute_cycle.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_permute_cycle.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
@@ -1029,8 +1029,6 @@ bool IsOneShotRaggedAllToAllWithNcclEnabled(const DebugOptions& opts) {
   return opts.xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
 }
 
-namespace {
-
 std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
     const HloInstruction* instruction) {
   if (!IsNonFusionCollective(instruction)) {
@@ -1067,8 +1065,6 @@ std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
       return std::nullopt;
   }
 }
-
-}  // namespace
 
 NcclSymmetricBuffersSpec::NcclSymmetricBuffersSpec(
     const DebugOptions& debug_options) {

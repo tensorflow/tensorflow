@@ -427,10 +427,8 @@ void GraphMgr::RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
   std::vector<std::string> keys;
   std::vector<Tensor>* received_keys = new std::vector<Tensor>;
   keys.reserve(out->size());
-  received_keys->reserve(out->size());
   for (const auto& p : *out) {
     keys.push_back(p.first);
-    received_keys->push_back(p.second);
   }
   RecvOutputsFromRendezvousAsync(
       rendezvous, nullptr, {}, keys, received_keys,

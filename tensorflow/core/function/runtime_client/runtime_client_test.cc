@@ -264,7 +264,7 @@ TEST(CreateTest, MlirFromGraphDef) {
       &mctx);
 
   mlir::tfg::GraphFuncOp fop =
-      *m->getBody()->op_begin<mlir::tfg::GraphFuncOp>();
+      *m->getBody()->getOps<mlir::tfg::GraphFuncOp>().begin();
 
   EagerContextPtr ectx = TestingEagerCtx();
   Runtime rt(*ectx);

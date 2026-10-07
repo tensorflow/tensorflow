@@ -1509,7 +1509,8 @@ HloModule test, num_partitions=4
   %param_2 = s32[] parameter(2)
   %param_3 = s32[] parameter(3)
   ROOT %dynamic-slice = f32[1,2,2]{2,1,0} dynamic-slice(%param_0, %param_1, %param_2, %param_3), dynamic_slice_sizes={1,2,2},
-      backend_config={"dynamic_slice_config":{"byte_offset":"0","byte_stride":"0"}}
+      backend_config={"dynamic_slice_config":{
+        "linear":{"byte_offset":"0","byte_stride":"0"}}}
 }
 
 %async_computation (param_0: f32[2,2,2], param_1: s32[], param_2: s32[], param_3: s32[]) -> f32[1,2,2] {
@@ -1815,7 +1816,8 @@ dynamic_slice_computation {
   i2 = s32[] parameter(3)
   ROOT dynamic_slice = f32[1,2,2] dynamic-slice(input, i0, i1, i2),
     dynamic_slice_sizes={1,2,2},
-    backend_config={"dynamic_slice_config":{"byte_offset":"0","byte_stride":"0"}}
+    backend_config={"dynamic_slice_config":{
+      "linear":{"byte_offset":"0","byte_stride":"0"}}}
 }
 
 async_computation {
@@ -1945,7 +1947,8 @@ dynamic_slice_computation {
   i2 = s32[] parameter(3)
   ROOT dynamic_slice = f32[1,2,2] dynamic-slice(input, i0, i1, i2),
     dynamic_slice_sizes={1,2,2},
-    backend_config={"dynamic_slice_config":{"byte_offset":"0","byte_stride":"0"}}
+    backend_config={"dynamic_slice_config":{
+      "linear":{"byte_offset":"0","byte_stride":"0"}}}
 }
 
 async_computation {

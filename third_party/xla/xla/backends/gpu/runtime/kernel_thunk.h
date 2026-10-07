@@ -22,14 +22,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -77,6 +75,7 @@ class KernelThunk : public Command {
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
               stream_executor::gpu::TmaMetadata tma_metadata,
+              int devices_per_host,
               std::vector<int64_t> zeroed_output_buffer_indices = {},
               bool use_pdl = false);
   KernelThunk(const KernelThunk&) = delete;
@@ -88,13 +87,14 @@ class KernelThunk : public Command {
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<KernelThunk>> FromProto(
       ThunkInfo thunk_info, const KernelThunkProto& proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_per_host);
 
   // Creates a KernelThunk from ShapedSlice + MemoryAccess pairs.
   static std::unique_ptr<KernelThunk> MakeKernelThunk(
       std::string kernel_name, absl::Span<const ShapedSlice> args,
       absl::Span<const BufferUse::MemoryAccess> args_access,
-      LaunchDimensions dims, int64_t shmem_bytes,
+      LaunchDimensions dims, int64_t shmem_bytes, int devices_per_host,
       stream_executor::gpu::TmaMetadata tma_metadata = {});
 
   absl::Status Initialize(const InitializeParams& params) override;
@@ -127,6 +127,10 @@ class KernelThunk : public Command {
   BufferUses buffer_uses() const override;
 
  private:
+  struct KernelState {
+    std::unique_ptr<se::Kernel> kernel;
+  };
+
   // Holds the loaded kernel and its packed arguments, returned by
   // GetKernelAndArgs.
   struct KernelWithArgs {
@@ -167,10 +171,8 @@ class KernelThunk : public Command {
   // Programmatic Dependent Launch.
   bool use_pdl_;
 
-  // Loaded kernels for each `StreamExecutor`.
-  mutable absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
-      kernel_cache_ ABSL_GUARDED_BY(mutex_);
+  // Per-device loaded kernels indexed by device ordinal.
+  PerDeviceState<KernelState> device_states_;
 };
 
 }  // namespace gpu

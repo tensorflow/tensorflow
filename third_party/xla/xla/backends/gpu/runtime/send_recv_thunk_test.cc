@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -87,8 +86,8 @@ ENTRY computation {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   // Get Send Instruction
   const HloInstruction* root2_instr =
@@ -150,8 +149,8 @@ ENTRY computation {
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
       CommandExecutor::SynchronizationMode::kLHS;
-  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
-                          ConvertToCommands(thunk_sequence, conv_options));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
+                       ConvertToCommands(thunk_sequence, conv_options));
 
   // AsyncStart inlines its nested send thunk as a command, and AsyncDone
   // with no control predecessors is a no-op, so we get 1 command.
@@ -180,8 +179,8 @@ ENTRY computation {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   // Get Recv Instruction
   const HloInstruction* root2_instr =
@@ -244,8 +243,8 @@ ENTRY computation {
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
       CommandExecutor::SynchronizationMode::kLHS;
-  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
-                          ConvertToCommands(thunk_sequence, conv_options));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
+                       ConvertToCommands(thunk_sequence, conv_options));
 
   // AsyncStart inlines its nested recv thunk as a command, and AsyncDone
   // with no control predecessors is a no-op, so we get 1 command.
@@ -277,8 +276,8 @@ ENTRY computation {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   se::StreamExecutor* executor = backend().default_stream_executor();
   // TODO(Intel-tf): To remove this check once command buffer is implemented.
@@ -286,12 +285,12 @@ ENTRY computation {
     GTEST_SKIP() << "Command buffer is not supported on SYCL platform yet.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> compiled_module,
       backend().compiler()->RunHloPasses(module->Clone(), executor,
                                          /*device_allocator=*/nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(compiled_module), executor,
                                        /*device_allocator=*/nullptr));

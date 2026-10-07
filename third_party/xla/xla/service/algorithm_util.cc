@@ -58,6 +58,8 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4:
 
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
@@ -88,6 +90,9 @@ absl::StatusOr<std::vector<PrimitiveType>> GetAllowedOperandsTypeForAlgorithm(
     case PrecisionConfig::ALG_DOT_BF16_BF16_BF16:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
       return std::vector<PrimitiveType>{BF16};
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4:
+      return std::vector<PrimitiveType>{BF16, F32};
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
@@ -129,6 +134,8 @@ absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
@@ -282,6 +289,10 @@ bool IsSupportedDotAlgorithmOnGpu(
 
   const bool is_sycl = gpu_compute_capability.IsOneAPI();
 
+  const bool has_nanoo_fp8_support =
+      gpu_compute_capability.IsRocm() &&
+      gpu_compute_capability.rocm_compute_capability()->has_nanoo_fp8_support();
+
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
@@ -290,7 +301,8 @@ bool IsSupportedDotAlgorithmOnGpu(
       }
       if (output_storage_type != BF16 && output_storage_type != F16 &&
           output_storage_type != F32 && output_storage_type != F8E4M3FN &&
-          output_storage_type != F8E5M2) {
+          output_storage_type != F8E5M2 && output_storage_type != F8E4M3FNUZ &&
+          output_storage_type != F8E5M2FNUZ) {
         return false;
       }
       // Other F8 types are actually not supported by NVIDIA GPUs.
@@ -301,6 +313,17 @@ bool IsSupportedDotAlgorithmOnGpu(
       if (lhs_storage_type == F8E4M3FN &&
           (rhs_storage_type == F8E5M2 || rhs_storage_type == F8E4M3FN)) {
         return true;
+      }
+      // FNUZ types support (ROCm)
+      if (has_nanoo_fp8_support) {
+        if (lhs_storage_type == F8E5M2FNUZ && rhs_storage_type == F8E4M3FNUZ) {
+          return true;
+        }
+        if (lhs_storage_type == F8E4M3FNUZ &&
+            (rhs_storage_type == F8E5M2FNUZ ||
+             rhs_storage_type == F8E4M3FNUZ)) {
+          return true;
+        }
       }
       return false;
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
@@ -329,7 +352,7 @@ bool IsSupportedDotAlgorithmOnGpu(
              output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
-      return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
+      return (is_cuda_ge_ampere || is_rocm_mi100_and_above || is_sycl) &&
              lhs_storage_type == rhs_storage_type && lhs_storage_type == F32 &&
              output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_F32_F32_F32:

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -43,9 +44,13 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
+#include "xla/python/ifrt/mlir/fingerprint_utils.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/errors.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/human_readable_json.h"
 
 namespace xla {
@@ -55,6 +60,62 @@ char IfrtIRProgram::ID = 0;
 char SerializeIfrtIRProgramOptions::ID = 0;
 char DeserializeIfrtIRProgramOptions::ID = 0;
 char IfrtIRCompileOptions::ID = 0;
+
+absl::StatusOr<uint64_t> IfrtIRProgram::Fingerprint() const {
+  absl::StatusOr<uint64_t> fingerprint = FingerprintModuleOp(mlir_module);
+  if (!fingerprint.ok()) {
+    absl::Status status = fingerprint.status();
+    tsl::errors::AppendToMessage(
+        &status, "Failed while calculating IfrtIRProgram fingerprint");
+    return status;
+  }
+  return *fingerprint;
+}
+
+absl::StatusOr<uint64_t> IfrtIRCompileOptions::Fingerprint(
+    bool include_device_assignments, bool include_loaded_exec_binding) const {
+  IfrtIrCompileOptionsProto proto;
+  absl::Status status = ToProto(proto);
+  if (!status.ok()) {
+    tsl::errors::AppendToMessage(
+        &status, "Failed while calculating IfrtIRCompileOptions fingerprint");
+    return status;
+  }
+
+  if (!include_device_assignments) {
+    proto.clear_device_ids();
+  }
+
+  std::string serialized;
+  if (!tsl::SerializeToStringDeterministic(proto, &serialized)) {
+    return absl::InternalError(
+        "Failed to serialize IfrtIrCompileOptionsProto deterministically");
+  }
+  uint64_t fp = tsl::Fingerprint64(serialized);
+
+  // Fingerprint the loaded executables.
+  if (include_loaded_exec_binding && !loaded_exec_binding.empty()) {
+    std::vector<std::string> keys;
+    keys.reserve(loaded_exec_binding.size());
+    for (const auto& [key, _] : loaded_exec_binding) {
+      keys.push_back(key);
+    }
+    std::sort(keys.begin(), keys.end());
+    for (const std::string& key : keys) {
+      const LoadedExecutableRef& exec = loaded_exec_binding.at(key);
+      CHECK_NE(exec, nullptr) << "LoadedExecutable for '" << key << "' is null";
+      ABSL_ASSIGN_OR_RETURN(std::optional<std::string> exec_fp, exec->Fingerprint());
+      if (!exec_fp.has_value()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "LoadedExecutable for '", key, "' does not have a fingerprint"));
+      }
+      fp = tsl::FingerprintCat64(fp, tsl::Fingerprint64(key));
+      fp = tsl::FingerprintCat64(fp, tsl::Fingerprint64(*exec_fp));
+    }
+  }
+
+  return fp;
+}
 
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options) {

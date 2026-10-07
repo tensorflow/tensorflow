@@ -37,7 +37,7 @@ bool HloDfsReachability::IsReachable(const HloInstruction* from,
   if (from == to) {
     return true;
   }
-  if (to->operand_count() == 0 && from->control_predecessors().empty()) {
+  if (to->operand_count() == 0 && to->control_predecessors().empty()) {
     return false;
   }
 

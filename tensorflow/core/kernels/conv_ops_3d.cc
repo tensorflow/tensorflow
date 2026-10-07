@@ -17,6 +17,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/types.pb.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS

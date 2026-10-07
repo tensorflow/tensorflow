@@ -384,14 +384,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
 
-      // Note that if `ctx->thread_pool()` is non-null, then instead of creating
-      // a dedicated thread pool of size `num_threads`, computation will be
-      // scheduled into the shared threadpool. The threadpool is guaranteed to
-      // support `num_threads` concurrent tasks without blocking indefinitely.
-      //
-      // Allocate one thread for the worker manager, one thread for stats
+      // Allocates one thread for the worker manager, one thread for stats
       // collection, `cycle_length_` threads for the current workers, and
-      // `future_elements_prefetch_` for the future workers.
+      // `prefetch_input_elements_ + cycle_length_` threads for future workers.
       int max_current_workers = dataset()->cycle_length_;
       int future_workers =
           dataset()->prefetch_input_elements_ + dataset()->cycle_length_;

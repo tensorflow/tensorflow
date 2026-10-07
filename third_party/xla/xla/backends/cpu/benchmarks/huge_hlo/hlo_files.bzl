@@ -27,5 +27,6 @@ HUGE_HLO_FILES = [
     "gemma3_4b_text_keras_jax_batch1_in8_out100.hlo",
     "gemma4_2b_bf16.hlo",
     "gemma4_4b_text_keras_jax_bf16.hlo",
+    "mistral_7b_en_keras_jax_bf16.hlo",
     # go/keep-sorted end
 ]

@@ -151,6 +151,25 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
   }
 }
 
+namespace {
+
+bool IsCheapToDuplicate(const HloInstruction* hlo) {
+  if (hlo->opcode() == HloOpcode::kConstant) {
+    return ShapeUtil::IsScalar(hlo->shape());
+  }
+  if (hlo->opcode() == HloOpcode::kBroadcast) {
+    return ShapeUtil::IsScalar(hlo->operand(0)->shape()) ||
+           hlo->operand(0)->shape().dimensions().size() == 1;
+  }
+  if (hlo->opcode() == HloOpcode::kConvert) {
+    return ShapeUtil::IsScalar(hlo->shape()) ||
+           hlo->shape().dimensions().size() == 1;
+  }
+  return false;
+}
+
+}  // namespace
+
 HloInstruction* FuseTowardOperand(
     HloInstruction* hlo, HloComputation::Builder& builder,
     std::vector<HloInstruction*>& fusion_params,
@@ -162,7 +181,7 @@ HloInstruction* FuseTowardOperand(
   HloInstruction* fused_hlo;
   if (IsEpilogueOpSupportedByCuDNN(*hlo, /*can_fuse_reduce=*/false, is_nchw,
                                    device_info) &&
-      hlo->user_count() == 1) {
+      (hlo->user_count() == 1 || IsCheapToDuplicate(hlo))) {
     HloInstruction::InstructionVector new_operands;
     for (int i = 0; i < hlo->operand_count(); ++i) {
       HloInstruction* operand = hlo->mutable_operand(i);

@@ -36,8 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -110,39 +108,43 @@ TEST_P(TopKKernelTest, TopKFloat) {
       executor->AllocateArray<uint32_t>(k * batch_size, 0);
 
   auto source = RandomVec<T>(n * batch_size);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       stream->Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
-  TF_ASSERT_OK(stream->MemZero(&output_values, k * batch_size * sizeof(T)));
-  TF_ASSERT_OK(
+  ASSERT_OK(stream->MemZero(&output_values, k * batch_size * sizeof(T)));
+  ASSERT_OK(
       stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
-  auto custom_kernel =
+  ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
+  ASSERT_OK_AND_ASSIGN(
+      auto custom_kernel,
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
-                    platform->Name(), desc->threads_per_warp());
+                    platform->Name(), desc->threads_per_warp()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel,
-                          executor->LoadKernel(custom_kernel->kernel_spec()));
+  ASSERT_OK_AND_ASSIGN(auto kernel,
+                       executor->LoadKernel(custom_kernel.kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   stream_executor::KernelArgsDeviceAddressArray arr(
       std::vector<se::DeviceAddressBase>(
           {input_buffer, output_values, output_indices}),
-      custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(kernel->Launch(custom_kernel->thread_dims(),
-                              custom_kernel->block_dims(), stream.get(), arr));
+      custom_kernel.shared_memory_bytes());
+  ASSERT_OK(kernel->Launch(custom_kernel.thread_dims(),
+                           custom_kernel.block_dims(), stream.get(), arr));
 
   std::vector<T> got(k);
   ASSERT_TRUE(stream->BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    TF_ASSERT_OK(stream->Memcpy(got.data(), output_values.GetSlice(k * i, k),
-                                k * sizeof(T)));
+    ASSERT_OK(stream->Memcpy(got.data(), output_values.GetSlice(k * i, k),
+                             k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);
     EXPECT_THAT(got, ::testing::ElementsAreArray(slice))
         << " k=" << k << ", batch_size=" << batch_size << " i=" << i;
   }
+  executor->Deallocate(&input_buffer);
+  executor->Deallocate(&output_values);
+  executor->Deallocate(&output_indices);
 }
 
 TEST_P(TopKKernelTest, TopKPackedNegative) {
@@ -171,39 +173,43 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
       executor->AllocateArray<uint32_t>(k * batch_size, 0);
 
   auto source = RandomVecNegative<T>(n * batch_size);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       stream->Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
-  TF_ASSERT_OK(stream->MemZero(&output_values, k * batch_size * sizeof(T)));
-  TF_ASSERT_OK(
+  ASSERT_OK(stream->MemZero(&output_values, k * batch_size * sizeof(T)));
+  ASSERT_OK(
       stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
-  auto custom_kernel =
+  ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
+  ASSERT_OK_AND_ASSIGN(
+      auto custom_kernel,
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
-                    platform->Name(), desc->threads_per_warp());
+                    platform->Name(), desc->threads_per_warp()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel,
-                          executor->LoadKernel(custom_kernel->kernel_spec()));
+  ASSERT_OK_AND_ASSIGN(auto kernel,
+                       executor->LoadKernel(custom_kernel.kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   stream_executor::KernelArgsDeviceAddressArray arr(
       std::vector<se::DeviceAddressBase>(
           {input_buffer, output_values, output_indices}),
-      custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(kernel->Launch(custom_kernel->thread_dims(),
-                              custom_kernel->block_dims(), stream.get(), arr));
+      custom_kernel.shared_memory_bytes());
+  ASSERT_OK(kernel->Launch(custom_kernel.thread_dims(),
+                           custom_kernel.block_dims(), stream.get(), arr));
 
   std::vector<T> got(k);
   ASSERT_TRUE(stream->BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    TF_ASSERT_OK(stream->Memcpy(got.data(), output_values.GetSlice(k * i, k),
-                                k * sizeof(T)));
+    ASSERT_OK(stream->Memcpy(got.data(), output_values.GetSlice(k * i, k),
+                             k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);
     EXPECT_THAT(got, ::testing::ElementsAreArray(slice))
         << " k=" << k << ", batch_size=" << batch_size << " i=" << i;
   }
+  executor->Deallocate(&input_buffer);
+  executor->Deallocate(&output_values);
+  executor->Deallocate(&output_indices);
 }
 
 TEST_P(TopKKernelTest, EnsureSerializable) {
@@ -219,7 +225,7 @@ TEST_P(TopKKernelTest, EnsureSerializable) {
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
+  ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
                     platform->Name(), desc->threads_per_warp());

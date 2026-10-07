@@ -553,6 +553,9 @@ bool HloInstructionAdaptor::use_global_device_ids() const {
     case HloOpcode::kAllReduce:
       return Cast<HloAllReduceInstruction>(instruction_)
           ->use_global_device_ids();
+    case HloOpcode::kReduceScatter:
+      return Cast<HloReduceScatterInstruction>(instruction_)
+          ->use_global_device_ids();
     default:
       return false;
   }
