@@ -499,6 +499,56 @@ class SparseCrossOpTest(test.TestCase):
                                 'Expected batch size'):
       self.evaluate(sparse_ops.sparse_cross([st1, st2]))
 
+  def test_cross_count_overflow(self):
+    # 64 sparse columns x 2 features each: the Cartesian product (2^64)
+    # overflows int64 without the overflow guard.
+    col = sparse_tensor.SparseTensor(
+        indices=constant_op.constant([[0, 0], [0, 1]], dtypes.int64),
+        values=constant_op.constant(['a', 'b']),
+        dense_shape=constant_op.constant([1, 2], dtypes.int64))
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r'SparseCross: the Cartesian product of all feature counts exceeds '
+        r'the maximum supported value\.'):
+      self.evaluate(sparse_ops.sparse_cross([col] * 64))
+
+  def test_cross_count_overflow_hashed(self):
+    col = sparse_tensor.SparseTensor(
+        indices=constant_op.constant([[0, 0], [0, 1]], dtypes.int64),
+        values=constant_op.constant([1, 2], dtypes.int64),
+        dense_shape=constant_op.constant([1, 2], dtypes.int64))
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r'SparseCross: the Cartesian product of all feature counts exceeds '
+        r'the maximum supported value\.'):
+      self.evaluate(sparse_ops.sparse_cross_hashed([col] * 64))
+
+  def test_cross_count_total_overflow(self):
+    # 61 columns x 2 features x 2 batches: per-batch = 2^61 (within cap),
+    # total = 2*2^61 = 2^62 > INT64_MAX/2 — triggers accumulation guard.
+    col = sparse_tensor.SparseTensor(
+        indices=constant_op.constant(
+            [[0, 0], [0, 1], [1, 0], [1, 1]], dtypes.int64),
+        values=constant_op.constant(['a', 'b', 'c', 'd']),
+        dense_shape=constant_op.constant([2, 2], dtypes.int64))
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r'SparseCross: the total number of crosses across all batches exceeds '
+        r'the maximum supported value\.'):
+      self.evaluate(sparse_ops.sparse_cross([col] * 61))
+
+  def test_cross_count_total_overflow_hashed(self):
+    col = sparse_tensor.SparseTensor(
+        indices=constant_op.constant(
+            [[0, 0], [0, 1], [1, 0], [1, 1]], dtypes.int64),
+        values=constant_op.constant([1, 2, 3, 4], dtypes.int64),
+        dense_shape=constant_op.constant([2, 2], dtypes.int64))
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r'SparseCross: the total number of crosses across all batches exceeds '
+        r'the maximum supported value\.'):
+      self.evaluate(sparse_ops.sparse_cross_hashed([col] * 61))
+
 
 class SparseCrossV2OpTest(BaseSparseCrossOpTest):
 
