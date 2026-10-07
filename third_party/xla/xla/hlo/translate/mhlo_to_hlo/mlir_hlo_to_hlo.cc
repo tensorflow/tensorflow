@@ -6215,9 +6215,26 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   }
   if (auto spmd_parameters_sharding = module->getAttrOfType<mlir::ArrayAttr>(
           xla::kMhloSpmdParametersShardings)) {
-    for (const auto& sharding : spmd_parameters_sharding.getValue()) {
-      *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
-          mlir::cast<mlir::StringAttr>(sharding).getValue());
+    if (options.use_tuple_args && !spmd_parameters_sharding.empty()) {
+      xla::OpSharding* tuple_sharding =
+          hlo_module.add_spmd_parameters_shardings();
+      tuple_sharding->set_type(xla::OpSharding::TUPLE);
+      for (const auto& sharding : spmd_parameters_sharding.getValue()) {
+        xla::OpSharding param_sharding = *xla::ConvertSharding(
+            mlir::cast<mlir::StringAttr>(sharding).getValue());
+        if (param_sharding.type() == xla::OpSharding::TUPLE) {
+          for (const auto& element : param_sharding.tuple_shardings()) {
+            *tuple_sharding->add_tuple_shardings() = element;
+          }
+        } else {
+          *tuple_sharding->add_tuple_shardings() = std::move(param_sharding);
+        }
+      }
+    } else {
+      for (const auto& sharding : spmd_parameters_sharding.getValue()) {
+        *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
+            mlir::cast<mlir::StringAttr>(sharding).getValue());
+      }
     }
   }
   if (auto xla_entry_computation_parameter_layout =

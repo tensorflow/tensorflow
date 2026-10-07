@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -46,7 +45,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
@@ -663,113 +661,87 @@ FailureOr<TiledLayoutAttr> SharedMemRefSliceOp::inferResultLayout(
 }
 
 LogicalResult MemRefSqueezeOp::verify() {
-  MemRefType input_type = getInput().getType();
-  MemRefType result_type = getType();
+  MemRefType source_type = getInput().getType();
+  MemRefType target_type = getType();
 
-  if (result_type.getMemorySpace() != input_type.getMemorySpace()) {
+  if (target_type.getMemorySpace() != source_type.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
 
-  if (result_type.getElementType() != input_type.getElementType()) {
+  if (target_type.getElementType() != source_type.getElementType()) {
     return emitOpError("Element types don't match.");
   }
 
-  const ArrayRef<int64_t> input_shape = input_type.getShape();
-  const ArrayRef<int64_t> result_shape = result_type.getShape();
-  // NOTE: In cases where there is flexibility on which dimension to squeeze,
-  //   such as 1x1x2 -> 1x2 (can squeeze dimension 1 or 2), this may choose
-  //   dimensions that have padding and fail in inferResultLayout.
-  // TODO(tlongeri): Unify logic in inferMemRefReshape such that we don't
-  //  need computeSqueezedDimsChecked at all.
+  auto source_shape = source_type.getShape();
+  auto target_shape = target_type.getShape();
   FAILUREOR_ASSIGN_OR_RETURN(
-      const SmallVector<int64_t> squeezed,
-      computeSqueezedDimsChecked(*this, input_shape, result_shape));
-  if (squeezed.empty() && input_shape != result_shape) {
+      auto squeezed,
+      computeSqueezedDimsChecked(*this, source_shape, target_shape));
+  if (squeezed.empty() && source_shape != target_shape) {
     return emitOpError(
         "Source and target shapes must be the same if no dimensions are "
         "squeezed.");
   }
 
-  FAILUREOR_ASSIGN_OR_RETURN(
-      const MemRefLayoutAttrInterface expected_result_layout,
-      inferResultLayout(input_type.getLayout(), squeezed,
-                        [&]() { return emitOpError(); }));
-  if (result_type.getLayout() != expected_result_layout) {
-    return emitOpError("Expected result layout to be ")
-           << expected_result_layout;
+  auto source_layout = source_type.getLayout();
+  auto target_layout = target_type.getLayout();
+  bool has_tiled_layout = isa<TiledLayoutAttr>(source_layout);
+  if (has_tiled_layout != isa<TiledLayoutAttr>(target_layout)) {
+    return emitOpError(
+        "Either both src and dst or none of them should have a tiled layout");
+  }
+  if (has_tiled_layout) {
+    return verifyTiling();
   }
   return success();
 }
 
-FailureOr<MemRefLayoutAttrInterface> MemRefSqueezeOp::inferResultLayout(
-    const MemRefLayoutAttrInterface input_layout,
-    const ArrayRef<int64_t> squeezed,
-    const function_ref<InFlightDiagnostic()> emit_error) {
-  // TODO(tlongeri): Make MemRefReshapeOp::inferResultLayout more general and
-  // use that instead.
-  MLIRContext* const ctx = input_layout.getContext();
-  if (auto tiled_layout = dyn_cast<TiledLayoutAttr>(input_layout)) {
-    const int64_t input_rank = tiled_layout.getRank();
-    const int64_t result_rank = input_rank - squeezed.size();
+mlir::InFlightDiagnostic MemRefSqueezeOp::verifyTiling() {
+  MemRefType source_type = getInput().getType();
+  auto source_shape = source_type.getShape();
+  auto target_shape = getType().getShape();
+  auto squeezed_or =
+      computeSqueezedDimsChecked(*this, source_shape, target_shape);
+  if (failed(squeezed_or)) {
+    return {};
+  }
+  auto& squeezed = squeezed_or.value();
 
-    SmallVector<int64_t> tile_strides;
-    tile_strides.reserve(result_rank);
-    for (int64_t i = 0; i < input_rank; ++i) {
-      if (!llvm::is_contained(squeezed, i)) {
-        tile_strides.push_back(tiled_layout.getTileStrides()[i]);
-      }
-    }
-
-    const ArrayRef<xla::Tile> tiles = tiled_layout.getTiles();
-
-    if (tiles.size() == 1 && tiles[0].dimensions().size() == 2 &&
-        tiles[0].dimension(0) == 1 &&
-        !llvm::is_contained(squeezed, input_rank - 1) &&
-        llvm::is_contained(squeezed, input_rank - 2) && result_rank >= 2) {
-      // For legacy reasons, for T(1, B) that squeezes the 2nd minor, infer
-      // T(1, B) instead of T(B) like in the code below.
-      return MemRefLayoutAttrInterface(TiledLayoutAttr::get(
-          ctx, {xla::Tile({1, tiles[0].dimension(1)})}, tile_strides));
-    }
-
-    SmallVector<xla::Tile> result_tiles;
-    result_tiles.reserve(tiles.size());
-    // Perform expansion as in TiledLayoutAttr::getExpandedShape, maintaining a
-    // mapping from expanded shape dimension to corresponding input dimension.
-    SmallVector<int64_t> expanded_dims = llvm::to_vector(
-        llvm::iota_range<int64_t>(0, input_rank, /*Inclusive=*/false));
-    for (const xla::Tile& input_tile : tiles) {
-      const int64_t tile_rank = input_tile.dimensions().size();
-      const int64_t expanded_rank = expanded_dims.size();
-      SmallVector<int64_t> tile;
-      for (int64_t i = 0; i < tile_rank; ++i) {
-        const int64_t input_dim = expanded_dims[expanded_rank - tile_rank + i];
-        if (llvm::is_contained(squeezed, input_dim)) {
-          if (input_tile.dimension(i) != 1) {
-            return emit_error() << "Dimension " << input_dim
-                                << " is padded but is squeezed.";
+  auto tiles = cast<TiledLayoutAttr>(source_type.getLayout()).getTiles();
+  switch (tiles.size()) {
+    case 0:
+      break;
+    case 1: {
+      auto tile = tiles.front();
+      auto tile_dims = tile.dimensions();
+      int first_tiled = source_shape.size() - tile_dims.size();
+      for (int dim : squeezed) {
+        if (dim >= first_tiled) {
+          int tile_idx = dim - first_tiled;
+          if (tile_idx < 0 || tile_idx >= static_cast<int>(tile_dims.size())) {
+            return emitOpError() << "Internal error: tile index out of bounds.";
           }
-        } else {
-          tile.push_back(input_tile.dimension(i));
+          if (tile_dims[tile_idx] != 1) {
+            return emitOpError()
+                   << "All tiled squeezed dimensions must be of size 1.";
+          }
         }
-        expanded_dims.push_back(input_dim);
       }
-      if (!tile.empty()) {
-        result_tiles.emplace_back(tile);
+      break;
+    }
+    default: {
+      auto first_tile = tiles.front();
+      for (int dim : squeezed) {
+        int first_tiled = source_shape.size() - first_tile.dimensions().size();
+        if (dim >= first_tiled) {
+          return emitOpError() << "When multiple tiles are present, no tiled "
+                                  "dimensions can be squeezed.";
+        }
       }
     }
-    return MemRefLayoutAttrInterface(
-        TiledLayoutAttr::get(ctx, result_tiles, tile_strides));
   }
-  if (auto affine_map_attr = dyn_cast<AffineMapAttr>(input_layout);
-      affine_map_attr && affine_map_attr.isIdentity()) {
-    const int64_t input_rank = affine_map_attr.getValue().getNumInputs();
-    const int64_t result_rank = input_rank - squeezed.size();
-    // Untiled squeeze
-    return MemRefLayoutAttrInterface(AffineMapAttr::get(
-        AffineMap::getMultiDimIdentityMap(result_rank, ctx)));
-  }
-  return emit_error() << "Only tiled or identity layouts supported.";
+
+  return {};
 }
 
 // Rewrites
@@ -811,7 +783,7 @@ struct MemRefSqueezeFoldCast : public OpRewritePattern<MemRefSqueezeOp> {
 
     MemRefType result_type = op.getType();
     FAILUREOR_ASSIGN_OR_RETURN(
-        SmallVector<int64_t> squeezed,
+        SmallVector<int> squeezed,
         computeSqueezedDimsChecked(op, cast_result_type.getShape(),
                                    result_type.getShape()));
 
@@ -1654,17 +1626,11 @@ OpFoldResult EraseLayoutOp::fold(FoldAdaptor adaptor) {
 LogicalResult EraseLayoutOp::verify() {
   MemRefType operand_type = getOperand().getType();
   MemRefType result_type = getType();
-  // TODO(tlongeri): Enforce no shape changes
-  if (operand_type.getElementType() != result_type.getElementType()) {
-    return emitOpError("Cannot change the memref element type");
+  if (operand_type.getMemorySpace() != result_type.getMemorySpace()) {
+    return emitOpError("Cannot change the memref memory space");
   }
-  if (operand_type.getMemorySpace() != result_type.getMemorySpace() &&
-      result_type.getMemorySpace()) {
-    return emitOpError(
-        "Memref memory space must be either erased (changed to null) or "
-        "preserved");
-  }
-  if (operand_type.getLayout() == nullptr) {
+  if (auto affine_map_attr = dyn_cast<AffineMapAttr>(result_type.getLayout());
+      affine_map_attr == nullptr || !affine_map_attr.isIdentity()) {
     return emitOpError("Memref layout must be erased");
   }
   return success();
@@ -2191,9 +2157,36 @@ LogicalResult ScanOp::verify() {
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
   }
-  if (getKind() != ReductionKind::kSum && getKind() != ReductionKind::kMax &&
-      getKind() != ReductionKind::kMin) {
-    return emitOpError("Only sum, max and min reductions are supported.");
+  switch (getKind()) {
+    case ReductionKind::kSum:
+      break;
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(input_ty.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type.");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(input_ty.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type.");
+      }
+      break;
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead.");
+    case ReductionKind::kArgMax:
+    case ReductionKind::kArgMin:
+    case ReductionKind::kFindFirstSet:
+      return emitOpError("Only sum, max and min reductions are supported.");
   }
 
   if (getMask() == nullptr) {
@@ -3121,14 +3114,45 @@ LogicalResult AllReduceOp::verify() {
 
   switch (kind) {
     case ReductionKind::kSum:
-    case ReductionKind::kMax:
-    case ReductionKind::kMin:
       if (in_ty != out_ty) {
         return emitOpError(
             "Sum, max, and min reductions must have the same "
             "input and output type");
       }
       break;
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(in_ty.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type");
+      }
+      if (in_ty != out_ty) {
+        return emitOpError(
+            "Sum, max, and min reductions must have the same "
+            "input and output type");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(in_ty.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type");
+      }
+      if (in_ty != out_ty) {
+        return emitOpError(
+            "Sum, max, and min reductions must have the same "
+            "input and output type");
+      }
+      break;
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead");
     case ReductionKind::kArgMax:
     case ReductionKind::kArgMin:
       if (in_ty.getShape() != out_ty.getShape()) {
@@ -3155,7 +3179,6 @@ LogicalResult AllReduceOp::verify() {
       break;
     case ReductionKind::kFindFirstSet:
       return emitOpError("Only i1 input is supported for find_first_set");
-      break;
   }
   return success();
 }
@@ -3255,9 +3278,40 @@ LogicalResult ReduceOp::verify() {
           "arg_max/arg_min not supported - use tpu.reduce_index instead");
     case ReductionKind::kFindFirstSet:
       return emitOpError("find_first_set not supported");
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead");
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(input_type.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type");
+      }
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(input_type.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type");
+      }
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
     case ReductionKind::kSum:
-    case ReductionKind::kMax:
-    case ReductionKind::kMin:
       // TODO(tlongeri): Might be worth allowing things like bf16 -> f32.
       if (input_type.getElementType() != output_type.getElementType()) {
         return emitOpError(

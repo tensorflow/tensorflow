@@ -76,7 +76,6 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -506,18 +505,15 @@ ENTRY e {
          {"$output_shape", absl::StrCat(m, ",", n)},
          {"$lhs_contracting_dim", lhs_k_minor ? "1" : "0"},
          {"$rhs_contracting_dim", rhs_k_minor ? "1" : "0"}});
-    if (scale_type == F8E8M0FNU && block_size == 16 &&
-        GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
-      if constexpr (tsl::kIsDebugBuild) {
-        EXPECT_DEATH(
-            { (void)GetOptimizedModule(hlo); },
-            "MMAv5 with kind=mxf4nvf4 does not support transpose");
-        return;
-      }
-    }
     ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(hlo));
     HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
         *optimized_module, HloOpcode::kScaledDot);
+    if (scale_type == F8E8M0FNU && block_size == 16 &&
+        GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
+      EXPECT_EQ(scaled_dot_computation, nullptr);
+      return;
+    }
+    ASSERT_NE(scaled_dot_computation, nullptr);
     EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                  "CHECK: tt.dot_scaled"),
                 IsOk());
@@ -1283,16 +1279,6 @@ ENTRY e {
                      {"$lhs_contracting_dim", lhs_k_minor ? "1" : "0"},
                      {"$rhs_contracting_dim", rhs_k_minor ? "1" : "0"}});
 
-  if (param.scale_type == F8E8M0FNU && param.block_size == 16 &&
-      GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
-    if constexpr (tsl::kIsDebugBuild) {
-      EXPECT_DEATH(
-          { (void)GetOptimizedModule(hlo); },
-          "MMAv5 with kind=mxf4nvf4 does not support transpose");
-      return;
-    }
-  }
-
   std::string optimized_hlo = "N/A";
   auto optimized_module_or = GetOptimizedModule(hlo);
   HloComputation* scaled_dot_computation = nullptr;
@@ -1376,7 +1362,7 @@ ENTRY e {
 
     auto cloned_module = (*optimized_module_or)->Clone();
     auto executable_or = CompileToExecutable(std::move(cloned_module),
-                                             /*run_optimization_passes=*/true);
+                                             /*run_optimization_passes=*/false);
     compilation_succeeded = executable_or.ok();
     gpu_compiler->RemoveAsmHook();
   }

@@ -70,7 +70,7 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
   absl::StatusOr<AllGatherInfo> BuildInfo(
       CollectiveKernelEnabled collective_kernel_enabled,
       PrimitiveType element_type, std::vector<int64_t> input_dims,
-      std::vector<int32_t> replica_groups, int num_hosts = 1,
+      std::vector<int32_t> replica_groups, int num_partitions = 1,
       int active_links = 18) {
     const int num_replicas =
         replica_groups.empty() ? 1 : static_cast<int>(replica_groups.size());
@@ -111,11 +111,12 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
     ABSL_ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
                      gpu::GpuTargetConfig::FromProto(target_config_proto));
 
-    // num_devices_per_host = num_replicas / num_hosts (for single group).
+    // Each partition is a single host (i.e. a separate NVLink domain) with
+    // num_devices_per_host = num_replicas / num_partitions (for single group).
     const int num_devices_per_host =
-        num_replicas > 0 ? num_replicas / num_hosts : 1;
-    GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
-                             /*num_hosts_per_partition=*/num_hosts,
+        num_replicas > 0 ? num_replicas / num_partitions : 1;
+    GpuTopology gpu_topology("platform_version", num_partitions,
+                             /*num_hosts_per_partition=*/1,
                              /*num_devices_per_host=*/num_devices_per_host,
                              target_config);
 
@@ -133,11 +134,11 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
   absl::StatusOr<AllGatherInfo> BuildInfo(
       CollectiveKernelEnabled collective_kernel_enabled,
       PrimitiveType element_type, int64_t num_elements,
-      std::vector<int32_t> replica_groups, int num_hosts = 1,
+      std::vector<int32_t> replica_groups, int num_partitions = 1,
       int active_links = 18) {
     return BuildInfo(collective_kernel_enabled, element_type,
                      std::vector<int64_t>{num_elements},
-                     std::move(replica_groups), num_hosts, active_links);
+                     std::move(replica_groups), num_partitions, active_links);
   }
 };
 
@@ -237,10 +238,10 @@ TEST_F(BuildAllGatherInfoTest, FailsIfReplicaGroupsEmpty) {
 }
 
 TEST_F(BuildAllGatherInfoTest, FailsForCrossHostCollective) {
-  // 2 replicas split across 2 hosts → not local → should be rejected.
+  // 2 replicas split across 2 partitions → not local → should be rejected.
   EXPECT_THAT(
       BuildInfo(CollectiveKernelEnabled(true), F32, /*num_elements=*/512,
-                /*replica_groups=*/{0, 1}, /*num_hosts=*/2),
+                /*replica_groups=*/{0, 1}, /*num_partitions=*/2),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("Cross-host symmetric memory collectives")));
 }
@@ -250,7 +251,7 @@ TEST_F(BuildAllGatherInfoTest, FailsWithoutNvlink) {
   // memory collectives.
   EXPECT_THAT(
       BuildInfo(CollectiveKernelEnabled(true), F32, /*num_elements=*/512,
-                /*replica_groups=*/{0, 1}, /*num_hosts=*/1,
+                /*replica_groups=*/{0, 1}, /*num_partitions=*/1,
                 /*active_links=*/0),
       StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("NVLink/UALink")));
 }
@@ -291,7 +292,8 @@ TEST_F(BuildAllGatherInfoTest,
       module.get(), HloOpcode::kAllGather);
   ASSERT_OK_AND_ASSIGN(
       CollectiveKernelSpec spec,
-      CreateAllGatherKernelSpec(instr, LaunchDimensions(4, 128)));
+      CreateAllGatherKernelSpec(instr, LaunchDimensions(4, 128),
+                                SymmetricMemoryType::kXlaRendezvous));
   EXPECT_FALSE(spec.codegen_config.copy_input_to_scratch);
   ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 6);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[0].type,

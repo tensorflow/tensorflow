@@ -165,17 +165,20 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   CommandSequence commands;
   commands.Append(KernelThunk::MakeKernelThunk("AddI32", args, args_access,
                                                LaunchDimensions(1, kLength),
-                                               /*shmem_bytes=*/0));
+                                               /*shmem_bytes=*/0,
+                                               /*devices_per_host=*/1));
   commands.Append(KernelThunk::MakeKernelThunk("AddI32", args, args_access,
                                                LaunchDimensions(1, kLength),
-                                               /*shmem_bytes=*/0));
+                                               /*shmem_bytes=*/0,
+                                               /*devices_per_host=*/1));
   ASSERT_OK_AND_ASSIGN(CommandExecutor cmd_buffer_executor,
                        CommandExecutor::Create(
                            std::move(commands),
                            CommandExecutor::SynchronizationMode::kConcurrent));
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo());
+  CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo(),
+                           /*devices_in_process=*/1);
 
   ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(executor);

@@ -73,8 +73,10 @@ LaunchDimensions ReduceScatterLaunchDimensions(
 //   [2] runtime rank  (kRuntimeRank)
 //   [3] signal flags (kScratchBuffer, index 0)
 //   [4] remote input buffer pointer table (kScratchBuffer, index 1)
+// `scratch_memory_type` is used for both scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type);
 
 }  // namespace xla::gpu
 

@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/raw_pjrt_client.h"
 
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+
 namespace xla {
 
 void PjRtRawClient::ScheduleRemoteSend(

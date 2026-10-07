@@ -2514,8 +2514,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
                                              HloOpcode::kMultiply, a, new_exp));
   }
 
-  // A/pow(B,C) => A*pow(B,-C)
-  if (Match(divide, m::Divide(m::Op(&a), m::Power(m::Op(&b), m::Op(&c))))) {
+  // A/pow(B,C) => A*pow(B,-C), never for integers: there pow(B,-C) is 0 for
+  // |B| > 1 (or a wrapped exponent), not a reciprocal.
+  if (!ShapeUtil::ElementIsIntegral(divide->shape()) &&
+      Match(divide, m::Divide(m::Op(&a), m::Power(m::Op(&b), m::Op(&c))))) {
     VLOG(10) << "transform [A/pow(B,C) => A*pow(B,-C)]: " << divide->ToString();
     // The output shape of the created negate operator should be the same as the
     // input.

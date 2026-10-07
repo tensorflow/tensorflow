@@ -182,7 +182,7 @@ def Vifrt_FuncOpV1 : Vifrt_Op<"FuncV1", "0.1.0", "current"> {
     Vifrt_AnyAttr:$arg_attrs,
     Vifrt_AnyAttr:$res_attrs);
   let regions = (region Vifrt_AnyRegion:$body);
-  let assemblyFormat = "custom<FunctionBody>($sym_name, $body, $function_type) attr-dict";
+  let assemblyFormat = "custom<FunctionBody>($sym_name, $body, $function_type) prop-dict attr-dict";
 }
 
 def VIfrt_ReturnOpV1 : Vifrt_Op<"ReturnV1", "0.1.0", "current", [Terminator]> {

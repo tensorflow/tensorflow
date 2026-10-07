@@ -245,7 +245,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "conv3d_backprop_filter_v2_grad_test",
-    size = "small",
+    size = "medium",
     srcs = ["conv3d_backprop_filter_v2_grad_test.py"],
     deps = [
         "//tensorflow/python/framework:constant_op",

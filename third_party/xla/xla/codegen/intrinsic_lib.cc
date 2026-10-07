@@ -128,9 +128,12 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
   if (options.device_type == intrinsics::DeviceType::kIntelCpu ||
       options.device_type == intrinsics::DeviceType::kAmdCpu ||
       options.device_type == intrinsics::DeviceType::kArmCpu) {
-    auto eigen_lib = std::make_unique<CppGenIntrinsicLibrary>(
-        GetCppGenIrString(options), "eigen");
-    ir_libraries_.push_back(std::move(eigen_lib));
+    const std::string& ir_string = GetCppGenIrString(options);
+    if (!ir_string.empty()) {
+      auto eigen_lib =
+          std::make_unique<CppGenIntrinsicLibrary>(ir_string, "eigen");
+      ir_libraries_.push_back(std::move(eigen_lib));
+    }
   }
 
   intrinsic_functions_.push_back(

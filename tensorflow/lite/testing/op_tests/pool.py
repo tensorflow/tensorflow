@@ -91,6 +91,8 @@ def make_pool_tests(pool_op_in, allow_fully_quantize=False):
           strides=parameters["strides"],
           data_format=parameters["data_format"],
           padding=parameters["padding"])
+      if 0 in out.shape.as_list():
+        raise ValueError("TFLite pooling tests require nonempty outputs")
       return [input_tensor], [out]
 
     def build_inputs(parameters, sess, inputs, outputs):

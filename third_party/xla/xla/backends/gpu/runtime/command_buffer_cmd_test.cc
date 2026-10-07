@@ -267,7 +267,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   CommandSequence commands;
   commands.Append(KernelThunk::MakeKernelThunk(
       "AddI32", absl::MakeConstSpan(args), args_access, LaunchDimensions(1, 4),
-      /*shmem_bytes=*/0));
+      /*shmem_bytes=*/0,
+      /*devices_per_host=*/1));
   ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
                        CommandExecutor::Create(std::move(commands), serialize));
 
@@ -340,7 +341,8 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   CommandSequence commands;
   commands.Append(KernelThunk::MakeKernelThunk(
       "AddI32", absl::MakeConstSpan(args), args_access, LaunchDimensions(1, 4),
-      /*shmem_bytes=*/0));
+      /*shmem_bytes=*/0,
+      /*devices_per_host=*/1));
   commands.back()->set_priority(se::StreamPriority::Highest);
 
   ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
@@ -522,7 +524,8 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
     seq_b.Append(
         KernelThunk::MakeKernelThunk("AddI32", absl::MakeConstSpan(args),
                                      args_access, LaunchDimensions(1, 4),
-                                     /*shmem_bytes=*/0));
+                                     /*shmem_bytes=*/0,
+                                     /*devices_per_host=*/1));
   }
   ASSERT_OK_AND_ASSIGN(CommandExecutor exec_b,
                        CommandExecutor::Create(std::move(seq_b), serialize));

@@ -733,6 +733,7 @@ TEST_P(DynamicSliceFusionV2CommandBufferTest, UpdatesLoopDependentOffsets) {
 
   CommandBufferThunk command_buffer_thunk(
       std::move(command_executor), Thunk::ThunkInfo(),
+      /*devices_in_process=*/1,
       /*thunks=*/nullptr,
       /*enable_command_buffers_during_profiling=*/true);
 

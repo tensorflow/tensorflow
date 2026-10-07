@@ -16,7 +16,6 @@ fusion {
 
 // CHECK-NEW-DAG: #[[$MAP0:.+]] = #xla.indexing_map<"(pid) -> (pid * 32), domain: pid in [0, 8]">
 // CHECK-NEW-DAG: #[[$MAP1:.+]] = #xla.indexing_map<"(pid) -> (pid * 32 - 128), domain: pid in [0, 8]">
-// CHECK-NEW-DAG: #[[$MAP2:.+]] = #xla.indexing_map<"(pid) -> (pid * 32 - 256), domain: pid in [0, 8]">
 
 // CHECK:       xtile.entry_func
 // CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<128xi8>,
@@ -28,7 +27,7 @@ fusion {
 // CHECK-DAG:   %[[C128:.*]] = arith.constant 128 : index
 // CHECK-DAG:   %[[C256:.*]] = arith.constant 256 : index
 // CHECK-DAG:   %[[CST:.*]] = arith.constant dense<0> : tensor<32xi8>
-// CHECK-OLD-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 
 // CHECK:       %[[OFFSET:.*]] = xla.apply_indexing #[[$MAP0]](%[[PID]])
 // CHECK:       %[[CMPI_0:.*]] = arith.cmpi slt, %[[OFFSET]], %[[C128]] : index
@@ -48,9 +47,7 @@ fusion {
 // CHECK:           %[[CMPI_3:.*]] = arith.cmpi ne, %[[EXTRACT_1]], %[[CST]] : tensor<32xi8>
 // CHECK:           scf.yield %[[CMPI_3]] : tensor<32xi1>
 // CHECK:         } else {
-// CHECK-OLD:       %[[EXTRACT_2:.*]] = xtile.extract %[[ARG2]][%[[C0]]] [32] [1] : memref<25xi8> -> tensor<32xi8>
-// CHECK-NEW:       %[[OFFSET_3:.*]] = xla.apply_indexing #[[$MAP2]](%[[PID]])
-// CHECK-NEW:       %[[EXTRACT_2:.*]] = xtile.extract %[[ARG2]][%[[OFFSET_3]]] [32] [1] : memref<25xi8> -> tensor<32xi8>
+// CHECK:           %[[EXTRACT_2:.*]] = xtile.extract %[[ARG2]][%[[C0]]] [32] [1] : memref<25xi8> -> tensor<32xi8>
 // CHECK:           %[[CMPI_4:.*]] = arith.cmpi ne, %[[EXTRACT_2]], %[[CST]] : tensor<32xi8>
 // CHECK:           scf.yield %[[CMPI_4]] : tensor<32xi1>
 // CHECK:         }

@@ -50,7 +50,7 @@ namespace {
 constexpr int kNumVirtualGpuDevices = 1;
 constexpr char kFunctionName[] = "foo";
 
-StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
+absl::StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
@@ -61,17 +61,17 @@ StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   return graph;
 }
 
-StatusOr<FunctionDef> SampleFunctionAddXY(const std::string& name) {
+absl::StatusOr<FunctionDef> SampleFunctionAddXY(const std::string& name) {
   TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph, name, &fdef));
   return fdef;
 }
 
-Status GetDevices(const tensorflow::tfd::KernelFallbackCompatRequestState*
-                      fallback_request_state,
-                  Device** cpu_device,
-                  absl::flat_hash_map<int, Device*>& gpu_devices) {
+absl::Status GetDevices(const tensorflow::tfd::KernelFallbackCompatRequestState*
+                            fallback_request_state,
+                        Device** cpu_device,
+                        absl::flat_hash_map<int, Device*>& gpu_devices) {
   *cpu_device = fallback_request_state->device_manager().HostCPU();
   if (!*cpu_device) {
     return absl::InternalError(
@@ -94,7 +94,7 @@ Status GetDevices(const tensorflow::tfd::KernelFallbackCompatRequestState*
       return absl::InternalError("Device IDs are not consecutive.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>

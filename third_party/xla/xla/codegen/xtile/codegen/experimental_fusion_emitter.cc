@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -225,6 +226,49 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   ABSL_RETURN_IF_ERROR(EmitReduceComputation(b, all_reduce, all_reduce->to_apply(),
                                         all_reduce_op));
   return mlir::cast<TensorValue>(all_reduce_op.getResult(0));
+}
+
+absl::StatusOr<TensorValue> EmitReduceScatter(
+    EmitterContext& emitter_ctx,
+    const HloReduceScatterInstruction* reduce_scatter,
+    const ge::TiledHloInstruction& tiled_reduce_scatter, ValueRange operands) {
+  if (reduce_scatter->device_list()->replica_groups().empty()) {
+    return Internal(
+        "Triton emitting ReduceScatter (%s) without replica groups is not "
+        "supported.",
+        reduce_scatter->name());
+  }
+
+  llvm::SmallVector<int64_t> flattened_replica_group_ids;
+  for (const auto& replica_group : reduce_scatter->replica_groups()) {
+    for (const auto& replica_id : replica_group.replica_ids()) {
+      flattened_replica_group_ids.push_back(replica_id);
+    }
+  }
+
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  ABSL_ASSIGN_OR_RETURN(auto output_element_type,
+                   xtile::PrimitiveTypeToMlirType(
+                       b, reduce_scatter->shape().element_type()));
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                   tiled_reduce_scatter.tile().GetStaticTileSizes());
+  auto output_type = mlir::RankedTensorType::get(GetPaddedTileSizes(tile_sizes),
+                                                 output_element_type);
+
+  auto replica_groups_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(reduce_scatter->replica_groups().size()),
+       static_cast<int64_t>(
+           reduce_scatter->replica_groups()[0].replica_ids_size())},
+      b.getI64Type());
+  auto replica_groups_attr = mlir::DenseIntElementsAttr::get(
+      replica_groups_type, flattened_replica_group_ids);
+  auto reduce_scatter_op = mlir::stablehlo::ReduceScatterOp::create(
+      b, output_type, operands[0], reduce_scatter->scatter_dimension(),
+      replica_groups_attr, /*channel_handle=*/nullptr);
+
+  ABSL_RETURN_IF_ERROR(EmitReduceComputation(
+      b, reduce_scatter, reduce_scatter->to_apply(), reduce_scatter_op));
+  return mlir::cast<TensorValue>(reduce_scatter_op.getResult());
 }
 
 absl::StatusOr<TensorValue> EmitBroadcast(
@@ -621,6 +665,43 @@ absl::StatusOr<TensorValue> EmitScaledDot(
   return mlir::cast<TensorValue>(result);
 }
 
+// Emits `root` and its transitive dependencies within `region`, in region
+// order, and returns the value of `root`. Dependencies are also collected
+// through nested regions, whose loop-invariant operands may live in `region`.
+absl::StatusOr<TensorValue> EmitRegionInstructionWithDependencies(
+    EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
+    const ge::TiledHloInstruction* root) {
+  absl::flat_hash_set<const ge::TiledHloInstruction*> visited;
+  std::vector<const ge::TiledHloInstruction*> worklist{root};
+  while (!worklist.empty()) {
+    const ge::TiledHloInstruction* instr = worklist.back();
+    worklist.pop_back();
+    if (!visited.insert(instr).second) {
+      continue;
+    }
+    absl::c_copy(instr->operands(), std::back_inserter(worklist));
+    for (const ge::TiledHloRegion& nested_region : instr->hlo_regions()) {
+      absl::c_copy(nested_region.instructions(), std::back_inserter(worklist));
+    }
+  }
+
+  TensorValue result;
+  for (const ge::TiledHloInstruction* instr : region.instructions()) {
+    if (!visited.contains(instr)) {
+      continue;
+    }
+    ABSL_ASSIGN_OR_RETURN(TensorValue value,
+                     EmitTiledHloInstruction(emitter_ctx, *instr));
+    emitter_ctx.MapTiledHloToTensorValue(instr, value);
+    if (instr == root) {
+      result = value;
+    }
+  }
+  TF_RET_CHECK(result) << "Instruction not found in its region: "
+                       << root->hlo()->ToString();
+  return result;
+}
+
 // Emits a kRaggedDot instruction.
 //
 // kRaggedNonContracting (G is kSequential outer loop):
@@ -663,82 +744,16 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
                    xtile::GetDotAccumulatorType(b, *ragged_dot_instr));
   TensorValue accumulator = CreateConst(b, acc_type, 0.0f, padded_tile_sizes);
 
-  // Helper to emit a tiled operand and its transitive deps within the region.
-  auto emit_operand = [&](const ge::TiledHloInstruction* operand_t)
-      -> absl::StatusOr<TensorValue> {
-    absl::flat_hash_set<const ge::TiledHloInstruction*> deps;
-    std::function<void(const ge::TiledHloInstruction*)> collect;
-    collect = [&](const ge::TiledHloInstruction* t) {
-      if (!deps.insert(t).second) {
-        return;
-      }
-      for (const ge::TiledHloInstruction* op : t->operands()) {
-        if (absl::c_linear_search(
-                tiled_ragged_dot.hlo_regions().front().instructions(), op)) {
-          collect(op);
-        }
-      }
-    };
-    collect(operand_t);
-    TensorValue result;
-    for (const ge::TiledHloInstruction* region_instr :
-         tiled_ragged_dot.hlo_regions().front().instructions()) {
-      if (!deps.count(region_instr)) {
-        continue;
-      }
-      ABSL_ASSIGN_OR_RETURN(TensorValue v,
-                       EmitTiledHloInstruction(emitter_ctx, *region_instr));
-      emitter_ctx.MapTiledHloToTensorValue(region_instr, v);
-      if (region_instr == operand_t) {
-        result = v;
-      }
-    }
-    TF_RET_CHECK(result) << "operand_t not found in its own dep set";
-    return result;
+  const ge::TiledHloRegion& region = tiled_ragged_dot.hlo_regions().front();
+  // Emits a tiled operand and its transitive deps within the region.
+  auto emit_operand = [&](const ge::TiledHloInstruction* operand_t) {
+    return EmitRegionInstructionWithDependencies(emitter_ctx, region,
+                                                 operand_t);
   };
 
   if (is_batch) {
     return absl::UnimplementedError("kRaggedBatch: not yet implemented");
   }
-
-  // Helper to emit group_sizes and any transitively required instructions
-  // (e.g. a scalar constant that gets broadcast-simplified) using only the
-  // dependency chain of gs_tiled within the region.
-  auto emit_gs =
-      [&](const ge::TiledHloInstruction* gs_t) -> absl::StatusOr<TensorValue> {
-    // Collect gs_tiled's transitive dependencies that live in the region.
-    absl::flat_hash_set<const ge::TiledHloInstruction*> gs_deps;
-    std::function<void(const ge::TiledHloInstruction*)> collect;
-    collect = [&](const ge::TiledHloInstruction* t) {
-      if (!gs_deps.insert(t).second) {
-        return;
-      }
-      for (const ge::TiledHloInstruction* op : t->operands()) {
-        if (absl::c_linear_search(
-                tiled_ragged_dot.hlo_regions().front().instructions(), op)) {
-          collect(op);
-        }
-      }
-    };
-    collect(gs_t);
-
-    // Emit each dep in def-before-use (region) order.
-    TensorValue gs_tile;
-    for (const ge::TiledHloInstruction* region_instr :
-         tiled_ragged_dot.hlo_regions().front().instructions()) {
-      if (!gs_deps.count(region_instr)) {
-        continue;
-      }
-      ABSL_ASSIGN_OR_RETURN(TensorValue result,
-                       EmitTiledHloInstruction(emitter_ctx, *region_instr));
-      emitter_ctx.MapTiledHloToTensorValue(region_instr, result);
-      if (region_instr == gs_t) {
-        gs_tile = result;
-      }
-    }
-    TF_RET_CHECK(gs_tile) << "gs_tiled not found in its own dep set";
-    return gs_tile;
-  };
 
   if (!is_contracting) {
     // --- kRaggedNonContracting ---
@@ -799,10 +814,10 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
                        emitter_ctx.MapSymbolIdToSequentialDimValueScoped(
                            g_dim_info.id, g_iv, Interval{0, G - 1}));
 
-      // Emit group_sizes tile (G-scoped).
-      // Uses emit_gs which handles any HLO form:  parameter, inlined constant,
-      // broadcast of scalar constant, or any other op-defined group_sizes.
-      ABSL_ASSIGN_OR_RETURN(TensorValue gs_tile, emit_gs(gs_tiled));
+      // Emit group_sizes tile (G-scoped). `emit_operand` handles any HLO form:
+      // parameter, inlined constant, broadcast of scalar constant, or any
+      // other op-defined group_sizes.
+      ABSL_ASSIGN_OR_RETURN(TensorValue gs_tile, emit_operand(gs_tiled));
 
       // Extract group_size_g from gs_tile.
       // gs_tile is tensor<1xi{32|64}>; XTile/Triton's tensor.extract requires
@@ -1959,6 +1974,11 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     }
     case HloOpcode::kPad: {
       return EmitPad(emitter_ctx, tiled_hlo);
+    }
+    case HloOpcode::kReduceScatter: {
+      return EmitReduceScatter(emitter_ctx,
+                               xla::Cast<HloReduceScatterInstruction>(hlo),
+                               tiled_hlo, operands);
     }
     case HloOpcode::kReshape: {
       ABSL_ASSIGN_OR_RETURN(auto logical_tile_sizes,

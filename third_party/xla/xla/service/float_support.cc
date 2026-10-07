@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/service/float_support.h"
 
+#include <cstdint>
+
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -175,6 +179,24 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
 bool FloatSupport::EffectiveOperandPrecisionIsLowPrecision(
     const HloInstruction& hlo, int64_t operand_index) const {
   return false;
+}
+
+bool FloatSupport::CanConvertOperandToLowPrecision(
+    const HloInstruction& hlo, int64_t operand_index) const {
+  bool is_low_precision = true;
+  ShapeUtil::ForEachLeafShape(
+      hlo.operand(operand_index)->shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (subshape.element_type() != low_precision_type_) {
+          is_low_precision = false;
+        }
+      });
+  if (is_low_precision) {
+    return true;  // Nothing to convert.
+  }
+  return (EffectiveOperandPrecisionIsLowPrecision(hlo, operand_index) ||
+          EffectiveOperandPrecisionIsOutputPrecision(hlo, operand_index)) &&
+         SupportsLowPrecisionOperand(hlo, operand_index);
 }
 
 }  // namespace xla

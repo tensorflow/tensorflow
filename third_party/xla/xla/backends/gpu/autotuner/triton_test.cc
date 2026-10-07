@@ -31,18 +31,18 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/target_config/target_config.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -138,8 +138,7 @@ class TritonBackendTest : public HloHardwareIndependentTestBase,
         alias_info_(stream_executor_->GetDeviceDescription()),
         compiler_(Compiler::GetForPlatform(platform_->id()).value()),
         backend_(&debug_options_, compiler_.get(), &target_config_,
-                 &alias_info_, &mlir_context_) {
-    RegisterSymbolicExprStorage(&mlir_context_);
+                 &alias_info_, &mlir_context_pool_) {
     debug_options_.set_xla_gpu_experimental_enable_tiling_propagation(
         GetParam());
   }
@@ -158,8 +157,8 @@ class TritonBackendTest : public HloHardwareIndependentTestBase,
   Compiler::GpuTargetConfig target_config_;
   GpuAliasInfo alias_info_;
   std::unique_ptr<Compiler> compiler_;
+  MlirContextPool mlir_context_pool_{CreateMlirContext};
   TritonBackend backend_;
-  mlir::MLIRContext mlir_context_;
 };
 
 TEST_P(TritonBackendTest, GetSupportedConfigs) {

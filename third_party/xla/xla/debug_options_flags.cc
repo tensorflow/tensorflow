@@ -312,6 +312,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   opts.add_xla_gpu_enable_collectives_command_buffer_filter(
       DebugOptions::ALLCOLLECTIVES);
+  opts.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLCOLLECTIVES);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
   opts.set_xla_gpu_command_buffer_unroll_loops(false);
@@ -412,7 +414,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(false);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
-  opts.set_xla_gpu_experimental_gemm_fusion_v2(false);
+  opts.set_xla_gpu_experimental_gemm_fusion_v2(true);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
   opts.set_xla_gpu_experimental_enable_tiling_propagation(true);
   opts.set_xla_gpu_experimental_cost_model_gemm_tiling_default(false);
@@ -441,6 +443,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_fail_ptx_compilation_on_register_spilling(false);
   opts.set_xla_gpu_llvm_verification_level(0);
   opts.set_xla_gpu_target_config_filename("");
+  opts.set_xla_gpu_topology_filename("");
   opts.set_xla_gpu_enable_cub_radix_sort(true);
   opts.set_xla_gpu_enable_cudnn_layer_norm(false);
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(100000);
@@ -2892,6 +2895,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Filename for GPU TargetConfig. Triggers devicless compilation: attached "
       "device is "
       "ignored, and the proto is queried instead"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_topology_filename",
+      string_setter_for(&DebugOptions::set_xla_gpu_topology_filename),
+      debug_options->xla_gpu_topology_filename(),
+      "Filename for GpuTopologyProto or inline topology spec "
+      "([platform:]num_partitionsxnum_hosts_per_partitionxnum_devices_per_host"
+      "). Triggers deviceless compilation when target config is present."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_cub_radix_sort",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cub_radix_sort),

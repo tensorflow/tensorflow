@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_spec.h"
 
@@ -37,6 +38,9 @@ namespace xla::gpu {
 // - `hlo_module` is used to deserialize thunks that reference HLO instructions.
 // - `platform_name` is used to look up platform-specific kernels in the
 //   GpuKernelRegistry.
+// - `gpu_topology` is the topology the executable was compiled for. It is only
+//   absent for executables serialized before `GpuExecutableProto.gpu_topology`
+//   existed.
 // - `symbol_resolver` is used to deserialize custom kernels where the kernel is
 //   not inlined in the proto, but rather loaded at runtime via symbol
 //   resolution.
@@ -45,6 +49,7 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
     absl::Span<const BufferAllocation> buffer_allocations,
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,
+    const std::optional<GpuTopology>& gpu_topology,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver = std::nullopt,
     const std::optional<xla::cpu::TargetMachineOptions>&

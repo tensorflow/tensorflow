@@ -115,13 +115,14 @@ bool ShouldFlatten(const HloInstruction* instr) {
           instr)) {
     return false;
   }
+  const int64_t num_devices = instr->device_list()->num_devices_per_group();
   const int64_t size_bytes =
       ShapeUtil::ElementsIn(instr->shape()) *
       primitive_util::ByteWidth(instr->shape().element_type());
   const bool has_rank_higher_than_1 =
       instr->shape().IsArray() && instr->shape().dimensions().size() > 1;
   return has_rank_higher_than_1 &&
-         GetAllReduceStrategy(size_bytes, kMultimemDisabled) ==
+         GetAllReduceStrategy(size_bytes, num_devices, kMultimemDisabled) ==
              se::gpu::AllReduceStrategy::kTwoShot;
 }
 

@@ -1,0 +1,539 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+Cherry-pick of https://github.com/triton-lang/triton/pull/11664
+(a0af442df17c8acff35b7488deae704277da46d2) and
+https://github.com/triton-lang/triton/pull/11691
+(696c45880d8123c94adbf69e57297403c134edb4). Can be deleted on the next Triton
+integration.
+
+--- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
++++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+@@ -3290,6 +3290,13 @@
+       // Verify that the operands are supported on the selected MMA version.
+       if (!supportMMA(dotOp, mmaResEncoding.getVersionMajor()))
+         return op->emitError("unsupported MMA version");
++      // MMAv2 distributes K over four lanes, each owning kWidth contiguous
++      // elements. A smaller K repeats elements across lanes, which a static
++      // register permutation cannot resolve.
++      auto aType = cast<RankedTensorType>(dotOp.getA().getType());
++      if (mmaResEncoding.isAmpere() &&
++          getShapePerCTA(aType).back() < 4 * aEncoding.getKWidth())
++        return op->emitError("MMA operand layout requires K >= 4 * kWidth");
+     }
+ 
+     return verifyWmmaCGACompatibility(op, aEncoding, bEncoding,
+
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -574,6 +574,22 @@
+     } else {
+       int minBitwidth =
+           std::min(computeOrigBitWidth(a), computeOrigBitWidth(b));
++      // Let K = getShapePerCTA(oldAType).back() and computeBitwidth be the
++      // dot operand bitwidth. Since kWidth = max(32 / minBitwidth, 1),
++      // MMAv2's four K lanes require 4 * max(32 / minBitwidth, 1) <= K.
++      // We have:
++      //   (a) K >= 4;
++      //   (b) minBitwidth >= 128 / K.
++      //
++      // Native operand packing is preserved by the invariant:
++      //   (c) minBitwidth <= computeBitwidth.
++      // Raising it for (b) could violate (c) only if 128 / K > computeBitwidth,
++      // hence K < 128 / computeBitwidth. This contradicts the CUDA frontend's
++      // requirement K >= 256 / computeBitwidth, which also implies (a).
++      minBitwidth = std::max<int64_t>(minBitwidth,
++                                      4 * 32 / getShapePerCTA(oldAType).back());
++      assert(minBitwidth <= oldAType.getElementTypeBitWidth() &&
++             "minBitwidth must not exceed the dot operand bitwidth");
+       a = convertDotOperandForMMA(a, 0, minBitwidth, mmaResult.newRetType,
+                                   rewriter);
+       b = convertDotOperandForMMA(b, 1, minBitwidth, mmaResult.newRetType,
+
+--- a/python/test/regression/test_cast_matmul.py
++++ b/python/test/regression/test_cast_matmul.py
+@@ -15,7 +15,7 @@
+ 
+ pytestmark = pytest.mark.enable_warmup(min_capability=9)
+ 
+-input_dtypes = ["bfloat16", "float16", "float32"]
++input_dtypes = ["bfloat16", "float16", "float32", "float64"]
+ if is_cuda():
+     input_dtypes += ["int8", "float8_e5m2"]
+     cc = torch.cuda.get_device_capability(0)
+@@ -29,7 +29,7 @@
+         "float8_e4m3fnuz",
+     ]
+ 
+-out_dtypes = ["float16", "float32"]
++out_dtypes = ["float16", "float32", "float64"]
+ 
+ 
+ @triton.jit
+@@ -58,7 +58,7 @@
+     # pointers
+     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+-    acc_dtype = tl.float16 if compute_dtype == tl.float16 and C.dtype.element_ty == tl.float16 else tl.float32
++    acc_dtype = tl.float32 if compute_dtype == tl.float16 and C.dtype.element_ty != tl.float16 else compute_dtype
+     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=acc_dtype)
+     for k in range(0, tl.cdiv(K, BLOCK_K)):
+         k_remaining = K - k * BLOCK_K
+@@ -79,18 +79,23 @@
+ 
+ @pytest.mark.parametrize("M, K, N, BLOCK_K, BLOCK_M, BLOCK_N, w_dtype, x_dtype, out_dtype",
+                          [(M, K, N, BLOCK_K, BLOCK_M, BLOCK_N, w, x, o)  #
+-                          for BLOCK_K in [16, 32, 64]  #
+-                          for BLOCK_M in [16, 64]  #
+-                          for BLOCK_N in [16, 64, 128]  #
++                          for BLOCK_K, BLOCK_M, BLOCK_N in ([(k, m, n)  #
++                                                             for k in [16, 32, 64]  #
++                                                             for m in [16, 64]  #
++                                                             for n in [16, 64, 128]] + [(32, 32, 32)])
+                           for (M, K, N) in [(768, 768, 1024)]  #
+                           for w in input_dtypes
+                           for x in input_dtypes  #
+-                          for o in out_dtypes])
++                          for o in out_dtypes] +
++                         ([(16, 8, 16, 8, 16, 16, "int8", "float32", "float32"),
++                           (16, 8, 16, 8, 16, 16, "float32", "int8", "float32")] if is_cuda() else []))
+ def test_cast_matmul(M, K, N, BLOCK_K, BLOCK_M, BLOCK_N, w_dtype, x_dtype, out_dtype, device):
+     if is_hip() and (BLOCK_K, BLOCK_M, BLOCK_N) in ((64, 64, 128), (64, 16, 128)):
+         pytest.skip("skip as they run out of shared memory")
+     if x_dtype == w_dtype:
+         pytest.skip("skip the same input dtype")
++    if "float64" in (x_dtype, w_dtype) and any(t.startswith("float8") for t in (x_dtype, w_dtype)):
++        pytest.skip("FP8 to FP64 conversion is not supported")
+     x_dtype: torch.dtype = getattr(torch, x_dtype)
+     w_dtype: torch.dtype = getattr(torch, w_dtype)
+ 
+@@ -106,9 +111,8 @@
+         # a holds the larger dtype
+         if a_dtype.itemsize < b_dtype.itemsize:
+             a_dtype, b_dtype = b_dtype, a_dtype
+-        # float64 matmul is not supported by triton
+         if a_dtype == torch.float64:
+-            return torch.float32
++            return torch.float64
+         # If they are both 1 byte or float16 and (1 byte or float16)
+         if a_dtype.itemsize == 1 or (a_dtype == torch.float16 and b_dtype != torch.bfloat16):
+             return torch.float16
+
+--- a/test/TritonGPU/accelerate-matmul.mlir
++++ b/test/TritonGPU/accelerate-matmul.mlir
+@@ -1153,3 +1153,40 @@
+     tt.return %0 : tensor<128x256xf32, #blocked>
+   }
+ }
++
++// -----
++
++// CHECK: #[[$MMA:.+]] = #ttg.nvidia_mma<{versionMajor = 2,
++#blocked = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [4, 8], warpsPerCTA = [4, 1], order = [1, 0]}>
++module attributes {"ttg.target" = "cuda:80", "ttg.num-warps" = 4 : i32} {
++  // CHECK-LABEL: fp32_small_k_i8_upcast
++  tt.func @fp32_small_k_i8_upcast(%pa: tensor<16x8x!tt.ptr<i8>, #blocked>,
++      %b: tensor<8x16xf32, #ttg.dot_op<{opIdx = 1, parent = #blocked}>>) -> tensor<16x16xf32, #blocked> {
++    %a_i8 = tt.load %pa : tensor<16x8x!tt.ptr<i8>, #blocked>
++    %a_f32 = arith.sitofp %a_i8 : tensor<16x8xi8, #blocked> to tensor<16x8xf32, #blocked>
++    %a = ttg.convert_layout %a_f32 : tensor<16x8xf32, #blocked> -> tensor<16x8xf32, #ttg.dot_op<{opIdx = 0, parent = #blocked}>>
++    %c = arith.constant dense<0.0> : tensor<16x16xf32, #blocked>
++    // The i8 load suggests kWidth=4, but K=8 only has two elements per K lane.
++    // CHECK: tt.dot {{.*}} : tensor<16x8xf32, #ttg.dot_op<{opIdx = 0, parent = #[[$MMA]], kWidth = 2}>> * tensor<8x16xf32, #ttg.dot_op<{opIdx = 1, parent = #[[$MMA]], kWidth = 2}>>
++    %d = tt.dot %a, %b, %c, inputPrecision = tf32 : tensor<16x8xf32, #ttg.dot_op<{opIdx = 0, parent = #blocked}>> * tensor<8x16xf32, #ttg.dot_op<{opIdx = 1, parent = #blocked}>> -> tensor<16x16xf32, #blocked>
++    tt.return %d : tensor<16x16xf32, #blocked>
++  }
++}
++
++// -----
++
++// CHECK: #[[$MMA:.+]] = #ttg.nvidia_mma<{versionMajor = 2,
++#blocked = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [4, 8], warpsPerCTA = [4, 1], order = [1, 0]}>
++module attributes {"ttg.target" = "cuda:80", "ttg.num-warps" = 4 : i32} {
++  // CHECK-LABEL: fp64_small_k_f16_upcast
++  tt.func @fp64_small_k_f16_upcast(%a: tensor<16x4xf64, #ttg.dot_op<{opIdx = 0, parent = #blocked}>>,
++      %pb: tensor<4x16x!tt.ptr<f16>, #blocked>) -> tensor<16x16xf64, #blocked> {
++    %b_f16 = tt.load %pb : tensor<4x16x!tt.ptr<f16>, #blocked>
++    %b_f64 = arith.extf %b_f16 : tensor<4x16xf16, #blocked> to tensor<4x16xf64, #blocked>
++    %b = ttg.convert_layout %b_f64 : tensor<4x16xf64, #blocked> -> tensor<4x16xf64, #ttg.dot_op<{opIdx = 1, parent = #blocked}>>
++    %c = arith.constant dense<0.0> : tensor<16x16xf64, #blocked>
++    // CHECK: tt.dot {{.*}} : tensor<16x4xf64, #ttg.dot_op<{opIdx = 0, parent = #[[$MMA]], kWidth = 1}>> * tensor<4x16xf64, #ttg.dot_op<{opIdx = 1, parent = #[[$MMA]], kWidth = 1}>>
++    %d = tt.dot %a, %b, %c : tensor<16x4xf64, #ttg.dot_op<{opIdx = 0, parent = #blocked}>> * tensor<4x16xf64, #ttg.dot_op<{opIdx = 1, parent = #blocked}>> -> tensor<16x16xf64, #blocked>
++    tt.return %d : tensor<16x16xf64, #blocked>
++  }
++}
+
+--- a/test/Conversion/tritongpu_to_llvm.mlir
++++ b/test/Conversion/tritongpu_to_llvm.mlir
+@@ -3433,3 +3433,32 @@
+     tt.return
+   }
+ }
++
++// -----
++
++#mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 1, 1], instrShape = [1, 8, 8]}>
++#a = #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>
++#b = #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>
++module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.target = "cuda:80", "ttg.threads-per-warp" = 32 : i32} {
++  // FP64 fragments already have the MMA register order, including across batches.
++  // CHECK-LABEL: llvm.func @mma_fp64_large_k_batched(
++  // CHECK-DAG: %[[A0:.*]] = llvm.extractvalue %arg0[0]
++  // CHECK-DAG: %[[A8:.*]] = llvm.extractvalue %arg0[8]
++  // CHECK-DAG: %[[AC0:.*]] = llvm.bitcast %[[A0]] : f64 to f64
++  // CHECK-DAG: %[[AC8:.*]] = llvm.bitcast %[[A8]] : f64 to f64
++  // CHECK-DAG: %[[AV0:.*]] = llvm.insertelement %[[AC0]], {{.*}} : vector<1xf64>
++  // CHECK-DAG: %[[AV8:.*]] = llvm.insertelement %[[AC8]], {{.*}} : vector<1xf64>
++  // CHECK-DAG: %[[B0:.*]] = llvm.extractvalue %arg1[0]
++  // CHECK-DAG: %[[B8:.*]] = llvm.extractvalue %arg1[8]
++  // CHECK-DAG: %[[BC0:.*]] = llvm.bitcast %[[B0]] : f64 to f64
++  // CHECK-DAG: %[[BC8:.*]] = llvm.bitcast %[[B8]] : f64 to f64
++  // CHECK-DAG: %[[BV0:.*]] = llvm.insertelement %[[BC0]], {{.*}} : vector<1xf64>
++  // CHECK-DAG: %[[BV8:.*]] = llvm.insertelement %[[BC8]], {{.*}} : vector<1xf64>
++  // CHECK: llvm.inline_asm{{.*}}mma.sync.aligned.m8n8k4{{.*}}%[[BV0]], %[[AV0]] :
++  // CHECK: llvm.inline_asm{{.*}}mma.sync.aligned.m8n8k4{{.*}}%[[BV8]], %[[AV8]] :
++  tt.func @mma_fp64_large_k_batched(%a: tensor<2x16x16xf64, #a>, %b: tensor<2x16x16xf64, #b>) {
++    %c = arith.constant dense<0.0> : tensor<2x16x16xf64, #mma>
++    %d = tt.dot %a, %b, %c : tensor<2x16x16xf64, #a> * tensor<2x16x16xf64, #b> -> tensor<2x16x16xf64, #mma>
++    tt.return
++  }
++}
+
+--- a/test/TritonGPU/invalid.mlir
++++ b/test/TritonGPU/invalid.mlir
+@@ -914,3 +914,31 @@
+ // expected-error @below {{alignment must be specified outside of the linear layout braces}}
+ #shared = #ttg.shared_linear<{offset = [[0, 1], [0, 2], [1, 0], [2, 0]], block = [], alignment = 16}>
+ !alignment_in_layout = !ttg.memdesc<4x4xf32, #shared, #ttg.shared_memory>
++
++// -----
++
++#mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 1], instrShape = [8, 8]}>
++#a = #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 2}>
++#b = #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 2}>
++module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
++  tt.func @mma_fp64_large_k_replicated_lanes(%a: tensor<8x4xf64, #a>, %b: tensor<4x8xf64, #b>) {
++    %c = arith.constant dense<0.0> : tensor<8x8xf64, #mma>
++    // expected-error@+1 {{MMA operand layout requires K >= 4 * kWidth}}
++    %d = tt.dot %a, %b, %c : tensor<8x4xf64, #a> * tensor<4x8xf64, #b> -> tensor<8x8xf64, #mma>
++    tt.return
++  }
++}
++
++// -----
++
++#mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 1], instrShape = [16, 8]}>
++#a = #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 8}>
++#b = #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 8}>
++module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
++  tt.func @mma_fp32_large_k_replicated_lanes(%a: tensor<16x16xf32, #a>, %b: tensor<16x8xf32, #b>) {
++    %c = arith.constant dense<0.0> : tensor<16x8xf32, #mma>
++    // expected-error@+1 {{MMA operand layout requires K >= 4 * kWidth}}
++    %d = tt.dot %a, %b, %c, inputPrecision = tf32 : tensor<16x16xf32, #a> * tensor<16x8xf32, #b> -> tensor<16x8xf32, #mma>
++    tt.return
++  }
++}
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
+@@ -4,7 +4,9 @@
+ #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
+ #include "triton/Dialect/Triton/IR/Dialect.h"
+ #include "triton/Dialect/TritonGPU/IR/Attributes.h"
++#include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
+ #include "triton/Dialect/TritonInstrument/IR/Dialect.h"
++#include "triton/Tools/LayoutUtils.h"
+ #include "llvm/ADT/SmallVector.h"
+ 
+ using namespace mlir;
+@@ -52,9 +54,9 @@
+   return elems;
+ }
+ 
+-// The number of i32 registers owned by each thread along m, n, k dimensions.
+-// For example, for m16n8k32 with i8 inputs, a thread owns 2, 1, and 2 registers
+-// along m, n, k respectively.
++// Per-thread MMA operand register counts along m, n, k. Registers hold 32 bits,
++// or 64 bits for fp64. For m16n8k32 with i8 inputs, the counts are {2, 1, 2},
++// with four i8 elements per register.
+ struct NumRegisters {
+   int m;
+   int n;
+@@ -74,186 +76,95 @@
+     const LLVMTypeConverter *typeConverter, Location loc,
+     ConversionPatternRewriter &rewriter, Value value, int batch, int repOuter,
+     int repK, RankedTensorType type, const NumRegisters &numRegisters) {
++  auto ctx = rewriter.getContext();
+   auto b = TritonLLVMOpBuilder(loc, rewriter);
+   auto elems = unpackTensorElements(loc, value, rewriter, type);
+   auto eltTy = typeConverter->convertType(type.getElementType());
+-  int offset{};
++  auto bitwidth = eltTy.getIntOrFloatBitWidth();
++  int numElemsPerVec = std::max(32 / bitwidth, 1u);
++
++  auto dot = cast<DotOperandEncodingAttr>(type.getEncoding());
++  int kWidth = dot.getKWidth();
++  int outerRegs = dot.getOpIdx() == 0 ? numRegisters.m : numRegisters.n;
++
++  auto reg = str_attr("register");
++  auto srcLayout = triton::gpu::toLinearLayout(type);
++  auto removeBroadcast = actionRemoveBroadcastedRegs(srcLayout);
++  srcLayout = removeBroadcast.apply(srcLayout);
++  elems = removeBroadcast.apply(elems);
++
++  // Size the source groups using only the registers that remain.
++  auto elemsPerThread = triton::gpu::LinearEncodingTrait::basesPerDim(
++      srcLayout, reg, /*skipBroadcast=*/true);
++  auto order =
++      getOrderForDotOperand(dot.getOpIdx(), type.getRank(), /*kContig=*/true);
++  int outerSize = std::min<int>(outerRegs, elemsPerThread[order[1]]);
++  int kTileSize =
++      std::min<int>(numRegisters.k, elemsPerThread[order[0]] / kWidth);
++
++  int size = elems.size();
++  // Reorder scalar entries in elems into MMA operand registers:
++  //   element: scalar within a packed operand (32 bits, or 64 bits for fp64).
++  //   k: packed operand position within a contiguous kWidth group.
++  //   outer: operand along M for A, or N for B, within one MMA.
++  //   kTiles: K operand from another kWidth group, for the same MMA.
++  //   tile: group of MMAs, repeated along K, then M/N, then batch.
++  //
++  // Example: A, fp16, kWidth=4, shape=[16,64], one warp. Entries index the
++  // unique elems for one lane. Each pair is (element=0, element=1), packed
++  // into one 32-bit operand:
++  //
++  //                         kTiles=0                 kTiles=1
++  //                      k=0       k=1            k=0       k=1
++  //   tile=0  outer=0    (0,1)     (2,3)           (8,9)    (10,11)
++  //           outer=1    (4,5)     (6,7)          (12,13)   (14,15)
++  //   tile=1  outer=0   (16,17)   (18,19)         (24,25)   (26,27)
++  //           outer=1   (20,21)   (22,23)         (28,29)   (30,31)
++  //
++  // Read one k column from both outer rows and both kTiles groups per MMA:
++  //   tile=0, k=0 -> [(0,1), (4,5),  (8,9),  (12,13)]
++  //   tile=0, k=1 -> [(2,3), (6,7), (10,11), (14,15)]
++  //   tile=1 uses the same pattern, adding 16 to each scalar index.
++  auto mapping =
++      LinearLayout::identity1D(size, reg, reg)
++          .reshapeIns(
++              {{str_attr("element"), numElemsPerVec},
++               {str_attr("k"), kWidth / numElemsPerVec},
++               {str_attr("outer"), outerSize},
++               {str_attr("kTiles"), kTileSize},
++               {str_attr("tile"), size / (kWidth * outerSize * kTileSize)}})
++          .transposeIns({str_attr("element"), str_attr("outer"),
++                         str_attr("kTiles"), str_attr("k"), str_attr("tile")})
++          .reshapeIns({{reg, size}});
++
++  SmallVector<Value> mmaElems;
++  for (int i = 0; i < size; ++i)
++    mmaElems.push_back(elems[mapping.apply({{reg, i}})[0].second]);
++
++  // Restore only the repeated slots required by the native MMA operands.
++  dot = DotOperandEncodingAttr::get(ctx, dot.getOpIdx(), dot.getParent(),
++                                    numElemsPerVec);
++  elems =
++      broadcastAs(mmaElems, triton::gpu::toLinearLayout(type.getShape(), dot));
++
+   ValueTableV2 vals;
+-  auto bitwidth = eltTy.getIntOrFloatBitWidth();
+-  auto numElemsPerVec = std::max(32 / bitwidth, 1u);
+-  auto vecTy = vec_ty(eltTy, numElemsPerVec);
+-
++  int offset = 0;
+   auto packVec = [&](std::array<int, 3> dstIdx) {
+-    Value vec = b.undef(vecTy);
+-    for (auto i = 0; i < numElemsPerVec; ++i) {
++    Value vec = b.undef(vec_ty(eltTy, numElemsPerVec));
++    for (int i = 0; i < numElemsPerVec; ++i)
+       vec = b.insert_element(vec, b.bitcast(elems[offset + i], eltTy),
+                              b.i32_val(i));
+-    }
+-    if (bitwidth == 64) {
+-      vals[dstIdx] = vec;
+-    } else {
+-      vals[dstIdx] = b.bitcast(vec, i32_ty);
+-    }
++    vals[dstIdx] = bitwidth == 64 ? vec : b.bitcast(vec, i32_ty);
+     offset += numElemsPerVec;
+   };
+ 
+-  auto dot = cast<DotOperandEncodingAttr>(type.getEncoding());
+-  auto kWidth = dot.getKWidth();
+-  auto largeK = bitwidth * kWidth > std::max(32u, bitwidth);
+-
+-  assert((bitwidth != 64 || largeK == false) &&
+-         "Currently fp64 don't support largeK MMA");
+-
+-  if (largeK) {
+-    // For layouts with a large K dimension, the original register layout needs
+-    // to be divided into multiple MMAs, where each MMA has contiguous 32 bits
+-    // along the K dimension per thread.
+-    // Using kWidth = 8 and bitwidth = 2 as an example,
+-    // we split the MMA into 4 sub-MMAs, each with a stride 4 x 32-bit along the
+-    // K dimension.
+-    llvm::SmallVector<unsigned> si;
+-    auto kIters = kWidth / (std::max(32 / bitwidth, 1u));
+-
+-    if (dot.getOpIdx() == 0) {
+-      // Original register layout:
+-      //
+-      //   [0, 1, 2, 3, 4, 5, 6, 7], [16, 17, 18, 19, 20, 21, 22, 23, 23]
+-      //   [8, 9, 10, 11, 12, 13, 14, 15], [24, 25, 26, 27, 28, 29, 30, 31]
+-      //
+-      // Each element in the layout is a single bf16.
+-      //
+-      // To derive four independent MMA operations, a stride of 4 is applied to
+-      // the original register layout:
+-      //
+-      //  1st MMA: [[0, 1], [8, 9], [16, 17], [24, 25]]
+-      //  2nd MMA: [[2, 3], [10, 11], [18, 19], [26, 27]]
+-      //  3rd MMA: [[4, 5], [12, 13], [20, 21], [28, 29]]
+-      //  4th MMA: [[6, 7], [14, 15], [22, 23], [30, 31]]
+-      if (kIters <= repK) {
+-        for (size_t kRep = 0; kRep < kWidth / numElemsPerVec; ++kRep)
+-          for (size_t tile = 0; tile < 4; ++tile)
+-            for (size_t e = 0; e < numElemsPerVec; ++e) {
+-              si.push_back(kRep * numElemsPerVec + tile * kWidth + e);
+-            }
+-      } else {
+-        // Suppose kWidth=4 and type=fp32, so numElemsPerVec=1.
+-        // Each tile of the dot operand layout has a size of 16x32.
+-        // However, if the triton tensor size is 16x16, elements along the k
+-        // dimension are duplicated. Within each tile, each register
+-        // contains 2x8 elements arranged as follows:
+-        //
+-        //       tile0/0           tile0/1
+-        //   |<--kWidth=4-->|   |<--kWidth-->|
+-        //   |<-mmaWidth=2->|
+-        //   [0,  1,  2,  3]    [0,  1,  2,  3]
+-        //   [4,  5,  6,  7]    [4,  5,  6,  7]
+-        //
+-        // tile0/1 replicates the elements in tile0/0 along the k dimension.
+-        // For a tensor size of 32x32, the next tile on the m dimension is as
+-        // follows:
+-        //
+-        //       tile1/0              tile1/1
+-        //   |<--kWidth-->|       |<--kWidth-->|
+-        //   [8,  9, 10, 11],     [8,  9, 10, 11]
+-        //   [12, 13, 14, 15],    [12, 13, 14, 15]
+-        //
+-        // Within a single tile, we can perform two MMAs, and the
+-        // resulting register layout for each MMA is as follows:
+-        //
+-        //   1st MMA: [0, 4, 1, 5]
+-        //   2nd MMA: [2, 6, 3, 7]
+-        //   3rd MMA: [8, 12, 9, 13]
+-        //   4th MMA: [10, 14, 11, 15]
+-        //
+-        // Additionally, we should reorder the elements by moving the duplicated
+-        // elements to the end.  In the example above, we convert the order from
+-        // tile0/0, tile0/1, tile1/0, tile1/1 to tile0/0, tile1/0, tile0/1,
+-        // tile1/1, so that only the first two tiles will be used in the
+-        // computation.
+-        size_t elemsPerTile = 2 * 2 * kWidth;
+-        size_t elemsPerMma = 2 * 2 * numElemsPerVec;
+-        size_t mmaWidth = kWidth / numElemsPerVec / 2;
+-        size_t repMma = elemsPerTile / (mmaWidth * elemsPerMma);
+-        for (size_t rep = 0; rep < repMma; ++rep)
+-          for (size_t tile = 0; tile < elems.size() / elemsPerTile; ++tile)
+-            for (size_t mmaKWidth = 0; mmaKWidth < mmaWidth; ++mmaKWidth)
+-              for (size_t kTile = 0; kTile < 2; ++kTile)
+-                for (size_t mTile = 0; mTile < 2; ++mTile)
+-                  for (size_t e = 0; e < numElemsPerVec; ++e) {
+-                    si.push_back(rep * mmaWidth * elemsPerMma +
+-                                 mmaKWidth * 2 * numElemsPerVec +
+-                                 tile * elemsPerTile + mTile * kWidth +
+-                                 kTile * numElemsPerVec + e);
+-                  }
+-      }
+-    } else {
+-      // Original register layout:
+-      //
+-      //   [0, 1, 2, 3, 4, 5, 6, 7]^T, [8, 9, 10, 11, 12, 13, 14, 15]^T
+-      //
+-      // A stride of 4 is applied to derive four independent MMA operations:
+-      //
+-      //  1st MMA: [[0, 1], [8, 9]]
+-      //  2nd MMA: [[2, 3], [10, 11]]
+-      //  3rd MMA: [[4, 5], [12, 13]]
+-      //  4th MMA: [[6, 7], [14, 15]]
+-      if (kIters <= repK) {
+-        for (size_t kRep = 0; kRep < kWidth / numElemsPerVec; ++kRep)
+-          for (size_t tile = 0; tile < 2; ++tile)
+-            for (size_t e = 0; e < numElemsPerVec; ++e) {
+-              si.push_back(kRep * numElemsPerVec + tile * kWidth + e);
+-            }
+-      } else {
+-        // Suppose kWidth=4 and type=fp32.
+-        // Original register layout:
+-        //
+-        //       tile0/0        tile0/1
+-        //   [0, 1, 2, 3]^T, [0, 1, 2, 3]^T
+-        //
+-        // Similar to the opIdx=0 situation, we should reorder the elements by
+-        // moving the duplicated elements to the end.
+-        size_t elemsPerTile = 2 * kWidth;
+-        size_t elemsPerMma = 2 * numElemsPerVec;
+-        size_t mmaWidth = kWidth / numElemsPerVec / 2;
+-        size_t repMma = elemsPerTile / (mmaWidth * elemsPerMma);
+-        for (size_t rep = 0; rep < repMma; ++rep)
+-          for (size_t tile = 0; tile < elems.size() / elemsPerTile; ++tile)
+-            for (size_t mmaKWidth = 0; mmaKWidth < mmaWidth; ++mmaKWidth)
+-              for (size_t kTile = 0; kTile < 2; ++kTile)
+-                for (size_t e = 0; e < numElemsPerVec; ++e) {
+-                  si.push_back(rep * mmaWidth * elemsPerMma +
+-                               mmaKWidth * 2 * numElemsPerVec +
+-                               tile * elemsPerTile + kTile * numElemsPerVec +
+-                               e);
+-                }
+-      }
+-    }
+-
+-    auto step = si.size();
+-    SmallVector<Value> perm(step);
+-    for (auto i = 0; i < elems.size() / step; ++i) {
+-      for (auto j = 0; j < step; ++j) {
+-        perm[j] = elems[i * step + si[j]];
+-      }
+-      std::copy(perm.begin(), perm.end(), elems.begin() + i * step);
+-    }
+-  }
+-
+-  if (dot.getOpIdx() == 0) {
+-    for (auto b = 0; b < batch; ++b)
+-      for (auto m = 0; m < repOuter; ++m)
+-        for (auto k = 0; k < repK; ++k)
+-          for (auto vk = 0; vk < numRegisters.k; ++vk)
+-            for (auto vm = 0; vm < numRegisters.m; ++vm)
+-              packVec({b, m * numRegisters.m + vm, k * numRegisters.k + vk});
+-  } else {
+-    for (auto b = 0; b < batch; ++b)
+-      for (auto n = 0; n < repOuter; ++n)
+-        for (auto k = 0; k < repK; ++k)
+-          for (auto vk = 0; vk < numRegisters.k; ++vk)
+-            for (auto vn = 0; vn < numRegisters.n; ++vn)
+-              packVec({b, n * numRegisters.n + vn, k * numRegisters.k + vk});
+-  }
++  for (int batchIdx = 0; batchIdx < batch; ++batchIdx)
++    for (int outer = 0; outer < repOuter; ++outer)
++      for (int k = 0; k < repK; ++k)
++        for (int vk = 0; vk < numRegisters.k; ++vk)
++          for (int vo = 0; vo < outerRegs; ++vo)
++            packVec(
++                {batchIdx, outer * outerRegs + vo, k * numRegisters.k + vk});
+   return vals;
+ }
+ 
+

@@ -432,7 +432,7 @@ triton_computation {
   ROOT dot = f32[2,2,2,2] dot(p0, p1),
     lhs_contracting_dims={3}, lhs_batch_dims={1,0},
     rhs_contracting_dims={2}, rhs_batch_dims={1,0},
-    backend_config={sizes:[2]}
+    backend_config={sizes:[16]}
 }
 
 ENTRY e {

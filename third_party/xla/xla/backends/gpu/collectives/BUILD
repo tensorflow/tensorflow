@@ -246,6 +246,8 @@ xla_test(
     backends = [
         "gpu",
     ],
+    # Non-blocking NCCL initialization is required to cancel pending cliques.
+    env = {"XLA_FLAGS": "--xla_gpu_nccl_async_execution=true --xla_gpu_nccl_blocking_communicators=false"},
     deps = [
         ":gpu_clique",
         ":gpu_clique_key",
@@ -269,6 +271,7 @@ xla_test(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -865,6 +868,7 @@ cc_library(
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
+        "//xla:xla_proto_cc",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/profiler/lib:traceme",
     ],

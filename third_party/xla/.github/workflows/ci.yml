@@ -164,6 +164,12 @@ jobs:
             repo: "openxla/xla",
           },
           {
+            pool: "windows-x86-n2-16",
+            container: null,
+            name: "XLA Windows x86 CPU",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-x86-n4-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 GPU T4",
@@ -223,4 +229,11 @@ jobs:
           XLA_CI_BAZEL_DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           XLA_CI_DISABLE_BAZEL_DIFF: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
         run: |
-          python3 "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
+          # Shellcheck doesn't understand GitHub Actions expressions and incorrectly
+          # thinks this comparison will always fail.
+          # shellcheck disable=SC2193
+          if [[ "${{ matrix.job_info.pool }}" == *"windows"* ]]; then
+            python "$GITHUB_WORKSPACE"\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
+          else
+            python3 "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
+          fi

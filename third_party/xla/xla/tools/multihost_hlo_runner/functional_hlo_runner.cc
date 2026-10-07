@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/random/random.h"
@@ -1090,8 +1091,16 @@ absl::StatusOr<ExecutionOptions> LoadExecutionOptions(absl::string_view path) {
   return execution_options;
 }
 
-absl::StatusOr<CompileOptions> CreateCompileOptions(
-    const PjRtClient& client,
+namespace {
+
+// Shared implementation of the `CreateCompileOptions` overloads. A client or a
+// topology is only needed for `device_count` (used to infer the number of
+// replicas and partitions) and `get_default_device_assignment`.
+absl::StatusOr<CompileOptions> CreateCompileOptionsInternal(
+    int device_count,
+    absl::FunctionRef<absl::StatusOr<DeviceAssignment>(int num_replicas,
+                                                       int num_partitions)>
+        get_default_device_assignment,
     const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
     int num_nodes, std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
   CompileOptions compile_options;
@@ -1170,9 +1179,8 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
       compile_options.executable_build_options;
   ReplicasAndPartitions replicas_and_partitions =
       FunctionalHloRunner::GetReplicasAndPartitions(
-          raw_options.execution_options, client.device_count(),
-          raw_options.num_replicas, raw_options.num_partitions,
-          raw_options.num_slices.value_or(1));
+          raw_options.execution_options, device_count, raw_options.num_replicas,
+          raw_options.num_partitions, raw_options.num_slices.value_or(1));
   build_options.set_num_replicas(replicas_and_partitions.replicas);
   build_options.set_num_partitions(replicas_and_partitions.partitions);
   build_options.set_process_index(task_id);
@@ -1189,8 +1197,8 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
       !raw_options.num_slices.has_value()) {
     ABSL_ASSIGN_OR_RETURN(
         DeviceAssignment device_assignment,
-        client.GetDefaultDeviceAssignment(replicas_and_partitions.replicas,
-                                          replicas_and_partitions.partitions));
+        get_default_device_assignment(replicas_and_partitions.replicas,
+                                      replicas_and_partitions.partitions));
     build_options.set_device_assignment(device_assignment);
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
@@ -1217,6 +1225,35 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
       break;
   }
   return compile_options;
+}
+
+}  // namespace
+
+absl::StatusOr<CompileOptions> CreateCompileOptions(
+    const PjRtClient& client,
+    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
+    int num_nodes, std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+  return CreateCompileOptionsInternal(
+      client.device_count(),
+      [&](int num_replicas, int num_partitions) {
+        return client.GetDefaultDeviceAssignment(num_replicas, num_partitions);
+      },
+      raw_options, task_id, num_nodes, std::move(kv_store));
+}
+
+absl::StatusOr<CompileOptions> CreateCompileOptions(
+    const PjRtTopologyDescription& topology,
+    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
+    int num_nodes, std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+  return CreateCompileOptionsInternal(
+      topology.DeviceDescriptions().size(),
+      [&](int num_replicas, int num_partitions) {
+        return topology.GetDefaultDeviceAssignment(
+            /*process_index=*/task_id, num_replicas,
+            /*num_replicas_per_slice=*/std::nullopt, num_partitions,
+            /*multi_slice_config=*/nullptr);
+      },
+      raw_options, task_id, num_nodes, std::move(kv_store));
 }
 
 // Dumps the output literals to the specified path.

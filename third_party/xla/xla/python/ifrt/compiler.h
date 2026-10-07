@@ -39,8 +39,6 @@ namespace ifrt {
 // Ideally, compile options should be present in the program being compiled to
 // help static checking and completeness. This option structure is to express
 // legacy compilation options that are not included in the program.
-//
-// TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
 struct CompileOptions : RTTIExtends<CompileOptions, Serializable> {
   static char ID;  // NOLINT
 

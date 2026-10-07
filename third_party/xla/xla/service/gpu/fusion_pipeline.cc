@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_verifier.h"
@@ -79,6 +79,17 @@ HloPassPipeline FusionPipeline(
     fusion.AddPass<HloConstantFolding>(constant_folding_options);
     fusion.AddPass<ConvCanonicalizer>();
     fusion.AddPass<ConvFusionRewriter>(gpu_device_info);
+  }
+
+  // RaggedDotFusionRewriter converts ragged dots into cuDNN fusions, which is
+  // only supported on NVIDIA/CUDA devices. On AMD ROCm, ragged dots are
+  // handled by hipBLASLt GroupedMatMul via GemmRewriter instead. Runs before
+  // PriorityFusion so it sees a raw ragged-dot rather than one PriorityFusion
+  // has already started fusing neighbors around.
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      debug_options.xla_gpu_experimental_use_ragged_dot_fusion() &&
+      gpu_device_info.gpu_compute_capability().IsCuda()) {
+    fusion.AddPass<RaggedDotFusionRewriter>();
   }
 
   GpuHloCostAnalysis::Options cost_analysis_options{

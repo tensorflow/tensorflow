@@ -70,6 +70,7 @@ class FakeKernelThunk : public KernelThunk {
                     /*cluster_dim=*/se::ClusterDim(),
                     /*shmem_bytes=*/0,
                     /*tma_metadata=*/se::gpu::TmaMetadata(),
+                    /*devices_per_host=*/1,
                     /*zeroed_output_buffer_indices=*/std::vector<int64_t>{}) {}
 
  private:

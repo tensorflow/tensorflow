@@ -144,8 +144,10 @@ TEST(CudnnDevicePropsTest, MatchesLiveDevice) {
         live_json.get(kOversizedSharedMemoryField, 0).asInt64();
     const int64_t synth_oversized_shared_memory =
         synth_json.get(kOversizedSharedMemoryField, 0).asInt64();
+    const auto* cc = desc.gpu_compute_capability().cuda_compute_capability();
+    const bool is_sm107 = cc && cc->major == 10 && cc->minor == 7;
     EXPECT_EQ(synth_oversized_shared_memory,
-              desc.oversized_shared_memory_per_block());
+              is_sm107 ? desc.oversized_shared_memory_per_block() : 0);
     // cuDNN may omit this property or report zero.
     if (live_oversized_shared_memory != 0) {
       EXPECT_EQ(synth_oversized_shared_memory, live_oversized_shared_memory);

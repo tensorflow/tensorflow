@@ -1434,10 +1434,7 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
-        ::mlir::MemRefLayoutAttrInterface source_layout,
-        ::mlir::ArrayRef<int64_t> squeezed,
-        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
+    mlir::InFlightDiagnostic verifyTiling();
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
@@ -1502,7 +1499,7 @@ def TPU_AssumeLayoutOp : TPU_Op<"assume_layout", [Pure]> {
   }];
 }
 
-def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure]> {
+def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure, SameOperandsAndResultShape, SameOperandsAndResultElementType]> {
   let description = [{
     Erases the layout attribute and, optionally, the memory space from a memref.
     The resulting memref is otherwise identical to the input.

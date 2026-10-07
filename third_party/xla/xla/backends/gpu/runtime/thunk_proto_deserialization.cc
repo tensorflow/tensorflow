@@ -66,7 +66,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/rng_seed_thunk.h"
-#include "xla/backends/gpu/runtime/select_k_thunk.h"
+#include "xla/backends/gpu/runtime/select_k_thunk_proto_deserialization.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -75,10 +75,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -114,7 +114,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver,
     const std::optional<xla::cpu::TargetMachineOptions>&
-        cpu_target_machine_options) {
+        cpu_target_machine_options,
+    const std::optional<GpuTopology>& gpu_topology) {
   ABSL_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                    Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
   auto deserializer = [&](const ThunkProto& thunk_proto) {
@@ -122,7 +123,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
         thunk_proto, buffer_allocations, hlo_module, platform_name,
         host_executable_async_events_map, host_send_recv_async_events_map,
         async_execution_map, gpu_compute_capability, symbol_resolver,
-        cpu_target_machine_options);
+        cpu_target_machine_options, gpu_topology);
   };
 
   switch (thunk_proto.impl_case()) {
@@ -161,9 +162,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           std::move(thunk_info), thunk_proto.triangular_solve_thunk(),
           buffer_allocations);
     case ThunkProto::kKernelThunk:
-      return KernelThunk::FromProto(std::move(thunk_info),
-                                    thunk_proto.kernel_thunk(),
-                                    buffer_allocations);
+      return KernelThunk::FromProto(
+          std::move(thunk_info), thunk_proto.kernel_thunk(), buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kReplicaIdThunk:
       return ReplicaIdThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.replica_id_thunk(),
@@ -215,7 +216,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                 host_executable_async_events_map,
                 host_send_recv_async_events_map, async_execution_map,
                 gpu_compute_capability, symbol_resolver,
-                cpu_target_machine_options);
+                cpu_target_machine_options, gpu_topology);
           };
       return DynamicSliceFusionV2Thunk::FromProto(
           std::move(thunk_info), thunk_proto.dynamic_slice_fusion_thunk(),
@@ -240,10 +241,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return HostExecuteDoneThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_done_thunk(),
           buffer_allocations, host_executable_async_events_map);
+    // TODO: Remove this case on Apr 30, 2027
     case ThunkProto::kSelectKThunk:
-      return SelectKThunk::FromProto(std::move(thunk_info),
-                                     thunk_proto.select_k_thunk(),
-                                     buffer_allocations);
+      return DeserializeSelectKThunkProto(
+          std::move(thunk_info), thunk_proto.select_k_thunk(),
+          buffer_allocations, platform_name, gpu_compute_capability);
     case ThunkProto::kHostSendThunk:
       return HostSendThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_send_thunk(),
@@ -265,9 +267,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                                      thunk_proto.outfeed_thunk(),
                                      buffer_allocations);
     case ThunkProto::kCustomKernelThunk:
-      return CustomKernelThunk::FromProto(std::move(thunk_info),
-                                          thunk_proto.custom_kernel_thunk(),
-                                          buffer_allocations, symbol_resolver);
+      return CustomKernelThunk::FromProto(
+          std::move(thunk_info), thunk_proto.custom_kernel_thunk(),
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_process()
+                                   : 0,
+          symbol_resolver);
     case ThunkProto::kAllGatherThunk:
       return AllGatherThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.all_gather_thunk(),
@@ -313,7 +318,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kCollectiveKernelThunk:
       return CollectiveKernelThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_kernel_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_process()
+                                   : 0);
     case ThunkProto::kAsyncStartThunk:
       return AsyncStartThunk::FromProto(std::move(thunk_info),
                                         thunk_proto.async_start_thunk(),
@@ -350,6 +357,7 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
     absl::Span<const BufferAllocation> buffer_allocations,
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,
+    const std::optional<GpuTopology>& gpu_topology,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver,
     const std::optional<xla::cpu::TargetMachineOptions>&
@@ -365,7 +373,7 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
             thunk_proto, buffer_allocations, hlo_module, platform_name,
             host_executable_async_events_map, host_send_recv_async_events_map,
             async_execution_map, gpu_compute_capability, symbol_resolver,
-            cpu_target_machine_options));
+            cpu_target_machine_options, gpu_topology));
     sequence.push_back(std::move(thunk));
   }
   return sequence;

@@ -3256,6 +3256,70 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
   for (size_t i = 0; i < solutionCount; i++) {
     miopenConvSolution_t solution = solutions[i];
 
+    // GetSolution can report a workspace of 0 for solutions that still require
+    // one. Query the solution-specific size and use that instead.
+    if (solution.workspace_size == 0) {
+      size_t workspace_size = 0;
+      switch (kind) {
+        case dnn::ConvolutionKind::FORWARD: {
+          auto status = miopenConvolutionForwardGetSolutionWorkspaceSize(
+              miopen.handle(), filter.handle(), input_nd.handle(),
+              conv.handle(), output_nd.handle(), solution.solution_id,
+              &workspace_size);
+          if (status != miopenStatusSuccess) {
+            return absl::InternalError(
+                "call to miopenConvolutionForwardGetSolutionWorkspaceSize "
+                "failed: " +
+                ToString(status));
+          }
+          break;
+        }
+        case dnn::ConvolutionKind::BACKWARD_DATA: {
+          auto status = miopenConvolutionBackwardDataGetSolutionWorkspaceSize(
+              miopen.handle(), output_nd.handle(), filter.handle(),
+              conv.handle(), input_nd.handle(), solution.solution_id,
+              &workspace_size);
+          if (status != miopenStatusSuccess) {
+            return absl::InternalError(
+                "call to "
+                "miopenConvolutionBackwardDataGetSolutionWorkspaceSize "
+                "failed: " +
+                ToString(status));
+          }
+          break;
+        }
+        case dnn::ConvolutionKind::BACKWARD_FILTER: {
+          auto status =
+              miopenConvolutionBackwardWeightsGetSolutionWorkspaceSize(
+                  miopen.handle(), output_nd.handle(), input_nd.handle(),
+                  conv.handle(), filter.handle(), solution.solution_id,
+                  &workspace_size);
+          if (status != miopenStatusSuccess) {
+            return absl::InternalError(
+                "call to "
+                "miopenConvolutionBackwardWeightsGetSolutionWorkspaceSize "
+                "failed: " +
+                ToString(status));
+          }
+          break;
+        }
+        default: {
+          return absl::InternalError("Unexpected convolution kind " +
+                                     std::to_string(static_cast<int>(kind)));
+        }
+      }
+
+      if (solution.workspace_size != workspace_size) {
+        LOG(WARNING) << "Adjusting workspace_size from "
+                     << solution.workspace_size << " to " << workspace_size
+                     << " for solution " << i
+                     << " (time, mem, id, algo) =  " << solution.time << ", "
+                     << solution.workspace_size << ", " << solution.solution_id
+                     << ", " << ToString(solution.algorithm);
+        solution.workspace_size = workspace_size;
+      }
+    }
+
     VLOG(kConvDebugVlogLevel)
         << "solution " << i << " (time, mem, id, algo) =  " << solution.time
         << ", " << solution.workspace_size << ", " << solution.solution_id

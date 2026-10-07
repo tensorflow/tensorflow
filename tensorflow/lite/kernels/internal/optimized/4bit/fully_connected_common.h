@@ -24,7 +24,7 @@ namespace optimized_4bit {
 // can use unsigned int4, so just subtract zero_point_4bit from all values.
 // Fold input * zero_point into quantization since we need to quantize
 // each input and multiply by zero_point_4bit to convert back to signed int.
-constexpr int zero_point_4bit = -7;
+constexpr int zero_point_4bit = -8;
 
 inline int8_t upper(int8_t value) { return value >> 4; }
 
@@ -35,7 +35,7 @@ inline int8_t lower(int8_t value) {
 
 inline int8_t merge(int8_t upper, int8_t lower) {
   const auto to_int4 = [](int8_t v) -> uint8_t {
-    int32_t x = v + 7;
+    int32_t x = v - zero_point_4bit;
     return static_cast<uint8_t>(x);
   };
   return (to_int4(upper) << 4) | to_int4(lower);

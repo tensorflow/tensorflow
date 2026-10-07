@@ -135,6 +135,7 @@ cc_library(
     srcs = ["float_support.cc"],
     hdrs = ["float_support.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
     ],
@@ -2797,7 +2798,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
@@ -5290,6 +5291,7 @@ cc_library(
     deps = [
         ":hlo_creation_utils",
         ":pattern_matcher",
+        "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
@@ -6465,30 +6467,36 @@ cc_library(
     ]),
     deps = [
         ":gpu_topology_proto_cc",
+        "//xla:status_macros",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/target_config",
-        "@com_google_absl//absl/log:check",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
 xla_cc_test(
     name = "gpu_topology_test",
     srcs = ["gpu_topology_test.cc"],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
     deps = [
         ":gpu_topology",
         ":gpu_topology_proto_cc",
         "//xla/backends/cpu:target_machine_options",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/stream_executor/cuda:cuda_compute_capability_proto_cc",
+        "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
     ],
 )
 

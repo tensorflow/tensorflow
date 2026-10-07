@@ -16,8 +16,15 @@ limitations under the License.
 #ifndef THIRD_PARTY_DUCC_GOOGLE_THREADING_H_
 #define THIRD_PARTY_DUCC_GOOGLE_THREADING_H_
 
+#include <algorithm>
+#include <cstddef>
+#include <functional>
+#include <utility>
+
 #include "ducc/src/ducc0/infra/threading.h"
 #include "unsupported/Eigen/CXX11/ThreadPool"
+#include "xla/backends/cpu/runtime/work_queue.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace ducc0 {
 namespace google {
@@ -48,6 +55,12 @@ class EigenThreadPool : public ducc0::detail_threading::thread_pool {
   };
   void submit(std::function<void()> work) override {
     pool_->Schedule(std::move(work));
+  }
+  void parallel_for(size_t nthreads,
+                    std::function<void(size_t)> work) override {
+    const size_t num_workers = std::min<size_t>(nthreads, pool_->NumThreads());
+    tsl::BlockUntilReady(xla::cpu::Worker::Parallelize(
+        pool_, num_workers, nthreads, std::move(work)));
   }
 
  private:

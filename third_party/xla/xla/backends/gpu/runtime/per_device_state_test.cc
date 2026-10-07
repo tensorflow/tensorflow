@@ -18,18 +18,23 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla::gpu {
@@ -234,6 +239,103 @@ TEST_F(PerDeviceStateTest, GetOrCreateAndInitializeCachesErrorStatus) {
               StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_EQ(init_calls, 1);
 }
+
+TEST_F(PerDeviceStateTest, ForEachVisitsVectorAndCowSlots) {
+  PerDeviceState<Tracked> storage(2);
+  ASSERT_OK_AND_ASSIGN(Tracked * s5, storage.GetOrCreate(5));
+  ASSERT_OK_AND_ASSIGN(Tracked * s9, storage.GetOrCreate(9));
+
+  std::vector<Tracked*> visited;
+  storage.ForEach([&](Tracked& state) { visited.push_back(&state); });
+  EXPECT_THAT(visited, ::testing::UnorderedElementsAre(
+                           storage.Find(0), storage.Find(1), s5, s9));
+}
+
+TEST_F(PerDeviceStateTest, ConcurrentForEachAndGetOrCreate) {
+  constexpr int kNumDevices = 2;
+  constexpr int kNumOrdinals = 8;
+  constexpr int kNumReaders = 4;
+  PerDeviceState<Tracked> storage(kNumDevices);
+  absl::Notification start;
+  std::atomic<bool> writers_done{false};
+  std::atomic<int> errors{0};
+  {
+    tsl::thread::ThreadPool readers(tsl::Env::Default(), "readers",
+                                    kNumReaders);
+    for (int reader = 0; reader < kNumReaders; ++reader) {
+      readers.Schedule([&] {
+        start.WaitForNotification();
+        bool done = false;
+        while (!done) {
+          done = writers_done.load();
+          storage.ForEach([&](Tracked& state) {
+            if (state.value != Tracked::kInitialValue) {
+              errors.fetch_add(1);
+            }
+          });
+        }
+      });
+    }
+    {
+      tsl::thread::ThreadPool writers(tsl::Env::Default(), "writers",
+                                      kNumOrdinals);
+      for (int ordinal = 0; ordinal < kNumOrdinals; ++ordinal) {
+        writers.Schedule([&, ordinal] {
+          start.WaitForNotification();
+          if (!storage.GetOrCreate(ordinal).ok()) {
+            errors.fetch_add(1);
+          }
+        });
+      }
+      start.Notify();
+    }  // Joins the writers.
+    writers_done.store(true);
+  }  // Joins the readers.
+  EXPECT_EQ(errors.load(), 0);
+  std::vector<Tracked*> final_visited;
+  storage.ForEach([&](Tracked& state) { final_visited.push_back(&state); });
+  EXPECT_EQ(CountDistinct(final_visited), kNumOrdinals);
+}
+
+void BM_MutexFlatHashMapLookup(benchmark::State& state) {
+  struct SharedMap {
+    SharedMap() {
+      for (int i = 0; i < 8; ++i) {
+        map.emplace(FakeExecutor(i), std::make_unique<int>(i));
+      }
+    }
+    static const void* FakeExecutor(int ordinal) {
+      return reinterpret_cast<const void*>(
+          static_cast<uintptr_t>((ordinal + 1) * 0x1000));
+    }
+    absl::Mutex mu;
+    absl::flat_hash_map<const void*, std::unique_ptr<int>> map
+        ABSL_GUARDED_BY(mu);
+  };
+  static auto* const shared = new SharedMap();
+  const void* executor = SharedMap::FakeExecutor(state.thread_index());
+
+  for (auto s : state) {
+    int* ptr = nullptr;
+    {
+      absl::MutexLock lock(shared->mu);
+      ptr = shared->map.find(executor)->second.get();
+    }
+    benchmark::DoNotOptimize(ptr);
+  }
+}
+BENCHMARK(BM_MutexFlatHashMapLookup)->Threads(8);
+
+void BM_PerDeviceStateFind(benchmark::State& state) {
+  static auto* const shared = new PerDeviceState<int>(8);
+  const int ordinal = state.thread_index();
+
+  for (auto s : state) {
+    int* ptr = shared->Find(ordinal);
+    benchmark::DoNotOptimize(ptr);
+  }
+}
+BENCHMARK(BM_PerDeviceStateFind)->Threads(8);
 
 }  // namespace
 }  // namespace xla::gpu
