@@ -1340,19 +1340,44 @@ class PolyvalTest(test.TestCase):
       self.assertEqual(tf_val.shape, x.shape)
       self.assertAllClose(np_val, self.evaluate(tf_val))
 
-  def testNonFiniteXPropagation(self):
-    # Non-finite x must propagate to NaN, matching numpy.polyval, which
-    # starts its Horner accumulator at zero (0 * inf + c -> nan).
-    for dtype in [np.float32, np.float64, np.complex64]:
-      for x_val in [float("inf"), float("-inf"), float("nan")]:
-        with self.subTest(dtype=dtype, x=x_val):
-          x = np.array([1.0, x_val, 3.0], dtype=dtype)
-          coeffs = [dtype(1.0), dtype(1.0)]
-          with np.errstate(invalid="ignore"):
-            np_val = np.polyval(coeffs, x)
-          with self.cached_session():
-            tf_val = math_ops.polyval(coeffs, x)
-            self.assertAllClose(np_val, self.evaluate(tf_val))
+  def testNonFiniteXReturnsInf(self):
+    # inf x must evaluate to inf (not nan): the limit of a polynomial such as
+    # p(x) = x + 1 as x -> inf is mathematically inf. NumPy returns nan here
+    # only because it starts its Horner accumulator at zero (0 * inf -> nan).
+    # Complex dtypes are only checked at degrees 0 and 1: at degree 2+ the
+    # complex multiply itself can produce a nan real part (e.g. complex128
+    # (inf+0j)**2 -> nan+nanj), which is inherent to complex inf arithmetic
+    # rather than accumulator initialization.
+    for dtype in [
+        np.float16, np.float32, np.float64, np.complex64, np.complex128
+    ]:
+      degrees = [(0, [2.0]), (1, [1.0, 1.0])]
+      if not np.issubdtype(dtype, np.complexfloating):
+        degrees.append((2, [1.0, 1.0, 1.0]))
+      for x_val in [float("inf"), float("-inf")]:
+        for degree, coeffs in degrees:
+          for x_np in [
+              np.array(x_val, dtype=dtype),
+              np.full(3, x_val, dtype=dtype)
+          ]:
+            with self.subTest(dtype=dtype,
+                              x=x_val,
+                              degree=degree,
+                              scalar=x_np.shape == ()):
+              with self.cached_session():
+                tf_val = math_ops.polyval([dtype(c) for c in coeffs], x_np)
+                result = self.evaluate(tf_val)
+                self.assertEqual(tf_val.shape, x_np.shape)
+                if degree == 0:
+                  # A constant polynomial ignores x; the result is the
+                  # constant broadcast against x's shape.
+                  self.assertAllClose(np.full(x_np.shape, dtype(2.0)), result)
+                elif np.issubdtype(dtype, np.complexfloating):
+                  # Complex inf arithmetic can produce nan imaginary parts
+                  # (e.g. (1+0j) * (inf+0j)); the real part must stay inf.
+                  self.assertTrue(np.all(np.isinf(np.real(result))))
+                else:
+                  self.assertTrue(np.all(np.isinf(result)))
 
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
