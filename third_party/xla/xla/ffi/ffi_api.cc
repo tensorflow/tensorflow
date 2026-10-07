@@ -249,7 +249,7 @@ static XLA_FFI_Error* XLA_FFI_Future_SetError(
     return new XLA_FFI_Error{InvalidArgument("Error must not be null or OK")};
   }
 
-  absl::Status error = TakeStatus(args->error);
+  absl::Status error = TakeError(args->error);
   args->future->async_value.SetError(std::move(error));
 
   return nullptr;
