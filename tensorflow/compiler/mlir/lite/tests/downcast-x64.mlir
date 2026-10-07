@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: litert-opt %s --tfl-downcast-x64 --canonicalize | FileCheck %s
+// RUN: litert-opt %s --tfl-downcast-x64 --canonicalize -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: testFuncSignature
 // CHECK: (%arg0: tensor<4xi32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32>
@@ -35,6 +35,44 @@ func.func @testI64ConstantDowncast() -> tensor<i64> {
   // CHECK: return %[[CST]]
   %0 = arith.constant dense<42> : tensor<i64>
   func.return %0 : tensor<i64>
+}
+
+// INT64_MAX / INT64_MIN sentinels saturate to INT32_MAX / INT32_MIN instead of
+// wrapping to -1 / 0.
+// CHECK-LABEL: testI64ConstantSaturates
+func.func @testI64ConstantSaturates() -> tensor<4xi64> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<[2147483647, -2147483648, 2147483647, -2147483648]> : tensor<4xi32>
+  // CHECK: return %[[CST]]
+  // expected-warning @+1 {{saturating them to [INT32_MIN, INT32_MAX]}}
+  %0 = arith.constant dense<[9223372036854775807, -9223372036854775808, 2147483648, -2147483649]> : tensor<4xi64>
+  func.return %0 : tensor<4xi64>
+}
+
+// CHECK-LABEL: testI64SplatConstantSaturates
+func.func @testI64SplatConstantSaturates() -> tensor<2x3xi64> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<2147483647> : tensor<2x3xi32>
+  // CHECK: return %[[CST]]
+  // expected-warning @+1 {{saturating them to [INT32_MIN, INT32_MAX]}}
+  %0 = arith.constant dense<9223372036854775807> : tensor<2x3xi64>
+  func.return %0 : tensor<2x3xi64>
+}
+
+// CHECK-LABEL: testTflConstSaturates
+func.func @testTflConstSaturates() -> tensor<2xi64> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<[-2147483648, 7]> : tensor<2xi32>
+  // CHECK: return %[[CST]]
+  // expected-warning @+1 {{saturating them to [INT32_MIN, INT32_MAX]}}
+  %0 = "tfl.pseudo_const"() {value = dense<[-9223372036854775808, 7]> : tensor<2xi64>} : () -> tensor<2xi64>
+  func.return %0 : tensor<2xi64>
+}
+
+// In-range values pass through unchanged and emit no warning.
+// CHECK-LABEL: testI64ConstantInRangeNoWarning
+func.func @testI64ConstantInRangeNoWarning() -> tensor<2xi64> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<[2147483647, -2147483648]> : tensor<2xi32>
+  // CHECK: return %[[CST]]
+  %0 = arith.constant dense<[2147483647, -2147483648]> : tensor<2xi64>
+  func.return %0 : tensor<2xi64>
 }
 
 // CHECK-LABEL: testGeneralOpForceConvert

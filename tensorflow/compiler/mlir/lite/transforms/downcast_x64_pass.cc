@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -56,6 +59,43 @@ mlir::Type ConvertX64TypeToX32(mlir::Type type) {
     return mlir::IntegerType::get(type.getContext(), 32);
   }
   return type;
+}
+
+// If `op` is an i64 constant holding values outside the int32 range, rewrites
+// its `value` attribute so that every element is clamped to
+// [INT32_MIN, INT32_MAX] and emits a warning. The subsequent i64 -> i32 cast
+// then narrows losslessly, so the constant saturates instead of wrapping.
+//
+// PyTorch exports routinely use INT64_MAX / INT64_MIN as sentinels (e.g. the
+// fill value of `torch.where(mask, x, iinfo(long).max).min()` or
+// `masked_fill(~m, iinfo(long).min).argmax()`). Truncating those to -1 / 0
+// would silently change the result; saturating keeps their meaning.
+void SaturateI64Constant(mlir::Operation* op) {
+  auto value = op->getAttrOfType<mlir::DenseIntElementsAttr>("value");
+  if (!value || !value.getElementType().isInteger(64)) return;
+
+  const APInt int32_min = APInt::getSignedMinValue(32).sext(64);
+  const APInt int32_max = APInt::getSignedMaxValue(32).sext(64);
+  bool clamped = false;
+  auto new_value =
+      value.mapValues(value.getElementType(), [&](const APInt& v) -> APInt {
+        if (v.slt(int32_min)) {
+          clamped = true;
+          return int32_min;
+        }
+        if (v.sgt(int32_max)) {
+          clamped = true;
+          return int32_max;
+        }
+        return v;
+      });
+  if (!clamped) return;
+
+  op->emitWarning()
+      << "enable_x64=false: int64 constant has values outside the int32 range; "
+         "saturating them to [INT32_MIN, INT32_MAX]. Pass enable_x64=true to "
+         "keep 64-bit types.";
+  op->setAttr("value", new_value);
 }
 
 }  // namespace
@@ -99,6 +139,7 @@ void DowncastX64Pass::runOnOperation() {
 
     // Handle constant-like operations by inserting CastOps.
     if (op->hasTrait<mlir::OpTrait::ConstantLike>()) {
+      SaturateI64Constant(op);
       for (mlir::OpResult result : op->getResults()) {
         mlir::Type old_type = result.getType();
         mlir::Type new_type = ConvertX64TypeToX32(old_type);
