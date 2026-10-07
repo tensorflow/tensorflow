@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
