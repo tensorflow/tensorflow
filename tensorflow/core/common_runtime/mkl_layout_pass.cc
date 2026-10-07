@@ -1602,7 +1602,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     if (!result || (data_format != FORMAT_NHWC && data_format != FORMAT_NCHW)) {
       return false;
     }
-    DCHECK(result);
 
     // Condition that specifies non-batch-wise and non-depth-wise pooling.
     if (GetTensorDim(ksize, data_format, 'N') == 1 &&
