@@ -125,7 +125,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   }
 
   auto shape = mlir::dyn_cast<ShapedType>(sq_op.getType());
-  if (!shape || !shape.hasRank()) {
+  if (!shape || !shape.hasRank() || shape.getRank() < 1) {
     return false;
   }
 
@@ -142,10 +142,9 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
     return false;
   }
 
-  SmallVector<int, 4> elems{axis.getValues<int>().begin(),
-                            axis.getValues<int>().end()};
-  for (int i = 0; i < rank; ++i) {
-    if (i != elems[i]) return false;
+  int expected_axis = 0;
+  for (int reduce_axis : axis.getValues<int>()) {
+    if (reduce_axis != expected_axis++) return false;
   }
 
   // Reducing across all dimensions is only equivalent to TFL L2 normalization
