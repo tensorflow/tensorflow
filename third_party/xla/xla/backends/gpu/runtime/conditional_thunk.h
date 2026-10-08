@@ -21,22 +21,20 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/command_buffer.h"
 
 namespace xla::gpu {
 
@@ -54,7 +52,8 @@ class ConditionalThunk : public Command {
  public:
   ConditionalThunk(ThunkInfo thunk_info,
                    const ShapedSlice& branch_index_buffer_index,
-                   std::vector<ThunkSequence> branch_thunks);
+                   std::vector<ThunkSequence> branch_thunks,
+                   int devices_per_host);
 
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
@@ -107,7 +106,7 @@ class ConditionalThunk : public Command {
   static absl::StatusOr<std::unique_ptr<ConditionalThunk>> FromProto(
       ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations,
-      const Deserializer& deserializer);
+      const Deserializer& deserializer, int devices_per_host);
 
   std::string ToString(int indent) const override;
 
@@ -120,9 +119,10 @@ class ConditionalThunk : public Command {
   bool branch_index_is_bool_;
 
   // Host memory pool for transferring predicate value from device to host.
-  absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<HostMemoryPool>>
-      host_memory_pools_ ABSL_GUARDED_BY(mutex_);
+  struct PoolState {
+    std::unique_ptr<HostMemoryPool> pool;
+  };
+  PerDeviceState<PoolState> host_memory_pools_;
 };
 
 }  // namespace xla::gpu

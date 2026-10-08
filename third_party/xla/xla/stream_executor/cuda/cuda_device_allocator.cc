@@ -57,19 +57,19 @@ absl::StatusOr<bool> IsRdmaSupported(CUdevice device) {
 }
 
 absl::StatusOr<bool> IsFabricSupported(CUdevice device) {
+  int driver_version = 0;
+  if (cuDriverGetVersion(&driver_version) != CUDA_SUCCESS ||
+      driver_version < 12030) {
+    return false;
+  }
+
   int fabric_supported = 0;
   CUresult result = cuDeviceGetAttribute(
       &fabric_supported, CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED,
       device);
-
-  // Older drivers return INVALID_VALUE when they don't recognize the attribute.
   if (result == CUDA_ERROR_INVALID_VALUE) {
-    XLA_VLOG_DEVICE(1, device)
-        << "CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED not supported "
-           "by driver.";
     return false;
   }
-
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(result));
   return fabric_supported > 0;
 }

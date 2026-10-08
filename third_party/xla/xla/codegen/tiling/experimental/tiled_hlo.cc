@@ -77,7 +77,16 @@ std::string TiledHloInstruction::ToString(
     absl::string_view field_separator) const {
   std::stringstream ss;
   ss << "hlo: " << hlo_->ToString() << field_separator;
-  ss << "tile: " << tile().ToString();
+  if (tiles_.size() == 1) {
+    ss << "tile: " << tile().ToString();
+  } else {
+    for (const auto& [i, t] : llvm::enumerate(tiles_)) {
+      if (i > 0) {
+        ss << field_separator;
+      }
+      ss << "tile #" << i << ": " << t.ToString();
+    }
+  }
   for (const auto& [index, region] : llvm::enumerate(regions_)) {
     ss << field_separator << "region #" << index << " {";
     for (const TiledHloInstruction* instruction : region.instructions()) {
@@ -108,10 +117,10 @@ namespace {
 //
 // This set adds a few key features on top of
 // absl::flat_hash_set<TiledHloInstruction*>:
-// * Elements are inserted as (hlo, tile) pairs. The instruction is constructed
-//   in `instructions` (shared by all regions of a computation) and dropped
-//   again if an equivalent element is already in the set.
-// * Elements are compared by (hlo, tile), not by pointer.
+// * Elements are inserted as (hlo, tiles) pairs. The instruction is
+//   constructed in `instructions` (shared by all regions of a computation) and
+//   dropped again if an equivalent element is already in the set.
+// * Elements are compared by (hlo, tiles), not by pointer.
 // * Elements are stored in the order of insertion.
 class OrderedTiledHloPtrSet {
  public:
@@ -124,8 +133,16 @@ class OrderedTiledHloPtrSet {
   // element was inserted.
   std::pair<TiledHloInstruction*, bool> Insert(const HloInstruction* hlo,
                                                Tile tile) {
+    return Insert(hlo,
+                  llvm::SmallVector<experimental::Tile, 2>{std::move(tile)});
+  }
+
+  // Same as above for an instruction with one tile per result.
+  std::pair<TiledHloInstruction*, bool> Insert(
+      const HloInstruction* hlo,
+      llvm::SmallVector<experimental::Tile, 2> tiles) {
     TiledHloInstruction& candidate =
-        instructions_.emplace_back(hlo, std::move(tile));
+        instructions_.emplace_back(hlo, std::move(tiles));
     auto [it, inserted] = hash_set_.insert(&candidate);
     if (!inserted) {
       instructions_.pop_back();
@@ -143,7 +160,7 @@ class OrderedTiledHloPtrSet {
  private:
   struct PtrHash {
     size_t operator()(const TiledHloInstruction* v) const {
-      return absl::HashOf(v->hlo(), v->tile());
+      return absl::HashOf(v->hlo(), v->tiles());
     }
   };
 
@@ -151,7 +168,7 @@ class OrderedTiledHloPtrSet {
     bool operator()(const TiledHloInstruction* lhs,
                     const TiledHloInstruction* rhs) const {
       return lhs == rhs ||
-             (lhs->hlo() == rhs->hlo() && lhs->tile() == rhs->tile());
+             (lhs->hlo() == rhs->hlo() && lhs->tiles() == rhs->tiles());
     }
   };
 
@@ -194,17 +211,16 @@ void SortTiledHloInstructionsInPostOrder(
   for (const TiledHloInstruction* root_with_no_user : roots_with_no_users) {
     visit_instruction(root_with_no_user);
   }
-  absl::c_sort(tiled_hlo_instructions,
-               [&](const TiledHloInstruction* t1,
-                   const TiledHloInstruction* t2) {
-                 auto it1 = topological_order.find(t1);
-                 auto it2 = topological_order.find(t2);
-                 CHECK(it1 != topological_order.end())
-                     << "Unexpected stray instruction: " << t1->ToString();
-                 CHECK(it2 != topological_order.end())
-                     << "Unexpected stray instruction: " << t2->ToString();
-                 return it1->second < it2->second;
-               });
+  absl::c_sort(tiled_hlo_instructions, [&](const TiledHloInstruction* t1,
+                                           const TiledHloInstruction* t2) {
+    auto it1 = topological_order.find(t1);
+    auto it2 = topological_order.find(t2);
+    CHECK(it1 != topological_order.end())
+        << "Unexpected stray instruction: " << t1->ToString();
+    CHECK(it2 != topological_order.end())
+        << "Unexpected stray instruction: " << t2->ToString();
+    return it1->second < it2->second;
+  });
 
   VLOG(4) << "Sorted symbolic tiled HLO instructions in def-before-use order:\n"
           << absl::StrJoin(
@@ -397,8 +413,15 @@ void PrintTiledHloInstruction(
   std::string indentation(indent, ' ');
   ss << indentation << tile_names.at(tiled_hlo) << " = "
      << HloOpcodeString(tiled_hlo->hlo()->opcode()) << "("
-     << TiledHloOperandsToString(tiled_hlo, tile_names) << ") "
-     << tiled_hlo->tile().ToString(false) << "\n";
+     << TiledHloOperandsToString(tiled_hlo, tile_names) << ")";
+  if (tiled_hlo->tiles().size() == 1) {
+    ss << " " << tiled_hlo->tile().ToString(false) << "\n";
+  } else {
+    ss << "\n";
+    for (const auto& [i, tile] : llvm::enumerate(tiled_hlo->tiles())) {
+      ss << indentation << "  #" << i << " " << tile.ToString(false) << "\n";
+    }
+  }
 
   for (auto const& [i, region] : llvm::enumerate(tiled_hlo->hlo_regions())) {
     ss << indentation << "region #" << i << " {\n";
@@ -555,9 +578,9 @@ absl::StatusOr<TiledHloRegion> CreateHloRegion(
 
 void TiledHloRegion::Simplify() {
   for (TiledHloInstruction* instruction : instructions_) {
-    Tile tile = instruction->tile();
-    tile.Simplify();
-    instruction->set_tile(std::move(tile));
+    for (Tile& tile : instruction->tiles()) {
+      tile.Simplify();
+    }
     for (auto& region : instruction->hlo_regions()) {
       region.Simplify();
     }

@@ -591,6 +591,7 @@ absl::StatusOr<std::string> PjRtCpuExecutable::SerializeExecutable() const {
   *proto.mutable_serialized_executable() = std::move(serialized);
   ABSL_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                    compile_options_.ToProto());
+  StripNonRuntimeDebugOptions(*proto.mutable_compile_options());
   std::string serialized_proto;
   if (!tsl::SerializeToStringDeterministic(proto, &serialized_proto)) {
     return Internal(

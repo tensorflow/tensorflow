@@ -195,6 +195,30 @@ bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options) {
          early_exit_point != DebugOptions::EARLY_EXIT_POINT_UNSET;
 }
 
+void StripNonRuntimeDebugOptions(CompileOptionsProto& proto) {
+  auto is_stripped = [](const tsl::protobuf::FieldDescriptor& field) {
+    return !IsDebugOptionsFieldUsedAtRuntime(field) &&
+           !IsDebugOptionsDumpField(field);
+  };
+
+  if (proto.executable_build_options().has_debug_options()) {
+    ClearDebugOptionsFields(
+        *proto.mutable_executable_build_options()->mutable_debug_options(),
+        is_stripped);
+  }
+
+  auto& overrides = *proto.mutable_env_option_overrides();
+  for (auto it = overrides.begin(); it != overrides.end();) {
+    const tsl::protobuf::FieldDescriptor* field =
+        DebugOptions::descriptor()->FindFieldByName(it->first);
+    if (field != nullptr && is_stripped(*field)) {
+      it = overrides.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 MultiSliceConfig::~MultiSliceConfig() = default;
 
 absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {

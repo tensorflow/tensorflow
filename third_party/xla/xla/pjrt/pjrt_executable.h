@@ -157,6 +157,13 @@ struct CompileOptions {
 // Returns true if the compilation is an early exit compilation.
 bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options);
 
+// Prepares compile options for a serialized executable. Clears the fields of
+// `executable_build_options.debug_options` that are neither annotated
+// `is_used_at_runtime` nor dump fields, and erases the `env_option_overrides`
+// that would set them again on load. Absent debug_options stay absent, and
+// override keys that are not DebugOptions fields are kept.
+void StripNonRuntimeDebugOptions(CompileOptionsProto& proto);
+
 struct LoadOptions {
   // Origin of the subslice of the target topology to run computation on.
   std::optional<xla::PjRtDeviceDimensions> computation_origin;

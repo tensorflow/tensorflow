@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -75,6 +76,7 @@ limitations under the License.
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
@@ -87,6 +89,7 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsFalse;
+using ::testing::Key;
 
 static absl::Status TestError(ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer>,
                               ffi::Result<ffi::AnyBuffer>) {
@@ -483,6 +486,44 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
                                        &deserialize_dump_contents));
   }
   EXPECT_EQ(compile_dump_contents, deserialize_dump_contents);
+}
+
+TEST(PjRtCpuClientTest, SerializeExecutableStripsNonRuntimeDebugOptions) {
+  static constexpr char kProgram[] = R"(
+    HloModule add
+    ENTRY add {
+      x = f32[3,2] parameter(0)
+      y = f32[3,2] parameter(1)
+      ROOT add = f32[3,2] add(x, y)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  CompileOptions compile_options;
+  DebugOptions& debug_options =
+      *compile_options.executable_build_options.mutable_debug_options();
+  debug_options.set_xla_cpu_enable_fast_math(true);
+  debug_options.set_xla_cpu_collective_timeout_seconds(42);
+  compile_options.env_option_overrides = {
+      {"xla_gpu_enable_fast_min_max", true},
+      {"xla_cpu_collective_call_warn_stuck_seconds", int64_t{7}}};
+  ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(
+                                            xla_computation, compile_options));
+
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       executable->SerializeExecutable());
+  ExecutableAndOptionsProto proto;
+  ASSERT_TRUE(proto.ParseFromString(serialized));
+
+  const DebugOptions& stored_debug_options =
+      proto.compile_options().executable_build_options().debug_options();
+  EXPECT_FALSE(stored_debug_options.has_xla_cpu_enable_fast_math());
+  // Set through the override, which compilation applies to debug_options.
+  EXPECT_FALSE(stored_debug_options.has_xla_gpu_enable_fast_min_max());
+  EXPECT_EQ(stored_debug_options.xla_cpu_collective_timeout_seconds(), 42);
+  EXPECT_THAT(proto.compile_options().env_option_overrides(),
+              ElementsAre(Key("xla_cpu_collective_call_warn_stuck_seconds")));
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferRawData) {

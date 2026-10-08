@@ -74,11 +74,12 @@ constexpr absl::string_view kPjRtStreamExecutorClientName =
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
   absl::MutexLock lock(mu_);
+  ExecutableAndOptionsProto proto;
+  ABSL_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                   compile_options_.ToProto());
+  StripNonRuntimeDebugOptions(*proto.mutable_compile_options());
+  *proto.mutable_pjrt_client_name() = kPjRtStreamExecutorClientName;
   if (IsEarlyExitCompilation(compile_options_)) {
-    ExecutableAndOptionsProto proto;
-    ABSL_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
-                     compile_options_.ToProto());
-    *proto.mutable_pjrt_client_name() = kPjRtStreamExecutorClientName;
     std::string result;
     ABSL_RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
         proto, riegeli::Maker<riegeli::StringWriter>(&result)));
@@ -111,11 +112,7 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
         "PjRtStreamExecutorClient::SerializeExecutable proto serialization "
         "failed");
   }
-  ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
-  ABSL_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
-                   compile_options_.ToProto());
-  *proto.mutable_pjrt_client_name() = kPjRtStreamExecutorClientName;
   std::string result;
   ABSL_RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
       proto, riegeli::Maker<riegeli::StringWriter>(&result)));

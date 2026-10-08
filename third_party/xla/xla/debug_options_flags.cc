@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"  // NOLINT
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -4094,6 +4096,29 @@ DebugOptions GetDebugOptionsFromProtoAndFlags(
   }
 
   return GetDebugOptionsFromFlags();
+}
+
+bool IsDebugOptionsFieldUsedAtRuntime(
+    const tsl::protobuf::FieldDescriptor& field) {
+  return field.options().GetExtension(debug_options_field).is_used_at_runtime();
+}
+
+bool IsDebugOptionsDumpField(const tsl::protobuf::FieldDescriptor& field) {
+  return absl::StartsWith(field.name(), "xla_dump_") ||
+         absl::StartsWith(field.name(), "xla_gpu_dump_") ||
+         field.name() == "xla_enable_dumping";
+}
+
+void ClearDebugOptionsFields(
+    DebugOptions& debug_options,
+    absl::FunctionRef<bool(const tsl::protobuf::FieldDescriptor&)> predicate) {
+  const tsl::protobuf::Descriptor* descriptor = DebugOptions::descriptor();
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+    if (predicate(*field)) {
+      debug_options.GetReflection()->ClearField(&debug_options, field);
+    }
+  }
 }
 
 // LINT.IfChange(get_flag_status)

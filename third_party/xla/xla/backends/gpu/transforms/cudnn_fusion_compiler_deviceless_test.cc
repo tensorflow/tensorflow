@@ -16,9 +16,11 @@ limitations under the License.
 // Tests for CuDnnFusionCompiler::SupportsFusionDeviceless.
 //
 // The deviceless cases build DeviceDescriptions from checked-in target-config
-// specs and open no GPU; they need a loadable host cuDNN >= 9.8 and skip
-// otherwise. DevicelessSupportMatchesLivePlanEnumeration needs a real GPU
-// whose deviceless conv probing is not gated off and skips otherwise.
+// specs and open no GPU; they need a loadable host cuDNN >=
+// se::gpu::kMinDevicelessCudnnVersion and skip otherwise.
+// DevicelessSupportMatchesLivePlanEnumeration and
+// DevicelessConvWorkspaceMatchesLiveDeserializedPlan additionally use the
+// attached GPU.
 //
 // The fusions under test are produced by the real ConvKindAssignment +
 // ConvFusionRewriter passes, so they cannot drift from pipeline output.
@@ -63,16 +65,17 @@ namespace se = ::stream_executor;
 
 using DevicelessFusionSupport = CuDnnFusionCompiler::DevicelessFusionSupport;
 
+// Deviceless probing/compilation only works on cuDNN >=
+// kMinDevicelessCudnnVersion; every test skips below it.
 class CudnnFusionCompilerDevicelessTest
     : public HloHardwareIndependentTestBase {
  protected:
   void SetUp() override {
-    if (!se::gpu::SupportsDevicelessDeviceProperties()) {
-      GTEST_SKIP() << "cuDNN runtime < 9.8 does not support deviceless "
-                      "DeviceProperties.";
+    if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+      GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                   << se::gpu::kMinDevicelessCudnnVersion;
     }
   }
-
   // Builds a deviceless GpuTargetConfig for the given GPU model from its
   // checked-in target-config spec (no StreamExecutor / GPU required).
   static absl::StatusOr<GpuTargetConfig> DevicelessTargetConfig(
@@ -425,10 +428,9 @@ TEST_F(CudnnFusionCompilerDevicelessTest,
   }
   const se::DeviceDescription& device_description =
       executor->GetDeviceDescription();
-  if (!se::gpu::SupportsDevicelessConvGraphs(device_description)) {
-    GTEST_SKIP() << "Deviceless conv graph probing is gated off for this "
-                    "GPU / cuDNN runtime combination, so every deviceless "
-                    "verdict is kUnknown and there is no parity to check.";
+  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                 << se::gpu::kMinDevicelessCudnnVersion;
   }
   const se::SemanticVersion dnn_version = device_description.dnn_version();
   struct ParityCase {

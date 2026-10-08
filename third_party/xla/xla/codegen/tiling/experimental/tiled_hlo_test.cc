@@ -108,6 +108,43 @@ TEST_F(TiledHloTest, TestPrinting) {
   )"));
 }
 
+TEST_F(TiledHloTest, MultiTileInstruction) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10,30] parameter(0)
+      ROOT broadcast = f32[10,20,30] broadcast(p0), dimensions={0,2}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  Tile root_tile = GetTestTile(*tiling_space, root->shape().dimensions());
+  ASSERT_OK_AND_ASSIGN(
+      Tiles tiled_operands,
+      PropagateTileToInput(*tiling_space, *root, root_tile, 0));
+
+  TiledHloInstruction tiled_hlo_instruction(
+      root, Tiles{root_tile, tiled_operands[0]});
+  ASSERT_EQ(tiled_hlo_instruction.tiles().size(), 2);
+  EXPECT_EQ(tiled_hlo_instruction.tile(0), root_tile);
+  EXPECT_EQ(tiled_hlo_instruction.tile(1), tiled_operands[0]);
+  EXPECT_THAT(tiled_hlo_instruction, MatchString(R"(
+    hlo: %broadcast = f32[10,20,30]{2,1,0} broadcast(%p0), dimensions={0,2}
+    tile #0: (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1, tid_2 * ts_2]
+         sizes [ts_0, ts_1, ts_2]
+         strides [1, 2, 3]
+         upper bounds [10, 20, 30]
+    tile #1: (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2]
+         sizes [ts_0, ts_2]
+         strides [1, 3]
+         upper bounds [10, 30]
+  )"));
+}
+
 TEST_F(TiledHloTest, TiledHloRegionDefaultConstruction) {
   TiledHloRegion region;
   EXPECT_TRUE(region.instructions().empty());
