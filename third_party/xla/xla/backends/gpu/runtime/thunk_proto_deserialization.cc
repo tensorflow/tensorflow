@@ -147,9 +147,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           std::move(thunk_info), thunk_proto.device_to_device_copy_thunk(),
           buffer_allocations);
     case ThunkProto::kWhileThunk:
-      return WhileThunk::FromProto(std::move(thunk_info),
-                                   thunk_proto.while_thunk(),
-                                   buffer_allocations, deserializer);
+      return WhileThunk::FromProto(
+          std::move(thunk_info), thunk_proto.while_thunk(), buffer_allocations,
+          deserializer,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kConditionalThunk:
       return ConditionalThunk::FromProto(std::move(thunk_info),
                                          thunk_proto.conditional_thunk(),
@@ -292,7 +293,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kRaggedAllToAllThunk:
       return RaggedAllToAllThunk::FromProto(
           std::move(thunk_info), thunk_proto.ragged_all_to_all_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kCollectivePermuteThunk:
       return CollectivePermuteThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_permute_thunk(),
@@ -306,7 +308,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kCollectiveBroadcastThunk:
       return CollectiveBroadcastThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_broadcast_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kCollectiveReduceThunk:
       return CollectiveReduceThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_reduce_thunk(),

@@ -94,7 +94,7 @@ class CommandBufferAsyncConversionTest : public testing::Test {
   WhileThunk* Loop(ThunkSequence& thunks, ThunkSequence body) {
     auto loop = std::make_unique<WhileThunk>(
         Info(), BufferAllocation::Slice(&allocation_, 0, 1), ThunkSequence{},
-        std::move(body), /*trip_count=*/1);
+        std::move(body), /*trip_count=*/1, /*devices_per_host=*/1);
     auto* result = loop.get();
     thunks.push_back(std::move(loop));
     return result;

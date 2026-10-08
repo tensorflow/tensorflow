@@ -886,6 +886,7 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kConstant:
+    case HloOpcode::kCopy:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:

@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -1022,6 +1023,17 @@ TEST(GetCollectiveKernelDomainSizeTest, IsProcessForAsymmetricTopology) {
   EXPECT_EQ(GetCollectiveKernelDomainSize(topology, debug_options,
                                           DebugOptions::ALLREDUCE),
             topology.num_devices_per_process());
+}
+
+TEST(OpcodesForTritonCollectivesTest,
+     AllCollectivesEnablesAllSupportedOpcodes) {
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_experimental_use_collective_kernels(
+      DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES);
+  EXPECT_THAT(OpcodesForTritonCollectives(debug_options),
+              IsOkAndHolds(::testing::UnorderedElementsAre(
+                  HloOpcode::kAllReduce, HloOpcode::kAllReduceStart,
+                  HloOpcode::kAllGather, HloOpcode::kReduceScatter)));
 }
 
 }  // namespace

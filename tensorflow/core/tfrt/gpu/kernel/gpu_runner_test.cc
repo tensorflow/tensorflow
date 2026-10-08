@@ -51,7 +51,7 @@ constexpr int kNumVirtualGpuDevices = 1;
 constexpr char kFunctionName[] = "foo";
 
 absl::StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);

@@ -66,12 +66,30 @@ cc_library(
 )
 
 cc_library(
+    name = "native_custom_call_scratch_context",
+    hdrs = ["native_custom_call_scratch_context.h"],
+    visibility = internal_visibility([
+        ":handler_allowlist",
+        "//xla/backends/gpu/transforms:__pkg__",
+    ]),
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/ffi:attributes",
+        "//xla/service:gpu_topology",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "native_custom_call_handler_registry",
     srcs = ["native_custom_call_handler_registry.cc"],
     hdrs = ["native_custom_call_handler_registry.h"],
     visibility = ["//xla:internal"],
     deps = [
         ":native_custom_call_emitter_context",
+        ":native_custom_call_scratch_context",
+        "//xla:shape_util",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/base:no_destructor",
@@ -103,7 +121,9 @@ cc_library(
     visibility = [":handler_allowlist"],
     deps = [
         ":native_custom_call_emitter_context",
+        ":native_custom_call_handler_registry",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
         "//xla/backends/gpu/runtime:custom_kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
@@ -119,6 +139,7 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -217,6 +238,8 @@ xla_cc_test(
         ":native_custom_call_emitter_context",
         ":native_custom_call_handler_registration",
         ":native_custom_call_handler_registry",
+        ":native_custom_call_scratch_context",
+        "//xla:shape_util",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",

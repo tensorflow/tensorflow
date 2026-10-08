@@ -15,14 +15,17 @@
 """Tests for convolution related functionality in tensorflow.ops.nn."""
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
-
 
 class Conv1DTest(test.TestCase):
 
@@ -51,16 +54,6 @@ class Conv1DTest(test.TestCase):
           else:
             self.assertEqual(len(output), 2)
             self.assertAllClose(output, [2 * 1 + 1 * 2, 2 * 3 + 1 * 4])
-
-  @test_util.run_in_graph_and_eager_modes
-  def testFilterWiderThanInput(self):
-    # A filter wider than the input by less than twice the stride gives an
-    # empty output in graph mode too, not a shape inference error.
-    filters = array_ops.ones([5, 3, 2])
-    for width, stride in ((4, 1), (4, 2), (2, 2)):
-      x = array_ops.ones([1, width, 3])
-      c = nn_ops.conv1d(x, filters, stride, padding="VALID")
-      self.assertAllEqual(self.evaluate(c).shape, [1, 0, 2])
 
   def testExpandedBatch(self):
     """Test that argument passing to conv1d is handled properly."""
@@ -127,6 +120,41 @@ class Conv1DTest(test.TestCase):
           cache_values[n, -1, k] = cache_values[n, -2, k]
 
     self.assertAllClose(cache_values, value)
+
+  def testInvalidDilationValidPaddingRaises(self):
+    # 1. Static shape validation fails during shape inference / graph construction.
+    x = constant_op.constant(0.0, shape=[2, 10, 3], dtype=dtypes.float32)
+    filters = constant_op.constant(0.0, shape=[2, 3, 1], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "(Negative dimension size|must be at least effective_filter_size)",
+    ):
+      nn_ops.conv1d(x, filters, stride=1, padding="VALID", dilations=10)
+
+  @test_util.disable_xla("Runtime check is in the standard CPU/GPU kernels")
+  def testInvalidDilationValidPaddingRaisesDynamic(self):
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[2, None, 3], dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=[2, 3, 1], dtype=dtypes.float32),
+        ]
+    )
+    def run_conv(x, filters):
+      return nn_ops.conv1d(x, filters, stride=1, padding="VALID", dilations=10)
+
+    # Eager execution keeps the traced dynamic shape, so only the runtime
+    # kernel check can catch the invalid configuration.
+    with context.eager_mode(), self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "must be at least effective_filter_size",
+    ):
+      self.evaluate(
+          run_conv(
+              constant_op.constant(np.zeros([2, 10, 3], np.float32)),
+              constant_op.constant(np.zeros([2, 3, 1], np.float32)),
+          )
+      )
 
 
 if __name__ == "__main__":

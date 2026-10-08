@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -56,7 +58,17 @@ DynamicSliceConfig MakeStaticConfig(int64_t offset) {
   return config;
 }
 
-class DynamicSliceFusionTest : public HloHardwareIndependentTestBase {};
+class DynamicSliceFusionTest : public HloHardwareIndependentTestBase {
+ protected:
+  // TODO(ezhulenev): Remove once the flag is enabled by default.
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options
+        .set_xla_gpu_experimental_enable_dynamic_slice_extended_offsets(true);
+    return debug_options;
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // DynamicSliceFusion::FindHero tests
@@ -331,6 +343,73 @@ TEST_F(DynamicSliceFusionTest, ResolveParamWithSelectOffsetExpression) {
                                      Offset::Add(Offset::Parameter(1),
                                                  Offset::Constant(1)))},
                   {1, Offset::Constant(0)}}}));
+}
+
+// Offset patterns emitted by JAX: reverse scan index `n - i - 1`, negative
+// index normalization `select(i < 0, i + n, i)`, index dtype conversion,
+// clamps, and `s32[1]` values reshaped to scalars.
+TEST_F(DynamicSliceFusionTest, ResolveParamWithJaxOffsetExpression) {
+  const char* hlo = R"(
+    HloModule test
+
+    %fused {
+      %p0 = f32[8,4] parameter(0)
+      %p1 = s64[] parameter(1)
+      %p2 = s32[1] parameter(2)
+      %zero = s32[] constant(0)
+      %two = s32[] constant(2)
+      %seven = s32[] constant(7)
+      %eight = s32[] constant(8)
+      %ivar = s32[] convert(%p1)
+      %rev_ivar = s32[] subtract(%seven, %ivar)
+      %half = s32[] divide(%rev_ivar, %two)
+      %is_negative = pred[] compare(%half, %zero), direction=LT
+      %wrapped = s32[] add(%half, %eight)
+      %normalized = s32[] select(%is_negative, %wrapped, %half)
+      %clamped = s32[] clamp(%zero, %normalized, %seven)
+      %one_vec = s32[1] constant({1})
+      %slot = s32[1] remainder(%p2, %one_vec)
+      %col = s32[] reshape(%slot)
+      %ds = f32[1,4] dynamic-slice(%p0, %clamped, %col),
+        dynamic_slice_sizes={1,4},
+        backend_config={"dynamic_slice_config":{
+          "loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
+      ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
+    }
+
+    ENTRY main {
+      %input = f32[8,4] parameter(0)
+      %ivar = s64[] parameter(1)
+      %slot = s32[1] parameter(2)
+      ROOT %fusion = f32[1,4] fusion(%input, %ivar, %slot), kind=kCustom,
+        calls=%fused
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* body = module->GetComputationWithName("fused");
+  const HloInstruction* hero = body->GetInstructionWithName("custom");
+  ASSERT_NE(hero, nullptr);
+
+  auto half = Offset::Divide(
+      Offset::Subtract(Offset::Constant(7), Offset::Parameter(1)),
+      Offset::Constant(2));
+  auto normalized = Offset::Select(
+      Offset::Compare(ComparisonDirection::kLt, half, Offset::Constant(0)),
+      Offset::Add(half, Offset::Constant(8)), half);
+  auto clamped = Offset::Minimum(
+      Offset::Maximum(std::move(normalized), Offset::Constant(0)),
+      Offset::Constant(7));
+
+  ASSERT_OK_AND_ASSIGN(auto params,
+                       DynamicSliceFusion::ResolveParameters(hero));
+  ASSERT_EQ(params.size(), 1);
+  EXPECT_EQ(params[0],
+            (Parameter{0, ShapeUtil::MakeShape(F32, {8, 4}),
+                       ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+                       Offsets{{0, std::move(clamped)},
+                               {1, Offset::Remainder(Offset::Parameter(2),
+                                                     Offset::Constant(1))}}}));
 }
 
 TEST_F(DynamicSliceFusionTest, ResolveParamWithStaticSlice) {
@@ -902,6 +981,44 @@ TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprCompareAndSelect) {
   EXPECT_EQ(on_false, 18);
 }
 
+TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprDivideAndRemainder) {
+  auto div = Offset::Divide(Offset::Parameter(0), Offset::Parameter(1));
+  auto rem = Offset::Remainder(Offset::Parameter(0), Offset::Parameter(1));
+
+  // Integer division and remainder truncate toward zero.
+  ASSERT_OK_AND_ASSIGN(int64_t div_result,
+                       DynamicSliceFusion::Evaluate(div, {{0, -7}, {1, 2}}));
+  EXPECT_EQ(div_result, -3);
+  ASSERT_OK_AND_ASSIGN(int64_t rem_result,
+                       DynamicSliceFusion::Evaluate(rem, {{0, -7}, {1, 2}}));
+  EXPECT_EQ(rem_result, -1);
+
+  // Division by zero follows HLO semantics.
+  ASSERT_OK_AND_ASSIGN(int64_t div_by_zero,
+                       DynamicSliceFusion::Evaluate(div, {{0, 7}, {1, 0}}));
+  EXPECT_EQ(div_by_zero, -1);
+  ASSERT_OK_AND_ASSIGN(int64_t rem_by_zero,
+                       DynamicSliceFusion::Evaluate(rem, {{0, 7}, {1, 0}}));
+  EXPECT_EQ(rem_by_zero, 7);
+}
+
+TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprMinimumAndMaximum) {
+  // clamp(0, p0, 3) is represented as min(max(p0, 0), 3).
+  auto expr = Offset::Minimum(
+      Offset::Maximum(Offset::Parameter(0), Offset::Constant(0)),
+      Offset::Constant(3));
+
+  ASSERT_OK_AND_ASSIGN(int64_t low,
+                       DynamicSliceFusion::Evaluate(expr, {{0, -5}}));
+  EXPECT_EQ(low, 0);
+  ASSERT_OK_AND_ASSIGN(int64_t mid,
+                       DynamicSliceFusion::Evaluate(expr, {{0, 2}}));
+  EXPECT_EQ(mid, 2);
+  ASSERT_OK_AND_ASSIGN(int64_t high,
+                       DynamicSliceFusion::Evaluate(expr, {{0, 5}}));
+  EXPECT_EQ(high, 3);
+}
+
 TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprMissingParameterFails) {
   auto status =
       DynamicSliceFusion::Evaluate(Offset::Parameter(7), {{3, 12}}).status();
@@ -920,6 +1037,8 @@ TEST_F(DynamicSliceFusionTest, OffsetIsExprChecksScalarIntegerOperations) {
       pred_param = pred[] parameter(2)
       float_param = f32[] parameter(3)
       vector_param = s32[1] parameter(4)
+      non_scalar_param = s32[2] parameter(5)
+      s8_param = s8[] parameter(6)
       c0 = s32[] constant(0)
       c1 = s64[] constant(1)
       pred_const = pred[] constant(true)
@@ -933,12 +1052,25 @@ TEST_F(DynamicSliceFusionTest, OffsetIsExprChecksScalarIntegerOperations) {
       scalar_reshape = s32[] reshape(vector_param)
       vector_reshape = s32[1] reshape(p0)
       maximum = s32[] maximum(p0, c0)
+      minimum = s32[] minimum(p0, c0)
+      divide = s32[] divide(p0, c0)
+      remainder = s32[] remainder(p0, c0)
+      clamp = s32[] clamp(c0, p0, c0)
       float_add = f32[] add(float_param, float_param)
+      float_convert = f32[] convert(p0)
+      pred_convert = pred[] convert(p0)
+      non_scalar_add = s32[2] add(non_scalar_param, non_scalar_param)
+      float_bitcast = s32[] bitcast(float_param)
+      narrow_convert = s32[] convert(s8_param)
+      from_pred_convert = s32[] convert(pred_param)
       ROOT root = (s32[], s64[], pred[], s32[], pred[], s64[], s32[],
-                   s32[], s32[1], s32[], f32[]) tuple(
+                   s32[], s32[1], s32[], s32[], s32[], s32[], s32[], f32[],
+                   f32[], pred[], s32[2], s32[], s32[], s32[]) tuple(
           add, multiply, compare, select, pred_select, convert,
           bitcast, scalar_reshape, vector_reshape,
-          maximum, float_add)
+          maximum, minimum, divide, remainder, clamp, float_add,
+          float_convert, pred_convert, non_scalar_add, float_bitcast,
+          narrow_convert, from_pred_convert)
     }
   )";
 
@@ -956,15 +1088,26 @@ TEST_F(DynamicSliceFusionTest, OffsetIsExprChecksScalarIntegerOperations) {
   EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("compare")));
   EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("select")));
   EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("pred_select")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("vector_param")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("convert")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("bitcast")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("scalar_reshape")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("vector_reshape")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("maximum")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("minimum")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("divide")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("remainder")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("clamp")));
 
   EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("float_param")));
-  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("vector_param")));
-  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("convert")));
-  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("bitcast")));
-  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("scalar_reshape")));
-  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("vector_reshape")));
-  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("maximum")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("non_scalar_param")));
   EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("float_add")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("float_convert")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("pred_convert")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("non_scalar_add")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("float_bitcast")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("narrow_convert")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("from_pred_convert")));
 }
 
 TEST_F(DynamicSliceFusionTest, CollectOffsetParameters) {
@@ -999,6 +1142,15 @@ TEST_F(DynamicSliceFusionTest, StringifyOffsetExpr) {
                      Offset::Add(Offset::Parameter(0), Offset::Constant(1)),
                      Offset::Constant(0));
   EXPECT_EQ(absl::StrCat(expr), "select(cmp(LT, p0, 3), add(p0, 1), 0)");
+}
+
+TEST_F(DynamicSliceFusionTest, StringifyMinMaxDivRemOffsetExpr) {
+  auto expr = Offset::Minimum(
+      Offset::Maximum(
+          Offset::Divide(Offset::Parameter(0), Offset::Constant(2)),
+          Offset::Remainder(Offset::Parameter(1), Offset::Constant(3))),
+      Offset::Parameter(2));
+  EXPECT_EQ(absl::StrCat(expr), "min(max(div(p0, 2), rem(p1, 3)), p2)");
 }
 
 TEST_F(DynamicSliceFusionTest, StringifyParameterWithoutConfig) {

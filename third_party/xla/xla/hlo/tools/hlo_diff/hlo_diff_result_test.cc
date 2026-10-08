@@ -370,6 +370,85 @@ ENTRY entry {
                DiffType::kUnchanged)));
 }
 
+TEST_F(HloDiffTest, LargeConstantsWithDifferentValuesMarkAsChanged) {
+  // Create left module with entry computation containing the following
+  // structure:
+  // [Param 0] ---> ┌-------┐
+  //                | add_0 |
+  // [Const 0] ---> └-------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  parameter.0 = s32[16]{0} parameter(0)
+  constant.0 = s32[16]{0} constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+  add.0 = s32[16]{0} add(parameter.0, constant.0)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                          HloGumgraph::Create(module_l.get()));
+
+  // Create right module with entry computation containing the following
+  // structure:
+  // [Param 0] ---> ┌-------┐
+  //                | add_0 |
+  // [Const 0] ---> └-------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  parameter.0 = s32[16]{0} parameter(0)
+  constant.0 = s32[16]{0} constant({99, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+  add.0 = s32[16]{0} add(parameter.0, constant.0)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                          HloGumgraph::Create(module_r.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
+      GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),
+      *mappings, /*position_unchanged=*/true));
+  ASSERT_NO_FATAL_FAILURE(
+      OverwriteMapInstructions(GetNodeByName(*graph_l, "parameter.0"),
+                               GetNodeByName(*graph_r, "parameter.0"),
+                               *mappings, /*position_unchanged=*/true));
+  ASSERT_NO_FATAL_FAILURE(
+      OverwriteMapInstructions(GetNodeByName(*graph_l, "constant.0"),
+                               GetNodeByName(*graph_r, "constant.0"), *mappings,
+                               /*position_unchanged=*/true));
+  auto diff_result = ConstructDiffResult(*graph_l, *graph_r, *mappings);
+
+  EXPECT_THAT(diff_result->changed_instructions,
+              UnorderedElementsAre(Pair(
+                  Pointee(Property(&HloInstruction::name, "constant.0")),
+                  Pointee(Property(&HloInstruction::name, "constant.0")))));
+  EXPECT_THAT(diff_result->unchanged_instructions,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       Pointee(Property(&HloInstruction::name, "parameter.0"))),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       Pointee(Property(&HloInstruction::name, "add.0")))));
+
+  EXPECT_THAT(diff_result->left_diff_codes,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "constant.0")),
+                       DiffType::kChanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       DiffType::kUnchanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       DiffType::kUnchanged)));
+  EXPECT_THAT(diff_result->right_diff_codes,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "constant.0")),
+                       DiffType::kChanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       DiffType::kUnchanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       DiffType::kUnchanged)));
+}
+
 TEST_F(HloDiffTest, DiffResultToAndFromProtoWorks) {
   DiffResult diff_result;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
