@@ -1340,6 +1340,7 @@ class PolyvalTest(test.TestCase):
       self.assertEqual(tf_val.shape, x.shape)
       self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  @test_util.run_in_graph_and_eager_modes
   def testSingleCoeffInfReturnsNan(self):
     for dtype in [
         np.float16, np.float32, np.float64, np.complex64, np.complex128
@@ -1351,15 +1352,15 @@ class PolyvalTest(test.TestCase):
         ]:
           with self.subTest(dtype=dtype, x=x_val, scalar=x_np.shape == ()):
             coeffs = [dtype(2.0)]
-            with self.cached_session():
-              tf_val = math_ops.polyval(coeffs, x_np)
-              result = self.evaluate(tf_val)
-              self.assertEqual(tf_val.shape, x_np.shape)
-              if np.issubdtype(dtype, np.complexfloating):
-                self.assertTrue(np.all(np.isnan(np.real(result))))
-              else:
-                self.assertTrue(np.all(np.isnan(result)))
+            tf_val = math_ops.polyval(coeffs, x_np)
+            result = self.evaluate(tf_val)
+            self.assertEqual(tf_val.shape, x_np.shape)
+            if np.issubdtype(dtype, np.complexfloating):
+              self.assertTrue(np.all(np.isnan(np.real(result))))
+            else:
+              self.assertTrue(np.all(np.isnan(result)))
 
+  @test_util.run_in_graph_and_eager_modes
   def testNonFiniteXReturnsInf(self):
     # inf x must evaluate to inf (not nan): the limit of a polynomial such as
     # p(x) = x + 1 as x -> inf is mathematically inf. NumPy returns nan here
@@ -1384,16 +1385,15 @@ class PolyvalTest(test.TestCase):
                               x=x_val,
                               degree=degree,
                               scalar=x_np.shape == ()):
-              with self.cached_session():
-                tf_val = math_ops.polyval([dtype(c) for c in coeffs], x_np)
-                result = self.evaluate(tf_val)
-                self.assertEqual(tf_val.shape, x_np.shape)
-                if np.issubdtype(dtype, np.complexfloating):
-                  # Complex inf arithmetic can produce nan imaginary parts
-                  # (e.g. (1+0j) * (inf+0j)); the real part must stay inf.
-                  self.assertTrue(np.all(np.isinf(np.real(result))))
-                else:
-                  self.assertTrue(np.all(np.isinf(result)))
+              tf_val = math_ops.polyval([dtype(c) for c in coeffs], x_np)
+              result = self.evaluate(tf_val)
+              self.assertEqual(tf_val.shape, x_np.shape)
+              if np.issubdtype(dtype, np.complexfloating):
+                # Complex inf arithmetic can produce nan imaginary parts
+                # (e.g. (1+0j) * (inf+0j)); the real part must stay inf.
+                self.assertTrue(np.all(np.isinf(np.real(result))))
+              else:
+                self.assertTrue(np.all(np.isinf(result)))
 
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
