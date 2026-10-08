@@ -875,7 +875,8 @@ class AsyncCommandBufferCmdEmitterTest : public CommandBufferCmdEmitterTest {
   AsyncStartThunk* Start(ThunkSequence& thunks, ExecutionStreamId stream,
                          ThunkSequence body) {
     auto start = std::make_unique<AsyncStartThunk>(NextThunkInfo("start"),
-                                                   stream, std::move(body));
+                                                   stream, std::move(body),
+                                                   /*devices_per_host=*/1);
     AsyncStartThunk* result = start.get();
     thunks.push_back(std::move(start));
     return result;

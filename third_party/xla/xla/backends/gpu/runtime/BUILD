@@ -399,6 +399,7 @@ cc_library(
     srcs = ["async_execution.cc"],
     hdrs = ["async_execution.h"],
     deps = [
+        ":per_device_state",
         ":thunk",
         ":thunk_id",
         "//xla:util",
@@ -408,15 +409,12 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/util:unique_any",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 

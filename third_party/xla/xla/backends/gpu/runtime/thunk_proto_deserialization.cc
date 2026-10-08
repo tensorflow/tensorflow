@@ -326,9 +326,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           gpu_topology.has_value() ? gpu_topology->num_devices_per_process()
                                    : 0);
     case ThunkProto::kAsyncStartThunk:
-      return AsyncStartThunk::FromProto(std::move(thunk_info),
-                                        thunk_proto.async_start_thunk(),
-                                        deserializer, async_execution_map);
+      return AsyncStartThunk::FromProto(
+          std::move(thunk_info), thunk_proto.async_start_thunk(), deserializer,
+          async_execution_map,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kAsyncDoneThunk:
       return AsyncDoneThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.async_done_thunk(),

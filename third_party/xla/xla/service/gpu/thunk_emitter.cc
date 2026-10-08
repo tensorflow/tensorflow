@@ -486,7 +486,9 @@ ThunkEmitter::RegisterAsyncExecution(const HloInstruction* async_start) {
   // while the nested-emission future is still pending.
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       async_start, ir_emitter_context_->GetNextThunkId());
-  auto execution = std::make_shared<AsyncExecution>(std::move(info));
+  auto execution = std::make_shared<AsyncExecution>(
+      std::move(info),
+      ir_emitter_context_->gpu_topology().num_devices_per_host());
   auto [_, inserted] = hlo_async_executions_.emplace(async_start, execution);
   if (!inserted) {
     return Internal("Async execution already exists for instruction %s",
@@ -2457,7 +2459,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStart(
   auto start_thunk = std::make_unique<AsyncStartThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           copy_start_instr, ir_emitter_context_->GetNextThunkId()),
-      *execution_stream_id, std::move(nested_thunks));
+      *execution_stream_id, std::move(nested_thunks),
+      ir_emitter_context_->gpu_topology().num_devices_per_host());
 
   auto [it, inserted] = hlo_async_executions_.emplace(
       copy_start_instr, start_thunk->async_execution());
@@ -2760,7 +2763,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncSendRecvStart(
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       async_start, ir_emitter_context_->GetNextThunkId());
   auto [it, inserted] = hlo_async_executions_.emplace(
-      owner, std::make_shared<AsyncExecution>(info));
+      owner,
+      std::make_shared<AsyncExecution>(
+          info, ir_emitter_context_->gpu_topology().num_devices_per_host()));
   if (!inserted) {
     return Internal("Async execution already exists for instruction %s",
                     owner->ToString());

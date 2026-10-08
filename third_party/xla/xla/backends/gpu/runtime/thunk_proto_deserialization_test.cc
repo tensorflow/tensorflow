@@ -1310,7 +1310,7 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
   start_info.profile_annotation = "async_start";
 
   AsyncStartThunk start_thunk(start_info, ComputationStreamId(0),
-                              ThunkSequence{});
+                              ThunkSequence{}, /*devices_per_host=*/1);
 
   AsyncDoneThunk done_thunk(Thunk::ThunkInfo(), start_thunk.async_execution());
 
@@ -1357,7 +1357,8 @@ TEST(ThunkProtoDeserializationTest, AsyncStartThunkMemcpyStreamRoundTrip) {
     Thunk::ThunkInfo start_info;
     start_info.profile_annotation = "memcpy_async_start";
 
-    AsyncStartThunk start_thunk(start_info, stream_id, ThunkSequence{});
+    AsyncStartThunk start_thunk(start_info, stream_id, ThunkSequence{},
+                                /*devices_per_host=*/1);
     AsyncDoneThunk done_thunk(Thunk::ThunkInfo(),
                               start_thunk.async_execution());
 
