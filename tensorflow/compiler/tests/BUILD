@@ -1391,6 +1391,33 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "qr_op_large_test",
+    size = "large",
+    srcs = ["qr_op_large_test.py"],
+    disabled_backends = [
+        # Test is very slow on CPU.
+        "cpu",
+        "cpu_ondemand",
+    ],
+    # Keep shard_count = 2 so testLarge2000x2000 and testLarge17500x128 (if enabled) run in separate shards.
+    shard_count = 2,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "nozapfhahn",
+        "optonly",
+        "requires-mem:24g",
+    ],
+    deps = [
+        ":qr_op_test_lib",
+        ":xla_test",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "unstack_test",
     size = "medium",
     srcs = ["unstack_test.py"],
