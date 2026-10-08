@@ -4312,6 +4312,10 @@ def psnr(a, b, max_val, name=None):
     and shape [batch_size, 1].
   """
   with ops.name_scope(name, 'PSNR', [a, b]):
+    # Convert first: max_val is cast to the dtype of `a` below, which an
+    # unconverted value does not have.
+    a = ops.convert_to_tensor(a, name='a')
+    b = ops.convert_to_tensor(b, name='b')
     # Need to convert the images to float32.  Scale max_val accordingly so that
     # PSNR is computed correctly.
     max_val = math_ops.cast(max_val, a.dtype)

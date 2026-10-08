@@ -6137,6 +6137,19 @@ class PSNRTest(test_util.TensorFlowTestCase):
       tf_psnr = self.evaluate(image_ops.psnr(tf_image1, tf_image2, 1.0, "psnr"))
       self.assertAllClose(psnr, tf_psnr, atol=0.001)
 
+  def testPSNRArrayLikeInput(self):
+    # max_val is cast to the dtype of the first argument, so an unconverted
+    # value used to fail with AttributeError before it was converted.
+    image1 = self._RandomImage((8, 8, 1), 1)
+    image2 = self._RandomImage((8, 8, 1), 1)
+    expected = self._PSNR_NumPy(image1, image2, 1)
+
+    with self.cached_session():
+      for a, b in ((image1.tolist(), image2.tolist()),
+                   (image1.astype(np.float32), image2.astype(np.float32))):
+        tf_psnr = self.evaluate(image_ops.psnr(a, b, 1.0, "psnr"))
+        self.assertAllClose(expected, tf_psnr, atol=0.001)
+
   def testPSNRMultiImage(self):
     image1 = self._RandomImage((10, 8, 8, 1), 1)
     image2 = self._RandomImage((10, 8, 8, 1), 1)
