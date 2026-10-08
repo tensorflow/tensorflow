@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -171,46 +170,6 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shape(), sharding->shard_shape());
   EXPECT_THAT(out_sharding->IsFullyReplicated(), sharding->IsFullyReplicated());
-}
-
-TEST_P(ShardingSerDesTest, ShardingParamShardingRoundTrip) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto sharding,
-      ShardingParamSharding::Create(ShardingParam({2, 1}, {{0}, {2}}),
-                                    GetDevices({0, 1}), MemoryKind("abc")));
-
-  auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, std::move(options)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto out_sharding,
-      Deserialize<ShardingParamSharding>(
-          serialized, std::make_unique<DeserializeShardingOptions>(client())));
-  EXPECT_THAT(out_sharding->devices()->devices(),
-              ElementsAreArray(sharding->devices()->devices()));
-  EXPECT_THAT(out_sharding->sharding_param(), sharding->sharding_param());
-}
-
-TEST_P(ShardingSerDesTest, ShardingParamShardingWithUnreducedDimsRoundTrip) {
-  if (version().version_number() < SerDesVersionNumber(1)) {
-    GTEST_SKIP() << "Unreduced dims not supported before version 1.";
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto sharding,
-      ShardingParamSharding::Create(ShardingParam({1, 1}, {{0}, {2}},
-                                                  /*unreduced_axes=*/{0}),
-                                    GetDevices({0, 1}), MemoryKind("abc")));
-
-  auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, std::move(options)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto out_sharding,
-      Deserialize<ShardingParamSharding>(
-          serialized, std::make_unique<DeserializeShardingOptions>(client())));
-  EXPECT_THAT(out_sharding->devices()->devices(),
-              ElementsAreArray(sharding->devices()->devices()));
-  EXPECT_THAT(out_sharding->sharding_param(), sharding->sharding_param());
 }
 
 INSTANTIATE_TEST_SUITE_P(
