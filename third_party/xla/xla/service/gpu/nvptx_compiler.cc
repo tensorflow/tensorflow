@@ -405,14 +405,6 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
   if (stream_exec == nullptr && !use_deviceless_cudnn) {
     return absl::OkStatus();
   }
-  // Deviceless cuDNN compilation relies on DeviceProperties JSON
-  // serialization, added in cuDNN 9.8.
-  if (use_deviceless_cudnn &&
-      gpu_target_config.device_description.dnn_version() <
-          se::SemanticVersion(9, 8, 0)) {
-    return absl::FailedPreconditionError(
-        "Deviceless cuDNN compilation requires cuDNN >= 9.8.");
-  }
   se::dnn::DnnSupport* dnn_support =
       use_deviceless_cudnn ? nullptr : stream_exec->AsDnn();
 

@@ -483,7 +483,7 @@ message DebugOptions {
 
   // Controls when cuDNN fusions are compiled in "deviceless" mode, i.e. driven
   // purely by the DeviceDescription without a live cuDNN handle. Deviceless
-  // compilation requires cuDNN >= 9.8.
+  // compilation requires cuDNN >= 9.23.
   enum CudnnDevicelessCompilationMode {
     CUDNN_DEVICELESS_COMPILATION_UNSET = 0;
     // Never use deviceless compilation; always require a live device.
