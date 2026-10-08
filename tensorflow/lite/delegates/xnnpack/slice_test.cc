@@ -28,6 +28,25 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+TEST(Slice, ToEndTracksReshapedInput) {
+  TfLiteXNNPackDelegateOptions options = TfLiteXNNPackDelegateOptionsDefault();
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      delegate(TfLiteXNNPackDelegateCreate(&options),
+               TfLiteXNNPackDelegateDelete);
+  for (bool int64_indices : {false, true}) {
+    for (int offset : {0, 1}) {
+      SliceTester()
+          .InputShape({1, 4, 8})
+          .Offsets({0, offset, 2})
+          .Sizes({-1, -1, 3})
+          .UseInt64OffsetsAndSize(int64_indices)
+          .ReshapeInputShapes({{1, 2, 8}, {1, 7, 8}, {1, 3, 8}})
+          .RequireDelegation(true)
+          .Test(TensorType_FLOAT32, delegate.get());
+    }
+  }
+}
+
 TEST(Slice, 1D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),

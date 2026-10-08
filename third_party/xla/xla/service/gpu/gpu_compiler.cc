@@ -586,12 +586,7 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
             << (stream_exec == nullptr
                     ? "not stream executor. Performing deviceless compilation."
                     : "stream executor. Performing cross compilation.");
-    absl::string_view platform_version =
-        topology_from_options.has_value() &&
-                !topology_from_options->platform_version().empty()
-            ? topology_from_options->platform_version()
-            : gpu_target_config->device_description.platform_version();
-    return GpuTopology{platform_version,
+    return GpuTopology{gpu_target_config->device_description.platform_version(),
                        num_partitions,
                        num_hosts_per_partition,
                        num_devices_per_host,
