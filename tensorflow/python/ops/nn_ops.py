@@ -2668,24 +2668,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
   ndims = getattr(shape, "ndims", -1)
   if ndims == -1:
     ndims = len(shape)
-  if ndims is not None and ndims < 4:
-    raise ValueError(
-        f"`input.shape.rank` must be at least 4. "
-        f"Received: input.shape={shape} with rank {ndims}."
-    )
-
-  filter_shape = getattr(filter, "shape", None)
-  if filter_shape is not None:
-    filter_ndims = getattr(filter_shape, "ndims", -1)
-    if filter_ndims == -1:
-      filter_ndims = len(filter_shape)
-    if filter_ndims is not None and filter_ndims < 4:
-      raise ValueError(
-          f"`filter.shape.rank` must be at least 4. "
-          f"Received: filter.shape={filter_shape} with rank {filter_ndims}."
-      )
-
-  if ndims in (4, None):
+  if ndims in (4, 3, 2, 1, 0, None):
     # We avoid calling squeeze_batch_dims to reduce extra python function
     # call slowdown in eager mode.  This branch doesn't require reshapes.
     return gen_nn_ops.conv2d(
