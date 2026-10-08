@@ -996,6 +996,38 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
         self.evaluate(v)
 
+  @test_util.disable_xla("XLA may handle zero fft_length differently")
+  def test_zero_fft_length_raises(self):
+    # fft_length=[0] must raise InvalidArgumentError instead of crashing the
+    # process with a fatal assertion in the DUCC FFT library (GitHub #123399).
+    x = array_ops.fill([3, 3, 31], -1.0)
+    fft_length = [0]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "must be > 0"
+    ):
+      with self.session():
+        v = gen_spectral_ops.rfft(input=x, fft_length=fft_length)
+        self.evaluate(v)
+
+  @test_util.disable_xla("XLA may handle zero fft_length differently")
+  def test_zero_fft_length_raises_multidim_and_inverse(self):
+    # The zero fft_length guard also applies to multi-dimensional and
+    # inverse transforms, not just the 1-D forward case above.
+    x = array_ops.fill([3, 3, 31], -1.0)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
+      self.evaluate(gen_spectral_ops.rfft2d(input=x, fft_length=[0, 31]))
+    y = math_ops.complex(
+        array_ops.ones([3, 3, 16]), array_ops.zeros([3, 3, 16])
+    )
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
+      self.evaluate(gen_spectral_ops.irfft(input=y, fft_length=[0]))
+
+  def test_zero_fft_length_empty_input_passthrough(self):
+    # Empty inputs keep the existing passthrough behavior for fft_length=[0].
+    x = array_ops.zeros([0, 31])
+    v = self.evaluate(gen_spectral_ops.rfft(input=x, fft_length=[0]))
+    self.assertEqual(0, v.size)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class FFTShiftTest(test.TestCase, parameterized.TestCase):
