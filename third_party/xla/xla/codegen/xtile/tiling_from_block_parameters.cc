@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/experimental/tiling_space_utils.h"
@@ -46,6 +48,60 @@ namespace {
 using ::xla::xtile::BlockLevelParameters;
 using DimensionSemantics =
     ::xla::gpu::experimental::TilingSpace::DimensionSemantics;
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetParallelTileSizes(
+    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const BlockLevelParameters& block_level_parameters,
+    bool enable_same_shape_multi_output_fusion) {
+  TF_RET_CHECK(!block_level_parameters.output_tile_sizes.empty())
+      << "output_tile_sizes cannot be empty.";
+
+  if (block_level_parameters.output_tile_sizes.size() == 1) {
+    return llvm::to_vector(
+        llvm::ArrayRef(block_level_parameters.output_tile_sizes[0]));
+  }
+
+  // If the tiling space has one set of parallel dimensions per root (e.g.
+  // index-wise variadic fusions such as a variadic all-gather, see
+  // TilingSpace::Create), the per-root tile sizes are concatenated in root
+  // order.
+  if (tiling_space.HasPerOutputTiles()) {
+    llvm::SmallVector<int64_t> parallel_tile_sizes;
+    parallel_tile_sizes.reserve(tiling_space.num_parallel_dimensions());
+    for (const auto& output_tile_sizes :
+         block_level_parameters.output_tile_sizes) {
+      parallel_tile_sizes.append(output_tile_sizes.begin(),
+                                 output_tile_sizes.end());
+    }
+    return parallel_tile_sizes;
+  }
+
+  if (!enable_same_shape_multi_output_fusion) {
+    return Unimplemented(
+        "Only single-result fusions are supported for now. Received %d "
+        "roots.",
+        block_level_parameters.output_tile_sizes.size());
+  }
+
+  // For multi-output fusions with identical shapes, we enforce that all
+  // outputs share the same tiling. Therefore, the block-level parameters must
+  // specify identical tile sizes for all outputs.
+  // TODO(b/502910372): Support arbitrary multi-output fusions.
+  llvm::SmallVector<int64_t> parallel_tile_sizes = llvm::to_vector(
+      llvm::ArrayRef(block_level_parameters.output_tile_sizes[0]));
+  for (size_t i = 1; i < block_level_parameters.output_tile_sizes.size(); ++i) {
+    if (!absl::c_equal(parallel_tile_sizes,
+                       block_level_parameters.output_tile_sizes[i])) {
+      return Unimplemented(
+          "Same-shape multi-output fusions must have identical tile sizes "
+          "for all outputs. Received different tile sizes for root 0 [%s] "
+          "and root %d [%s].",
+          absl::StrJoin(parallel_tile_sizes, ", "), i,
+          absl::StrJoin(block_level_parameters.output_tile_sizes[i], ", "));
+    }
+  }
+  return parallel_tile_sizes;
+}
 
 }  // namespace
 
@@ -109,36 +165,11 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
     const ::xla::gpu::experimental::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion) {
-  TF_RET_CHECK(!block_level_parameters.output_tile_sizes.empty())
-      << "output_tile_sizes cannot be empty.";
-
-  // For multi-output fusions with identical shapes, we enforce that all outputs
-  // share the same tiling. Therefore, the block-level parameters must specify
-  // identical tile sizes for all outputs.
-  // TODO(b/502910372): Support arbitrary multi-output fusions.
-  const auto& parallel_tile_sizes = block_level_parameters.output_tile_sizes[0];
-  if (block_level_parameters.output_tile_sizes.size() > 1) {
-    if (!enable_same_shape_multi_output_fusion) {
-      return Unimplemented(
-          "Only single-result fusions are supported for now. Received %d "
-          "roots.",
-          block_level_parameters.output_tile_sizes.size());
-    }
-
-    for (size_t i = 1; i < block_level_parameters.output_tile_sizes.size();
-         ++i) {
-      if (parallel_tile_sizes != block_level_parameters.output_tile_sizes[i]) {
-        return Unimplemented(
-            "Same-shape multi-output fusions must have identical tile sizes "
-            "for all outputs. Received different tile sizes for root 0 [%s] "
-            "and root %d [%s].",
-            absl::StrJoin(parallel_tile_sizes, ", "), i,
-            absl::StrJoin(block_level_parameters.output_tile_sizes[i], ", "));
-      }
-    }
-  }
-  if (int64_t num_parallel_dims = tiling_space.num_parallel_dimensions();
-      num_parallel_dims != parallel_tile_sizes.size()) {
+  ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> parallel_tile_sizes,
+                   GetParallelTileSizes(tiling_space, block_level_parameters,
+                                        enable_same_shape_multi_output_fusion));
+  const int64_t num_parallel_dims = tiling_space.num_parallel_dimensions();
+  if (num_parallel_dims != parallel_tile_sizes.size()) {
     return Internal(
         "Number of parallel dimensions in the tiling space (%d) does not match "
         "the number of output tile sizes in the block level fusion config "
