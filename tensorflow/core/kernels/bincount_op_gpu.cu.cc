@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <limits>
 #include <type_traits>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -65,10 +66,14 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
     size_t temp_storage_bytes = 0;
     const Tidx* d_samples = arr.data();
     T* d_histogram = output.data();
-    int num_levels = output.size() + 1;
+    int64_t num_levels_64 = output.size() + 1;
+    if (num_levels_64 > std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError("num_bins is too large for GPU");
+    }
+    int num_levels = static_cast<int>(num_levels_64);
     Tidx lower_level = Tidx(0);
     Tidx upper_level = num_bins;
-    int num_samples = arr.size();
+    int64_t num_samples = arr.size();
     const gpuStream_t& stream = GetGpuStream(context);
 
     // The first HistogramEven is to obtain the temp storage size required

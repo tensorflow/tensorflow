@@ -490,6 +490,15 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               size=constant_op.constant(2**62, dtype=dtypes.int64),
               weights=[]))
 
+  def test_bincount_1d_overflow(self):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError,
+                             errors.ResourceExhaustedError)):
+      self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=constant_op.constant([0], dtype=dtypes.int64),
+              size=constant_op.constant(2**62, dtype=dtypes.int64),
+              weights=[]))
+
 class SparseBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
 
@@ -516,6 +525,31 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               values=[0, 0],
               dense_shape=[2**62, 2**62],
               size=2**20,
+              weights=[]))
+
+  def test_sparse_bincount_negative_batch(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"Index out of bounds: `batch` \(-1\) must be non-negative and less "
+        r"than the dimension size",
+    ):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[-1, 0]],
+              values=[0],
+              dense_shape=[2, 5],
+              size=10,
+              weights=[]))
+
+  def test_sparse_bincount_1d_overflow(self):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError,
+                             errors.ResourceExhaustedError)):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0]],
+              values=constant_op.constant([0], dtype=dtypes.int64),
+              dense_shape=[1],
+              size=constant_op.constant(2**62, dtype=dtypes.int64),
               weights=[]))
 
   @parameterized.parameters([

@@ -1890,7 +1890,7 @@ REGISTER_OP("SparseBincount")
         c->set_output(0, c->MakeShape({size_val}));
       } else if (shape_tensor->NumElements() == 2) {
         int64_t num_rows = shape_tensor->flat<int64_t>()(0);
-        if (num_rows != InferenceContext::kUnknownDim) {
+        if (num_rows >= 0) {
           if (MultiplyWithoutOverflow(num_rows, size_val) < 0) {
             return absl::InvalidArgumentError(
                 "Encountered overflow when multiplying shape dimensions");
@@ -1899,7 +1899,9 @@ REGISTER_OP("SparseBincount")
         c->set_output(
             0, c->MakeShape({num_rows, size_val}));
       } else {
-        return absl::InvalidArgumentError("Input must be less than rank 2");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Shape must be at most rank 2 but is rank ",
+            shape_tensor->NumElements()));
       }
       return absl::OkStatus();
     });

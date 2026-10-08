@@ -2506,8 +2506,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
     OP_REQUIRES(ctx, grad.dims() == var.dims(),
                 absl::InvalidArgumentError(absl::StrCat(
                     "grad and var must have the same rank, got ", grad.dims(),
-                    " and ", var.dims(),
-                    ": grad must have the same number of dimensions as var")));
+                    " and ", var.dims())));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),

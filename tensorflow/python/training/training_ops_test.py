@@ -618,7 +618,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          "grad must have the same number of dimensions as var",
+          "grad and var must have the same rank",
       ):
         self.evaluate(
             gen_training_ops.resource_sparse_apply_adagrad_da(
@@ -729,7 +729,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          "grad must have the same number of dimensions as var",
+          "grad and var must have the same rank",
       ):
         self.evaluate(
             gen_training_ops.resource_sparse_apply_adagrad_da(
