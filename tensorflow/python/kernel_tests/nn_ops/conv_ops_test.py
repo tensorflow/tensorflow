@@ -3186,6 +3186,32 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
           )
       )
 
+    # Ensure scalar and rank-1 inputs fail safely.
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
+    ):
+      self.evaluate(
+          raw_ops.Conv2D(
+              input=np.ones([1], dtype=np.float32),
+              filter=np.ones([1, 2, 2, 1], dtype=np.float32),
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+          )
+      )
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
+    ):
+      self.evaluate(
+          raw_ops.Conv2D(
+              input=np.ones([1, 1, 3, 3], dtype=np.float32),
+              filter=np.ones([], dtype=np.float32),
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+          )
+      )
+
     # Filter dimensions must be greater than 0.
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError, "filter must not have zero elements"
