@@ -473,7 +473,9 @@ class SparseBincountOp : public OpKernel {
                 "Index out of bounds: `batch` (", batch,
                 ") must be non-negative and less than the dimension size (",
                 out.dimension(0), ").")));
-        if (0 <= bin && bin < size) {
+        OP_REQUIRES(ctx, bin >= 0,
+                    absl::InvalidArgumentError("Input must be non-negative"));
+        if (bin < size) {
           if (binary_output_) {
             out(batch, bin) = T(1);
           } else {

@@ -479,6 +479,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               input=[0], size=[1, 1], weights=[3], binary_output=False))
 
 
+  @test_util.run_in_graph_and_eager_modes
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
@@ -490,6 +491,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               size=constant_op.constant(2**62, dtype=dtypes.int64),
               weights=[]))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_bincount_1d_overflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError,
@@ -505,6 +507,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 class SparseBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def test_sparse_bincount_rank_greater_than_2_fails(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
@@ -517,6 +520,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               size=10,
               weights=[]))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
@@ -530,6 +534,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               size=2**20,
               weights=[]))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_sparse_bincount_negative_batch(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
@@ -544,6 +549,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               size=10,
               weights=[]))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_sparse_bincount_1d_overflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError,
@@ -556,6 +562,19 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               values=constant_op.constant([0], dtype=dtypes.int64),
               dense_shape=[1],
               size=constant_op.constant(2**62, dtype=dtypes.int64),
+              weights=[]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_bincount_negative_value(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Input must be non-negative"):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0, 0]],
+              values=[-1],
+              dense_shape=[1, 1],
+              size=10,
               weights=[]))
 
   @parameterized.parameters([
@@ -860,6 +879,7 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
