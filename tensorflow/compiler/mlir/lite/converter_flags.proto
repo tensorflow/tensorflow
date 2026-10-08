@@ -39,7 +39,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 74.
+// Next ID to use: 75.
 message ConverterFlags {
   reserved 54, 61;
 
@@ -398,4 +398,11 @@ message ConverterFlags {
   // Directory for debug artifacts and printed IR dumps when debug mode is
   // enabled.
   optional string debug_dir = 73;
+
+  // If true, fold the f16 -> f32 cast feeding a float fully_connected and the
+  // f32 -> f16 cast consuming it into the fully_connected, which then takes
+  // and produces f16 activations while keeping its weights unchanged. The
+  // resulting mixed precision fully_connected requires runtime support.
+  // WARNING: Experimental interface, subject to change.
+  optional bool fold_fp16_casts_into_fully_connected = 74 [default = false];
 }
