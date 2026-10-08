@@ -881,9 +881,9 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 +Performs element-wise base-2 exponential operation on `operand` tensor and
 +produces a `result` tensor. Depending on the element type, does the following:
 +
-+*   For floats: `exp2` from IEEE-754.
-+*   For complex numbers: complex base-2 exponential.
-+*   For quantized types: `dequantize_op_quantize(exp2, operand, type(result))`.
++* For floats: `exp2` from IEEE-754.
++* For complex numbers: complex base-2 exponential.
++* For quantized types: `dequantize_op_quantize(exp2, operand, type(result))`.
 +
 +#### Inputs
 +
@@ -907,7 +907,7 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 +
 +#### Constraints
 +
-+*   (C1) `baseline_type(operand) = baseline_type(result)`.
++* (C1) `baseline_type(operand) = baseline_type(result)`.
 +
 +#### Examples
 +
@@ -947,9 +947,9 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 +Performs element-wise base-2 logarithm operation on `operand` tensor and
 +produces a `result` tensor. Depending on the element type, does the following:
 +
-+*   For floats: `log2` from IEEE-754.
-+*   For complex numbers: complex base-2 logarithm.
-+*   For quantized types: `dequantize_op_quantize(log2, operand, type(result))`.
++* For floats: `log2` from IEEE-754.
++* For complex numbers: complex base-2 logarithm.
++* For quantized types: `dequantize_op_quantize(log2, operand, type(result))`.
 +
 +#### Inputs
 +
@@ -973,7 +973,7 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 +
 +#### Constraints
 +
-+*   (C1) `baseline_type(operand) = baseline_type(result)`.
++* (C1) `baseline_type(operand) = baseline_type(result)`.
 +
 +#### Examples
 +
@@ -1018,22 +1018,24 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
  * (C1) `element_type(operand) = element_type(source)`.
  * (C2) `shape(source) = num_windows` where:
    * `padded_operand_shape = padding[:, 0] + shape(operand) + padding[:, 1]`.
-@@ -7501,6 +7597,7 @@
+@@ -7501,7 +7597,7 @@
  syntax ([ISO/IEC 14977:1996](https://www.iso.org/standard/26153.html),
  [Wikipedia](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form)),
  with two modifications: 1) rules are defined using `::=` rather than `=`,
-+
- 2) concatenation is expressed using juxtaposition rather than `,`.
+-2) concatenation is expressed using juxtaposition rather than `,`.
++2\) concatenation is expressed using juxtaposition rather than `,`.
  
  For describing semantics (i.e. within "Types", "Constants" and "Ops" sections),
-@@ -7571,6 +7668,7 @@
+ we are using formulas which are based on Python syntax extended with support
+@@ -7571,7 +7667,7 @@
  ### Names
  
  In formulas, lexical scope includes: 1) global functions, 2) member definitions,
-+
- 3) local definitions. The list of global functions is provided below. The list
+-3) local definitions. The list of global functions is provided below. The list
++3\) local definitions. The list of global functions is provided below. The list
  of element definitions depends on the program element that the notation is
  applied to:
+ 
 diff --ruN a/stablehlo/rfcs/20260821-low-precision-complex.md b/stablehlo/rfcs/20260821-low-precision-complex.md
 --- stablehlo/rfcs/20260821-low-precision-complex.md
 +++ stablehlo/rfcs/20260821-low-precision-complex.md
@@ -1657,16 +1659,16 @@ diff --ruN a/stablehlo/rfcs/20260907-exp2-log2.md b/stablehlo/rfcs/20260907-exp2
 +
 +Currently, StableHLO lacks native `exp2` and `log2` operations:
 +
-+*   Frameworks expose `exp2` and `log2` directly: JAX provides
-+    [`jnp.exp2`][jax1] / `lax.exp2` and [`jnp.log2`][jax2] / `lax.log2`, and
-+    PyTorch provides [`torch.exp2`][torch1] and [`torch.log2`][torch2].
-+*   Without first-class ops in StableHLO, frameworks must decompose `exp2(x)`
-+    into `exponential(x * ln(2))` and `log2(x)` into `log(x) / ln(2)`.
-+*   Decomposing `exp2` and `log2` into natural `exponential` and `log` scaled by
-+    `ln(2)` degrades numerical accuracy (introducing rounding error on integer
-+    powers of two where `exp2(n)` and `log2(2^n)` should evaluate exactly) and
-+    prevents backends from emitting single-instruction base-2 hardware
-+    operations without fragile algebraic pattern-matching.
++* Frameworks expose `exp2` and `log2` directly: JAX provides [`jnp.exp2`][jax1]
++  / `lax.exp2` and [`jnp.log2`][jax2] / `lax.log2`, and PyTorch provides
++  [`torch.exp2`][torch1] and [`torch.log2`][torch2].
++* Without first-class ops in StableHLO, frameworks must decompose `exp2(x)` into
++  `exponential(x * ln(2))` and `log2(x)` into `log(x) / ln(2)`.
++* Decomposing `exp2` and `log2` into natural `exponential` and `log` scaled by
++  `ln(2)` degrades numerical accuracy (introducing rounding error on integer
++  powers of two where `exp2(n)` and `log2(2^n)` should evaluate exactly) and
++  prevents backends from emitting single-instruction base-2 hardware operations
++  without fragile algebraic pattern-matching.
 +
 +Following the precedent of `TanOp` ([20240312-tanop.md](20240312-tanop.md)) and
 +the transcendental accuracy specification
@@ -1681,12 +1683,12 @@ diff --ruN a/stablehlo/rfcs/20260907-exp2-log2.md b/stablehlo/rfcs/20260907-exp2
 +
 +## Exp2Op, Log2Op, and Compatibility
 +
-+*   **VHLO Serialization**: StableHLO version `1.21.0` introduces
-+    `VHLO_Exp2OpV1` (`exp2_v1`) and `VHLO_Log2OpV1` (`log2_v1`).
-+*   **Forward Compatibility & Decomposition**: For runtimes targeting StableHLO
-+    versions prior to `1.21.0`, compatibility expansion lowers `exp2(x)` to
-+    `exponential(multiply(x, constant(ln(2))))` and `log2(x)` to `divide(log(x),
-+    constant(ln(2)))`.
++* **VHLO Serialization**: StableHLO version `1.21.0` introduces `VHLO_Exp2OpV1`
++  (`exp2_v1`) and `VHLO_Log2OpV1` (`log2_v1`).
++* **Forward Compatibility & Decomposition**: For runtimes targeting StableHLO
++  versions prior to `1.21.0`, compatibility expansion lowers `exp2(x)` to
++  `exponential(multiply(x, constant(ln(2))))` and `log2(x)` to
++  `divide(log(x), constant(ln(2)))`.
 +
 +[jax1]: https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.exp2.html
 +[jax2]: https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.log2.html
@@ -3698,15 +3700,30 @@ diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stable
  
  #include "llvm/Support/Casting.h"
  #include "llvm/Support/Errc.h"
-@@ -175,36 +176,39 @@
+@@ -174,37 +175,52 @@
+     ArrayRef<InterpreterValue> inputs, std::queue<StringAttr>& infeed,
      SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
      InterpreterFallback* fallback) {
-   llvm::DefaultThreadPool threadPool;
+-  llvm::DefaultThreadPool threadPool;
 -  SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
-+  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
- 
+-
    uint32_t numReplicas = programs.size();
    uint32_t numPartitions = programs[0].size();
++
++  // StableHLO collectives are blocking barriers: a process inside rendezvous
++  // waits for every other process in its group to arrive, so all processes
++  // must run concurrently. Size the pool from the process count rather than
++  // the default (hardware_concurrency(), i.e. the host thread count). With a
++  // default-sized pool, a program with more processes than the host has
++  // hardware threads leaves the surplus tasks queued and never started while
++  // the started tasks block forever waiting for them - a deadlock that only
++  // surfaces as the rendezvous timeout. hardware_concurrency(N) leaves
++  // ThreadPoolStrategy::Limit false, so the pool gets N threads uncapped by the
++  // host.
++  llvm::DefaultThreadPool threadPool(
++      llvm::hardware_concurrency(numReplicas * numPartitions));
++  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
++
    ProcessGrid processGrid(numReplicas, numPartitions, infeed);
  
 +  SmallVector<SmallVector<InterpreterValue>> taskOutputs(numReplicas *
@@ -4443,6 +4460,159 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
  
    // CHECK-LABEL: @all_reduce_sdy_mesh_max
    func.func @all_reduce_sdy_mesh_max(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
+@@ -168,6 +168,18 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_broadcast_in_dim_discardable_attrs
++func.func @dynamic_broadcast_in_dim_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<3x4xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_broadcast_in_dim
++  //      CHECK: stablehlo.broadcast_in_dim %arg0, dims = [1]
++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
++  %0 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
++  %1 = stablehlo.dynamic_broadcast_in_dim %arg0, %0, dims = [1] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<2xi64>) -> tensor<3x4xf32>
++  return %1 : tensor<3x4xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_broadcast_in_dim_inapplicable_dynamic_operand_type
+ func.func @dynamic_broadcast_in_dim_inapplicable_dynamic_operand_type(%arg0: tensor<?xf32>) -> tensor<3x4xf32> {
+   // CHECK: stablehlo.dynamic_broadcast_in_dim
+@@ -225,6 +237,26 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_conv_discardable_attrs
++func.func @dynamic_conv_discardable_attrs(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_conv
++  //      CHECK: stablehlo.convolution(%arg0, %arg1)
++  // CHECK-SAME:   mhlo.frontend_attributes = {MUST_FUSE = "0"}
++  %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
++  %1 = "stablehlo.dynamic_conv"(%arg0, %arg1, %0) {
++    dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
++    window_strides = array<i64: 1, 1>,
++    lhs_dilation = array<i64: 1, 1>,
++    rhs_dilation = array<i64: 1, 1>,
++    feature_group_count = 1 : i64,
++    batch_group_count = 1 : i64,
++    mhlo.frontend_attributes = {MUST_FUSE = "0"}
++  } : (tensor<100x26x26x32xf32>, tensor<3x3x1x32xf32>, tensor<2x2xi32>) -> tensor<100x28x28x1xf32>
++  return %1 : tensor<100x28x28x1xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_conv_success_dynamic_result_type
+ func.func @dynamic_conv_success_dynamic_result_type(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf32>) -> tensor<?x28x28x1xf32> {
+   //  CHECK-NOT: stablehlo.dynamic_conv
+@@ -295,6 +327,25 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: @dynamic_gather_discardable_attrs
++func.func @dynamic_gather_discardable_attrs(%arg0 : tensor<2x4x9xi32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  //  CHECK-NOT: stablehlo.dynamic_gather
++  //      CHECK: "stablehlo.gather"(%arg0, %arg1)
++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
++  %0 = stablehlo.constant dense<[1, 1, 8]> : tensor<3xi32>
++  %1 = "stablehlo.dynamic_gather"(%arg0, %arg1, %0) <{
++    dimension_numbers = #stablehlo.gather<
++      collapsed_slice_dims = [0, 1],
++      index_vector_dim = 2,
++      offset_dims = [2],
++      start_index_map = [0, 1]
++    >
++  }> {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x4x9xi32>, tensor<1x5x2xi32>, tensor<3xi32>) -> tensor<1x5x8xi32>
++  return %1 : tensor<1x5x8xi32>
++}
++
++// -----
++
+ // CHECK-LABEL: @dynamic_gather_success_dynamic_result_type
+ func.func @dynamic_gather_success_dynamic_result_type(%arg0 : tensor<2x4x9xi32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x?xi32> {
+   //  CHECK-NOT: stablehlo.dynamic_gather
+@@ -348,6 +399,18 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_iota_discardable_attrs
++func.func @dynamic_iota_discardable_attrs() -> tensor<4xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_iota
++  //      CHECK: stablehlo.iota
++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
++  %0 = stablehlo.constant dense<4> : tensor<1xi64>
++  %1 = stablehlo.dynamic_iota %0, dim = 0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<1xi64>) -> tensor<4xf32>
++  return %1 : tensor<4xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_iota_inapplicable_dynamic_output_shape
+ func.func @dynamic_iota_inapplicable_dynamic_output_shape(%arg0: tensor<1xi64>) -> tensor<4xf32> {
+   // CHECK: stablehlo.dynamic_iota
+@@ -380,6 +443,20 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_pad_discardable_attrs
++func.func @dynamic_pad_discardable_attrs(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<11xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_pad
++  //      CHECK: stablehlo.pad
++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
++  %0 = stablehlo.constant dense<0> : tensor<1xi64>
++  %1 = stablehlo.constant dense<1> : tensor<1xi64>
++  %2 = stablehlo.constant dense<2> : tensor<1xi64>
++  %3 = stablehlo.dynamic_pad %arg0, %arg1, %0, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<f32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<11xf32>
++  return %3 : tensor<11xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_pad_success_dynamic_result_type
+ func.func @dynamic_pad_success_dynamic_result_type(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+   // CHECK-NOT: stablehlo.dynamic_pad
+@@ -437,6 +514,17 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_reshape_discardable_attrs
++func.func @dynamic_reshape_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<1x4xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_reshape
++  //      CHECK: stablehlo.reshape %arg0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>) -> tensor<1x4xf32>
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
++  %1 = stablehlo.dynamic_reshape %arg0, %0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<2xi64>) -> tensor<1x4xf32>
++  return %1 : tensor<1x4xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_reshape_inapplicable_dynamic_output_shape
+ func.func @dynamic_reshape_inapplicable_dynamic_output_shape(%arg0: tensor<4xf32>, %arg1: tensor<2xi64>) -> tensor<1x4xf32> {
+   // CHECK: stablehlo.dynamic_reshape
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
+@@ -10,6 +10,16 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: op_dot_discardable_attrs
++func.func @op_dot_discardable_attrs(%arg0: tensor<2x3xf32>,
++                 %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
++  // CHECK: stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
++  %0 = "stablehlo.dot"(%arg0, %arg1) {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
++  func.return %0 : tensor<2x?xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: op_unary_einsum
+ func.func @op_unary_einsum(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
+   // CHECK:      %cst = stablehlo.constant dense<1.000000e+00> : tensor<f32>
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
@@ -8393,6 +8563,99 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
      return success();
    }
  };
+@@ -119,8 +120,11 @@
+                                          "expected static output_dimensions");
+     if (!op.getType().hasStaticShape())
+       return rewriter.notifyMatchFailure(op, "expected static result type");
+-    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+-        op, op.getType(), op.getOperand(), op.getBroadcastDimensionsAttr());
++    auto broadcastInDimOp = BroadcastInDimOp::create(
++        rewriter, op.getLoc(), op.getType(), op.getOperand(),
++        op.getBroadcastDimensionsAttr());
++    broadcastInDimOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, broadcastInDimOp);
+     return success();
+   }
+ };
+@@ -139,12 +143,14 @@
+         RankedTensorType::get({static_cast<int64_t>(padding.size()) / 2, 2},
+                               rewriter.getI64Type()),
+         padding);
+-    rewriter.replaceOpWithNewOp<ConvolutionOp>(
+-        op, op.getType(), op.getLhs(), op.getRhs(), op.getWindowStridesAttr(),
+-        paddingAttr, op.getLhsDilationAttr(), op.getRhsDilationAttr(),
+-        op.getWindowReversalAttr(), op.getDimensionNumbers(),
+-        op.getFeatureGroupCount(), op.getBatchGroupCount(),
+-        op.getPrecisionConfigAttr());
++    auto convolutionOp = ConvolutionOp::create(
++        rewriter, op.getLoc(), op.getType(), op.getLhs(), op.getRhs(),
++        op.getWindowStridesAttr(), paddingAttr, op.getLhsDilationAttr(),
++        op.getRhsDilationAttr(), op.getWindowReversalAttr(),
++        op.getDimensionNumbers(), op.getFeatureGroupCount(),
++        op.getBatchGroupCount(), op.getPrecisionConfigAttr());
++    convolutionOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, convolutionOp);
+     return success();
+   }
+ };
+@@ -159,10 +165,13 @@
+     SmallVector<int64_t> sliceSizes;
+     if (!succeeded(hlo::matchInts(op.getSliceSizes(), sliceSizes)))
+       return rewriter.notifyMatchFailure(op, "expected static slice_sizes");
+-    rewriter.replaceOpWithNewOp<GatherOp>(
+-        op, op.getType(), op.getOperand(), op.getStartIndices(),
+-        op.getDimensionNumbersAttr(), rewriter.getDenseI64ArrayAttr(sliceSizes),
+-        op.getIndicesAreSortedAttr());
++    auto gatherOp =
++        GatherOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand(),
++                         op.getStartIndices(), op.getDimensionNumbersAttr(),
++                         rewriter.getDenseI64ArrayAttr(sliceSizes),
++                         op.getIndicesAreSortedAttr());
++    gatherOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, gatherOp);
+     return success();
+   }
+ };
+@@ -179,8 +188,10 @@
+       return rewriter.notifyMatchFailure(op, "expected static output_shape");
+     if (!op.getType().hasStaticShape())
+       return rewriter.notifyMatchFailure(op, "expected static result type");
+-    rewriter.replaceOpWithNewOp<IotaOp>(op, op.getType(),
+-                                        op.getIotaDimension());
++    auto iotaOp = IotaOp::create(rewriter, op.getLoc(), op.getType(),
++                                 op.getIotaDimension());
++    iotaOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, iotaOp);
+     return success();
+   }
+ };
+@@ -198,9 +209,11 @@
+       return rewriter.notifyMatchFailure(op, "expected static high");
+     if (!succeeded(hlo::matchInts(op.getInteriorPadding(), interiorPadding)))
+       return rewriter.notifyMatchFailure(op, "expected static interior");
+-    rewriter.replaceOpWithNewOp<PadOp>(op, op.getType(), op.getOperand(),
+-                                       op.getPaddingValue(), edgePaddingLow,
+-                                       edgePaddingHigh, interiorPadding);
++    auto padOp = PadOp::create(
++        rewriter, op.getLoc(), op.getType(), op.getOperand(),
++        op.getPaddingValue(), edgePaddingLow, edgePaddingHigh, interiorPadding);
++    padOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, padOp);
+     return success();
+   }
+ };
+@@ -216,7 +229,10 @@
+       return rewriter.notifyMatchFailure(op, "expected static output_shape");
+     if (!op.getType().hasStaticShape())
+       return rewriter.notifyMatchFailure(op, "expected static result type");
+-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
++    auto reshapeOp =
++        ReshapeOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand());
++    reshapeOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, reshapeOp);
+     return success();
+   }
+ };
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
 --- stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
 +++ stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
@@ -8433,6 +8696,42 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/s
    populateWithGenerated(*patterns);
  }
  
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
+@@ -132,6 +132,14 @@
+   llvm::report_fatal_error("unsupported type");
+ }
+ 
++void copyDiscardableAttrs(Operation* src, Operation* dst) {
++  dst->setDiscardableAttrs(src->getDiscardableAttrDictionary());
++}
++
++void copyDiscardableAttrs(Value src, Value dst) {
++  copyDiscardableAttrs(src.getDefiningOp(), dst.getDefiningOp());
++}
++
+ #include "stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.h.inc"
+ }  // namespace
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
+--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
+@@ -45,9 +45,12 @@
+ 
+ // def CrossReplicaSumToAllReduce : <Declared in cpp>
+ 
++def CopyDiscardableAttrs : NativeCodeCallVoid<"copyDiscardableAttrs($0, $1)">;
++
+ def DotToDotGeneral : Pat<
+-  (StableHLO_DotOp $lhs, $rhs, $precision_config),
+-  (StableHLO_DotGeneralOp $lhs, $rhs, (GetDefaultDotDimensionNumbers $lhs), $precision_config, (NativeCodeCall<"Attribute{}">))>;
++  (StableHLO_DotOp:$src $lhs, $rhs, $precision_config),
++  (StableHLO_DotGeneralOp:$dst $lhs, $rhs, (GetDefaultDotDimensionNumbers $lhs), $precision_config, (NativeCodeCall<"Attribute{}">)),
++  [], [(CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def UnaryEinsumToEinsum : Pat<
+   (StableHLO_UnaryEinsumOp $operand, $equation),
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
 --- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
 +++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
