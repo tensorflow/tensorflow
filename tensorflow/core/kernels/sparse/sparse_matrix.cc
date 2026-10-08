@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
 #include <cstdint>
-#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -40,8 +39,9 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
   // this, so every tensor read here is host-resident.
   //
   // dense_shape has already been checked to be an int64 vector of size 2 or 3
-  // by ValidateTypesAndShapes, and the index arrays to be int32 vectors of the
-  // matching sizes: batch_pointers -> batch_size + 1,
+  // with non-negative, non-overflowing dimensions by ValidateTypesAndShapes,
+  // and the index arrays to be int32 vectors of the matching sizes:
+  // batch_pointers -> batch_size + 1,
   // row_pointers -> batch_size * (num_rows + 1), col_indices -> total nnz.
   const auto dense_shape_vec = dense_shape.vec<int64_t>();
   const int rank = dense_shape.dim_size(0);
@@ -50,23 +50,6 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
       (rank == 2) ? dense_shape_vec(0) : dense_shape_vec(1);
   const int64_t num_cols =
       (rank == 2) ? dense_shape_vec(1) : dense_shape_vec(2);
-  if (batch_size < 0 || num_rows < 0 || num_cols < 0) {
-    return errors::InvalidArgument(absl::StrCat(
-        "CSRSparseMatrix::Validate: dense_shape has a negative dimension: ",
-        dense_shape.SummarizeValue(5)));
-  }
-  // ValidateTypesAndShapes sizes row_pointers as batch_size * (num_rows + 1).
-  // With dimensions taken straight from an untrusted dense_shape that product
-  // can wrap in int64 (e.g. num_rows = INT64_MAX makes it 0), letting a
-  // 0-element row_pointers pass the shape check and reach the loop below, where
-  // row_ptr[base] reads a null buffer. Reject dimensions that would overflow.
-  if (num_rows == std::numeric_limits<int64_t>::max() ||
-      (batch_size > 0 &&
-       (num_rows + 1) > std::numeric_limits<int64_t>::max() / batch_size)) {
-    return errors::InvalidArgument(absl::StrCat(
-        "CSRSparseMatrix::Validate: dense_shape dimensions overflow int64: ",
-        dense_shape.SummarizeValue(5)));
-  }
 
   const int64_t total_nnz = col_indices.NumElements();
   // The tensors are host-resident (Decode rejects device tensors), so read

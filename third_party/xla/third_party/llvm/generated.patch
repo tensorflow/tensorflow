@@ -1,19 +1,459 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/docs/WritingAnLLVMPass.md b/llvm/docs/WritingAnLLVMPass.md
---- a/llvm/docs/WritingAnLLVMPass.md
-+++ b/llvm/docs/WritingAnLLVMPass.md
-@@ -794,14 +794,6 @@
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/IR/Metadata.h b/llvm/include/llvm/IR/Metadata.h
+--- a/llvm/include/llvm/IR/Metadata.h
++++ b/llvm/include/llvm/IR/Metadata.h
+@@ -397,18 +397,8 @@
+   using OwnerTy = MetadataTracking::OwnerTy;
  
- ```console
- $ gdb opt
--GNU gdb 5.0
--Copyright 2000 Free Software Foundation, Inc.
--GDB is free software, covered by the GNU General Public License, and you are
--welcome to change it and/or distribute copies of it under certain conditions.
--Type "show copying" to see the conditions.
--There is absolutely no warranty for GDB.  Type "show warranty" for details.
--This GDB was configured as "sparc-sun-solaris2.6"...
--(gdb)
- ```
+ private:
+-  struct UseEntry {
+-    void *Ref = nullptr;
+-    OwnerTy Owner = nullptr;
+-  };
+-
+-  static constexpr unsigned IndexThreshold = 32;
+-  // Tracked uses of this. Dropping one moves the last entry into its slot, so
+-  // the order is deterministic but not the order they were added in.
+-  SmallVector<UseEntry, 4> UseMap;
+-  // Lazily allocated map from Ref to its index in UseMap for large use lists.
+-  using IndexMapTy = DenseMap<void *, unsigned>;
+-  std::unique_ptr<IndexMapTy> IndexMap;
++  uint64_t NextIndex = 0;
++  SmallDenseMap<void *, std::pair<OwnerTy, uint64_t>, 4> UseMap;
  
- Note that {program}`opt` has a lot of debugging information in it, so it takes
+ protected:
+   ~ReplaceableUses() {
+@@ -439,7 +429,6 @@
+   unsigned getNumUses() const { return UseMap.size(); }
+ 
+ private:
+-  UseEntry *findRef(void *Ref);
+   void addRef(void *Ref, OwnerTy Owner);
+   void dropRef(void *Ref);
+   void moveRef(void *Ref, void *New, const Metadata &MD);
+diff -ruN --strip-trailing-cr a/llvm/lib/IR/Metadata.cpp b/llvm/lib/IR/Metadata.cpp
+--- a/llvm/lib/IR/Metadata.cpp
++++ b/llvm/lib/IR/Metadata.cpp
+@@ -258,96 +258,82 @@
+ }
+ 
+ SmallVector<Metadata *> ReplaceableUses::getAllArgListUsers() {
+-  SmallVector<Metadata *> MDUsers;
+-  for (const auto &[Ref, Owner] : UseMap) {
++  SmallVector<std::pair<OwnerTy, uint64_t> *> MDUsersWithID;
++  for (auto Pair : UseMap) {
++    OwnerTy Owner = Pair.second.first;
+     if (Owner.isNull())
+       continue;
+     if (!isa<Metadata *>(Owner))
+       continue;
+     Metadata *OwnerMD = cast<Metadata *>(Owner);
+     if (OwnerMD->getMetadataID() == Metadata::DIArgListKind)
+-      MDUsers.push_back(OwnerMD);
++      MDUsersWithID.push_back(&UseMap[Pair.first]);
+   }
++  llvm::sort(MDUsersWithID, [](auto UserA, auto UserB) {
++    return UserA->second < UserB->second;
++  });
++  SmallVector<Metadata *> MDUsers;
++  for (auto *UserWithID : MDUsersWithID)
++    MDUsers.push_back(cast<Metadata *>(UserWithID->first));
+   return MDUsers;
+ }
+ 
+ SmallVector<DbgVariableRecord *>
+ ReplaceableUses::getAllDbgVariableRecordUsers() {
++  SmallVector<std::pair<OwnerTy, uint64_t> *> DVRUsersWithID;
++  for (auto Pair : UseMap) {
++    OwnerTy Owner = Pair.second.first;
++    if (Owner.isNull())
++      continue;
++    if (!isa<DebugValueUser *>(Owner))
++      continue;
++    DVRUsersWithID.push_back(&UseMap[Pair.first]);
++  }
+   // Order DbgVariableRecord users in reverse-creation order. Normal dbg.value
+   // users of MetadataAsValues are ordered by their UseList, i.e. reverse order
+   // of when they were added: we need to replicate that here. The structure of
+   // debug-info output depends on the ordering of intrinsics, thus we need
+   // to keep them consistent for comparisons sake.
++  llvm::sort(DVRUsersWithID, [](auto UserA, auto UserB) {
++    return UserA->second > UserB->second;
++  });
+   SmallVector<DbgVariableRecord *> DVRUsers;
+-  for (const auto &[Ref, Owner] : reverse(UseMap)) {
+-    if (Owner.isNull())
+-      continue;
+-    if (!isa<DebugValueUser *>(Owner))
+-      continue;
+-    DVRUsers.push_back(cast<DebugValueUser *>(Owner)->getUser());
+-  }
++  for (auto UserWithID : DVRUsersWithID)
++    DVRUsers.push_back(cast<DebugValueUser *>(UserWithID->first)->getUser());
+   return DVRUsers;
+ }
+ 
+-ReplaceableUses::UseEntry *ReplaceableUses::findRef(void *Ref) {
+-  if (!IndexMap) {
+-    // Search backward for temporal locality; recently added references are
+-    // often dropped or moved first.
+-    for (UseEntry &U : reverse(UseMap))
+-      if (U.Ref == Ref)
+-        return &U;
+-    return nullptr;
+-  }
+-
+-  auto It = IndexMap->find(Ref);
+-  return It == IndexMap->end() ? nullptr : &UseMap[It->second];
+-}
+-
+ void ReplaceableUses::addRef(void *Ref, OwnerTy Owner) {
+-  assert(Ref && "Expected live reference");
+-  assert(!findRef(Ref) && "Reference already tracked");
+-  unsigned NewIdx = UseMap.size();
+-  UseMap.push_back({Ref, Owner});
+-  if (IndexMap) {
+-    (*IndexMap)[Ref] = NewIdx;
+-  } else if (UseMap.size() > IndexThreshold) {
+-    // Build the index map once UseMap grows past the threshold.
+-    IndexMap = std::make_unique<IndexMapTy>();
+-    for (unsigned I = 0, E = UseMap.size(); I != E; ++I)
+-      (*IndexMap)[UseMap[I].Ref] = I;
+-  }
++  bool WasInserted =
++      UseMap.insert(std::make_pair(Ref, std::make_pair(Owner, NextIndex)))
++          .second;
++  (void)WasInserted;
++  assert(WasInserted && "Expected to add a reference");
++
++  ++NextIndex;
++  assert(NextIndex != 0 && "Unexpected overflow");
+ }
+ 
+ void ReplaceableUses::dropRef(void *Ref) {
+-  UseEntry *Entry = findRef(Ref);
+-  assert(Entry && "Expected to find Ref");
+-  if (IndexMap)
+-    IndexMap->erase(Ref);
+-  if (Entry != &UseMap.back()) {
+-    *Entry = UseMap.back();
+-    if (IndexMap)
+-      (*IndexMap)[Entry->Ref] = Entry - UseMap.begin();
+-  }
+-  UseMap.pop_back();
+-  if (IndexMap && UseMap.size() <= IndexThreshold / 2)
+-    IndexMap.reset();
++  bool WasErased = UseMap.erase(Ref);
++  (void)WasErased;
++  assert(WasErased && "Expected to drop a reference");
+ }
+ 
+ void ReplaceableUses::moveRef(void *Ref, void *New, const Metadata &MD) {
+-  assert(!findRef(New) && "Cannot move to an existing reference");
+-  UseEntry *Entry = findRef(Ref);
+-  assert(Entry && "Expected to move a reference");
+-  if (IndexMap) {
+-    IndexMap->erase(Ref);
+-    (*IndexMap)[New] = Entry - UseMap.begin();
+-  }
+-  Entry->Ref = New;
++  auto I = UseMap.find(Ref);
++  assert(I != UseMap.end() && "Expected to move a reference");
++  auto OwnerAndIndex = I->second;
++  UseMap.erase(I);
++  bool WasInserted = UseMap.insert(std::make_pair(New, OwnerAndIndex)).second;
++  (void)WasInserted;
++  assert(WasInserted && "Expected to add a reference");
+ 
+   // Check that the references are direct if there's no owner.
+   (void)MD;
+-  assert((Entry->Owner || *static_cast<Metadata **>(Ref) == &MD) &&
++  assert((OwnerAndIndex.first || *static_cast<Metadata **>(Ref) == &MD) &&
+          "Reference without owner must be direct");
+-  assert((Entry->Owner || *static_cast<Metadata **>(New) == &MD) &&
++  assert((OwnerAndIndex.first || *static_cast<Metadata **>(New) == &MD) &&
+          "Reference without owner must be direct");
+ }
+ 
+@@ -360,11 +346,14 @@
+   auto &Store = Context.pImpl->ValuesAsMetadata;
+   auto I = Store.find(&C);
+   ValueAsMetadata *MD = I->second;
++  using UseTy =
++      std::pair<void *, std::pair<MetadataTracking::OwnerTy, uint64_t>>;
+   // Copy out uses and update value of Constant used by debug info metadata with
+-  // poison below.
+-  SmallVector<UseEntry, 4> Uses = MD->UseMap;
++  // poison below
++  SmallVector<UseTy, 8> Uses(MD->UseMap.begin(), MD->UseMap.end());
+ 
+-  for (const auto &[Ref, Owner] : Uses) {
++  for (const auto &Pair : Uses) {
++    MetadataTracking::OwnerTy Owner = Pair.second.first;
+     if (!Owner)
+       continue;
+     // Check for MetadataAsValue.
+@@ -380,7 +369,7 @@
+       continue;
+     if (isa<DINode>(OwnerMD)) {
+       OwnerMD->handleChangedOperand(
+-          Ref, ValueAsMetadata::get(PoisonValue::get(C.getType())));
++          Pair.first, ValueAsMetadata::get(PoisonValue::get(C.getType())));
+     }
+   }
+ }
+@@ -390,21 +379,25 @@
+     return;
+ 
+   // Copy out uses since UseMap will get touched below.
+-  SmallVector<UseEntry, 4> Uses = UseMap;
+-
+-  for (const auto &[Ref, Owner] : Uses) {
++  using UseTy = std::pair<void *, std::pair<OwnerTy, uint64_t>>;
++  SmallVector<UseTy, 8> Uses(UseMap.begin(), UseMap.end());
++  llvm::sort(Uses, [](const UseTy &L, const UseTy &R) {
++    return L.second.second < R.second.second;
++  });
++  for (const auto &Pair : Uses) {
+     // Check that this Ref hasn't disappeared after RAUW (when updating a
+     // previous Ref).
+-    if (!findRef(Ref))
++    if (!UseMap.count(Pair.first))
+       continue;
+ 
++    OwnerTy Owner = Pair.second.first;
+     if (!Owner) {
+       // Update unowned tracking references directly.
+-      Metadata *&DirectRef = *static_cast<Metadata **>(Ref);
+-      dropRef(Ref);
+-      DirectRef = MD;
++      Metadata *&Ref = *static_cast<Metadata **>(Pair.first);
++      Ref = MD;
+       if (MD)
+-        MetadataTracking::track(DirectRef);
++        MetadataTracking::track(Ref);
++      UseMap.erase(Pair.first);
+       continue;
+     }
+ 
+@@ -415,7 +408,7 @@
+     }
+ 
+     if (auto *DVU = dyn_cast<DebugValueUser *>(Owner)) {
+-      DVU->handleChangedValue(Ref, MD);
++      DVU->handleChangedValue(Pair.first, MD);
+       continue;
+     }
+ 
+@@ -424,7 +417,7 @@
+     switch (OwnerMD->getMetadataID()) {
+ #define HANDLE_METADATA_LEAF(CLASS)                                            \
+   case Metadata::CLASS##Kind:                                                  \
+-    cast<CLASS>(OwnerMD)->handleChangedOperand(Ref, MD);                       \
++    cast<CLASS>(OwnerMD)->handleChangedOperand(Pair.first, MD);                \
+     continue;
+ #include "llvm/IR/Metadata.def"
+     default:
+@@ -440,16 +433,18 @@
+ 
+   if (!ResolveUsers) {
+     UseMap.clear();
+-    IndexMap.reset();
+     return;
+   }
+ 
+-  // Move uses out since UseMap could get touched below.
+-  SmallVector<UseEntry, 4> Uses = std::move(UseMap);
++  // Copy out uses since UseMap could get touched below.
++  using UseTy = std::pair<void *, std::pair<OwnerTy, uint64_t>>;
++  SmallVector<UseTy, 8> Uses(UseMap.begin(), UseMap.end());
++  llvm::sort(Uses, [](const UseTy &L, const UseTy &R) {
++    return L.second.second < R.second.second;
++  });
+   UseMap.clear();
+-  IndexMap.reset();
+-  for (const auto &U : Uses) {
+-    auto Owner = U.Owner;
++  for (const auto &Pair : Uses) {
++    auto Owner = Pair.second.first;
+     if (!Owner)
+       continue;
+     if (!isa<Metadata *>(Owner))
+diff -ruN --strip-trailing-cr a/llvm/lib/ObjCopy/ELF/ELFObject.cpp b/llvm/lib/ObjCopy/ELF/ELFObject.cpp
+--- a/llvm/lib/ObjCopy/ELF/ELFObject.cpp
++++ b/llvm/lib/ObjCopy/ELF/ELFObject.cpp
+@@ -1709,11 +1709,7 @@
+   case SHT_REL:
+   case SHT_RELA:
+   case SHT_CREL:
+-    // SHF_ALLOC relocations of an executable or shared object are copied
+-    // verbatim. Relocatable files relocations are usually non-ALLOC, but Linux
+-    // livepatch modules set SHF_ALLOC on .klp.rela.* to keep these static
+-    // relocations in memory.
+-    if ((Shdr.sh_flags & SHF_ALLOC) && ElfFile.getHeader().e_type != ET_REL) {
++    if (Shdr.sh_flags & SHF_ALLOC) {
+       if (Expected<ArrayRef<uint8_t>> Data = ElfFile.getSectionContents(Shdr))
+         return Obj.addSection<DynamicRelocationSection>(*Data);
+       else
+diff -ruN --strip-trailing-cr a/llvm/lib/ObjCopy/ELF/ELFObject.h b/llvm/lib/ObjCopy/ELF/ELFObject.h
+--- a/llvm/lib/ObjCopy/ELF/ELFObject.h
++++ b/llvm/lib/ObjCopy/ELF/ELFObject.h
+@@ -38,7 +38,6 @@
+ class SymbolTableSection;
+ class RelocationSection;
+ class DynamicRelocationSection;
+-class DynamicSymbolTableSection;
+ class GnuDebugLinkSection;
+ class GroupSection;
+ class SectionIndexSection;
+@@ -876,15 +875,10 @@
+ // and another which handles the symbol table type. The symbol table type is
+ // taken as a type parameter to the class (see RelocSectionWithSymtabBase).
+ class RelocationSectionBase : public SectionBase {
+-  const bool Dynamic;
+-
+ protected:
+   SectionBase *SecToApplyRel = nullptr;
+ 
+-  explicit RelocationSectionBase(bool Dynamic) : Dynamic(Dynamic) {}
+-
+ public:
+-  bool isDynamic() const { return Dynamic; }
+   const SectionBase *getSection() const { return SecToApplyRel; }
+   void setSection(SectionBase *Sec) { SecToApplyRel = Sec; }
+ 
+@@ -903,9 +897,7 @@
+   void setSymTab(SymTabType *SymTab) { Symbols = SymTab; }
+ 
+ protected:
+-  RelocSectionWithSymtabBase()
+-      : RelocationSectionBase(
+-            std::is_same_v<SymTabType, DynamicSymbolTableSection>) {}
++  RelocSectionWithSymtabBase() = default;
+ 
+   SymTabType *Symbols = nullptr;
+ 
+@@ -936,8 +928,9 @@
+   const Object &getObject() const { return Obj; }
+ 
+   static bool classof(const SectionBase *S) {
+-    return RelocationSectionBase::classof(S) &&
+-           !static_cast<const RelocationSectionBase *>(S)->isDynamic();
++    if (S->OriginalFlags & ELF::SHF_ALLOC)
++      return false;
++    return RelocationSectionBase::classof(S);
+   }
+ };
+ 
+@@ -1022,8 +1015,9 @@
+       function_ref<bool(const SectionBase *)> ToRemove) override;
+ 
+   static bool classof(const SectionBase *S) {
+-    return RelocationSectionBase::classof(S) &&
+-           static_cast<const RelocationSectionBase *>(S)->isDynamic();
++    if (!(S->OriginalFlags & ELF::SHF_ALLOC))
++      return false;
++    return S->OriginalType == ELF::SHT_REL || S->OriginalType == ELF::SHT_RELA;
+   }
+ };
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test b/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
+--- a/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
++++ b/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
+@@ -1,42 +0,0 @@
+-## In a relocatable file, an SHF_ALLOC relocation section (e.g. .klp.rela.* in
+-## Linux livepatch modules) is a static relocation section: its symbol indexes
+-## are updated and the symbols it references are kept.
+-
+-# RUN: yaml2obj %s -o %t
+-# RUN: llvm-strip --strip-unneeded %t -o %t1
+-# RUN: llvm-readelf -Sr -s %t1 | FileCheck %s
+-# RUN: yaml2obj -DTYPE=SHT_CREL %s -o %t.crel
+-# RUN: llvm-strip --strip-unneeded %t.crel -o %t1.crel
+-# RUN: llvm-readelf -Sr -s %t1.crel | FileCheck %s
+-
+-# CHECK:      [ 2] .klp.rela.vmlinux.text {{RELA|CREL}} {{.*}} AI  3   1
+-# CHECK-NEXT: [ 3] .symtab
+-# CHECK:      R_X86_64_PC32 {{.*}} referenced + 0
+-# CHECK:      Symbol table '.symtab' contains 2 entries:
+-# CHECK:      1: {{.*}} UND referenced
+-
+-!ELF
+-FileHeader:
+-  Class:   ELFCLASS64
+-  Data:    ELFDATA2LSB
+-  Type:    ET_REL
+-  Machine: EM_X86_64
+-Sections:
+-  - Name:    .text
+-    Type:    SHT_PROGBITS
+-    Flags:   [ SHF_ALLOC, SHF_EXECINSTR ]
+-    Content: "e800000000"
+-  - Name:    .klp.rela.vmlinux.text
+-    Type:    [[TYPE=SHT_RELA]]
+-    Flags:   [ SHF_ALLOC, SHF_INFO_LINK ]
+-    Link:    .symtab
+-    Info:    .text
+-    Relocations:
+-      - Offset: 1
+-        Symbol: referenced
+-        Type:   R_X86_64_PC32
+-Symbols:
+-  - Name:    unreferenced
+-    Section: .text
+-  - Name:    referenced
+-    Binding: STB_GLOBAL
+diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test b/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
+--- a/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
++++ b/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
+@@ -10,16 +10,11 @@
+ # RUN: llvm-readobj --sections %t.original | FileCheck %s
+ # RUN: llvm-readobj --sections %t.stripped | FileCheck %s
+ 
+-## In a relocatable file, .rela.plt is a static relocation section.
+-# RUN: yaml2obj -DTYPE=ET_REL %s -o %t.rel
+-# RUN: llvm-strip %t.rel -o %t.rel.stripped
+-# RUN: llvm-readobj --sections %t.rel.stripped | FileCheck %s
+-
+ !ELF
+ FileHeader:
+   Class:           ELFCLASS64
+   Data:            ELFDATA2LSB
+-  Type:            [[TYPE=ET_EXEC]]
++  Type:            ET_REL
+   Machine:         EM_X86_64
+ Sections:
+   - Name:          .text
+diff -ruN --strip-trailing-cr a/llvm/unittests/IR/MetadataTest.cpp b/llvm/unittests/IR/MetadataTest.cpp
+--- a/llvm/unittests/IR/MetadataTest.cpp
++++ b/llvm/unittests/IR/MetadataTest.cpp
+@@ -5355,29 +5355,6 @@
+   EXPECT_TRUE(!MD);
+ }
+ 
+-// Once the use list is indexed, look each changed reference up again right
+-// away: a later swap in dropRef would repair a stale index entry.
+-TEST_F(TrackingMDRefTest, LargeUseList) {
+-  auto Temp = MDTuple::getTemporary(Context, {});
+-  TrackingMDRef Refs[41];
+-  for (unsigned I = 0; I != 40; ++I)
+-    Refs[I].reset(Temp.get());
+-  Refs[0].reset();
+-  Refs[0].reset(Temp.get());
+-  Refs[0].reset();
+-  Refs[40] = std::move(Refs[1]);
+-  Refs[1].reset(Temp.get());
+-  Refs[40].reset();
+-  Refs[39].reset();
+-  EXPECT_EQ(38u, Temp->getNumTemporaryUses());
+-
+-  auto *N = MDTuple::getDistinct(Context, {});
+-  Temp->replaceAllUsesWith(N);
+-  EXPECT_EQ(0u, Temp->getNumTemporaryUses());
+-  for (unsigned I = 1; I != 39; ++I)
+-    EXPECT_EQ(N, Refs[I].get()) << I;
+-}
+-
+ TEST(NamedMDNodeTest, Search) {
+   LLVMContext Context;
+   ConstantAsMetadata *C =

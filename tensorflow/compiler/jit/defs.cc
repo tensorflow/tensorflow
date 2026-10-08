@@ -32,6 +32,8 @@ const char* const kXlaInternalScopeAttr = "_XlaInternalScope";
 
 const char* const kXlaClusterIdAttr = "_xla_compile_id";
 
+const char* const kXlaDeterministicAttr = "_XlaDeterministic";
+
 static std::atomic<bool> xla_devices_creation_required(false);
 
 // Request XLA:GPU and XLA:CPU device creation. Deprecated, only used by XRT

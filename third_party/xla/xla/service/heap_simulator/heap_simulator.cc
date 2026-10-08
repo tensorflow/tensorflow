@@ -2849,13 +2849,9 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunkOnly(
       Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
 
   result_.heap_size = result_.UpdatedHeapSize(max_size_chunk);
+  // NOLINTNEXTLINE
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-    // Create a colocation chunk with the same offset and the maximum size of
-    // all colocated buffers.
-    Chunk colocation_chunk =
-        Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
-    result_.heap_size = result_.UpdatedHeapSize(colocation_chunk);
-    AddToChunkMap(colocation, colocation_chunk);
+    AddToChunkMap(colocation, max_size_chunk);
   }
 
   AddToChunkMap(buffer_interval.buffer, max_size_chunk);
@@ -2875,9 +2871,8 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunkAndInterval(
   // NOLINTNEXTLINE
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
-    interval_tree_.Add(
-        colocation_interval.start, colocation_interval.end,
-        Chunk::FromOffsetSize(chunk.offset, max_colocation_size));
+    interval_tree_.Add(colocation_interval.start, colocation_interval.end,
+                       max_size_chunk);
   }
 }
 
