@@ -641,6 +641,10 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
                         /*permutation=*/{3, 1, 2, 0},
                         /*input_tiling=*/{},
                         /*output_tiling=*/{8, 128}),
+      TransposeTestCase(/*dims=*/{3, 16, 17, 128},
+                        /*permutation=*/{3, 1, 2, 0},
+                        /*input_tiling=*/{8, 128},
+                        /*output_tiling=*/{}),
       TransposeTestCase(/*dims=*/{129, 1234567},
                         /*permutation=*/{0, 1},
                         /*input_tiling=*/{},
@@ -697,7 +701,25 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
       TransposeTestCase(/*dims=*/{52, 44, 45, 96, 1, 5},
                         /*permutation=*/{5, 4, 2, 3, 1, 0},
                         /*input_tiling=*/{}, /*output_tiling=*/{},
-                        /*input_striding=*/{})};
+                        /*input_striding=*/{}),
+
+      // Stride-1 dimension of size 3 in the input or output.
+      TransposeTestCase(/*dims=*/{3, 7}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{3, 8}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{3, 15}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{3, 31}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{7, 3}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{8, 3}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{15, 3}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{31, 3}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{3, 256, 256}, /*permutation=*/{1, 2, 0}),
+      TransposeTestCase(/*dims=*/{256, 256, 3}, /*permutation=*/{2, 0, 1}),
+      TransposeTestCase(/*dims=*/{256, 3}, /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{3, 257, 255}, /*permutation=*/{1, 2, 0}),
+      TransposeTestCase(/*dims=*/{257, 255, 3}, /*permutation=*/{2, 0, 1}),
+      TransposeTestCase(/*dims=*/{5, 3, 64, 64}, /*permutation=*/{2, 3, 0, 1}),
+      TransposeTestCase(/*dims=*/{5, 3, 64, 64}, /*permutation=*/{0, 2, 3, 1}),
+      TransposeTestCase(/*dims=*/{5, 64, 64, 3}, /*permutation=*/{0, 3, 1, 2})};
   return cases;
 }
 
@@ -1128,6 +1150,12 @@ static std::vector<TransposeTestCase> BenchmarkCases() {
                         /*permutation=*/{1, 2, 3, 0}),
       TransposeTestCase(/*dims=*/{256, 64, 64, 3},
                         /*permutation=*/{1, 3, 2, 0}),
+      TransposeTestCase(/*dims=*/{256, 3},
+                        /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{3, 256, 256},
+                        /*permutation=*/{1, 2, 0}),
+      TransposeTestCase(/*dims=*/{256, 256, 3},
+                        /*permutation=*/{2, 0, 1}),
   };
 }
 
@@ -1547,6 +1575,83 @@ TEST(TransposeTest, PackInt2_Unaligned) {
 TEST(TransposeTest, PackInt1_Unaligned) {
   TestPackIntN(1, {5, 5}, {1, 0});
   TestPackIntN(1, {15, 31}, {1, 0});
+}
+
+TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
+  struct SelectionCase {
+    std::vector<int64_t> dims;
+    std::vector<int64_t> permutation;
+    size_t elem_size = 4;
+    std::vector<int64_t> input_striding;
+    std::vector<int64_t> input_tiling;
+    std::vector<int64_t> output_tiling;
+    std::string expected_kernel;
+  };
+  const SelectionCase cases[] = {
+      {{3, 8}, {1, 0}, 1, {}, {}, {}, "inner_kernel=interleave"},
+      {{3, 8}, {1, 0}, 2, {}, {}, {}, "inner_kernel=interleave"},
+      {{3, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave"},
+      {{3, 8}, {1, 0}, 8, {}, {}, {}, "inner_kernel=interleave"},
+      {{3, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
+      {{3, 7}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{8, 3}, {1, 0}, 1, {}, {}, {}, "inner_kernel=deinterleave"},
+      {{8, 3}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave"},
+      {{8, 3}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave"},
+      {{8, 3}, {1, 0}, 8, {}, {}, {}, "inner_kernel=deinterleave"},
+      {{8, 3}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
+      {{7, 3}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{3, 4, 16}, {2, 1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{16, 4, 3}, {2, 1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{3, 8}, {1, 0}, 4, {32, 4}, {}, {}, "inner_kernel=interleave"},
+      {{3, 8}, {1, 0}, 4, {-32, 4}, {}, {}, "inner_kernel=interleave"},
+      {{8, 3}, {1, 0}, 4, {12, 4}, {}, {}, "inner_kernel=deinterleave"},
+      {{2, 8, 3},
+       {0, 2, 1},
+       4,
+       {-128, 12, 4},
+       {},
+       {},
+       "inner_kernel=deinterleave"},
+      {{8, 3}, {1, 0}, 4, {32, 4}, {}, {}, "inner_kernel=default"},
+      {{8, 3}, {1, 0}, 4, {-32, 4}, {}, {}, "inner_kernel=default"},
+      {{32, 224, 224, 3},
+       {0, 3, 1, 2},
+       4,
+       {},
+       {},
+       {8, 128},
+       "inner_kernel=deinterleave"},
+      {{32, 3, 224, 224},
+       {0, 2, 3, 1},
+       4,
+       {},
+       {8, 128},
+       {},
+       "inner_kernel=interleave"},
+      {{6, 8}, {1, 0}, 4, {}, {}, {3}, "inner_kernel=default"},
+      {{8, 6}, {1, 0}, 4, {}, {3}, {}, "inner_kernel=default"},
+  };
+  for (const auto& tc : cases) {
+    TransposePlan::Options o;
+    o.elem_size_in_bytes = tc.elem_size;
+    o.dims = tc.dims;
+    o.permutation = tc.permutation;
+    if (!tc.input_striding.empty()) {
+      o.input_striding = TransposePlan::Striding{tc.input_striding};
+    }
+    if (!tc.input_tiling.empty()) {
+      o.input_tiling = TransposePlan::Tiling{tc.input_tiling};
+    }
+    if (!tc.output_tiling.empty()) {
+      o.output_tiling = TransposePlan::Tiling{tc.output_tiling};
+    }
+    auto status_or_plan = TransposePlan::Create(o);
+    if (!status_or_plan.ok()) {
+      FAIL() << status_or_plan.status();
+    }
+    EXPECT_THAT((*status_or_plan)->ToString(),
+                testing::HasSubstr(tc.expected_kernel));
+  }
 }
 
 }  // namespace xla

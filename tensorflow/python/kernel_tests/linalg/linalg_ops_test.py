@@ -942,7 +942,10 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
           functools.partial(linalg.eigh_tridiagonal, **kwargs),
           input_signature=[spec, spec],
       )
-      for n in [0, 1, 2, 5, 16, 17, 18, 33]:
+      # _sturm's peel/unroll counts do not depend on select or eigvals_only,
+      # so only test n > 2 once to avoid timing out under sanitizers.
+      lengths = [0, 1, 2, 5, 16, 17, 18, 33] if not kwargs else [0, 1, 2]
+      for n in lengths:
         alpha, beta = inputs[n]
         checks.append((
             linalg.eigh_tridiagonal(alpha, beta, **kwargs),

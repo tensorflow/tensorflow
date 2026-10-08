@@ -159,6 +159,20 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
 
   const Shape& on_device_shape() const override { return literal_.shape(); }
 
+  std::shared_ptr<const PjRtLayout> layout() const override {
+    CHECK(on_device_shape().IsArray());
+    Layout layout = on_device_shape().layout();
+    for (const Tile& tile : layout.tiles()) {
+      for (int64_t d : tile.dimensions()) {
+        if (d == Tile::kCombineDimension) {
+          layout.clear_tiles();
+          return std::make_shared<PjRtLayout>(std::move(layout));
+        }
+      }
+    }
+    return std::make_shared<PjRtLayout>(std::move(layout));
+  }
+
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
 
   PjRtDevice* device() const override {
