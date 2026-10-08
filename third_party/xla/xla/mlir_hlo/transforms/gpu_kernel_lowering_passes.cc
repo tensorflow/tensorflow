@@ -136,19 +136,19 @@ void GpuKernelToNVVMPass::runOnOperation() {
 }
 
 void GpuKernelToROCDLPass::runOnOperation() {
-  llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
-      mlir::amdgpu::Chipset::parse(chipset);
-  if (failed(maybeChipset)) {
+  llvm::FailureOr<mlir::ROCDL::TargetInfo> targetInfo =
+      mlir::ROCDL::TargetInfo::get(chipset);
+  if (failed(targetInfo)) {
     mlir::emitError(mlir::UnknownLoc::get(&getContext()),
-                    "Invalid chipset name: " + chipset);
+                    "Invalid chipset/target name: " + chipset);
     return signalPassFailure();
   }
 
   RewritePatternSet patterns(&getContext());
   LLVMTypeConverter converter(&getContext());
   populateCommonPatterns(converter, patterns);
-  populateGpuToROCDLConversionPatterns(
-      converter, patterns, gpu::amd::Runtime::Unknown, *maybeChipset);
+  populateGpuToROCDLConversionPatterns(converter, patterns,
+                                       gpu::amd::Runtime::Unknown, *targetInfo);
   ConversionTarget target(getContext());
   configureGpuToROCDLConversionLegality(target);
   if (failed(
