@@ -695,12 +695,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolution(
                                   instr->window(),
                                   instr->convolution_dimension_numbers(),
                                   instr->feature_group_count()};
-  ABSL_ASSIGN_OR_RETURN(auto thunk,
-                   ConvolutionThunk::Create(
-                       Thunk::ThunkInfo::WithProfileAnnotation(
-                           instr, ir_emitter_context_->GetNextThunkId()),
-                       std::move(descriptor), std::move(operand_slices),
-                       std::move(result_slices), scratch_slice));
+  ABSL_ASSIGN_OR_RETURN(
+      auto thunk,
+      ConvolutionThunk::Create(
+          Thunk::ThunkInfo::WithProfileAnnotation(
+              instr, ir_emitter_context_->GetNextThunkId()),
+          std::move(descriptor), std::move(operand_slices),
+          std::move(result_slices), scratch_slice,
+          ir_emitter_context_->gpu_topology().num_devices_per_host()));
   return ThunkSequence::Of(std::move(thunk));
 }
 

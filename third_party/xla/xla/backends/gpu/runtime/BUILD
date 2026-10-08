@@ -744,6 +744,7 @@ cc_library(
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
     deps = [
+        ":per_device_state",
         ":shaped_slice",
         ":thunk",
         ":thunk_proto_cc",
@@ -767,15 +768,12 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )

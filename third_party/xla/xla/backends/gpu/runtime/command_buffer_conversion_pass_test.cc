@@ -292,7 +292,8 @@ std::unique_ptr<ConvolutionThunk> CreateConvolutionThunk(
       .feature_group_count = 1};
   auto thunk =
       ConvolutionThunk::Create(Thunk::ThunkInfo(), desc, operand_slices,
-                               result_slices, result_slices.back().slice);
+                               result_slices, result_slices.back().slice,
+                               /*devices_per_host=*/1);
   TF_CHECK_OK(thunk.status());
   return std::move(thunk).value();
 }
