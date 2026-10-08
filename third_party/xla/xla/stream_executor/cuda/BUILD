@@ -2620,6 +2620,7 @@ cc_library(
         ":ptx_compiler_helpers",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/cuda",  # buildcleaner: keep
         "//xla/tsl/platform:errors",
