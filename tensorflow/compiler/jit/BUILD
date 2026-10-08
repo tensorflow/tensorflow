@@ -1643,6 +1643,7 @@ cc_library(
     hdrs = ["device_compiler_client.h"],
     visibility = [":internal"],
     deps = [
+        ":common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core/util:determinism",
         "@xla//xla/client:executable_build_options",
@@ -1653,8 +1654,11 @@ tf_cc_test(
     name = "device_compiler_client_test",
     srcs = ["device_compiler_client_test.cc"],
     deps = [
+        ":common",
         ":device_compiler_client",
         "@com_google_googletest//:gtest_main",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/service:hlo_proto_cc",
     ],
 )
 

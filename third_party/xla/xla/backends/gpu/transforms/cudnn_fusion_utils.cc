@@ -81,6 +81,16 @@ PrecisionConfig GetPrecisionConfig(const HloInstruction& hlo) {
 
 namespace {
 
+// Returns true if `hlo` is a broadcast supported by cuDNN epilogue fusion.
+// Layout-normalized NHWC convolutions place the feature (channel) dimension
+// last, and cuDNN runtime kernels can misindex non-channel 1D broadcasts in 2D
+// conv epilogues, so 1D broadcasts are restricted to the last dimension.
+bool IsSupportedBroadcast(const HloInstruction& hlo) {
+  return ShapeUtil::IsScalar(hlo.operand(0)->shape()) ||
+         (hlo.operand(0)->shape().dimensions().size() == 1 &&
+          hlo.dimensions(0) == hlo.shape().dimensions().size() - 1);
+}
+
 bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
                                   bool can_fuse_reduce, bool is_nchw,
                                   const se::DeviceDescription& device_info) {
@@ -140,8 +150,7 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
              IsEpilogueOpSupportedByCuDNN(*hlo.users()[0], can_fuse_reduce,
                                           is_nchw, device_info);
     case HloOpcode::kBroadcast:
-      return ShapeUtil::IsScalar(hlo.operand(0)->shape()) ||
-             hlo.operand(0)->shape().dimensions().size() == 1;
+      return IsSupportedBroadcast(hlo);
     case HloOpcode::kConstant:
       return ShapeUtil::IsScalar(hlo.shape());
     case HloOpcode::kReduce:
@@ -158,8 +167,7 @@ bool IsCheapToDuplicate(const HloInstruction* hlo) {
     return ShapeUtil::IsScalar(hlo->shape());
   }
   if (hlo->opcode() == HloOpcode::kBroadcast) {
-    return ShapeUtil::IsScalar(hlo->operand(0)->shape()) ||
-           hlo->operand(0)->shape().dimensions().size() == 1;
+    return IsSupportedBroadcast(*hlo);
   }
   if (hlo->opcode() == HloOpcode::kConvert) {
     return ShapeUtil::IsScalar(hlo->shape()) ||
