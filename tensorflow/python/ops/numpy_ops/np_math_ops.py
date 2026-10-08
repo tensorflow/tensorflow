@@ -1674,6 +1674,17 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
         f'Received axis={axis} (of type {type(axis)})'
     )
   a = np_array_ops.array(a)
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error.
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    if not (-maybe_rank <= axis < maybe_rank):
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if axis < 0:
+      axis += maybe_rank
   default_float_type = np_utils.result_type(float)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
