@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <algorithm>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -35,19 +37,22 @@ namespace {
 
 template <typename T, typename IntType>
 __global__ void concat_fixed_kernel(
-    GpuDeviceArrayStruct<const T*> input_ptr_data, int split_size,
-    int total_rows, int total_cols, T* __restrict__ output) {
+    GpuDeviceArrayStruct<const T*, kConcatMaxInline> input_ptr_data,
+    IntType split_size, IntType total_rows, IntType total_cols,
+    T* __restrict__ output) {
   const T** input_ptrs = GetGpuDeviceArrayOnDevice(&input_ptr_data);
-  IntType gidx = blockIdx.x * blockDim.x + threadIdx.x;
+  IntType gidx = static_cast<IntType>(blockIdx.x) * blockDim.x + threadIdx.x;
 
-  for (; gidx < total_cols; gidx += blockDim.x * gridDim.x) {
-    IntType gidy = blockIdx.y * blockDim.y + threadIdx.y;
+  for (; gidx < total_cols;
+       gidx += static_cast<IntType>(blockDim.x) * gridDim.x) {
+    IntType gidy = static_cast<IntType>(blockIdx.y) * blockDim.y + threadIdx.y;
 
     IntType split = gidx / split_size;
     const T* input_ptr = input_ptrs[split];
     IntType col_offset = gidx % split_size;
 #pragma unroll
-    for (; gidy < total_rows; gidy += blockDim.y * gridDim.y) {
+    for (; gidy < total_rows;
+         gidy += static_cast<IntType>(blockDim.y) * gridDim.y) {
       output[gidy * total_cols + gidx] =
           input_ptr[gidy * split_size + col_offset];
     }
@@ -59,14 +64,14 @@ __global__ void concat_fixed_kernel(
 // cannot be in anonymous namespace due to extern shared memory
 template <typename T, typename IntType, bool useSmem>
 __global__ void concat_variable_kernel(
-    GpuDeviceArrayStruct<const T*> input_ptr_data,
-    GpuDeviceArrayStruct<IntType> output_scan, IntType total_rows,
-    IntType total_cols, T* output) {
+    GpuDeviceArrayStruct<const T*, kConcatMaxInline> input_ptr_data,
+    GpuDeviceArrayStruct<IntType, kConcatMaxInline> output_scan,
+    IntType total_rows, IntType total_cols, T* output) {
   const T** input_ptrs = GetGpuDeviceArrayOnDevice(&input_ptr_data);
   IntType* col_scan = GetGpuDeviceArrayOnDevice(&output_scan);
 
   // do upper_bound on col to find which pointer we should be using
-  IntType gidx = blockIdx.x * blockDim.x + threadIdx.x;
+  IntType gidx = static_cast<IntType>(blockIdx.x) * blockDim.x + threadIdx.x;
   IntType num_inputs = input_ptr_data.size;
 
   // verbose declaration needed due to template
@@ -97,7 +102,8 @@ __global__ void concat_variable_kernel(
 
   IntType curr_offset = col_scan[segment];
   IntType curr_segment = segment;
-  for (; gidx < total_cols; gidx += blockDim.x * gridDim.x) {
+  for (; gidx < total_cols;
+       gidx += static_cast<IntType>(blockDim.x) * gridDim.x) {
     IntType curr_col_offset;
     while ((curr_col_offset = col_scan[curr_segment + 1]) <= gidx) {
       curr_offset = curr_col_offset;
@@ -108,8 +114,9 @@ __global__ void concat_variable_kernel(
     IntType segment_width = curr_col_offset - curr_offset;
     const T* input_ptr = input_ptrs[curr_segment];
 
-    IntType gidy = blockIdx.y * blockDim.y + threadIdx.y;
-    for (; gidy < total_rows; gidy += blockDim.y * gridDim.y)
+    IntType gidy = static_cast<IntType>(blockIdx.y) * blockDim.y + threadIdx.y;
+    for (; gidy < total_rows;
+         gidy += static_cast<IntType>(blockDim.y) * gridDim.y)
       output[gidy * total_cols + gidx] =
           input_ptr[gidy * segment_width + local_col];
   }
@@ -138,20 +145,25 @@ void ConcatGPUSlice(
 }
 
 template <typename T, typename IntType>
-void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
-                   const GpuDeviceArrayStruct<const T*>& input_ptrs,
-                   const GpuDeviceArrayStruct<IntType>& output_scan,
-                   bool fixed_size, int split_size,
-                   typename TTypes<T, 2>::Matrix* output) {
-  auto config = GetGpu2DLaunchConfig(output->dimension(1), output->dimension(0),
-                                     gpu_device);
+void ConcatGPUImpl(
+    const Eigen::GpuDevice& gpu_device,
+    const GpuDeviceArrayStruct<const T*, kConcatMaxInline>& input_ptrs,
+    const GpuDeviceArrayStruct<IntType, kConcatMaxInline>& output_scan,
+    bool fixed_size, IntType split_size,
+    typename TTypes<T, 2>::Matrix* output) {
+  auto config = GetGpu2DLaunchConfig(
+      std::min<int64_t>(output->dimension(1),
+                        std::numeric_limits<int32_t>::max()),
+      std::min<int64_t>(output->dimension(0),
+                        std::numeric_limits<int32_t>::max()),
+      gpu_device);
 
   if (fixed_size) {
     TF_CHECK_OK(GpuLaunchKernel(
         concat_fixed_kernel<T, IntType>, config.block_count,
         config.thread_per_block, 0, gpu_device.stream(), input_ptrs, split_size,
-        static_cast<int>(output->dimension(0)),
-        static_cast<int>(output->dimension(1)), output->data()));
+        static_cast<IntType>(output->dimension(0)),
+        static_cast<IntType>(output->dimension(1)), output->data()));
   } else {
     IntType smem_max = gpu_device.sharedMemPerBlock();
     IntType smem_usage = output_scan.size * sizeof(IntType);
@@ -193,16 +205,22 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
 #define REGISTER_GPU32(T)                                              \
   template void ConcatGPUImpl<T, int32>(                               \
       const Eigen::GpuDevice& d,                                       \
-      const GpuDeviceArrayStruct<const T*>& input_ptrs,                \
-      const GpuDeviceArrayStruct<int32>& ptr_offsets, bool fixed_size, \
-      int split_size, typename TTypes<T, 2>::Matrix* output);
+      const GpuDeviceArrayStruct<const T*, kConcatMaxInline>&          \
+          input_ptrs,                                                  \
+      const GpuDeviceArrayStruct<int32, kConcatMaxInline>&             \
+          ptr_offsets,                                                 \
+      bool fixed_size, int32 split_size,                               \
+      typename TTypes<T, 2>::Matrix* output);
 
 #define REGISTER_GPU64(T)                                                \
   template void ConcatGPUImpl<T, int64>(                                 \
       const Eigen::GpuDevice& d,                                         \
-      const GpuDeviceArrayStruct<const T*>& input_ptrs,                  \
-      const GpuDeviceArrayStruct<int64_t>& ptr_offsets, bool fixed_size, \
-      int split_size, typename TTypes<T, 2>::Matrix* output);
+      const GpuDeviceArrayStruct<const T*, kConcatMaxInline>&            \
+          input_ptrs,                                                    \
+      const GpuDeviceArrayStruct<int64_t, kConcatMaxInline>&             \
+          ptr_offsets,                                                   \
+      bool fixed_size, int64_t split_size,                               \
+      typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_GPUCONCAT32);  // int32 Needed for TensorLists.
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPUCONCAT32);

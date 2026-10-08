@@ -38,14 +38,16 @@ void ConcatGPUCall(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs_flat,
     typename TTypes<T, 2>::Tensor* output_flat) {
-  GpuDeviceArrayOnHost<const T*> input_ptrs(c, inputs_flat.size());
+  GpuDeviceArrayOnHost<const T*, kConcatMaxInline> input_ptrs(
+      c, inputs_flat.size());
   OP_REQUIRES_OK(c, input_ptrs.Init());
   for (int i = 0; i < inputs_flat.size(); ++i) {
     input_ptrs.Set(i, inputs_flat[i]->data());
   }
   OP_REQUIRES_OK(c, input_ptrs.Finalize());
 
-  GpuDeviceArrayOnHost<IntType> output_scan(c, inputs_flat.size() + 1);
+  GpuDeviceArrayOnHost<IntType, kConcatMaxInline> output_scan(
+      c, inputs_flat.size() + 1);
   OP_REQUIRES_OK(c, output_scan.Init());
   IntType scan = 0;
   output_scan.Set(0, scan);
@@ -73,7 +75,9 @@ void ConcatGPU(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs_flat,
     Tensor* output, typename TTypes<T, 2>::Tensor* output_flat) {
-  if (inputs_flat.size() < 16) {
+  if (inputs_flat.empty() || output->NumElements() == 0) return;
+
+  if (inputs_flat.size() == 1) {
     if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
       ConcatGPUSlice<T, int32_t>(c->eigen_gpu_device(), inputs_flat,
                                  output_flat);
@@ -81,15 +85,16 @@ void ConcatGPU(
       ConcatGPUSlice<T, int64_t>(c->eigen_gpu_device(), inputs_flat,
                                  output_flat);
     }
+    return;
+  }
+
+  // Switching indexing to int64 might cause performance issues.
+  // Hence, we keep int32 indexing in the GPU kernel unless we need to
+  // switch to int64.
+  if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
+    ConcatGPUCall<T, int32_t>(c, inputs_flat, output_flat);
   } else {
-    // Switching indexing to int64 might cause performance issues.
-    // Hence, we keep int32 indexing in the GPU kernel unless we need to
-    // switch to int64.
-    if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
-      ConcatGPUCall<T, int32_t>(c, inputs_flat, output_flat);
-    } else {
-      ConcatGPUCall<T, int64_t>(c, inputs_flat, output_flat);
-    }
+    ConcatGPUCall<T, int64_t>(c, inputs_flat, output_flat);
   }
 }
 
