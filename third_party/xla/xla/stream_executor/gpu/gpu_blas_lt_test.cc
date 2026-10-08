@@ -61,6 +61,7 @@ void ExpectGemmConfigEq(const GemmConfig& lhs, const GemmConfig& rhs) {
   EXPECT_EQ(lhs.grad_y, rhs.grad_y);
   EXPECT_EQ(lhs.scale_mode, rhs.scale_mode);
   EXPECT_EQ(lhs.compute_type, rhs.compute_type);
+  EXPECT_EQ(lhs.has_d_scale, rhs.has_d_scale);
 }
 
 // Helper to compare GemmConfig structs.
@@ -144,7 +145,8 @@ TEST(GemmConfigTest, ProtoConversionWithOptionals) {
       true,                                       // grad_x
       false,                                      // grad_y
       ScaleMode::kNone,                           // scale_mode
-      blas::ComputationType::kTF32AsF32           // compute_type
+      blas::ComputationType::kTF32AsF32,          // compute_type
+      true                                        // has_d_scale
   };
 
   xla::GemmConfigProto proto = original_config.ToProto();

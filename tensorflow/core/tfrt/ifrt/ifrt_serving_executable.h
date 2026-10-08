@@ -73,6 +73,15 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
+// Marker prepended to the error returned when a new executable would have to be
+// compiled while XLA compilation is disabled (see
+// `TfToHloCompiler::IsXlaCompilationDisabled()`). It matches the marker emitted
+// by the non-IFRT TPU runtimes so that model servers can uniformly detect
+// compilation cache misses that happen while compilation is disabled (e.g. to
+// count them, or to retry with compilation enabled in dry-run mode).
+inline constexpr absl::string_view kXlaCompilationDisabledErrorMarker =
+    "[TpuCompilationDisabled]";
+
 // Encodes the layout of `xla_input_shapes` to the module.
 absl::Status EncodeLayout(absl::Span<const xla::Shape> xla_input_shapes,
                           mlir::ModuleOp module);

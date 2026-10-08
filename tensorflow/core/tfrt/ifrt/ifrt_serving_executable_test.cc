@@ -81,9 +81,11 @@ using tensorflow::ifrt_serving::test_utils::GetMlirModulePath;
 using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::TensorEq;
 using ::testing::_;
+using ::testing::AllOf;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::NiceMock;
+using ::testing::Not;
 using ::testing::Return;
 using ::tsl::monitoring::testing::CellReader;
 
@@ -360,8 +362,67 @@ TEST_P(IfrtServingExecutableTest,
   EXPECT_THAT(error_message, HasSubstr("[1,3]"));
   EXPECT_THAT(error_message, HasSubstr("[3,1]"));
 
+  // A frozen executable with compilation enabled is not a
+  // "compilation-disabled" cache miss.
+  EXPECT_THAT(error_message,
+              Not(HasSubstr(kXlaCompilationDisabledErrorMarker)));
+
   EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"),
             helper_->num_cores() + 1);
+}
+
+TEST_P(IfrtServingExecutableTest,
+       CompilationDisabledErrorContainsMarkerAndIsNotCached) {
+  int64_t program_id = 123456;
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
+
+  // Warm up with shape {1, 3} x {3, 1}.
+  auto x1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  const auto expected_out1 =
+      AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
+  std::vector<tensorflow::Tensor> inputs1{x1, y1};
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result, Execute(executable.get(), absl::MakeSpan(inputs1), {}));
+  }
+
+  // Simulate `ScopedTpuCompileDisabler` being active.
+  helper_->SetXlaCompilationDisabled(true);
+
+  // Already compiled shapes still work.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto outputs1, Execute(executable.get(), absl::MakeSpan(inputs1), {}));
+  EXPECT_THAT(outputs1, ElementsAre(TensorEq(expected_out1)));
+
+  // A new, uncompiled shape {1, 4} x {4, 1} fails with the marker that model
+  // servers use to identify compilation-disabled cache misses.
+  auto x2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({1, 4}));
+  auto y2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({4, 1}));
+  const auto expected_out2 =
+      AsTensor<int32_t>({30}, tensorflow::TensorShape({1, 1}));
+  std::vector<tensorflow::Tensor> inputs2{x2, y2};
+  EXPECT_THAT(Execute(executable.get(), absl::MakeSpan(inputs2), {}),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  AllOf(HasSubstr(kXlaCompilationDisabledErrorMarker),
+                        HasSubstr("already frozen: 0"),
+                        HasSubstr("XLA compilation disabled by "
+                                  "ScopedTpuCompileDisabler: 1"))));
+  EXPECT_EQ(executable->num_executables(), 1);
+
+  // Re-enabling compilation (e.g. the dry-run retry in the model server) can
+  // still compile the new shape, i.e. the failure above was not cached.
+  helper_->SetXlaCompilationDisabled(false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto outputs2, Execute(executable.get(), absl::MakeSpan(inputs2), {}));
+  EXPECT_THAT(outputs2, ElementsAre(TensorEq(expected_out2)));
+  EXPECT_EQ(executable->num_executables(), 2);
+
+  EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"),
+            helper_->num_cores() + 3);
 }
 
 TEST_P(IfrtServingExecutableTest, Spmd) {
