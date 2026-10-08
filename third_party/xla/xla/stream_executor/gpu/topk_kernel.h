@@ -30,7 +30,16 @@ static constexpr size_t kTopKMaxThreadsPerBlock = 1024;
 // Defines a trait for the TopK kernel that can be used to register
 // and look up the kernel in the GPU kernel registry.
 template <size_t K, typename KT, typename VT>
-struct TopKKernel {
+struct TopKTotalOrderKernel {
+  using KernelType =
+      stream_executor::TypedKernel<stream_executor::DeviceAddress<KT>, size_t,
+                                   stream_executor::DeviceAddress<KT>,
+                                   stream_executor::DeviceAddress<uint32_t>,
+                                   size_t>;
+};
+
+template <size_t K, typename KT, typename VT>
+struct TopKPartialOrderKernel {
   using KernelType =
       stream_executor::TypedKernel<stream_executor::DeviceAddress<KT>, size_t,
                                    stream_executor::DeviceAddress<KT>,

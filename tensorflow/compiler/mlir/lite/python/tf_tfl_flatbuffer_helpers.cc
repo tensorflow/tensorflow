@@ -394,6 +394,8 @@ absl::Status ConvertMlirBytecodeToTFLite(
   pass_config.fold_fp16_resource_casts =
       converter_flags.fold_fp16_resource_casts();
   pass_config.unfold_batch_matmul = converter_flags.unfold_batchmatmul();
+  pass_config.fold_fp16_casts_into_fully_connected =
+      converter_flags.fold_fp16_casts_into_fully_connected();
 
   return mlir::TFL::ConvertStableHloToTFLite(*module, converter_flags,
                                              pass_config, export_stream);
