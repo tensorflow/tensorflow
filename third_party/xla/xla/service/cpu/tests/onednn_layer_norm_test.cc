@@ -18,16 +18,19 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/onednn_util.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
-class LayerNormTest : public HloTestBaseLegacy {
+class LayerNormTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloInterpreterReferenceMixin::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
+    debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
     return debug_options;
   }
 
@@ -349,4 +352,3 @@ TEST_F(LayerNormTest, LayerNormTest1_BF16) {
 
 }  // namespace
 }  // namespace xla
-

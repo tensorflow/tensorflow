@@ -19,16 +19,19 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/onednn_util.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace cpu {
 
-class MatmulTest : public HloTestBaseLegacy {
+class MatmulTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloInterpreterReferenceMixin::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
+    debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
     return debug_options;
   }
 
@@ -408,15 +411,15 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter3) {
   HloModule matmul.biasadd.test.f32
 
   ENTRY matmul.biasadd.test.f32 {
-    arg0.1 = f32[16,128,768] parameter(0), sharding={replicated}
-    arg0.2 = f32[768,768] parameter(1), sharding={replicated}
-    dot.84 = f32[16,128,768] dot(arg0.1, arg0.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-    arg0.3 = f32[768]{0} parameter(2), sharding={replicated}
-    reshape.85 = f32[1,1,768] reshape(arg0.3)
-    broadcast.86 = f32[1,1,768] broadcast(reshape.85), dimensions={0,1,2}
-    reshape.87 = f32[768]{0} reshape(broadcast.86)
-    broadcast.88 = f32[16,128,768] broadcast(reshape.87), dimensions={2}
-    ROOT add.89 = f32[16,128,768] add(dot.84, broadcast.88)
+    arg0.1 = f32[16,64,128] parameter(0), sharding={replicated}
+    arg0.2 = f32[128,128] parameter(1), sharding={replicated}
+    dot.84 = f32[16,64,128] dot(arg0.1, arg0.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    arg0.3 = f32[128]{0} parameter(2), sharding={replicated}
+    reshape.85 = f32[1,1,128] reshape(arg0.3)
+    broadcast.86 = f32[1,1,128] broadcast(reshape.85), dimensions={0,1,2}
+    reshape.87 = f32[128]{0} reshape(broadcast.86)
+    broadcast.88 = f32[16,64,128] broadcast(reshape.87), dimensions={2}
+    ROOT add.89 = f32[16,64,128] add(dot.84, broadcast.88)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
@@ -704,25 +707,25 @@ TEST_F(MatmulTest, BiasAndExactGELUTestF32) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
   ENTRY matmul.test.f32 {
-    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
-    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
-    dot.378 = f32[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    reshape.11 = f32[32,197,3072]reshape(dot.378)
-    constant.381 = f32[3072] constant(0.3)
-    broadcast.382 = f32[32,197,3072] broadcast(constant.381), dimensions={2}
-    add.383 = f32[32,197,3072] add(reshape.11, broadcast.382)
+    arg.0 = f32[1024,64] parameter(0), parameter_replication={false}
+    arg.1 = f32[64,256] parameter(1), parameter_replication={false}
+    dot.378 = f32[1024,256] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.11 = f32[32,32,256]reshape(dot.378)
+    constant.381 = f32[256] constant(0.3)
+    broadcast.382 = f32[32,32,256] broadcast(constant.381), dimensions={2}
+    add.383 = f32[32,32,256] add(reshape.11, broadcast.382)
     constant.384 = f32[] constant(0.707106769)
-    broadcast.385 = f32[32,197,3072] broadcast(constant.384), dimensions={}
-    multiply.386 = f32[32,197,3072] multiply(broadcast.385, add.383)
-    erf.387 = f32[32,197,3072] erf(multiply.386)
+    broadcast.385 = f32[32,32,256] broadcast(constant.384), dimensions={}
+    multiply.386 = f32[32,32,256] multiply(broadcast.385, add.383)
+    erf.387 = f32[32,32,256] erf(multiply.386)
     constant.388 = f32[] constant(1)
-    broadcast.389 = f32[32,197,3072] broadcast(constant.388), dimensions={}
-    add.390 = f32[32,197,3072] add(erf.387, broadcast.389)
+    broadcast.389 = f32[32,32,256] broadcast(constant.388), dimensions={}
+    add.390 = f32[32,32,256] add(erf.387, broadcast.389)
     constant.391 = f32[] constant(0.5)
-    broadcast.392 = f32[32,197,3072] broadcast(constant.391)
-    multiply.393 = f32[32,197,3072] multiply(add.390, broadcast.392)
-    multiply.394 = f32[32,197,3072] multiply(multiply.393, add.383)
-    ROOT out = f32[6304,3072] reshape(multiply.394)
+    broadcast.392 = f32[32,32,256] broadcast(constant.391)
+    multiply.393 = f32[32,32,256] multiply(add.390, broadcast.392)
+    multiply.394 = f32[32,32,256] multiply(multiply.393, add.383)
+    ROOT out = f32[1024,256] reshape(multiply.394)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
@@ -736,26 +739,26 @@ TEST_F(MatmulTest, BiasAndExactGELUTestBF16) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
   ENTRY matmul.test.f32 {
-    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
-    convert.0 = bf16[6304,768] convert(arg.0)
-    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
-    convert.1 = bf16[768,3072] convert(arg.1)
-    dot.378 = bf16[6304,3072] dot(convert.0, convert.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    convert.2 = f32[6304,3072] convert(dot.378)
-    constant.381 = f32[3072] constant(0.3)
-    broadcast.382 = f32[6304,3072] broadcast(constant.381), dimensions={1}
-    add.383 = f32[6304,3072] add(convert.2, broadcast.382)
+    arg.0 = f32[1024,64] parameter(0), parameter_replication={false}
+    convert.0 = bf16[1024,64] convert(arg.0)
+    arg.1 = f32[64,256] parameter(1), parameter_replication={false}
+    convert.1 = bf16[64,256] convert(arg.1)
+    dot.378 = bf16[1024,256] dot(convert.0, convert.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    convert.2 = f32[1024,256] convert(dot.378)
+    constant.381 = f32[256] constant(0.3)
+    broadcast.382 = f32[1024,256] broadcast(constant.381), dimensions={1}
+    add.383 = f32[1024,256] add(convert.2, broadcast.382)
     constant.384 = f32[] constant(0.707106769)
-    broadcast.385 = f32[6304,3072] broadcast(constant.384), dimensions={}
-    multiply.386 = f32[6304,3072] multiply(broadcast.385, add.383)
-    erf.387 = f32[6304,3072] erf(multiply.386)
+    broadcast.385 = f32[1024,256] broadcast(constant.384), dimensions={}
+    multiply.386 = f32[1024,256] multiply(broadcast.385, add.383)
+    erf.387 = f32[1024,256] erf(multiply.386)
     constant.388 = f32[] constant(1)
-    broadcast.389 = f32[6304,3072] broadcast(constant.388), dimensions={}
-    add.390 = f32[6304,3072] add(erf.387, broadcast.389)
+    broadcast.389 = f32[1024,256] broadcast(constant.388), dimensions={}
+    add.390 = f32[1024,256] add(erf.387, broadcast.389)
     constant.391 = f32[] constant(0.5)
-    broadcast.392 = f32[6304,3072] broadcast(constant.391)
-    multiply.393 = f32[6304,3072] multiply(add.390, broadcast.392)
-    ROOT out = f32[6304,3072] multiply(multiply.393, add.383)
+    broadcast.392 = f32[1024,256] broadcast(constant.391)
+    multiply.393 = f32[1024,256] multiply(add.390, broadcast.392)
+    ROOT out = f32[1024,256] multiply(multiply.393, add.383)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
@@ -769,27 +772,27 @@ TEST_F(MatmulTest, BiasAndExactJaxGELUTestBF16) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
   ENTRY matmul.test.f32 {
-    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
-    convert.0 = bf16[6304,768] convert(arg.0)
-    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
-    convert.1 = bf16[768,3072] convert(arg.1)
-    dot.378 = bf16[6304,3072] dot(convert.0, convert.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    convert.2 = f32[6304,3072] convert(dot.378)
-    reshape.0 = f32[32,197,3072] reshape(convert.2)
-    constant.381 = f32[3072] constant(0.3)
-    broadcast.382 = f32[32,197,3072] broadcast(constant.381), dimensions={2}
-    add.383 = f32[32,197,3072] add(reshape.0, broadcast.382)
+    arg.0 = f32[1024,64] parameter(0), parameter_replication={false}
+    convert.0 = bf16[1024,64] convert(arg.0)
+    arg.1 = f32[64,256] parameter(1), parameter_replication={false}
+    convert.1 = bf16[64,256] convert(arg.1)
+    dot.378 = bf16[1024,256] dot(convert.0, convert.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    convert.2 = f32[1024,256] convert(dot.378)
+    reshape.0 = f32[32,32,256] reshape(convert.2)
+    constant.381 = f32[256] constant(0.3)
+    broadcast.382 = f32[32,32,256] broadcast(constant.381), dimensions={2}
+    add.383 = f32[32,32,256] add(reshape.0, broadcast.382)
     constant.384 = f32[] constant(0.707182348)
-    broadcast.385 = f32[32,197,3072] broadcast(constant.384), dimensions={}
-    multiply.386 = f32[32,197,3072] multiply(broadcast.385, add.383)
-    erf.387 = f32[32,197,3072] erf(multiply.386)
+    broadcast.385 = f32[32,32,256] broadcast(constant.384), dimensions={}
+    multiply.386 = f32[32,32,256] multiply(broadcast.385, add.383)
+    erf.387 = f32[32,32,256] erf(multiply.386)
     constant.388 = f32[] constant(1)
-    broadcast.389 = f32[32,197,3072] broadcast(constant.388), dimensions={}
-    add.390 = f32[32,197,3072] add(erf.387, broadcast.389)
-    multiply.393 = f32[32,197,3072] multiply(add.390, add.383)
+    broadcast.389 = f32[32,32,256] broadcast(constant.388), dimensions={}
+    add.390 = f32[32,32,256] add(erf.387, broadcast.389)
+    multiply.393 = f32[32,32,256] multiply(add.390, add.383)
     constant.391 = f32[] constant(0.5)
-    broadcast.392 = f32[32,197,3072] broadcast(constant.391)
-    ROOT multiply.394 = f32[32,197,3072] multiply(multiply.393, broadcast.392)
+    broadcast.392 = f32[32,32,256] broadcast(constant.391)
+    ROOT multiply.394 = f32[32,32,256] multiply(multiply.393, broadcast.392)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
@@ -837,23 +840,23 @@ TEST_F(MatmulTest, BiasAndExactGELUTestF16) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f16
   ENTRY matmul.test.f16 {
-    arg.0 = f16[6304,768] parameter(0), parameter_replication={false}
-    arg.1 = f16[768,3072] parameter(1), parameter_replication={false}
-    dot.378 = f16[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    constant.381 = f16[3072] constant(0.3)
-    broadcast.382 = f16[6304,3072] broadcast(constant.381), dimensions={1}
-    add.383 = f16[6304,3072] add(dot.378, broadcast.382)
+    arg.0 = f16[1024,64] parameter(0), parameter_replication={false}
+    arg.1 = f16[64,256] parameter(1), parameter_replication={false}
+    dot.378 = f16[1024,256] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    constant.381 = f16[256] constant(0.3)
+    broadcast.382 = f16[1024,256] broadcast(constant.381), dimensions={1}
+    add.383 = f16[1024,256] add(dot.378, broadcast.382)
     constant.384 = f16[] constant(0.707106769)
-    broadcast.385 = f16[6304,3072] broadcast(constant.384), dimensions={}
-    multiply.386 = f16[6304,3072] multiply(broadcast.385, add.383)
-    erf.387 = f16[6304,3072] erf(multiply.386)
+    broadcast.385 = f16[1024,256] broadcast(constant.384), dimensions={}
+    multiply.386 = f16[1024,256] multiply(broadcast.385, add.383)
+    erf.387 = f16[1024,256] erf(multiply.386)
     constant.388 = f16[] constant(1)
-    broadcast.389 = f16[6304,3072] broadcast(constant.388), dimensions={}
-    add.390 = f16[6304,3072] add(erf.387, broadcast.389)
+    broadcast.389 = f16[1024,256] broadcast(constant.388), dimensions={}
+    add.390 = f16[1024,256] add(erf.387, broadcast.389)
     constant.391 = f16[] constant(0.5)
-    broadcast.392 = f16[6304,3072] broadcast(constant.391)
-    multiply.393 = f16[6304,3072] multiply(add.390, broadcast.392)
-    ROOT out = f16[6304,3072] multiply(multiply.393, add.383)
+    broadcast.392 = f16[1024,256] broadcast(constant.391)
+    multiply.393 = f16[1024,256] multiply(add.390, broadcast.392)
+    ROOT out = f16[1024,256] multiply(multiply.393, add.383)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
@@ -929,18 +932,18 @@ TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_F32) {
   HloModule jit_apply
 
   ENTRY matmul.test.bf16 {
-    Arg_2.3 = f32[16,128,768] parameter(2), sharding={replicated}
-    convert.4 = bf16[16,128,768] convert(Arg_2.3)
-    Arg_1.2 = f32[768,3072] parameter(1), sharding={replicated}
-    convert.5 = bf16[768,3072] convert(Arg_1.2)
-    dot.7 = bf16[16,128,3072] dot(convert.4, convert.5), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-    Arg_0.1 = f32[3072] parameter(0), sharding={replicated}
-    convert.6 = bf16[3072] convert(Arg_0.1)
-    reshape.8 = bf16[1,1,3072] reshape(convert.6)
-    broadcast.9 = bf16[1,1,3072] broadcast(reshape.8), dimensions={0,1,2}
-    reshape.10 = bf16[3072] reshape(broadcast.9)
-    broadcast.11 = bf16[16,128,3072] broadcast(reshape.10), dimensions={2}
-    ROOT add.12 = bf16[16,128,3072] add(dot.7, broadcast.11)
+    Arg_2.3 = f32[16,64,64] parameter(2), sharding={replicated}
+    convert.4 = bf16[16,64,64] convert(Arg_2.3)
+    Arg_1.2 = f32[64,256] parameter(1), sharding={replicated}
+    convert.5 = bf16[64,256] convert(Arg_1.2)
+    dot.7 = bf16[16,64,256] dot(convert.4, convert.5), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = f32[256] parameter(0), sharding={replicated}
+    convert.6 = bf16[256] convert(Arg_0.1)
+    reshape.8 = bf16[1,1,256] reshape(convert.6)
+    broadcast.9 = bf16[1,1,256] broadcast(reshape.8), dimensions={0,1,2}
+    reshape.10 = bf16[256] reshape(broadcast.9)
+    broadcast.11 = bf16[16,64,256] broadcast(reshape.10), dimensions={2}
+    ROOT add.12 = bf16[16,64,256] add(dot.7, broadcast.11)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
@@ -956,16 +959,16 @@ TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_BF16) {
   HloModule jit_apply
 
   ENTRY matmul.test.bf16 {
-    Arg_2.3 = f32[16,128,768] parameter(2), sharding={replicated}
-    convert.4 = bf16[16,128,768] convert(Arg_2.3)
-    Arg_1.2 = bf16[768,3072] parameter(1), sharding={replicated}
-    dot.5 = bf16[16,128,3072] dot(convert.4, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-    Arg_0.1 = bf16[3072] parameter(0), sharding={replicated}
-    reshape.6 = bf16[1,1,3072] reshape(Arg_0.1)
-    broadcast.7 = bf16[1,1,3072] broadcast(reshape.6), dimensions={0,1,2}
-    reshape.8 = bf16[3072] reshape(broadcast.7)
-    broadcast.9 = bf16[16,128,3072] broadcast(reshape.8), dimensions={2}
-    ROOT add.10 = bf16[16,128,3072] add(dot.5, broadcast.9)
+    Arg_2.3 = f32[16,64,64] parameter(2), sharding={replicated}
+    convert.4 = bf16[16,64,64] convert(Arg_2.3)
+    Arg_1.2 = bf16[64,256] parameter(1), sharding={replicated}
+    dot.5 = bf16[16,64,256] dot(convert.4, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = bf16[256] parameter(0), sharding={replicated}
+    reshape.6 = bf16[1,1,256] reshape(Arg_0.1)
+    broadcast.7 = bf16[1,1,256] broadcast(reshape.6), dimensions={0,1,2}
+    reshape.8 = bf16[256] reshape(broadcast.7)
+    broadcast.9 = bf16[16,64,256] broadcast(reshape.8), dimensions={2}
+    ROOT add.10 = bf16[16,64,256] add(dot.5, broadcast.9)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
@@ -977,12 +980,12 @@ TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
   HloModule matmul.divide.test.1
 
   ENTRY matmul.divide.test.f32 {
-    Arg_4.5 = f32[16,128,768] parameter(0), sharding={replicated}
-    Arg_2.3 = f32[768,12,64] parameter(1), sharding={replicated}
-    onednn.matmul.0 = f32[16,128,12,64] dot(Arg_4.5, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_4.5 = f32[16,64,128] parameter(0), sharding={replicated}
+    Arg_2.3 = f32[128,4,32] parameter(1), sharding={replicated}
+    onednn.matmul.0 = f32[16,64,4,32] dot(Arg_4.5, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}
     constant.8 = f32[] constant(8)
-    broadcast.9 = f32[16,128,12,64] broadcast(constant.8), dimensions={}
-    ROOT divide.16 = f32[16,128,12,64] divide(onednn.matmul.0, broadcast.9)
+    broadcast.9 = f32[16,64,4,32] broadcast(constant.8), dimensions={}
+    ROOT divide.16 = f32[16,64,4,32] divide(onednn.matmul.0, broadcast.9)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-4, 1e-4)));
@@ -1009,18 +1012,18 @@ TEST_F(MatmulTest, SimpleBiasTestF16_PARAM_F32) {
   HloModule jit_apply
 
   ENTRY matmul.test.f16 {
-    Arg_2.3 = f32[16,128,768] parameter(2), sharding={replicated}
-    convert.4 = f16[16,128,768] convert(Arg_2.3)
-    Arg_1.2 = f32[768,3072] parameter(1), sharding={replicated}
-    convert.5 = f16[768,3072] convert(Arg_1.2)
-    dot.7 = f16[16,128,3072] dot(convert.4, convert.5), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-    Arg_0.1 = f32[3072] parameter(0), sharding={replicated}
-    convert.6 = f16[3072] convert(Arg_0.1)
-    reshape.8 = f16[1,1,3072] reshape(convert.6)
-    broadcast.9 = f16[1,1,3072] broadcast(reshape.8), dimensions={0,1,2}
-    reshape.10 = f16[3072] reshape(broadcast.9)
-    broadcast.11 = f16[16,128,3072] broadcast(reshape.10), dimensions={2}
-    ROOT add.12 = f16[16,128,3072] add(dot.7, broadcast.11)
+    Arg_2.3 = f32[16,64,64] parameter(2), sharding={replicated}
+    convert.4 = f16[16,64,64] convert(Arg_2.3)
+    Arg_1.2 = f32[64,256] parameter(1), sharding={replicated}
+    convert.5 = f16[64,256] convert(Arg_1.2)
+    dot.7 = f16[16,64,256] dot(convert.4, convert.5), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = f32[256] parameter(0), sharding={replicated}
+    convert.6 = f16[256] convert(Arg_0.1)
+    reshape.8 = f16[1,1,256] reshape(convert.6)
+    broadcast.9 = f16[1,1,256] broadcast(reshape.8), dimensions={0,1,2}
+    reshape.10 = f16[256] reshape(broadcast.9)
+    broadcast.11 = f16[16,64,256] broadcast(reshape.10), dimensions={2}
+    ROOT add.12 = f16[16,64,256] add(dot.7, broadcast.11)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
@@ -1035,16 +1038,16 @@ TEST_F(MatmulTest, SimpleBiasTestF16_PARAM_F16) {
   HloModule jit_apply
 
   ENTRY matmul.test.f16 {
-    Arg_2.3 = f32[16,128,768] parameter(2), sharding={replicated}
-    convert.4 = f16[16,128,768] convert(Arg_2.3)
-    Arg_1.2 = f16[768,3072] parameter(1), sharding={replicated}
-    dot.5 = f16[16,128,3072] dot(convert.4, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-    Arg_0.1 = f16[3072] parameter(0), sharding={replicated}
-    reshape.6 = f16[1,1,3072] reshape(Arg_0.1)
-    broadcast.7 = f16[1,1,3072] broadcast(reshape.6), dimensions={0,1,2}
-    reshape.8 = f16[3072] reshape(broadcast.7)
-    broadcast.9 = f16[16,128,3072] broadcast(reshape.8), dimensions={2}
-    ROOT add.10 = f16[16,128,3072] add(dot.5, broadcast.9)
+    Arg_2.3 = f32[16,64,64] parameter(2), sharding={replicated}
+    convert.4 = f16[16,64,64] convert(Arg_2.3)
+    Arg_1.2 = f16[64,256] parameter(1), sharding={replicated}
+    dot.5 = f16[16,64,256] dot(convert.4, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = f16[256] parameter(0), sharding={replicated}
+    reshape.6 = f16[1,1,256] reshape(Arg_0.1)
+    broadcast.7 = f16[1,1,256] broadcast(reshape.6), dimensions={0,1,2}
+    reshape.8 = f16[256] reshape(broadcast.7)
+    broadcast.9 = f16[16,64,256] broadcast(reshape.8), dimensions={2}
+    ROOT add.10 = f16[16,64,256] add(dot.5, broadcast.9)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
@@ -1620,7 +1623,7 @@ TEST_F(MatmulTest, SimpleTestNoTransposeFusion1) {
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
   MatchOptimizedHlo(matmul_module_str,
                     R"(
-    ; CHECK:     transpose(%{{[a-z,A-Z,0-9,_,\.]*}}),
+    ; CHECK:     fusion(%{{[a-z,A-Z,0-9,_,\.]*}}),
     ; CHECK:     custom_call_target="__onednn$matmul",
     )");
 }
@@ -1770,16 +1773,16 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAndAddFusionWithReshape) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
   ENTRY matmul.test.f32 {
-    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
-    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
-    dot.378 = f32[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    reshape.11 = f32[32,197,3072] reshape(dot.378)
-    constant.381 = f32[3072] constant(0.3)
-    broadcast.382 = f32[32,197,3072] broadcast(constant.381), dimensions={2}
-    add.0 = f32[32,197,3072] add(reshape.11, broadcast.382)
-    const.1 = f32[32,197,3072] constant(0.65)
-    add.1 = f32[32,197,3072] add(add.0, const.1)
-    ROOT out = f32[6304,3072] reshape(add.1)
+    arg.0 = f32[1024,64] parameter(0), parameter_replication={false}
+    arg.1 = f32[64,256] parameter(1), parameter_replication={false}
+    dot.378 = f32[1024,256] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.11 = f32[32,32,256] reshape(dot.378)
+    constant.381 = f32[256] constant(0.3)
+    broadcast.382 = f32[32,32,256] broadcast(constant.381), dimensions={2}
+    add.0 = f32[32,32,256] add(reshape.11, broadcast.382)
+    const.1 = f32[32,32,256] constant(0.65)
+    add.1 = f32[32,32,256] add(add.0, const.1)
+    ROOT out = f32[1024,256] reshape(add.1)
   })";
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
   MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_add_str_);
@@ -1935,50 +1938,50 @@ TEST_F(MatmulTest, BiasAndLegalizedErfcGELUTestF32) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f32
   ENTRY matmul.test.f32 {
-    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
-    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
-    dot.0 = f32[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    reshape.0 = f32[32,197,3072] reshape(dot.0)
-    constant.bias = f32[3072] constant(0.3)
-    broadcast.bias = f32[32,197,3072] broadcast(constant.bias), dimensions={2}
-    add.bias = f32[32,197,3072] add(reshape.0, broadcast.bias)
+    arg.0 = f32[1024,64] parameter(0), parameter_replication={false}
+    arg.1 = f32[64,256] parameter(1), parameter_replication={false}
+    dot.0 = f32[1024,256] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f32[32,32,256] reshape(dot.0)
+    constant.bias = f32[256] constant(0.3)
+    broadcast.bias = f32[32,32,256] broadcast(constant.bias), dimensions={2}
+    add.bias = f32[32,32,256] add(reshape.0, broadcast.bias)
 
     // Compute y = -x / sqrt(2) = negate(x) * (1/sqrt(2))
-    negate.0 = f32[32,197,3072] negate(add.bias)
+    negate.0 = f32[32,32,256] negate(add.bias)
     constant.inv_sqrt2 = f32[] constant(0.707106769)
-    broadcast.inv_sqrt2 = f32[32,197,3072] broadcast(constant.inv_sqrt2), dimensions={}
-    y.0 = f32[32,197,3072] multiply(negate.0, broadcast.inv_sqrt2)
+    broadcast.inv_sqrt2 = f32[32,32,256] broadcast(constant.inv_sqrt2), dimensions={}
+    y.0 = f32[32,32,256] multiply(negate.0, broadcast.inv_sqrt2)
 
     // Compute predicate: |y| < 1
-    abs.y = f32[32,197,3072] abs(y.0)
+    abs.y = f32[32,32,256] abs(y.0)
     constant.one_pred = f32[] constant(1)
-    broadcast.one_pred = f32[32,197,3072] broadcast(constant.one_pred), dimensions={}
-    pred.0 = pred[32,197,3072] compare(abs.y, broadcast.one_pred), direction=LT
+    broadcast.one_pred = f32[32,32,256] broadcast(constant.one_pred), dimensions={}
+    pred.0 = pred[32,32,256] compare(abs.y, broadcast.one_pred), direction=LT
 
     // True branch: 1 - erf_approx(y)
     // Use erf(y) as a stand-in for the polynomial erf approximation
-    erf.y = f32[32,197,3072] erf(y.0)
+    erf.y = f32[32,32,256] erf(y.0)
     constant.one_true = f32[] constant(1)
-    broadcast.one_true = f32[32,197,3072] broadcast(constant.one_true), dimensions={}
-    true_branch.0 = f32[32,197,3072] subtract(broadcast.one_true, erf.y)
+    broadcast.one_true = f32[32,32,256] broadcast(constant.one_true), dimensions={}
+    true_branch.0 = f32[32,32,256] subtract(broadcast.one_true, erf.y)
 
     // False branch: erfc_approx(y)
     // Use (1 - erf(y)) as a stand-in for the erfc polynomial approximation
     constant.one_false = f32[] constant(1)
-    broadcast.one_false = f32[32,197,3072] broadcast(constant.one_false), dimensions={}
-    erf.y2 = f32[32,197,3072] erf(y.0)
-    false_branch.0 = f32[32,197,3072] subtract(broadcast.one_false, erf.y2)
+    broadcast.one_false = f32[32,32,256] broadcast(constant.one_false), dimensions={}
+    erf.y2 = f32[32,32,256] erf(y.0)
+    false_branch.0 = f32[32,32,256] subtract(broadcast.one_false, erf.y2)
 
     // select(|y| < 1, 1 - erf_approx(y), erfc_approx(y))
-    select.0 = f32[32,197,3072] select(pred.0, true_branch.0, false_branch.0)
+    select.0 = f32[32,32,256] select(pred.0, true_branch.0, false_branch.0)
 
     // 0.5 * x
     constant.half = f32[] constant(0.5)
-    broadcast.half = f32[32,197,3072] broadcast(constant.half), dimensions={}
-    half_x.0 = f32[32,197,3072] multiply(broadcast.half, add.bias)
+    broadcast.half = f32[32,32,256] broadcast(constant.half), dimensions={}
+    half_x.0 = f32[32,32,256] multiply(broadcast.half, add.bias)
 
     // 0.5 * x * select(...)
-    ROOT out = f32[32,197,3072] multiply(half_x.0, select.0)
+    ROOT out = f32[32,32,256] multiply(half_x.0, select.0)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
@@ -1999,54 +2002,54 @@ TEST_F(MatmulTest, BiasAndLegalizedErfcGELUTestF16) {
   const char* matmul_module_str = R"(
   HloModule matmul.test.f16
   ENTRY matmul.test.f16 {
-    arg.0 = f16[6304,768] parameter(0), parameter_replication={false}
-    arg.1 = f16[768,3072] parameter(1), parameter_replication={false}
-    dot.0 = f16[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    reshape.0 = f16[32,197,3072] reshape(dot.0)
-    constant.bias = f16[3072] constant(0.3)
-    broadcast.bias = f16[32,197,3072] broadcast(constant.bias), dimensions={2}
-    add.bias = f16[32,197,3072] add(reshape.0, broadcast.bias)
+    arg.0 = f16[1024,64] parameter(0), parameter_replication={false}
+    arg.1 = f16[64,256] parameter(1), parameter_replication={false}
+    dot.0 = f16[1024,256] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f16[32,32,256] reshape(dot.0)
+    constant.bias = f16[256] constant(0.3)
+    broadcast.bias = f16[32,32,256] broadcast(constant.bias), dimensions={2}
+    add.bias = f16[32,32,256] add(reshape.0, broadcast.bias)
 
     // Compute y = -x / sqrt(2) in f16
-    negate.0 = f16[32,197,3072] negate(add.bias)
+    negate.0 = f16[32,32,256] negate(add.bias)
     constant.inv_sqrt2 = f16[] constant(0.707106769)
-    broadcast.inv_sqrt2 = f16[32,197,3072] broadcast(constant.inv_sqrt2), dimensions={}
-    y.0 = f16[32,197,3072] multiply(negate.0, broadcast.inv_sqrt2)
+    broadcast.inv_sqrt2 = f16[32,32,256] broadcast(constant.inv_sqrt2), dimensions={}
+    y.0 = f16[32,32,256] multiply(negate.0, broadcast.inv_sqrt2)
 
     // Convert f16 -> f32 before erfc polynomial
-    y.f32 = f32[32,197,3072] convert(y.0)
+    y.f32 = f32[32,32,256] convert(y.0)
 
     // Compute predicate: |y| < 1 (in f32)
-    abs.y = f32[32,197,3072] abs(y.f32)
+    abs.y = f32[32,32,256] abs(y.f32)
     constant.one_pred = f32[] constant(1)
-    broadcast.one_pred = f32[32,197,3072] broadcast(constant.one_pred), dimensions={}
-    pred.0 = pred[32,197,3072] compare(abs.y, broadcast.one_pred), direction=LT
+    broadcast.one_pred = f32[32,32,256] broadcast(constant.one_pred), dimensions={}
+    pred.0 = pred[32,32,256] compare(abs.y, broadcast.one_pred), direction=LT
 
     // True branch: 1 - erf_approx(y) (in f32)
-    erf.y = f32[32,197,3072] erf(y.f32)
+    erf.y = f32[32,32,256] erf(y.f32)
     constant.one_true = f32[] constant(1)
-    broadcast.one_true = f32[32,197,3072] broadcast(constant.one_true), dimensions={}
-    true_branch.0 = f32[32,197,3072] subtract(broadcast.one_true, erf.y)
+    broadcast.one_true = f32[32,32,256] broadcast(constant.one_true), dimensions={}
+    true_branch.0 = f32[32,32,256] subtract(broadcast.one_true, erf.y)
 
     // False branch: erfc_approx(y) (in f32, simplified stand-in)
     constant.one_false = f32[] constant(1)
-    broadcast.one_false = f32[32,197,3072] broadcast(constant.one_false), dimensions={}
-    erf.y2 = f32[32,197,3072] erf(y.f32)
-    false_branch.0 = f32[32,197,3072] subtract(broadcast.one_false, erf.y2)
+    broadcast.one_false = f32[32,32,256] broadcast(constant.one_false), dimensions={}
+    erf.y2 = f32[32,32,256] erf(y.f32)
+    false_branch.0 = f32[32,32,256] subtract(broadcast.one_false, erf.y2)
 
     // select(|y| < 1, 1 - erf_approx(y), erfc_approx(y)) in f32
-    select.0 = f32[32,197,3072] select(pred.0, true_branch.0, false_branch.0)
+    select.0 = f32[32,32,256] select(pred.0, true_branch.0, false_branch.0)
 
     // Convert f32 -> f16 after erfc polynomial
-    select.f16 = f16[32,197,3072] convert(select.0)
+    select.f16 = f16[32,32,256] convert(select.0)
 
     // 0.5 * x (in f16)
     constant.half = f16[] constant(0.5)
-    broadcast.half = f16[32,197,3072] broadcast(constant.half), dimensions={}
-    half_x.0 = f16[32,197,3072] multiply(broadcast.half, add.bias)
+    broadcast.half = f16[32,32,256] broadcast(constant.half), dimensions={}
+    half_x.0 = f16[32,32,256] multiply(broadcast.half, add.bias)
 
     // 0.5 * x * cdf(x)
-    ROOT out = f16[32,197,3072] multiply(half_x.0, select.f16)
+    ROOT out = f16[32,32,256] multiply(half_x.0, select.f16)
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{0.1, 0.1}));

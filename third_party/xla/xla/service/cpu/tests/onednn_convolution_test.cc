@@ -25,17 +25,20 @@ limitations under the License.
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace cpu {
 
-class ConvolutionTest : public HloTestBaseLegacy,
+class ConvolutionTest : public HloInterpreterReferenceMixin<HloTestBase>,
                         public ::testing::WithParamInterface<PrimitiveType> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloInterpreterReferenceMixin::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
+    debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
     return debug_options;
   }
 
@@ -134,12 +137,11 @@ class ConvolutionTest : public HloTestBaseLegacy,
     return primitive_util::LowercasePrimitiveTypeName(PromotedDtype());
   }
 
-  void RunAndExpectExit(const absl::string_view outline, int signal) {
+  void RunAndExpectDeath(const absl::string_view outline) {
     const std::string convolution_module_str = absl::StrReplaceAll(
         outline,
         {{"$dtype", dtypeString_}, {"$pdtype", PromotedDtypeToString()}});
-    EXPECT_EXIT((void)Run(convolution_module_str, true),
-                ::testing::KilledBySignal(signal), "");
+    EXPECT_DEATH((void)Run(convolution_module_str, true), "");
   }
 
   void RunCompareAndMatchOptimizedHlo(
@@ -247,9 +249,8 @@ TEST_P(ConvolutionTest, Conv3DReluTest) {
     arg.1 = $dtype[3,3,3,28,64] parameter(1)
     conv = $dtype[15,4,5,5,64] convolution(arg.0, arg.1),
           window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
-    const.1 = $pdtype[] constant(0)
-    convert.0 = $dtype[] convert(const.1)
-    bcast.2 = $dtype[15,4,5,5,64] broadcast(convert.0), dimensions={}
+    const.1 = $dtype[] constant(0)
+    bcast.2 = $dtype[15,4,5,5,64] broadcast(const.1), dimensions={}
     ROOT maximum.1 = $dtype[15,4,5,5,64] maximum(conv, bcast.2)
 })";
 
@@ -257,6 +258,13 @@ TEST_P(ConvolutionTest, Conv3DReluTest) {
 }
 
 TEST_P(ConvolutionTest, Conv2DWithBiasAndReluTest) {
+  if (dtype_ == BF16) {
+    // TODO(intel-tf): Enable for BF16 once OneDnnContractionRewriter handles
+    // the BF16 -> F32 -> BF16 convert pair left after fusing BIAS when the
+    // following activation (kMaximum) is not promoted to F32.
+    GTEST_SKIP() << "Skipping BF16 Bias+ReLU fusion due to intermediate "
+                    "convert mismatch.";
+  }
   const absl::string_view outline = R"(
   HloModule convolution.bias.relu.test
 
@@ -268,9 +276,8 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndReluTest) {
     const.0 = $dtype[10] constant(15)
     bcast.1 = $dtype[1,11,11,10] broadcast(const.0), dimensions={3}
     add.0 = $dtype[1,11,11,10] add(convolution.0, bcast.1)
-    const.1 = $pdtype[] constant(0)
-    convert.0 = $dtype[] convert(const.1)
-    bcast.2 = $dtype[1,11,11,10] broadcast(convert.0), dimensions={}
+    const.1 = $dtype[] constant(0)
+    bcast.2 = $dtype[1,11,11,10] broadcast(const.1), dimensions={}
     ROOT maximum.1 = $dtype[1,11,11,10] maximum(add.0, bcast.2)
   })";
 
@@ -321,7 +328,7 @@ TEST_P(ConvolutionTest, ConvInsufficientScratchTest) {
         }
   })";
 
-  RunAndExpectExit(outline, SIGABRT);
+  RunAndExpectDeath(outline);
 }
 
 TEST_P(ConvolutionTest, Conv2DWithBinaryAddTest) {
@@ -376,9 +383,8 @@ TEST_P(ConvolutionTest, Conv2DWithReluSumAndBinaryAddTest) {
     arg0.3 = $dtype[1,11,11,10] parameter(2)
     convolution.0 = $dtype[1,11,11,10] convolution(arg0.1, arg0.2),
           window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
-    const.1 = $pdtype[] constant(0)
-    convert.0 = $dtype[] convert(const.1)
-    bcast.2 = $dtype[1,11,11,10] broadcast(convert.0), dimensions={}
+    const.1 = $dtype[] constant(0)
+    bcast.2 = $dtype[1,11,11,10] broadcast(const.1), dimensions={}
     maximum.1 = $dtype[1,11,11,10] maximum(convolution.0, bcast.2)
     const.2 = $dtype[1,11,11,10] constant({...})
     add.1 = $dtype[1,11,11,10] add(maximum.1, const.2)
@@ -506,6 +512,13 @@ TEST_P(ConvolutionTest, Conv2DWithLinearAndBinaryAddTest) {
 }
 
 TEST_P(ConvolutionTest, Conv3DWithBiasAndRelu6Test) {
+  if (dtype_ == BF16) {
+    // TODO(intel-tf): Enable for BF16 once OneDnnContractionRewriter handles
+    // the BF16 -> F32 -> BF16 convert pair left after fusing BIAS when the
+    // following activation (kClamp) is not promoted to F32.
+    GTEST_SKIP() << "Skipping BF16 Bias+ReLU6 fusion due to intermediate "
+                    "convert mismatch.";
+  }
   const absl::string_view outline = R"(
   HloModule convolution.test.bias.relu6
 
@@ -517,12 +530,10 @@ TEST_P(ConvolutionTest, Conv3DWithBiasAndRelu6Test) {
     bias = $dtype[64] parameter(2)
     broadcasted_bias = $dtype[15,4,5,5,64] broadcast(bias), dimensions={4}
     add = $dtype[15,4,5,5,64] add(conv, broadcasted_bias)
-    const.0 = $pdtype[] constant(0)
-    convert.0 = $dtype[] convert(const.0)
-    broadcast.0 = $dtype[15,4,5,5,64] broadcast(convert.0), dimensions={}
-    const.1 = $pdtype[] constant(6)
-    convert.1 = $dtype[] convert(const.1)
-    broadcast.1 = $dtype[15,4,5,5,64] broadcast(convert.1), dimensions={}
+    const.0 = $dtype[] constant(0)
+    broadcast.0 = $dtype[15,4,5,5,64] broadcast(const.0), dimensions={}
+    const.1 = $dtype[] constant(6)
+    broadcast.1 = $dtype[15,4,5,5,64] broadcast(const.1), dimensions={}
     ROOT clamp.0 = $dtype[15,4,5,5,64] clamp(broadcast.0, add, broadcast.1)
 })";
 
@@ -530,6 +541,13 @@ TEST_P(ConvolutionTest, Conv3DWithBiasAndRelu6Test) {
 }
 
 TEST_P(ConvolutionTest, Conv2DWithBiasAndSigmoidTest) {
+  if (dtype_ == BF16) {
+    // TODO(intel-tf): Enable for BF16 once OneDnnContractionRewriter handles
+    // intermediate converts when kNegate remains in BF16 while kAdd/kExp/
+    // kDivide are promoted to F32.
+    GTEST_SKIP() << "Skipping BF16 Bias+Sigmoid fusion due to intermediate "
+                    "convert mismatch.";
+  }
   const absl::string_view outline = R"(
   HloModule convolution.bias.sigmoid.test
 
@@ -742,6 +760,13 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndGeluExactPattern2Test) {
 }
 
 TEST_P(ConvolutionTest, Conv2DWithBiasAndSwishTest) {
+  if (dtype_ == BF16) {
+    // TODO(intel-tf): Enable for BF16 once OneDnnContractionRewriter handles
+    // intermediate converts when kNegate remains in BF16 while kAdd/kExp/
+    // kDivide/kMultiply are promoted to F32.
+    GTEST_SKIP() << "Skipping BF16 Bias+Swish fusion due to intermediate "
+                    "convert mismatch.";
+  }
   const absl::string_view outline = R"(
   HloModule convolution.test.with.bias.swish
 

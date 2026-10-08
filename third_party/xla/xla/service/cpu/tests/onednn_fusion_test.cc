@@ -13,22 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/onednn_support.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/cpu/onednn_util.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 namespace {
 
-inline constexpr bool IsOneDnnGraphEnabled() {
+constexpr bool IsOneDnnGraphEnabled() {
 #if defined(XLA_ONEDNN_USE_GRAPH_API)
   // Some Aarch64 CPUs have failures. Only test on x86 for now.
   return tsl::port::IsX86CPU();
@@ -42,9 +47,16 @@ struct OneDnnFusionTestParams {
 };
 
 class OneDnnFusionTestBase
-    : public HloTestBaseLegacy,
+    : public HloInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<OneDnnFusionTestParams> {
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloInterpreterReferenceMixin::GetDebugOptionsForTest();
+    debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
+    return debug_options;
+  }
+
   void SetUp() override {
     OneDnnFusionTestParams params = GetParam();
     data_type_ = params.dtype;
@@ -89,7 +101,7 @@ class OneDnnFusionBinaryOpTest : public OneDnnFusionTestBase {
   }
 
  private:
-  const std::string GetBinaryOpHLOTemplate() {
+  std::string GetBinaryOpHLOTemplate() {
     return R"(
     HloModule binary_op
 
@@ -108,7 +120,7 @@ class OneDnnFusionBinaryOpTest : public OneDnnFusionTestBase {
     })";
   }
 
-  const std::string GetMatMulHLOTemplate() {
+  std::string GetMatMulHLOTemplate() {
     return R"(
     HloModule matmul
 
@@ -243,7 +255,9 @@ std::vector<OneDnnFusionTestParams> GetOneDnnFusionFuseBinaryTestSpecs() {
   for (const auto& dtype : {PrimitiveType::F32}) {
     for (const auto& op_type : GetOneDnnSupportedBinaryOpsStrings()) {
       // oneDNN does not support fusing two dot instructions
-      if (op_type == HloOpcodeString(HloOpcode::kDot)) continue;
+      if (op_type == HloOpcodeString(HloOpcode::kDot)) {
+        continue;
+      }
       specs.push_back({dtype, std::string(op_type)});
     }
   }
