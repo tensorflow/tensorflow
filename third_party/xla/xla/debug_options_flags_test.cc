@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/tsl/platform/env.h"
@@ -159,6 +160,56 @@ TEST(DebugOptions, AllFieldsHavePresence) {
   EXPECT_THAT(fields_missing_presence, IsEmpty())
       << "All scalar fields in DebugOptions must have presence defined by "
          "being labeled `optional`.";
+}
+
+// Fields numbered at or above this must set `is_used_at_runtime` explicitly.
+// Fixed; never bump.
+constexpr int kFirstFieldRequiringAnnotation = 555;
+
+TEST(DebugOptions, NewFieldsDeclareRuntimeUse) {
+  std::vector<std::string> fields_missing_annotation;
+
+  const tsl::protobuf::Descriptor* debug_options = DebugOptions::descriptor();
+  for (int i = 0; i < debug_options->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor* field = debug_options->field(i);
+    if (field->number() >= kFirstFieldRequiringAnnotation &&
+        !field->options()
+             .GetExtension(debug_options_field)
+             .has_is_used_at_runtime()) {
+      fields_missing_annotation.push_back(std::string(field->name()));
+    }
+  }
+
+  EXPECT_THAT(fields_missing_annotation, IsEmpty())
+      << "New DebugOptions fields must be annotated with "
+         "`[(debug_options_field).is_used_at_runtime = true|false]`. See "
+         "`DebugOptionsFieldOptions` in xla.proto for how to choose the "
+         "value.";
+}
+
+// Dump and test-only fields never affect a running executable.
+TEST(DebugOptions, DumpAndTestFieldsAreNotUsedAtRuntime) {
+  const tsl::protobuf::Descriptor* debug_options = DebugOptions::descriptor();
+  for (int i = 0; i < debug_options->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor& field = *debug_options->field(i);
+    if (IsDebugOptionsDumpField(field) ||
+        absl::StartsWith(field.name(), "xla_test_")) {
+      EXPECT_FALSE(IsDebugOptionsFieldUsedAtRuntime(field)) << field.name();
+    }
+  }
+}
+
+TEST(DebugOptions, ClearDebugOptionsFieldsClearsMatchingFieldsOnly) {
+  DebugOptions debug_options;
+  debug_options.set_xla_dump_to("/tmp/dump");
+  debug_options.set_xla_enable_dumping(true);
+  debug_options.set_xla_gpu_enable_fast_min_max(true);
+
+  ClearDebugOptionsFields(debug_options, IsDebugOptionsDumpField);
+
+  EXPECT_FALSE(debug_options.has_xla_dump_to());
+  EXPECT_FALSE(debug_options.has_xla_enable_dumping());
+  EXPECT_TRUE(debug_options.has_xla_gpu_enable_fast_min_max());
 }
 
 TEST(DebugOptions, EnableNcclSymmetricBuffersForCollectives) {

@@ -394,6 +394,11 @@ absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlockOptin(CUdevice device) {
 
 int64_t GetMaxOversizedSharedMemoryPerBlock(CUdevice device) {
 #if CUDA_VERSION >= 13040
+  int driver_version = 0;
+  if (cuDriverGetVersion(&driver_version) != CUDA_SUCCESS ||
+      driver_version < 13040) {
+    return 0;
+  }
   return GetSimpleAttribute<int64_t>(
              device, CU_DEVICE_ATTRIBUTE_MAX_OVERSIZED_SHARED_MEMORY_PER_BLOCK)
       .value_or(0);
@@ -585,6 +590,11 @@ CUmemAccessDesc GetVmmAccessDesc(int device) {
 }
 
 absl::StatusOr<bool> IsMulticastSupported(CUdevice device) {
+  int driver_version = 0;
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&driver_version)));
+  if (driver_version < 12010) {
+    return false;
+  }
   int is_multicast_supported = 0;
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuDeviceGetAttribute(&is_multicast_supported,
@@ -881,6 +891,11 @@ struct __attribute__((__packed__)) FabricHandle {
 }  // namespace
 
 absl::StatusOr<std::string> CudaExecutor::ExportFabricHandle(void* ptr) const {
+  if (GetDeviceDescription().driver_version() < SemanticVersion{12, 3, 0}) {
+    return absl::UnimplementedError(
+        "ExportFabricHandle requires CUDA driver 12.3 or newer");
+  }
+
   ABSL_ASSIGN_OR_RETURN(VmmMemoryHandle handle, RetainVmmMemoryHandle(ptr));
 
   FabricHandle fabric_handle;
@@ -903,6 +918,11 @@ absl::StatusOr<std::string> CudaExecutor::ExportFabricHandle(void* ptr) const {
 
 absl::StatusOr<DeviceAddressBase> CudaExecutor::ImportFabricHandle(
     absl::string_view serialized) {
+  if (GetDeviceDescription().driver_version() < SemanticVersion{12, 3, 0}) {
+    return absl::UnimplementedError(
+        "ImportFabricHandle requires CUDA driver 12.3 or newer");
+  }
+
   if (serialized.size() != sizeof(FabricHandle)) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Invalid fabric handle size: %d", serialized.size()));
@@ -2000,8 +2020,10 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     absl::StatusOr<bool> is_multicast_supported = IsMulticastSupported(device);
     if (is_multicast_supported.ok() && *is_multicast_supported) {
       CUmulticastObjectProp prop = {};
-      prop.handleTypes =
-          CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR | CU_MEM_HANDLE_TYPE_FABRIC;
+      prop.handleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+      if (desc.driver_version() >= SemanticVersion{12, 3, 0}) {
+        prop.handleTypes |= CU_MEM_HANDLE_TYPE_FABRIC;
+      }
       size_t multicast_granularity = 0;
       if (absl::Status status = cuda::ToStatus(cuMulticastGetGranularity(
               &multicast_granularity, &prop, CU_MULTICAST_GRANULARITY_MINIMUM));

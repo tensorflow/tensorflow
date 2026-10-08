@@ -18,11 +18,13 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -97,6 +99,19 @@ DebugOptions DefaultDebugOptionsIgnoringFlags();
 // variable.
 DebugOptions GetDebugOptionsFromProtoAndFlags(
     DebugOptions* proto_debug_options);
+
+// Returns true if the DebugOptions `field` is annotated `is_used_at_runtime`.
+bool IsDebugOptionsFieldUsedAtRuntime(
+    const tsl::protobuf::FieldDescriptor& field);
+
+// Returns true if the DebugOptions `field` controls debug dumps: xla_dump_*,
+// xla_gpu_dump_* and xla_enable_dumping.
+bool IsDebugOptionsDumpField(const tsl::protobuf::FieldDescriptor& field);
+
+// Clears every field of `debug_options` for which `predicate` returns true.
+void ClearDebugOptionsFields(
+    DebugOptions& debug_options,
+    absl::FunctionRef<bool(const tsl::protobuf::FieldDescriptor&)> predicate);
 
 // Checks whether the pass fuel was explicitly set.
 bool PassFuelIsSet(absl::string_view pass);

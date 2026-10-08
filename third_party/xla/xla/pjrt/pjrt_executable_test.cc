@@ -30,11 +30,16 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::testing::Key;
+using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 
 TEST(CompileOptionsTest, Serialization) {
   CompileOptions src;
@@ -239,6 +244,50 @@ TEST(IsEarlyExitCompilationTest, CombinedEnvOptionOverrides) {
        std::string("EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT")},
       {"xla_early_exit_with_layouts", false}};
   EXPECT_TRUE(IsEarlyExitCompilation(options));
+}
+
+TEST(StripNonRuntimeDebugOptionsTest, KeepsOnlyRuntimeAndDumpFields) {
+  CompileOptionsProto proto;
+  DebugOptions& debug_options =
+      *proto.mutable_executable_build_options()->mutable_debug_options();
+  debug_options.set_xla_dump_to("/tmp/dump");
+  debug_options.set_xla_gpu_enable_fast_min_max(true);
+  debug_options.set_xla_gpu_cuda_data_dir("/cuda");
+  debug_options.set_xla_gpu_nccl_termination_timeout_seconds(30);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+
+  StripNonRuntimeDebugOptions(proto);
+
+  DebugOptions expected;
+  expected.set_xla_dump_to("/tmp/dump");
+  expected.set_xla_gpu_nccl_termination_timeout_seconds(30);
+  expected.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  EXPECT_THAT(proto.executable_build_options().debug_options(),
+              EqualsProto(expected));
+}
+
+TEST(StripNonRuntimeDebugOptionsTest, KeepsDebugOptionsAbsent) {
+  CompileOptionsProto proto;
+  StripNonRuntimeDebugOptions(proto);
+  EXPECT_FALSE(proto.executable_build_options().has_debug_options());
+}
+
+TEST(StripNonRuntimeDebugOptionsTest,
+     DropsNonRuntimeOverridesAndKeepsUnknownKeys) {
+  CompileOptions options;
+  options.env_option_overrides = {
+      {"xla_gpu_enable_fast_min_max", true},
+      {"xla_gpu_nccl_termination_timeout_seconds", int64_t{30}},
+      {"xla_dump_to", std::string("/tmp/dump")},
+      {"not_a_debug_option", std::string("value")}};
+  ASSERT_OK_AND_ASSIGN(CompileOptionsProto proto, options.ToProto());
+
+  StripNonRuntimeDebugOptions(proto);
+
+  EXPECT_THAT(
+      proto.env_option_overrides(),
+      UnorderedElementsAre(Key("xla_gpu_nccl_termination_timeout_seconds"),
+                           Key("xla_dump_to"), Key("not_a_debug_option")));
 }
 
 }  // namespace

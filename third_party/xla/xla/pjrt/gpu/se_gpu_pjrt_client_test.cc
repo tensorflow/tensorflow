@@ -2382,6 +2382,42 @@ TEST(StreamExecutorGpuClientTest, DeserializeExecutableWithOptionsOverrides) {
             42);
 }
 
+// Loading without caller options runs the NaN check in dump mode with the
+// stored options, so they must keep xla_dump_to.
+TEST(StreamExecutorGpuClientTest, DeserializeWithoutOptionsKeepsDumpDirectory) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  static constexpr absl::string_view kAddProgram = R"(
+    HloModule Add, entry_computation_layout={(f32[], f32[])->f32[]}
+    ENTRY %add (a: f32[], b: f32[]) -> f32[] {
+      %a = f32[] parameter(0)
+      %b = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %a, f32[] %b)
+    }
+  )";
+
+  const std::string dump_dir = ::testing::TempDir();
+  CompileOptions compile_options;
+  DebugOptions& debug_options =
+      *compile_options.executable_build_options.mutable_debug_options();
+  debug_options.set_xla_dump_to(dump_dir);
+  debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_DUMP);
+  ASSERT_OK_AND_ASSIGN(auto executable, CompileExecutable(kAddProgram, *client,
+                                                          compile_options));
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       executable->SerializeExecutable());
+
+  ASSERT_OK_AND_ASSIGN(auto reloaded_executable,
+                       client->LoadSerializedExecutable(
+                           serialized, std::nullopt, LoadOptions()));
+  ASSERT_OK_AND_ASSIGN(CompileOptions reloaded_options,
+                       reloaded_executable->GetCompileOptions());
+  EXPECT_EQ(
+      reloaded_options.executable_build_options.debug_options().xla_dump_to(),
+      dump_dir);
+}
+
 TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
   constexpr char kMlirWithParameterLayout[] =
       R"(

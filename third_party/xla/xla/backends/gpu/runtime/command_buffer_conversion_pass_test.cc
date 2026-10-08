@@ -334,7 +334,8 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
   Shape shape = ShapeUtil::MakeShape(S32, {});
 
   return std::make_unique<ConditionalThunk>(
-      Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks));
+      Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks),
+      /*devices_per_host=*/1);
 }
 
 std::unique_ptr<CuDnnThunk> CreateCuDnnThunk(const BufferAllocation& alloc0) {

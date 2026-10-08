@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/union_find.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -346,6 +347,17 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
   int64_t current_heap_size_ = 0;
   int64_t max_heap_size_ = 0;
 };
+
+#if defined(PLATFORM_GOOGLE)
+// TODO(b/571155846): Open-source this radix sort improvement once OR-Tools
+// with scratch-buffer AutoRadixSort (cl/990317179) is released and the
+// dependency is bumped in OpenXLA.
+//
+// Sorts `chunks` in ascending order of `Chunk::offset` using an adaptive hybrid
+// sort strategy.
+void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
+                              std::vector<HeapSimulator::Chunk>& scratch);
+#endif  // PLATFORM_GOOGLE
 
 // Node in BufferIntervalTree that stores the alloc and free times of a buffer,
 // and the chunk assigned to it.
@@ -1075,6 +1087,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   // Temporary buffers used by MakeFreeChunks to avoid reallocating memory.
   mutable std::vector<Chunk> used_chunks_;
+#if defined(PLATFORM_GOOGLE)
+  mutable std::vector<Chunk> radix_scratch_;
+#endif  // PLATFORM_GOOGLE
   mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
 
  protected:
