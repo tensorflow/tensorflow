@@ -32,6 +32,11 @@ NewXnnPackDelegateSupportingVariableOps();
 
 class VariableOpsTester {
  public:
+  void TestAssignOnly(TfLiteDelegate* delegate) const {
+    const std::vector<char> model = CreateModelAssignOnly();
+    Test(delegate, model);
+  }
+
   void TestAssignThenRead(TfLiteDelegate *delegate) const {
     const std::vector<char> model = CreateModelAssignThenRead();
     Test(delegate, model);
@@ -69,6 +74,12 @@ class VariableOpsTester {
         CreateModelTwoSubgraphsReadAssignOneVarHandle2();
     Test(delegate, model);
   }
+
+  // Creates a model with this subgraph:
+  //   (initial_input) ----\
+  //                        \
+  //   VAR_HANDLE ----------> AV
+  std::vector<char> CreateModelAssignOnly() const;
 
   // Creates a model with this subgraph:
   //   (initial_input) ----\

@@ -152,9 +152,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           deserializer,
           gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kConditionalThunk:
-      return ConditionalThunk::FromProto(std::move(thunk_info),
-                                         thunk_proto.conditional_thunk(),
-                                         buffer_allocations, deserializer);
+      return ConditionalThunk::FromProto(
+          std::move(thunk_info), thunk_proto.conditional_thunk(),
+          buffer_allocations, deserializer,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kGemmThunk:
       return GemmThunk::FromProto(std::move(thunk_info),
                                   thunk_proto.gemm_thunk(), buffer_allocations);

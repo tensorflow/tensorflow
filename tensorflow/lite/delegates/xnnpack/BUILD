@@ -1276,11 +1276,11 @@ cc_library(
     hdrs = ["variable_ops_tester.h"],
     deps = [
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1298,11 +1298,11 @@ cc_library(
     hdrs = ["variable_ops_tester.h"],
     deps = [
         ":xnnpack_delegate",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1867,6 +1867,7 @@ cc_test(
         ":test_main",
         ":variable_ops_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )

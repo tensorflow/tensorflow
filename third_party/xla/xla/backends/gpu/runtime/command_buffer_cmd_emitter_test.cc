@@ -424,7 +424,7 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkToCommand) {
   auto conditional = std::make_unique<ConditionalThunk>(
       NextThunkInfo("conditional"),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
-      std::move(branches));
+      std::move(branches), /*devices_per_host=*/1);
   ConditionalThunk* conditional_ptr = conditional.get();
 
   ThunkSequence thunks;
@@ -553,7 +553,7 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkRepeatedly) {
   ThunkSequence thunks = ThunkSequence::Of<ConditionalThunk>(
       NextThunkInfo("conditional"),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
-      std::move(branches));
+      std::move(branches), /*devices_per_host=*/1);
 
   auto collect_command_names = [](CommandExecutor& commands) {
     std::vector<std::string> command_names;
@@ -604,7 +604,7 @@ TEST_F(CommandBufferCmdEmitterTest,
   ThunkSequence thunks = ThunkSequence::Of<ConditionalThunk>(
       NextThunkInfo("conditional"),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(PRED, {})},
-      std::move(branches));
+      std::move(branches), /*devices_per_host=*/1);
 
   ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
                        ConvertToCommands(thunks, ConvertToCommandsOptions()));

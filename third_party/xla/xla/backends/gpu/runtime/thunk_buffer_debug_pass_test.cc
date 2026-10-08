@@ -317,7 +317,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
 
   auto conditional_thunk = std::make_unique<ConditionalThunk>(
       Thunk::ThunkInfo(), ShapedSlice{condition_slice, condition_shape},
-      std::move(branch_thunks));
+      std::move(branch_thunks), /*devices_per_host=*/1);
   const Thunk* const conditional_thunk_ptr = conditional_thunk.get();
   ThunkSequence while_body_thunks;
   while_body_thunks.push_back(std::move(while_body_fake_thunk));
