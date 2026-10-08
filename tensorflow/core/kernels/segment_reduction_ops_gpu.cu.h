@@ -339,7 +339,7 @@ template <typename Treducevec, typename Tvec, typename Toffsets,
 __global__ void SegmentReduceVectorKernel(
     Toffsets nouter, Toffsets ninner_vec, Tsegmentids nsegments,
     ReduceOp reduce_op, Tinit initial_value, Tinit empty_segment_value,
-    bool is_mean, bool is_sqrtn,
+    bool is_mean, bool is_sqrtn, int64_t input_nrows,
     const Tvec* __restrict__ input_vec,  // [nouter or any, ninner_vec]
     const Toffsets* __restrict__ segment_offsets,  // [nsegments + 1]
     const Tindices* __restrict__ indices,          // [nouter] (optional)
@@ -364,12 +364,18 @@ __global__ void SegmentReduceVectorKernel(
         // Perform indirect lookup if required.
         const Toffsets y_idx =
             indices && y_ok ? indices[y_offset + y] : y_offset + y;
+        // Skip rows whose index is out of range.
+        const bool idx_ok =
+            !indices ||
+            (y_idx >= 0 && static_cast<int64_t>(y_idx) < input_nrows);
         const int64_t input_idx = static_cast<int64_t>(y_idx) * ninner_vec + x;
         // Load the input row from global mem.
         Treducevec block_result =
-            x_ok && y_ok ? input_vec[input_idx] : Tvec(initial_value);
+            x_ok && y_ok && idx_ok ? input_vec[input_idx] : Tvec(initial_value);
         // Apply weights if provided.
-        if (weights && y_ok) block_result = block_result * Tvec(weights[y_idx]);
+        if (weights && y_ok && idx_ok) {
+          block_result = block_result * Tvec(weights[y_idx]);
+        }
         // Reduce along the columns of the block, returning result in first row.
         block_result = ReduceBlockAlongCols(reduce_op, block_result, x_ok);
         if (y == 0 && x_ok) {
@@ -412,7 +418,7 @@ template <typename Treducevec, typename Tvec, typename Toffsets,
 absl::Status LaunchSegmentReduceVectorKernel(
     const GPUDevice& d, Toffsets nouter, Toffsets ninner_vec,
     Tsegmentids nsegments, ReduceOp reduce_op, Tinit initial_value,
-    Tinit empty_segment_value, bool is_mean, bool is_sqrtn,
+    Tinit empty_segment_value, bool is_mean, bool is_sqrtn, int64_t input_nrows,
     const Tvec* input_vec,            // [nouter or any, ninner_vec]
     const Toffsets* segment_offsets,  // [nsegments + 1]
     const Tindices* indices,          // [nouter] (optional)
@@ -445,7 +451,8 @@ absl::Status LaunchSegmentReduceVectorKernel(
                                 Tsegmentids, ReduceOp, Tinit, Tweights>,
       grid, block, shared_memory_bytes, d.stream(), nouter, ninner_vec,
       nsegments, reduce_op, initial_value, empty_segment_value, is_mean,
-      is_sqrtn, input_vec, segment_offsets, indices, weights, output_vec);
+      is_sqrtn, input_nrows, input_vec, segment_offsets, indices, weights,
+      output_vec);
 }
 
 template <typename Tvec, typename Treducevec, typename Toffsets,
@@ -513,12 +520,24 @@ template <typename Treducevec, typename Tvec, typename Tindices,
 struct LookupAndScaleAndCastInputsFunctor {
   LookupAndScaleAndCastInputsFunctor(const Tvec* input_vec,
                                      const Tindices* indices,
-                                     const Tweights* weights)
-      : input_vec_(input_vec), indices_(indices), weights_(weights) {}
+                                     const Tweights* weights,
+                                     int64_t input_nrows,
+                                     Treducevec skipped_value)
+      : input_vec_(input_vec),
+        indices_(indices),
+        weights_(weights),
+        input_nrows_(input_nrows),
+        skipped_value_(skipped_value) {}
 
   template <typename Toffsets>
   __device__ Treducevec operator()(Toffsets idx) const {
-    if (indices_) idx = indices_[idx];
+    if (indices_) {
+      idx = indices_[idx];
+      // Skip rows whose index is out of range.
+      if (idx < 0 || static_cast<int64_t>(idx) >= input_nrows_) {
+        return skipped_value_;
+      }
+    }
     Treducevec result = static_cast<Treducevec>(input_vec_[idx]);
     if (weights_) result = result * Tvec(weights_[idx]);
     return result;
@@ -528,6 +547,8 @@ struct LookupAndScaleAndCastInputsFunctor {
   const Tvec* __restrict__ input_vec_;
   const Tindices* __restrict__ indices_;
   const Tweights* __restrict__ weights_;
+  int64_t input_nrows_;
+  Treducevec skipped_value_;
 };
 
 template <typename Treducevec, typename Tvec, typename Toffsets,
@@ -546,10 +567,13 @@ typename CastIterator<Treducevec, Tvec, Toffsets, Tindices,
                       Tweights>::IteratorTy
 MakeLookupAndScaleAndCastInputsIterator(const Tvec* input_vec,
                                         const Tindices* indices,
-                                        const Tweights* weights) {
+                                        const Tweights* weights,
+                                        int64_t input_nrows,
+                                        Treducevec skipped_value) {
   using CastIteratorTy =
       CastIterator<Treducevec, Tvec, Toffsets, Tindices, Tweights>;
-  typename CastIteratorTy::FunctorTy functor(input_vec, indices, weights);
+  typename CastIteratorTy::FunctorTy functor(input_vec, indices, weights,
+                                             input_nrows, skipped_value);
   return typename CastIteratorTy::IteratorTy(
       typename CastIteratorTy::InputIteratorTy(Toffsets(0)), functor);
 }
@@ -560,7 +584,7 @@ template <typename Treducevec, typename Tvec, typename Toffsets,
 absl::Status SegmentReduceGPUImplNoInnerDim(
     OpKernelContext* ctx, Toffsets nouter, Tsegmentids nsegments,
     ReduceOp reduce_op, Tinit initial_value, Tinit empty_segment_value,
-    bool is_mean, bool is_sqrtn,
+    bool is_mean, bool is_sqrtn, int64_t input_nrows,
     const Tvec* input_vec,            // [nouter or any]
     const Toffsets* segment_offsets,  // [nsegments + 1]
     const Tindices* indices,          // [nouter] (optional)
@@ -587,7 +611,7 @@ absl::Status SegmentReduceGPUImplNoInnerDim(
   }
   auto input_iter =
       MakeLookupAndScaleAndCastInputsIterator<Treducevec, Toffsets>(
-          input_vec, indices, weights);
+          input_vec, indices, weights, input_nrows, Treducevec(initial_value));
   TF_RETURN_IF_ERROR(GpuSegmentedReduce(ctx, nsegments, reduce_op,
                                         Treducevec(initial_value), input_iter,
                                         segment_offsets, output_raw_ptr));
@@ -610,7 +634,7 @@ template <typename Treducevec, typename Tvec, typename Toffsets,
 absl::Status SegmentReduceGPUImpl(
     OpKernelContext* ctx, Toffsets nouter, Toffsets ninner_vec,
     Tsegmentids nsegments, ReduceOp reduce_op, Tinit initial_value,
-    Tinit empty_segment_value, bool is_mean, bool is_sqrtn,
+    Tinit empty_segment_value, bool is_mean, bool is_sqrtn, int64_t input_nrows,
     const Tvec* input_vec,           // [nouter or any, ninner_vec]
     const Tsegmentids* segment_ids,  // [nouter]
     const Tindices* indices,         // [nouter] (optional)
@@ -646,16 +670,16 @@ absl::Status SegmentReduceGPUImpl(
     // inner dimension but can be significantly faster for large reductions.
     return SegmentReduceGPUImplNoInnerDim<Treducevec>(
         ctx, nouter, nsegments, reduce_op, initial_value, empty_segment_value,
-        is_mean, is_sqrtn, input_vec, segment_offsets_ptr, indices, weights,
-        output_vec);
+        is_mean, is_sqrtn, input_nrows, input_vec, segment_offsets_ptr, indices,
+        weights, output_vec);
   }
   // Here we use a custom kernel that is optimized for ninner_vec >= ~64 and
   // gives decent performance for smaller cases. It also handles indices,
   // casting to/from Treducevec, and normalizing the output.
   return LaunchSegmentReduceVectorKernel<Treducevec>(
       device, nouter, ninner_vec, nsegments, reduce_op, initial_value,
-      empty_segment_value, is_mean, is_sqrtn, input_vec, segment_offsets_ptr,
-      indices, weights, output_vec);
+      empty_segment_value, is_mean, is_sqrtn, input_nrows, input_vec,
+      segment_offsets_ptr, indices, weights, output_vec);
 }
 
 template <typename Treduce>
@@ -668,7 +692,8 @@ struct SegmentReduceGPUVectorized {
                             Toffsets ninner, Tsegmentids nsegments,
                             ReduceOp reduce_op, T initial_value,
                             T empty_segment_value, bool is_mean, bool is_sqrtn,
-                            const T* input, const Tsegmentids* segment_ids,
+                            int64_t input_nrows, const T* input,
+                            const Tsegmentids* segment_ids,
                             const Tindices* indices, const Tweights* weights,
                             T* output) {
       DCHECK_EQ(ninner % vec_size, 0);
@@ -682,8 +707,8 @@ struct SegmentReduceGPUVectorized {
 
       return SegmentReduceGPUImpl<Treducevec>(
           ctx, nouter, ninner_vec, nsegments, reduce_op, initial_value,
-          empty_segment_value, is_mean, is_sqrtn, input_vec, segment_ids,
-          indices, weights, output_vec);
+          empty_segment_value, is_mean, is_sqrtn, input_nrows, input_vec,
+          segment_ids, indices, weights, output_vec);
     }
   };
 };
@@ -694,7 +719,8 @@ struct SegmentReduceGPUVectorized {
 // If is_mean or is_sqrtn is true, the results are normalized using the
 // corresponding function.
 // If indices is not nullptr, input rows are accessed indirectly as
-// input[indices[i]], instead of input[i].
+// input[indices[i]], instead of input[i]. Rows whose index is outside
+// [0, input_nrows) are skipped.
 // The implementation is deterministic.
 // Note: Treduce is to allow reducing in higher precision than T.
 template <typename Treduce, typename T, typename Toffsets, typename Tindices,
@@ -707,13 +733,14 @@ absl::Status SegmentReduceGPU(
     const Tsegmentids* segment_ids,  // [nouter]
     const Tindices* indices,         // [nouter] (optional)
     const Tweights* weights,         // [nouter or any] (optional)
-    T* output) {                     // [nsegments, ninner]
+    T* output,                       // [nsegments, ninner]
+    int64_t input_nrows = std::numeric_limits<int64_t>::max()) {
   if (ninner == 0 || nsegments == 0) return absl::OkStatus();
   return DispatchToVectorized<
       T, SegmentReduceGPUVectorized<Treduce>::template Impl>(
       MinAlignmentOf(input, output, ninner), ctx, nouter, ninner, nsegments,
-      reduce_op, initial_value, empty_segment_value, is_mean, is_sqrtn, input,
-      segment_ids, indices, weights, output);
+      reduce_op, initial_value, empty_segment_value, is_mean, is_sqrtn,
+      input_nrows, input, segment_ids, indices, weights, output);
 }
 
 template <typename SegmentId, typename Index, typename Tweights>
@@ -991,7 +1018,7 @@ absl::Status SparseSegmentReductionFunctor<T, Index, SegmentId>::operator()(
       /*is_mean=*/is_mean, /*is_sqrtn=*/is_sqrtn,
       /*input=*/input.data(), /*segment_ids=*/segment_ids.data(),
       /*indices=*/indices.data(), /*weights=*/static_cast<Tweights*>(nullptr),
-      /*output=*/output.data());
+      /*output=*/output.data(), /*input_nrows=*/input.dimension(0));
 }
 
 // Finds the position of an out-of-range `indices` value (against `noutput`)
@@ -1483,7 +1510,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
         done);
 
     auto async_finish_computation =
-        [this, context, dense_output_shape, nouter, ninner, input,
+        [this, context, dense_output_shape, nouter, ninner, nsegments, input,
          indices_tensor, tmp_sorted_indices, sorted_indices_ptr,
          tmp_sorted_indices_unique_ids, sorted_indices_unique_ids_ptr,
          segment_ids_tensor, tmp_permuted_segment, permuted_segment_ptr,
@@ -1521,7 +1548,8 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                                /*segment_ids=*/sorted_indices_unique_ids_ptr,
                                /*indices=*/permuted_segment_ptr,
                                /*weights=*/weights_ptr,
-                               /*output=*/output_ptr),
+                               /*output=*/output_ptr,
+                               /*input_nrows=*/nsegments),
                            done);
 
       Tensor* sorted_unique_indices = nullptr;
