@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -233,6 +234,23 @@ bool IsScanLoopRequired(const TiledHloInstruction& tiled_hlo) {
          *dim_info.tile_size < dim_info.dimension_size;
 }
 
+// Returns the variable IDs of the sequential dimensions of `tiled_hlo` whose
+// tile does not cover the whole dimension, i.e. those iterated by a loop in the
+// emitted code.
+llvm::SmallVector<VariableID, 2> GetLoopDimIds(
+    const TiledHloInstruction& tiled_hlo) {
+  const TilingSpace& tiling_space = tiled_hlo.tile().tiling_space();
+  llvm::SmallVector<VariableID, 2> loop_dim_ids;
+  for (const TilingSpace::DimensionInfo& dim : tiling_space.dimensions()) {
+    if (dim.type == TilingSpace::DimensionSemantics::kSequential &&
+        dim.hlo == tiled_hlo.hlo() &&
+        (!dim.tile_size.has_value() || *dim.tile_size < dim.dimension_size)) {
+      loop_dim_ids.push_back(dim.id.value());
+    }
+  }
+  return loop_dim_ids;
+}
+
 // Defines how the operands of a TiledHloInstruction are partitioned during
 // region reconstruction.
 //
@@ -245,6 +263,7 @@ bool IsScanLoopRequired(const TiledHloInstruction& tiled_hlo) {
 //   RegionSchema {
 //     region_roots = {{0}}
 //     operand_ids = {1}
+//     loop_dim_ids = {<reduction dimension IDs>}
 //   }
 // - For a dot product (e.g., `dot(lhs, rhs)`), both operands are grouped
 //   together as region roots to represent the sub-computation:
@@ -252,6 +271,7 @@ bool IsScanLoopRequired(const TiledHloInstruction& tiled_hlo) {
 //   RegionSchema {
 //     region_roots = {{0, 1}}
 //     operand_ids = {}
+//     loop_dim_ids = {<contracting dimension ID>}
 //   }
 struct RegionSchema {
   using OperandIDs = llvm::SmallVector<int64_t>;
@@ -263,6 +283,10 @@ struct RegionSchema {
   // Operand indices that are regular inputs to the instruction and should
   // remain within the current region.
   OperandIDs operand_ids;
+
+  // Sequential dimensions iterated by the loop wrapping each region in
+  // `region_roots`. Empty for regions that are not loop bodies.
+  llvm::SmallVector<VariableID, 2> loop_dim_ids;
 };
 
 // Determines the partitioning specification for the operands of a tiled HLO
@@ -274,8 +298,7 @@ struct RegionSchema {
 // to initiate the creation of nested `TiledHloRegion`s. Regular operands that
 // are simply inputs to the current computation level are kept under
 // `operand_ids` to be processed in the current region.
-RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo,
-                             const TilingSpace& tiling_space) {
+RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo) {
   const HloOpcode opcode = tiled_hlo.hlo()->opcode();
   const int64_t num_operands = tiled_hlo.hlo()->operand_count();
 
@@ -284,16 +307,23 @@ RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo,
   };
   switch (opcode) {
     case HloOpcode::kDot:
-    case HloOpcode::kScaledDot:
-    case HloOpcode::kRaggedDot: {
+    case HloOpcode::kScaledDot: {
       return RegionSchema{/*region_roots=*/{iota(0, num_operands)},
-                          /*operand_ids=*/{}};
+                          /*operand_ids=*/{},
+                          /*loop_dim_ids=*/GetLoopDimIds(tiled_hlo)};
+    }
+    case HloOpcode::kRaggedDot: {
+      // No hoisting: the ragged dot emitter generates its own control flow.
+      return RegionSchema{/*region_roots=*/{iota(0, num_operands)},
+                          /*operand_ids=*/{},
+                          /*loop_dim_ids=*/{}};
     }
     case HloOpcode::kReduce: {
       if (IsReductionLoopRequired(tiled_hlo)) {
         int64_t num_inputs = num_operands / 2;
         return RegionSchema{/*region_roots=*/{iota(0, num_inputs)},
-                            /*operand_ids=*/{iota(num_inputs, num_operands)}};
+                            /*operand_ids=*/{iota(num_inputs, num_operands)},
+                            /*loop_dim_ids=*/GetLoopDimIds(tiled_hlo)};
       }
       break;
     }
@@ -302,7 +332,8 @@ RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo,
         const auto* scan = Cast<HloScanInstruction>(tiled_hlo.hlo());
         int64_t num_inputs = scan->inputs().size();
         return RegionSchema{/*region_roots=*/{iota(0, num_inputs)},
-                            /*operand_ids=*/{iota(num_inputs, num_operands)}};
+                            /*operand_ids=*/{iota(num_inputs, num_operands)},
+                            /*loop_dim_ids=*/GetLoopDimIds(tiled_hlo)};
       }
       break;
     }
@@ -318,7 +349,8 @@ RegionSchema GetRegionSchema(const TiledHloInstruction& tiled_hlo,
       break;
   }
   return RegionSchema{/*region_roots=*/{},
-                      /*operand_ids=*/iota(0, num_operands)};
+                      /*operand_ids=*/iota(0, num_operands),
+                      /*loop_dim_ids=*/{}};
 }
 
 // Recursively populates `tile_names` with unique names for `tiled_hlo` and
@@ -388,26 +420,26 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
   return hlo_instructions;
 }
 
-}  // namespace
+// State of a region under construction. Linked to the enclosing region's
+// context so that loop-invariant instructions can be inserted into an outer
+// region while a nested one is being built.
+struct RegionContext {
+  // Sequential dimensions iterated by the loop wrapping this region, if any.
+  llvm::SmallVector<VariableID, 2> loop_dim_ids;
+  OrderedTiledHloPtrSet* instructions_set = nullptr;
+  std::vector<TiledHloInstruction*>* worklist = nullptr;
+  RegionContext* parent = nullptr;
+};
 
-void TiledHloRegion::Simplify() {
-  for (TiledHloInstruction* instruction : instructions_) {
-    Tile tile = instruction->tile();
-    tile.Simplify();
-    instruction->set_tile(std::move(tile));
-    for (auto& region : instruction->hlo_regions()) {
-      region.Simplify();
-    }
+// Returns the outermost region into which an instruction with the given `tile`
+// can be hoisted from `current`.
+RegionContext* FindTargetRegion(RegionContext* current, const Tile& tile) {
+  // Regions that are not loop bodies (e.g. concatenate branches) are barriers.
+  while (current->parent != nullptr && !current->loop_dim_ids.empty() &&
+         !tile.DependsOnVariables(current->loop_dim_ids)) {
+    current = current->parent;
   }
-}
-
-void TiledHloRegion::SortInstructionsPostOrder() {
-  for (TiledHloInstruction* instruction : instructions_) {
-    for (auto& region : instruction->hlo_regions()) {
-      region.SortInstructionsPostOrder();
-    }
-  }
-  SortTiledHloInstructionsInPostOrder(instructions_, roots_);
+  return current;
 }
 
 // Recursively constructs a tiled HLO region starting from a set of root
@@ -418,16 +450,21 @@ void TiledHloRegion::SortInstructionsPostOrder() {
 // nested computation regions (e.g., reduction bodies or dot computations).
 //
 // Instructions are not ordered.
-absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
+absl::StatusOr<TiledHloRegion> CreateHloRegion(
     llvm::SmallVector<std::pair<const HloInstruction*, experimental::Tile>, 4>
         roots,
     const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
     std::deque<TiledHloInstruction>& instruction_storage,
     absl::flat_hash_map<int64_t,
                         std::pair<const TiledHloInstruction*, Interval>>&
-        rt_symbol_to_tiled_hlo) {
+        rt_symbol_to_tiled_hlo,
+    llvm::SmallVector<VariableID, 2> loop_dim_ids,
+    RegionContext* parent_context) {
   std::vector<TiledHloInstruction*> worklist;
   OrderedTiledHloPtrSet tiled_hlo_instructions_set(instruction_storage);
+  RegionContext current_context{std::move(loop_dim_ids),
+                                &tiled_hlo_instructions_set, &worklist,
+                                parent_context};
 
   llvm::SmallVector<const TiledHloInstruction*, 4> canonical_roots;
   canonical_roots.reserve(roots.size());
@@ -452,7 +489,7 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
         auto operands_tiles,
         PropagateTileToInput(tiling_space, *hlo, tiled_hlo->tile(), 0));
 
-    RegionSchema spec = GetRegionSchema(*tiled_hlo, tiling_space);
+    RegionSchema spec = GetRegionSchema(*tiled_hlo);
 
     HloInstructionAdaptor instruction_adaptor(*hlo, &fusion);
     absl::InlinedVector<HloInstructionAdaptor, 2> operands =
@@ -473,7 +510,8 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
       ABSL_ASSIGN_OR_RETURN(
           TiledHloRegion res,
           CreateHloRegion(std::move(region_roots), fusion, tiling_space,
-                          instruction_storage, rt_symbol_to_tiled_hlo));
+                          instruction_storage, rt_symbol_to_tiled_hlo,
+                          spec.loop_dim_ids, &current_context));
       for (const auto& [i, id] : llvm::enumerate(region_root_ids)) {
         resolved_operands[id] = res.roots()[i];
       }
@@ -482,11 +520,15 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
     }
 
     for (int64_t id : spec.operand_ids) {
-      auto [operand_tiled_hlo, inserted] = tiled_hlo_instructions_set.Insert(
-          &operands[id].instruction(), std::move(operands_tiles[id]));
+      // Hoists and deduplicates loop-invariant instructions.
+      RegionContext* target_region =
+          FindTargetRegion(&current_context, operands_tiles[id]);
+      auto [operand_tiled_hlo, inserted] =
+          target_region->instructions_set->Insert(
+              &operands[id].instruction(), std::move(operands_tiles[id]));
       resolved_operands[id] = operand_tiled_hlo;
       if (inserted) {
-        worklist.push_back(operand_tiled_hlo);
+        target_region->worklist->push_back(operand_tiled_hlo);
       }
 
       std::optional<const TilingSpace::RTVarInfo*> rt_var_info =
@@ -509,6 +551,28 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
       std::move(canonical_roots)};
 }
 
+}  // namespace
+
+void TiledHloRegion::Simplify() {
+  for (TiledHloInstruction* instruction : instructions_) {
+    Tile tile = instruction->tile();
+    tile.Simplify();
+    instruction->set_tile(std::move(tile));
+    for (auto& region : instruction->hlo_regions()) {
+      region.Simplify();
+    }
+  }
+}
+
+void TiledHloRegion::SortInstructionsPostOrder() {
+  for (TiledHloInstruction* instruction : instructions_) {
+    for (auto& region : instruction->hlo_regions()) {
+      region.SortInstructionsPostOrder();
+    }
+  }
+  SortTiledHloInstructionsInPostOrder(instructions_, roots_);
+}
+
 /*static*/ absl::StatusOr<TiledHloComputation> TiledHloComputation::Tile(
     const HloFusionAdaptor& fusion, std::unique_ptr<TilingSpace> tiling_space) {
   llvm::SmallVector<std::pair<const HloInstruction*, experimental::Tile>, 4>
@@ -525,7 +589,8 @@ absl::StatusOr<TiledHloRegion> TiledHloComputation::CreateHloRegion(
   ABSL_ASSIGN_OR_RETURN(
       TiledHloRegion region,
       CreateHloRegion(std::move(tiled_roots), fusion, *tiling_space,
-                      instruction_storage, rt_symbol_to_tiled_hlo));
+                      instruction_storage, rt_symbol_to_tiled_hlo,
+                      /*loop_dim_ids=*/{}, /*parent_context=*/nullptr));
 
   return TiledHloComputation(std::move(tiling_space),
                              std::move(instruction_storage), std::move(region),

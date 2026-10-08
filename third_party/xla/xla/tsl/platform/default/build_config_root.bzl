@@ -30,8 +30,8 @@ visibility(DEFAULT_LOAD_VISIBILITY)
 # RBE settings for tests that require a GPU. This is used in exec_properties of rules
 # that need GPU access.
 GPU_TEST_PROPERTIES = {
-    "dockerRuntime": "nvidia",
-    "Pool": "gpu-pool",
+    "test.dockerRuntime": "nvidia",
+    "test.Pool": "gpu-pool",
 }
 
 ROCM_SINGLE_GPU_TEST_PROPERTIES = {
