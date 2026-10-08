@@ -1078,9 +1078,10 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
 
  protected:
-  // Returns all transitive colocated buffers of this buffer interval. I.e., If
-  // a buffer A is colocated with B and B is colocated with C, this function
-  // returns all three of them.
+  // Returns all transitive colocated buffers of this buffer interval,
+  // excluding the interval's buffer itself. I.e., if a buffer A is colocated
+  // with B and B is colocated with C, calling this on A's interval returns B
+  // and C.
   absl::flat_hash_set<const BufferType*> GetTransitiveColocations(
       const BufferInterval& interval) const;
 

@@ -385,6 +385,21 @@ def FuseA4W2DRQFullyConnectedPass : Pass<"tfl-fuse-a4w2-drq-fully-connected", "m
   ];
 }
 
+def FoldFp16CastsIntoFullyConnectedPass : Pass<"tfl-fold-fp16-casts-into-fully-connected", "mlir::func::FuncOp"> {
+  let summary = "Folds f16 <-> f32 casts around a float fully_connected into it.";
+  let description = [{
+      Rewrites `cast(f32 -> f16)(fully_connected(cast(f16 -> f32)(x), w, b))`
+      into `fully_connected(x, w, b)` with an f16 result. The filter and bias
+      keep their types, so the result is a mixed precision fully_connected
+      (f16 activations, f32 or quantized weights) that only runtimes supporting
+      that combination can execute.
+  }];
+  let constructor = "CreateFoldFp16CastsIntoFullyConnectedPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect"
+  ];
+}
+
 def PropagateQParamsPass : Pass<"tfl-propagate-qparams", "mlir::ModuleOp"> {
   let summary = "Propagates Quantization Parameters (scale and zero point) information through the graph.";
   let description = [{
