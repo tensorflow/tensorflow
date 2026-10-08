@@ -100,6 +100,49 @@ struct OperandReadInfo {
   double read_bandwidth_utilization_rate = 1.0;
 };
 
+using OperandReadMap =
+    absl::flat_hash_map<const HloInstruction*, OperandReadInfo>;
+
+// Accumulates `tile_bytes_read` and tracks the minimum
+// `bandwidth_utilization_rate` for `hlo` in `read_map`.
+void RecordOperandRead(const HloInstruction* hlo, int64_t tile_bytes_read,
+                       double bandwidth_utilization_rate,
+                       OperandReadMap& read_map) {
+  OperandReadInfo& operand_read_info = read_map[hlo];
+  operand_read_info.total_bytes_read += tile_bytes_read;
+  // TODO(b/332714755): using std::min is more pessimistic than it needs
+  // to be since it'll end up assuming that if one read is done with lower
+  // bandwidth, all other reads of the same operand will also be done with
+  // lower bandwidth. But it's a start. We should refactor this function
+  // to properly track each read independently later.
+  operand_read_info.read_bandwidth_utilization_rate =
+      std::min(operand_read_info.read_bandwidth_utilization_rate,
+               bandwidth_utilization_rate);
+}
+
+// Computes the memory read time across all operands in `read_map`.
+absl::Duration ComputeReadTime(
+    const OperandReadMap& read_map, const se::DeviceDescription& device_info,
+    int64_t num_blocks, const HloCostAnalysis::ShapeSizeFunction& shape_size) {
+  absl::Duration read_time = absl::ZeroDuration();
+  // `absl::Duration` addition uses exact fixed-point integer arithmetic, so
+  // map iteration order does not affect the accumulated result.
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [hlo, operand_read_info] : read_map) {
+    int64_t operand_size = shape_size(hlo->shape());
+    int64_t n_bytes_net =
+        std::min(operand_size, operand_read_info.total_bytes_read);
+
+    read_time += GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
+        device_info, num_blocks, n_bytes_net,
+        operand_read_info.total_bytes_read,
+        /*element_type=*/hlo->shape().element_type(),
+        /*hbm_bandwidth_utilization_rate=*/
+        operand_read_info.read_bandwidth_utilization_rate);
+  }
+  return read_time;
+}
+
 // Returns the number of elements in the tile after each dimension is padded to
 // the next power of 2.
 // TODO(b/353484968): Delete this function once we have constraints to only
@@ -387,7 +430,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
     absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn) {
-  absl::flat_hash_map<const HloInstruction*, OperandReadInfo> n_bytes_total_map;
+  OperandReadMap n_bytes_total_map;
 
   // Compute time for dot flops is counted separately.
   int64_t dot_flops = 0;
@@ -481,34 +524,13 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
             BandwidthUtilizationRateHeuristicForTiledMemoryAccess(*tiled_hlo,
                                                                   device_info);
 
-        OperandReadInfo& operand_read_info = n_bytes_total_map[hlo];
-        operand_read_info.total_bytes_read += tile_bytes_read;
-        // TODO(b/332714755): using std::min is more pessimistic than it needs
-        // to be since it'll end up assuming that if one read is done with lower
-        // bandwidth, all other reads of the same operand will also be done with
-        // lower bandwidth. But it's a start. We should refactor this function
-        // to properly track each read independently later.
-        operand_read_info.read_bandwidth_utilization_rate =
-            std::min(operand_read_info.read_bandwidth_utilization_rate,
-                     effective_bandwidth_utilization_rate);
+        RecordOperandRead(hlo, tile_bytes_read,
+                          effective_bandwidth_utilization_rate,
+                          n_bytes_total_map);
       });
 
-  absl::Duration read_time = absl::ZeroDuration();
-  for (const auto& [hlo, operand_read_info] : n_bytes_total_map) {
-    int64_t operand_size = shape_size(hlo->shape());
-    int64_t n_bytes_net =
-        std::min(operand_size, operand_read_info.total_bytes_read);
-
-    // TODO(b/332714755): use
-    // `BandwidthUtilizationRateHeuristicForTiledMemoryAccess` to compute read
-    // time as well.
-    read_time += GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
-        device_info, num_blocks, n_bytes_net,
-        operand_read_info.total_bytes_read,
-        /*element_type=*/hlo->shape().element_type(),
-        /*hbm_bandwidth_utilization_rate=*/
-        operand_read_info.read_bandwidth_utilization_rate);
-  }
+  absl::Duration read_time =
+      ComputeReadTime(n_bytes_total_map, device_info, num_blocks, shape_size);
 
   auto roots = tiled_hlo_computation.roots();
   int64_t bytes_written = 0;
