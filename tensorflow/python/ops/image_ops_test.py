@@ -6145,9 +6145,11 @@ class PSNRTest(test_util.TensorFlowTestCase):
     expected = self._PSNR_NumPy(image1, image2, 1)
 
     with self.cached_session():
+      tf_image2 = constant_op.constant(image2, dtype=dtypes.float32)
       for a, b in ((image1.tolist(), image2.tolist()),
                    (tuple(image1.tolist()), tuple(image2.tolist())),
                    (image1.tolist(), image2.astype(np.float32)),
+                   (image1.tolist(), tf_image2),
                    (image1.astype(np.float32), image2.tolist()),
                    (image1.astype(np.float32), image2.astype(np.float32))):
         tf_psnr = self.evaluate(image_ops.psnr(a, b, 1.0, "psnr"))
@@ -6171,7 +6173,8 @@ class PSNRTest(test_util.TensorFlowTestCase):
     # The shape check runs before the reduction, so a rank below 3 is
     # reported as a rank problem rather than surfacing from reduce_mean.
     for bad in ([1.0, 2.0], [[1.0, 2.0], [3.0, 4.0]]):
-      with self.assertRaisesRegex(ValueError, "must have rank at least 3"):
+      with self.assertRaisesRegex(
+          ValueError, "rank at least 3|at least rank 3"):
         image_ops.psnr(bad, bad, 1.0)
 
   def testPSNRMultiImage(self):
