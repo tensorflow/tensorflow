@@ -924,6 +924,18 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     rp = RowPartition.from_uniform_row_length(3, nrows=4)
     self.assertEqual(12, rp._static_nvals_or_constant())
 
+  def testStaticNvalsFromValueRowids(self):
+    rp = RowPartition.from_value_rowids([0, 0, 1, 2, 2])
+    self.assertEqual(5, rp._static_nvals_or_constant())
+
+  def testStaticNvalsFromRowStarts(self):
+    rp = RowPartition.from_row_starts([0, 2, 3], nvals=5)
+    self.assertEqual(5, rp._static_nvals_or_constant())
+
+  def testStaticNvalsFromRowLimits(self):
+    rp = RowPartition.from_row_limits([2, 3, 5])
+    self.assertEqual(5, rp._static_nvals_or_constant())
+
   def testFromRowSplitsStaticValidationNonZero(self):
     with self.assertRaisesRegex(ValueError, r"row_splits\[0\] must be zero"):
       RowPartition.from_row_splits([1, 2, 4])
@@ -942,6 +954,11 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError, r"value_rowids must be monotonic increasing"):
       RowPartition.from_value_rowids([0, 2, 1])
 
+  def testFromValueRowidsStaticValidationNrowsExceeded(self):
+    with self.assertRaisesRegex(
+        ValueError, r"value_rowids\[-1\] must be < nrows"):
+      RowPartition.from_value_rowids([0, 2], nrows=2)
+
   def testFromRowLengthsStaticValidationNegative(self):
     with self.assertRaisesRegex(
         ValueError, r"row_lengths must be nonnegative"):
@@ -956,6 +973,16 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError, r"row_starts must be monotonic increasing"):
       RowPartition.from_row_starts([0, 3, 2], nvals=5)
 
+  def testFromRowStartsStaticValidationNvalsExceeded(self):
+    with self.assertRaisesRegex(
+        ValueError, r"row_starts\[-1\] must be <= nvals"):
+      RowPartition.from_row_starts([0, 3], nvals=2)
+
+  def testFromRowStartsStaticValidationEmptyWithNvals(self):
+    with self.assertRaisesRegex(
+        ValueError, r"nvals must be 0 when row_starts is empty"):
+      RowPartition.from_row_starts([], nvals=2)
+
   def testFromRowLimitsStaticValidationNegative(self):
     with self.assertRaisesRegex(ValueError, r"row_limits must be non-negative"):
       RowPartition.from_row_limits([-1, 2])
@@ -964,6 +991,56 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, r"row_limits must be monotonic increasing"):
       RowPartition.from_row_limits([3, 1])
+
+  def testFromRowSplitsStaticValidationUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      del x
+      return RowPartition.from_row_splits([0, 5, 2])
+
+    with self.assertRaisesRegex(
+        ValueError, r"must be monotonic increasing"):
+      fn(constant_op.constant(0))
+
+  def testFromValueRowidsStaticValidationUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      del x
+      return RowPartition.from_value_rowids([0, 2], nrows=2)
+
+    with self.assertRaisesRegex(
+        ValueError, r"value_rowids\[-1\] must be < nrows"):
+      fn(constant_op.constant(0))
+
+  def testFromRowLengthsStaticValidationUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      del x
+      return RowPartition.from_row_lengths([3, -1, 2])
+
+    with self.assertRaisesRegex(
+        ValueError, r"row_lengths must be nonnegative"):
+      fn(constant_op.constant(0))
+
+  def testFromRowStartsStaticValidationUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      del x
+      return RowPartition.from_row_starts([0, 3], nvals=2)
+
+    with self.assertRaisesRegex(
+        ValueError, r"row_starts\[-1\] must be <= nvals"):
+      fn(constant_op.constant(0))
+
+  def testFromRowLimitsStaticValidationUnderJit(self):
+    @def_function.function(jit_compile=True)
+    def fn(x):
+      del x
+      return RowPartition.from_row_limits([3, 1])
+
+    with self.assertRaisesRegex(
+        ValueError, r"row_limits must be monotonic increasing"):
+      fn(constant_op.constant(0))
 
 
 @test_util.run_all_in_graph_and_eager_modes

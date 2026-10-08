@@ -2200,7 +2200,6 @@ class RaggedTensor(
 
     return stub
 
-  # pylint: disable=too-many-function-args
   __getitem__ = _overloaded_operator("__getitem__")
   __ge__ = _overloaded_operator("__ge__")
   __gt__ = _overloaded_operator("__gt__")
@@ -2232,7 +2231,6 @@ class RaggedTensor(
   __truediv__ = _overloaded_operator("__truediv__")
   __rtruediv__ = _overloaded_operator("__rtruediv__")
   del _overloaded_operator
-  # pylint: enable=too-many-function-args
 
   # =============================================================================
   # Name Scope
