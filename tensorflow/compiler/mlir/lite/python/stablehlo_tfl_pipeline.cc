@@ -303,6 +303,10 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   pass_manager.addPass(CreatePruneDeadResourcesPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateFuseA4W2DRQFullyConnectedPass());
+  if (pass_config.fold_fp16_casts_into_fully_connected) {
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateFoldFp16CastsIntoFullyConnectedPass());
+  }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());

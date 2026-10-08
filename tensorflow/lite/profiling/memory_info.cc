@@ -16,11 +16,11 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cinttypes>
 #include <cstdint>
-#include <fstream>
-#include <iostream>
+#include <cstdio>
+#include <cstring>
 #include <ostream>
-#include <sstream>
 #include <string>
 
 #ifdef __linux__
@@ -47,26 +47,24 @@ namespace {
 #if defined(__linux__)
 // Returns the current VM swap in kilobytes on Linux.
 int64_t GetCurrentVmSwapKb() {
-  std::ifstream status_file("/proc/self/status");
-  if (!status_file.is_open()) {
+  FILE* status_file = fopen("/proc/self/status", "r");
+  if (!status_file) {
     return -1;
   }
-  std::string line;
-  while (std::getline(status_file, line)) {
-    if (line.rfind("VmSwap:", 0) == 0) {
-      std::stringstream ss(line);
-      std::string key;
-      int64_t value_kb;
-      // The line format is "VmSwap:    1234 kB"
-      // We can extract the key ("VmSwap:") and the numeric value ("1234").
-      ss >> key >> value_kb;
-      if (!ss.fail()) {
+  char line[256];
+  while (fgets(line, sizeof(line), status_file)) {
+    if (strncmp(line, "VmSwap:", 7) == 0) {
+      int64_t value_kb = 0;
+      if (sscanf(line + 7, "%" SCNd64, &value_kb) == 1) {
+        fclose(status_file);
         return value_kb;
       } else {
+        fclose(status_file);
         return -1;  // Indicate parsing error
       }
     }
   }
+  fclose(status_file);
   // If the VmSwap line is not found, it means 0 swap is being used.
   return 0;
 }

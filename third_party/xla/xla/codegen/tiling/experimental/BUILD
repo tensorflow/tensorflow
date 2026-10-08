@@ -266,6 +266,7 @@ cc_library(
         ":tile_propagation",
         "//xla:util",
         "//xla/hlo/analysis:interval",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:name_uniquer",
