@@ -833,6 +833,125 @@ class ConcatOffsetTest(test.TestCase):
           ans, [[0, 0, 0], [0, 5000000000, 0], [0, 5000000007, 0]])
       self.assertEqual(ans[0].dtype, dtypes.int64)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatAxis0Contiguous(self):
+    rng = np.random.RandomState(0)
+    with test_util.use_gpu():
+      for dtype in [
+          dtypes.float32,
+          dtypes.float16,
+          dtypes.bfloat16,
+          dtypes.int32,
+          dtypes.int64,
+      ]:
+        for num_inputs in [1, 2, 5, 16, 17, 32, 33]:
+          tensors = [
+              constant_op.constant(
+                  rng.randn(i + 1, 7).astype(dtype.as_numpy_dtype)
+              )
+              for i in range(num_inputs)
+          ]
+          expected = np.concatenate([self.evaluate(t) for t in tensors], axis=0)
+          actual = self.evaluate(array_ops.concat(tensors, 0))
+          self.assertAllEqual(expected, actual)
+
+        # 1D rank-1 tensors
+        rank1_tensors = [
+            constant_op.constant(rng.randn(10).astype(dtype.as_numpy_dtype)),
+            constant_op.constant(rng.randn(15).astype(dtype.as_numpy_dtype)),
+            constant_op.constant(rng.randn(8).astype(dtype.as_numpy_dtype)),
+        ]
+        expected_rank1 = np.concatenate(
+            [self.evaluate(t) for t in rank1_tensors], axis=0
+        )
+        actual_rank1 = self.evaluate(array_ops.concat(rank1_tensors, 0))
+        self.assertAllEqual(expected_rank1, actual_rank1)
+
+        # Multi-dimensional tensors with leading unit dimensions (dim0 == 1)
+        leading_unit_tensors = [
+            constant_op.constant(
+                rng.randn(1, 1, 3).astype(dtype.as_numpy_dtype)
+            ),
+            constant_op.constant(
+                rng.randn(1, 1, 5).astype(dtype.as_numpy_dtype)
+            ),
+            constant_op.constant(
+                rng.randn(1, 1, 4).astype(dtype.as_numpy_dtype)
+            ),
+        ]
+        expected_leading_unit = np.concatenate(
+            [self.evaluate(t) for t in leading_unit_tensors], axis=2
+        )
+        actual_leading_unit = self.evaluate(
+            array_ops.concat(leading_unit_tensors, 2)
+        )
+        self.assertAllEqual(expected_leading_unit, actual_leading_unit)
+
+        # Boundary edge cases: zero-element tensors and dimension-0 shapes
+        tensors_with_zero = [
+            constant_op.constant(rng.randn(0, 7).astype(dtype.as_numpy_dtype)),
+            constant_op.constant(rng.randn(3, 7).astype(dtype.as_numpy_dtype)),
+            constant_op.constant(rng.randn(0, 7).astype(dtype.as_numpy_dtype)),
+            constant_op.constant(rng.randn(2, 7).astype(dtype.as_numpy_dtype)),
+        ]
+        expected_zero = np.concatenate(
+            [self.evaluate(t) for t in tensors_with_zero], axis=0
+        )
+        actual_zero = self.evaluate(array_ops.concat(tensors_with_zero, 0))
+        self.assertAllEqual(expected_zero, actual_zero)
+
+        # All-empty inputs boundary case
+        all_empty = [
+            constant_op.constant(rng.randn(0, 7).astype(dtype.as_numpy_dtype)),
+            constant_op.constant(rng.randn(0, 7).astype(dtype.as_numpy_dtype)),
+        ]
+        expected_all_empty = np.concatenate(
+            [self.evaluate(t) for t in all_empty], axis=0
+        )
+        actual_all_empty = self.evaluate(array_ops.concat(all_empty, 0))
+        self.assertAllEqual(expected_all_empty, actual_all_empty)
+
+        # Trailing empty axis
+        trailing_empty = [
+            constant_op.constant(rng.randn(2, 0).astype(dtype.as_numpy_dtype)),
+            constant_op.constant(rng.randn(3, 0).astype(dtype.as_numpy_dtype)),
+        ]
+        expected_trailing = np.concatenate(
+            [self.evaluate(t) for t in trailing_empty], axis=0
+        )
+        actual_trailing = self.evaluate(array_ops.concat(trailing_empty, 0))
+        self.assertAllEqual(expected_trailing, actual_trailing)
+
+        # Boundary edge cases for N >= 16 with zero-element tensors
+        tensors_with_zero_large = [
+            constant_op.constant(
+                rng.randn(0 if i % 3 == 0 else 2, 7).astype(
+                    dtype.as_numpy_dtype
+                )
+            )
+            for i in range(24)
+        ]
+        expected_zero_large = np.concatenate(
+            [self.evaluate(t) for t in tensors_with_zero_large], axis=0
+        )
+        actual_zero_large = self.evaluate(
+            array_ops.concat(tensors_with_zero_large, 0)
+        )
+        self.assertAllEqual(expected_zero_large, actual_zero_large)
+
+        # All-empty inputs boundary case for N >= 16
+        all_empty_large = [
+            constant_op.constant(rng.randn(0, 7).astype(dtype.as_numpy_dtype))
+            for _ in range(18)
+        ]
+        expected_all_empty_large = np.concatenate(
+            [self.evaluate(t) for t in all_empty_large], axis=0
+        )
+        actual_all_empty_large = self.evaluate(
+            array_ops.concat(all_empty_large, 0)
+        )
+        self.assertAllEqual(expected_all_empty_large, actual_all_empty_large)
+
 
 if __name__ == "__main__":
   test.main()
