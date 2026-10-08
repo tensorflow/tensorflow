@@ -3146,6 +3146,56 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   return success();
 }
 
+static xla::BlockScalingConfig ConvertBlockScalingConfig(
+    mlir::stablehlo::BlockScalingConfigAttr attr) {
+  xla::BlockScalingConfig config;
+  if (!attr) {
+    return config;
+  }
+  auto convert_side =
+      [](mlir::stablehlo::TensorBlockScalingConfigAttr side,
+         xla::BlockScalingConfig::TensorBlockScalingConfig* out) {
+        out->set_scale_idx(side.getScaleIdx());
+        if (side.getZeroIdx()) {
+          out->set_zero_idx(*side.getZeroIdx());
+        }
+        out->mutable_strides()->Assign(side.getStrides().begin(),
+                                       side.getStrides().end());
+        out->mutable_steps()->Assign(side.getSteps().begin(),
+                                     side.getSteps().end());
+      };
+  if (attr.getLhs()) {
+    convert_side(attr.getLhs(), config.mutable_lhs());
+  }
+  if (attr.getRhs()) {
+    convert_side(attr.getRhs(), config.mutable_rhs());
+  }
+  return config;
+}
+
+static xla::SparsityConfig ConvertSparsityConfig(
+    mlir::stablehlo::SparsityConfigAttr attr) {
+  xla::SparsityConfig config;
+  if (!attr) {
+    return config;
+  }
+  auto convert_side = [](mlir::stablehlo::TensorSparsityConfigAttr side,
+                         xla::SparsityConfig::TensorSparsityConfig* out) {
+    out->set_num_non_zero(side.getNumNonZero());
+    out->set_block_size(side.getBlockSize());
+    out->set_dimension(side.getDimension());
+    out->set_stride(side.getStride());
+    out->set_idx(side.getIdx());
+  };
+  if (attr.getLhs()) {
+    convert_side(attr.getLhs(), config.mutable_lhs());
+  }
+  if (attr.getRhs()) {
+    convert_side(attr.getRhs(), config.mutable_rhs());
+  }
+  return config;
+}
+
 LogicalResult ExportXlaOp(mlir::stablehlo::DotGeneralOp op,
                           OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
@@ -3173,9 +3223,19 @@ LogicalResult ExportXlaOp(mlir::stablehlo::DotGeneralOp op,
     }
     precision_config->set_algorithm(algorithm.value());
   }
+  std::vector<xla::XlaOp> ext_ops;
+  for (mlir::Value v : op.getExtOperands()) {
+    if (failed(GetXlaOp(v, value_map, &ext_ops.emplace_back(), op))) {
+      return mlir::failure();
+    }
+  }
+
+  auto s_cfg = ConvertSparsityConfig(op.getSparsityConfigAttr());
+  auto b_cfg = ConvertBlockScalingConfig(op.getBlockScalingConfigAttr());
   auto xlaOp = xla::DotGeneral(
       lhs, rhs, Convert_dot_dimension_numbers(op.getDotDimensionNumbers()),
-      Unwrap(precision_config), preferred_element_type);
+      Unwrap(precision_config), preferred_element_type, ext_ops, &s_cfg,
+      &b_cfg);
 
   value_map[op] = xlaOp;
   return mlir::success();

@@ -120,6 +120,13 @@ std::string SanitizeFunctionName(llvm::StringRef name) {
 // Default operations have lhs_contracting dimension is 1 (or zero for vector)
 // and the rhs_contracting dimension is zero, and there are no batch dimensions.
 bool DotIsDefault(const HloInstruction* instruction) {
+  if (instruction->operand_count() > 2 ||
+      instruction->sparsity_config().has_lhs() ||
+      instruction->sparsity_config().has_rhs() ||
+      instruction->block_scaling_config().has_lhs() ||
+      instruction->block_scaling_config().has_rhs()) {
+    return false;
+  }
   // If LHS/RHS has rank greater than 2, not default dot
   const auto& operands = instruction->operands();
   if (operands[0]->shape().dimensions().size() > 2 ||
@@ -967,6 +974,35 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "dot_dimension_numbers",
           stablehlo::ConvertDotDimensionNumbers(
               instruction->dot_dimension_numbers(), builder_)));
+      const BlockScalingConfig& bs = instruction->block_scaling_config();
+      if (bs.has_lhs() || bs.has_rhs()) {
+        auto convert_side =
+            [&](const BlockScalingConfig::TensorBlockScalingConfig& s) {
+              std::optional<int64_t> zero_idx =
+                  s.has_zero_idx() ? std::optional<int64_t>(s.zero_idx())
+                                   : std::nullopt;
+              return mlir::stablehlo::TensorBlockScalingConfigAttr::get(
+                  context_, s.scale_idx(), zero_idx, s.strides(), s.steps());
+            };
+        attributes.push_back(builder_->getNamedAttr(
+            "block_scaling_config",
+            mlir::stablehlo::BlockScalingConfigAttr::get(
+                context_, bs.has_lhs() ? convert_side(bs.lhs()) : nullptr,
+                bs.has_rhs() ? convert_side(bs.rhs()) : nullptr)));
+      }
+      const SparsityConfig& sp = instruction->sparsity_config();
+      if (sp.has_lhs() || sp.has_rhs()) {
+        auto convert_side = [&](const SparsityConfig::TensorSparsityConfig& s) {
+          return mlir::stablehlo::TensorSparsityConfigAttr::get(
+              context_, s.num_non_zero(), s.block_size(), s.dimension(),
+              s.stride(), s.idx());
+        };
+        attributes.push_back(builder_->getNamedAttr(
+            "sparsity_config",
+            mlir::stablehlo::SparsityConfigAttr::get(
+                context_, sp.has_lhs() ? convert_side(sp.lhs()) : nullptr,
+                sp.has_rhs() ? convert_side(sp.rhs()) : nullptr)));
+      }
       return mlir::stablehlo::DotGeneralOp::create(
                  *func_builder, loc, result_type, operands, attributes)
           .getOperation();
