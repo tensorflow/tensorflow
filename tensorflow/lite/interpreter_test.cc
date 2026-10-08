@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -2424,6 +2425,218 @@ TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
   EXPECT_EQ(
       interpreter_->output_tensor_by_signature("Output1", "InvalidMethod"),
       nullptr);
+}
+
+TEST(InterpreterSimplePlannerReclamationTest, ArithmeticChainReclamation) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(4), kTfLiteOk);
+  interpreter.SetInputs({0});
+  interpreter.SetOutputs({3});
+
+  TfLiteQuantizationParams quant;
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {2}, quant);
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteFloat32, "", {2}, quant);
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteFloat32, "", {2}, quant);
+  interpreter.SetTensorParametersReadWrite(3, kTfLiteFloat32, "", {2}, quant);
+
+  auto* add_reg = ops::builtin::Register_ADD();
+  auto make_add_params = []() {
+    auto* p =
+        reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+    p->activation = kTfLiteActNone;
+    return p;
+  };
+
+  interpreter.AddNodeWithParameters({0, 0}, {1}, nullptr, 0, make_add_params(),
+                                    add_reg);
+  interpreter.AddNodeWithParameters({1, 0}, {2}, nullptr, 0, make_add_params(),
+                                    add_reg);
+  interpreter.AddNodeWithParameters({2, 0}, {3}, nullptr, 0, make_add_params(),
+                                    add_reg);
+
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  auto* in_tensor = interpreter.tensor(0);
+  auto* out_tensor = interpreter.tensor(3);
+  ASSERT_NE(in_tensor->data.raw, nullptr);
+  ASSERT_NE(out_tensor->data.raw, nullptr);
+
+#if defined(TFLITE_USE_SIMPLE_MEMORY_PLANNER)
+  // In SimplePlanner with reclamation enabled, intermediate tensors are
+  // deferred until execution, so they are not allocated before invocation.
+  EXPECT_EQ(interpreter.tensor(1)->data.raw, nullptr);
+  EXPECT_EQ(interpreter.tensor(2)->data.raw, nullptr);
+#endif
+
+  // First invocation
+  float* in_data = interpreter.typed_tensor<float>(0);
+  in_data[0] = 1.0f;
+  in_data[1] = 2.0f;
+
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  float* out_data = interpreter.typed_tensor<float>(3);
+  EXPECT_FLOAT_EQ(out_data[0], 4.0f);
+  EXPECT_FLOAT_EQ(out_data[1], 8.0f);
+
+#if defined(TFLITE_USE_SIMPLE_MEMORY_PLANNER)
+  // After invocation, intermediate tensors are reclaimed.
+  EXPECT_EQ(interpreter.tensor(1)->data.raw, nullptr);
+  EXPECT_EQ(interpreter.tensor(2)->data.raw, nullptr);
+  // Pinned inputs and outputs remain intact.
+  EXPECT_NE(interpreter.tensor(0)->data.raw, nullptr);
+  EXPECT_NE(interpreter.tensor(3)->data.raw, nullptr);
+#endif
+
+  // Second invocation to verify repeated execution.
+  in_data = interpreter.typed_tensor<float>(0);
+  in_data[0] = 3.0f;
+  in_data[1] = 5.0f;
+
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  out_data = interpreter.typed_tensor<float>(3);
+  EXPECT_FLOAT_EQ(out_data[0], 12.0f);
+  EXPECT_FLOAT_EQ(out_data[1], 20.0f);
+
+#if defined(TFLITE_USE_SIMPLE_MEMORY_PLANNER)
+  EXPECT_EQ(interpreter.tensor(1)->data.raw, nullptr);
+  EXPECT_EQ(interpreter.tensor(2)->data.raw, nullptr);
+
+  // Test ReleaseNonPersistentMemory
+  ASSERT_EQ(interpreter.ReleaseNonPersistentMemory(), kTfLiteOk);
+  EXPECT_NE(interpreter.Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  in_data = interpreter.typed_tensor<float>(0);
+  in_data[0] = 10.0f;
+  in_data[1] = 20.0f;
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+  out_data = interpreter.typed_tensor<float>(3);
+  EXPECT_FLOAT_EQ(out_data[0], 40.0f);
+  EXPECT_FLOAT_EQ(out_data[1], 80.0f);
+  EXPECT_EQ(interpreter.tensor(1)->data.raw, nullptr);
+  EXPECT_EQ(interpreter.tensor(2)->data.raw, nullptr);
+#endif
+}
+
+TEST(InterpreterSimplePlannerReclamationTest,
+     PreserveAllTensorsOverridesReclamation) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(4), kTfLiteOk);
+  interpreter.SetInputs({0});
+  interpreter.SetOutputs({3});
+
+  TfLiteQuantizationParams quant;
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {2}, quant);
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteFloat32, "", {2}, quant);
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteFloat32, "", {2}, quant);
+  interpreter.SetTensorParametersReadWrite(3, kTfLiteFloat32, "", {2}, quant);
+
+  auto* add_reg = ops::builtin::Register_ADD();
+  auto make_add_params = []() {
+    auto* p =
+        reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+    p->activation = kTfLiteActNone;
+    return p;
+  };
+
+  interpreter.AddNodeWithParameters({0, 0}, {1}, nullptr, 0, make_add_params(),
+                                    add_reg);
+  interpreter.AddNodeWithParameters({1, 0}, {2}, nullptr, 0, make_add_params(),
+                                    add_reg);
+  interpreter.AddNodeWithParameters({2, 0}, {3}, nullptr, 0, make_add_params(),
+                                    add_reg);
+
+  InterpreterOptions options;
+  options.SetPreserveAllTensors(true);
+  ASSERT_EQ(interpreter.ApplyOptions(&options), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  float* in_data = interpreter.typed_tensor<float>(0);
+  in_data[0] = 1.0f;
+  in_data[1] = 2.0f;
+
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  float* out_data = interpreter.typed_tensor<float>(3);
+  EXPECT_FLOAT_EQ(out_data[0], 4.0f);
+  EXPECT_FLOAT_EQ(out_data[1], 8.0f);
+
+#if defined(TFLITE_USE_SIMPLE_MEMORY_PLANNER)
+  // When preserve_all_tensors is set, intermediate tensors should NOT be
+  // reclaimed.
+  EXPECT_NE(interpreter.tensor(1)->data.raw, nullptr);
+  EXPECT_NE(interpreter.tensor(2)->data.raw, nullptr);
+#endif
+}
+
+TEST_F(InterpreterTest, ReclamationDeclinesCleanlyForUnsupportedCases) {
+  ASSERT_EQ(interpreter_->AddTensors(4), kTfLiteOk);
+  interpreter_->SetInputs({0});
+  interpreter_->SetOutputs({3});
+
+  TfLiteQuantizationParams quant;
+  interpreter_->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {2}, quant);
+  interpreter_->SetTensorParametersReadWrite(1, kTfLiteFloat32, "", {2}, quant);
+  interpreter_->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", {2}, quant);
+  interpreter_->SetTensorParametersReadWrite(3, kTfLiteFloat32, "", {2}, quant);
+
+  auto* add_reg = ops::builtin::Register_ADD();
+  auto make_add_params = []() {
+    auto* p =
+        reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+    p->activation = kTfLiteActNone;
+    return p;
+  };
+
+  interpreter_->AddNodeWithParameters({0, 0}, {1}, nullptr, 0,
+                                      make_add_params(), add_reg);
+  interpreter_->AddNodeWithParameters({1, 0}, {2}, nullptr, 0,
+                                      make_add_params(), add_reg);
+  interpreter_->AddNodeWithParameters({2, 0}, {3}, nullptr, 0,
+                                      make_add_params(), add_reg);
+
+  // By default, ShouldEnableSimplePlannerReclamation is true for primary
+  // subgraph.
+  EXPECT_TRUE(
+      interpreter_->primary_subgraph().ShouldEnableSimplePlannerReclamation());
+
+  // 1. Secondary subgraphs decline reclamation cleanly.
+  int second_subgraph_index = -1;
+  AddSubgraphs(1, &second_subgraph_index);
+  EXPECT_FALSE(interpreter_->subgraph(second_subgraph_index)
+                   ->ShouldEnableSimplePlannerReclamation());
+
+  // 2. Dynamic large-tensor optimization disables reclamation cleanly.
+  InterpreterOptions large_options;
+  large_options.OptimizeMemoryForLargeTensors(1024);
+  ASSERT_EQ(interpreter_->ApplyOptions(&large_options), kTfLiteOk);
+  EXPECT_FALSE(
+      interpreter_->primary_subgraph().ShouldEnableSimplePlannerReclamation());
+
+  // 3. Control flow ops decline reclamation cleanly.
+  Interpreter cf_interpreter;
+  ASSERT_EQ(cf_interpreter.AddTensors(2), kTfLiteOk);
+  cf_interpreter.SetInputs({0});
+  cf_interpreter.SetOutputs({1});
+  cf_interpreter.SetTensorParametersReadWrite(0, kTfLiteBool, "", {1}, quant);
+  cf_interpreter.SetTensorParametersReadWrite(1, kTfLiteFloat32, "", {1},
+                                              quant);
+
+  TfLiteRegistration if_reg = {};
+  if_reg.builtin_code = kTfLiteBuiltinIf;
+  cf_interpreter.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr, &if_reg);
+
+  EXPECT_FALSE(
+      cf_interpreter.primary_subgraph().ShouldEnableSimplePlannerReclamation());
+
+  // 4. Preserve all tensors declines reclamation cleanly.
+  InterpreterOptions preserve_options;
+  preserve_options.SetPreserveAllTensors(true);
+  ASSERT_EQ(interpreter_->ApplyOptions(&preserve_options), kTfLiteOk);
+  EXPECT_FALSE(
+      interpreter_->primary_subgraph().ShouldEnableSimplePlannerReclamation());
 }
 
 }  // namespace
