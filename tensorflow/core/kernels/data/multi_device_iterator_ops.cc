@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
@@ -675,6 +676,9 @@ class MultiDeviceIteratorInitOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tensor_max_buffer_size;
     OP_REQUIRES_OK(ctx, ctx->input("max_buffer_size", &tensor_max_buffer_size));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(tensor_max_buffer_size->shape()),
+                absl::InvalidArgumentError("max_buffer_size must be a scalar"));
     int64_t max_buffer_size = tensor_max_buffer_size->scalar<int64_t>()();
 
     DatasetBase* dataset;
@@ -729,11 +733,17 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("shard_num", &tensor_shard_num), done);
+    OP_REQUIRES_ASYNC(
+        ctx, TensorShapeUtils::IsScalar(tensor_shard_num->shape()),
+        absl::InvalidArgumentError("shard_num must be a scalar"), done);
     int32_t shard_num = tensor_shard_num->scalar<int32_t>()();
 
     const Tensor* tensor_incarnation_id;
     OP_REQUIRES_OK_ASYNC(
         ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
+    OP_REQUIRES_ASYNC(
+        ctx, TensorShapeUtils::IsScalar(tensor_incarnation_id->shape()),
+        absl::InvalidArgumentError("incarnation_id must be a scalar"), done);
     int64_t incarnation_id = tensor_incarnation_id->scalar<int64_t>()();
 
     MultiDeviceIterator* iterator;

@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/activity_watcher/activity_utils.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -43,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -1151,6 +1152,8 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   core::ScopedUnref unref_iterator(iterator_resource);
   const Tensor* serialized_t;
   OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized_t));
+  OP_REQUIRES(ctx, TensorShapeUtils::IsVector(serialized_t->shape()),
+              absl::InvalidArgumentError("serialized must be a vector"));
   IteratorVariantSerializer serializer;
   OP_REQUIRES_OK(ctx, serializer.InitFromTensor(serialized_t));
   absl::Status s = iterator_resource->Restore(ctx, serializer.GetReader());

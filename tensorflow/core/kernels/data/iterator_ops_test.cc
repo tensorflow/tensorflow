@@ -222,6 +222,147 @@ TEST_F(IteratorOpsTest, DeleteIteratorRejectsEmptyHandle) {
   EXPECT_EQ(status.message(), "Empty resource handle");
 }
 
+TEST_F(IteratorOpsTest, MultiDeviceIteratorInitRejectsNonScalarMaxBufferSize) {
+  RangeDatasetParams dataset_params = RangeDatasetParams(0, 10, 3);
+  TF_ASSERT_OK(InitializeRuntime(dataset_params));
+
+  Tensor dataset(DT_VARIANT, TensorShape({}));
+  Tensor multi_device_iterator(DT_RESOURCE, TensorShape({}));
+  Tensor max_buffer_size(DT_INT64, TensorShape({2}));
+  max_buffer_size.flat<int64_t>().setZero();
+
+  NodeDef node_def = test::function::NDef(
+      "multi_device_iterator_init", "MultiDeviceIteratorInit",
+      {"dataset", "multi_device_iterator", "max_buffer_size"}, {});
+
+  std::unique_ptr<OpKernel> kernel;
+  TF_ASSERT_OK(CreateOpKernel(node_def, &kernel));
+
+  absl::InlinedVector<TensorValue, 4> inputs;
+  inputs.push_back(TensorValue(&dataset));
+  inputs.push_back(TensorValue(&multi_device_iterator));
+  inputs.push_back(TensorValue(&max_buffer_size));
+
+  std::unique_ptr<OpKernelContext> context;
+  TF_ASSERT_OK(CreateOpKernelContext(kernel.get(), &inputs, &context));
+
+  absl::Status status = RunOpKernel(kernel.get(), context.get());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(), "max_buffer_size must be a scalar");
+}
+
+TEST_F(IteratorOpsTest,
+       MultiDeviceIteratorGetNextFromShardRejectsNonScalarShardNum) {
+  RangeDatasetParams dataset_params = RangeDatasetParams(0, 10, 3);
+  TF_ASSERT_OK(InitializeRuntime(dataset_params));
+  DataTypeVector output_types = {DT_INT64};
+  std::vector<PartialTensorShape> output_shapes = {PartialTensorShape({})};
+
+  Tensor multi_device_iterator(DT_RESOURCE, TensorShape({}));
+  Tensor shard_num(DT_INT32, TensorShape({2}));
+  shard_num.flat<int32_t>().setZero();
+  Tensor incarnation_id(DT_INT64, TensorShape({}));
+  incarnation_id.scalar<int64_t>()() = 0;
+
+  NodeDef node_def = test::function::NDef(
+      "get_next_from_shard", "MultiDeviceIteratorGetNextFromShard",
+      {"multi_device_iterator", "shard_num", "incarnation_id"},
+      {{"output_types", output_types}, {"output_shapes", output_shapes}});
+
+  std::unique_ptr<OpKernel> kernel;
+  TF_ASSERT_OK(CreateOpKernel(node_def, &kernel));
+
+  absl::InlinedVector<TensorValue, 4> inputs;
+  inputs.push_back(TensorValue(&multi_device_iterator));
+  inputs.push_back(TensorValue(&shard_num));
+  inputs.push_back(TensorValue(&incarnation_id));
+
+  std::unique_ptr<OpKernelContext> context;
+  TF_ASSERT_OK(CreateOpKernelContext(kernel.get(), &inputs, &context));
+
+  absl::Status status = RunOpKernel(kernel.get(), context.get());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(), "shard_num must be a scalar");
+}
+
+TEST_F(IteratorOpsTest,
+       MultiDeviceIteratorGetNextFromShardRejectsNonScalarIncarnationId) {
+  RangeDatasetParams dataset_params = RangeDatasetParams(0, 10, 3);
+  TF_ASSERT_OK(InitializeRuntime(dataset_params));
+  DataTypeVector output_types = {DT_INT64};
+  std::vector<PartialTensorShape> output_shapes = {PartialTensorShape({})};
+
+  Tensor multi_device_iterator(DT_RESOURCE, TensorShape({}));
+  Tensor shard_num(DT_INT32, TensorShape({}));
+  shard_num.scalar<int32_t>()() = 0;
+  Tensor incarnation_id(DT_INT64, TensorShape({2}));
+  incarnation_id.flat<int64_t>().setZero();
+
+  NodeDef node_def = test::function::NDef(
+      "get_next_from_shard", "MultiDeviceIteratorGetNextFromShard",
+      {"multi_device_iterator", "shard_num", "incarnation_id"},
+      {{"output_types", output_types}, {"output_shapes", output_shapes}});
+
+  std::unique_ptr<OpKernel> kernel;
+  TF_ASSERT_OK(CreateOpKernel(node_def, &kernel));
+
+  absl::InlinedVector<TensorValue, 4> inputs;
+  inputs.push_back(TensorValue(&multi_device_iterator));
+  inputs.push_back(TensorValue(&shard_num));
+  inputs.push_back(TensorValue(&incarnation_id));
+
+  std::unique_ptr<OpKernelContext> context;
+  TF_ASSERT_OK(CreateOpKernelContext(kernel.get(), &inputs, &context));
+
+  absl::Status status = RunOpKernel(kernel.get(), context.get());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(), "incarnation_id must be a scalar");
+}
+
+TEST_F(IteratorOpsTest, DeserializeIteratorRejectsNonVectorSerialized) {
+  RangeDatasetParams dataset_params = RangeDatasetParams(0, 10, 3);
+  TF_ASSERT_OK(InitializeRuntime(dataset_params));
+  DataTypeVector output_types = {DT_INT64};
+  std::vector<PartialTensorShape> output_shapes = {PartialTensorShape({})};
+
+  Tensor iterator;
+  {
+    // Creates the iterator resource that DeserializeIterator looks up before
+    // it reads `serialized`. This context must be destroyed before the next
+    // CreateOpKernelContext call, which replaces the params it points to.
+    NodeDef node_def = test::function::NDef(
+        "iterator", "AnonymousIteratorV3", /*inputs=*/{},
+        {{"output_types", output_types}, {"output_shapes", output_shapes}});
+    std::unique_ptr<OpKernel> kernel;
+    TF_ASSERT_OK(CreateOpKernel(node_def, &kernel));
+    absl::InlinedVector<TensorValue, 4> inputs;
+    std::unique_ptr<OpKernelContext> context;
+    TF_ASSERT_OK(CreateOpKernelContext(kernel.get(), &inputs, &context));
+    TF_ASSERT_OK(RunOpKernel(kernel.get(), context.get()));
+    iterator = *context->mutable_output(0);
+  }
+
+  Tensor serialized(DT_VARIANT, TensorShape({}));
+
+  NodeDef node_def =
+      test::function::NDef("deserialize_iterator", "DeserializeIterator",
+                           {"resource_handle", "serialized"}, {});
+
+  std::unique_ptr<OpKernel> kernel;
+  TF_ASSERT_OK(CreateOpKernel(node_def, &kernel));
+
+  absl::InlinedVector<TensorValue, 4> inputs;
+  inputs.push_back(TensorValue(&iterator));
+  inputs.push_back(TensorValue(&serialized));
+
+  std::unique_ptr<OpKernelContext> context;
+  TF_ASSERT_OK(CreateOpKernelContext(kernel.get(), &inputs, &context));
+
+  absl::Status status = RunOpKernel(kernel.get(), context.get());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(), "serialized must be a vector");
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
