@@ -380,20 +380,20 @@ TEST_F(CudnnFusionCompilerDevicelessTest, GroupedFp8ConvDeliversVerdict) {
 }
 
 TEST_F(CudnnFusionCompilerDevicelessTest,
-       ConvWith1DBatchBroadcastEpilogueSupported) {
-  constexpr absl::string_view kConvWithBatchBroadcastHlo = R"(
+       ConvWith1DChannelBroadcastEpilogueSupported) {
+  constexpr absl::string_view kConvWithChannelBroadcastHlo = R"(
     ENTRY e {
       input = f32[2,10,10,16] parameter(0)
       filter = f32[16,3,3,16] parameter(1)
-      mask = bf16[2] parameter(2)
-      mask_f32 = f32[2] convert(mask)
+      mask = bf16[16] parameter(2)
+      mask_f32 = f32[16] convert(mask)
       c_neg1 = f32[] constant(-1)
-      c_neg1_bcast = f32[2] broadcast(c_neg1), dimensions={}
-      sub = f32[2] add(mask_f32, c_neg1_bcast)
+      c_neg1_bcast = f32[16] broadcast(c_neg1), dimensions={}
+      sub = f32[16] add(mask_f32, c_neg1_bcast)
       zero = f32[] constant(0)
-      zero_bcast = f32[2] broadcast(zero), dimensions={}
-      max = f32[2] maximum(zero_bcast, sub)
-      mask_bcast = f32[2,10,10,16] broadcast(max), dimensions={0}
+      zero_bcast = f32[16] broadcast(zero), dimensions={}
+      max = f32[16] maximum(zero_bcast, sub)
+      mask_bcast = f32[2,10,10,16] broadcast(max), dimensions={3}
       conv = f32[2,10,10,16] convolution(input, filter),
         window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f
       ROOT out = f32[2,10,10,16] multiply(conv, mask_bcast)
@@ -404,7 +404,7 @@ TEST_F(CudnnFusionCompilerDevicelessTest,
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       BuildConvFusionModule(
-          kConvWithBatchBroadcastHlo, target_config.device_description,
+          kConvWithChannelBroadcastHlo, target_config.device_description,
           se::dnn::VersionInfo(target_config.device_description.dnn_version()),
           CONVOLUTION_KIND_FPROP));
   const HloFusionInstruction* fusion = FindCudnnFusion(*module);

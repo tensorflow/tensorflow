@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -103,6 +103,22 @@ bool IsTopKStable(const HloCustomCallInstruction* inst) {
     return false;
   }
   return true;
+}
+
+std::optional<ComparisonOrder> GetTopKComparatorOrder(
+    const HloCustomCallInstruction* inst) {
+  if (inst == nullptr || !inst->has_to_apply()) {
+    return std::nullopt;
+  }
+  const HloInstruction* root = inst->to_apply()->root_instruction();
+  if (root->opcode() == HloOpcode::kSelect &&
+      root->operand(0) == root->operand(2)) {
+    root = root->operand(1);
+  }
+  if (root->opcode() == HloOpcode::kCompare) {
+    return root->comparison_order();
+  }
+  return std::nullopt;
 }
 
 namespace async {
