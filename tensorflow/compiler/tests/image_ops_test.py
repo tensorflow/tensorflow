@@ -1022,6 +1022,43 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       self.assertEqual(indices_tf.size, 3)
       self.assertAllClose(indices_tf[:3], [3, 0, 5])
 
+  def testNMSV3MixedThresholdDtype(self):
+    # Regression test for GitHub issue 128614: boxes and scores of one
+    # floating-point type with thresholds of another, which
+    # tf.image.non_max_suppression produces for float16 boxes, failed to
+    # compile because XLA doesn't mix floating-point types in one operation.
+    if np.float16 not in self.float_types:
+      self.skipTest("float16 is not supported on this device")
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    for dtype, threshold_dtype in ((np.float16, np.float32),
+                                   (np.float32, np.float16)):
+      with self.subTest(
+          dtype=dtype.__name__,
+          threshold_dtype=threshold_dtype.__name__), self.session() as sess:
+        boxes = array_ops.placeholder(dtype, shape=[6, 4])
+        scores = array_ops.placeholder(dtype, shape=[6])
+        iou_threshold = array_ops.placeholder(threshold_dtype, shape=[])
+        score_threshold = array_ops.placeholder(threshold_dtype, shape=[])
+        with self.test_scope():
+          selected_indices = image_ops.non_max_suppression_v3(
+              boxes=boxes,
+              scores=scores,
+              max_output_size=6,
+              iou_threshold=iou_threshold,
+              score_threshold=score_threshold)
+        indices_tf = sess.run(
+            selected_indices,
+            feed_dict={
+                boxes: np.array(boxes_data, dtype=dtype),
+                scores: np.array(scores_data, dtype=dtype),
+                iou_threshold: 0.5,
+                score_threshold: 0.4
+            })
+        # Box 5 is below the score threshold.
+        self.assertAllEqual([3, 0], indices_tf)
+
   def testNMSV3EmptyInput(self):
     # Regression test for #117245: with no boxes the suppression loop was
     # built from zero-sized dimensions and segfaulted the compiler. The
