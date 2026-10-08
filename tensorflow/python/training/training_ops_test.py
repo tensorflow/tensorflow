@@ -617,7 +617,9 @@ class TrainingOpsTest(TensorFlowTestCase):
         ),
     ]
     for apply_op in cases:
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "grad and var must have the same rank"
+      ):
         self.evaluate(apply_op())
 
 

@@ -416,6 +416,11 @@ class SparseBincountOp : public OpKernel {
     OP_REQUIRES(ctx, size >= 0,
                 absl::InvalidArgumentError(
                     absl::StrCat("size (", size, ") must be non-negative")));
+    OP_REQUIRES(ctx, weights_size == 0 || weights_size == values.NumElements(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`weights` must be the same size as `values` or a length-0 "
+                    "`Tensor`. Received size ",
+                    weights_size)));
     OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
                             indices, values, dense_shape,
                             sparse_utils::IndexValidation::kUnordered));
@@ -516,10 +521,15 @@ class RaggedBincountOp : public OpKernel {
     OP_REQUIRES(ctx, size >= 0,
                 absl::InvalidArgumentError(
                     absl::StrCat("size (", size, ") must be non-negative")));
+    OP_REQUIRES(ctx, weights_size == 0 || weights_size == values.size(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`weights` must be the same size as `values` or a length-0 "
+                    "`Tensor`. Received size ",
+                    weights_size)));
 
-    int num_rows = splits.size() - 1;
-    int num_values = values.size();
-    int batch_idx = 0;
+    int64_t num_rows = splits.size() - 1;
+    int64_t num_values = values.size();
+    int64_t batch_idx = 0;
 
     OP_REQUIRES(ctx, splits.size() > 0,
                 absl::InvalidArgumentError("Splits must be non-empty"));
@@ -542,7 +552,7 @@ class RaggedBincountOp : public OpKernel {
     fill(ctx->eigen_device<Device>(), out_t->flat<T>());
     const auto out = out_t->matrix<T>();
 
-    for (int idx = 0; idx < num_values; ++idx) {
+    for (int64_t idx = 0; idx < num_values; ++idx) {
       while (idx >= splits(batch_idx)) {
         batch_idx++;
       }
