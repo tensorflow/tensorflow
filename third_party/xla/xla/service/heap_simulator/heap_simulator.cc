@@ -2065,8 +2065,10 @@ std::string RenderTimeByFreeChunks(
 // strategy.
 //
 // Optimizations:
-// 1. Tuned cutoff: For small arrays (N < 3000), elements fit entirely
-//    within L1/L2 cache (<48 KB). `absl::c_sort` is faster than radix sort.
+// 1. Tuned cutoff: For small arrays (N < 3000, ~48 kB for 16-byte Chunks),
+//    elements fit comfortably in L2 cache (typically 1+ MB, though spilling
+//    the 32-48 kB L1d cache). For this size, introsort (`absl::c_sort`) has
+//    lower constant factor overhead and is faster than radix sort.
 // 2. Single pass to check sortedness by counting inversions:
 //    - If nearly sorted (`inversions <= n / 10`), introsort does almost zero
 //      swaps and beats radix sort by >2x.
@@ -2079,7 +2081,8 @@ void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
   using Chunk = HeapSimulator::Chunk;
   const size_t n = chunks.size();
 
-  // Small lists fit in L1/L2 cache and sort fastest with introsort.
+  // Small lists fit within L2 cache (~48 kB data spills 32-48 kB L1d, but is
+  // well within L2) where introsort has lower constant overhead than radix sort
   if (n < 3000) {
     absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
       return a.offset < b.offset;
