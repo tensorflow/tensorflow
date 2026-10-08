@@ -268,6 +268,19 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_aarch64_with_onednn_async",
+    constraint_values =
+        [
+            "@platforms//cpu:aarch64",
+            "@platforms//os:linux",
+        ],
+    define_values = {
+        "build_with_onednn_async": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_armhf",
     constraint_values =
         [

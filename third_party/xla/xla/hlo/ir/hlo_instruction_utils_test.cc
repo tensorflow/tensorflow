@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,9 +26,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -695,6 +698,88 @@ TEST_F(HloInstructionUtilsTest, IsTopKStable) {
   EXPECT_TRUE(IsTopKStable(topk_stable));
   EXPECT_FALSE(IsTopKStable(topk_unstable));
   EXPECT_TRUE(IsTopKStable(topk_default));
+}
+
+TEST_F(HloInstructionUtilsTest, GetTopKComparatorOrder) {
+  const char* const hlo = R"(
+    HloModule test
+
+    compare-total {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    compare-partial {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
+    }
+
+    compare-select-total {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      c = pred[] constant(true)
+      bcast = pred[] broadcast(c), dimensions={}
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      cmp = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+      ROOT select = pred[] select(bcast, cmp, bcast)
+    }
+
+    compare-select-weak {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      c = pred[] constant(true)
+      bcast = pred[] broadcast(c), dimensions={}
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      cmp = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=WEAK
+      ROOT select = pred[] select(bcast, cmp, bcast)
+    }
+
+    compare-invalid {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT c = pred[] constant(true)
+    }
+
+    ENTRY main {
+      arg = f32[1024] parameter(0)
+      topk_total = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-total}
+      topk_partial = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-partial}
+      topk_select_total = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-select-total}
+      topk_select_weak = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-select-weak}
+      topk_invalid = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-invalid}
+      ROOT tuple = tuple(topk_total, topk_partial, topk_select_total, topk_select_weak, topk_invalid)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  auto* topk_total =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_total"));
+  auto* topk_partial =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_partial"));
+  auto* topk_select_total = Cast<HloCustomCallInstruction>(
+      FindInstruction(m.get(), "topk_select_total"));
+  auto* topk_select_weak = Cast<HloCustomCallInstruction>(
+      FindInstruction(m.get(), "topk_select_weak"));
+  auto* topk_invalid =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_invalid"));
+
+  EXPECT_EQ(GetTopKComparatorOrder(topk_total), ComparisonOrder::kTotal);
+  EXPECT_EQ(GetTopKComparatorOrder(topk_partial), ComparisonOrder::kPartial);
+  EXPECT_EQ(GetTopKComparatorOrder(topk_select_total), ComparisonOrder::kTotal);
+  EXPECT_EQ(GetTopKComparatorOrder(topk_select_weak), ComparisonOrder::kWeak);
+  EXPECT_EQ(GetTopKComparatorOrder(topk_invalid), std::nullopt);
+  EXPECT_EQ(GetTopKComparatorOrder(nullptr), std::nullopt);
 }
 
 TEST_F(HloInstructionUtilsTest, IsAllowedAsyncIntermediary) {
