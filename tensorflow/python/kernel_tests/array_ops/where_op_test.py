@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -262,6 +263,29 @@ class WhereOpTest(test.TestCase):
     with self.session():
       tf_val = array_ops.where(c_vec, x * x, -x).eval()
     self.assertAllEqual(tf_val, np_val)
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Tests the TF GPU Where kernel element-count guard")
+  def testGpuRejectsInt32MaxElements(self):
+    # The GPU kernel passes the element count to CUB as an int. Past INT32_MAX
+    # elements the count truncated and the op returned uninitialized memory.
+    if not test_util.is_gpu_available():
+      self.skipTest("Requires a GPU.")
+    for shape in ([2**31 - 1], [2**16, 2**15]):
+      with self.subTest(shape=shape), test_util.device(use_gpu=True):
+        x = array_ops.zeros(shape, dtype=dtypes.bool)
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "fewer than 2147483647 input elements"):
+          self.evaluate(array_ops.where(x))
+        del x
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGpuAcceptsInputBelowInt32MaxElements(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("Requires a GPU.")
+    with test_util.device(use_gpu=True):
+      x = array_ops.zeros([2**31 - 2], dtype=dtypes.bool)
+      self.assertAllEqual(self.evaluate(array_ops.where(x)).shape, [0, 1])
 
 
 class WhereBenchmark(test.Benchmark):

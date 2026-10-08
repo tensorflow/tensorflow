@@ -44,10 +44,10 @@ __global__ void PropagateWhereIndicesKernel(
   // dimensions of individual indices manually, instead of relying on
   // a scalar loop variable and using integer division.
   GPU_1D_KERNEL_LOOP(i, output_rows) {
-    TIndex index_value = ldg(output + NDIM * i);
+    TIndex index_value = ldg(output + static_cast<int64_t>(NDIM) * i);
 #pragma unroll
     for (int c = 0; c < NDIM; ++c) {
-      *(output + NDIM * i + c) = index_value / strides[c];
+      *(output + static_cast<int64_t>(NDIM) * i + c) = index_value / strides[c];
       index_value %= strides[c];
     }
   }
@@ -226,7 +226,7 @@ class WhereOutputIterator {
     // the number of items found in Flagged()'s d_num_selected_out at
     // the end and confirm that it matches the number of rows of output.
     const bool valid = FastBoundsCheck(n, max_row_);
-    return *(ptr_ + (valid ? (NDIM * n) : 0));
+    return *(ptr_ + (valid ? (static_cast<int64_t>(NDIM) * n) : 0));
   }
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE reference operator*() const {
