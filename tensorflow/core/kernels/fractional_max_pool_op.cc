@@ -92,8 +92,8 @@ class FractionalMaxPoolOp : public OpKernel {
     OP_REQUIRES(context, tensor_in.dims() == tensor_in_and_out_dims,
                 absl::InvalidArgumentError("tensor_in must be 4-dimensional"));
 
-    std::vector<int> input_size(tensor_in_and_out_dims);
-    std::vector<int> output_size(tensor_in_and_out_dims);
+    std::vector<int64_t> input_size(tensor_in_and_out_dims);
+    std::vector<int64_t> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
 
@@ -109,7 +109,7 @@ class FractionalMaxPoolOp : public OpKernel {
       // This must match the same logic in the shape function in
       // core/ops/nn_ops.cc.
       output_size[i] =
-          static_cast<int>(std::floor(input_size[i] / pooling_ratio_[i]));
+          static_cast<int64_t>(std::floor(input_size[i] / pooling_ratio_[i]));
       DCHECK_GT(output_size[i], 0);
     }
 
@@ -156,11 +156,11 @@ class FractionalMaxPoolOp : public OpKernel {
     auto output_width_seq_flat = output_width_seq_tensor->flat<int64_t>();
 
     // Set output tensors.
-    for (int i = 0; i < height_cum_seq.size(); ++i) {
+    for (size_t i = 0; i < height_cum_seq.size(); ++i) {
       output_height_seq_flat(i) = height_cum_seq[i];
     }
 
-    for (int i = 0; i < width_cum_seq.size(); ++i) {
+    for (size_t i = 0; i < width_cum_seq.size(); ++i) {
       output_width_seq_flat(i) = width_cum_seq[i];
     }
 
