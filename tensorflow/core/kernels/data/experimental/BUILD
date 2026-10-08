@@ -865,7 +865,6 @@ tf_cc_test(
         ":sliding_window_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/framework:types_proto_cc",

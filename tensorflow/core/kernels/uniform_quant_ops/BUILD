@@ -165,7 +165,6 @@ tf_cc_test(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_googletest//:gtest_main",
     ],

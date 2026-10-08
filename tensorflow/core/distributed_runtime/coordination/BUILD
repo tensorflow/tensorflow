@@ -88,7 +88,6 @@ tf_cc_test(
         ":coordination_service_barrier_proxy",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
