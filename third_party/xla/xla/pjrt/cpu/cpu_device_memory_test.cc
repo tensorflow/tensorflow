@@ -16,14 +16,11 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
-#include "absl/status/status_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/common_pjrt_client.h"
@@ -43,6 +40,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
