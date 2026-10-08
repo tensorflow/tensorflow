@@ -20,15 +20,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_macros.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -37,18 +36,16 @@ namespace xla {
 namespace xla_compile {
 namespace {
 
-class XlaCompileTest : public gpu::HloPjRtGpuTestBase {
+class XlaCompileTest : public HloTestBase {
  public:
   void LoadAndRunExecutable(absl::string_view path_to_serialized_aot_result,
                             absl::Span<const Literal* const> args,
-                            const Literal& expected,
-                            absl::string_view target_suffix = "") {
+                            const Literal& expected) {
     const char* test_device = getenv("XLA_TEST_DEVICE");
     ASSERT_NE(test_device, nullptr) << "XLA_TEST_DEVICE is not set";
-    std::string path =
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
-                          absl::StrCat(path_to_serialized_aot_result, "_",
-                                       test_device, target_suffix));
+    std::string path = tsl::io::JoinPath(
+        tsl::testing::XlaSrcRoot(), "service",
+        absl::StrCat(path_to_serialized_aot_result, "_", test_device));
     std::string serialized_aot_result;
     ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), path,
                                     &serialized_aot_result));
@@ -91,9 +88,8 @@ TEST_F(XlaCompileTest, LoadGpuExecutableWithConstant) {
                        expected);
 }
 
-void LoadAndRunConvolution(XlaCompileTest& test,
-                           absl::string_view path_to_serialized_aot_result,
-                           absl::string_view target_suffix = "") {
+// Should also cover the case of loading a GPU executable with a GEMM.
+TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolution) {
   Literal input1 = LiteralUtil::CreateR4<float>(
       {{{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}, {7.0, 8.0}},
         {{11.0, 12.0}, {13.0, 14.0}, {15.0, 16.0}, {17.0, 18.0}},
@@ -107,31 +103,27 @@ void LoadAndRunConvolution(XlaCompileTest& test,
       {{1310.0}, {1466.0}, {1622.0}},
       {{2090.0}, {2246.0}, {2402.0}},
   }});
-  test.LoadAndRunExecutable(path_to_serialized_aot_result, {&input1, &input2},
-                            expected, target_suffix);
-}
-
-// Should also cover the case of loading a GPU executable with a GEMM.
-TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolution) {
-  LoadAndRunConvolution(*this,
-                        "xla_aot_compile_test_gpu_executable_convolution");
+  LoadAndRunExecutable("xla_aot_compile_test_gpu_executable_convolution",
+                       {&input1, &input2}, expected);
 }
 
 TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolutionLegacyCache) {
-  LoadAndRunConvolution(
-      *this, "xla_aot_compile_test_gpu_executable_convolution_legacy_cache");
-}
-
-TEST_F(XlaCompileTest, LoadGpuExecutableWithDevicelessCudnnConvolution) {
-  const char* test_device = getenv("XLA_TEST_DEVICE");
-  if (test_device == nullptr || absl::string_view(test_device) != "h100") {
-    GTEST_SKIP() << "Only compiled for h100.";
-  }
-  absl::string_view target_suffix =
-      absl::StrContains(device_description().name(), "MIG") ? "_mig" : "";
-  LoadAndRunConvolution(
-      *this, "xla_aot_compile_test_gpu_executable_convolution_deviceless_cudnn",
-      target_suffix);
+  Literal input1 = LiteralUtil::CreateR4<float>(
+      {{{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}, {7.0, 8.0}},
+        {{11.0, 12.0}, {13.0, 14.0}, {15.0, 16.0}, {17.0, 18.0}},
+        {{21.0, 22.0}, {23.0, 24.0}, {25.0, 26.0}, {27.0, 28.0}},
+        {{31.0, 32.0}, {33.0, 34.0}, {35.0, 36.0}, {37.0, 38.0}}}});
+  Literal input2 =
+      LiteralUtil::CreateR4<float>({{{{1.0}, {2.0}}, {{3.0}, {4.0}}},
+                                    {{{5.0}, {6.0}}, {{7.0}, {8.0}}},
+                                    {{{9.0}, {10.0}}, {{11.0}, {12.0}}}});
+  Literal expected = LiteralUtil::CreateR4<float>({{
+      {{1310.0}, {1466.0}, {1622.0}},
+      {{2090.0}, {2246.0}, {2402.0}},
+  }});
+  LoadAndRunExecutable(
+      "xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
+      {&input1, &input2}, expected);
 }
 
 }  // namespace
