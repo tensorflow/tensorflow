@@ -429,7 +429,7 @@ class MklDnnShape {
     return reinterpret_cast<const int*>(&data_.sizes_[0]);
   }
 
-  // Returns an dnnl::memory::dims object that contains the sizes of this
+  // Returns a dnnl::memory::dims object that contains the sizes of this
   // MklDnnShape object.
   inline memory::dims GetSizesAsMklDnnDims() const {
     memory::dims retVal;

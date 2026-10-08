@@ -132,6 +132,10 @@ message GemmBackendConfig {
 
   // Scale mode: 0=none, 1=tensor_scaling (fp8), 2=block_scaling (MX).
   int32 scale_mode = 21;
+
+  // Whether the last operand of an FP8-output `__cublas$lt$matmul$f8` is the
+  // multiplicative F32 D scale. Set by GemmRewriter on ROCm only.
+  optional bool has_d_scale = 22;
 }
 
 // Backend config for the grouped (ragged-dot) GEMM operation running through
