@@ -1411,10 +1411,9 @@ absl::Status RunLayoutAssignmentPasses(
   // Layout assignment uses alias analysis, which requires the call graph to
   // be flattened.
   pipeline.AddPass<FlattenCallGraph>();
-  ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(), gpu_version,
-      device_description, &layout_constraints);
+      device_description);
   // Run SubByteNormalization because GpuLayoutAssignment may modify a
   // Layout's element_size_in_bits field.
   pipeline.AddPass<SubByteNormalization>(

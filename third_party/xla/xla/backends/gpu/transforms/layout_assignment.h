@@ -41,9 +41,8 @@ class GpuLayoutAssignment : public LayoutAssignment {
  public:
   GpuLayoutAssignment(ComputationLayout* entry_computation_layout,
                       const se::GpuComputeCapability& gpu_version,
-                      const se::DeviceDescription& device_description,
-                      ChannelLayoutConstraints* channel_constraints = nullptr)
-      : LayoutAssignment(entry_computation_layout, channel_constraints),
+                      const se::DeviceDescription& device_description)
+      : LayoutAssignment(entry_computation_layout),
         gpu_version_(gpu_version),
         device_description_(device_description) {}
   ~GpuLayoutAssignment() override = default;

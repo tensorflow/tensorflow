@@ -997,10 +997,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<FlattenCallGraph>();
   }
 
-  ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), target_machine_features,
-      &layout_constraints);
+      module->mutable_entry_computation_layout(), target_machine_features);
   // Run SubByteNormalization because CpuLayoutAssignment may modify a
   // Layout's element_size_in_bits field.
   pipeline.AddPass<SubByteNormalization>(

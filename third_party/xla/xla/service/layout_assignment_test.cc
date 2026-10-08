@@ -59,15 +59,13 @@ namespace {
 namespace m = xla::match;
 using ::testing::ElementsAre;
 
-absl::Status AssignLayoutsToComputation(
-    HloModule* m, ChannelLayoutConstraints* channel_constraints = nullptr) {
+absl::Status AssignLayoutsToComputation(HloModule* m) {
   if (!m->entry_computation_layout().result_layout().LayoutIsSet()) {
     m->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->SetToDefaultLayout();
   }
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     channel_constraints);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   return layout_assignment.Run(m).status();
 }
 
@@ -82,20 +80,15 @@ class LayoutAssignmentTest : public HloHardwareIndependentTestBase {
   }
 
  protected:
-  void AssignLayouts(HloModule* m, ComputationLayout* entry_computation_layout,
-                     ChannelLayoutConstraints* channel_constraints = nullptr) {
-    LayoutAssignment layout_assignment(
-        entry_computation_layout,
-        /*channel_constraints=*/channel_constraints);
+  void AssignLayouts(HloModule* m,
+                     ComputationLayout* entry_computation_layout) {
+    LayoutAssignment layout_assignment(entry_computation_layout);
     EXPECT_IS_OK(layout_assignment.Run(m).status());
   }
 
   absl::StatusOr<bool> AssignLayoutsAndVerifyHlo(
-      HloModule* m, ComputationLayout* entry_computation_layout,
-      ChannelLayoutConstraints* channel_constraints = nullptr) {
-    LayoutAssignment layout_assignment(
-        entry_computation_layout,
-        /*channel_constraints=*/channel_constraints);
+      HloModule* m, ComputationLayout* entry_computation_layout) {
+    LayoutAssignment layout_assignment(entry_computation_layout);
     EXPECT_IS_OK(layout_assignment.Run(m).status());
     HloVerifier verifier(/*layout_sensitive=*/true,
                          /*allow_mixed_precision=*/false);
@@ -886,8 +879,7 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
   computation_layout.mutable_result_layout()->ResetLayout(
       LayoutUtil::MakeLayout({1, 0}));
 
-  ChannelLayoutConstraints channel_constraints;
-  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
+  AssignLayouts(m.get(), &computation_layout);
 
   EXPECT_TRUE(ShapeUtil::Equal(FindInstruction(m.get(), "send")->shape(),
                                FindInstruction(m.get(), "recv")->shape()));
@@ -919,51 +911,7 @@ TEST_F(LayoutAssignmentTest, AllReduceSpmd) {
   // different shapes.
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
-  ChannelLayoutConstraints channel_constraints;
-  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
-}
-
-TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
-  // Pin non matching layouts to parameter and root.
-  const char* module_str = R"(
-    HloModule test_module
-
-    add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
-    }
-
-    ENTRY entry_computation {
-      param = (f32[2,2]) parameter(0)
-      gte = f32[2,2] get-tuple-element(param), index=0
-      ar.0 = f32[2,2] all-reduce(gte),
-        channel_id=1, replica_groups={{0}}, to_apply=add,
-        sharding={maximal device=0}
-      const = f32[2,2] constant({{0,1},{2,3}})
-      ROOT ar.1 = f32[2,2] all-reduce(const),
-        channel_id=1, replica_groups={{0}}, to_apply=add,
-        sharding={maximal device=1}
-    })";
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                       ParseAndReturnVerifiedModule(module_str));
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape());
-  Shape param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1})});
-  ASSERT_OK(computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
-      param_shape));
-  computation_layout.mutable_result_layout()->ResetLayout(
-      LayoutUtil::MakeLayout({1, 0}));
-
-  ChannelLayoutConstraints channel_constraints;
-  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
-
-  EXPECT_THAT(LayoutOf(m.get(), "gte"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "ar.0"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "ar.1"), ElementsAre(0, 1));
-  const HloInstruction* root = m->entry_computation()->root_instruction();
-  EXPECT_THAT(root->shape().layout().minor_to_major(), ElementsAre(1, 0));
+  AssignLayouts(m.get(), &computation_layout);
 }
 
 TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
@@ -1741,8 +1689,7 @@ ENTRY entry_computation {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
 
-  ChannelLayoutConstraints channel_constraints;
-  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
+  AssignLayouts(m.get(), &computation_layout);
 
   const HloInstruction* crs = FindInstruction(m.get(), "crs");
   ExpectTupleLayoutIs(crs->shape(), {{0, 1}, {1, 0}});
@@ -1778,8 +1725,7 @@ ENTRY entry_computation {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
 
-  ChannelLayoutConstraints channel_constraints;
-  AssignLayouts(m.get(), &computation_layout, &channel_constraints);
+  AssignLayouts(m.get(), &computation_layout);
 
   const HloInstruction* alltoall = FindInstruction(m.get(), "alltoall");
   ExpectTupleLayoutIs(alltoall->shape(), {{1, 0}, {1, 0}});
@@ -1857,11 +1803,7 @@ ENTRY main {
       ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {93184, 4}, {0, 1}));
   *computation_layout.mutable_result_layout() = ShapeLayout(
       ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 512, 364}, {0, 1, 2}));
-  ChannelLayoutConstraints channel_constraints;
-  LayoutAssignment layout_assignment(
-      &computation_layout,
-      /*channel_constraints=*/&channel_constraints,
-      /* reverse_computation_order = */ true);
+  LayoutAssignment layout_assignment(&computation_layout);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   const HloInstruction* call_1 = FindInstruction(m.get(), "reshape.8494");
   ExpectLayoutIs(call_1->shape(), {0, 1, 2});
@@ -1928,10 +1870,7 @@ ENTRY main {
   *computation_layout.mutable_result_layout() =
       ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {64, 243, 243, 384},
                                                       {3, 0, 2, 1}));
-  ChannelLayoutConstraints channel_constraints;
-  LayoutAssignment layout_assignment(
-      &computation_layout,
-      /*channel_constraints=*/&channel_constraints);
+  LayoutAssignment layout_assignment(&computation_layout);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   const HloInstruction* subtract_15 = FindInstruction(m.get(), "subtract.15");
   ExpectLayoutIs(subtract_15->shape(), {3, 0, 2, 1});
@@ -1958,8 +1897,7 @@ TEST_F(LayoutAssignmentTest, PropagateOperandLayout2) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(module_str));
 
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   const HloInstruction* reshape_1 = FindInstruction(m.get(), "reshape.1");
   ExpectLayoutIs(reshape_1->shape(), {1, 0});
@@ -1987,8 +1925,7 @@ ENTRY main {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(module_str));
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   const HloInstruction* param =
       m->entry_computation()->parameter_instruction(0);
@@ -2017,8 +1954,7 @@ TEST_F(LayoutAssignmentTest, PartialEntryParameterLayout) {
   // Allow propagation only to parameter 0
   m->mutable_entry_computation_layout()->mutable_parameter_layout(0)->Clear();
 
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   // Assign bitcasting layout to parameter 0
   ExpectLayoutIs(m->entry_computation_layout().parameter_layout(0).shape(),
@@ -2047,8 +1983,7 @@ TEST_F(LayoutAssignmentTest, TupleEntryParameterLayoutNoResultConstraint) {
   // Allow propagation only to parameter 0
   m->mutable_entry_computation_layout()->mutable_result_layout()->Clear();
 
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   // Assign bitcasting layout to parameter 0
   ExpectLayoutIs(
@@ -2083,8 +2018,7 @@ TEST_F(LayoutAssignmentTest,
   m->mutable_entry_computation_layout()->mutable_parameter_layout(0)->Clear(
       {1});
 
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   // Assign bitcasting layout to parameter 0
   ExpectLayoutIs(
@@ -2115,8 +2049,7 @@ TEST_F(LayoutAssignmentTest, AliasParameterAndOutput) {
   m->mutable_entry_computation_layout()->mutable_result_layout()->Clear();
   m->mutable_entry_computation_layout()->mutable_parameter_layout(0)->Clear();
 
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   EXPECT_EQ(m->entry_computation_layout().result_layout().shape(),
             m->entry_computation_layout().parameter_layout(0).shape());
@@ -2140,8 +2073,7 @@ TEST_F(LayoutAssignmentTest, AliasUnconstrainedParamterWithConstrainedOutput) {
   m->mutable_entry_computation_layout()->SetToDefaultLayout();
   m->mutable_entry_computation_layout()->mutable_parameter_layout(0)->Clear();
 
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   EXPECT_EQ(m->entry_computation_layout().result_layout().shape(),
             m->entry_computation_layout().parameter_layout(0).shape());
@@ -2164,8 +2096,7 @@ TEST_F(LayoutAssignmentTest, AliasConstrainedParamterWithUnconstrainedOutput) {
   m->mutable_entry_computation_layout()->SetToDefaultLayout();
   m->mutable_entry_computation_layout()->mutable_result_layout()->Clear();
 
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   EXPECT_EQ(m->entry_computation_layout().result_layout().shape(),
             m->entry_computation_layout().parameter_layout(0).shape());
@@ -2218,8 +2149,7 @@ ENTRY %main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(module_str));
 
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     nullptr);
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout());
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
 }
 
@@ -3551,6 +3481,48 @@ ENTRY %main (y: f32[3,1]) -> f32[3,1] {
       absl_testing::IsOk());
   ExpectLayoutIs(FindInstruction(m.get(), "y")->shape(), {1, 0});
   ExpectLayoutIs(FindInstruction(m.get(), "bcast")->shape(), {0, 1});
+}
+
+TEST_F(LayoutAssignmentTest,
+       CrossComputationOverrideSkipsSmallerConcatenateOperand) {
+  const char* module_str = R"hlo(
+HloModule CrossComputationOverrideSkipsSmallerConcatenateOperand
+
+%callee (p: f32[256,3,1]) -> f32[256,3,1,1] {
+  %p = f32[256,3,1]{2,1,0} parameter(0)
+  %pinned = f32[256,3,1]{2,1,0} custom-call(%p), custom_call_target="Pinned",
+    operand_layout_constraints={f32[256,3,1]{2,1,0}}
+  ROOT %r = f32[256,3,1,1] reshape(%pinned)
+}
+
+ENTRY %main (x: f32[256,3,1], y: f32[256,3,1,3]) -> f32[256,3,1,4] {
+  %x = f32[256,3,1]{2,1,0} parameter(0)
+  %call = f32[256,3,1,1] call(%x), to_apply=%callee
+  %y = f32[256,3,1,3]{3,2,1,0} parameter(1)
+  ROOT %concat = f32[256,3,1,4] concatenate(%call, %y), dimensions={3}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {256, 3, 1}, {2, 1, 0}));
+  *computation_layout.mutable_parameter_layout(1) = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {256, 3, 1, 3}, {3, 2, 1, 0}));
+  *computation_layout.mutable_result_layout() = ShapeLayout(
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {256, 3, 1, 4}, {3, 2, 1, 0}));
+
+  LayoutAssignment layout_assignment(&computation_layout);
+  EXPECT_THAT(
+      layout_assignment.Run(m.get(), {HloInstruction::kMainExecutionThread}),
+      absl_testing::IsOk());
+  const HloInstruction* concat = FindInstruction(m.get(), "concat");
+  ASSERT_NE(concat, nullptr);
+  ExpectLayoutIs(concat->shape(), {3, 2, 1, 0});
+  ExpectLayoutIs(concat->operand(0)->shape(), {3, 2, 1, 0});
+  ExpectLayoutIs(concat->operand(1)->shape(), {3, 2, 1, 0});
 }
 
 }  // namespace
