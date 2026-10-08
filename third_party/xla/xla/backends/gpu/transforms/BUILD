@@ -3126,6 +3126,7 @@ xla_test(
     name = "scatter_determinism_expander_test",
     srcs = ["scatter_determinism_expander_test.cc"],
     backends = ["gpu"],
+    shard_count = 3,
     deps = [
         ":scatter_determinism_expander",
         "//xla:literal",
@@ -3700,7 +3701,7 @@ xla_test(
         "gb300": ["broken"],  # TODO(b/505574653): re-enable when fixed.
     },
     backends = ["gpu"],
-    shard_count = 10,
+    shard_count = 15,
     deps = [
         ":topk_specializer",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",

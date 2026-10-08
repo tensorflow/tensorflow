@@ -4457,7 +4457,7 @@ xla_test(
     name = "topk_test",
     srcs = ["topk_test.cc"],
     backends = ["gpu"],
-    shard_count = 4,
+    shard_count = 12,
     deps = [
         ":topk",
         "//xla:types",
