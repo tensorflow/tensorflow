@@ -820,6 +820,32 @@ inline constexpr int ByteWidth(PrimitiveType type) {
   return internal::WidthForType<internal::kByteWidths>(type);
 }
 
+// If `type` is an array type, returns the result of applying polymorphic
+// functor f on a canonical PrimitiveTypeConstant<kType> value with the same
+// ByteWidth(type) (U8 for 1-byte, U16 for 2-byte, U32 for 4-byte, U64 for
+// 8-byte, and C128 for 16-byte types); otherwise crashes.
+template <typename F>
+constexpr decltype(auto) ByteWidthTypeSwitch(F&& f, PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
+    switch (ByteWidth(type)) {
+      case 1:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U8>());
+      case 2:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U16>());
+      case 4:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U32>());
+      case 8:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U64>());
+      case 16:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::C128>());
+      default:
+        LOG(FATAL) << "Unexpected byte width " << ByteWidth(type)
+                   << " for type " << type;
+    }
+  }
+  LOG(FATAL) << "Not an array data type " << type;
+}
+
 // Returns the primitive type for the unsigned integral type with the given
 // bit width, or PRIMITIVE_TYPE_INVALID if there is no such type.
 constexpr PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {

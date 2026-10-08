@@ -241,6 +241,9 @@ struct SPMDCollectiveOpsCreator {
       const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id,
       int64_t all_gather_dimension)>
       create_all_gather;
+
+  ~SPMDCollectiveOpsCreator();
+  SPMDCollectiveOpsCreator& operator=(const SPMDCollectiveOpsCreator&);
 };
 
 // Create a default SPMDCollectiveOpsCreator.
@@ -460,6 +463,13 @@ class PartitionedHlo {
         groupd_caches;
   };
   struct PartitioningState {
+    PartitioningState();
+    ~PartitioningState();
+    PartitioningState(const PartitioningState&);
+    PartitioningState(PartitioningState&&) noexcept;
+    PartitioningState& operator=(const PartitioningState&);
+    PartitioningState& operator=(PartitioningState&&) noexcept;
+
     SpmdBuilder* b;
     HloModule* module;
     int64_t num_replicas;
@@ -469,23 +479,15 @@ class PartitionedHlo {
     ReshardCache* reshard_cache;
     SpmdPartitioner* partitioner;
   };
-  PartitionedHlo(HloInstruction* hlo, Shape base_shape, PartitioningState state)
-      : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {}
+  PartitionedHlo(HloInstruction* hlo, Shape base_shape,
+                 PartitioningState state);
+  ~PartitionedHlo();
+  PartitionedHlo(PartitionedHlo&& other) noexcept;
+  PartitionedHlo(const PartitionedHlo& other);
+  PartitionedHlo& operator=(PartitionedHlo&& other) noexcept;
+  PartitionedHlo& operator=(const PartitionedHlo& other);
 
-  PartitionedHlo(PartitionedHlo&& other) = default;
-  PartitionedHlo(const PartitionedHlo& other) = default;
-
-  PartitionedHlo& operator=(PartitionedHlo&& other) = default;
-  PartitionedHlo& operator=(const PartitionedHlo& other) = default;
-
-  PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
-    PartitionedHlo new_phlo = *this;
-    new_phlo.hlo_ = hlo;
-    if (!hlo->has_sharding() && hlo_->has_sharding()) {
-      hlo->copy_sharding(hlo_);
-    }
-    return new_phlo;
-  }
+  PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const;
 
   // Reshards the current SPMD instruction to a new sharding with optional
   // specified pad value used during resharding. Could only modify the reshard
@@ -795,12 +797,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
                          PartitionedHlo&& partitioned_hlo);
 
   // Convenient wrapper that creates PartitionedHlo from `new_hlo`.
-  void SetPartitionedHlo(const HloInstruction* hlo, HloInstruction* new_hlo) {
-    new_hlo->set_sharding(hlo->sharding());
-    SetPartitionedHlo(
-        hlo, PartitionedHlo(new_hlo, hlo->shape(), MakePartitioningState()));
-    changed_ = true;
-  }
+  void SetPartitionedHlo(const HloInstruction* hlo, HloInstruction* new_hlo);
 
   // Convenient wrapper that creates PartitionedHlo from the result of the func
   // and maps it to the given original hlo.
@@ -906,11 +903,28 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::StatusOr<bool> TryDynamicSliceWithCollectiveBroadcast(
       HloInstruction* hlo);
 
+  // Returns the sharding that replaces the sharding of `inst` while an
+  // instruction with `opcode` is partitioned. The manual leaves of the
+  // sharding become single device leaves. Returns nullptr when the sharding is
+  // kept as it is.
+  std::shared_ptr<const HloSharding> ManualToOneDeviceSharding(
+      HloOpcode opcode, const HloInstruction* inst);
+
   PartitionedHlo::ReshardCache reshard_cache_;
 
   // Mapping from the instruction in the original computation to the new SPMD
   // partitioned instruction.
   ConstHloInstructionMap<PartitionedHlo> partitioned_instructions_;
+
+  // The one device replacements of tuple shardings, keyed by the original
+  // sharding object. A null value records that the tuple has no manual leaf.
+  // Postprocess puts the original object back after every visit, so a tuple
+  // that feeds many manual users is converted only once. The key keeps the
+  // original object alive, so its address cannot be reused by another
+  // sharding.
+  absl::flat_hash_map<std::shared_ptr<const HloSharding>,
+                      std::shared_ptr<const HloSharding>>
+      manual_to_one_device_shardings_;
 
   HloInstruction* visiting_hlo_;
   SpmdLogger* logger_;
@@ -946,6 +960,16 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       std::vector<int64_t> partitioned_slice_dims);
   // Method 3: All partitioned slice dimensions have compile-time constant
   // indices.
+  // Partitions a concatenate along a partitioned dimension without
+  // replicating that dimension: the largest operand is padded into its place
+  // in the result, and each remaining operand is written in at its constant
+  // offset the way a dynamic-update-slice with constant indices is, so data
+  // only moves between neighbouring shards. Returns false, having done
+  // nothing, when the concatenate does not fit the shapes this handles. Only
+  // used with xla_enable_enzyme_comms_opt.
+  absl::StatusOr<bool> TryHandleConcatenateWithConstantOffsets(
+      HloInstruction* hlo);
+
   absl::Status HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);

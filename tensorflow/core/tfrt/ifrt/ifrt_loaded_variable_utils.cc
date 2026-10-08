@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
+#include "tensorflow/core/tfrt/ifrt/undonatable_buffer_converter.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -57,7 +58,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> LoadIfrtVariable(
     const VariableDeviceShardingConfig& sharding_config,
     const xla::ifrt::LayoutRef& xla_input_layout,
     const xla::ifrt::DeviceListRef& device_list,
-    const LoadedVariableArrayFn& array_post_processor) {
+    bool use_undonatable_buffer_converter) {
   TF_ASSIGN_OR_RETURN(
       auto sharding,
       tensorflow::ifrt_serving::ToIfrtSharding(
@@ -66,8 +67,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> LoadIfrtVariable(
                       tensorflow::ifrt_serving::MakeArrayFromTensor(
                           *ifrt_client, variable, device_list,
                           std::move(sharding), thread_pool, xla_input_layout));
-  if (array_post_processor != nullptr) {
-    TF_RETURN_IF_ERROR(array_post_processor(variable_array.get()));
+  if (use_undonatable_buffer_converter) {
+    TF_RETURN_IF_ERROR(MakeArrayBuffersUndonatable(variable_array.get()));
   }
   return variable_array;
 }
@@ -110,7 +111,7 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     const xla::ifrt::LayoutRef& xla_input_layout,
     std::shared_ptr<const xla::Shape> shape_on_device,
     const xla::ifrt::DeviceListRef& device_list,
-    LoadedVariableArrayFn array_post_processor) {
+    bool use_undonatable_buffer_converter) {
   if (loaded_variable_registry
           .GetLoadedVariable(IfrtLoadedVariableRegistry::KeyView(
               sharding_config.device_ids, tensor_name,
@@ -164,8 +165,7 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
        sharding_config = sharding_config,
        loaded_variable_promise = std::move(loaded_variable_promise),
        bg_context = std::move(bg_context), xla_input_layout = xla_input_layout,
-       device_list = device_list,
-       array_post_processor = std::move(array_post_processor)](
+       device_list = device_list, use_undonatable_buffer_converter](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
           loaded_variable_promise.Set(restored_tensor.status());
@@ -181,12 +181,13 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
              bg_context = std::move(bg_context),
              xla_input_layout = std::move(xla_input_layout),
              device_list = std::move(device_list),
-             array_post_processor = std::move(array_post_processor)]() mutable {
+             use_undonatable_buffer_converter]() mutable {
               tensorflow::WithContext wc(bg_context);
               absl::StatusOr<xla::ifrt::ArrayRef> variable_array =
                   LoadIfrtVariable(ifrt_client, thread_pool, restored_tensor,
                                    sharding_config, xla_input_layout,
-                                   device_list, array_post_processor);
+                                   device_list,
+                                   use_undonatable_buffer_converter);
               loaded_variable_promise.Set(std::move(variable_array));
             });
       });

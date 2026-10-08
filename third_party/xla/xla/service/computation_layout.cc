@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -58,6 +58,20 @@ bool ComputationLayout::AnyLayoutSet() const {
              parameter_layouts_,
              [](const ShapeLayout& s) { return s.AnyLayoutIsSet(); }) ||
          result_layout_.AnyLayoutIsSet();
+}
+bool ComputationLayout::MinorToMajorInLayoutIsSet() const {
+  return absl::c_all_of(parameter_layouts_,
+                        [](const ShapeLayout& s) {
+                          return s.MinorToMajorInLayoutIsSet();
+                        }) &&
+         result_layout_.MinorToMajorInLayoutIsSet();
+}
+bool ComputationLayout::AnyMinorToMajorInLayoutIsSet() const {
+  return absl::c_any_of(parameter_layouts_,
+                        [](const ShapeLayout& s) {
+                          return s.AnyMinorToMajorInLayoutIsSet();
+                        }) ||
+         result_layout_.AnyMinorToMajorInLayoutIsSet();
 }
 
 absl::StatusOr<std::vector<Layout>>

@@ -16,8 +16,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array4d.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/padding.h"
@@ -61,7 +61,7 @@ absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
 
 class ConvolutionDimensionNumbersTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
+          HloInterpreterReferenceMixin<HloTestBase>> {};
 
 // Tests the convolution operation with invalid input dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {

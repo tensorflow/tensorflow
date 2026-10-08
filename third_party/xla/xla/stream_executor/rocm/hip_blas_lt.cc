@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/library_types.h"
 #include "rocm/include/hipblas/hipblas.h"
 #include "rocm/include/hipblaslt/hipblaslt-ext.hpp"
@@ -90,6 +90,11 @@ void GroupGemmUpdateArgs(
     gpu::RaggedDotMode ragged_mode, uint32_t num_gemms, int32_t activation_type,
     int8_t bias_type, bool has_matrix_bias);
 namespace {
+
+// Upper bound for the heuristic query only, never allocated. Generous on
+// purpose: a low ceiling would hide complex kernels that need scratch and
+// divert the matmul to rocBLAS.
+constexpr size_t kComplexProbeMaxWorkspaceBytes = 64 * 1024 * 1024;
 
 template <typename T>
 absl::Status SetAttr(hipblasLtMatrixLayout_t handle,
@@ -289,6 +294,16 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
       }
     }
 
+    // hipBLASLt only returns algorithms that honor D_SCALE_POINTER if it is
+    // set before the heuristic query. Otherwise it may return algorithms that
+    // silently ignore the D scale at execution time.
+    if (has_d_scale_) {
+      static int64_t dummy_pointer = 0xACEBALL;
+      ABSL_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                              HIPBLASLT_MATMUL_DESC_D_SCALE_POINTER,
+                              &dummy_pointer));
+    }
+
     int found_algorithm_count = 0;
     auto error = hipblasLtMatmulAlgoGetHeuristic(
         blas_lt_.handle_.get(), op_desc_.get(), a_desc_.get(), b_desc_.get(),
@@ -311,21 +326,12 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
   return algorithms;
 }
 
-absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
+absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetHipBlasLtMatmulPlan(
     const gpu::GemmConfig& cfg, Epilogue epilogue) const {
-  // hipBLASLt has no complex GEMM kernels; redirect C64/C128 to rocBLAS while
-  // still consuming the cublasLt matmul custom call emitted by GemmRewriter.
-  // TODO(magaonka-amd): Once we get a hipBLASLt that supports complex GEMMs,
-  // clean up this routing code.
-  if (cfg.output_layout.dtype == xla::C64 ||
-      cfg.output_layout.dtype == xla::C128) {
-    TF_RET_CHECK(epilogue == Epilogue::kDefault)
-        << "rocBLAS complex fallback does not support epilogues (bias, GELU, "
-           "etc.); got epilogue="
-        << static_cast<int>(epilogue);
-    return std::make_unique<RocBlasGemmPlan>(*this, cfg);
+  if (cfg.has_d_scale &&
+      !xla::primitive_util::IsF8Type(cfg.output_layout.dtype)) {
+    return xla::InvalidArgument("A D scale requires an FP8 output.");
   }
-
   auto lhs_layout = cfg.lhs_layout, rhs_layout = cfg.rhs_layout,
        output_layout = cfg.output_layout, c_layout = cfg.c_layout;
 
@@ -411,7 +417,8 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
 
   auto plan = std::make_unique<RegularMatmulPlan>(
       *this, std::move(op_desc), std::move(a_desc), std::move(b_desc),
-      std::move(c_desc), std::move(d_desc), must_swap_operands);
+      std::move(c_desc), std::move(d_desc), must_swap_operands,
+      cfg.has_d_scale);
 
   auto assign_alpha_beta = [&](auto scale) {
     using Scale = decltype(scale);
@@ -454,16 +461,40 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
 
     TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16BF,
                  HIP_R_16BF)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16BF,
+                 HIP_R_8F_E4M3_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
+                 HIP_R_8F_E4M3_FNUZ)
     TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16BF,
                  HIP_R_16BF)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16BF,
+                 HIP_R_8F_E4M3_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16BF,
+                 HIP_R_8F_E5M2_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16F,
+                 HIP_R_8F_E4M3_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16F,
+                 HIP_R_8F_E5M2_FNUZ)
     TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16BF,
                  HIP_R_16BF)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16BF,
+                 HIP_R_8F_E4M3_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16BF,
+                 HIP_R_8F_E5M2_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
+                 HIP_R_8F_E4M3_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
+                 HIP_R_8F_E5M2_FNUZ)
     TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ,
                  HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ)
     TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ,
                  HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E5M2_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ,
+                 HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ)
     TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ,
                  HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E5M2_FNUZ)
+    TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ,
+                 HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ)
 
     TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_16BF)
     TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_8F_E4M3)
@@ -566,6 +597,36 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
   return plan;
 }
 
+absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
+    const gpu::GemmConfig& cfg, Epilogue epilogue) const {
+  if (cfg.output_layout.dtype != xla::C64 &&
+      cfg.output_layout.dtype != xla::C128) {
+    return GetHipBlasLtMatmulPlan(cfg, epilogue);
+  }
+
+  // Older hipBLASLt rejects the complex matmul descriptor outright, and a newer
+  // one can still have no kernels for this device, so test both rather than the
+  // ROCm version XLA was built against.
+  auto plan = GetHipBlasLtMatmulPlan(cfg, epilogue);
+  if (plan.ok()) {
+    auto algorithms = (*plan)->GetAlgorithms(/*max_algorithm_count=*/1,
+                                             kComplexProbeMaxWorkspaceBytes);
+    if (algorithms.ok() && !algorithms->empty()) {
+      return plan;
+    }
+  }
+
+  TF_RET_CHECK(epilogue == Epilogue::kDefault)
+      << "rocBLAS complex fallback does not support epilogues (bias, GELU, "
+         "etc.); got epilogue="
+      << static_cast<int>(epilogue);
+  VLOG(1) << "hipBLASLt offers no complex GEMM algorithm here; routing "
+          << xla::primitive_util::LowercasePrimitiveTypeName(
+                 cfg.output_layout.dtype)
+          << " matmul to rocBLAS";
+  return std::make_unique<RocBlasGemmPlan>(*this, cfg);
+}
+
 absl::Status BlasLt::RocBlasGemmPlan::ExecuteOnStream(
     Stream* stream, const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
@@ -645,17 +706,18 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
     return absl::InternalError(
         "Algorithm must be set before calling ExecuteOnStream!");
   }
+  // The algorithms depend on whether a D scale was set at query time.
+  if (has_d_scale_ != (args.d_scale != nullptr)) {
+    return xla::InvalidArgument(
+        "hipBLASLt plan created %s a D scale but called %s one.",
+        has_d_scale_ ? "with" : "without", has_d_scale_ ? "without" : "with");
+  }
   DeviceAddressBase a = args.a, b = args.b;
   DeviceAddressBase a_scale = args.a_scale, b_scale = args.b_scale;
   if (must_swap_operands_) {
     std::swap(a, b);
     std::swap(a_scale, b_scale);
   }
-
-  absl::Status status =
-      blas_lt_.executor_->RecordApiTrace(StreamExecutor::GemmCallTrace{
-          StreamExecutor::GemmCallTrace::GemmType::kBlasLt, 0, a.size(),
-          b.size()});
 
   std::unique_ptr<EventBasedTimer> timer;
   if (profile_result != nullptr) {
@@ -991,11 +1053,6 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
                                 (cfg_.group_count * cfg_.batch_count))
           : static_cast<size_t>(args.group_sizes.size() / cfg_.group_count);
 
-  absl::Status status =
-      blas_lt_.executor_->RecordApiTrace(StreamExecutor::GemmCallTrace{
-          StreamExecutor::GemmCallTrace::GemmType::kBlasLt, 0,
-          cfg_.m * cfg_.k * cfg_.batch_count,
-          cfg_.k * cfg_.n * cfg_.batch_count * cfg_.group_count});
   std::unique_ptr<EventBasedTimer> timer;
 
   if (profile_result != nullptr) {

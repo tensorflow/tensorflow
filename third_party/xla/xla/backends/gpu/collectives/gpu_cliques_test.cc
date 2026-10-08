@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -95,9 +95,9 @@ AcquireCliquesWithCollectives(
   std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>> futures(n);
   for (size_t i = 0; i < n; ++i) {
     futures[i] = MakeFutureOn(exec, [=] {
-      return AcquireGpuClique(collectives, executors.at(i), run_id, clique,
-                              device_groups, DefaultCliqueId(), RankId(i),
-                              acquired_cliques.at(i));
+      return AcquireClique(collectives, executors.at(i), run_id, clique,
+                           device_groups, DefaultCliqueId(), RankId(i),
+                           acquired_cliques.at(i));
     });
   }
 

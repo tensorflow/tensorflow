@@ -31,6 +31,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
+#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/ffi.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi_api.h"
@@ -58,14 +60,14 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
-#include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/service/computation_placer.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
@@ -967,10 +969,11 @@ TEST(PjrtCApiGpuExtensionTest,
   PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
   EXPECT_EQ(error, nullptr) << GetErrorMessage(error, api);
 
-  xla::PjRtClient* cpp_client = create_arg.client->client.get();
-  auto* gpu_client = absl::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
+  auto* gpu_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+      absl::down_cast<xla::CommonPjRtClient*>(create_arg.client->client.get())
+          ->raw_client());
   std::vector<float> data(4, 0.0f);
-  EXPECT_TRUE(gpu_client->raw_client()->ShouldStageHostToDeviceTransfers(
+  EXPECT_TRUE(gpu_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
@@ -1007,10 +1010,11 @@ TEST(PjrtCApiGpuExtensionTest,
   PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
   EXPECT_EQ(error, nullptr) << GetErrorMessage(error, api);
 
-  xla::PjRtClient* cpp_client = create_arg.client->client.get();
-  auto* gpu_client = absl::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
+  auto* gpu_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+      absl::down_cast<xla::CommonPjRtClient*>(create_arg.client->client.get())
+          ->raw_client());
   std::vector<float> data(4, 0.0f);
-  EXPECT_FALSE(gpu_client->raw_client()->ShouldStageHostToDeviceTransfers(
+  EXPECT_FALSE(gpu_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
@@ -1075,12 +1079,9 @@ constexpr char const* kTargetConfigString = R"(gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  dnn_version: "9.3.0"
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 9
-  minor: 3
-}
 device_description_str: "Tesla V100-SXM2-32GB"
 )";
 
@@ -1262,6 +1263,7 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallUntyped) {
   args.handler_prepare = nullptr;
   args.handler_initialize = nullptr;
   args.handler_execute = reinterpret_cast<void*>(&TestCustomCallV2);
+  args.traits = 0;
   auto api = GetPjrtApi();
   const PJRT_Extension_Base* next = api->extension_start;
   while (next != nullptr &&
@@ -1294,6 +1296,7 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
   args.handler_prepare = nullptr;
   args.handler_initialize = nullptr;
   args.handler_execute = reinterpret_cast<void*>(kNoop);
+  args.traits = 0;
   auto api = GetPjrtApi();
   const PJRT_Extension_Base* next = api->extension_start;
   while (next != nullptr &&
@@ -1313,85 +1316,143 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
   EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
 }
 
-constexpr absl::string_view kAddOneTTIR = R"(
-module {
-  tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
-    %0 = tt.get_program_id x : i32
-    %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-    %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-    %cst = arith.constant 1.000000e+00 : f32
-    %3 = arith.addf %1, %cst : f32
-    %4 = tt.load %arg2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-    tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
-    %5 = tt.load %arg3 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-    tt.store %arg3, %2 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
-    tt.return
+const PJRT_Gpu_Custom_Call* FindGpuCustomCallExtension(const PJRT_Api* api) {
+  const PJRT_Extension_Base* next = api->extension_start;
+  while (next != nullptr &&
+         next->type !=
+             PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call) {
+    next = next->next;
   }
+  return reinterpret_cast<const PJRT_Gpu_Custom_Call*>(next);
 }
-)";
 
-TEST(PjrtCAPIGpuExtensionTest, TritonCompile) {
-#ifdef TENSORFLOW_USE_SYCL
-  GTEST_SKIP() << "Triton compilation not supported on SYCL backend";
-#endif
+TEST(PjrtCApiGpuExtensionTest, CustomCallTypedWithTraits) {
+  static constexpr auto* noop = +[] { return xla::ffi::Error::Success(); };
+  XLA_FFI_DEFINE_HANDLER(kNoop, noop, xla::ffi::Ffi::Bind());
+
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "typed_function_name_with_traits";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(kNoop);
+  args.traits = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+  const PJRT_Gpu_Custom_Call* ext = FindGpuCustomCallExtension(GetPjrtApi());
+  ASSERT_NE(ext, nullptr);
+  ASSERT_GE(ext->base.struct_size,
+            PJRT_STRUCT_SIZE(PJRT_Gpu_Custom_Call, custom_call_handles_traits));
+  ASSERT_TRUE(ext->custom_call_handles_traits);
+
+  PJRT_Error* error = ext->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  auto registration =
+      xla::ffi::FindHandler(function_name, stream_executor::GpuPlatformName())
+          .value();
+  EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
+  EXPECT_EQ(registration.metadata.traits &
+                XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE,
+            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+}
+
+TEST(PjrtCApiGpuExtensionTest, CustomCallPreV3StructSizeIgnoresTraits) {
+  static constexpr auto* noop = +[] { return xla::ffi::Error::Success(); };
+  XLA_FFI_DEFINE_HANDLER(kNoop, noop, xla::ffi::Ffi::Bind());
+
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  // Pre-v3 args struct size: `traits` is not part of the struct the caller
+  // passed, so custom_call must not read it (treats it as 0) even though the
+  // field happens to be set in memory below.
+  args.struct_size =
+      PJRT_STRUCT_SIZE(PJRT_Gpu_Register_Custom_Call_Args, handler_execute);
+  std::string function_name = "typed_function_name_pre_v3_traits";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(kNoop);
+  args.traits = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+  const PJRT_Gpu_Custom_Call* ext = FindGpuCustomCallExtension(GetPjrtApi());
+  ASSERT_NE(ext, nullptr);
+
+  PJRT_Error* error = ext->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  auto registration =
+      xla::ffi::FindHandler(function_name, stream_executor::GpuPlatformName())
+          .value();
+  EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
+  EXPECT_EQ(registration.metadata.traits &
+                XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE,
+            0);
+}
+
+// The legacy (api_version 0) registry cannot carry traits, so a non-zero
+// traits value is ignored rather than rejected -- real callers (e.g. the JAX
+// CUDA plugin) register untyped handlers with traits set, and erroring would
+// break their plugin initialization.
+TEST(PjrtCApiGpuExtensionTest, CustomCallUntypedIgnoresTraits) {
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "untyped_function_name_with_traits";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 0;
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(&TestCustomCallV2);
+  args.traits = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
   auto api = GetPjrtApi();
+  const PJRT_Gpu_Custom_Call* ext = FindGpuCustomCallExtension(api);
+  ASSERT_NE(ext, nullptr);
 
-  PJRT_Client_Create_Args create_args;
-  create_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
-  create_args.extension_start = nullptr;
-  create_args.create_options = nullptr;
-  create_args.num_options = 0;
-  create_args.kv_get_callback = nullptr;
-  create_args.kv_get_user_arg = nullptr;
-  create_args.kv_put_callback = nullptr;
-  create_args.kv_put_user_arg = nullptr;
-  create_args.kv_try_get_callback = nullptr;
-  create_args.kv_try_get_user_arg = nullptr;
-  PJRT_Error* client_create_error = api->PJRT_Client_Create(&create_args);
-  EXPECT_EQ(client_create_error, nullptr)
-      << GetErrorMessage(client_create_error, api);
+  PJRT_Error* error = ext->custom_call(&args);
 
-  PJRT_Client_PlatformName_Args platform_name_args;
-  platform_name_args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
-  platform_name_args.extension_start = nullptr;
-  platform_name_args.client = create_args.client;
-  PJRT_Error* platform_name_error =
-      api->PJRT_Client_PlatformName(&platform_name_args);
-  EXPECT_EQ(platform_name_error, nullptr)
-      << GetErrorMessage(platform_name_error, api);
+  CHECK_EQ(error, nullptr);
+  void* custom_call = xla::CustomCallTargetRegistry::Global()->Lookup(
+      function_name, stream_executor::GpuPlatformName());
+  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCallV2));
+}
 
-  bool is_rocm = absl::string_view(platform_name_args.platform_name) == "rocm";
-  absl::string_view arch_name = is_rocm ? "gfx942:sramecc+:xnack-" : "7.0";
+TEST(PjrtCApiGpuExtensionTest,
+     CustomCallDuplicateRegistrationWithDifferentTraitsReturnsError) {
+  static constexpr auto* noop = +[] { return xla::ffi::Error::Success(); };
+  XLA_FFI_DEFINE_HANDLER(kNoop, noop, xla::ffi::Ffi::Bind());
 
-  PJRT_Client_Destroy_Args destroy_args;
-  destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
-  destroy_args.extension_start = nullptr;
-  destroy_args.client = create_args.client;
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "duplicate_fn_with_conflicting_traits";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(kNoop);
+  args.traits = 0;
+  const PJRT_Gpu_Custom_Call* ext = FindGpuCustomCallExtension(GetPjrtApi());
+  ASSERT_NE(ext, nullptr);
 
-  PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
-  CHECK_EQ(destroy_error, nullptr);
+  PJRT_Error* error = ext->custom_call(&args);
+  ASSERT_EQ(error, nullptr);
 
-  PJRT_Triton_Compile_Args args;
-  args.struct_size = PJRT_Triton_Compile_Args_STRUCT_SIZE;
-  args.module = kAddOneTTIR.data();
-  args.module_size = kAddOneTTIR.size();
-  args.arch_name = arch_name.data();
-  args.arch_name_size = arch_name.size();
-  args.num_stages = 1;
-  args.num_ctas = 1;
-  args.num_warps = 1;
-  const auto* triton_ext = pjrt::FindExtension<PJRT_Triton_Extension>(
-      api, PJRT_Extension_Type::PJRT_Extension_Type_Triton);
-  ASSERT_NE(triton_ext, nullptr);
+  // Register again with different traits; must return a non-null error.
+  args.traits = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+  PJRT_Error* duplicate_error = ext->custom_call(&args);
+  EXPECT_NE(duplicate_error, nullptr);
 
-  PJRT_Error* error = triton_ext->compile(&args);
-  CHECK_EQ(error, nullptr) << GetErrorMessage(error, api);
-  if (args.out_asm) {
-    delete[] args.out_asm;
-  } else {
-    std::remove(args.out_path);
-    delete[] args.out_path;
-  }
+  PJRT_Error_Destroy_Args error_destroy_args;
+  error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+  error_destroy_args.extension_start = nullptr;
+  error_destroy_args.error = duplicate_error;
+  GetPjrtApi()->PJRT_Error_Destroy(&error_destroy_args);
 }
 
 }  // namespace

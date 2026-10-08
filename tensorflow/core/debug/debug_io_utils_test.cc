@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_io_utils.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <unordered_set>
+
+#if defined(PLATFORM_WINDOWS)
+#include <direct.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/debug/debug_callback_registry.h"
@@ -32,10 +39,40 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 namespace {
+
+#if defined(PLATFORM_WINDOWS)
+#define TFDBG_GETCWD _getcwd
+#define TFDBG_CHDIR _chdir
+#else
+#define TFDBG_GETCWD getcwd
+#define TFDBG_CHDIR chdir
+#endif
+
+// Temporarily changes the process's current working directory for the
+// lifetime of this object, then restores the original directory. Used by
+// tests that must exercise a bare relative (slash-less) path argument, which
+// otherwise depends on whatever the test runner's ambient CWD happens to be.
+class ScopedChdir {
+ public:
+  explicit ScopedChdir(const std::string& new_dir) {
+    char buf[FILENAME_MAX];
+    CHECK(TFDBG_GETCWD(buf, sizeof(buf)) != nullptr);
+    old_dir_ = buf;
+    CHECK_EQ(0, TFDBG_CHDIR(new_dir.c_str()));
+  }
+  ~ScopedChdir() { (void)TFDBG_CHDIR(old_dir_.c_str()); }
+
+ private:
+  std::string old_dir_;
+};
+
+#undef TFDBG_GETCWD
+#undef TFDBG_CHDIR
 
 class DebugIOUtilsTest : public ::testing::Test {
  public:
@@ -147,6 +184,60 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
   ASSERT_TRUE(
       env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs)
           .ok());
+  ASSERT_EQ(0, undeleted_files);
+  ASSERT_EQ(0, undeleted_dirs);
+}
+
+TEST_F(DebugIOUtilsTest, DumpTensorToDirWithRelativeDumpRootSunnyDay) {
+  Initialize();
+  // Run inside a directory guaranteed to be writable, so the relative-path
+  // dump below doesn't depend on whatever the test runner's ambient current
+  // working directory happens to be.
+  ScopedChdir scoped_chdir(testing::TmpDir());
+
+  // A relative directory with no path separator at all. io::Dirname() on a
+  // path like this returns "", and DebugFileIO::RecursiveCreateDir used to
+  // recurse on that empty result forever instead of treating it as "no
+  // parent directory left to create" (see GitHub issue #123114).
+  const std::string test_dir = "tfdbg_relative_dump_root_test";
+  if (env_->FileExists(test_dir).ok()) {
+    int64_t undeleted_files = 0;
+    int64_t undeleted_dirs = 0;
+    TF_ASSERT_OK(
+        env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs));
+  }
+
+  const uint64_t wall_time = env_->NowMicros();
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "foo/bar/qux/tensor_a", 0, "DebugIdentity");
+
+  std::string dump_file_path;
+  TF_ASSERT_OK(DebugFileIO::DumpTensorToDir(
+      kDebugNodeKey, *tensor_a_, wall_time, test_dir, &dump_file_path));
+
+  // Read the file into a Event proto.
+  Event event;
+  TF_ASSERT_OK(ReadEventFromFile(dump_file_path, &event));
+
+  ASSERT_GE(wall_time, event.wall_time());
+  ASSERT_EQ(1, event.summary().value().size());
+  ASSERT_EQ(kDebugNodeKey.debug_node_name,
+            event.summary().value(0).node_name());
+
+  Tensor a_prime(DT_FLOAT);
+  ASSERT_TRUE(a_prime.FromProto(event.summary().value(0).tensor()));
+
+  // Verify tensor shape and value.
+  ASSERT_EQ(tensor_a_->shape(), a_prime.shape());
+  for (int i = 0; i < a_prime.flat<float>().size(); ++i) {
+    ASSERT_EQ(tensor_a_->flat<float>()(i), a_prime.flat<float>()(i));
+  }
+
+  // Tear down temporary file and directories.
+  int64_t undeleted_files = 0;
+  int64_t undeleted_dirs = 0;
+  TF_ASSERT_OK(
+      env_->DeleteRecursively(test_dir, &undeleted_files, &undeleted_dirs));
   ASSERT_EQ(0, undeleted_files);
   ASSERT_EQ(0, undeleted_dirs);
 }

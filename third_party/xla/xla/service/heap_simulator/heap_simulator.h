@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/union_find.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -144,6 +145,13 @@ class HeapSimulator {
     // If 'buffers_to_assign' is provided, only those buffers are assigned
     // offsets, otherwise all buffers defined by the instructions are assigned.
     const absl::flat_hash_set<const HloValue*>* buffers_to_assign;
+    // Memory space color marking "view" values (address stand-ins aliasing
+    // into their first operand's buffer, see
+    // BufferAssigner::Options::dus_view_color). When set, a value used as a
+    // view's base is kept live until the view's last transitive reader: those
+    // readers read the value's buffer through the view, so it must not be
+    // recycled before them.
+    std::optional<int64_t> view_color;
   };
 
   // Returns the minimum memory required to compute an HLO module where all
@@ -214,7 +222,10 @@ class HeapSimulator {
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
       HloLiveRange* live_range);
 
-  bool IgnoreBuffer(const HloValue* buffer) const;
+  // Returns whether the buffer should be allocated space in the heap simulation
+  // (excludes constants unless alloc_constants is set, and respects the
+  // buffers_to_assign filter).
+  bool IsHeapPressureImpacting(const HloValue* buffer) const;
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);
   void Free(const HloValue* buffer, const HloInstruction* instruction);
   // ShareBuffer indicates that a new buffer is defined and it has to be the
@@ -336,6 +347,17 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
   int64_t current_heap_size_ = 0;
   int64_t max_heap_size_ = 0;
 };
+
+#if defined(PLATFORM_GOOGLE)
+// TODO(b/571155846): Open-source this radix sort improvement once OR-Tools
+// with scratch-buffer AutoRadixSort (cl/990317179) is released and the
+// dependency is bumped in OpenXLA.
+//
+// Sorts `chunks` in ascending order of `Chunk::offset` using an adaptive hybrid
+// sort strategy.
+void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
+                              std::vector<HeapSimulator::Chunk>& scratch);
+#endif  // PLATFORM_GOOGLE
 
 // Node in BufferIntervalTree that stores the alloc and free times of a buffer,
 // and the chunk assigned to it.
@@ -572,7 +594,17 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     kFastMerge,
     // Faster variant that splits the memory space for buffers with colocations
     // and buffers without colocations.
-    kFastSplit
+    kFastSplit,
+    // Sort buffers by start time (ascending). For multi-page (Virtual HBM)
+    // allocation this packs each page with a temporally local cohort of buffers
+    // instead of globally-largest buffers, so a page's active lifespan stays
+    // confined to a phase of the schedule. That temporal locality lets the
+    // runtime pager keep a small working set resident and reduces page faults.
+    kPhaseWindow,
+    // Like kPhaseWindow but orders by END time, grouping buffers that expire
+    // together onto the same page so whole pages become dead at once (which the
+    // pager can then evict or discard cheaply).
+    kPhaseWindowEnd
   };
 
   // BufferInterval stores a buffer's size and time interval.
@@ -1012,6 +1044,14 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // live range. Live range is defined as in GetTemporalBufferIntervalCompare.
   BufferIntervalCompare GetColocationStartTimeBufferIntervalCompare() const;
 
+  // Return a BufferIntervalCompare function that sorts by the END time of the
+  // colocated live range (ascending). For multi-page (Virtual HBM) packing this
+  // groups buffers that become dead at the same time onto the same page, so a
+  // page's contents expire together. That lets the pager evict (or, for stack
+  // temporaries, discard without write-back) a whole page at once, reducing
+  // both page faults and eviction traffic.
+  BufferIntervalCompare GetColocationEndTimeBufferIntervalCompare() const;
+
   SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type() const;
 
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
@@ -1047,12 +1087,16 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   // Temporary buffers used by MakeFreeChunks to avoid reallocating memory.
   mutable std::vector<Chunk> used_chunks_;
+#if defined(PLATFORM_GOOGLE)
+  mutable std::vector<Chunk> radix_scratch_;
+#endif  // PLATFORM_GOOGLE
   mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
 
  protected:
-  // Returns all transitive colocated buffers of this buffer interval. I.e., If
-  // a buffer A is colocated with B and B is colocated with C, this function
-  // returns all three of them.
+  // Returns all transitive colocated buffers of this buffer interval,
+  // excluding the interval's buffer itself. I.e., if a buffer A is colocated
+  // with B and B is colocated with C, calling this on A's interval returns B
+  // and C.
   absl::flat_hash_set<const BufferType*> GetTransitiveColocations(
       const BufferInterval& interval) const;
 

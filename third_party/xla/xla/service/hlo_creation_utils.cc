@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -132,7 +132,8 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const SparsityConfig& sparsity_config, const OpMetadata* metadata,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config, const OpMetadata* metadata,
     const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
@@ -143,8 +144,9 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
           window, dimension_numbers, sparsity_config, preferred_element_type));
   return computation->AddInstruction(
       HloInstruction::CreateConvolve(
-          convolve_shape, lhs, rhs, feature_group_count, batch_group_count,
-          window, dimension_numbers, precision_config, sparsity_config),
+          convolve_shape, {lhs, rhs}, feature_group_count, batch_group_count,
+          window, dimension_numbers, precision_config, sparsity_config,
+          block_scaling_config),
       metadata, frontend_attributes);
 }
 
@@ -377,14 +379,32 @@ absl::StatusOr<HloInstruction*> MakeDotHlo(
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
     const OpMetadata* metadata) {
-  HloComputation* computation = lhs->parent();
-  CHECK_EQ(computation, rhs->parent());
-  ABSL_ASSIGN_OR_RETURN(Shape dot_shape, ShapeInference::InferDotOpShape(
-                                        lhs->shape(), rhs->shape(), dim_numbers,
-                                        preferred_element_type));
+  return MakeDotHlo({lhs, rhs}, dim_numbers, precision_config,
+                    preferred_element_type, SparsityConfig(),
+                    BlockScalingConfig(), metadata);
+}
+
+absl::StatusOr<HloInstruction*> MakeDotHlo(
+    absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    std::optional<PrimitiveType> preferred_element_type,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config,
+    const OpMetadata* metadata) {
+  CHECK_GE(operands.size(), 2);
+  HloComputation* computation = operands[0]->parent();
+  for (HloInstruction* operand : operands) {
+    CHECK_EQ(computation, operand->parent());
+  }
+  ABSL_ASSIGN_OR_RETURN(Shape dot_shape,
+                   ShapeInference::InferDotOpShape(
+                       operands[0]->shape(), operands[1]->shape(), dim_numbers,
+                       preferred_element_type, sparsity_config));
   return computation->AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, rhs, dim_numbers,
-                                precision_config),
+      HloInstruction::CreateDot(dot_shape, operands, dim_numbers,
+                                precision_config, sparsity_config,
+                                block_scaling_config),
       metadata);
 }
 

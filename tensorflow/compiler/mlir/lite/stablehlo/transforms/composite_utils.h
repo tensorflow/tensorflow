@@ -77,6 +77,16 @@ DenseIntElementsAttr DenseI64AttrToI32Attr(
 // NHWC.
 ShapedType GetNhwcReturnTypeFromNchw(Operation* old_op);
 
+// Extracts the mirror pad mode from composite attributes and returns it as a
+// TFLite MirrorPaddingAttr.
+mlir::Attribute GetMirrorPadMode(const DictionaryAttr& composite_attrs,
+                                 Builder& builder);
+
+// Builds a 4x2 padding matrix attribute for TFLite MirrorPad from a 4-element
+// [left, right, top, bottom] composite attribute.
+DenseIntElementsAttr BuildPaddingsAttr(const DictionaryAttr& composite_attrs,
+                                       Builder& builder);
+
 }  // namespace odml
 
 }  // namespace mlir

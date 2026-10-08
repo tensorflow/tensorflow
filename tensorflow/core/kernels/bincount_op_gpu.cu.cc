@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <type_traits>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -119,7 +121,8 @@ __global__ void BincountReduceKernel(const Tidx* in, T* out,
                                      const Tidx num_bins) {
   for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       out[bin] = T(1);
     }
   }
@@ -152,7 +155,8 @@ __global__ void BincountColReduceKernel(const Tidx* in, const T* weights,
   const int64_t nthreads = num_rows * num_cols;
   for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       int64_t row = index / num_cols;
       int64_t offset = row * num_bins + bin;
       if (binary_count) {
@@ -182,7 +186,8 @@ __global__ void BincountColReduceSharedKernel(const Tidx* in, const T* weights,
   const int64_t nthreads = num_rows * num_cols;
   for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       int64_t row = index / num_cols;
       int64_t offset = row * num_bins + bin;
       if (binary_count) {

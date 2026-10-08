@@ -27,13 +27,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -458,10 +459,16 @@ absl::StatusOr<std::string> KernelApiIrBuilder::GetKernelName(
 }
 
 std::unique_ptr<llvm::Module> KernelApiIrBuilder::CreateModule(
-    absl::string_view name, llvm::LLVMContext& context) {
+    absl::string_view name, llvm::LLVMContext& context,
+    const TargetMachineFeatures* target_machine_features) {
   constexpr absl::string_view kXlaModuleIdentifier = "__compute_module";
-  return std::make_unique<llvm::Module>(
+  std::unique_ptr<llvm::Module> llvm_module = std::make_unique<llvm::Module>(
       absl::StrCat(kXlaModuleIdentifier, "_", name), context);
+  llvm_module->setTargetTriple(
+      target_machine_features->target_machine()->getTargetTriple());
+  llvm_module->setDataLayout(
+      target_machine_features->target_machine()->createDataLayout());
+  return llvm_module;
 }
 
 auto KernelApiIrBuilder::EmitKernelNumWorkGroups(llvm::IRBuilderBase& builder,
@@ -553,6 +560,14 @@ void KernelApiIrBuilder::SetKernelFunctionAttributes(llvm::Function* function) {
   // We use external linkage because we'll be resolving this function from the
   // XLA runtime.
   function->setCallingConv(llvm::CallingConv::C);
+
+  // Annotations for the kernel call frame.
+  // Noundef is needed for msan; the host (caller) can prove that the call frame
+  // is always defined, and therefore will elide annotating the corresponding
+  // shadow memory entry. The kernel must be ready for this by having noundef.
+  function->addParamAttr(0, llvm::Attribute::NoUndef);
+  // Non-null: simply a performance optimization. Not needed for sanitizers.
+  function->addParamAttr(0, llvm::Attribute::NonNull);
 
   // Generate unwind information so that GDB can crawl through the stack frames
   // created by the JIT compiled code.

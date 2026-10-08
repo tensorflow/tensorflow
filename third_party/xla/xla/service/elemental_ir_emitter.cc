@@ -32,12 +32,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
@@ -100,7 +100,7 @@ llvm::Value* EmitFxToF8e(llvm::Module* module, PrimitiveType fx_type,
                          PrimitiveType f8_type, llvm::Value* fx_value,
                          llvm::IRBuilderBase* b) {
   llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-      module, IntrinsicType::S(fx_type), IntrinsicType::S(f8_type));
+      module, {IntrinsicType::S(fx_type), IntrinsicType::S(f8_type)});
   return b->CreateCall(fptrunc, {fx_value});
 }
 
@@ -237,7 +237,7 @@ llvm::Value* EmitToF16F8e(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
 llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::Module* module,
                                llvm::IRBuilderBase* b) {
   llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-      module, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+      module, {IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16)});
   return b->CreateCall(fptrunc, {f8_value});
 }
 
@@ -818,7 +818,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (options_.xla_cpu_use_truncate_f32_to_bf16_conversion) {
         if (from_type == F32 && to_type == BF16) {
           llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-              module_, IntrinsicType::S(F32), IntrinsicType::S(BF16));
+              module_, {IntrinsicType::S(F32), IntrinsicType::S(BF16)});
           return b_->CreateCall(fptrunc, {operand_value});
         }
         if (from_type == BF16 && to_type == F32) {
@@ -845,7 +845,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == F8E5M2) {
         TF_RET_CHECK(to_type != F8E5M2);
         llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-            module_, IntrinsicType::S(F8E5M2), IntrinsicType::S(F16));
+            module_, {IntrinsicType::S(F8E5M2), IntrinsicType::S(F16)});
         operand_value = b_->CreateCall(fptrunc, {operand_value});
         from_type = F16;
         if (from_type == to_type) {
@@ -863,7 +863,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == F8E4M3FN) {
         TF_RET_CHECK(to_type != F8E4M3FN);
         llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-            module_, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+            module_, {IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16)});
         operand_value = b_->CreateCall(fptrunc, {operand_value});
         from_type = F16;
         if (from_type == to_type) {
@@ -1050,12 +1050,16 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitErf(op->shape().element_type(), operand_value);
     case HloOpcode::kExp:
       return EmitExp(op->shape().element_type(), operand_value, "");
+    case HloOpcode::kExp2:
+      return EmitExp2(op->shape().element_type(), operand_value);
     case HloOpcode::kExpm1:
       return EmitExpm1(op->shape().element_type(), operand_value);
     case HloOpcode::kLog:
       return EmitLog(op->shape().element_type(), operand_value);
     case HloOpcode::kLog1p:
       return EmitLog1p(op->shape().element_type(), operand_value);
+    case HloOpcode::kLog2:
+      return EmitLog2(op->shape().element_type(), operand_value);
     case HloOpcode::kCos:
       return EmitCos(op->shape().element_type(), operand_value);
     case HloOpcode::kCosh:
@@ -1142,6 +1146,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
   switch (op->opcode()) {
     case HloOpcode::kLog: {
       return EmitComplexLog(op, operand_value);
+    }
+    case HloOpcode::kLog2: {
+      ABSL_ASSIGN_OR_RETURN(llvm::Value * log_z, EmitComplexLog(op, operand_value));
+      auto real = EmitExtractReal(log_z);
+      auto imag = EmitExtractImag(log_z);
+      auto inv_ln2 = llvm::ConstantFP::get(real->getType(), M_LOG2E);
+      return EmitComposeComplex(op, FMul(real, inv_ln2), FMul(imag, inv_ln2),
+                                module_, b_);
     }
     case HloOpcode::kLog1p: {
       //  log1p(a+bi) = .5*log((a+1)^2+b^2) + i*atan2(b, a + 1)
@@ -1252,6 +1264,36 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       auto imag_normal = FMul(exp_a, sin_b);
       auto imag_overflow = FMul(FMul(exp_a_half, sin_b), exp_a_half);
       auto imag_nonzero = Select(exp_a_is_inf, imag_overflow, imag_normal);
+      auto imag_result = Select(b_is_zero, zero, imag_nonzero);
+
+      return EmitComposeComplex(op, real_result, imag_result, module_, b_);
+    }
+    case HloOpcode::kExp2: {
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
+      auto type = a->getType();
+      auto ln2 = llvm::ConstantFP::get(type, M_LN2);
+      auto b_ln2 = FMul(b, ln2);
+      auto zero = llvm::ConstantFP::get(type, 0.0);
+      auto half = llvm::ConstantFP::get(type, 0.5);
+      auto pos_inf = llvm::ConstantFP::getInfinity(type);
+
+      ABSL_ASSIGN_OR_RETURN(auto exp2_a, EmitExp2(component_type, a));
+      auto a_half = FMul(a, half);
+      ABSL_ASSIGN_OR_RETURN(auto exp2_a_half, EmitExp2(component_type, a_half));
+      ABSL_ASSIGN_OR_RETURN(auto cos_b_ln2, EmitCos(component_type, b_ln2));
+      ABSL_ASSIGN_OR_RETURN(auto sin_b_ln2, EmitSin(component_type, b_ln2));
+
+      auto exp2_a_is_inf = FCmpOEQ(exp2_a, pos_inf);
+      auto b_is_zero = FCmpOEQ(b, zero);
+
+      auto real_normal = FMul(exp2_a, cos_b_ln2);
+      auto real_overflow = FMul(FMul(exp2_a_half, cos_b_ln2), exp2_a_half);
+      auto real_result = Select(exp2_a_is_inf, real_overflow, real_normal);
+
+      auto imag_normal = FMul(exp2_a, sin_b_ln2);
+      auto imag_overflow = FMul(FMul(exp2_a_half, sin_b_ln2), exp2_a_half);
+      auto imag_nonzero = Select(exp2_a_is_inf, imag_overflow, imag_normal);
       auto imag_result = Select(b_is_zero, zero, imag_nonzero);
 
       return EmitComposeComplex(op, real_result, imag_result, module_, b_);
@@ -1376,16 +1418,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       ABSL_ASSIGN_OR_RETURN(llvm::Value * sin_b, EmitSin(component_type, b));
       llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
 
-      // About "x^2 is a better approximation than Expm1(x) + Expm1(x)
-      // for small values of x": this statement is not
-      // accurate. Previously, Expm1(x) implementation had accuracy
-      // issues for small x (where it was supposed to stand out in
-      // accuracy!), but after resolving these issues (see
-      // openxla/xla#10376), using precomputed exp_2a_m1 and
-      // exp_neg_2a_m1 is accurate enough and we'll save a few
-      // instructions.
-
-      auto exp_sum_m2 = FAdd(exp_2a_m1, exp_neg_2a_m1);
+      // Computing the denominator's exponential term as expm1(2a) + expm1(-2a)
+      // suffers from catastrophic cancellation as a -> 0. Instead, use the
+      // identity (e^(2a) - 1)(e^(-2a) - 1) = 2 - 2*cosh(2a), which gives
+      // 2*(cosh(2a) - 1) = -expm1(2a) * expm1(-2a) to avoid cancellation
+      // and reuse exp_2a_m1 and exp_neg_2a_m1.
+      llvm::Value* exp_product = FMul(exp_2a_m1, exp_neg_2a_m1);
+      llvm::Value* exp_sum_m2 = FMul(neg_one, exp_product);
       llvm::Value* denom = FAdd(exp_sum_m2, two_cos_2b_p2);
 
       // As `a` grows toward +inf and -inf, the real numerator will grow towards
@@ -2144,6 +2183,12 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(
                                       {value->getType()}, b_);
 }
 
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog2(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::log2, {value},
+                                      {value->getType()}, b_);
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(
     PrimitiveType prim_type, llvm::Value* value) {
   llvm::Function* log1p = codegen::intrinsics::Log1p::GetOrInsertDeclaration(
@@ -2218,6 +2263,12 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value, absl::string_view name) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
                                       {value->getType()}, b_, name);
+}
+
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp2(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp2, {value},
+                                      {value->getType()}, b_);
 }
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(
@@ -2440,31 +2491,47 @@ llvm::Value* ElementalIrEmitter::EmitIntegerRemainder(llvm::Value* lhs,
       Select(has_int_min_overflow, GetZero(lhs->getType()), safe_rem));
 }
 
-llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
-                                                llvm::Value* exponent,
+llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* lhs,
+                                                llvm::Value* rhs,
                                                 bool is_signed) {
   // Exponentiation by squaring:
   // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;
   int bits = 6;  // Everything else would overflow for any exponent > 1, as 2^64
                  // is the larget possible exponent for a 64-bit integer, and
                  // that's 1 << 6.
-  llvm::Value* accumulator = llvm::ConstantInt::get(base->getType(), 1);
-  llvm::Value* one = llvm::ConstantInt::get(exponent->getType(), 1);
-  llvm::Value* zero = llvm::ConstantInt::get(exponent->getType(), 0);
+  llvm::Value* base = lhs;
+  llvm::Value* exponent = rhs;
+  llvm::Value* exp_one = llvm::ConstantInt::get(exponent->getType(), 1);
+  llvm::Value* exp_zero = llvm::ConstantInt::get(exponent->getType(), 0);
+  llvm::Value* base_one = llvm::ConstantInt::get(base->getType(), 1);
+  llvm::Value* base_zero = llvm::ConstantInt::get(base->getType(), 0);
+  llvm::Value* base_neg_one = llvm::ConstantInt::get(base->getType(), -1, true);
+  llvm::Value* accumulator = base_one;
   llvm::Value* original_base = base;
   llvm::Value* original_exponent = exponent;
 
   // Unroll the loop at compile time.
   for (int i = 0; i < bits; i++) {
-    accumulator =
-        b_->CreateSelect(b_->CreateICmpEQ(b_->CreateAnd(exponent, one), one),
-                         b_->CreateMul(accumulator, base), accumulator);
+    accumulator = b_->CreateSelect(
+        b_->CreateICmpEQ(b_->CreateAnd(exponent, exp_one), exp_one),
+        b_->CreateMul(accumulator, base), accumulator);
     base = b_->CreateMul(base, base);
     exponent = b_->CreateLShr(exponent, 1);
   }
+  if (!is_signed) {
+    return accumulator;
+  }
+
+  llvm::Value* neg_one_base_result = b_->CreateSelect(
+      b_->CreateICmpEQ(b_->CreateAnd(original_exponent, exp_one), exp_one),
+      base_neg_one, base_one);
+  llvm::Value* neg_exp_res =
+      b_->CreateSelect(b_->CreateICmpEQ(original_base, base_neg_one),
+                       neg_one_base_result, base_zero);
   return b_->CreateSelect(
-      b_->CreateICmpSGE(original_exponent, zero), accumulator,
-      b_->CreateSelect(b_->CreateICmpEQ(original_base, one), one, zero));
+      b_->CreateICmpSGE(original_exponent, exp_zero), accumulator,
+      b_->CreateSelect(b_->CreateICmpEQ(original_base, base_one), base_one,
+                       neg_exp_res));
 }
 
 llvm::Value* ElementalIrEmitter::EmitIntegerMulhi(llvm::Value* lhs,
@@ -3329,12 +3396,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCosh:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLog2:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kPopulationCount:

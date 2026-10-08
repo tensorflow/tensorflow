@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_writer.h"
 #include "riegeli/bytes/writer.h"
 #include "xla/backends/cpu/target_machine_options.h"
@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/runtime/hang_watchdog.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
@@ -85,6 +86,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_module_globals.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
@@ -122,7 +124,6 @@ limitations under the License.
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/random.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -242,22 +243,31 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   // Clamp explicitly requested stream counts to non-negative values.
   compute = std::max(0, compute);
   comm = std::max(0, comm);
+  bool need_d2h_stream = false;
+  bool need_h2d_stream = false;
 
-  // Then traverse all thunks to see if anyone requested more streams.
+  // Then traverse all thunks to see if anyone requested more streams. This
+  // also sizes sparse collective-domain stream pools from their assigned IDs.
   for (const auto& thunk : executor.thunks()) {
     thunk->Walk([&](Thunk* nested) {
       if (auto* async_start = dynamic_cast<AsyncStartThunk*>(nested)) {
         ExecutionStreamId id = async_start->execution_stream_id();
         if (id.is_computation()) {
           compute = std::max<int>(compute, id.computation_id().value() + 1);
-        } else {
+        } else if (id.is_communication()) {
           comm = std::max<int>(comm, id.communication_id().value() + 1);
+        } else if (id.is_memcpy()) {
+          if (id.memcpy_id() == kMemcpyD2HStreamId) {
+            need_d2h_stream = true;
+          } else if (id.memcpy_id() == kMemcpyH2DStreamId) {
+            need_h2d_stream = true;
+          }
         }
       }
     });
   }
 
-  return {compute, comm};
+  return {compute, comm, need_d2h_stream, need_h2d_stream};
 }
 
 GpuExecutable::BorrowedStreams GpuExecutable::BorrowedStreams::Assign(
@@ -285,14 +295,14 @@ static absl::Status RunThunkPasses(
     const DebugOptions& debug_options, const se::DeviceDescription& device_info,
     SequentialThunk* root_thunk, HloModule* hlo_module,
     const std::vector<ShapedSlice>& module_output_slices,
-    ThunkPassBufferAllocator& allocator) {
+    ThunkPassBufferAllocator& allocator, int devices_per_host) {
   ThunkPassPipeline pipeline("thunk-passes");
   if (debug_options.xla_gpu_experimental_enable_checksum_tracing_on_thunks() ||
       debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<ThunkBufferDebugPass> pass,
         ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kChecksum,
-                                     module_output_slices));
+                                     module_output_slices, devices_per_host));
     pipeline.AddPass(std::move(pass));
   }
   if (debug_options.xla_gpu_experimental_enable_buffer_saver_on_thunks() ||
@@ -300,7 +310,7 @@ static absl::Status RunThunkPasses(
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<ThunkBufferDebugPass> pass,
         ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kBufferSaver,
-                                     module_output_slices));
+                                     module_output_slices, devices_per_host));
     pipeline.AddPass(std::move(pass));
   }
   if ((debug_options.xla_gpu_detect_nan() !=
@@ -313,11 +323,11 @@ static absl::Status RunThunkPasses(
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<ThunkBufferDebugPass> pass,
         ThunkBufferDebugPass::Create(ThunkBufferDebugPass::Mode::kFloatChecker,
-                                     module_output_slices));
+                                     module_output_slices, devices_per_host));
     pipeline.AddPass(std::move(pass));
   }
   pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(
-      hlo_module ? hlo_module->name() : "Anonymous"));
+      hlo_module ? hlo_module->name() : "Anonymous", devices_per_host));
 
   ABSL_ASSIGN_OR_RETURN(bool changed,
                    pipeline.Run(&root_thunk->thunks(), debug_options,
@@ -416,9 +426,13 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::vector<ShapedSlice> module_output_slices,
       GetModuleOutputSlices(params.program_shape, params.output_info,
                             params.allocations));
-  ABSL_RETURN_IF_ERROR(RunThunkPasses(
-      params.debug_options, params.device_description, seq_thunk.get(),
-      params.debug_module.get(), module_output_slices, allocator));
+  const int devices_per_host = params.gpu_topology.has_value()
+                                   ? params.gpu_topology->num_devices_per_host()
+                                   : 0;
+  ABSL_RETURN_IF_ERROR(
+      RunThunkPasses(params.debug_options, params.device_description,
+                     seq_thunk.get(), params.debug_module.get(),
+                     module_output_slices, allocator, devices_per_host));
   // Extract modified thunks back into a ThunkExecutor.
   auto executor =
       std::make_unique<ThunkExecutor>(std::move(seq_thunk->thunks()));
@@ -444,13 +458,13 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
       std::move(params.buffer_allocations_debug_summary),
-      collective_use_minimal_resource));
+      collective_use_minimal_resource, std::move(params.gpu_topology)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+    std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
     BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
     std::unique_ptr<ThunkExecutor> executable, std::string module_name,
     ProgramShape program_shape, std::vector<BufferAllocation> allocations,
@@ -464,12 +478,14 @@ GpuExecutable::GpuExecutable(
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
     std::string buffer_allocations_debug_summary,
-    bool collective_use_minimal_resource)
+    bool collective_use_minimal_resource,
+    std::optional<GpuTopology> gpu_topology)
     : Executable(std::move(debug_module)),
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
       gpu_version_(device_description.gpu_compute_capability()),
       thunk_executor_(std::move(executable)),
+      definition_plan_(ThunkExecutor::BuildDefinitionPlan(*thunk_executor_)),
       num_additional_streams_(
           GetNumAdditionalStreams(*thunk_executor_, debug_options)),
       module_name_(std::move(module_name)),
@@ -502,7 +518,8 @@ GpuExecutable::GpuExecutable(
       cpu_target_machine_options_(std::move(cpu_target_machine_options)),
       buffer_allocations_debug_summary_(
           std::move(buffer_allocations_debug_summary)),
-      collective_use_minimal_resource_(collective_use_minimal_resource) {
+      collective_use_minimal_resource_(collective_use_minimal_resource),
+      gpu_topology_(std::move(gpu_topology)) {
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_proto_);
@@ -558,6 +575,29 @@ absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions& run_options,
     const DebugOptions* absl_nullable debug_options);
 
+// Returns HangWatchdog guards for the given execution timeout handlers.
+static std::vector<std::shared_ptr<HangWatchdog::Guard>> ExecutionTimeoutGuards(
+    absl::Span<ExecutionTimeoutHandler> handlers,
+    absl::string_view watchdog_name) {
+  std::vector<std::shared_ptr<HangWatchdog::Guard>> guards;
+  for (ExecutionTimeoutHandler& handler : handlers) {
+    if (!handler.callback || handler.timeout == absl::InfiniteDuration()) {
+      continue;
+    }
+
+    guards.push_back(HangWatchdog::Global().Watch(
+        watchdog_name, handler.timeout,
+        [watchdog_name = std::string(watchdog_name), timeout = handler.timeout,
+         callback = std::move(handler.callback)]() mutable {
+          LOG(ERROR) << absl::StreamFormat(
+              "%s failed to finish in %v, call execution timeout handler.",
+              watchdog_name, timeout);
+          std::move(callback)(watchdog_name, timeout);
+        }));
+  }
+  return guards;
+}
+
 absl::Status GpuExecutable::ExecuteThunksImpl(
     const DebugOptions* debug_options, const std::string& module_name,
     ModuleIdentifier module_id, ThunkExecutor& thunk_executor,
@@ -569,12 +609,11 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
     GpuExecutable::NumAdditionalStreams num_additional_streams,
     CollectiveMemoryCache& collective_memory_cache,
     bool collective_use_minimal_resource) {
+  const GpuExecutableRunOptions* gpu_run_options =
+      run_options->run_options().gpu_executable_run_options();
+
   bool mock_collectives =
-      run_options->run_options().gpu_executable_run_options()
-          ? run_options->run_options()
-                .gpu_executable_run_options()
-                ->enable_mock_collectives()
-          : false;
+      gpu_run_options && gpu_run_options->enable_mock_collectives();
 
   int64_t collective_max_nchannels =
       debug_options ? debug_options->xla_gpu_nccl_collective_max_nchannels()
@@ -608,33 +647,52 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
     ABSL_ASSIGN_OR_RETURN(tracker, InstallProgressTracker(executor, thunk_executor));
   }
 
-  // Maybe add a watch guard for this execution.
-  absl::Duration watchdog_timeout = absl::InfiniteDuration();
-  if (debug_options &&
-      !debug_options->xla_gpu_execution_terminate_timeout().empty()) {
-    TF_RET_CHECK(absl::ParseDuration(
-        debug_options->xla_gpu_execution_terminate_timeout(),
-        &watchdog_timeout))
-        << "Failed to parse XLA execution terminate timeout";
+  absl::Duration host_timeout = absl::InfiniteDuration();
+  absl::Duration device_timeout = absl::InfiniteDuration();
+
+  if (debug_options) {
+    if (!debug_options->xla_gpu_execution_terminate_timeout().empty()) {
+      TF_RET_CHECK(absl::ParseDuration(
+          debug_options->xla_gpu_execution_terminate_timeout(), &host_timeout))
+          << "Failed to parse XLA host execution terminate timeout";
+    }
+    if (!debug_options->xla_gpu_device_execution_terminate_timeout().empty()) {
+      TF_RET_CHECK(absl::ParseDuration(
+          debug_options->xla_gpu_device_execution_terminate_timeout(),
+          &device_timeout))
+          << "Failed to parse XLA device execution terminate timeout";
+    }
   }
 
-  std::shared_ptr<HangWatchdog::Guard> guard = nullptr;
-  if (watchdog_timeout < absl::InfiniteDuration()) {
-    int32_t device_ordinal = executor->device_ordinal();
-    std::string watchdog_name = absl::StrFormat("[%d] XLA GPU execution `%s`",
-                                                device_ordinal, module_name);
+  // Timeout handlers for this execution, partitioned into host and device.
+  std::vector<ExecutionTimeoutHandler> handlers;
+  if (gpu_run_options != nullptr) {
+    handlers = gpu_run_options->execution_timeout_handlers();
+  }
+  size_t num_host =
+      absl::c_partition(handlers, ExecutionTimeoutHandler::IsHost) -
+      handlers.begin();
+  auto host_handlers = absl::MakeSpan(handlers).first(num_host);
+  auto device_handlers = absl::MakeSpan(handlers).subspan(num_host);
 
-    // If we have installed progress tracker, log how far thunk execution
-    // progressed before getting stuck. This is helpful for identifying kernels
-    // that never finish and stall the stream execution.
+  RunId run_id = run_options->run_options().run_id();
+
+  std::string host_watchdog_name =
+      absl::StrFormat("[%d] XLA GPU host execution `%s` (run_id=%v)",
+                      executor->device_ordinal(), module_name, run_id);
+
+  // Monitors that host thread makes progress and does not get stuck.
+  std::vector<std::shared_ptr<HangWatchdog::Guard>> host_guards =
+      ExecutionTimeoutGuards(host_handlers, host_watchdog_name);
+
+  if (host_timeout < absl::InfiniteDuration()) {
     HangWatchdog::CancelCallback pre_abort;
     if (tracker.has_value()) {
-      pre_abort = [&tracker, progress_tracking_n, device_ordinal] {
+      pre_abort = [tracker = tracker->tracker(), progress_tracking_n,
+                   device_ordinal = executor->device_ordinal()] {
         auto log_progress = [&](auto label, auto thunks) {
           LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
                                            label, thunks.size());
-          // We want to report all thunks in chronological order for
-          // readability according to the time they were executed.
           absl::c_sort(thunks, [](const auto& a, const auto& b) {
             return a.executed < b.executed;
           });
@@ -672,10 +730,10 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       };
     }
 
-    guard = HangWatchdog::Global().Watch(
-        watchdog_name, watchdog_timeout,
-        HangWatchdog::Abort(watchdog_name, watchdog_timeout,
-                            std::move(pre_abort)));
+    host_guards.push_back(HangWatchdog::Global().Watch(
+        host_watchdog_name, host_timeout,
+        HangWatchdog::Abort(host_watchdog_name, host_timeout,
+                            std::move(pre_abort))));
   }
 
   // Borrow stream for tracing command buffers.
@@ -739,9 +797,13 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
     Thunk::PrepareParams prepare_params{
-        &collective_params,          &collective_clique_requests,
-        &collective_memory_requests, executor,
-        &buffer_allocations,         &execution_scoped_state};
+        &collective_params,
+        &collective_clique_requests,
+        &collective_memory_requests,
+        executor,
+        &buffer_allocations,
+        &execution_scoped_state,
+        run_options->run_options().custom_options()};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     ABSL_RETURN_IF_ERROR(thunk_executor.Prepare(prepare_params));
@@ -785,6 +847,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         &collective_params,
         &collective_cliques,
         &collective_memory,
+        run_options->run_options().custom_options(),
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count(),
         &execution_scoped_state};
@@ -810,11 +873,60 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       &collective_memory, std::move(compute_streams.streams),
       &execution_scoped_state, persistent_alloc_indices);
 
+  // device_to_host_stream/host_to_device_stream above come from run_options,
+  // which are only populated when running through PJRT. Fall back to a
+  // borrowed stream (or main_stream, if no stream borrower is available) so
+  // that async host<->device copy thunks also work for non-PJRT clients.
+  StreamPool::Ptr borrowed_device_to_host_stream;
+  if (num_additional_streams.need_d2h_stream &&
+      execute_params.device_to_host_stream == nullptr) {
+    if (run_options->HasStreamBorrower()) {
+      ABSL_ASSIGN_OR_RETURN(borrowed_device_to_host_stream,
+                       run_options->BorrowStream(executor->device_ordinal()));
+      execute_params.device_to_host_stream =
+          borrowed_device_to_host_stream.get();
+    } else {
+      execute_params.device_to_host_stream = main_stream;
+    }
+  }
+  StreamPool::Ptr borrowed_host_to_device_stream;
+  if (num_additional_streams.need_h2d_stream &&
+      execute_params.host_to_device_stream == nullptr) {
+    if (run_options->HasStreamBorrower()) {
+      ABSL_ASSIGN_OR_RETURN(borrowed_host_to_device_stream,
+                       run_options->BorrowStream(executor->device_ordinal()));
+      execute_params.host_to_device_stream =
+          borrowed_host_to_device_stream.get();
+    } else {
+      execute_params.host_to_device_stream = main_stream;
+    }
+  }
+
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
   ABSL_RETURN_IF_ERROR(thunk_executor.ExecuteOnStream(execute_params));
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "End GpuExecutable::ExecuteOnStream module: " << module_name;
+
+  // Device monitoring is independent of host monitoring. The stream owns these
+  // guards until the empty callback runs after the enqueued device work.
+  std::string device_watchdog_name =
+      absl::StrFormat("[%d] XLA GPU device execution `%s` (run_id=%v)",
+                      executor->device_ordinal(), module_name, run_id);
+
+  std::vector<std::shared_ptr<HangWatchdog::Guard>> device_guards =
+      ExecutionTimeoutGuards(device_handlers, device_watchdog_name);
+
+  if (device_timeout < absl::InfiniteDuration()) {
+    device_guards.push_back(HangWatchdog::Global().Watch(
+        device_watchdog_name, device_timeout,
+        HangWatchdog::Abort(device_watchdog_name, device_timeout)));
+  }
+
+  if (!device_guards.empty()) {
+    ABSL_RETURN_IF_ERROR(
+        main_stream->DoHostCallback([guards = std::move(device_guards)] {}));
+  }
 
   return MaybeSyncAndProfile(run_options, execution_timer.get(),
                              block_host_until_done ? main_stream : nullptr);
@@ -956,6 +1068,26 @@ absl::StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
 absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
     VariantArguments arguments) {
+  if (has_module() && module_config().has_static_device_assignment()) {
+    const DeviceAssignment& static_device_assignment =
+        module_config().static_device_assignment();
+    if (!static_device_assignment.IsIota()) {
+      LOG(ERROR) << "XLA:GPU only supports iota device assignment. Got: "
+                 << static_device_assignment.ToString()
+                 << ". This may lead to incorrect results.";
+    }
+  }
+
+  if (run_options->run_options().device_assignment() != nullptr) {
+    const DeviceAssignment& runtime_device_assignment =
+        *run_options->run_options().device_assignment();
+    if (!runtime_device_assignment.IsIota()) {
+      LOG(ERROR) << "XLA:GPU only supports iota device assignment. Got: "
+                 << runtime_device_assignment.ToString()
+                 << ". This may lead to incorrect results.";
+    }
+  }
+
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuExecutable::ExecuteAsyncOnStreamImpl(", module_name_, ")"));
   se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
@@ -1393,6 +1525,12 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
         cpu_target_machine_options_->ToProto();
   }
 
+  if (!gpu_topology_.has_value()) {
+    return absl::FailedPreconditionError(
+        "Cannot serialize GpuExecutable without gpu_topology.");
+  }
+  *proto.mutable_gpu_topology() = gpu_topology_->ToProto();
+
   return proto;
 }
 
@@ -1400,17 +1538,21 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     const GpuExecutableProto& proto,
     const se::DeviceDescription& device_description,
     absl::string_view platform_name, DebugOptions debug_options,
-    const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-        symbol_resolver) {
+    const std::optional<se::KernelLoaderSpec::SymbolResolver>& symbol_resolver,
+    std::shared_ptr<HloModule> debug_module) {
   Params params;
   params.debug_options = std::move(debug_options);
   params.enable_debug_info_manager =
       params.debug_options.xla_gpu_executable_embed_debug_info();
   const std::string& binary = proto.binary();
   params.binary.assign(binary.begin(), binary.end());
-  if (proto.has_hlo_module_with_config()) {
+  if (debug_module != nullptr) {
+    params.debug_module = std::move(debug_module);
+  } else if (proto.has_hlo_module_with_config()) {
     ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
                                               proto.hlo_module_with_config()));
+  }
+  if (params.debug_module != nullptr) {
     // The HLO module deserialized from the proto carries xla_dump_to from the
     // process that originally compiled it. Override with the current process's
     // dump path so that runtime dumps (checksum logs, etc.) land in the correct
@@ -1460,14 +1602,24 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
                          proto.cpu_target_machine_options()));
   }
 
+  // TODO(b/567074116): Make `gpu_topology` mandatory in `FromProto` after April
+  // 2027, once executables serialized before cl/989587532 have aged out of the
+  // 6-month AOT backward compatibility window, before dropping `optional` from
+  // `GpuExecutableProto.gpu_topology`.
+  if (proto.has_gpu_topology()) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> gpu_topology,
+                     GpuTopology::FromProto(proto.gpu_topology()));
+    params.gpu_topology = *gpu_topology;
+  }
+
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
-      DeserializeThunkSequenceProto(thunk_sequence_proto, params.allocations,
-                                    params.debug_module.get(), platform_name,
-                                    gpu_compute_capability, symbol_resolver,
-                                    params.cpu_target_machine_options));
+      DeserializeThunkSequenceProto(
+          thunk_sequence_proto, params.allocations, params.debug_module.get(),
+          platform_name, gpu_compute_capability, params.gpu_topology,
+          symbol_resolver, params.cpu_target_machine_options));
 
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));

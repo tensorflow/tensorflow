@@ -44,7 +44,7 @@ limitations under the License.
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
         // defined(PLATFORM_GOOGLE)
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/platform.h"

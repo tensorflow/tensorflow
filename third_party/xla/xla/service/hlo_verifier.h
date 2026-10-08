@@ -191,6 +191,9 @@ struct HloVerifierOpts {
 
   // Returns a target-specific shape size.
   ShapeSizeFn shape_size = [](const Shape& shape) {
+    if (shape.is_unbounded_dynamic()) {
+      return Shape::kUnboundedSize;
+    }
     return ShapeUtil::ByteSizeOf(shape);
   };
 };
@@ -234,6 +237,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleAllToAll(HloInstruction* hlo) override;
   absl::Status HandleRaggedAllToAll(HloInstruction* hlo) override;
   absl::Status HandleCollectiveBroadcast(HloInstruction* hlo) override;
+  absl::Status HandleCollectiveReduce(HloInstruction* hlo) override;
   absl::Status HandleCollectivePermute(HloInstruction* hlo) override;
   absl::Status HandleCollectivePermuteStart(HloInstruction* hlo) override;
   absl::Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
@@ -249,6 +253,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleRngBitGenerator(HloInstruction*) override;
   absl::Status HandleRngGetAndUpdateState(HloInstruction*) override;
   absl::Status HandleReverse(HloInstruction* reverse) override;
+  absl::Status HandleShuffle(HloInstruction* shuffle) override;
   absl::Status HandleSort(HloInstruction* hlo) override;
   absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleConstant(HloInstruction* constant) override;
@@ -320,6 +325,7 @@ class ShapeVerifier : public DfsHloVisitor {
   static absl::Status CheckParameterCount(
       const HloInstruction* calling_instruction,
       const HloComputation* computation, int expected);
+  static absl::Status CheckCompositeCall(const HloInstruction* call);
 
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   absl::Status CheckUnaryShape(const HloInstruction* instruction);
@@ -369,6 +375,8 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Checks that the aliasing config of the given async instruction is valid.
   absl::Status CheckAsyncOpAliasConfig(const HloInstruction* async_op);
+  absl::Status CheckAsyncStartAliasConfig(const HloInstruction* async_op);
+  absl::Status CheckAsyncUpdateAliasConfig(const HloInstruction* async_op);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes

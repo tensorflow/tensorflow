@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <numeric>
 #include <utility>
@@ -85,9 +86,7 @@ bool HasBroadcastConsumer(Operation* op) {
 }
 
 PointerType GetTensorPtrType(Type type) {
-  return PointerType::get(
-      xtile::StorageType(type),
-      static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global));
+  return PointerType::get(xtile::StorageType(type));
 }
 
 // Canonicalizes tile strides. Currently this converts zero strides to 1.
@@ -157,13 +156,19 @@ bool CanUseTma(Operation* op, bool allow_tma, int num_stages,
   if (!func_op) {
     return false;
   }
+  const int64_t element_byte_size =
+      pointer.getType().getPointeeType().getIntOrFloatBitWidth() / 8;
+  const int64_t tile_byte_size = absl::c_accumulate(
+      tile_shape, element_byte_size, std::multiplies<int64_t>());
 
-  // TODO(b/421858850): CUDA_ERROR_MISALIGNED_ADDRESS errors are
-  // happening for some cases when pipelining stages are > 2. The pattern
-  // observed is that these happen in the presence of a broadcast.
-  // This is a temporary solution. We should remove this once we have a fix for
-  // the error.
-  if (num_stages > 2 && HasBroadcastConsumer(op)) {
+  // TODO(b/421858850, b/545031850): CUDA_ERROR_MISALIGNED_ADDRESS errors and
+  // pipeliner compiler crashes happen when pipelining stages are > 1 in the
+  // presence of a broadcast consumer with unaligned per-stage tile sizes.
+  // This is a temporary solution
+  // (https://github.com/triton-lang/triton/issues/7386). We should remove this
+  // once we have a fix for the error.
+  if (num_stages > 1 && HasBroadcastConsumer(op) &&
+      (tile_byte_size % 128 != 0)) {
     return false;
   }
 
@@ -180,9 +185,6 @@ bool CanUseTma(Operation* op, bool allow_tma, int num_stages,
   auto canonicalize_status = CanonicalizeTileStrides(canonical_tile_strides,
                                                      tile_shape, original_shape,
                                                      /*validate=*/false);
-
-  uint64_t element_byte_size =
-      pointer.getType().getPointeeType().getIntOrFloatBitWidth() / 8;
 
   auto tma_compatibilty_status = stream_executor::gpu::IsTmaCompatible(
       absl::MakeSpan(original_shape.data(), original_shape.size()),
@@ -372,7 +374,8 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
 
       Value result = DescriptorLoadOp::create(
           builder, ordered_type, cast_to_tensor_desc.getResult(0),
-          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
+          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets),
+          /*cachePolicy=*/nullptr);
 
       // Insert a transpose if the layout is not major-to-minor.
       if (!xtriton::IsMajorToMinorLayout(src_layout)) {
@@ -409,7 +412,8 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
 
       Value result = DescriptorLoadOp::create(
           builder, ordered_type, desc.getResult(),
-          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
+          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets),
+          /*cachePolicy=*/nullptr);
 
       if (!xtriton::IsMajorToMinorLayout(operands.layout)) {
         result = TransOp::create(
@@ -442,8 +446,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
           builder, builder.getZeroAttr(RankedTensorType::get(
                        tile_shape, tile_type.getElementType())));
     }
-    auto load = LoadOp::create(builder, ptr, mask, other, CacheModifier::NONE,
-                               EvictionPolicy::NORMAL,
+    auto load = LoadOp::create(builder, ptr, mask, other,
                                /*isVolatile=*/false);
     rewriter.replaceOp(op, load);
     return mlir::success();
@@ -566,8 +569,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
       auto [ptr, mask] = xtriton::CreateTensorOfPointersAndMask(
           builder, op.getDst(), dst_shape, dst_layout, offsets, sizes, strides,
           reduced_dims, tile_shape);
-      StoreOp::create(builder, ptr, op.getSrc(), mask, CacheModifier::NONE,
-                      EvictionPolicy::NORMAL);
+      StoreOp::create(builder, ptr, op.getSrc(), mask);
     }
     rewriter.eraseOp(op);
     return mlir::success();
@@ -594,9 +596,7 @@ class RewriteScalarInsert : public mlir::OpRewritePattern<tensor::InsertOp> {
     auto cast_dst_to_tensor_ptr_type = mlir::UnrealizedConversionCastOp::create(
                                            builder, ptr_type, op.getDest())
                                            .getResult(0);
-    StoreOp::create(builder, cast_dst_to_tensor_ptr_type, op.getScalar(),
-                    /*mask=*/Value(), CacheModifier::NONE,
-                    EvictionPolicy::NORMAL);
+    StoreOp::create(builder, cast_dst_to_tensor_ptr_type, op.getScalar());
     rewriter.replaceOp(op, op.getDest());
     return mlir::success();
   }
@@ -619,7 +619,6 @@ class RewriteScalarExtract : public mlir::OpRewritePattern<tensor::ExtractOp> {
                                            builder, ptr_type, op.getTensor())
                                            .getResult(0);
     auto scalar = LoadOp::create(builder, cast_src_to_tensor_ptr_type,
-                                 CacheModifier::NONE, EvictionPolicy::NORMAL,
                                  /*isVolatile=*/false);
     rewriter.replaceOp(op, scalar.getResult());
     return mlir::success();

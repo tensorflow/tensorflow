@@ -2219,6 +2219,54 @@ TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
   }
 }
 
+TEST_F(GraphPropertiesTest, SliceOfShapeWithOutOfBoundsSize) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output placeholder =
+      ops::Placeholder(scope.WithOpName("input_placeholder"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape({5, 480, 40, 1})));
+  auto input_shape = ops::Shape(scope.WithOpName("input_shape"), placeholder);
+
+  Output begin = ops::Const(scope.WithOpName("begin"), {1}, {1});
+  // Subshape() reads a negative start as an offset from the end, but Slice
+  // requires begin >= 0, so a negative begin must be declined as well.
+  Output neg_begin = ops::Const(scope.WithOpName("neg_begin"), {-1}, {1});
+  // begin + size is 5, one past the end of the rank-4 shape being sliced.
+  Output bad_size = ops::Const(scope.WithOpName("bad_size"), {4}, {1});
+  Output good_size = ops::Const(scope.WithOpName("good_size"), {3}, {1});
+
+  Output bad_slice =
+      ops::Slice(scope.WithOpName("bad_slice"), input_shape, begin, bad_size);
+  Output neg_slice = ops::Slice(scope.WithOpName("neg_slice"), input_shape,
+                                neg_begin, good_size);
+  Output good_slice =
+      ops::Slice(scope.WithOpName("good_slice"), input_shape, begin, good_size);
+
+  GrapplerItem item;
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_ASSERT_OK(properties.InferStatically(
+      /*assume_valid_feeds=*/false,
+      /*aggressive_shape_inference=*/false,
+      /*include_tensor_values=*/true));
+
+  // No value may be propagated for the out-of-bounds Slice. Propagating one
+  // would fold the Slice into a constant that Subshape() had silently
+  // truncated to the available extent, and whose shape would contradict the
+  // shape Slice's own shape function inferred for it.
+  EXPECT_FALSE(properties.GetOutputProperties("bad_slice").at(0).has_value());
+
+  // Nor for a negative begin, which Slice rejects but Subshape() would read
+  // as an offset from the end.
+  EXPECT_FALSE(properties.GetOutputProperties("neg_slice").at(0).has_value());
+
+  // An in-bounds Slice must still have its value propagated.
+  EXPECT_TRUE(properties.GetOutputProperties("good_slice").at(0).has_value());
+  const auto good_value =
+      properties.GetOutputProperties("good_slice").at(0).value();
+  ExpectTensorValues({480, 40, 1}, good_value);
+}
+
 TEST_F(GraphPropertiesTest, ValuePropagationThroughArithmeticOps) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), {5, 7}, {2});

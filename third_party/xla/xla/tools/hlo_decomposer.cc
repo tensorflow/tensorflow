@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -171,7 +171,15 @@ std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
         HloInstruction::CreateTuple(result_instructions);
     builder.AddInstruction(std::move(tuple_instruction));
   }
-  new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
+  HloComputation* entry_computation =
+      new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
+  // Preserve the execution thread so the extracted module stays internally
+  // consistent: a cloned instruction embedded below the entry (e.g. a fusion
+  // wrapping an op that lives on a non-"main" thread) still carries its
+  // original execution_thread, and HloVerifier requires the calling
+  // computation's thread to match.
+  entry_computation->SetExecutionThread(
+      first_instruction.parent()->execution_thread());
   return new_hlo_module;
 }
 
@@ -194,7 +202,10 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
   std::unique_ptr<HloInstruction> new_instruction =
       hlo.CloneWithNewOperands(hlo.shape(), new_operands, &clone_context);
   builder.AddInstruction(std::move(new_instruction));
-  new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
+  HloComputation* entry_computation =
+      new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
+  // See the comment in ExtractCollectiveOperationsIntoNewModule above.
+  entry_computation->SetExecutionThread(hlo.parent()->execution_thread());
   return new_hlo_module;
 }
 
@@ -247,7 +258,10 @@ std::unique_ptr<HloModule> ExtractProducerConsumersIntoNewModule(
     builder.AddInstruction(HloInstruction::CreateTuple(consumer_outputs));
   }
 
-  new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
+  HloComputation* entry_computation =
+      new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
+  // See the comment in ExtractCollectiveOperationsIntoNewModule above.
+  entry_computation->SetExecutionThread(producer.parent()->execution_thread());
   return new_hlo_module;
 }
 

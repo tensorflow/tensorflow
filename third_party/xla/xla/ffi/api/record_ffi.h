@@ -21,10 +21,6 @@ limitations under the License.
        See README.md for more details.
 #endif  // XLA_FFI_API_RECORD_FFI_H_
 
-#include <string>
-#include <string_view>
-#include <utility>
-
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/ffi.h"
@@ -32,44 +28,9 @@ limitations under the License.
 
 namespace xla::ffi {
 
-namespace internal {
-
-inline Error ConvertError(XLA_FFI_Error* err) {
-  const XLA_FFI_Api* api = XLA_FFI_GetApi();
-  std::string msg = internal::GetErrorMessage(api, err);
-  internal::DestroyError(api, err);
-  return Error(ErrorCode::kInternal, std::move(msg));
-}
-
-// Error converter for external XLA:FFI.
-struct ErrorConverter {
-  template <typename T>
-  static xla::ffi::ErrorOr<T> ToStatusOr(T value, XLA_FFI_Error* err) {
-    if (err) {
-      return xla::ffi::Unexpected(ConvertError(err));
-    }
-    return value;
-  }
-
-  static xla::ffi::Error ToStatus(XLA_FFI_Error* err) {
-    if (err) {
-      return ConvertError(err);
-    }
-    return xla::ffi::Error::Success();  // PASS-THROUGH
-  }
-
-  static xla::ffi::Unexpected<xla::ffi::Error> ToError(XLA_FFI_Error_Code err_c,
-                                                       std::string_view msg) {
-    return xla::ffi::Unexpected(xla::ffi::Error(err_c, std::string(msg)));
-  }
-
-  static xla::ffi::Error Success() { return xla::ffi::Error::Success(); }
-};
-}  // namespace internal
-
 struct RecordContext
-    : public internal::RecordContextBase<internal::ErrorConverter> {
-  using Base = internal::RecordContextBase<internal::ErrorConverter>;
+    : public internal::RecordContextBase<internal::ErrorPolicy> {
+  using Base = internal::RecordContextBase<internal::ErrorPolicy>;
   using Base::Base;
 };
 

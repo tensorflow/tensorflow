@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/raw_buffer.h"
 
 namespace xla {
 
@@ -26,7 +27,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 CreateAsyncHostToDeviceTransferManager(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
-    PjRtMemorySpace* memory_space);
+    PjRtMemorySpace* memory_space,
+    std::optional<absl::Span<const PjRtRawBufferRef>> donated_buffer_refs =
+        std::nullopt);
 
 }  // namespace xla
 

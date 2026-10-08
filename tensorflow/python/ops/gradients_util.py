@@ -368,10 +368,10 @@ def _MaybeCompile(scope, op: ops.Operation, func, grad_fn):
   # _XlaScope name that is based on the name_scope of the gradients.  Otherwise
   # they just inherit the existing _XlaScope name, which lets them be merged
   # together with the non-gradient computation.
-  if xla_separate_compiled_gradients:
-    xla_grad_scope = "%s_grad_%s" % (xla_scope, scope)
+  if xla_separate_compiled_gradients:  # pyrefly: ignore[unbound-name]
+    xla_grad_scope = "%s_grad_%s" % (xla_scope, scope)  # pyrefly: ignore[unbound-name]
   else:
-    xla_grad_scope = xla_scope
+    xla_grad_scope = xla_scope  # pyrefly: ignore[unbound-name]
 
   attrs = {
       "_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
@@ -672,7 +672,7 @@ def _GradientsHelper(
               # imported. If it's set, we prefer to access the original
               # defun.
               func_call = getattr(op, "__defun", func_call)
-              grad_fn = func_call.python_grad_func
+              grad_fn = func_call.python_grad_func  # pyrefly: ignore[missing-attribute]
             else:
               raise LookupError(
                   "No gradient defined for operation"

@@ -97,7 +97,7 @@ getRegisteredOperationsForHardware(mlir::TypeID type_id) {
   return nullptr;
 }
 
-// A deny list for op cost computation since those ops are not arithemtic.
+// A deny list for op cost computation since those ops are not arithmetic.
 inline bool IsNonArithmeticOp(mlir::Operation* op) {
   if (llvm::isa<func::ReturnOp, func::FuncOp>(op)) return true;
   if (op->hasTrait<OpTrait::ConstantLike>()) return true;

@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -42,32 +42,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Recursively casts `inst` to `target_shape`. If `inst` is a tuple, it
-// recursively applies the cast to each element.
-HloInstruction* CastToShape(HloComputation* computation, HloInstruction* inst,
-                            const Shape& target_shape) {
-  if (inst->shape().IsToken()) {
-    return inst;
-  }
-  if (inst->shape().IsArray()) {
-    if (ShapeUtil::Compatible(inst->shape(), target_shape)) {
-      return computation->AddInstruction(
-          HloInstruction::CreateUnary(target_shape, HloOpcode::kCopy, inst));
-    }
-    return computation->AddInstruction(
-        HloInstruction::CreateBitcast(target_shape, inst));
-  }
-  CHECK(inst->shape().IsTuple());
-  std::vector<HloInstruction*> elements;
-  elements.reserve(target_shape.tuple_shapes_size());
-  for (int i = 0; i < target_shape.tuple_shapes_size(); ++i) {
-    HloInstruction* gte = computation->AddInstruction(
-        HloInstruction::CreateGetTupleElement(inst, i));
-    elements.push_back(
-        CastToShape(computation, gte, target_shape.tuple_shapes(i)));
-  }
-  return computation->AddInstruction(HloInstruction::CreateTuple(elements));
-}
 
 // Extracts the original computation name from the frontend attributes.
 std::string GetMarkedComputationName(const HloInstruction* instruction) {
@@ -258,6 +232,11 @@ absl::StatusOr<HloComputation*> CallOutliner::BuildOutlinedComputation(
 
   original_to_outlined_map_.clear();
   for (HloInstruction* instruction : block.body) {
+    // Skip instructions that have been removed. This could happen when an inner
+    // block is outlined before an outer block.
+    if (instruction->parent() == nullptr) {
+      continue;
+    }
     ProcessInstruction(instruction, block, builder, new_parameters,
                        old_operands);
   }
@@ -307,14 +286,8 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
   ABSL_RETURN_IF_ERROR(RestoreMetadataAndDependencies(
       call_instruction, innermost_before, innermost_after));
 
-  HloInstruction* replacement = call_instruction;
-  if (!ShapeUtil::Equal(innermost_after->shape(), call_instruction->shape())) {
-    replacement =
-        CastToShape(computation, call_instruction, innermost_after->shape());
-  }
-
   // Replace _after marker uses with the new call result.
-  ABSL_RETURN_IF_ERROR(innermost_after->ReplaceAllUsesWith(replacement));
+  ABSL_RETURN_IF_ERROR(innermost_after->ReplaceAllUsesWith(call_instruction));
 
   // Replace _before marker uses.
   if (innermost_before->shape().IsTuple()) {
@@ -339,14 +312,26 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
   TF_RET_CHECK(innermost_before->IsDead())
       << "innermost_before still has users";
 
-  // Cleanup markers.
-  if (innermost_after->parent()) {
-    ABSL_RETURN_IF_ERROR(
-        computation->RemoveInstructionAndUnusedOperands(innermost_after));
+  // Cleanup after marker.
+  if (innermost_after->parent() != nullptr) {
+    ABSL_RETURN_IF_ERROR(innermost_after->SafelyDropAllControlDependencies());
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(innermost_after));
   }
-  if (innermost_before->parent()) {
-    ABSL_RETURN_IF_ERROR(
-        computation->RemoveInstructionAndUnusedOperands(innermost_before));
+
+  // Explicitly remove all instructions belonging to block.body from the caller
+  // computation in reverse post-order after cloning into the outlined callee.
+  for (auto it = block.body.rbegin(); it != block.body.rend(); ++it) {
+    HloInstruction* inst = *it;
+    if (inst->parent() != nullptr && inst->IsDead()) {
+      ABSL_RETURN_IF_ERROR(inst->SafelyDropAllControlDependencies());
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(inst));
+    }
+  }
+
+  // Cleanup before marker.
+  if (innermost_before->parent() != nullptr) {
+    ABSL_RETURN_IF_ERROR(innermost_before->SafelyDropAllControlDependencies());
+    ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(innermost_before));
   }
 
   return call_instruction;
@@ -449,6 +434,12 @@ absl::StatusOr<bool> CallOutliner::OutlineComputation(
 
   bool mutated = false;
   for (HloInstruction* instruction : instructions) {
+    // Skip instructions that have been removed from the parent computation.
+    // This could happen when previous instruction in the post-order traversal
+    // already outlined this instruction (ex: as operand in nested blocks).
+    if (instruction->parent() == nullptr) {
+      continue;
+    }
     if (IsBeforeMarker(instruction)) {
       HandleBeforeMarker(instruction);
     } else if (IsAfterMarker(instruction)) {

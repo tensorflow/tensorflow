@@ -17,6 +17,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 
 #include <math.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -36,10 +37,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -731,13 +732,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  const_cast<HloInstruction*>(instr->operand(0)))) &&
             (b = MatchFp8Param(
                  const_cast<HloInstruction*>(instr->operand(1))))) {
-          if (gpu_version_.IsRocm() &&
-              toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0} &&
-              instr->shape().element_type() != F16 &&
-              instr->shape().element_type() != F32) {
-            ABSL_ASSIGN_OR_RETURN(instr,
-                             TurnF8DotWithUnsupportedOutputTypeIntoF32(instr));
-          }
           ABSL_ASSIGN_OR_RETURN(bool created_call,
                            CreateF8CustomCall(instr, gpu_backend_config,
                                               a.value(), b.value()));
@@ -972,8 +966,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     const auto is_rocm = gpu_version_.IsRocm();
-    if (is_rocm &&
-        toolkit_version_ >= stream_executor::SemanticVersion{7, 0, 0}) {
+    if (is_rocm) {
       // Attempt to match approximate Swish activation (including grouped
       // matmul)
       // (https://flax.readthedocs.io/en/v0.5.3/_autosummary/flax.linen.swish.html),
@@ -1264,11 +1257,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         VLOG(1) << "FP8 Custom Calls require MI300, or later architectures.";
         return false;
       }
-      if (toolkit_version_ < stream_executor::SemanticVersion{6, 0, 0}) {
-        // FP8 GEMM kernels are only available with ROCm 6.0 and above
-        VLOG(1) << "FP8 Custom Calls require ROCm 6.0 or newer.";
-        return false;
-      }
     }
 
     PrimitiveType a_type = a.fp8_input->shape().element_type();
@@ -1403,15 +1391,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
     if (gpu_version_.IsRocm()) {
-      if (toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0}) {
-        if (supported_d_types.find(d_type) == supported_d_types.end()) {
-          VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-                  << " into FP8 Custom Call. For ROCm version < 6.2, output "
-                     "type must be BF16, F16 or F32, but got "
-                  << PrimitiveType_Name(d_type);
-          return false;
-        }
-      }
       ABSL_ASSIGN_OR_RETURN(auto rocm_compute_capability,
                        GetRocmComputeCapability(gpu_version_));
       if (rocm_compute_capability.has_ocp_fp8_support()) {
@@ -1801,8 +1780,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // compatible with Epilogue Fusion. DEPRECATED: This standalone function has
   // been moved to GemmRewriterVisitor as a member function to allow
   bool SupportsEpilogueFusion(PrimitiveType type) {
-    // ROCm doesn't support F64 epilogue fusion
-    if (gpu_version_.IsRocm() && type == F64) {
+    // ROCm/oneAPI doesn't support F64 epilogue fusion
+    if ((gpu_version_.IsRocm() || gpu_version_.IsOneAPI()) && type == F64) {
       return false;
     }
 
@@ -2039,11 +2018,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // We require the bias vector to have been broadcast in the most major
     // dimensions; i.e. its most minor physical dimensions align with most minor
     // physical dimensions of the gemm output.
-    const Shape& out_gemm_shape = slice ? slice->shape() : gemm->shape();
+    const Shape& out_shape =
+        bitcast ? bitcast->shape() : (slice ? slice->shape() : gemm->shape());
     if (num_col_dims == 1 &&
-        bias->shape().dimensions(0) !=
-            out_gemm_shape.dimensions(
-                out_gemm_shape.layout().minor_to_major(0))) {
+        (broadcast->dimensions().size() != 1 ||
+         broadcast->dimensions(0) != out_shape.layout().minor_to_major(0) ||
+         bias->shape().dimensions(0) !=
+             out_shape.dimensions(out_shape.layout().minor_to_major(0)))) {
       return false;
     }
 
@@ -2310,6 +2291,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   absl::StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
       const HloInstruction& instr,
       const GemmBackendConfig& gemm_backend_config) const {
+    // TODO(intel-tf): For SYCL, we currently route all GEMMs to cublasLt.
+    // We should check the capabilities and route accordingly.
+    if (gpu_version_.IsOneAPI()) {
+      return absl::string_view(kCublasLtMatmulCallTarget);
+    }
+
     // All internal conditions are met, check if we meet the requirements of
     // cublasLt.
     ABSL_ASSIGN_OR_RETURN(bool gemm_is_supported_by_cublas_lt,
@@ -2708,20 +2695,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Check that the size of the non-contracting dimension is not too large.
     return gemm_config.rhs_layout.num_cols <= kMaxDimensionSize;
-  }
-
-  // Turns an F8 dot with unsupported output type into an F8 dot with F32
-  // output, and converting the F32 output to unsupported output types.
-  absl::StatusOr<HloInstruction*> TurnF8DotWithUnsupportedOutputTypeIntoF32(
-      HloInstruction* instr) {
-    Shape output_f32_shape = instr->shape();
-    output_f32_shape.set_element_type(F32);
-    HloInstruction* f32_dot =
-        instr->AddInstruction(instr->CloneWithNewShape(output_f32_shape));
-    HloInstruction* convert = instr->AddInstruction(
-        HloInstruction::CreateConvert(instr->shape(), f32_dot));
-    ABSL_RETURN_IF_ERROR(ReplaceInstruction(instr, convert));
-    return f32_dot;
   }
 
   // Turns an F8 dot into an F16 dot, converting operands to F16 (or BF16) and

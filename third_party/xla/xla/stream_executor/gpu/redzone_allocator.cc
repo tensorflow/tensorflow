@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -268,6 +268,13 @@ absl::StatusOr<DeviceAddressBase> RedzoneAllocator::CreateBuffer(
 }
 
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
+  // Nothing to check. This also avoids freeing the pinned out-param below
+  // while its async MemZero is still pending on the stream; see
+  // https://github.com/openxla/xla/issues/46093.
+  if (allocated_buffers_.empty()) {
+    return RedzoneCheckStatus::OK();
+  }
+
   StreamExecutor* executor = stream_->parent();
 
   ABSL_ASSIGN_OR_RETURN(auto kernel,

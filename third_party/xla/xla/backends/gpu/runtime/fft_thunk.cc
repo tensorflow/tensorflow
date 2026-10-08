@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -127,12 +127,14 @@ FftThunk::FftThunk(ThunkInfo thunk_info, FftType fft_type,
                    absl::Span<const int64_t> fft_length,
                    const BufferAllocation::Slice& input_buffer,
                    const BufferAllocation::Slice& output_buffer,
-                   const Shape& input_shape, const Shape& output_shape)
+                   const Shape& input_shape, const Shape& output_shape,
+                   int devices_per_host)
     : Thunk(Kind::kFft, thunk_info),
       fft_type_(
           FftTypeToSeType(fft_type, input_shape.element_type() == F64 ||
                                         input_shape.element_type() == C128)),
       fft_length_(fft_length.begin(), fft_length.end()),
+      fft_plan_cache_(devices_per_host),
       input_buffer_(input_buffer),
       output_buffer_(output_buffer),
       input_shape_(input_shape),
@@ -162,7 +164,8 @@ absl::Status RunFft(se::DeviceAddressBase input, const Shape& input_shape,
                                                   memory_allocator);
 
   // Get the Fft plan for the given device ordinal.
-  FftPlan* fft_plan_ptr = fft_plan_cache->GetOrCreate(device_ordinal);
+  ABSL_ASSIGN_OR_RETURN(FftPlan * fft_plan_ptr,
+                   fft_plan_cache->GetOrCreate(device_ordinal));
 
   // CuFFT thread-safety requires that separate host threads not share plans;
   // protect each plan with a mutex.
@@ -294,7 +297,8 @@ absl::Status RunFft(se::DeviceAddressBase input, const Shape& input_shape,
 
 absl::StatusOr<std::unique_ptr<FftThunk>> FftThunk::FromProto(
     ThunkInfo thunk_info, const FftThunkProto& proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
+    absl::Span<const BufferAllocation> buffer_allocations,
+    int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice input_buffer,
                    BufferAllocation::Slice::FromProto(proto.input_buffer(),
                                                       buffer_allocations));
@@ -308,9 +312,9 @@ absl::StatusOr<std::unique_ptr<FftThunk>> FftThunk::FromProto(
   std::vector<int64_t> fft_length{proto.fft_length().begin(),
                                   proto.fft_length().end()};
 
-  return std::make_unique<FftThunk>(thunk_info, proto.fft_type(),
-                                    std::move(fft_length), input_buffer,
-                                    output_buffer, input_shape, output_shape);
+  return std::make_unique<FftThunk>(
+      thunk_info, proto.fft_type(), std::move(fft_length), input_buffer,
+      output_buffer, input_shape, output_shape, devices_per_host);
 }
 
 absl::StatusOr<ThunkProto> FftThunk::ToProto() const {

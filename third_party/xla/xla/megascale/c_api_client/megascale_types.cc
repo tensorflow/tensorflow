@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_megascale_extension.h"
@@ -90,10 +91,15 @@ CApiPjRtClientContext::~CApiPjRtClientContext() {
   }
 }
 
-absl::Status CApiPjRtClientContext::Initialize() {
-  PJRT_Megascale_ClientContext_Initialize_Args args;
+absl::Status CApiPjRtClientContext::Initialize(
+    std::optional<uint64_t> incarnation_id) {
+  PJRT_Megascale_ClientContext_Initialize_Args args{};
   args.struct_size = PJRT_Megascale_ClientContext_Initialize_Args_STRUCT_SIZE;
   args.client_context = client_context_;
+  args.has_incarnation_id = incarnation_id.has_value();
+  if (incarnation_id.has_value()) {
+    args.incarnation_id = *incarnation_id;
+  }
   RETURN_STATUS_IF_PJRT_ERROR(extension_->client_context_initialize(&args),
                               c_api_);
   return absl::OkStatus();

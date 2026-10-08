@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -63,7 +63,8 @@ const HloInstruction* PassthroughDegenerateAddingReshapes(
 }
 
 bool ShouldConsiderSchedule(HloInstruction* hlo) {
-  return hlo->opcode() != HloOpcode::kCollectivePermute;
+  return hlo->opcode() != HloOpcode::kCollectivePermute &&
+         hlo->opcode() != HloOpcode::kAllToAll;
 }
 
 HloInstruction* MayConsiderCollective(HloInstruction* hlo, bool for_replicas) {
@@ -84,7 +85,8 @@ HloInstruction* MayConsiderCollective(HloInstruction* hlo, bool for_replicas) {
   if (coll->constrain_layout()) {
     return nullptr;
   }
-  if (coll->opcode() == HloOpcode::kAllGather) {
+  if (coll->opcode() == HloOpcode::kAllGather ||
+      coll->opcode() == HloOpcode::kAllToAll) {
     return coll;
   }
   // Consider broadcast -> dynamic-update-slice -> all-reduce as all-gather.
@@ -136,7 +138,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
             coll->operand(0))];
     bool found = false;
     int64_t coll_height = height[coll];
-    for (HloInstruction* earlier_coll : earlier_colls) {
+    for (HloInstruction*& earlier_coll : earlier_colls) {
       if (!ShapeUtil::Equal(earlier_coll->shape(), coll->shape())) {
         continue;
       }

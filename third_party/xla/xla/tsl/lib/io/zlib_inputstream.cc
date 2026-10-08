@@ -18,7 +18,7 @@ limitations under the License.
 #include <zlib.h>
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
 

@@ -29,13 +29,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -382,17 +382,26 @@ absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
   return ShapeUtil::ForEachLeafShapeWithStatus(
       reference.on_device_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        std::string diff_report;
         BufferComparator comparator(subshape, rtol,
                                     /*verbose=*/false);
 
-        ABSL_ASSIGN_OR_RETURN(bool outputs_match,
-                         comparator.CompareEqual(stream_, output.buffer(index),
-                                                 reference.buffer(index)));
+        ABSL_ASSIGN_OR_RETURN(
+            bool outputs_match,
+            comparator.CompareEqual(stream_, output.buffer(index),
+                                    reference.buffer(index), &diff_report));
         if (outputs_match) {
           return absl::OkStatus();
         }
-        return absl::InternalError(
-            "Output buffer does not match reference buffer.");
+        if (!diff_report.empty()) {
+          return absl::InternalError(absl::StrFormat(
+              "Output buffer does not match reference buffer at leaf index "
+              "%s:\n%s",
+              index.ToString(), diff_report));
+        }
+        return absl::InternalError(absl::StrFormat(
+            "Output buffer does not match reference buffer at leaf index %s.",
+            index.ToString()));
       });
 }
 

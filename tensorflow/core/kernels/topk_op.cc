@@ -20,6 +20,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/topk_op.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <memory>
 #include <numeric>
 #include <vector>
 
@@ -30,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
+#include "tensorflow/core/platform/macros.h"  // NOLINT(misc-include-cleaner)
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -132,6 +137,24 @@ class TopK : public OpKernel {
 
 namespace functor {
 
+namespace {
+
+// Returns +1 for +NaN, -1 for -NaN, and 0 for any other value. Ordering by
+// value and then by this rank gives +NaN > +Inf > ... > -Inf > -NaN, which
+// matches the GPU radix-sort key order and the XLA total order for NaNs.
+// +0.0 and -0.0 compare equal and are ordered by index.
+template <typename T>
+EIGEN_ALWAYS_INLINE int NanRank(const T v) {  // NOLINT(misc-include-cleaner)
+  // NOLINTNEXTLINE(misc-include-cleaner)
+  if (TF_PREDICT_TRUE(!Eigen::numext::isnan(v))) return 0;
+  // Eigen::numext::signbit returns a Scalar bit mask (all ones, itself a NaN
+  // for floating types), not a bool, so test the sign with std::signbit. The
+  // conversion to double preserves the sign bit of a NaN for every float type.
+  return std::signbit(static_cast<double>(v)) ? -1 : 1;
+}
+
+}  // namespace
+
 template <typename T, typename Tidx>
 struct TopKFunctor<CPUDevice, T, Tidx> {
   static EIGEN_ALWAYS_INLINE absl::Status Compute(
@@ -139,46 +162,51 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
       const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows,
       const int64_t num_cols, typename TTypes<T, 2>::Tensor values,
       typename TTypes<Tidx, 2>::Tensor indices) {
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
-
-    // Special case for k == 1.
-    if (k == 1) {
-      typename Eigen::IndexList<Eigen::type2index<1>> reduce_on_cols;
-      typename Eigen::IndexList<int, Eigen::type2index<1>> rows_by_one;
-      rows_by_one.set(0, num_rows);
-
-      values.device(d) =
-          input.maximum(/*dims=*/reduce_on_cols).eval().reshape(rows_by_one);
-      // Get the indices of the maximum values.
-      for (int r = 0; r < num_rows; ++r) {
-        indices(r, 0) = Tidx(0);
-        for (int c = 0; c < num_cols; ++c) {
-          if (values(r, 0) == input(r, c)) {
-            indices(r, 0) = static_cast<Tidx>(c);
-            break;
-          }
-        }
-        values(r, 0) = input(r, indices(r, 0));
-      }
-
-      return absl::OkStatus();
-    }
-
     auto SortIndices = [&](int64_t start_batch, int64_t limit_batch) {
-      for (int32_t b = start_batch; b < limit_batch; ++b) {
+      for (int64_t b = start_batch; b < limit_batch; ++b) {
         const T* input_data = &input(b, 0);
-        const auto stable_comp = [input_data](const int32_t a,
-                                              const int32_t b) {
-          if (input_data[b] < input_data[a]) {
+        // Both comparators order values descending with the relational
+        // comparisons first (the common path). Equal values (never NaN, and
+        // including +0/-0) tie; only a NaN operand falls back to the NaN rank,
+        // so NaNs are ordered +NaN first and -NaN last.
+        const auto stable_comp = [input_data](const Tidx a, const Tidx b) {
+          const T val_a = input_data[a];
+          const T val_b = input_data[b];
+          if (val_b < val_a) {
             return true;
-          } else if (input_data[b] > input_data[a]) {
+          }
+          if (val_a < val_b) {
             return false;
-          } else {
+          }
+          if (val_a == val_b) {
             return a < b;
           }
+          if constexpr (!Eigen::NumTraits<T>::IsInteger) {
+            const int rank_a = NanRank(val_a);
+            const int rank_b = NanRank(val_b);
+            if (rank_a != rank_b) {
+              return rank_b < rank_a;
+            }
+          }
+          return a < b;
         };
-        const auto comp = [input_data](const int32_t a, const int32_t b) {
-          return input_data[b] < input_data[a];
+        const auto comp = [input_data](const Tidx a, const Tidx b) {
+          const T val_a = input_data[a];
+          const T val_b = input_data[b];
+          if (val_b < val_a) {
+            return true;
+          }
+          if (val_a < val_b) {
+            return false;
+          }
+          if (val_a == val_b) {
+            return false;
+          }
+          if constexpr (!Eigen::NumTraits<T>::IsInteger) {
+            return NanRank(val_b) < NanRank(val_a);
+          } else {
+            return false;
+          }
         };
         // TODO(ebrevdo): For large k < num_cols, instead of using
         // TopN, it may be faster to create a temporary vector of
@@ -194,19 +222,50 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
           // indices that started out sorted.  First, do a std::sort, which
           // is notably faster than std::stable_sort.
           std::sort(begin, end, comp);
-          // Then, for runs of adjacent elements that were equal, sort the
-          // indices in those runs in increasing order.
+          // Then, for runs of adjacent elements that are equivalent under
+          // `comp` (equal values, or NaNs of the same sign), sort the indices
+          // in those runs in increasing order.
           for (auto* run_begin = begin; run_begin != end;) {
             auto* run_end = run_begin + 1;
-            if (run_end == end) break;
-            if (input_data[*run_begin] == input_data[*run_end]) {
-              while (++run_end != end) {
-                if (input_data[*run_begin] != input_data[*run_end]) break;
-              }
-              std::sort(run_begin, run_end);
-            }
+            while (run_end != end && !comp(*run_begin, *run_end)) ++run_end;
+            if (run_end - run_begin > 1) std::sort(run_begin, run_end);
             run_begin = run_end;
           }
+        } else if (k == 1) {
+          // A single scan instead of an Eigen `maximum` reduction: the NaN
+          // propagation of the reduction is unspecified, and locating its
+          // result by equality can never find a NaN. Returns the first +NaN
+          // if any, else the first maximum non-NaN value, else the first -NaN.
+          Tidx best_c = 0;
+          T best_val = input_data[0];
+          Tidx first_c = 1;
+          if constexpr (!Eigen::NumTraits<T>::IsInteger) {
+            // A leading +NaN is the maximum: skip the scan.
+            if (NanRank(best_val) > 0) first_c = static_cast<Tidx>(num_cols);
+          }
+          for (Tidx c = first_c; c < num_cols; ++c) {
+            const T val = input_data[c];
+            // '<=' is false only if val > best_val or either operand is NaN.
+            if (val <= best_val) continue;
+            if (best_val < val) {
+              best_val = val;
+              best_c = c;
+              continue;
+            }
+            if constexpr (!Eigen::NumTraits<T>::IsInteger) {
+              const int rank = NanRank(val);
+              if (rank > 0) {  // +NaN: the global maximum, stop.
+                best_c = c;
+                break;
+              }
+              if (rank == 0) {  // best_val is -NaN; any non-NaN beats it.
+                best_val = val;
+                best_c = c;
+              }
+              // rank < 0: a -NaN never beats the current best.
+            }
+          }
+          indices(b, 0) = best_c;
         } else {
           // Use the TopN heap object to sort.
           gtl::TopN<Tidx, decltype(stable_comp)> filter(k, stable_comp);
@@ -215,7 +274,7 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
             filter.push(c);
           }
 
-          int32_t i = 0;
+          Tidx i = 0;
           if (sorted) {
             std::unique_ptr<std::vector<Tidx>> top_k(filter.Extract());
             for (auto top_k_it = top_k->begin(); top_k_it != top_k->end();

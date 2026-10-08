@@ -29,10 +29,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -3006,7 +3006,7 @@ absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
           convolution->feature_group_count(), convolution->batch_group_count(),
           new_window, new_dim_numbers, convolution->precision_config(),
           /*preferred_element_type=*/convolution->shape().element_type(),
-          convolution->sparsity_config()));
+          convolution->sparsity_config(), convolution->block_scaling_config()));
   convolution->SetupDerivedInstruction(new_conv);
 
   old_to_new_instrs_[convolution] = new_conv;
@@ -3758,7 +3758,7 @@ absl::Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
           convolution->batch_group_count(), new_window, new_dim_numbers,
           convolution->precision_config(),
           /*preferred_element_type=*/convolution->shape().element_type(),
-          convolution->sparsity_config()));
+          convolution->sparsity_config(), convolution->block_scaling_config()));
   convolution->SetupDerivedInstruction(new_conv);
 
   VLOG(2) << "New backprop filter convolution " << new_conv->ToString();
@@ -4125,8 +4125,8 @@ absl::Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
           convolution->feature_group_count(), convolution->batch_group_count(),
           new_window, new_dim_numbers, convolution->precision_config(),
           /*preferred_element_type=*/convolution->shape().element_type(),
-          /*sparsity_config=*/SparsityConfig(), &convolution->metadata(),
-          &convolution->frontend_attributes()));
+          convolution->sparsity_config(), convolution->block_scaling_config(),
+          &convolution->metadata(), &convolution->frontend_attributes()));
   convolution->SetupDerivedInstruction(new_conv);
 
   // If the activations were to be batch-to-spaced again, simply use the

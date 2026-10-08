@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <list>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -950,6 +949,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
 
   void Flush() override {}
   void ExportScopeRangeIdTree(XSpace* space) {
+    if (scope_range_id_tree_.empty()) {
+      return;
+    }
     XPlaneBuilder plane(
         FindOrAddMutablePlaneWithName(space, kScopeRangeIdTreePlaneName));
     // No metadata is used for this plane, we just use the XStat to

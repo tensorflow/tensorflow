@@ -52,7 +52,7 @@ class Tile {
     Tile tile;
     tile.dimensions_.reserve(tile_proto.dimensions_size());
     for (int64_t dimension : tile_proto.dimensions()) {
-      TF_RET_CHECK(dimension >= 0);
+      TF_RET_CHECK(dimension >= 0 || dimension == kCombineDimension);
       tile.add_dimensions(dimension);
     }
     return tile;
@@ -95,7 +95,10 @@ class Tile {
   }
 
   // This dimension size means the corresponding dimension in the shape is
-  // combined with the next minor dimension before tiling is applied.
+  // combined with the next minor dimension before tiling is applied. In a top
+  // level tile T(*, N), it indicates an unpadded dynamic dimension whose
+  // extent equals the logical dimension rounded up to the subtile packing
+  // factor.
   static constexpr int64_t kCombineDimension =
       std::numeric_limits<int64_t>::min();
 
@@ -404,6 +407,7 @@ class Layout {
 
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
+  static constexpr int64_t kCollectiveMemorySpace = 7;
   static constexpr int64_t kHostMemorySpace = 5;
   static constexpr int64_t kUnpinnedHostMemorySpace = 6;
   int64_t memory_space() const { return memory_space_; }

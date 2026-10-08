@@ -39,12 +39,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -52,11 +53,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
@@ -68,6 +72,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"
@@ -202,6 +207,12 @@ HloComputation::~HloComputation() {
   if (FusionInstruction() != nullptr) {
     CHECK(FusionInstruction()->fused_instructions_computation() == this);
     FusionInstruction()->ClearCalledComputations();
+  }
+  // Every live instruction dies below, so only the edges that leave the
+  // computation are unlinked; the call also makes ~HloInstruction skip the
+  // rest. Instructions in to_be_deleted_ were detached at removal.
+  for (HloInstruction* instruction : instructions()) {
+    instruction->DetachFromOperandsAndUsersOutside(this);
   }
   Cleanup();
   ClearCalledComputations();
@@ -769,7 +780,10 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       }
       auto operand = caller->mutable_operand(parameter_number);
       caller->RemoveOperandAt(parameter_number);
-      caller->DetachFrom(operand);
+      // Another parameter of the caller may still read the operand.
+      if (!absl::c_linear_search(caller->operands(), operand)) {
+        caller->DetachFrom(operand);
+      }
       // Cleanup operand shape embedded into the async-start shape.
       if (caller->opcode() == HloOpcode::kAsyncStart) {
         std::vector<Shape>* operand_shapes = caller->mutable_shape()
@@ -918,7 +932,23 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
   if (parent() && parent()->has_entry_computation() &&
       parent()->entry_computation() == this) {
     if (!Shape::Equal().IgnoreLayout()(new_root_instruction->shape(),
-                                       root_instruction_->shape())) {
+                                       root_instruction_->shape()) &&
+        !Shape::Equal().IgnoreLayout()(
+            new_root_instruction->shape(),
+            parent()->input_output_alias_config().shape()) &&
+        !Shape::Equal().IgnoreLayout()(
+            new_root_instruction->shape(),
+            parent()->entry_computation_layout().result_shape())) {
+      // Do not remove this CHECK. Hitting it means a pass or caller is about
+      // to silently drop configured input/output aliases by changing the entry
+      // root shape. Fix the caller to update or clear the alias configuration
+      // explicitly instead of removing this check.
+      CHECK(!parent()->input_output_alias_config().OutputHasAnyAlias())
+          << "Cannot overwrite non-empty input_output_alias_config ("
+          << parent()->input_output_alias_config().ToShortString()
+          << ") when changing entry computation root from "
+          << root_instruction_->ToString() << " to "
+          << new_root_instruction->ToString();
       // Rebuild input output alias config now that we have a new output shape.
       parent()->input_output_alias_config() =
           HloInputOutputAliasConfig(new_root_instruction->shape());
@@ -1247,6 +1277,22 @@ void HloComputation::Print(
     printer->Append(execution_thread());
     printer->Append("\"");
   }
+  if (options.print_backend_config() && has_backend_config()) {
+    absl::string_view config = raw_backend_config_string();
+    std::string sorted_config;
+    if (options.sort_backend_config()) {
+      sorted_config = SortJson(config).value_or(std::string(config));
+      config = sorted_config;
+    }
+    printer->Append(", backend_config=");
+    if (printer->is_hasher() || LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(absl::CEscape(config));
+      printer->Append("\"");
+    }
+  }
   if (options.print_name_after_closing_brace() && instruction_count() > 5) {
     printer->Append(" // ");
     printer->Append(name());
@@ -1292,6 +1338,9 @@ void HloComputation::ToProto(HloComputationProto* proto,
   proto->set_is_fusion_computation(IsFusionComputation());
   proto->set_execution_thread(IsMainThread() ? ""
                                              : std::string(execution_thread()));
+  if (has_backend_config()) {
+    proto->set_backend_config(raw_backend_config_string());
+  }
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<HloComputation>>
@@ -1438,6 +1487,9 @@ HloComputation::CreateFromProto(
   if (!proto.execution_thread().empty()) {
     computation->SetExecutionThread(proto.execution_thread());
   }
+  if (!proto.backend_config().empty()) {
+    computation->set_raw_backend_config_string(proto.backend_config());
+  }
   return computation;
 }
 
@@ -1572,6 +1624,154 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     ABSL_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
   }
   return async_done;
+}
+
+absl::StatusOr<HloInstruction*> HloComputation::ReplaceWithSyncVariant(
+    HloInstruction* async_start, HloInstruction* async_done) {
+  HloInstruction* sync_instruction = nullptr;
+
+  const HloOpcode async_start_op = async_start->opcode();
+  switch (async_start_op) {
+    case HloOpcode::kAllReduceStart: {
+      auto* async_ar = Cast<HloAllReduceInstruction>(async_start);
+      sync_instruction = AddInstruction(HloInstruction::CreateAllReduce(
+          async_done->shape(), async_ar->operands(), async_ar->to_apply(),
+          async_ar->device_list(), async_ar->constrain_layout(),
+          async_ar->channel_id(), async_ar->use_global_device_ids()));
+      break;
+    }
+    case HloOpcode::kAllGatherStart: {
+      auto* async_ag = Cast<HloAllGatherInstruction>(async_start);
+      sync_instruction = AddInstruction(HloInstruction::CreateAllGather(
+          async_done->shape(), async_ag->operands(),
+          async_ag->all_gather_dimension(), async_ag->device_list(),
+          async_ag->constrain_layout(), async_ag->channel_id(),
+          async_ag->use_global_device_ids()));
+      break;
+    }
+    case HloOpcode::kCollectivePermuteStart: {
+      auto* async_cp = Cast<HloCollectivePermuteInstruction>(async_start);
+      if (async_cp->inplace()) {
+        sync_instruction =
+            AddInstruction(HloInstruction::CreateCollectivePermute(
+                async_done->shape(), async_cp->mutable_operand(0),
+                async_cp->mutable_operand(1), async_cp->mutable_operand(2),
+                async_cp->mutable_operand(3), async_cp->source_target_pairs(),
+                async_cp->dynamic_slice_sizes_list(), async_cp->channel_id()));
+      } else {
+        sync_instruction =
+            AddInstruction(HloInstruction::CreateCollectivePermute(
+                async_done->shape(), async_cp->operands(),
+                async_cp->source_target_pairs(), async_cp->channel_id()));
+      }
+      break;
+    }
+    case HloOpcode::kAsyncStart: {
+      auto* as_start = Cast<HloAsyncInstruction>(async_start);
+      HloInstruction* wrapped = as_start->async_wrapped_instruction();
+      sync_instruction = AddInstruction(wrapped->CloneWithNewOperands(
+          async_done->shape(), as_start->operands()));
+      break;
+    }
+    default:
+      return Internal("Unexpected async start op %s",
+                      HloOpcodeString(async_start->opcode()));
+  }
+
+  sync_instruction->set_metadata(async_start->metadata());
+  sync_instruction->CopyBackendConfigFrom(async_start);
+  FrontendAttributes fas = async_done->frontend_attributes();
+  sync_instruction->set_frontend_attributes(fas);
+
+  HloInstruction* final_result = sync_instruction;
+  if (async_done->operand(0) != async_start) {
+    auto forward_path = hlo_instruction_utils::async::TraceDataflowPath(
+        async_done, async_start);
+    if (!forward_path.has_value()) {
+      return Internal("Could not trace from async done %s to async start %s",
+                      async_done->name(), async_start->name());
+    }
+    ABSL_ASSIGN_OR_RETURN(final_result,
+                     hlo_instruction_utils::async::PropagateDataflow(
+                         *forward_path, sync_instruction));
+  }
+
+  ABSL_RETURN_IF_ERROR(async_done->ReplaceAllUsesWith(final_result));
+
+  // Copy control dependencies.
+  //
+  // For simplicity, we throw away all control successors of a start and all
+  // control predecessors of a done. However, the only control dependencies we
+  // cannot respect are those that schedule an operation to run between a start
+  // and done.
+  for (HloInstruction* pred : async_start->control_predecessors()) {
+    ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(sync_instruction));
+  }
+  for (HloInstruction* succ : async_done->control_successors()) {
+    ABSL_RETURN_IF_ERROR(final_result->AddControlDependencyTo(succ));
+  }
+  if (!async_start->control_successors().empty()) {
+    LOG(WARNING) << "Async start " << async_start->name()
+                 << " is being replaced by a synchronous op, but it has "
+                    "control successors. These dependencies are being dropped";
+  }
+  if (!async_done->control_predecessors().empty()) {
+    LOG(WARNING)
+        << "Async done " << async_done->name()
+        << " is being replaced by a synchronous op, but it has "
+           "control predecessors. These dependencies are being dropped";
+  }
+  ABSL_RETURN_IF_ERROR(async_start->DropAllControlDeps());
+  ABSL_RETURN_IF_ERROR(async_done->DropAllControlDeps());
+
+  return sync_instruction;
+}
+
+absl::Status HloComputation::ReplaceAsyncInstructionsWithSync(
+    absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs) {
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> replaced_ops;
+  for (auto& [async_start, async_done] : async_pairs) {
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * sync,
+                     ReplaceWithSyncVariant(async_start, async_done));
+    replaced_ops[async_start] = nullptr;
+    replaced_ops[async_done] = sync;
+  }
+
+  // Update schedule, if there is one.
+  if (parent_ != nullptr && parent_->has_schedule() &&
+      parent_->schedule().is_computation_scheduled(this)) {
+    const HloInstructionSequence& sequence = parent_->schedule().sequence(this);
+    std::vector<HloInstruction*> new_sequence;
+    new_sequence.reserve(sequence.size());
+    for (HloInstruction* instr : sequence.instructions()) {
+      auto it = replaced_ops.find(instr);
+      if (it != replaced_ops.end()) {
+        if (it->second != nullptr) {
+          new_sequence.push_back(it->second);
+        }
+      } else {
+        new_sequence.push_back(instr);
+      }
+    }
+    parent_->schedule().set_sequence(this, new_sequence);
+  }
+
+  // Remove the replaced async instructions and their unused operands.
+  for (const auto& pair : async_pairs) {
+    HloInstruction* async_start = pair.first;
+    HloInstruction* async_done = pair.second;
+    bool is_async_start_removed = false;
+    auto track_async_start_removed = [&](const HloInstruction* instr) {
+      is_async_start_removed |= instr == async_start;
+    };
+    ABSL_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
+        async_done, track_async_start_removed));
+    if (!is_async_start_removed) {
+      ABSL_RETURN_IF_ERROR(RemoveInstruction(async_start));
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
@@ -1826,8 +2026,13 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     *new_instruction->mutable_metadata().mutable_metadata_payload() =
         old_instruction->metadata().metadata_payload();
   }
+  // Frontend attributes describe the replaced computation, so they must not
+  // flow backward onto an existing operand of the old instruction (e.g. when a
+  // no-op is forwarded to its operand): that operand is computed upstream and
+  // may feed other users.
   if (preserve_frontend_attributes &&
-      new_instruction->frontend_attributes().map().empty()) {
+      new_instruction->frontend_attributes().map().empty() &&
+      !absl::c_linear_search(old_instruction->operands(), new_instruction)) {
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }
@@ -2240,6 +2445,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
 
   context.MapComputation(this, result.get());
   result->SetExecutionThread(execution_thread());
+  result->backend_config_ = backend_config_;
   return result;
 }
 
@@ -2308,6 +2514,15 @@ void HloComputation::SetUniqueIdHelper(int64_t id) {
   for (auto& [computation, count] : callee_computations_) {
     computation->caller_computations_[this] = count;
   }
+}
+
+bool HloComputation::IsEntryInstUnboundedDynamic() const {
+  for (HloInstruction* instruction : parameter_instructions()) {
+    if (instruction->shape().is_unbounded_dynamic()) {
+      return true;
+    }
+  }
+  return root_instruction()->shape().is_unbounded_dynamic();
 }
 
 }  // namespace xla

@@ -46,7 +46,7 @@ TfLiteStatus DefineQuantizedDot(
     uint32_t a_zp_id, uint32_t b_id, uint32_t b_scale_id, uint32_t b_zp_id,
     uint32_t bias_id, int bias_rank, uint32_t out_scale_id, uint32_t out_zp_id,
     bool is_per_channel, bool is_conv, ynn_type output_ynn_type,
-    uint32_t* output_id) {
+    uint32_t* output_id, uint32_t dot_flags) {
   TF_LITE_ENSURE_EQ(context, a_reduce_axes.size(), b_reduce_axes.size());
   int num_k_dims = a_reduce_axes.size();
   // We assume a_id and b_id are quantized (int8 or uint8).
@@ -106,8 +106,8 @@ TfLiteStatus DefineQuantizedDot(
 
   // Now define the dot product.
   uint32_t accum_id = YNN_INVALID_VALUE_ID;
-  TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(subgraph, num_k_dims, a_id, b_id,
-                                           accum_init_id, &accum_id, 0));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(
+      subgraph, num_k_dims, a_id, b_id, accum_init_id, &accum_id, dot_flags));
 
   uint32_t accum_scale_id = dot_scale_id;
 
@@ -239,12 +239,19 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
                                                   &dot_output_id));
     }
 
+    uint32_t dot_flags = 0;
+    if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor)) {
+      // In TFlite, quantized int8 weights are in the range [-127, 127] (see
+      // quantization_spec.md for reference).
+      dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
+    }
+
     TF_LITE_ENSURE_STATUS(DefineQuantizedDot(
         context, subgraph, rank_a, rank_b, {rank_a - 1}, {rank_b - 2},
         current_a_id, a_scale_id, a_zp_id, current_b_id, b_scale_id, b_zp_id,
         is_dynamically_quantized ? YNN_INVALID_VALUE_ID : broadcasted_bias_id,
         rank_a - 1, out_scale_id, out_zp_id, is_per_channel, /*is_conv=*/false,
-        GetYnnType(output_tensor.type), &dot_output_id));
+        GetYnnType(output_tensor.type), &dot_output_id, dot_flags));
 
     if (is_dynamically_quantized && bias_id != YNN_INVALID_VALUE_ID) {
       TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
@@ -351,17 +358,6 @@ bool IsRuntimeBmm(const TfLiteRegistration* registration,
            strcmp(composite_params->name, "odml.runtime_bmm") == 0;
   }
   return false;
-}
-
-bool IsRuntimeBmm(TfLiteContext* context, int node_index) {
-  TfLiteNode* node = nullptr;
-  TfLiteRegistration* registration = nullptr;
-  if (context == nullptr ||
-      context->GetNodeAndRegistration(context, node_index, &node,
-                                      &registration) != kTfLiteOk) {
-    return false;
-  }
-  return IsRuntimeBmm(registration, node);
 }
 
 TfLiteStatus IsRuntimeBatchedMatMulSupported(
@@ -476,12 +472,8 @@ TfLiteStatus DefineBatchMatMulNode(TfLiteContext* context,
   TF_LITE_ENSURE(context, input_b_val_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteBatchMatMulParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteBatchMatMulParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int rank_a = input_a_tensor.dims->size;
@@ -534,26 +526,17 @@ TfLiteStatus DefineRuntimeBatchedMatMulNode(
   bool adj_x = false;
   bool adj_y = false;
   bool is_src = false;
-  TfLiteNode* tflite_node = nullptr;
-  TfLiteRegistration* reg = nullptr;
-  if (context->GetNodeAndRegistration(context, node.node_index, &tflite_node,
-                                      &reg) == kTfLiteOk &&
-      tflite_node != nullptr) {
-    if (reg->builtin_code == kTfLiteBuiltinBatchMatmul) {
-      if (tflite_node->builtin_data != nullptr) {
-        const auto* params = static_cast<const TfLiteBatchMatMulParams*>(
-            tflite_node->builtin_data);
-        if (params) {
-          adj_x = params->adj_x;
-          adj_y = params->adj_y;
-        }
-      }
-    } else {
-      const flexbuffers::Map flexbuffer_map =
-          GetFlexBufferMap(reg, tflite_node);
-      if (!flexbuffer_map["is_src"].IsNull()) {
-        is_src = flexbuffer_map["is_src"].AsBool();
-      }
+  if (node.builtin_code == kTfLiteBuiltinBatchMatmul) {
+    const auto* params =
+        static_cast<const TfLiteBatchMatMulParams*>(node.builtin_data);
+    if (params) {
+      adj_x = params->adj_x;
+      adj_y = params->adj_y;
+    }
+  } else {
+    const flexbuffers::Map flexbuffer_map = GetFlexBufferMap(node);
+    if (!flexbuffer_map["is_src"].IsNull()) {
+      is_src = flexbuffer_map["is_src"].AsBool();
     }
   }
 
@@ -692,12 +675,8 @@ TfLiteStatus DefineFullyConnectedNode(TfLiteContext* context,
   }
   TF_LITE_ENSURE(context, output_val_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteFullyConnectedParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteFullyConnectedParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int rank_a = input_tensor.dims->size;
@@ -1018,6 +997,13 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
     std::iota(a_reduce_axes, a_reduce_axes + 3, groups == 1 ? 3 : 5);
     std::iota(b_reduce_axes, b_reduce_axes + 3, groups == 1 ? 0 : 1);
 
+    uint32_t dot_flags = 0;
+    if (filter_tensor.type == kTfLiteInt8 && IsConstant(filter_tensor)) {
+      // In TFlite, quantized int8 weights are in the range [-127, 127] (see
+      // quantization_spec.md for reference).
+      dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
+    }
+
     TF_LITE_ENSURE_STATUS(DefineQuantizedDot(
         context, subgraph,
         /*rank_a=*/(groups == 1) ? 6 : 8,
@@ -1025,7 +1011,8 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
         current_input_id, a_scale_id, a_zp_id, transposed_filter_id,
         current_b_scale_id, current_b_zp_id, current_bias_id,
         (groups == 1) ? 1 : 3, out_scale_id, out_zp_id, is_per_channel,
-        /*is_conv=*/true, GetYnnType(output_tensor.type), &dot_output_id));
+        /*is_conv=*/true, GetYnnType(output_tensor.type), &dot_output_id,
+        dot_flags));
   } else {
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, 3, current_input_id, transposed_filter_id,
@@ -1077,12 +1064,7 @@ TfLiteStatus DefineConvNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   TF_LITE_ENSURE(context, bias_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
-  const auto* params =
-      static_cast<const TfLiteConvParams*>(tflite_node->builtin_data);
+  const auto* params = static_cast<const TfLiteConvParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int output_channels = filter_tensor.dims->data[0];
@@ -1130,12 +1112,8 @@ TfLiteStatus DefineDepthwiseConvNode(TfLiteContext* context,
   TF_LITE_ENSURE(context, bias_id != YNN_INVALID_VALUE_ID);
   TF_LITE_ENSURE(context, output_id != YNN_INVALID_VALUE_ID);
 
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteDepthwiseConvParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteDepthwiseConvParams*>(node.builtin_data);
   TF_LITE_ENSURE(context, params != nullptr);
 
   int filter_channels = filter_tensor.dims->data[3];

@@ -15,19 +15,27 @@ limitations under the License.
 
 #include "xla/service/gpu_topology.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/gpu_topology.pb.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 namespace {
@@ -73,7 +81,8 @@ GetHostTargetMachineOptions(absl::string_view platform_version) {
         "+sha,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+tsxldtrk,+vaes,+"
         "vpclmulqdq,+wbnoinvd,+xsave,+xsavec,+xsaveopt,+xsaves,-amx-avx512,-"
         "amx-complex,-amx-fp16,-amx-fp8,-amx-movrs,-avx10.1,-avx10.2,-"
-        "avx512bmm,-avx512vp2intersect,-avxifma,-avxneconvert,-avxvnniint16,-"
+        "avx10v2aux,-avx512bmm,-avx512vp2intersect,-avxifma,-avxneconvert,-"
+        "avxvnniint16,-"
         "avxvnniint8,-ccmp,-cf,-clzero,-cmpccxadd,-egpr,-enqcmd,-fma4,-hreset,-"
         "jmpabs,-kl,-lwp,-movrs,-mwaitx,-ndd,-nf,-pconfig,-pku,-ppx,-prefetchi,"
         "-ptwrite,-push2pop2,-raoint,-rdpru,-sgx,-sha512,-shstk,-sm3,-sm4,-"
@@ -81,11 +90,38 @@ GetHostTargetMachineOptions(absl::string_view platform_version) {
   }
   if (platform_version == "oberon_b200" || platform_version == "oberon_b300") {
     return cpu::TargetMachineOptions{
-        "aarch64-linux-gnu", "neoverse-n1",
+        "aarch64-unknown-linux-gnu", "neoverse-n1",
         "+aes,+crc,+fp-armv8,+lse,+neon,+sha2,+sha3,+sm4,+sve-aes,+sve-sha3,+"
         "sve-sm4,-rand,-sve,-sve2"};
   }
   return std::nullopt;
+}
+
+std::optional<absl::StatusOr<GpuTopology>> TryParseInlineGpuTopology(
+    absl::string_view spec) {
+  absl::string_view platform_version;
+  absl::string_view dims_str = spec;
+  if (size_t colon_pos = spec.find(':'); colon_pos != absl::string_view::npos) {
+    platform_version = spec.substr(0, colon_pos);
+    dims_str = spec.substr(colon_pos + 1);
+  }
+  std::vector<absl::string_view> parts = absl::StrSplit(dims_str, 'x');
+  if (parts.size() != 2 && parts.size() != 3) {
+    return std::nullopt;
+  }
+  int32_t dims[3] = {1, 0, 0};
+  size_t offset = (parts.size() == 2) ? 1 : 0;
+  for (size_t i = 0; i < parts.size(); ++i) {
+    if (!absl::SimpleAtoi(parts[i], &dims[offset + i]) ||
+        dims[offset + i] <= 0) {
+      return std::nullopt;
+    }
+  }
+  if (!platform_version.empty()) {
+    return GetGpuTopologyForPlatform(platform_version, dims[0], dims[1],
+                                     dims[2]);
+  }
+  return GpuTopology(/*platform_version=*/"", dims[0], dims[1], dims[2]);
 }
 
 }  // namespace
@@ -159,6 +195,46 @@ GpuTopology GetSingleDeviceGpuTopology(
         host_target_machine_options) {
   return GpuTopology(platform_version, 1, 1, 1, gpu_target_config,
                      host_target_machine_options);
+}
+
+absl::StatusOr<GpuTopology> ParseGpuTopology(
+    absl::string_view topology_spec_or_filename) {
+  TF_RET_CHECK(!topology_spec_or_filename.empty());
+  if (std::optional<absl::StatusOr<GpuTopology>> inline_topology =
+          TryParseInlineGpuTopology(topology_spec_or_filename);
+      inline_topology.has_value()) {
+    return *std::move(inline_topology);
+  }
+
+  std::string gpu_topology_string;
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+                                        std::string(topology_spec_or_filename),
+                                        &gpu_topology_string));
+  GpuTopologyProto gpu_topology_proto;
+  if (!google::protobuf::TextFormat::ParseFromString(gpu_topology_string,
+                                           &gpu_topology_proto)) {
+    return absl::FailedPreconditionError("Failed to parse GpuTopologyProto");
+  }
+  if (!gpu_topology_proto.has_gpu_target_config() &&
+      !gpu_topology_proto.platform_version().empty()) {
+    ABSL_ASSIGN_OR_RETURN(gpu::GpuModel gpu_model,
+                     GetGpuModel(gpu_topology_proto.platform_version()));
+    ABSL_ASSIGN_OR_RETURN(*gpu_topology_proto.mutable_gpu_target_config(),
+                     gpu::GetGpuTargetConfig(gpu_model));
+  }
+  if (!gpu_topology_proto.has_host_target_machine_options() &&
+      !gpu_topology_proto.platform_version().empty()) {
+    ABSL_ASSIGN_OR_RETURN(
+        std::optional<cpu::TargetMachineOptions> host_options,
+        GetHostTargetMachineOptions(gpu_topology_proto.platform_version()));
+    if (host_options.has_value()) {
+      *gpu_topology_proto.mutable_host_target_machine_options() =
+          host_options->ToProto();
+    }
+  }
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> topology,
+                   GpuTopology::FromProto(gpu_topology_proto));
+  return *topology;
 }
 
 }  // namespace xla

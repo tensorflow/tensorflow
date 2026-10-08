@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,14 +34,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_stack_trace.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
@@ -50,13 +54,128 @@ namespace xla {
 /*static*/
 absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
-    const HloComputation* computation, bool module_scoped_analysis) {
+    const HloComputation* computation, bool module_scoped_analysis,
+    absl::flat_hash_set<absl::string_view> execution_threads) {
   std::unique_ptr<HloLiveRange> hlo_live_range(
-      new HloLiveRange(schedule, alias_analysis, module_scoped_analysis));
+      new HloLiveRange(schedule, alias_analysis, module_scoped_analysis,
+                       std::move(execution_threads)));
   ABSL_RETURN_IF_ERROR(hlo_live_range->FlattenSchedule(*computation));
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
   return hlo_live_range;
+}
+
+/*static*/
+std::vector<const HloValue*> HloLiveRange::GetValuesDefined(
+    const HloInstruction* instruction, const HloDataflowAnalysis& dataflow) {
+  std::vector<const HloValue*> values;
+  const auto& value_set_tree = dataflow.GetInstructionValueSet(instruction);
+  for (const auto& entry : value_set_tree) {
+    if (dataflow.ValueIsDefinedAt(instruction, entry.first)) {
+      values.push_back(&dataflow.GetValueDefinedAt(instruction, entry.first));
+    }
+  }
+  return values;
+}
+
+/*static*/
+std::vector<const HloBuffer*> HloLiveRange::GetBuffersDefined(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis) {
+  std::vector<const HloBuffer*> buffers;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  for (const HloValue* value :
+       GetValuesDefined(instruction, alias_analysis.dataflow_analysis())) {
+    const HloBuffer* buffer = &alias_analysis.GetBufferContainingValue(*value);
+    if (seen.insert(buffer).second) {
+      buffers.push_back(buffer);
+    }
+  }
+  return buffers;
+}
+
+/*static*/
+int64_t HloLiveRange::GetBytesDefined(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis,
+    const BufferValue::SizeFunction& size_fn) {
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    return 0;
+  }
+  int64_t bytes = 0;
+  for (const HloBuffer* buffer :
+       GetBuffersDefined(instruction, alias_analysis)) {
+    if (buffer->IsHeapPressureImpacting()) {
+      bytes += buffer->ComputeSize(size_fn);
+    }
+  }
+  return bytes;
+}
+
+/*static*/
+std::vector<const HloBuffer*> HloLiveRange::GetBuffersUsed(
+    const HloInstruction* instruction, const HloAliasAnalysis& alias_analysis) {
+  std::vector<const HloBuffer*> buffers;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  const auto& dataflow = alias_analysis.dataflow_analysis();
+  for (const HloInstruction* operand : instruction->operands()) {
+    HloValueSet value_set = dataflow.GetFlattenedValueSet(operand);
+    for (const HloValue* value : value_set.values()) {
+      const HloBuffer* buffer =
+          &alias_analysis.GetBufferContainingValue(*value);
+      if (seen.insert(buffer).second) {
+        buffers.push_back(buffer);
+      }
+    }
+  }
+  return buffers;
+}
+
+/*static*/
+int32_t HloLiveRange::GetTotalUsers(const HloBuffer& buffer,
+                                    const HloComputation* computation) {
+  int32_t total = 0;
+  for (const HloValue* value : buffer.values()) {
+    for (const HloUse& use : value->GetUses()) {
+      if (computation == nullptr || use.instruction->parent() == computation) {
+        ++total;
+      }
+    }
+  }
+  return total;
+}
+
+/*static*/
+int64_t HloLiveRange::GetParameterBytesAtStart(
+    const HloComputation& computation, const HloAliasAnalysis& alias_analysis,
+    const BufferValue::SizeFunction& size_fn) {
+  int64_t bytes = 0;
+  absl::flat_hash_set<const HloBuffer*> seen;
+  for (const HloInstruction* param : computation.parameter_instructions()) {
+    for (const HloBuffer* buffer : GetBuffersDefined(param, alias_analysis)) {
+      if (seen.insert(buffer).second && buffer->IsHeapPressureImpacting()) {
+        bytes += buffer->ComputeSize(size_fn);
+      }
+    }
+  }
+  return bytes;
+}
+
+/*static*/
+bool HloLiveRange::BufferLivesOut(const HloBuffer& buffer,
+                                  const HloAliasAnalysis& alias_analysis,
+                                  const HloComputation* computation) {
+  if (alias_analysis.BufferLivesOut(buffer)) {
+    return true;
+  }
+  if (computation != nullptr) {
+    for (const HloValue* value : buffer.values()) {
+      for (const HloUse& use : value->GetUses()) {
+        if (use.instruction->parent() != computation) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 void HloLiveRange::NormalizeAliasedBuffers() {
@@ -92,6 +211,10 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 // number of each instruction in the schedule.
 absl::Status HloLiveRange::FlattenSchedule(
     const HloComputation& computation, const HloComputation* async_context) {
+  if (!HloInstruction::IsThreadIncluded(computation.execution_thread(),
+                                        execution_threads_)) {
+    return absl::OkStatus();
+  }
   auto it = schedule_.sequences().find(computation.unique_id());
   if (it == schedule_.sequences().end()) {
     total_order_scheduled_ = false;
@@ -197,18 +320,22 @@ HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
     // by call operation itself, and rely on the last usage time inferred from
     // the operations in the called computation.
     if (module_scoped_analysis_ && used->opcode() == HloOpcode::kCall) {
-      continue;
+      if (computation_span_times_.contains(used->to_apply())) {
+        continue;
+      }
     }
 
     // As an optimization, we deem a while's init value's live range ends as
     // soon as the loop body starts. This optimization is only applicable in
     // module scoped mode.
     if (module_scoped_analysis_ && used->opcode() == HloOpcode::kWhile) {
-      // The current live range is at the end of the while, move it to
-      // the beginning of the body.
-      used = used->while_body()->parameter_instruction(0);
-      VLOG(1) << "Moved value " << value.ToShortString()
-              << " to while param: " << used->ToString();
+      if (computation_span_times_.contains(used->while_body())) {
+        // The current live range is at the end of the while, move it to
+        // the beginning of the body.
+        used = used->while_body()->parameter_instruction(0);
+        VLOG(1) << "Moved value " << value.ToShortString()
+                << " to while param: " << used->ToString();
+      }
     }
 
     // It's possible that we didn't track the instruction `used`. This
@@ -241,52 +368,115 @@ void HloLiveRange::CalculateBufferStartEndMap() {
         instruction.IsRoot() ? computation_span_times_[computation].end
                              : entry.second;
 
-    // If the instruction is in an asynchronous context, extend the live range
-    // until the end of the async-done instruction.
+    // If the instruction is in an asynchronous context, adjust its live range
+    // to cover the async window precisely:
+    //   - end_time is extended to the async-done instruction so the buffer
+    //     remains live for the full async duration.
+    //   - start_time is tightened to the first-fully-bound instruction
+    //     (async-start for standard chains, async-update for late-binding
+    //     chains), because FlattenSchedule inlines the async computation
+    //     immediately before that instruction and the inner buffer is not live
+    //     before it fires.
     auto async_context_it = computations_in_async_context_.find(computation);
     if (async_context_it != computations_in_async_context_.end()) {
       const HloComputation* async_context = async_context_it->second;
-      auto async_start = async_context->GetUniqueCaller(HloOpcode::kAsyncStart);
-      CHECK(async_start) << "Async computations should have a unique caller.";
-      auto async_done = (*async_start)->async_chain_done();
-      auto async_done_it = instruction_schedule_.find(async_done);
-      CHECK(async_done_it != instruction_schedule_.end());
-      definition_end_time =
-          std::max(definition_end_time, async_done_it->second);
+      // Only the async-wrapped computation itself (not computations reached
+      // transitively through a nested kCall/kConditional/kWhile inside it)
+      // gets its start_time tightened to the first-fully-bound caller below.
+      // computations_in_async_context_ maps every computation in the async
+      // subtree to the same async_context, so without this check a value
+      // defined deep inside a nested call (e.g. reachable via kCall from the
+      // async-wrapped computation) would have its start_time forced all the
+      // way to the outer async-start/async-update's schedule time, which can
+      // land after other instructions in that same nested computation have
+      // already used the value, producing an inconsistent (too-late) start.
+      const bool is_async_wrapped_computation = computation == async_context;
+      // async_context can have multiple callers when the same async-wrapped
+      // computation is shared by several async-start/update instructions
+      // (e.g. one outside and one inside a while loop). FlattenSchedule only
+      // ever inlines the computation once, at whichever caller the schedule
+      // walk reaches first, so we take the minimum schedule time across all
+      // first-fully-bound callers below. This is deterministic (unlike
+      // picking an arbitrary caller from caller_instructions(), which is
+      // returned in no particular order) and never overshoots the schedule
+      // position the instructions were actually flattened at, which would
+      // otherwise push start_time past definition_end_time.
+      std::optional<LogicalTime> tightened_start_time;
+      for (const HloInstruction* caller :
+           async_context->caller_instructions()) {
+        if (caller->IsAsynchronous()) {
+          const HloInstruction* async_done = nullptr;
+          if (caller->opcode() == HloOpcode::kAsyncStart ||
+              caller->opcode() == HloOpcode::kAsyncUpdate) {
+            async_done = caller->async_chain_done();
+          } else if (caller->opcode() == HloOpcode::kAsyncDone) {
+            async_done = caller;
+          }
+          if (async_done != nullptr) {
+            auto async_done_it = instruction_schedule_.find(async_done);
+            if (async_done_it != instruction_schedule_.end()) {
+              definition_end_time =
+                  std::max(definition_end_time, async_done_it->second);
+            } else {
+              definition_end_time =
+                  std::max(definition_end_time,
+                           computation_span_times_[computation].end);
+            }
+          } else {
+            definition_end_time = std::max(
+                definition_end_time, computation_span_times_[computation].end);
+          }
+          // Track the earliest first-fully-bound caller's schedule time.
+          // FlattenSchedule inlines the async computation's instructions
+          // immediately before the first-fully-bound instruction (async-start
+          // for standard chains, async-update for late-binding chains) that
+          // actually triggers the flattening. The inner buffer is not live
+          // before that point.
+          absl::StatusOr<bool> is_first_fully_bound =
+              hlo_instruction_utils::async::IsFirstFullyBound(caller);
+          if (is_first_fully_bound.ok() && *is_first_fully_bound) {
+            auto first_bound_it = instruction_schedule_.find(caller);
+            if (first_bound_it != instruction_schedule_.end()) {
+              tightened_start_time = std::min(
+                  first_bound_it->second,
+                  tightened_start_time.value_or(first_bound_it->second));
+            }
+          }
+        }
+      }
+      if (is_async_wrapped_computation && tightened_start_time.has_value()) {
+        // Cap by definition_end_time (computed above) so that a late-binding
+        // caller's schedule time (e.g. an async-update) never lands past
+        // this instruction's own (already-correct) end, which would
+        // otherwise push start past end.
+        start_time = std::min(*tightened_start_time, definition_end_time);
+      }
       VLOG(2) << "Setting the definition end time for op in async context: "
               << definition_end_time;
+      VLOG(2) << "Setting the definition start time for op in async context: "
+              << start_time;
     }
 
-    const InstructionValueSet& value_set_tree =
-        alias_analysis_.dataflow_analysis().GetInstructionValueSet(
-            &instruction);
+    for (const HloValue* value :
+         GetValuesDefined(&instruction, alias_analysis_.dataflow_analysis())) {
+      auto [end_time, end_position] =
+          ComputeValueLiveRangeEnd(*value, definition_end_time);
+      LiveRangeBounds live_range{start_time, end_time, end_position};
 
-    for (const auto& entry : value_set_tree) {
-      for (const HloValue* value : entry.second.values()) {
-        // The start time is only correct for the defining instruction.
-        if (value->defining_instruction() != &instruction) {
-          continue;
-        }
-
-        auto [end_time, end_position] =
-            ComputeValueLiveRangeEnd(*value, definition_end_time);
-        LiveRangeBounds live_range{start_time, end_time, end_position};
-
-        // Readonly entry parameters (parameters that don't alias) live across
-        // whole computation.
-        const HloModule& module = *computation->parent();
-        if (instruction.opcode() == HloOpcode::kParameter &&
-            computation == module.entry_computation() &&
-            !module.input_output_alias_config().ParameterHasAlias(
-                instruction.parameter_number(), value->index())) {
-          live_range.end = schedule_end_time();
-        } else {
-          live_range.end = std::max(live_range.end, GetLastUsageTime(*value));
-        }
-
-        CHECK_LE(live_range.start, live_range.end) << instruction.ToString();
-        CHECK(buffer_live_ranges_.insert({value, live_range}).second);
+      // Readonly entry parameters (parameters that don't alias) live across
+      // whole computation.
+      const HloModule& module = *computation->parent();
+      if (instruction.opcode() == HloOpcode::kParameter &&
+          computation == module.entry_computation() &&
+          !module.input_output_alias_config().ParameterHasAlias(
+              instruction.parameter_number(), value->index())) {
+        live_range.end = schedule_end_time();
+      } else {
+        live_range.end = std::max(live_range.end, GetLastUsageTime(*value));
       }
+
+      CHECK_LE(live_range.start, live_range.end) << instruction.ToString();
+      CHECK(buffer_live_ranges_.insert({value, live_range}).second);
     }
   }
 }
@@ -399,6 +589,74 @@ std::string HloLiveRange::ToString() const {
   }
 
   return output;
+}
+
+int64_t ViewExtendedTransitiveUseTime(
+    const HloInstruction* view, int64_t view_color,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule) {
+  CHECK(!view->shape().IsTuple() && view->shape().has_layout() &&
+        view->shape().layout().memory_space() == view_color)
+      << "not a view: " << view->ToString();
+  auto is_view_colored = [view_color](const HloInstruction* instruction) {
+    return instruction->shape().has_layout() &&
+           instruction->shape().layout().memory_space() == view_color;
+  };
+  int64_t use_time = -1;
+  absl::flat_hash_set<const HloInstruction*> visited = {view};
+  std::vector<const HloInstruction*> worklist = {view};
+  while (!worklist.empty()) {
+    const HloInstruction* current = worklist.back();
+    worklist.pop_back();
+    auto time_it = instruction_schedule.find(current);
+    if (time_it != instruction_schedule.end()) {
+      use_time = std::max(use_time, time_it->second);
+    }
+    for (const HloInstruction* user : current->users()) {
+      if (is_view_colored(user)) {
+        if (visited.insert(user).second) {
+          worklist.push_back(user);
+        }
+      } else {
+        auto user_time_it = instruction_schedule.find(user);
+        if (user_time_it != instruction_schedule.end()) {
+          use_time = std::max(use_time, user_time_it->second);
+        }
+      }
+    }
+  }
+  return use_time;
+}
+
+void ExtendViewBaseLiveRanges(HloLiveRange* hlo_live_range,
+                              const HloDataflowAnalysis& dataflow_analysis,
+                              int64_t view_color) {
+  const absl::flat_hash_map<const HloInstruction*, int64_t>&
+      instruction_schedule = hlo_live_range->instruction_schedule();
+  absl::flat_hash_map<const HloValue*, HloLiveRange::LiveRangeBounds>&
+      buffer_live_ranges = hlo_live_range->buffer_live_ranges();
+  // dataflow_analysis.values() is id ordered, so the walk is deterministic.
+  for (const HloValue* value : dataflow_analysis.values()) {
+    auto live_range_it = buffer_live_ranges.find(value);
+    if (live_range_it == buffer_live_ranges.end()) {
+      continue;
+    }
+    HloLiveRange::LiveRangeBounds& live_range = live_range_it->second;
+    for (const HloUse& use : value->GetUses()) {
+      const HloInstruction* user = use.instruction;
+      // Only the viewed value itself (operand 0 of the view) needs the
+      // extension; a view's start index operands are consumed at the view's
+      // own time.
+      if (use.operand_number != 0 || user->shape().IsTuple() ||
+          !user->shape().has_layout() ||
+          user->shape().layout().memory_space() != view_color) {
+        continue;
+      }
+      live_range.end =
+          std::max(live_range.end, ViewExtendedTransitiveUseTime(
+                                       user, view_color, instruction_schedule));
+    }
+  }
 }
 
 }  // namespace xla

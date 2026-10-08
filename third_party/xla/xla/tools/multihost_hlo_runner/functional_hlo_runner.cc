@@ -27,10 +27,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/random/random.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -71,7 +72,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
@@ -88,6 +89,7 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/fixed_option_set_flag.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -372,9 +374,6 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
     const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& output_buffers,
     ModuleOutputMode module_output_mode, bool log_output) {
   CHECK(!output_buffers.empty());
-  absl::Mutex mu;
-  absl::Status status;
-  size_t num_pending_transfers = 0;
   bool device_0_is_local = false;
   for (PjRtDevice* device : GetLocalDevices(client)) {
     if (device->id() == 0) {
@@ -382,67 +381,81 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
     }
   }
 
-  if (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-      device_0_is_local) {
-    num_pending_transfers = output_buffers[0].size();
-  } else if (module_output_mode == ModuleOutputMode::kReturnOutputs) {
-    for (const auto& bs : output_buffers) {
-      num_pending_transfers += bs.size();
+  PerDeviceLiteralVecType outputs;
+  absl::Mutex mu;
+  absl::Status status;
+  size_t num_pending_transfers = 0;
+
+  absl::Status issue_status = [&]() -> absl::Status {
+    for (int i = 0; i < output_buffers.size(); ++i) {
+      if (output_buffers[i].empty()) {
+        continue;
+      }
+      const int device_id = output_buffers[i][0]->device()->id();
+      std::vector<Literal>& output_slice = outputs[device_id];
+      if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
+          (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
+           device_id == 0)) {
+        output_slice.reserve(output_buffers[i].size());
+        for (const auto& buffer : output_buffers[i]) {
+          if (buffer->device() != output_buffers[i][0]->device()) {
+            return absl::InternalError(
+                "All outputs from a given vector of outputs should be for the "
+                "same device");
+          }
+          ABSL_ASSIGN_OR_RETURN(auto logical_shape,
+                           buffer->logical_on_device_shape());
+          output_slice.emplace_back(
+              ShapeUtil::DeviceShapeToHostShape(logical_shape));
+          {
+            absl::MutexLock lock(mu);
+            ++num_pending_transfers;
+          }
+          buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
+            absl::MutexLock lock(mu);
+            --num_pending_transfers;
+            status.Update(s);
+          });
+        }
+      } else {
+        for (const auto& buffer : output_buffers[i]) {
+          if (buffer->device() != output_buffers[i][0]->device()) {
+            return absl::InternalError(
+                "All outputs from a given vector of outputs should be for the "
+                "same device");
+          }
+          ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+        }
+      }
     }
+    return absl::OkStatus();
+  }();
+
+  // The ToLiteral callbacks above reference `outputs`, `mu`, `status` and
+  // `num_pending_transfers`, so every issued transfer must complete before this
+  // function returns, including when a transfer fails or issuing one fails.
+  {
+    auto all_transfers_done = [&]() { return num_pending_transfers == 0; };
+    absl::MutexLock lock(mu);
+    mu.Await(absl::Condition(&all_transfers_done));
+    ABSL_RETURN_IF_ERROR(issue_status);
+    ABSL_RETURN_IF_ERROR(status);
   }
 
-  PerDeviceLiteralVecType outputs;
-  for (int i = 0; i < output_buffers.size(); ++i) {
-    if (output_buffers[i].empty()) {
-      continue;
-    }
-    const int device_id = output_buffers[i][0]->device()->id();
-    std::vector<Literal>& output_slice = outputs[device_id];
-    if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
-        (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-         device_id == 0)) {
-      output_slice.reserve(output_buffers[i].size());
-      for (const auto& buffer : output_buffers[i]) {
-        TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
-            << "All outputs from a given vector of outputs should be for the "
-               "same device";
-        ABSL_ASSIGN_OR_RETURN(auto logical_shape, buffer->logical_on_device_shape());
-        output_slice.emplace_back(
-            ShapeUtil::DeviceShapeToHostShape(logical_shape));
-        buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
-          absl::MutexLock lock(mu);
-          --num_pending_transfers;
-          status.Update(s);
-        });
+  if (log_output &&
+      (module_output_mode == ModuleOutputMode::kReturnOutputs ||
+       (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
+        device_0_is_local))) {
+    for (const PjRtDevice* device : GetLocalDevices(client)) {
+      int device_id = device->id();
+      if (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
+          device_id != 0) {
+        continue;
       }
-    } else {
-      for (const auto& buffer : output_buffers[i]) {
-        TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
-            << "All outputs from a given vector of outputs should be for the "
-               "same device";
-        ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
-      }
-    }
-  }
-  if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
-      (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-       device_0_is_local)) {
-    auto cond = [&]() { return !status.ok() || num_pending_transfers == 0; };
-    absl::MutexLock lock(mu);
-    mu.Await(absl::Condition(&cond));
-    ABSL_RETURN_IF_ERROR(status);
-    if (log_output) {
-      for (const PjRtDevice* device : GetLocalDevices(client)) {
-        int device_id = device->id();
-        if (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-            device_id != 0) {
-          continue;
-        }
-        LOG(INFO) << "Outputs for device_id: " << device_id;
-        const std::vector<Literal>& output_slice = outputs[device_id];
-        for (int i = 0; i < output_slice.size(); ++i) {
-          LOG(INFO) << "output[" << i << "]: " << output_slice[i].ToString();
-        }
+      LOG(INFO) << "Outputs for device_id: " << device_id;
+      const std::vector<Literal>& output_slice = outputs[device_id];
+      for (int i = 0; i < output_slice.size(); ++i) {
+        LOG(INFO) << "output[" << i << "]: " << output_slice[i].ToString();
       }
     }
   }
@@ -1003,23 +1016,18 @@ CreateArgumentsOnDevice(PjRtClient& client,
         }
       }
     } else {
+      FakeArgumentsOptions options;
+      options.engine = engine;
+      options.pseudo_random = kUseRandomInputs;
       if (flatten_arguments) {
-        ABSL_ASSIGN_OR_RETURN(
-            LiteralVec tupled_argument_literals,
-            MakeFakeArguments(my_hlo_module, kUseRandomInputs,
-                              /*use_large_range=*/false,
-                              /*treat_gte_as_data_formatting=*/false,
-                              /*max_bits_of_precision=*/std::nullopt, engine));
+        ABSL_ASSIGN_OR_RETURN(LiteralVec tupled_argument_literals,
+                         MakeFakeArguments(my_hlo_module, options));
         CHECK_EQ(tupled_argument_literals.size(), 1);
         CHECK(tupled_argument_literals.front().shape().IsTuple());
         argument_literals = tupled_argument_literals.front().DecomposeTuple();
       } else {
-        ABSL_ASSIGN_OR_RETURN(
-            argument_literals,
-            MakeFakeArguments(my_hlo_module, kUseRandomInputs,
-                              /*use_large_range=*/false,
-                              /*treat_gte_as_data_formatting=*/false,
-                              /*max_bits_of_precision=*/std::nullopt, engine));
+        ABSL_ASSIGN_OR_RETURN(argument_literals,
+                         MakeFakeArguments(my_hlo_module, options));
       }
       if (kUseSharedInputs) {
         break;
@@ -1083,8 +1091,16 @@ absl::StatusOr<ExecutionOptions> LoadExecutionOptions(absl::string_view path) {
   return execution_options;
 }
 
-absl::StatusOr<CompileOptions> CreateCompileOptions(
-    const PjRtClient& client,
+namespace {
+
+// Shared implementation of the `CreateCompileOptions` overloads. A client or a
+// topology is only needed for `device_count` (used to infer the number of
+// replicas and partitions) and `get_default_device_assignment`.
+absl::StatusOr<CompileOptions> CreateCompileOptionsInternal(
+    int device_count,
+    absl::FunctionRef<absl::StatusOr<DeviceAssignment>(int num_replicas,
+                                                       int num_partitions)>
+        get_default_device_assignment,
     const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
     int num_nodes, std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
   CompileOptions compile_options;
@@ -1163,9 +1179,8 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
       compile_options.executable_build_options;
   ReplicasAndPartitions replicas_and_partitions =
       FunctionalHloRunner::GetReplicasAndPartitions(
-          raw_options.execution_options, client.device_count(),
-          raw_options.num_replicas, raw_options.num_partitions,
-          raw_options.num_slices.value_or(1));
+          raw_options.execution_options, device_count, raw_options.num_replicas,
+          raw_options.num_partitions, raw_options.num_slices.value_or(1));
   build_options.set_num_replicas(replicas_and_partitions.replicas);
   build_options.set_num_partitions(replicas_and_partitions.partitions);
   build_options.set_process_index(task_id);
@@ -1182,8 +1197,8 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
       !raw_options.num_slices.has_value()) {
     ABSL_ASSIGN_OR_RETURN(
         DeviceAssignment device_assignment,
-        client.GetDefaultDeviceAssignment(replicas_and_partitions.replicas,
-                                          replicas_and_partitions.partitions));
+        get_default_device_assignment(replicas_and_partitions.replicas,
+                                      replicas_and_partitions.partitions));
     build_options.set_device_assignment(device_assignment);
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
@@ -1212,6 +1227,35 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
   return compile_options;
 }
 
+}  // namespace
+
+absl::StatusOr<CompileOptions> CreateCompileOptions(
+    const PjRtClient& client,
+    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
+    int num_nodes, std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+  return CreateCompileOptionsInternal(
+      client.device_count(),
+      [&](int num_replicas, int num_partitions) {
+        return client.GetDefaultDeviceAssignment(num_replicas, num_partitions);
+      },
+      raw_options, task_id, num_nodes, std::move(kv_store));
+}
+
+absl::StatusOr<CompileOptions> CreateCompileOptions(
+    const PjRtTopologyDescription& topology,
+    const FunctionalHloRunner::RawCompileOptions& raw_options, int task_id,
+    int num_nodes, std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+  return CreateCompileOptionsInternal(
+      topology.DeviceDescriptions().size(),
+      [&](int num_replicas, int num_partitions) {
+        return topology.GetDefaultDeviceAssignment(
+            /*process_index=*/task_id, num_replicas,
+            /*num_replicas_per_slice=*/std::nullopt, num_partitions,
+            /*multi_slice_config=*/nullptr);
+      },
+      raw_options, task_id, num_nodes, std::move(kv_store));
+}
+
 // Dumps the output literals to the specified path.
 // Example:
 //  `dump_output_to` filepath: /tmp/output.pb
@@ -1229,6 +1273,7 @@ absl::Status DumpOutput(
   output_path_vec.push_back("");
   int literal_id_index = output_path_vec.size() - 1;
   output_path_vec.push_back(suffix);
+  std::vector<std::function<absl::Status()>> write_tasks;
   for (const auto& [device_id, literal_vec] : output) {
     output_path_vec[device_id_index] = absl::StrCat("device_", device_id);
     for (int literal_id = 0; literal_id < literal_vec.size(); ++literal_id) {
@@ -1237,31 +1282,48 @@ absl::Status DumpOutput(
       switch (output_format) {
         case OutputFormat::kText: {
           CHECK_EQ(suffix, std::string("txt"));
-          absl::Status write_status =
-              tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
-                                     literal_vec[literal_id].ToString());
-          if (!write_status.ok()) {
-            return write_status;
-          }
+          auto& literal = literal_vec[literal_id];
+          write_tasks.push_back([literal_path, &literal]() {
+            return tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
+                                          literal.ToString());
+          });
           break;
         }
         case OutputFormat::kProtoBinary: {
           CHECK_EQ(suffix, std::string("pb"));
-          ABSL_RETURN_IF_ERROR(
-              tsl::WriteBinaryProto(tsl::Env::Default(), literal_path,
-                                    literal_vec[literal_id].ToProto()));
+          auto& literal = literal_vec[literal_id];
+          write_tasks.push_back([literal_path, &literal]() {
+            return tsl::WriteBinaryProto(tsl::Env::Default(), literal_path,
+                                         literal.ToProto());
+          });
           break;
         }
         case OutputFormat::kProtoText: {
           CHECK(suffix == "pbtxt" || suffix == "textproto");
-          ABSL_RETURN_IF_ERROR(
-              tsl::WriteTextProto(tsl::Env::Default(), literal_path,
-                                  literal_vec[literal_id].ToProto()));
+          auto& literal = literal_vec[literal_id];
+          write_tasks.push_back([literal_path, &literal]() {
+            return tsl::WriteTextProto(tsl::Env::Default(), literal_path,
+                                       literal.ToProto());
+          });
           break;
         }
       }
     }
   }
+  std::vector<absl::Status> results;
+  results.resize(write_tasks.size());
+  {
+    tsl::Env* env = tsl::Env::Default();
+    tsl::thread::ThreadPool thread_pool(env, "XlaHloRunner_DumpOutput", 16);
+    for (int i = 0; i < write_tasks.size(); ++i) {
+      thread_pool.Schedule(
+          [&write_tasks, &results, i]() { results[i] = write_tasks[i](); });
+    }
+  }
+  for (const auto& result : results) {
+    ABSL_RETURN_IF_ERROR(result) << "Failed to dump output";
+  }
+  LOG(INFO) << "Dumped output to " << write_tasks.size() << " files.";
   return absl::OkStatus();
 }
 
@@ -1340,6 +1402,7 @@ absl::Status LoadAndRunAndDump(
       FunctionalHloRunner::LoadAndRun(client, preproc_options, compile_options,
                                       running_options, hlo_file, input_format,
                                       /*arguments=*/{}, engine));
+  LOG(INFO) << "Dump output to: " << dump_output_to;
   return dump_output_to.empty()
              ? absl::OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
@@ -1774,9 +1837,24 @@ void HLORunnerProfiler::UploadSession() {
 
   CHECK(!dump_path_.empty());
 
-  LOG(INFO) << "Saving xspace result to " << dump_path_;
+  std::string unique_dump_path = dump_path_;
+  if (session_index_ > 0) {
+    absl::string_view stem = dump_path_;
+    absl::string_view suffix = "";
+    const std::string::size_type dot_pos = dump_path_.rfind('.');
+    const std::string::size_type slash_pos = dump_path_.rfind('/');
+    if (dot_pos != std::string::npos &&
+        (slash_pos == std::string::npos || dot_pos > slash_pos)) {
+      suffix = stem.substr(dot_pos);
+      stem = stem.substr(0, dot_pos);
+    }
+    unique_dump_path = absl::StrCat(stem, "_", session_index_, suffix);
+  }
+  ++session_index_;
+
+  LOG(INFO) << "Saving xspace result to " << unique_dump_path;
   // Save in binary format to create xprof sessions and extract device stats.
-  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), dump_path_, *xspace_.get()));
+  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), unique_dump_path, *xspace_));
   if (!keep_xspace_) {
     xspace_ = nullptr;
   }

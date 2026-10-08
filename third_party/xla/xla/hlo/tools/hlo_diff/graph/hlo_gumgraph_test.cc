@@ -104,7 +104,36 @@ ENTRY entry {
       graph->AllComputationProps(),
       UnorderedElementsAre(
           Pair(Pointee(Property(&HloComputation::name, "entry")),
-               Field(&CallGraphNodeProps::fingerprint, 3120016136002281788U))));
+               Field(&CallGraphNodeProps::fingerprint, 8186070297700271773U))));
+}
+
+TEST_F(HloGumgraphTest, CreateWithLateBoundAsyncUpdateWorks) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule LateBoundAsyncUpdate, is_scheduled=true
+
+InnerComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT add = f32[16]{0} add(p0, p0)
+}
+
+AsyncWrappedComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT call = f32[16]{0} call(p0), to_apply=InnerComputation
+}
+
+ENTRY main () -> f32[16]{0} {
+  p = f32[16]{0} parameter(0)
+  async-start = ((f32[16]{0}), (), s32[]{:S(2)}) async-start(p), calls=AsyncWrappedComputation
+  async-update = ((f32[16]{0}), f32[16]{0}, s32[]{:S(2)}) async-update(async-start)
+  ROOT async-done = f32[16]{0} async-done(async-update)
+}
+)"));
+
+  // Building the graph runs HloValueTracing; before the fix this aborted.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
+  EXPECT_NE(SelectNodeByName(*graph, "async-update"), nullptr);
 }
 
 TEST_F(HloGumgraphTest, CreateHloModuleWithFusionInstructionWorks) {
@@ -233,21 +262,21 @@ ENTRY entry {
   EXPECT_THAT(entry->props,
               FieldsAre(
                   /*generation=*/1,
-                  /*height=*/3, /*subgraph_fingerprint=*/10174981490612213786U,
+                  /*height=*/3, /*subgraph_fingerprint=*/9962200665388442837U,
                   /*fingerprint=*/7968662072287666665U,
                   /*canonical_fingerprint=*/7968662072287666665U));
   EXPECT_THAT(entry->children[0]->props,
               FieldsAre(
                   /*generation=*/2,
-                  /*height=*/2, /*subgraph_fingerprint=*/12866517545790127195U,
+                  /*height=*/2, /*subgraph_fingerprint=*/4310971099511013727U,
                   /*fingerprint=*/7968662072287666665U,
                   /*canonical_fingerprint=*/7968662072287666665U));
   EXPECT_THAT(entry->children[1]->props,
               FieldsAre(
                   /*generation=*/3,
-                  /*height=*/1, /*subgraph_fingerprint=*/3741348072536313129U,
-                  /*fingerprint=*/3741348072536313129U,
-                  /*canonical_fingerprint=*/3741348072536313129U));
+                  /*height=*/1, /*subgraph_fingerprint=*/18012536209527975916U,
+                  /*fingerprint=*/18012536209527975916U,
+                  /*canonical_fingerprint=*/18012536209527975916U));
   EXPECT_THAT(entry->children[0]->children[0]->props,
               FieldsAre(
                   /*generation=*/3,
@@ -257,9 +286,9 @@ ENTRY entry {
 
   EXPECT_THAT(
       graph->AllComputationProps(),
-      UnorderedElementsAre(Pair(
-          Pointee(Property(&HloComputation::name, "entry")),
-          Field(&CallGraphNodeProps::fingerprint, 10174981490612213786U))));
+      UnorderedElementsAre(
+          Pair(Pointee(Property(&HloComputation::name, "entry")),
+               Field(&CallGraphNodeProps::fingerprint, 9962200665388442837U))));
 }
 
 TEST_F(HloGumgraphTest, PreComputationsWorksWithShapeInFingerprint) {
@@ -288,22 +317,22 @@ ENTRY entry {
   EXPECT_THAT(entry->props,
               FieldsAre(
                   /*generation=*/1,
-                  /*height=*/3, /*subgraph_fingerprint=*/9049644343945734616U,
+                  /*height=*/3, /*subgraph_fingerprint=*/11252067960774703537U,
                   /*fingerprint=*/13023796333337170182U,
                   /*canonical_fingerprint=*/962574172336760684U));
 
   EXPECT_THAT(entry->children[0]->props,
               FieldsAre(
                   /*generation=*/2,
-                  /*height=*/2, /*subgraph_fingerprint=*/15554496862711682373U,
+                  /*height=*/2, /*subgraph_fingerprint=*/471903521785970780U,
                   /*fingerprint=*/13023796333337170182U,
                   /*canonical_fingerprint=*/962574172336760684U));
   EXPECT_THAT(entry->children[1]->props,
               FieldsAre(
                   /*generation=*/3,
-                  /*height=*/1, /*subgraph_fingerprint=*/15638894998427861693U,
-                  /*fingerprint=*/15638894998427861693U,
-                  /*canonical_fingerprint=*/12841472793063608770U));
+                  /*height=*/1, /*subgraph_fingerprint=*/12029491953972985219U,
+                  /*fingerprint=*/12029491953972985219U,
+                  /*canonical_fingerprint=*/12271265969888951136U));
   EXPECT_EQ(entry->children[0]->children[0]->props.subgraph_fingerprint,
             7851455295828926644U);
   EXPECT_EQ(entry->children[0]->children[0]->props.fingerprint,
@@ -319,9 +348,9 @@ ENTRY entry {
 
   EXPECT_THAT(
       graph->AllComputationProps(),
-      UnorderedElementsAre(
-          Pair(Pointee(Property(&HloComputation::name, "entry")),
-               Field(&CallGraphNodeProps::fingerprint, 9049644343945734616U))));
+      UnorderedElementsAre(Pair(
+          Pointee(Property(&HloComputation::name, "entry")),
+          Field(&CallGraphNodeProps::fingerprint, 11252067960774703537U))));
 }
 
 TEST_F(HloGumgraphTest, PreComputationsWorksMultiRoot) {
@@ -603,6 +632,44 @@ ENTRY entry {
                           HloGumgraph::Create(second_module.get()));
 
   EXPECT_FALSE(FingerprintEqualTo(*first_graph, *second_graph));
+}
+
+TEST_F(HloGumgraphTest, CheckEqualityForDifferentLargeConstants) {
+  // Create two modules with identical structure but different large constant
+  // values (> 10 elements):
+  // [Param foo] ------> ┌-------┐      ┌------┐
+  //                     | add_0 | ---> | ROOT |
+  // [Constant bar] ---> └-------┘      └------┘
+  TF_ASSERT_OK_AND_ASSIGN(auto first_module, ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  foo = s32[16]{0} parameter(0)
+  bar = s32[16]{0} constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+  ROOT add_0 = s32[16]{0} add(foo, bar)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(auto second_module, ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  foo = s32[16]{0} parameter(0)
+  bar = s32[16]{0} constant({99, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
+  ROOT add_0 = s32[16]{0} add(foo, bar)
+}
+)"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> first_graph,
+                          HloGumgraph::Create(first_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> second_graph,
+                          HloGumgraph::Create(second_module.get()));
+
+  EXPECT_FALSE(FingerprintEqualTo(*first_graph, *second_graph));
+  EXPECT_NE(SelectNodeByName(*first_graph, "bar")->props.fingerprint,
+            SelectNodeByName(*second_graph, "bar")->props.fingerprint);
+  EXPECT_NE(
+      SelectNodeByName(*first_graph, "bar")->props.canonical_fingerprint,
+      SelectNodeByName(*second_graph, "bar")->props.canonical_fingerprint);
 }
 
 TEST_F(HloGumgraphTest, CreateWithTwoOperandCollectivePermuteStartWorks) {

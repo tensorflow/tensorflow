@@ -18,10 +18,14 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
@@ -33,6 +37,34 @@ namespace xla::gpu {
 // A callback to get a unique clique ids.
 using CliqueIdCallback =  // NOLINT
     std::function<absl::StatusOr<CliqueIds>(const CliqueKey&)>;
+
+// A user-defined timeout handler attached to XLA:GPU execution.
+struct ExecutionTimeoutHandler {
+  enum class Scope {
+    // Monitors host-side execution: thunk execution and work submission to GPU
+    // streams.
+    kHost,
+    // Monitors device work enqueued by the execution, measured from the end of
+    // host dispatch until the device completes all enqueued work.
+    kDevice,
+  };
+
+  // Called when XLA:GPU execution exceeds the handler timeout. Runs on the
+  // HangWatchdog thread and must not block for long.
+  using Callback = absl::AnyInvocable<void(absl::string_view action,
+                                           absl::Duration timeout) &&>;
+
+  static bool IsHost(const ExecutionTimeoutHandler& handler) {
+    return handler.scope == Scope::kHost;
+  }
+  static bool IsDevice(const ExecutionTimeoutHandler& handler) {
+    return handler.scope == Scope::kDevice;
+  }
+
+  Scope scope;
+  absl::Duration timeout;
+  Callback callback;
+};
 
 // GPU-specific executable options.
 // We keep these separate from ExecutableRunOptions to avoid adding
@@ -84,6 +116,14 @@ class GpuExecutableRunOptions {
     return *this;
   }
 
+  // Sets a function that builds timeout handlers for each XLA:GPU execution.
+  GpuExecutableRunOptions& set_execution_timeout_handlers(
+      std::function<std::vector<ExecutionTimeoutHandler>()> handlers);
+
+  // Returns timeout handlers for a new XLA:GPU execution, or an empty vector if
+  // timeout handlers are not set.
+  std::vector<ExecutionTimeoutHandler> execution_timeout_handlers() const;
+
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
   bool enable_mock_collectives_ = false;
@@ -92,6 +132,8 @@ class GpuExecutableRunOptions {
   GpuCollectives* collectives_ = nullptr;
   std::optional<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
       incarnations_;
+  std::function<std::vector<ExecutionTimeoutHandler>()>
+      execution_timeout_handlers_;
 };
 
 }  // namespace xla::gpu

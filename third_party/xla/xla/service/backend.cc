@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/platform_util.h"
@@ -190,8 +190,8 @@ CreateGpuAllocators(const se::Platform* platform,
       PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
   ABSL_ASSIGN_OR_RETURN(auto transfer_manager,
                    TransferManager::GetForPlatform(platform));
-  ABSL_ASSIGN_OR_RETURN(auto computation_placer,
-                   ComputationPlacer::GetForPlatform(platform->id()));
+  ComputationPlacer* computation_placer =
+      ComputationPlacer::GetForPlatform(platform->id());
   std::unique_ptr<Backend> backend(new Backend(
       platform, std::move(compiler), stream_executors, transfer_manager,
       computation_placer, options.intra_op_parallelism_threads()));

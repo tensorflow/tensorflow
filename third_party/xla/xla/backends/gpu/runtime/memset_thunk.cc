@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -54,7 +54,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroThunk::Record(
   VLOG(5) << "MemzeroThunk::Record";
   VLOG(5) << "  dest: " << dest_ << " (" << dest_data.opaque() << ")";
 
-  if (dest_.slice.size() == 0) {
+  if (dest_.slice.empty()) {
     VLOG(5) << "Skip recording MemzeroThunk command of 0 bytes";
     return nullptr;
   }

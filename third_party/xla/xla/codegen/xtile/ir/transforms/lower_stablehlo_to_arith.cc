@@ -17,9 +17,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -127,6 +127,9 @@ class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
         new_op = UnsignedIntArithOp::create(rewriter, op.getLoc(),
                                             signless_operands.front().getType(),
                                             signless_operands);
+        if constexpr (std::is_same_v<UnsignedIntArithOp, mlir::math::IPowIOp>) {
+          new_op->setAttr("xla.is_unsigned", rewriter.getUnitAttr());
+        }
 
         rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
             op, op.getResult().getType(), new_op->getResult(0));

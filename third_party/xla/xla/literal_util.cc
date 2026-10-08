@@ -34,12 +34,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/random/uniform_int_distribution.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/index_util.h"
 #include "xla/layout_util.h"
@@ -199,13 +199,6 @@ struct MinProvider {
   NativeT<kType> operator()() const { return GetMinImpl<NativeT<kType>>(); }
 };
 
-template <PrimitiveType kType>
-struct FirstElementProvider {
-  NativeT<kType> operator()(const LiteralBase& literal) const {
-    return literal.GetFirstElement<NativeT<kType>>();
-  }
-};
-
 template <typename NativeT>
 std::enable_if_t<IsReal<NativeT>::value, NativeT> GetMaxElementImpl(
     const LiteralBase& literal) {
@@ -225,38 +218,6 @@ struct MaxElementProvider {
     return GetMaxElementImpl<NativeT<kType>>(literal);
   }
 };
-
-template <typename NativeT>
-std::enable_if_t<IsValidScalarType<NativeT>::value, NativeT>
-GetElementAtIndexImpl(const LiteralBase* literal,
-                      absl::Span<const int64_t> multi_index) {
-  return literal->Get<NativeT>(multi_index);
-}
-
-template <typename NativeT>
-std::enable_if_t<!IsValidScalarType<NativeT>::value, NativeT>
-GetElementAtIndexImpl(const LiteralBase* literal,
-                      absl::Span<const int64_t> multi_index) {
-  LOG(FATAL) << "Not a valid scalar element type.";
-}
-
-template <PrimitiveType kType>
-struct GetElementAtIndexProvider {
-  NativeT<kType> operator()(const LiteralBase* literal,
-                            absl::Span<const int64_t> multi_index) const {
-    DCHECK_EQ(literal->shape().element_type(), kType);
-    return GetElementAtIndexImpl<NativeT<kType>>(literal, multi_index);
-  }
-};
-
-template <PrimitiveType kType>
-void SetScalarAtIndexImpl(MutableLiteralBase& literal,
-                          absl::Span<const int64_t> multi_index,
-                          const LiteralBase& scalar) {
-  DCHECK_EQ(literal.shape().element_type(), kType);
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<kType>::type;
-  literal.Set<NativeT>(multi_index, scalar.Get<NativeT>({}));
-}
 
 template <typename FloatT>
 void PopulateWithIntNext(Literal* literal) {
@@ -349,8 +310,12 @@ template <typename FloatT, typename GeneratorT>
 void PopulateWithRandomFloatingPointData(
     Literal* literal, std::minstd_rand0* engine,
     std::optional<ConstraintInterval> interval) {
-  GeneratorT min = static_cast<GeneratorT>(-0.1);
-  GeneratorT max = static_cast<GeneratorT>(0.2);
+  GeneratorT min = std::max<GeneratorT>(
+      static_cast<GeneratorT>(-0.1),
+      static_cast<GeneratorT>(std::numeric_limits<FloatT>::lowest()));
+  GeneratorT max = std::min<GeneratorT>(
+      static_cast<GeneratorT>(0.2),
+      static_cast<GeneratorT>(std::numeric_limits<FloatT>::max()));
   if (interval.has_value() && !interval->IsUnconstrained()) {
     min = interval->min == ConstraintInterval::kMin
               ? min
@@ -537,6 +502,87 @@ using RngT = std::conditional_t<
     sizeof(IntT) < sizeof(uint16_t),
     std::conditional_t<std::numeric_limits<IntT>::is_signed, int16_t, uint16_t>,
     IntT>;
+
+// Computes safe [min, max] bounds for integral literal generation.
+// - If no limit is specified, returns the full type range [lowest, max].
+// - If use_large_range is true or bit_width <= 4, clamps the limit directly.
+// - Otherwise, bounds values to B/2 bits to prevent hardware ALU overflow
+//   (multiplication, squaring, etc.) and float conversion explosions.
+// - Expands to full range if no_duplicates requires more unique elements than
+//   B/2 capacity.
+template <typename IntT>
+std::pair<IntT, IntT> GetIntegralBounds(
+    const Shape& shape, bool use_large_range, bool no_duplicates,
+    std::optional<std::pair<int64_t, int64_t>> limit) {
+  if (!limit.has_value()) {
+    return {std::numeric_limits<IntT>::lowest(),
+            std::numeric_limits<IntT>::max()};
+  }
+
+  constexpr int64_t bit_width = sizeof(IntT) * 8;
+
+  // Sub-byte integers (<= 4 bits) already have tiny domains (<= 16 values).
+  if (use_large_range || bit_width <= 4) {
+    return {SafeClampInt64<IntT>(limit->first),
+            SafeClampInt64<IntT>(limit->second)};
+  }
+
+  // Calculate default B/2 bitwidth bounds and default_range_size (2^H - 1),
+  // which is the width of the domain [default_min, default_max].
+  int64_t h = bit_width / 2;
+  int64_t default_min;
+  int64_t default_max;
+  int64_t default_range_size;
+  if constexpr (std::numeric_limits<IntT>::is_signed) {
+    default_min = -(int64_t{1} << (h - 1));
+    default_max = (int64_t{1} << (h - 1)) - 1;
+    default_range_size = (int64_t{1} << h) - 1;
+  } else {
+    default_min = 0;
+    default_max = (int64_t{1} << h) - 1;
+    default_range_size = default_max;
+  }
+
+  // If no_duplicates is requested, ensure capacity >= element count.
+  int64_t num_elements = ShapeUtil::ElementsIn(shape);
+  if (no_duplicates && num_elements > default_range_size) {
+    if (limit.has_value()) {
+      return {SafeClampInt64<IntT>(limit->first),
+              SafeClampInt64<IntT>(limit->second)};
+    }
+    return {std::numeric_limits<IntT>::lowest(),
+            std::numeric_limits<IntT>::max()};
+  }
+
+  int64_t min_64 = default_min;
+  int64_t max_64 = default_max;
+
+  if (limit.has_value()) {
+    bool lower_unconstrained =
+        (limit->first == std::numeric_limits<int64_t>::min());
+    bool upper_unconstrained =
+        (limit->second == std::numeric_limits<int64_t>::max());
+
+    if (lower_unconstrained && upper_unconstrained) {
+      min_64 = default_min;
+      max_64 = default_max;
+    } else if (lower_unconstrained) {
+      max_64 = limit->second;
+      min_64 =
+          (max_64 < default_min) ? max_64 - default_range_size : default_min;
+    } else if (upper_unconstrained) {
+      min_64 = limit->first;
+      max_64 =
+          (min_64 > default_max) ? min_64 + default_range_size : default_max;
+    } else {
+      min_64 = limit->first;
+      max_64 = limit->second;
+    }
+  }
+
+  return {SafeClampInt64<IntT>(min_64), SafeClampInt64<IntT>(max_64)};
+}
+
 template <typename IntT>
 void PopulateWithRandomIntegralDataWithBounds(
     Literal* literal, std::minstd_rand0* engine, bool no_duplicates, IntT min,
@@ -753,25 +799,25 @@ void PopulateWithRandomIntegralDataWithBounds(
   *shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
 
   // Copy data into new literal, element-by-element.
-  for (int64_t i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
-    auto from_multi_index =
-        IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
-    auto to_multi_index =
-        IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
-    primitive_util::PrimitiveTypeSwitch<void>(
-        [&](auto primitive_type_constant) -> void {
-          if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-            using NativeT = typename primitive_util::PrimitiveTypeToNative<
-                primitive_type_constant>::type;
-            new_literal.Set<NativeT>(to_multi_index,
-                                     literal.Get<NativeT>(from_multi_index));
-            return;
-          }
-          LOG(FATAL) << "Unhandled primitive element type: "
-                     << PrimitiveType_Name(literal.shape().element_type());
-        },
-        literal.shape().element_type());
-  }
+  const int64_t num_elements = ShapeUtil::ElementsIn(literal.shape());
+  primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> void {
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        const auto* src_data =
+            static_cast<const NativeT*>(literal.untyped_data());
+        auto* dst_data = static_cast<NativeT*>(new_literal.untyped_data());
+        for (int64_t i = 0; i < num_elements; ++i) {
+          auto from_multi_index =
+              IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
+          auto to_multi_index = IndexUtil::LinearIndexToMultidimensionalIndex(
+              shape_with_layout, i);
+          dst_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+              new_literal.shape(), to_multi_index)] =
+              src_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+                  literal.shape(), from_multi_index)];
+        }
+      },
+      literal.shape().element_type());
 
   return new_literal;
 }
@@ -780,28 +826,46 @@ void PopulateWithRandomIntegralDataWithBounds(
     const LiteralSlice& literal) {
   CHECK(literal.shape().IsArray());
   CHECK_GT(ShapeUtil::ElementsIn(literal.shape()), 0);
-  return CreateScalar<FirstElementProvider>(literal.shape().element_type(),
-                                            literal);
+  Literal scalar(ShapeUtil::MakeScalarShape(literal.shape().element_type()));
+  primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> void {
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        *static_cast<NativeT*>(scalar.untyped_data()) =
+            *static_cast<const NativeT*>(literal.untyped_data());
+      },
+      literal.shape().element_type());
+  return scalar;
 }
 
 /*static*/ Literal LiteralUtil::GetScalarLiteral(
     const LiteralBase& literal, absl::Span<const int64_t> multi_index) {
-  return CreateScalar<GetElementAtIndexProvider>(literal.shape().element_type(),
-                                                 &literal, multi_index);
+  CHECK(literal.shape().IsArray());
+  Literal scalar(ShapeUtil::MakeScalarShape(literal.shape().element_type()));
+  const int64_t linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+      literal.shape(), multi_index);
+  primitive_util::ByteWidthTypeSwitch(
+      [&](auto primitive_type_constant) -> void {
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        *static_cast<NativeT*>(scalar.untyped_data()) =
+            static_cast<const NativeT*>(literal.untyped_data())[linear_index];
+      },
+      literal.shape().element_type());
+  return scalar;
 }
 
 /*static*/ void LiteralUtil::SetScalarLiteral(
     MutableLiteralBase& literal, absl::Span<const int64_t> multi_index,
     const LiteralBase& scalar) {
-  primitive_util::PrimitiveTypeSwitch<void>(
+  CHECK(literal.shape().IsArray());
+  CHECK(ShapeUtil::IsScalar(scalar.shape()));
+  CHECK_EQ(literal.shape().element_type(), scalar.shape().element_type());
+  const int64_t linear_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+      literal.shape(), multi_index);
+  primitive_util::ByteWidthTypeSwitch(
       [&](auto primitive_type_constant) -> void {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          SetScalarAtIndexImpl<primitive_type_constant>(literal, multi_index,
-                                                        scalar);
-          return;
-        }
-        LOG(FATAL) << "Unsupported element type: "
-                   << literal.shape().element_type();
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        static_cast<NativeT*>(literal.untyped_data())[linear_index] =
+            *static_cast<const NativeT*>(scalar.untyped_data());
       },
       literal.shape().element_type());
 }
@@ -939,12 +1003,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
           }
           if constexpr (primitive_util::IsIntegralType(
                             primitive_type_constant)) {
-            NativeT max = std::numeric_limits<NativeT>::max();
-            NativeT min = std::numeric_limits<NativeT>::lowest();
-            if (limit.has_value()) {
-              min = SafeClampInt64<NativeT>(limit->first);
-              max = SafeClampInt64<NativeT>(limit->second);
-            }
+            auto [min, max] = GetIntegralBounds<NativeT>(
+                new_shape, use_large_range, no_duplicates, limit);
             if (max_bits_of_precision.has_value()) {
               max = std::min(max,
                              static_cast<NativeT>(1 << *max_bits_of_precision));

@@ -77,12 +77,15 @@ class Mesh {
   explicit Mesh(TileAssignment device_assignment,
                 absl::Span<const absl::string_view> axes_names);
 
-  // Returns whether this mesh is a maximal-sharding mesh.
+  // Returns whether this mesh is a single-device mesh.
   //
-  // A maximal-sharding mesh contains an empty axis list and a single device id.
-  bool IsMaximal() const {
+  // A single-device mesh contains an empty axis list and a single device id.
+  bool IsSingleDevice() const {
     return axes_names_.empty() && device_assignment_.num_elements() == 1;
   }
+
+  // Backward compatibility alias for `IsSingleDevice()`.
+  bool IsMaximal() const { return IsSingleDevice(); }
 
   bool operator==(const Mesh& other) const {
     return device_assignment_ == other.device_assignment_ &&

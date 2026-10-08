@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_address.h"
@@ -59,12 +59,13 @@ RocmMemoryReservation::Create(StreamExecutor* executor, uint64_t size) {
       hipMemAddressReserve(&ptr, padded_size, granularity, nullptr, 0ULL)));
 
   return std::unique_ptr<RocmMemoryReservation>(new RocmMemoryReservation(
-      executor, static_cast<char*>(ptr), padded_size));
+      executor, static_cast<char*>(ptr), padded_size, granularity));
 }
 
 RocmMemoryReservation::RocmMemoryReservation(StreamExecutor* executor,
-                                             char* ptr, uint64_t size)
-    : executor_(executor), ptr_(ptr), size_(size) {}
+                                             char* ptr, uint64_t size,
+                                             size_t granularity)
+    : executor_(executor), ptr_(ptr), size_(size), granularity_(granularity) {}
 
 DeviceAddressBase RocmMemoryReservation::address() const {
   return DeviceAddressBase(ptr_, size_);

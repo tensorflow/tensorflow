@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/statusor.h"

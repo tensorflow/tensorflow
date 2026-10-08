@@ -50,3 +50,47 @@ func.func @reduce_scatter_sort_and_merge(%arg0: tensor<8x8x8xf32> {sdy.sharding=
   %0 = sdy.reduce_scatter [{"x":(1)2}, {}, {"x":(2)2}] %arg0 out_sharding=<@mesh_x_4, [{"x":(1)2}, {}, {"x":(2)2}]> : tensor<8x8x8xf32>
   return %0 : tensor<8x8x8xf32>
 }
+
+// CHECK-LABEL: func @reduce_scatter_non_divisible
+// NO-EXPORT-LABEL: func @reduce_scatter_non_divisible
+func.func @reduce_scatter_non_divisible(%arg0: tensor<8x7xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x7xf32> {
+  // CHECK-NEXT: %[[CST:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-NEXT: %[[PAD:.*]] = stablehlo.pad %arg0, %[[CST]], low = [0, 0], high = [0, 1], interior = [0, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} : (tensor<8x7xf32>, tensor<f32>) -> tensor<8x8xf32>
+  // CHECK-NEXT: %[[MANUAL_COMP:.*]] = sdy.manual_computation(%[[PAD]])
+  // CHECK-SAME:     in_shardings=[<@mesh, [{"x"}, {}], unreduced={"y"}>]
+  // CHECK-SAME:     out_shardings=[<@mesh, [{"x"}, {"y"}]>]
+  // CHECK-SAME:     manual_axes={"x", "y"} (%arg1: tensor<1x8xf32>) {
+  // CHECK-NEXT:   %[[REDUCE_SCATTER:.*]] = "stablehlo.reduce_scatter"(%arg1)
+  // CHECK:        sdy.return %[[REDUCE_SCATTER]]
+  // CHECK-NEXT: } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-NEXT: %[[SLICE:.*]] = stablehlo.slice %[[MANUAL_COMP]] [0:8, 0:7] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}]>]>} : (tensor<8x8xf32>) -> tensor<8x7xf32>
+  // CHECK-NEXT: return %[[SLICE]] : tensor<8x7xf32>
+
+  // NO-EXPORT-NEXT: %[[RS:.*]] = sdy.reduce_scatter [{}, {"y"}] %arg0
+  // NO-EXPORT-NEXT: return %[[RS]]
+
+  %0 = sdy.reduce_scatter [{}, {"y"}] %arg0 out_sharding=<@mesh, [{"x"}, {"y"}]> : tensor<8x7xf32>
+  return %0 : tensor<8x7xf32>
+}
+
+// CHECK-LABEL: func @reduce_scatter_dual_sharding_non_divisible
+// NO-EXPORT-LABEL: func @reduce_scatter_dual_sharding_non_divisible
+func.func @reduce_scatter_dual_sharding_non_divisible(%arg0: tensor<14x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(1)2}, {}]>}) -> tensor<14x16xf32> {
+  // CHECK-NEXT: %[[CST:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-NEXT: %[[PAD:.*]] = stablehlo.pad %arg0, %[[CST]], low = [0, 0], high = [2, 0], interior = [0, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}, {}], unreduced={"x":(2)4}>]>} : (tensor<14x16xf32>, tensor<f32>) -> tensor<16x16xf32>
+  // CHECK-NEXT: %[[MANUAL_COMP:.*]] = sdy.manual_computation(%[[PAD]])
+  // CHECK-SAME:     in_shardings=[<@mesh, [{"x":(1)2}, {}], unreduced={"x":(2)4}>]
+  // CHECK-SAME:     out_shardings=[<@mesh, [{"x"}, {}]>]
+  // CHECK-SAME:     manual_axes={"x", "y"} (%arg1: tensor<8x16xf32>) {
+  // CHECK-NEXT:   %[[REDUCE_SCATTER:.*]] = "stablehlo.reduce_scatter"(%arg1)
+  // CHECK:        sdy.return %[[REDUCE_SCATTER]]
+  // CHECK-NEXT: } : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  // CHECK-NEXT: %[[SLICE:.*]] = stablehlo.slice %[[MANUAL_COMP]] [0:14, 0:16] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<16x16xf32>) -> tensor<14x16xf32>
+  // CHECK-NEXT: return %[[SLICE]] : tensor<14x16xf32>
+
+  // NO-EXPORT-NEXT: %[[RS:.*]] = sdy.reduce_scatter [{"x":(2)4}, {}] %arg0
+  // NO-EXPORT-NEXT: return %[[RS]]
+
+  %0 = sdy.reduce_scatter [{"x":(2)4}, {}] %arg0 out_sharding=<@mesh, [{"x"}, {}]> : tensor<14x16xf32>
+  return %0 : tensor<14x16xf32>
+}

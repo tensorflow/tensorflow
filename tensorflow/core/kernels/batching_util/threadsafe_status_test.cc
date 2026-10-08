@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
 
+#include <atomic>
+#include <thread>  // NOLINT(build/c++11)
+#include <utility>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
@@ -45,6 +49,30 @@ TEST(ThreadSafeStatus, Update) {
 TEST(ThreadSafeStatus, Move) {
   ThreadSafeStatus status;
   TF_EXPECT_OK(std::move(status).status());
+}
+
+TEST(ThreadSafeStatus, ConcurrentReadAndUpdate) {
+  ThreadSafeStatus status;
+  std::atomic<bool> done{false};
+  std::thread reader([&]() {
+    while (!done.load(std::memory_order_relaxed)) {
+      absl::Status s = status.status();
+      if (!s.ok()) {
+        EXPECT_EQ(s.code(), error::INTERNAL);
+      }
+    }
+  });
+
+  std::thread updater([&]() {
+    for (int i = 0; i < 1000; ++i) {
+      status.Update(absl::InternalError("concurrent error"));
+    }
+    done.store(true, std::memory_order_relaxed);
+  });
+
+  updater.join();
+  reader.join();
+  EXPECT_EQ(status.status().code(), error::INTERNAL);
 }
 
 }  // namespace

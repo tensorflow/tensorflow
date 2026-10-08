@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Intrinsics.h"

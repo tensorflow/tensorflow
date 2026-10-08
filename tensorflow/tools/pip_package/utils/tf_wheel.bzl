@@ -30,6 +30,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(
     "@python_version_repo//:py_version.bzl",
     "HERMETIC_PYTHON_VERSION",
+    "HERMETIC_PYTHON_VERSION_KIND",
     "MACOSX_DEPLOYMENT_TARGET",
     "WHEEL_COLLAB",
     "WHEEL_NAME",
@@ -64,11 +65,23 @@ def _get_full_wheel_name(
         platform_name,
         platform_tag,
         wheel_version):
-    python_version = HERMETIC_PYTHON_VERSION.replace(".", "")
-    return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}-{wheel_platform_tag}.whl".format(
+    python_version = HERMETIC_PYTHON_VERSION
+    is_freethreaded = HERMETIC_PYTHON_VERSION_KIND == "freethreaded"
+
+    for suffix in ["-freethreaded", "-ft"]:
+        if python_version.endswith(suffix):
+            python_version = python_version[:-len(suffix)]
+            is_freethreaded = True
+            break
+
+    python_version = python_version.replace(".", "")
+    abi_tag_suffix = "t" if is_freethreaded else ""
+
+    return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}{abi_tag_suffix}-{wheel_platform_tag}.whl".format(
         wheel_name = WHEEL_NAME,
         wheel_version = wheel_version,
         python_version = python_version,
+        abi_tag_suffix = abi_tag_suffix,
         wheel_platform_tag = _get_wheel_platform_name(
             platform_name,
             platform_tag,

@@ -20,13 +20,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/regexp.h"
@@ -50,7 +50,7 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
  public:
   CollectiveOpsTestE2EShardedUnsharded()
       : CollectiveOpsE2ETestBase(/*memory_size=*/128 * kMB,
-                                 /*collectives_memory_size=*/128 * kMB) {}
+                                 /*collectives_memory_size=*/0) {}
 
   void CollectiveOpsCompareShardedUnsharded(
       const std::string& hlo_text, const int64_t num_partitions = 2,
@@ -61,12 +61,12 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
                    << " devices (" << device_count() << " available)";
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(ExecutionResult ref_execution_result,
-                            ExecuteUnsharded(hlo_text));
+    ASSERT_OK_AND_ASSIGN(ExecutionResult ref_execution_result,
+                         ExecuteUnsharded(hlo_text));
     const std::vector<Literal>& ref_results = ref_execution_result.results;
     ASSERT_EQ(ref_results.size(), 1);
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         ExecutionResult execution_result,
         ExecuteSharded(hlo_text, num_partitions, enable_enzyme_comms_opt));
     const std::vector<Literal>& results = execution_result.results;
@@ -190,8 +190,8 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
         /*replica_count=*/1, /*num_partitions=*/num_partitions);
     config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     auto dimensions =
         module->entry_computation()->root_instruction()->shape().dimensions();
     std::vector<int64_t> root_dims(dimensions.begin(), dimensions.end());

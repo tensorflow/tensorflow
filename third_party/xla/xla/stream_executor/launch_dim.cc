@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/launch_dim.pb.h"
 #include "xla/tsl/platform/statusor.h"
 

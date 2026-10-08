@@ -20,15 +20,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -41,10 +40,10 @@ static absl::StatusOr<stream_executor::StreamExecutor*> GpuExecutor() {
 }
 
 TEST(MakeBatchPointersTest, Basic) {
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::StreamExecutor * executor,
-                          GpuExecutor());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<stream_executor::Stream> stream,
-                          executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(stream_executor::StreamExecutor * executor,
+                       GpuExecutor());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<stream_executor::Stream> stream,
+                       executor->CreateStream());
 
   // We don't care what `base` points to, we only need a pointer to a buffer
   // that we can use as a base.

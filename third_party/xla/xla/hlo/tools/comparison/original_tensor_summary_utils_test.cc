@@ -763,7 +763,7 @@ TEST(ApplyNonUnshardTensorTransformationToSummaryTest, UnshardNotSupported) {
   EXPECT_THAT(ApplyNonUnshardTensorTransformationToSummary(
                   original_summary, &reshape,
                   /*stopping_transformation=*/nullptr),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(TensorTransformationTest, Equality) {

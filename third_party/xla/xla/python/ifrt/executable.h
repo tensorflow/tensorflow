@@ -24,12 +24,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -54,9 +53,11 @@ struct CompileOptions;
 struct DeserializeExecutableOptions;
 
 struct ExecutableVersion : RTTIExtends<ExecutableVersion, Serializable> {
-  // Returns OK iff this version is compatible with `other`. The logic for
-  // checking the version compatibility is an implementation detail of
-  // `ExecutableVersion` subclasses.
+  // Returns OK if this version is not incompatible with `other` when checking
+  // the compatibility in a runtime- and device-agnostic manner.
+  // Note that this is not a guarantee of executable compatibility, which
+  // ultimately depends on the specific runtime and devices, and must be checked
+  // via `Compiler::IsExecutableVersionCompatible`.
   virtual absl::Status IsCompatibleWith(
       const ExecutableVersion& other) const = 0;
 
@@ -204,7 +205,6 @@ class LoadedExecutable : public RTTIExtends<LoadedExecutable, RTTIRoot> {
   // prototyping.
 
   // TODO(hyeontaek): Factor some of them out as `XlaCompatibleExecutable`.
-  virtual int num_devices() const = 0;
   virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
   virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats()
       const = 0;
@@ -325,13 +325,6 @@ class LoadedExecutable : public RTTIExtends<LoadedExecutable, RTTIRoot> {
   // loaded onto. Returns `std::nullopt` if the executable is not bound to a
   // particular device list, e.g., portable executables.
   virtual std::optional<DeviceListRef> devices() const = 0;
-
-  // The following APIs are taken from xla::PjRtLoadedExecutable for fast
-  // prototyping.
-  // TODO(hyeontaek): Move the following XLA-specific methods to
-  // pjrt_executable.h and put it in an `XlaCompatibleExecutable`.
-
-  virtual absl::Span<Device* const> addressable_devices() const = 0;
 
   struct DeleteOptions {
     // Analogous to `ExecuteOptions::execution_stream_id` for any side-effects

@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_SYCL_SYCL_MATMUL_UTILS_H_
 
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/sycl/onednn_util.h"
 
 namespace stream_executor {
@@ -28,7 +28,7 @@ namespace se = ::stream_executor;
 // This struct contains the metadata of a matrix, e.g., its base address and
 // dimensions.
 struct MatrixDescriptor {
-  se::DeviceMemoryBase data;
+  se::DeviceAddressBase data;
   se::blas::Transpose transpose;
   int64_t num_rows;
   int64_t num_cols;
@@ -40,8 +40,8 @@ struct MatrixDescriptor {
   }
 
   template <typename T>
-  se::DeviceMemory<T> cast() const {
-    return se::DeviceMemory<T>(data);
+  se::DeviceAddress<T> cast() const {
+    return se::DeviceAddress<T>(data);
   }
 };
 
@@ -71,12 +71,12 @@ absl::StatusOr<GemmBackendEpilogue> AsSYCLEpilogue(
 }  // namespace sycl_gemm
 
 absl::Status RunGemm(const gpu::GemmConfig& config,
-                     se::DeviceMemoryBase lhs_buffer,
-                     se::DeviceMemoryBase rhs_buffer,
-                     se::DeviceMemoryBase add_buffer,
-                     se::DeviceMemoryBase output_buffer,
-                     se::DeviceMemoryBase bias_buffer,
-                     se::DeviceMemoryBase workspace, se::Stream* stream,
+                     se::DeviceAddressBase lhs_buffer,
+                     se::DeviceAddressBase rhs_buffer,
+                     se::DeviceAddressBase add_buffer,
+                     se::DeviceAddressBase output_buffer,
+                     se::DeviceAddressBase bias_buffer,
+                     se::DeviceAddressBase workspace, se::Stream* stream,
                      sycl_gemm::GemmBackendEpilogue epilogue, int64_t algorithm,
                      se::ScratchAllocator* scratch_allocator = nullptr);
 

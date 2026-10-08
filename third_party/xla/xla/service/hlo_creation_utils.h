@@ -21,9 +21,9 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -86,7 +86,9 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const SparsityConfig& sparsity_config, const OpMetadata* metadata = nullptr,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config = BlockScalingConfig(),
+    const OpMetadata* metadata = nullptr,
     const FrontendAttributes* frontend_attributes = nullptr);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
@@ -180,6 +182,15 @@ absl::StatusOr<HloInstruction*> MakeDotHlo(
     const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
+    const OpMetadata* metadata = nullptr);
+
+absl::StatusOr<HloInstruction*> MakeDotHlo(
+    absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    std::optional<PrimitiveType> preferred_element_type,
+    const SparsityConfig& sparsity_config = {},
+    const BlockScalingConfig& block_scaling_config = {},
     const OpMetadata* metadata = nullptr);
 
 // Creates a RaggedDot HLO instruction and adds it to the computation containing

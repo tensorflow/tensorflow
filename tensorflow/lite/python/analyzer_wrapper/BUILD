@@ -49,7 +49,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
-        "//tensorflow/core:framework",
         "//tensorflow/core/public:release_version",
         "//tensorflow/lite:version",
         "//tensorflow/lite/core:model_builder",

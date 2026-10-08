@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Lists of HLO files for end-to-end CPU benchmarks."""
 
 load(
@@ -32,10 +47,19 @@ REGULAR_HLO_FILES = [
     "layer_norm_1x4096x768_bf16.hlo",
     "mean_axis_1x4096x1024_bf16.hlo",
     "mha_block_1x12x128x64_bf16.hlo",
+    "pairwise_biot_savart_4096_f64.hlo",
+    "pairwise_biot_savart_grad_2048_f64.hlo",
+    "pairwise_gravity_4096_f64.hlo",
+    "pairwise_gravity_grad_2048_f64.hlo",
+    "pairwise_min_distance_grad_2048_f64.hlo",
+    "pairwise_rbf_gradient_4096_f32.hlo",
+    "pairwise_rbf_gradient_grad_2048_f32.hlo",
+    "pairwise_sum_distances_grad_2048_f32.hlo",
     "resnet50_keras_jax_f32.hlo",
     "sort_full_1024x4096_bf16.hlo",
     "sum_axis_1x4096x1024_bf16.hlo",
     "topk_logits_k10_1x50000_bf16.hlo",
+    "vit_keras_jax_bf16.hlo",
     "xnn.parallel_dots.optimized.hlo",
     "xnn.sequential_dots.optimized.hlo",
     # go/keep-sorted end

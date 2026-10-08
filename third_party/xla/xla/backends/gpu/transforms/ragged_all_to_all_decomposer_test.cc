@@ -20,13 +20,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -38,7 +37,7 @@ using ::testing::HasSubstr;
 using RaggedAllToAllDecomposerTest = HloHardwareIndependentTestBase;
 
 TEST_F(RaggedAllToAllDecomposerTest, SimpleRaggedAllToAllIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -54,7 +53,7 @@ ENTRY main {
 )"));
 
   RaggedAllToAllDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
   EXPECT_OK(HloCSE(true).Run(module.get()));
@@ -78,7 +77,7 @@ ENTRY main {
 
 TEST_F(RaggedAllToAllDecomposerTest,
        RaggedAllToAllWithoutReplicaGroupsIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module, replica_count=2
 
 ENTRY main {
@@ -94,7 +93,7 @@ ENTRY main {
 )"));
 
   RaggedAllToAllDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
   EXPECT_OK(HloCSE(true).Run(module.get()));
@@ -118,7 +117,7 @@ ENTRY main {
 
 TEST_F(RaggedAllToAllDecomposerTest,
        RaggedAllToAllWithMultipleUpdatesPerReplicaIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -134,7 +133,7 @@ ENTRY main {
 )"));
 
   RaggedAllToAllDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
   EXPECT_OK(HloCSE(true).Run(module.get()));
@@ -157,7 +156,7 @@ ENTRY main {
 
 TEST_F(RaggedAllToAllDecomposerTest,
        RaggedAllToAllWithMultiDimInputIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -173,7 +172,7 @@ ENTRY main {
 )"));
 
   RaggedAllToAllDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
   EXPECT_OK(HloCSE(true).Run(module.get()));
@@ -196,7 +195,7 @@ ENTRY main {
 }
 
 TEST_F(RaggedAllToAllDecomposerTest, OffsetsAndSizesNotS64AreRejected) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {

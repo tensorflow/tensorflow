@@ -34,9 +34,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -207,6 +207,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReverse:
+    case HloOpcode::kShuffle:
     case HloOpcode::kSlice:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -241,18 +242,21 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLog2:
     case HloOpcode::kLogistic:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -3193,10 +3197,11 @@ std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
 absl::StatusOr<bool> ShardingPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  LOG(WARNING) << "GSPMD sharding propagation is going to be deprecated and "
-                  "not supported in the future. Please consider migrating to "
-                  "Shardy (https://openxla.org/shardy). For reference, Shardy "
-                  "is already the default partitioner in JAX.";
+  LOG_FIRST_N(WARNING, 1)
+      << "GSPMD sharding propagation is going to be deprecated and "
+         "not supported in the future. Please consider migrating to "
+         "Shardy (https://openxla.org/shardy). For reference, Shardy "
+         "is already the default partitioner in JAX.";
   // Register custom-call partitioner for SharBarrierFrom and ShardBarrierTo.
   ABSL_CONST_INIT static absl::once_flag did_registration;
   absl::call_once(did_registration, [] {

@@ -200,6 +200,7 @@ def flex_portable_tensorflow_deps():
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@icu//:common",

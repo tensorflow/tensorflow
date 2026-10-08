@@ -133,6 +133,9 @@ class GpuCollectives : public Collectives {
     // utilization (i.e SM) during runtime. This is mainly used for overlapping
     // with compute to avoid taking up compute resources.
     bool use_minimal_resource = false;
+
+    // Whether GXL communicators should be attached to this clique.
+    bool use_gxl = false;
   };
 
   // A cancelable version of Collectives::CreateCommunicators.
@@ -155,6 +158,13 @@ class GpuCollectives : public Collectives {
                                std::shared_ptr<CancellationToken> cancel) {
     // By default, we ignore cancel.
     return SplitCommunicators(comms, color, keys, config, ranks);
+  }
+
+  // Attaches GXL communicators to the given communicators if supported.
+  virtual absl::Status MaybeAttachGxlCommunicators(
+      const CliqueKey& clique_key, absl::Span<const DeviceRank> ranks,
+      absl::Span<Communicator* const> comms) {
+    return absl::OkStatus();
   }
 
   // Returns true if GPU collectives are implemented.

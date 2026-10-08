@@ -67,10 +67,13 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
        /*threads_per_warp=*/32, num_ctas}));
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
   pm->addPass(mt::gpu::createTritonGPUF32DotTC({cuda_cc.IsAtLeastAmpere()}));
-  pm->addPass(ttng::createTritonNvidiaGPUPlanCTAPass());
+  pm->addPass(ttng::createTritonNvidiaGPUAssignCGALayoutsPass());
+  pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
+  pm->addPass(ttng::createTritonNvidiaGPUOptimizeCTALocalityPass());
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
   pm->addPass(mt::gpu::createTritonGPUAccelerateMatmul());
+  pm->addPass(ttng::createTritonNvidiaGPUCheckMatmulTwoCTAPass());
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({cuda_cc.IsAtLeastAmpere()}));
@@ -114,8 +117,12 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
       mt::gpu::createTritonGPUOptimizeDotOperands({cuda_cc.IsAtLeastAmpere()}));
   pm->addPass(mt::gpu::createTritonGPUCoalesceAsyncCopy());
   pm->addPass(ttng::createTritonNvidiaGPUOptimizeTMemLayoutsPass());
+  pm->addPass(ttng::createTritonNvidiaGPUFuseTMEMLoadReducePass());
   if (cuda_cc.IsAtLeastHopper()) {
     pm->addPass(ttng::createTritonNvidiaGPUTMALoweringPass());
+  }
+  if (cuda_cc.IsAtLeastBlackwell()) {
+    pm->addPass(ttng::createTritonNvidiaGPULowerCLCPass());
   }
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(ttng::createTritonNvidiaGPUInterleaveTMemPass());
@@ -125,6 +132,8 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createSymbolDCEPass());
   pm->addPass(ttng::createTritonGPUFenceInsertion({cuda_cc_as_int}));
   pm->addPass(ttng::createTritonNvidiaGPUMMALoweringPass());
+  pm->addPass(
+      ttng::createTritonNvidiaGPUHoistMBarrierLifecyclePass({cuda_cc_as_int}));
   pm->addPass(mlir::createSCCPPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createCanonicalizerPass());
@@ -159,7 +168,6 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(
       mt::createAllocateSharedMemoryNvPass(cuda_cc_as_int, final_ptx_version));
   pm->addPass(ttng::createTritonTensorMemoryAllocationPass());
-  pm->addPass(ttng::createTritonNvidiaGPUCheckMatmulTwoCTAPass());
   // We could add a flag to XLA to optionally enable the following passes:
   // if "consan" in options.instrumentation_mode
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());

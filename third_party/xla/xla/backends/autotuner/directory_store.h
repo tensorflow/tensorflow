@@ -21,12 +21,16 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
-#include "xla/backends/autotuner/autotuning.pb.h"
 
 namespace xla {
 
+// The reads/writes are best-effort and only log warnings if they fail. This
+// ensures that the autotuner cache does not fail the compilation due to
+// permission issues or disks quotas.
+//
 // DirectoryStore implements AutotuneCacheStore by writing each autotune entry
 // into its own protobuf file inside a structured directory layout:
 //   <directory_path>/<device>/[<explicit_version>]/<hlo_fingerprint>.pb

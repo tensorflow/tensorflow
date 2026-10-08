@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -122,11 +123,22 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateFoldStablehloConstantTransformsPass();
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateFuseA4W2DRQFullyConnectedPass();
+
+// Folds f16 <-> f32 casts around a float fully_connected into it, producing a
+// fully_connected with f16 activations and unchanged weights.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateFoldFp16CastsIntoFullyConnectedPass();
+
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerQuantAnnotationsPass();
 
-// Creates an instance of the TFLite PropagateQsv pass which propagates scale
-// and zero point (QSV) information through the graph.
-std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQsvPass();
+// Creates an instance of the TFLite PropagateQParams pass which propagates
+// scale and zero point (quantization parameters) through the graph.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQParamsPass();
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateBiasQuantizerPass();
 

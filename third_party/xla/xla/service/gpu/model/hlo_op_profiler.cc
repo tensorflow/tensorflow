@@ -29,11 +29,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -271,12 +271,17 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
   std::minstd_rand0 engine;
   // Some operations have dynamic duration that depends on the input values.
   // Measure each operation with small and large inputs and average.
-  std::vector<Literal> args_small = MakeFakeArguments(module.get(), &engine,
-                                                      /*use_large_range=*/false)
-                                        .value();
-  std::vector<Literal> args_large = MakeFakeArguments(module.get(), &engine,
-                                                      /*use_large_range=*/true)
-                                        .value();
+  FakeArgumentsOptions small_options;
+  small_options.engine = &engine;
+  small_options.use_large_range = false;
+  ABSL_ASSIGN_OR_RETURN(std::vector<Literal> args_small,
+                   MakeFakeArguments(module.get(), small_options));
+
+  FakeArgumentsOptions large_options;
+  large_options.engine = &engine;
+  large_options.use_large_range = true;
+  ABSL_ASSIGN_OR_RETURN(std::vector<Literal> args_large,
+                   MakeFakeArguments(module.get(), large_options));
   const absl::Time t_compile_start = absl::Now();
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> ex,
                    runner_.CreateExecutable(std::move(module),

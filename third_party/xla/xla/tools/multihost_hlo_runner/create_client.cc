@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/service.h"
@@ -93,6 +93,7 @@ absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForGpu(
                                              gpu_options.num_nodes,
                                              init_timeout, env));
     gpu_options.kv_store = env.kv_store;
+    gpu_options.distributed_client = env.distributed_client;
   }
 
   if (gpu_options.enable_mock_nccl) {

@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_checksum.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_float_check.h"
@@ -45,7 +45,8 @@ namespace xla::gpu {
 
 absl::StatusOr<std::unique_ptr<ThunkBufferDebugPass>>
 ThunkBufferDebugPass::Create(Mode mode,
-                             std::vector<ShapedSlice> module_output_slices) {
+                             std::vector<ShapedSlice> module_output_slices,
+                             int devices_per_host) {
   for (const ShapedSlice& slice : module_output_slices) {
     if (slice.shape.IsTuple()) {
       return absl::InvalidArgumentError(
@@ -53,8 +54,8 @@ ThunkBufferDebugPass::Create(Mode mode,
     }
   }
 
-  return absl::WrapUnique(
-      new ThunkBufferDebugPass(mode, std::move(module_output_slices)));
+  return absl::WrapUnique(new ThunkBufferDebugPass(
+      mode, std::move(module_output_slices), devices_per_host));
 }
 
 absl::StatusOr<bool> ThunkBufferDebugPass::Run(
@@ -75,12 +76,12 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
     case Mode::kChecksum:
       ABSL_RETURN_IF_ERROR(RunChecksumPassInternal(thunk_sequence, debug_options,
                                               hlo_module, module_output_slices_,
-                                              allocator));
+                                              allocator, devices_per_host_));
       break;
     case Mode::kFloatChecker:
-      ABSL_RETURN_IF_ERROR(
-          RunFloatCheckPassInternal(thunk_sequence, debug_options, hlo_module,
-                                    module_output_slices_, allocator));
+      ABSL_RETURN_IF_ERROR(RunFloatCheckPassInternal(
+          thunk_sequence, debug_options, hlo_module, module_output_slices_,
+          allocator, devices_per_host_));
       break;
     case Mode::kBufferSaver:
       ABSL_RETURN_IF_ERROR(RunDebugSaverInserter(

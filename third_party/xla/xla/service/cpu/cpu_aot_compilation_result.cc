@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/backends/cpu/buffer_allocation_info_util.h"
 #include "xla/backends/cpu/constant_allocation.h"
@@ -59,14 +59,12 @@ namespace xla::cpu {
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     std::string triple, std::string cpu_name, std::string features,
-    std::string entry_point_name, RelocationModel relocation_model,
-    bool compile_copy_as_llvm_kernel)
+    std::string entry_point_name, RelocationModel relocation_model)
     : triple_(std::move(triple)),
       cpu_name_(std::move(cpu_name)),
       features_(std::move(features)),
       entry_point_name_(std::move(entry_point_name)),
-      relocation_model_(relocation_model),
-      compile_copy_as_llvm_kernel_(compile_copy_as_llvm_kernel) {}
+      relocation_model_(relocation_model) {}
 
 CpuAotCompilationOptions::~CpuAotCompilationOptions() = default;
 

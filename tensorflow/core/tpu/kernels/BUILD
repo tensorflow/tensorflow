@@ -16,10 +16,7 @@
 # TPU Kernel Implementations
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load(
-    "@xla//xla/tsl:tsl.bzl",
-    "internal_visibility",
-)
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
@@ -122,8 +119,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@com_google_highway//:hwy",
-        "@com_google_highway//hwy/contrib/sort:vqsort",
+        "@highway//:hwy",
+        "@highway//hwy/contrib/sort:vqsort",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:util",
         "@xla//xla/tpu:tpu_api",
@@ -337,10 +334,10 @@ cc_library(
     name = "tpu_compile_op_support",
     srcs = ["tpu_compile_op_support.cc"],
     hdrs = ["tpu_compile_op_support.h"],
-    visibility = [
+    visibility = internal_visibility([
         ":friends",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-    ],
+    ]),
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
@@ -882,6 +879,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -102,7 +102,6 @@ cc_library(
     hdrs = glob([
         "%{rocm_root}/include/**",
     ]),
-    defines = {"__HIP_DISABLE_CPP_FUNCTIONS__": "1"},
     strip_include_prefix = "%{rocm_root}/include",
     deps = [
         "@xla//third_party/libdrm:drm_headers",
@@ -129,16 +128,16 @@ cc_library(
     name = "rocm_rpath",
     linkopts = select({
         ":build_hermetic": [
-            "-Wl,-rpath,external/%{rocm_repo_name}/rocm/%{rocm_root}/lib",
+            "-Wl,-rpath,../%{rocm_repo_name}/rocm/%{rocm_root}/lib",
         ],
         ":link_only": [
         ],
         ":multiple_rocm_paths": [
-            "-Wl,-rpath,external/%{rocm_repo_name}/rocm/%{rocm_root}/lib",
+            "-Wl,-rpath,../%{rocm_repo_name}/rocm/%{rocm_root}/lib",
             "-Wl,-rpath=%{rocm_lib_paths}",
         ],
         "//conditions:default": [
-            "-Wl,-rpath,external/%{rocm_repo_name}/rocm/%{rocm_root}/lib",
+            "-Wl,-rpath,../%{rocm_repo_name}/rocm/%{rocm_root}/lib",
             "-Wl,-rpath,/opt/rocm/lib",
         ],
     }),
@@ -291,12 +290,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "rocm_core_libs",
+    data = glob(["%{rocm_root}/lib/librocm-core.so*"]),
+)
+
 rocm_lib_import(
     name = "miopen",
     data = glob([
         "%{rocm_root}/lib/libMIOpen.so*",
-        "%{rocm_root}/share/miopen/**",
-        "%{rocm_root}/lib/librocm-core.so*",
+    ]) + glob([
+        "%{rocm_root}/share/miopen/db/" + arch + "*"
+        for arch in rocm_gpu_architectures()
+    ]) + glob([
+        "%{rocm_root}/lib/libMIOpenCKGroupedConv_" + arch + ".so"
+        for arch in rocm_gpu_architectures()
     ]),
     interface_library = "%{rocm_root}/lib/libMIOpen.so",
     deps = [
@@ -305,6 +313,7 @@ rocm_lib_import(
         ":hipblaslt_libs",
         ":hiprtc_libs",
         ":rocblas_libs",
+        ":rocm_core_libs",
         ":roctx_libs",
         ":system_libs",
     ],
@@ -320,21 +329,42 @@ rocm_lib_import(
     deps = [
         ":amdsmi_libs",
         ":hip_runtime_libs",
+        ":rocm_core_libs",
         ":rocm_smi_libs",
         ":rocprofiler_register_libs",
         ":roctx_libs",
     ],
 )
 
-cc_library(
-    name = "amdsmi_libs",
+# Both SMI libraries are exposed here; consumers pick one. They must not be
+# mixed in a single process, see the :smi alias in
+# xla/stream_executor/rocm/BUILD.
+rocm_lib_import(
+    name = "amdsmi",
     data = glob(["%{rocm_root}/lib/libamd_smi.so*"]),
+    interface_library = "%{rocm_root}/lib/libamd_smi.so",
+    deps = [
+        ":system_libs",
+    ],
 )
 
 rocm_lib_import(
     name = "rocm_smi",
     data = glob(["%{rocm_root}/lib/librocm_smi64.so*"]),
     interface_library = "%{rocm_root}/lib/librocm_smi64.so",
+    deps = [],
+)
+
+cc_import(
+    name = "hsakmt",
+    static_library = "%{rocm_root}/lib/libhsakmt.a",
+    visibility = ["//visibility:public"],
+)
+
+rocm_lib_import(
+    name = "hsa_runtime",
+    data = [":hsa_rocr_libs_data"],
+    interface_library = "%{rocm_root}/lib/libhsa-runtime64.so",
     deps = [],
 )
 
@@ -370,6 +400,7 @@ cc_library(
     ]),
     deps = [
         ":hip_runtime_libs",
+        ":rocblas_libs",
         ":roctx_libs",
     ],
 )
@@ -394,12 +425,24 @@ rocm_lib_import(
 
 rocm_lib_import(
     name = "rocprofiler_sdk",
-    data = glob(["%{rocm_root}/lib/librocprofiler-sdk*.so*"]),
+    data = glob([
+        "%{rocm_root}/lib/librocprofiler-sdk*.so*",
+        "%{rocm_root}/lib/libhsa-amd-aqlprofile64.so*",
+    ]),
     interface_library = "%{rocm_root}/lib/librocprofiler-sdk.so",
     deps = [
         ":amd_comgr_libs",
         ":system_libs",
     ],
+)
+
+rocm_lib_import(
+    name = "rocprofiler_sdk_roctx",
+    data = glob(["%{rocm_root}/lib/librocprofiler-sdk-roctx.so*"]),
+    interface_library = "%{rocm_root}/lib/librocprofiler-sdk-roctx.so",
+    # NEEDED librocprofiler-register.so, which the glob above does not match.
+    # Without this a hermetic build stages the shim without it and fails at load.
+    deps = [":rocprofiler_register_libs"],
 )
 
 rocm_lib_import(
@@ -446,6 +489,7 @@ rocm_lib_import(
         [
             "%{rocm_root}/lib/libhipblaslt.so*",
             "%{rocm_root}/lib/librocroller.so*",
+            "%{rocm_root}/lib/liborigami.so*",
         ],
     ) + glob([
         pattern
@@ -480,9 +524,50 @@ filegroup(
     ),
 )
 
+# rocm_sysdeps only exists in TheRock-based ROCm distributions. ROCm's own
+# libraries find it via their embedded RUNPATH; the rpath here is for binaries
+# that link a sysdeps library directly (see :drm, :drm_amdgpu, :numa). As with
+# /opt/rocm/lib in :rocm_rpath, the /opt/rocm entry lets binaries run outside
+# runfiles against a local TheRock install; it is skipped on classic ROCm.
 cc_library(
     name = "system_libs",
     data = [":system_libs_data"],
+    linkopts = select({
+        ":link_only": [],
+        ":build_hermetic": [
+            "-Wl,-rpath,../%{rocm_repo_name}/rocm/%{rocm_root}/lib/rocm_sysdeps/lib",
+        ],
+        "//conditions:default": [
+            "-Wl,-rpath,../%{rocm_repo_name}/rocm/%{rocm_root}/lib/rocm_sysdeps/lib",
+            "-Wl,-rpath,/opt/rocm/lib/rocm_sysdeps/lib",
+        ],
+    }),
+)
+
+# System libraries bundled by TheRock ROCm under lib/rocm_sysdeps/lib, exposed
+# as real link targets (not just runtime data) so consumers like MORI's
+# libhsakmt.a resolve drm/numa symbols against the ROCm-shipped copies instead
+# of the host's /usr/lib. Requires a TheRock layout (hermetic distribution or a
+# TheRock-based local ROCm); classic ROCm installs do not ship rocm_sysdeps.
+rocm_lib_import(
+    name = "drm",
+    data = [":system_libs_data"],
+    interface_library = "%{rocm_root}/lib/rocm_sysdeps/lib/libdrm.so",
+    deps = [":system_libs"],
+)
+
+rocm_lib_import(
+    name = "drm_amdgpu",
+    data = [":system_libs_data"],
+    interface_library = "%{rocm_root}/lib/rocm_sysdeps/lib/libdrm_amdgpu.so",
+    deps = [":system_libs"],
+)
+
+rocm_lib_import(
+    name = "numa",
+    data = [":system_libs_data"],
+    interface_library = "%{rocm_root}/lib/rocm_sysdeps/lib/libnuma.so",
+    deps = [":system_libs"],
 )
 
 filegroup(

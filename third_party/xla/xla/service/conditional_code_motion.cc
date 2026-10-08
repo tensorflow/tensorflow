@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,13 +30,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -43,6 +44,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -58,6 +61,31 @@ limitations under the License.
 namespace xla {
 
 namespace conditional_opt {
+
+// Updates the OriginalValue of an instruction inside a conditional branch
+// after MoveOperandIntoBranch widened `argument_tuple`, the tuple passed to
+// the conditional as the branch argument, and with it the branch parameter
+// that reads the tuple. `instruction` is either that parameter or a
+// get-tuple-element reached from it.
+//
+// A get-tuple-element derives its OriginalValue from its operand, as usual. A
+// parameter has no operand to derive from, and self-naming its leaves would
+// claim that the original module produced the elements just added to it, so it
+// instead takes the OriginalValue of the argument tuple, whose value it holds.
+// Widening also replaces the element that the moved operand used to occupy, so
+// the leaves the parameter already had cannot simply be kept in place either.
+void UpdateOriginalValueForWidenedBranchArgument(
+    HloInstruction* instruction, const HloInstruction* argument_tuple) {
+  if (instruction->opcode() != HloOpcode::kParameter) {
+    instruction->set_original_value(
+        OriginalValue::CreateFromInstruction(instruction));
+    return;
+  }
+  if (argument_tuple != nullptr) {
+    CopyOriginalValue(argument_tuple, instruction, /*clone=*/true,
+                      /*issue_warning=*/true);
+  }
+}
 
 HloInstruction* CloneNestedTuples(HloInstruction* tuple) {
   if (!tuple->shape().IsTuple()) {
@@ -162,17 +190,6 @@ class BoundaryVisitor {
   std::deque<Boundary> worklist_;
   absl::flat_hash_set<Boundary> visited_;
 };
-
-template <class OpCollection>
-int64_t CountNonLeafOps(const OpCollection& ops) {
-  absl::flat_hash_set<HloInstruction*> op_set;
-  for (auto op : ops) {
-    if (!op_set.contains(op) && op->opcode() != HloOpcode::kConstant) {
-      op_set.insert(op);
-    }
-  }
-  return op_set.size();
-}
 
 // Returns estimation of potential reuses carried by a given pair of
 // instructions.  Use different integers to classify different levels
@@ -341,12 +358,69 @@ void CopyOutOfConditional(
   }
   HloInstruction* new_instruction = conditional->parent()->AddInstruction(
       branch0_inst->CloneWithNewOperands(branch0_inst->shape(), new_operands));
+  // The clone inherits branch 0's OriginalValue, but the hoisted instruction
+  // now computes on the values of whichever branch is taken at runtime, so
+  // that OriginalValue no longer describes it. Drop it here; callers that know
+  // the hoisted instruction reproduces a value of the original conditional
+  // (i.e. it replaces a get-tuple-element of the conditional) reassign the
+  // corresponding OriginalValue afterwards.
+  new_instruction->set_original_value(nullptr);
   VLOG(2) << "new instruction:" << new_instruction->ToString();
   // Maps the instruction outside of conditional to the instruction
   // inside of the conditional.
   Boundary hoisted_boundary(Boundary::Position::kOutsideBranchUser);
   hoisted_boundary.push_back(new_instruction);
   hoisted_boundaries[boundary] = hoisted_boundary;
+}
+
+// Builds the OriginalValue of a conditional whose result was rewritten by
+// MoveUserInstructionsIn, given its new `shape`.
+//
+// The first `kept_element_count` elements of the new result still hold the
+// values held by the elements of `old_original_value`, with the element at
+// `use_index` (if any) dropped and the elements after it shifted down. The
+// remaining elements hold the values of the instructions moved into the
+// branches, described in order by `moved_in_original_values`. The clones of a
+// moved instruction inside the branches carry its OriginalValue, so the new
+// element of every branch root agrees with the element built here.
+//
+// Returns nullptr if no element is known, matching
+// OriginalValue::CreateFromInstruction.
+std::shared_ptr<OriginalValue>
+BuildOriginalValueForConditionalWithMovedInInstructions(
+    const Shape& shape,
+    const std::shared_ptr<OriginalValue>& old_original_value,
+    int64_t kept_element_count, int64_t use_index,
+    absl::Span<const std::shared_ptr<OriginalValue>> moved_in_original_values) {
+  auto original_value = std::make_shared<OriginalValue>(shape);
+  bool has_original_value = false;
+  if (old_original_value != nullptr &&
+      !old_original_value->is_synthetic_call()) {
+    for (int64_t index = 0; index < kept_element_count; ++index) {
+      const int64_t old_index =
+          (use_index >= 0 && index >= use_index) ? index + 1 : index;
+      if (old_original_value->tree().find({old_index}) ==
+          old_original_value->tree().end()) {
+        continue;
+      }
+      original_value->mutable_tree()->CopySubtreeFrom(
+          old_original_value->tree(), {old_index}, {index});
+      has_original_value = true;
+    }
+  }
+  const int64_t moved_in_count = moved_in_original_values.size();
+  for (int64_t i = 0; i < moved_in_count; ++i) {
+    const std::shared_ptr<OriginalValue>& moved_in_original_value =
+        moved_in_original_values[i];
+    if (moved_in_original_value == nullptr ||
+        moved_in_original_value->is_synthetic_call()) {
+      continue;
+    }
+    original_value->mutable_tree()->CopySubtreeFrom(
+        moved_in_original_value->tree(), {}, {kept_element_count + i});
+    has_original_value = true;
+  }
+  return has_original_value ? original_value : nullptr;
 }
 
 // Copy the boundary into the conditional and update hoisted_boundaries.
@@ -516,13 +590,19 @@ absl::Status RestructureConditionalInstruction(HloComputation* computation,
   int cur_index = 0;
   for (; cur_index < ShapeUtil::TupleElementCount(conditional->shape());
        ++cur_index) {
-    new_operands.push_back(
+    HloInstruction* gte =
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(
             ShapeUtil::GetTupleElementShape(conditional->shape(), cur_index),
-            conditional, cur_index)));
+            conditional, cur_index));
+    // The restructuring only reshuffles the result of the conditional, so the
+    // instructions it adds hold values the conditional already produced.
+    gte->set_original_value(OriginalValue::CreateFromInstruction(gte));
+    new_operands.push_back(gte);
   }
   HloInstruction* new_tuple =
       computation->AddInstruction(HloInstruction::CreateTuple(new_operands));
+  new_tuple->set_original_value(
+      OriginalValue::CreateFromInstruction(new_tuple));
   if (old_root == conditional) {
     computation->set_root_instruction(new_tuple);
   } else {
@@ -631,6 +711,11 @@ absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
     HloComputation* cur_branch = conditional->branch_computation(branch);
     HloInstruction* new_branch_root =
         cur_branch->AddInstruction(HloInstruction::CreateTuple(new_operands));
+    // The root now returns the operands of the hoisted converts in place of
+    // the converts themselves, so its OriginalValue is assembled from the
+    // operands it returns.
+    new_branch_root->set_original_value(
+        OriginalValue::CreateFromInstruction(new_branch_root));
     // The shape can vary since the operands to convert are now
     // being returned through the branches' root.
     cur_branch->set_root_instruction(new_branch_root, true /*new shape*/);
@@ -647,6 +732,34 @@ absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
             conditional->mutable_operand(0),
             absl::MakeSpan(conditional->branch_computations()),
             absl::MakeSpan(conditional->operands()).subspan(1)));
+    // The new conditional returns the same values as the old one, except at
+    // the indices of the hoisted converts, which now return the operands of
+    // those converts. A different instruction produces those operands in each
+    // branch, so the elements holding them are left unknown, as are the
+    // elements appended for the converts' remaining operands.
+    if (const std::shared_ptr<OriginalValue>& old_original_value =
+            conditional->original_value();
+        old_original_value != nullptr &&
+        !old_original_value->is_synthetic_call()) {
+      auto new_original_value =
+          std::make_shared<OriginalValue>(newconditional->shape());
+      bool has_original_value = false;
+      const int64_t old_element_count =
+          conditional->shape().tuple_shapes().size();
+      for (int64_t index = 0; index < old_element_count; ++index) {
+        if (special_convert.contains(index) ||
+            old_original_value->tree().find({index}) ==
+                old_original_value->tree().end()) {
+          continue;
+        }
+        new_original_value->mutable_tree()->CopySubtreeFrom(
+            old_original_value->tree(), {index}, {index});
+        has_original_value = true;
+      }
+      if (has_original_value) {
+        newconditional->set_original_value(new_original_value);
+      }
+    }
     // Ensure that all the users of conditional refer to the new one.
     ABSL_RETURN_IF_ERROR(
         conditional->ReplaceAllUsesWithDifferentShape(newconditional));
@@ -672,10 +785,16 @@ absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
         HloInstruction* gte = conditional_parent->AddInstruction(
             HloInstruction::CreateGetTupleElement(op->shape(), conditional,
                                                   map_inst_to_tuple_index[op]));
+        gte->set_original_value(OriginalValue::CreateFromInstruction(gte));
         new_operands.push_back(gte);
       }
       HloInstruction* hoisted = conditional_parent->AddInstruction(
           hoist->CloneWithNewOperands(hoist->shape(), new_operands));
+      // The clone inherits the OriginalValue of branch 0's convert, but it now
+      // converts the value of whichever branch is taken. It reproduces exactly
+      // the value this get-tuple-element of the conditional used to produce,
+      // so it takes over its OriginalValue instead.
+      hoisted->set_original_value(gte_hoist->original_value());
       VLOG(2) << "Hoisted instruction in parent:" << hoisted->ToString();
       ABSL_RETURN_IF_ERROR(gte_hoist->ReplaceAllUsesWith(hoisted));
       CHECK_OK(conditional_parent->RemoveInstruction(gte_hoist));
@@ -749,6 +868,13 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
     CHECK(new_opd != nullptr);
     VLOG(2) << "Try replace all uses of :" << old_user_boundary.ToString()
             << "\n";
+    // The hoisted instruction produces exactly the value that this
+    // get-tuple-element of the conditional used to produce, so it takes over
+    // its OriginalValue. Their shapes match because both correspond to operand
+    // `index` of the branch roots.
+    if (user_instr->original_value() != nullptr) {
+      new_opd->set_original_value(user_instr->original_value());
+    }
     ABSL_RETURN_IF_ERROR(user_instr->ReplaceAllUsesWith(new_opd));
     ABSL_RETURN_IF_ERROR(conditional_parent->RemoveInstruction(user_instr));
   }
@@ -767,6 +893,9 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
     }
     HloInstruction* tuple =
         computation->AddInstruction(HloInstruction::CreateTuple(elements));
+    // The new root returns the boundary values that remain inside the branch,
+    // so its OriginalValue is assembled from those operands.
+    tuple->set_original_value(OriginalValue::CreateFromInstruction(tuple));
     computation->set_root_instruction(tuple, true);
     VLOG(2) << "computation is :" << computation->ToString() << "\n";
     // Remove hoisted instructions from the branches.
@@ -788,6 +917,12 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   HloInstruction* new_root =
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
+  // The conditional now returns the boundary values that remain inside the
+  // branches. Which value each element holds depends on the branch taken at
+  // runtime, so no single instruction of the original module corresponds to
+  // it. The OriginalValue of the original conditional result has been
+  // transferred to the hoisted instructions that reproduce it above.
+  conditional->set_original_value(nullptr);
   // Keep conditional instruction sharding consistent with the branches. Note
   // that this sharding could be lost after this pass.
   conditional->copy_sharding(new_root);
@@ -832,6 +967,15 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
           ? ((use_index >= 0) ? conditional->shape().tuple_shapes().size() - 1
                               : conditional->shape().tuple_shapes().size())
           : 0;
+  // The OriginalValue of the conditional and the number of elements of its
+  // result that survive the transformation, captured before the result is
+  // rewritten below.
+  const std::shared_ptr<OriginalValue> old_original_value =
+      conditional->original_value();
+  const int64_t kept_element_count = op_index;
+  // OriginalValue of each element appended to the conditional result, in the
+  // order the elements are appended.
+  std::vector<std::shared_ptr<OriginalValue>> moved_in_original_values;
   // Use to map the tuple_use instruction to its operand;
   Boundary b_opd_use(Boundary::Position::kInsideBranch);
   Boundary b_old_root(Boundary::Position::kInsideBranch);
@@ -872,6 +1016,10 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
 
     HloInstruction* new_root =
         computation->AddInstruction(HloInstruction::CreateTuple(operands));
+    // The new root returns the values the branch still produces, so its
+    // OriginalValue is assembled from its operands.
+    new_root->set_original_value(
+        OriginalValue::CreateFromInstruction(new_root));
     VLOG(2) << "setting new root: " << new_root->ToString() << "\n";
     computation->set_root_instruction(new_root,
                                       /*accept_different_shape*/ true);
@@ -920,6 +1068,8 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
         HloInstruction* new_root = computation->root_instruction();
         new_root->AppendOperand(new_op);
         *new_root->mutable_shape()->add_tuple_shapes() = new_op->shape();
+        new_root->set_original_value(
+            OriginalValue::CreateFromInstruction(new_root));
         VLOG(2) << "Extending conditional root " << i << " : "
                 << new_root->ToString() << "\n";
       }
@@ -927,6 +1077,12 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
       HloInstruction* gtr = conditional->parent()->AddInstruction(
           HloInstruction::CreateGetTupleElement(op->shape(), conditional,
                                                 op_index++));
+      // This get-tuple-element now produces the value `op` produced outside
+      // the conditional, so it takes over its OriginalValue. The clones of
+      // `op` inside the branches keep the same OriginalValue, so the element
+      // just appended to every branch root agrees with it.
+      gtr->set_original_value(op->original_value());
+      moved_in_original_values.push_back(op->original_value());
       ABSL_RETURN_IF_ERROR(op->ReplaceAllUsesWith(gtr));
       if (conditional->parent()->root_instruction() == op) {
         conditional->parent()->set_root_instruction(gtr);
@@ -939,6 +1095,14 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   HloInstruction* new_root =
       conditional->branch_computation(0)->root_instruction();
   *conditional->mutable_shape() = new_root->shape();
+  // The conditional now returns the values produced by the instructions moved
+  // into its branches, in addition to the elements of its old result that are
+  // still used outside. Rebuild its OriginalValue from the values its elements
+  // hold.
+  conditional->set_original_value(
+      BuildOriginalValueForConditionalWithMovedInInstructions(
+          conditional->shape(), old_original_value, kept_element_count,
+          use_index, moved_in_original_values));
   // Keep conditional instruction sharding consistent with the branches. Note
   // that this sharding could be lost after this pass.
   conditional->copy_sharding(new_root);
@@ -949,6 +1113,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
         VLOG(2) << "Resetting shape of user: " << user->ToString() << "\n";
         *user->mutable_shape() =
             conditional->shape().tuple_shapes(user->tuple_index());
+        user->set_original_value(OriginalValue::CreateFromInstruction(user));
       }
     }
   }
@@ -1016,7 +1181,7 @@ class MoveOperandIntoBranch {
   bool UpdateParamShape(
       std::vector<std::vector<int64_t>>& matching_tuple_indices,
       const Shape* param_shape, HloInstruction*& branch_param,
-      HloInstruction*& param_tuple) {
+      HloInstruction*& param_tuple, const HloInstruction* argument_tuple) {
     bool used = false;
     // Update shapes from branch parameter to the immediate tuple user.
     for (int64_t matching_index = matching_tuple_indices.size() - 1;
@@ -1038,6 +1203,7 @@ class MoveOperandIntoBranch {
       }
       used = false;
       *branch_param->mutable_shape() = *param_shape;
+      UpdateOriginalValueForWidenedBranchArgument(branch_param, argument_tuple);
       const Shape* new_param_shape = nullptr;
       for (auto param_users : gte_users) {
         if (param_users.empty()) {
@@ -1065,11 +1231,15 @@ class MoveOperandIntoBranch {
             param_shape = new_param_shape;
             VLOG(1) << "new_param_shape: " << param_shape->ToString();
             *param_user->mutable_shape() = *new_param_shape;
+            param_user->set_original_value(
+                OriginalValue::CreateFromInstruction(param_user));
             VLOG(1) << "branch parameter: " << param_user->ToString();
             used = true;
           } else {
             VLOG(1) << "new_param_shape=" << new_param_shape->ToString();
             *param_user->mutable_shape() = *new_param_shape;
+            param_user->set_original_value(
+                OriginalValue::CreateFromInstruction(param_user));
             CHECK_OK(param_user->ReplaceAllUsesWith(branch_param));
           }
         }
@@ -1132,6 +1302,9 @@ class MoveOperandIntoBranch {
         user->mutable_shape()->mutable_tuple_shapes()->push_back(
             new_input->shape());
       }
+      // The operands of the argument tuple changed, so its OriginalValue is
+      // reassembled from them.
+      user->set_original_value(OriginalValue::CreateFromInstruction(user));
       int64_t nesting_index = 1;
       for (auto user_now = user->users()[0];
            nesting_index < matching_tuple_indices.size() &&
@@ -1143,6 +1316,8 @@ class MoveOperandIntoBranch {
           *user_now->mutable_shape()->mutable_tuple_shapes(opd_index) =
               user->shape();
         }
+        user_now->set_original_value(
+            OriginalValue::CreateFromInstruction(user_now));
         VLOG(2) << "Done replacing tuple:" << user->ToString();
         CHECK_EQ(user_now->user_count(), 1);
       }
@@ -1161,6 +1336,8 @@ class MoveOperandIntoBranch {
     if (user == cond) {
       auto new_input =
           input->AddInstruction(HloInstruction::CreateTuple(new_operands));
+      new_input->set_original_value(
+          OriginalValue::CreateFromInstruction(new_input));
       for (int64_t i = 0; i < new_operands.size(); ++i) {
         op_map_[new_operands[i]] = i;
       }
@@ -1186,6 +1363,7 @@ class MoveOperandIntoBranch {
                    "directly.";
         VLOG(5) << branch_comp->ToString() << "\n";
         *branch_param->mutable_shape() = *param_shape;
+        UpdateOriginalValueForWidenedBranchArgument(branch_param, user);
         if (branch_param == branch_comp->root_instruction()) {
           VLOG(2) << "Cloning root user";
           auto new_user =
@@ -1197,7 +1375,7 @@ class MoveOperandIntoBranch {
         }
       } else {
         if (!UpdateParamShape(matching_tuple_indices, param_shape, branch_param,
-                              param_tuple)) {
+                              param_tuple, user)) {
           VLOG(2) << "instruction is not used in this branch.";
           continue;
         }
@@ -1238,6 +1416,11 @@ class MoveOperandIntoBranch {
           }
           *new_user->mutable_shape()->mutable_tuple_shapes(opd_index) =
               param_user->shape();
+          // This element now holds the value of the instruction inserted into
+          // the branch, so the OriginalValue of the tuple is reassembled from
+          // its operands.
+          new_user->set_original_value(
+              OriginalValue::CreateFromInstruction(new_user));
           UpdateTupleUsers(new_user);
           VLOG(2) << "Updated tuple user: " << new_user->ToString() << "\n";
         }
@@ -1310,6 +1493,9 @@ class GroupConnectedBoundaries {
   bool has_outfeed_;
   // Instructions that have been visited but are not going to be moved.
   absl::flat_hash_map<HloInstruction*, int>& visited_count_;
+  // Distinct operands of an instruction that are not constants, counted once
+  // per conditional.
+  absl::flat_hash_map<const HloInstruction*, int>& non_leaf_operand_count_;
   // The following four lines are configurations of the cost model, which will
   // be used to determine whether to move an instruction (move_config_) and
   // how strongly preferred it is to keep a pair of ops together
@@ -1379,6 +1565,22 @@ class GroupConnectedBoundaries {
     return *loc;
   }
 
+  // Number of distinct operands of hlo other than constants. Every boundary
+  // that reaches hlo asks for it, so it is counted once per conditional.
+  int NonLeafOperandCount(const HloInstruction* hlo) {
+    auto [it, inserted] = non_leaf_operand_count_.try_emplace(hlo);
+    if (inserted) {
+      absl::flat_hash_set<const HloInstruction*> op_set;
+      for (const HloInstruction* op : hlo->operands()) {
+        if (op->opcode() != HloOpcode::kConstant) {
+          op_set.insert(op);
+        }
+      }
+      it->second = op_set.size();
+    }
+    return it->second;
+  }
+
   static std::vector<int64_t>& EnsureSearchConfig(
       std::vector<int64_t>& search_config) {
     if (search_config.empty()) {
@@ -1389,21 +1591,18 @@ class GroupConnectedBoundaries {
 
  public:
   explicit GroupConnectedBoundaries(
-      HloInstruction* conditional, bool is_layout_sensitive,
+      HloInstruction* conditional, bool is_layout_sensitive, bool has_outfeed,
       absl::flat_hash_map<HloInstruction*, int>& visited_count,
+      absl::flat_hash_map<const HloInstruction*, int>& non_leaf_operand_count,
       std::vector<std::vector<int64_t>>* move_config,
       std::vector<std::vector<int64_t>>* reuse_config,
       std::vector<int64_t>& search_config)
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
         is_layout_sensitive_(is_layout_sensitive),
-        has_outfeed_(absl::c_any_of(
-            conditional->called_computations(),
-            [](HloComputation* computation) {
-              return absl::c_any_of(computation->instructions(),
-                                    HloPredicateIsOp<HloOpcode::kOutfeed>);
-            })),
+        has_outfeed_(has_outfeed),
         visited_count_(visited_count),
+        non_leaf_operand_count_(non_leaf_operand_count),
         move_config_(*move_config),
         reuse_config_(*reuse_config),
         search_config_vec_(EnsureSearchConfig(search_config)),
@@ -1415,6 +1614,13 @@ class GroupConnectedBoundaries {
   // instructions. Use different integers to classify different levels
   // of reuses. Assume all instructions can be fused to enable data reuses.
   int64_t ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
+    // Side-effecting instructions can't be fused (see
+    // HloInstruction::IsFusible), so a side-effecting custom-call user carries
+    // no reuse.
+    if (user->opcode() == HloOpcode::kCustomCall &&
+        Cast<HloCustomCallInstruction>(user)->custom_call_has_side_effect()) {
+      return 0;
+    }
     std::vector<int64_t>& curconfig =
         reuse_config_[static_cast<uint32_t>(op->opcode())];
     // Flip the reuse configuration if tuning the cost model.
@@ -1432,8 +1638,8 @@ class GroupConnectedBoundaries {
             << "\n";
     if (config < 0) {
       // Assume the reuse decreases with increasing user count.
-      int count1 = CountNonLeafOps(op->users());
-      int count2 = CountNonLeafOps(user->operands());
+      int count1 = op->user_count();
+      int count2 = NonLeafOperandCount(user);
       return (-config) / count1 / count2;
     }
     return config;
@@ -1797,11 +2003,10 @@ class GroupConnectedBoundaries {
   // dependent already considered for moving.
   bool IsSafeToMoveBoundary(const Boundary& next_boundary) {
     VLOG(1) << "Check is safe to move boundary.\n";
-    int64_t next_boundary_count =
-        (next_boundary.IsInsideBranch() ||
-         next_boundary.IsOutsideBranchOperand())
-            ? next_boundary[0]->user_count()
-            : CountNonLeafOps(next_boundary[0]->operands());
+    int64_t next_boundary_count = (next_boundary.IsInsideBranch() ||
+                                   next_boundary.IsOutsideBranchOperand())
+                                      ? next_boundary[0]->user_count()
+                                      : NonLeafOperandCount(next_boundary[0]);
     if (next_boundary_count <= 1) {
       if (next_boundary.IsOutsideBranchOperand() &&
           next_boundary[0]->users()[0] == conditional_ &&
@@ -1958,13 +2163,27 @@ class GroupConnectedBoundaries {
   }
 };
 
+// State of the boundary analysis of one conditional. The HLO does not change
+// while a conditional is analyzed, so the facts cached here stay valid until
+// the decision for the conditional is applied.
+struct ConditionalCodeMotion::ConditionalAnalysisState {
+  // Whether a branch of the conditional contains an outfeed.
+  bool has_outfeed = false;
+  // Number of times each instruction has been visited for moving.
+  absl::flat_hash_map<HloInstruction*, int> visited_count;
+  // Number of distinct operands of an instruction that are not constants, by
+  // instruction.
+  absl::flat_hash_map<const HloInstruction*, int> non_leaf_operand_count;
+};
+
 ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
     HloInstruction* conditional, const Boundary& cur_boundary,
     std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
-    absl::flat_hash_map<HloInstruction*, int>& visited_count) {
-  GroupConnectedBoundaries connect(conditional, is_layout_sensitive_,
-                                   visited_count, &move_config_, &reuse_config_,
-                                   search_config_);
+    ConditionalAnalysisState& analysis) {
+  GroupConnectedBoundaries connect(
+      conditional, is_layout_sensitive_, analysis.has_outfeed,
+      analysis.visited_count, analysis.non_leaf_operand_count, &move_config_,
+      &reuse_config_, search_config_);
   auto move_in_or_out =
       connect.BoundariesToMoveInOrOut(conditional, cur_boundary);
   if (!move_in_or_out.first.empty()) {
@@ -2087,8 +2306,14 @@ absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
     std::vector<std::vector<Boundary>> to_move_out, to_move_in;
     std::vector<std::vector<Boundary>> new_boundaries_for_moveout;
     std::vector<std::vector<Boundary>> new_boundaries_for_movein;
-    // Number of times each instruction has been visited for moving.
-    absl::flat_hash_map<HloInstruction*, int> visited_count;
+    // Shared by the analyses of all boundaries of this conditional.
+    ConditionalAnalysisState analysis;
+    analysis.has_outfeed = absl::c_any_of(
+        conditional->called_computations(),
+        [](const HloComputation* computation) {
+          return absl::c_any_of(computation->instructions(),
+                                HloPredicateIsOp<HloOpcode::kOutfeed>);
+        });
     int benefit_move_out = 0, benefit_move_in = 0;
     Decision::Direction final_d = Decision::Direction::kNoChange;
     // The conditional is moved into a worklist as the seed (starting point).
@@ -2107,7 +2332,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
       Boundary boundary = visitor.PopNextBoundary();
       VLOG(2) << "Analyzing boundary:" << boundary.ToString() << "\n";
       auto d = ConsiderCodeMotion(conditional, boundary, to_move, next_boundary,
-                                  visited_count);
+                                  analysis);
       switch (d.GetDirection()) {
         case Decision::Direction::kMoveOutOfBranch:
           VLOG(2) << "Local Decision is move out of branch\n";

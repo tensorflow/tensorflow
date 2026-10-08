@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/profiler/convert/trace_events_to_json.h"
@@ -329,7 +329,7 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
 
 absl::Status ExportToTensorBoard(absl::string_view logdir,
                                  absl::string_view run,
-                                 std::vector<XSpace>& xspaces) {
+                                 const std::vector<XSpace>& xspaces) {
   if (xspaces.empty()) {
     return absl::OkStatus();
   }
@@ -341,7 +341,7 @@ absl::Status ExportToTensorBoard(absl::string_view logdir,
 }
 
 absl::Status ExportToTensorBoard(absl::string_view logdir,
-                                 std::vector<XSpace>& xspaces) {
+                                 const std::vector<XSpace>& xspaces) {
   return ExportToTensorBoard(logdir, GetCurrentTimeStampAsString(), xspaces);
 }
 

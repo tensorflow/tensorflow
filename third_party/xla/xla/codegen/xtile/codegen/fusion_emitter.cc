@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -331,8 +331,10 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
   if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
-    ABSL_ASSIGN_OR_RETURN(normalized_reshape,
-                     EmitTiledReshape(b, reshape_tile_sizes, normalized_input));
+    ABSL_ASSIGN_OR_RETURN(
+        normalized_reshape,
+        EmitTiledBroadcastedReshape(b, trt->reshape_shape, reshape_tile_sizes,
+                                    normalized_input));
   }
 
   // The final transpose simply uses the tile sizes computed for the original
@@ -1064,8 +1066,8 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   if (hlo->opcode() == HloOpcode::kReshape) {
     ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_sizes,
                      GetStorageShape(tiled_hlo.tile_sizes(), hlo->shape()));
-    return EmitTiledReshape(b, storage_tile_sizes,
-                            values[tiled_hlo.operand(0)]);
+    return EmitTiledBroadcastedReshape(b, hlo->shape(), storage_tile_sizes,
+                                       values[tiled_hlo.operand(0)]);
   }
 
   if (hlo->opcode() == HloOpcode::kBitcast) {

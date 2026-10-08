@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -54,8 +53,6 @@ absl::Status XlaExecutableVersion::IsCompatibleWith(
       return absl::InvalidArgumentError(
           "Executable version is not compatible with current version");
     }
-    // TODO(b/477624817): Add compatibility check for ABI version once we have
-    // created xla runtime versions.
     return absl::OkStatus();
   }
   return absl::InvalidArgumentError(

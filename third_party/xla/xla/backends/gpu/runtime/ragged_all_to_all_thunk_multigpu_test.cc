@@ -25,15 +25,15 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk_multigpu_test_utils.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
@@ -66,6 +66,7 @@ static RaggedAllToAllConfig MakeConfig() {
   config.num_input_rows = kNumInputRows;
   config.num_row_elements = kNumRowElements;
   config.one_shot_kernel_enabled = true;
+  config.allow_fallback_to_nccl = false;
   return config;
 }
 
@@ -106,7 +107,7 @@ static RaggedAllToAllThunk MakeThunk(
     buffers.push_back(MakeBuffer(allocations[i], S64, kNumUpdates));
   }
   return RaggedAllToAllThunk(Thunk::ThunkInfo(), MakeConfig(),
-                             std::move(buffers));
+                             std::move(buffers), kNumDevices);
 }
 
 using DeviceTestSlot = CollectiveThunkMultiGpuTestState;

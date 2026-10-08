@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"
@@ -146,6 +146,8 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   bool grad_y;
   ScaleMode scale_mode = ScaleMode::kNone;
   std::optional<blas::ComputationType> compute_type;
+  // Whether a D scale is passed (hipBLASLt only).
+  bool has_d_scale = false;
 
   static absl::StatusOr<GemmConfig> FromProto(
       const xla::GemmConfigProto& proto);

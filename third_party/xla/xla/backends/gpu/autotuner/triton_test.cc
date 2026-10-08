@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -26,21 +27,22 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "mlir/IR/MLIRContext.h"
+#include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/target_config/target_config.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -58,11 +60,14 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using absl_testing::IsOk;
-using absl_testing::StatusIs;
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
+using ::testing::Gt;
 using ::testing::IsEmpty;
 using ::testing::Not;
+using ::testing::Optional;
 using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -133,8 +138,7 @@ class TritonBackendTest : public HloHardwareIndependentTestBase,
         alias_info_(stream_executor_->GetDeviceDescription()),
         compiler_(Compiler::GetForPlatform(platform_->id()).value()),
         backend_(&debug_options_, compiler_.get(), &target_config_,
-                 &alias_info_, &mlir_context_) {
-    RegisterSymbolicExprStorage(&mlir_context_);
+                 &alias_info_, &mlir_context_pool_) {
     debug_options_.set_xla_gpu_experimental_enable_tiling_propagation(
         GetParam());
   }
@@ -153,8 +157,8 @@ class TritonBackendTest : public HloHardwareIndependentTestBase,
   Compiler::GpuTargetConfig target_config_;
   GpuAliasInfo alias_info_;
   std::unique_ptr<Compiler> compiler_;
+  MlirContextPool mlir_context_pool_{CreateMlirContext};
   TritonBackend backend_;
-  mlir::MLIRContext mlir_context_;
 };
 
 TEST_P(TritonBackendTest, GetSupportedConfigs) {
@@ -181,6 +185,23 @@ TEST_P(TritonBackendTest, GetSupportedConfigs) {
   }
 }
 
+TEST_P(TritonBackendTest, GetSupportedConfigsWithEstimates) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<CodegenBackend::EstimatedConfig> configs,
+                       backend_.GetSupportedConfigsWithEstimates(
+                           *module->entry_computation()->root_instruction()));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+
+  for (const CodegenBackend::EstimatedConfig& estimated_config : configs) {
+    ASSERT_NE(estimated_config.config, nullptr);
+    EXPECT_TRUE(estimated_config.config->has_triton());
+    EXPECT_THAT(estimated_config.estimated_runtime,
+                Optional(Gt(absl::ZeroDuration())));
+  }
+}
+
 TEST_P(TritonBackendTest, GetSupportedConfigsForScaledDot) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kScaledDotHlo));
@@ -190,6 +211,20 @@ TEST_P(TritonBackendTest, GetSupportedConfigsForScaledDot) {
       backend_.GetSupportedConfigs(*fusion_instr);
   EXPECT_THAT(configs, absl_testing::IsOk());
   EXPECT_GT(configs.value().size(), 0);
+}
+
+TEST_P(TritonBackendTest, GetSupportedConfigsWithEstimatesForScaledDot) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kScaledDotHlo));
+  ASSERT_OK_AND_ASSIGN(std::vector<CodegenBackend::EstimatedConfig> configs,
+                       backend_.GetSupportedConfigsWithEstimates(
+                           *module->entry_computation()->root_instruction()));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+  for (const CodegenBackend::EstimatedConfig& estimated_config : configs) {
+    ASSERT_NE(estimated_config.config, nullptr);
+    EXPECT_TRUE(estimated_config.config->has_triton());
+    EXPECT_EQ(estimated_config.estimated_runtime, std::nullopt);
+  }
 }
 
 TEST_P(TritonBackendTest, GetAndApplyConfigForScaledDot) {
@@ -229,6 +264,18 @@ TEST_P(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
       backend_.GetSupportedConfigs(*unsupported_instr);
   EXPECT_THAT(configs, absl_testing::IsOk());
   EXPECT_THAT(configs.value(), testing::IsEmpty());
+}
+
+TEST_P(TritonBackendTest,
+       GetSupportedConfigsWithEstimatesForUnsupportedInstruction) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* unsupported_instr = module->entry_computation()
+                                          ->root_instruction()
+                                          ->called_computations()[0]
+                                          ->root_instruction();
+  EXPECT_THAT(backend_.GetSupportedConfigsWithEstimates(*unsupported_instr),
+              IsOkAndHolds(IsEmpty()));
 }
 
 TEST_P(TritonBackendTest, GetDefaultConfigReturnsUnimplementedError) {
@@ -456,6 +503,7 @@ TEST_P(TritonBackendTest, GetOverriddenConfigs) {
   gemm_config.set_num_stages(2);
   gemm_config.set_is_tma_allowed(true);
   gemm_config.set_is_warp_specialization_allowed(true);
+  gemm_config.set_group_size(1);
   std::string gemm_config_str;
   ASSERT_TRUE(
       tsl::protobuf::TextFormat::PrintToString(gemm_config, &gemm_config_str));
@@ -489,6 +537,7 @@ TEST_P(TritonBackendTest, GetOverriddenConfigsFromFile) {
   gemm_config->set_num_stages(2);
   gemm_config->set_is_tma_allowed(true);
   gemm_config->set_is_warp_specialization_allowed(true);
+  gemm_config->set_group_size(1);
   std::string gemm_configs_str;
   ASSERT_TRUE(tsl::protobuf::TextFormat::PrintToString(gemm_configs,
                                                        &gemm_configs_str));
@@ -810,51 +859,6 @@ TEST_P(TritonBackendTest, CostModelOptions_Combination) {
   EXPECT_THAT(configs.value(), SizeIs(7));
 }
 
-TEST_P(TritonBackendTest, CostModelDefaultTiling) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(kHlo));
-
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<BackendConfig>> default_configs,
-      backend_.GetSupportedConfigs(
-          *module->entry_computation()->root_instruction()));
-
-  debug_options_.set_xla_gpu_experimental_cost_model_gemm_tiling_default(true);
-
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<BackendConfig>> sorted_configs,
-      backend_.GetSupportedConfigs(
-          *module->entry_computation()->root_instruction()));
-
-  ASSERT_GT(default_configs.size(), 1);
-  ASSERT_EQ(sorted_configs.size(), default_configs.size());
-  // The default configs are returned in a deterministic order. The first config
-  // typically has the smallest tile size and is known to be suboptimal for this
-  // module.
-  // Strictly speaking this test may break if the backend behavior
-  // changes to coincidentally return the optimal config as the first one. In
-  // that case we'd need to update the test.
-  EXPECT_THAT(sorted_configs.front()->triton(),
-              Not(EqualsProto(default_configs.front()->triton())));
-}
-
-TEST_P(TritonBackendTest, CostModelOptionsTakePriorityOverDefaultTiling) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(kHlo));
-
-  debug_options_.set_xla_gpu_experimental_cost_model_gemm_tiling_default(true);
-  (*debug_options_
-        .mutable_xla_gpu_experimental_cost_model_gemm_tiling_options())["top"] =
-      "2";
-  (*debug_options_
-        .mutable_xla_gpu_experimental_cost_model_gemm_tiling_options())
-      ["top_from_default"] = "1";
-
-  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                       backend_.GetSupportedConfigs(
-                           *module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, SizeIs(2));
-}
 
 TEST_P(TritonBackendTest, Version) { EXPECT_NE(backend_.version(), ""); }
 

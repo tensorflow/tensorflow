@@ -35,10 +35,11 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -133,23 +134,15 @@ auto ToArithmeticSafeType(T t) {
 template <typename ReturnT, typename ElementwiseT = ReturnT>
 class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
  private:
-  ABSL_ATTRIBUTE_NOINLINE absl::Status UnsupportedTypeError(
-      const HloInstruction* instruction) {
-    return InvalidArgument(
-        "Unsupported type for %s: %s", HloOpcodeString(instruction->opcode()),
-        PrimitiveType_Name(instruction->shape().element_type()));
+  absl::Status UnsupportedTypeError(const HloInstruction* instruction) {
+    return HloEvaluator::UnsupportedTypeError(instruction);
   }
 
   // Returns `shape`, if it has a layout, or a copy of `shape` with the default
   // layout if it doesn't. Some functions require shapes to have layouts, so we
   // simply always set one.
   Shape GetShapeWithLayout(const Shape& shape) {
-    CHECK(shape.IsArray());
-    Shape shape_copy = shape;
-    if (!shape.has_layout()) {
-      LayoutUtil::SetToDefaultLayout(&shape_copy);
-    }
-    return shape_copy;
+    return HloEvaluator::GetShapeWithLayout(shape);
   }
 
  public:
@@ -232,10 +225,14 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     // If the operand is of C64 type, the return type of abs will be F32.
     // However, ElementwiseT would still be the return type, F32, and thus
     // specifying the ElementwiseT explicitly as C64 is needed below.
-    if (abs->operand(0)->shape().element_type() == C64) {
-      return HandleAbs<complex64>(abs);
-    } else if (abs->operand(0)->shape().element_type() == C128) {
-      return HandleAbs<complex128>(abs);
+    if constexpr (std::is_same_v<ReturnT, float>) {
+      if (abs->operand(0)->shape().element_type() == C64) {
+        return HandleAbs<complex64>(abs);
+      }
+    } else if constexpr (std::is_same_v<ReturnT, double>) {
+      if (abs->operand(0)->shape().element_type() == C128) {
+        return HandleAbs<complex128>(abs);
+      }
     }
     return HandleAbs<ElementwiseT>(abs);
   }
@@ -326,6 +323,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
+  absl::Status HandleExp2(const HloInstruction* exp2) override {
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseUnaryOp(exp2, [](ElementwiseT elem_operand) {
+                       if constexpr (is_complex_v<ReturnT>) {
+                         return std::exp(elem_operand * ElementwiseT(M_LN2));
+                       } else {
+                         return std::exp2(elem_operand);
+                       }
+                     }));
+    parent_->SetEvaluatedLiteralFor(exp2, std::move(literal));
+    return absl::OkStatus();
+  }
+
   absl::Status HandleExpm1(const HloInstruction* expm1) override {
     if constexpr (!is_complex_v<ReturnT>) {
       ABSL_ASSIGN_OR_RETURN(Literal literal,
@@ -371,19 +381,31 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(log1p);
   }
 
+  absl::Status HandleLog2(const HloInstruction* log2) override {
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseUnaryOp(log2, [](ElementwiseT elem_operand) {
+                       if constexpr (is_complex_v<ReturnT>) {
+                         return std::log(elem_operand) / ElementwiseT(M_LN2);
+                       } else {
+                         return std::log2(elem_operand);
+                       }
+                     }));
+    parent_->SetEvaluatedLiteralFor(log2, std::move(literal));
+    return absl::OkStatus();
+  }
+
   absl::Status HandleNot(const HloInstruction* not_) override {
     if constexpr (std::is_arithmetic_v<ElementwiseT>) {
-      ABSL_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(not_, [](ElementwiseT elem_operand) {
-            if constexpr (std::is_floating_point_v<ElementwiseT> ||
-                          std::is_same_v<ElementwiseT, bool>) {
-              return !elem_operand;
-            } else {
-              static_assert(std::is_integral_v<ElementwiseT>);
-              return ~elem_operand;
-            }
-          }));
+      ABSL_ASSIGN_OR_RETURN(Literal literal,
+                       ElementWiseUnaryOp(not_, [](ElementwiseT elem_operand) {
+                         if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                                       std::is_same_v<ElementwiseT, bool>) {
+                           return !elem_operand;
+                         } else {
+                           static_assert(std::is_integral_v<ElementwiseT>);
+                           return ~elem_operand;
+                         }
+                       }));
       parent_->SetEvaluatedLiteralFor(not_, std::move(literal));
       return absl::OkStatus();
     }
@@ -507,13 +529,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleMultiply(const HloInstruction* multiply) override {
-    ABSL_ASSIGN_OR_RETURN(
-        Literal literal,
-        ElementWiseBinaryOp(
-            multiply, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
-              return ElementwiseT(ToArithmeticSafeType(lhs_elem) *
-                                  ToArithmeticSafeType(rhs_elem));
-            }));
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseBinaryOp(multiply, [](ElementwiseT lhs_elem,
+                                                      ElementwiseT rhs_elem) {
+                       return ElementwiseT(ToArithmeticSafeType(lhs_elem) *
+                                           ToArithmeticSafeType(rhs_elem));
+                     }));
     parent_->SetEvaluatedLiteralFor(multiply, std::move(literal));
     return absl::OkStatus();
   }
@@ -541,13 +562,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleSubtract(const HloInstruction* subtract) override {
-    ABSL_ASSIGN_OR_RETURN(
-        Literal literal,
-        ElementWiseBinaryOp(
-            subtract, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
-              return ElementwiseT(ToArithmeticSafeType(lhs_elem) -
-                                  ToArithmeticSafeType(rhs_elem));
-            }));
+    ABSL_ASSIGN_OR_RETURN(Literal literal,
+                     ElementWiseBinaryOp(subtract, [](ElementwiseT lhs_elem,
+                                                      ElementwiseT rhs_elem) {
+                       return ElementwiseT(ToArithmeticSafeType(lhs_elem) -
+                                           ToArithmeticSafeType(rhs_elem));
+                     }));
     parent_->SetEvaluatedLiteralFor(subtract, std::move(literal));
     return absl::OkStatus();
   }
@@ -670,8 +690,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           } else if constexpr (std::is_integral_v<ElementwiseT>) {
             if constexpr (std::is_signed_v<ElementwiseT>) {
               if (rhs_el < static_cast<ElementwiseT>(0)) {
-                return static_cast<ElementwiseT>(
-                    lhs_el == static_cast<ElementwiseT>(1) ? 1 : 0);
+                if (lhs_el == static_cast<ElementwiseT>(1)) {
+                  return static_cast<ElementwiseT>(1);
+                }
+                if (lhs_el == static_cast<ElementwiseT>(-1)) {
+                  return static_cast<ElementwiseT>(rhs_el % 2 == 0 ? 1 : -1);
+                }
+                return static_cast<ElementwiseT>(0);
               }
             }
             return static_cast<ElementwiseT>(
@@ -920,6 +945,50 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     const int64_t feature_group_count = conv->feature_group_count();
     const int64_t batch_group_count = conv->batch_group_count();
 
+    if constexpr (std::is_same_v<ElementwiseT, float>) {
+      auto is_row_major_r2 = [](const Shape& s) {
+        return s.dimensions_size() == 2 &&
+               (!s.has_layout() ||
+                LayoutUtil::IsMonotonicWithDim0Major(s.layout()));
+      };
+
+      if (parent_->trace_mac_handler_ == nullptr && feature_group_count == 1 &&
+          batch_group_count == 1 && num_spatial_dims == 0 &&
+          dnums.input_batch_dimension() == 0 &&
+          dnums.input_feature_dimension() == 1 &&
+          dnums.kernel_input_feature_dimension() == 0 &&
+          dnums.kernel_output_feature_dimension() == 1 &&
+          dnums.output_batch_dimension() == 0 &&
+          dnums.output_feature_dimension() == 1 && is_row_major_r2(lhs_shape) &&
+          is_row_major_r2(rhs_shape) && is_row_major_r2(result_shape)) {
+        const int64_t m = lhs_shape.dimensions(0);
+        const int64_t k = lhs_shape.dimensions(1);
+        const int64_t n = rhs_shape.dimensions(1);
+
+        if (m > 0 && k > 0 && n > 0) {
+          Literal lhs_f32 = lhs_literal.Convert(F32).value();
+          Literal rhs_f32 = rhs_literal.Convert(F32).value();
+
+          Array2D<float> lhs_array(m, k);
+          lhs_array.SetValues(lhs_f32.data<float>());
+          Array2D<float> rhs_array(k, n);
+          rhs_array.SetValues(rhs_f32.data<float>());
+
+          std::unique_ptr<Array2D<float>> result_array =
+              HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+
+          Literal result_f32(ShapeUtil::MakeShape(F32, {m, n}));
+          result_f32.PopulateR2FromArray2D(*result_array);
+
+          parent_->SetEvaluatedLiteralFor(
+              conv, std::move(result_f32)
+                        .Convert(result_shape.element_type())
+                        .value());
+          return absl::OkStatus();
+        }
+      }
+    }
+
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
                  rhs_literal_data, feature_group_count, batch_group_count,
@@ -1089,24 +1158,26 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     std::optional<Literal> decompressed_rhs;
     const Literal* rhs_literal_ptr = &parent_->GetEvaluatedLiteralFor(rhs);
 
-    if (conv->sparsity_config().has_lhs() && lhs->shape().IsTuple()) {
-      ABSL_ASSIGN_OR_RETURN(
-          decompressed_lhs,
-          xla::MaterializeSparseOperand(LiteralSlice(*lhs_literal_ptr, {0}),
-                                        LiteralSlice(*lhs_literal_ptr, {1}),
-                                        conv->sparsity_config().lhs()));
+    if (conv->sparsity_config().has_lhs()) {
+      auto lhs_indices_op = conv->operand(conv->sparsity_config().lhs().idx());
+      const Literal* lhs_indices =
+          &parent_->GetEvaluatedLiteralFor(lhs_indices_op);
+      ABSL_ASSIGN_OR_RETURN(decompressed_lhs, xla::MaterializeSparseOperand(
+                                             *lhs_literal_ptr, *lhs_indices,
+                                             conv->sparsity_config().lhs()));
       lhs_literal_ptr = &decompressed_lhs.value();
       lhs_shape = lhs_literal_ptr->shape();
     } else {
       lhs_shape = GetShapeWithLayout(lhs->shape());
     }
 
-    if (conv->sparsity_config().has_rhs() && rhs->shape().IsTuple()) {
-      ABSL_ASSIGN_OR_RETURN(
-          decompressed_rhs,
-          xla::MaterializeSparseOperand(LiteralSlice(*rhs_literal_ptr, {0}),
-                                        LiteralSlice(*rhs_literal_ptr, {1}),
-                                        conv->sparsity_config().rhs()));
+    if (conv->sparsity_config().has_rhs()) {
+      auto rhs_indices_op = conv->operand(conv->sparsity_config().rhs().idx());
+      const Literal* rhs_indices =
+          &parent_->GetEvaluatedLiteralFor(rhs_indices_op);
+      ABSL_ASSIGN_OR_RETURN(decompressed_rhs, xla::MaterializeSparseOperand(
+                                             *rhs_literal_ptr, *rhs_indices,
+                                             conv->sparsity_config().rhs()));
       rhs_literal_ptr = &decompressed_rhs.value();
       rhs_shape = rhs_literal_ptr->shape();
     } else {
@@ -1165,85 +1236,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleDot(const HloInstruction* dot) override {
-    const PrimitiveType accumulation_type =
-        primitive_util::NativeToPrimitiveType<ElementwiseT>();
-    if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
-        parent_->use_fast_path_ &&
-        ((ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
-          ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) ||
-         dot->shape().element_type() == accumulation_type)) {
-      return HandleDot<ElementwiseT>(dot);
+    if constexpr (std::is_same_v<ElementwiseT, float>) {
+      if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
+          parent_->use_fast_path_ &&
+          ((ShapeUtil::SameElementType(dot->operand(0)->shape(),
+                                       dot->shape()) &&
+            ShapeUtil::SameElementType(dot->operand(1)->shape(),
+                                       dot->shape())) ||
+           dot->shape().element_type() == F32) &&
+          parent_->TryEvaluateDotFastPathF32(dot)) {
+        return absl::OkStatus();
+      }
     }
-    return HandleDotSlowPath(dot);
-  }
-
-  template <typename NativeT, typename std::enable_if_t<
-                                  std::is_same_v<NativeT, float>>* = nullptr>
-  absl::Status HandleDot(const HloInstruction* dot) {
-    const HloInstruction* lhs = dot->operand(0);
-    const HloInstruction* rhs = dot->operand(1);
-    CHECK(dot->shape().IsArray());
-    CHECK(lhs->shape().IsArray());
-    CHECK(rhs->shape().IsArray());
-
-    const auto& dnums = dot->dot_dimension_numbers();
-
-    const int64_t lhs_rank = lhs->shape().dimensions().size();
-    const int64_t rhs_rank = rhs->shape().dimensions().size();
-
-    // There must be 1 and only 1 Contracting dimension for lhs and rhs.
-    const int64_t lhs_contracting_dimension =
-        dnums.lhs_contracting_dimensions(0);
-    const int64_t rhs_contracting_dimension =
-        dnums.rhs_contracting_dimensions(0);
-    // Contracted dimension sizes must be the same.
-    CHECK_EQ(lhs->shape().dimensions(lhs_contracting_dimension),
-             rhs->shape().dimensions(rhs_contracting_dimension))
-        << "lhs contracted dimension: "
-        << lhs->shape().dimensions(lhs_contracting_dimension)
-        << " rhs contracted dimension: "
-        << rhs->shape().dimensions(rhs_contracting_dimension);
-
-    auto is_default_layout = [](const HloInstruction* op) {
-      return !op->shape().has_layout() ||
-             LayoutUtil::Equal(op->shape().layout(),
-                               LayoutUtil::GetDefaultLayoutForR2());
-    };
-
-    // The fast path is for a simple rank 2 dot with default layout operands.
-    if (lhs_rank != 2 || rhs_rank != 2 || lhs_contracting_dimension != 1 ||
-        rhs_contracting_dimension != 0 || !is_default_layout(lhs) ||
-        !is_default_layout(rhs) || !is_default_layout(dot)) {
-      return HandleDotSlowPath(dot);
-    }
-
-    const PrimitiveType accumulation_ty =
-        primitive_util::NativeToPrimitiveType<NativeT>();
-    Literal lhs_literal =
-        parent_->GetEvaluatedLiteralFor(lhs).Convert(accumulation_ty).value();
-    Literal rhs_literal =
-        parent_->GetEvaluatedLiteralFor(rhs).Convert(accumulation_ty).value();
-    const int64_t contracted_dimension_size =
-        lhs->shape().dimensions(lhs_contracting_dimension);
-    Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
-                               contracted_dimension_size);
-    lhs_array.SetValues(lhs_literal.data<NativeT>());
-    Array2D<NativeT> rhs_array(contracted_dimension_size,
-                               rhs->shape().dimensions(1));
-    rhs_array.SetValues(rhs_literal.data<NativeT>());
-    std::unique_ptr<Array2D<NativeT>> result_array =
-        HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
-    Literal result(
-        ShapeUtil::MakeShape(accumulation_ty, dot->shape().dimensions()));
-    result.PopulateR2FromArray2D(*result_array);
-    parent_->SetEvaluatedLiteralFor(
-        dot, std::move(result).Convert(dot->shape().element_type()).value());
-    return absl::OkStatus();
-  }
-
-  template <typename NativeT, typename std::enable_if_t<
-                                  !std::is_same_v<NativeT, float>>* = nullptr>
-  absl::Status HandleDot(const HloInstruction* dot) {
     return HandleDotSlowPath(dot);
   }
 
@@ -1436,12 +1440,15 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           DimensionVector group_index(gs_rank);
 
           // Batch dimensions will always be first in the final product.
+          const int64_t group_dim_index = gs_rank - 1;
           int64_t idx = 0;
           int64_t gs_idx = 0;
           for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
             lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
             rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
-            group_index[gs_idx++] = result_index[idx];
+            if (gs_idx < group_dim_index) {
+              group_index[gs_idx++] = result_index[idx];
+            }
             idx++;
           }
 
@@ -1450,7 +1457,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             // If there is a non-contracting lhs dimension that is not ragged,
             // then there will also be a dimension for this in group_sizes.
             if (lhs_ragged_dim != lhs_non_contracting[i]) {
-              group_index[gs_idx++] = result_index[idx];
+              if (gs_idx < group_dim_index) {
+                group_index[gs_idx++] = result_index[idx];
+              }
             }
             lhs_index[lhs_non_contracting[i]] = result_index[idx++];
           }
@@ -1462,7 +1471,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
           int64_t lhs_ragged_index = lhs_index[lhs_ragged_dim];
           int64_t group_row_end = 0;
           for (int64_t i = 0; i < num_groups; ++i) {
-            group_index[gs_idx] = i;
+            group_index[group_dim_index] = i;
             group_row_end += gs_literal.Get<int64_t>(group_index);
             if (lhs_ragged_index < group_row_end) {
               break;
@@ -1641,13 +1650,16 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       // The group dimension will always be first in the final product. We
       // handle it later since we need to fill in the batch dimensions first
       // to look up the relevant group sizes.
+      const int64_t group_dim_index = gs_rank - 1;
       int64_t gs_idx = 0;
       int64_t idx = 1;
       // Batch dimensions are next.
       for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
         lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
         rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
-        group_index[gs_idx++] = result_index[idx];
+        if (gs_idx < group_dim_index) {
+          group_index[gs_idx++] = result_index[idx];
+        }
         ++idx;
       }
 
@@ -1656,7 +1668,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       int64_t group_row_start = 0;  // inclusive
       int64_t group_row_end = 0;    // exclusive
       for (int i = 0; i <= result_index[0]; ++i) {
-        group_index[gs_idx] = i;
+        group_index[group_dim_index] = i;
         group_row_start = group_row_end;
         group_row_end += gs_literal.Get<int64_t>(group_index);
       }
@@ -1818,55 +1830,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
  private:
-  struct ShapeInfo {
-    static std::pair<DimensionVector, DimensionVector> dims(
-        const DimensionVector& dim_indexes, const Shape& literal_shape,
-        const Shape& scale_shape) {
-      DimensionVector dim_sizes;
-      DimensionVector dim_scale_divisors;
-      for (int64_t i = 0; i < dim_indexes.size(); ++i) {
-        dim_sizes.push_back(literal_shape.dimensions(dim_indexes[i]));
-        dim_scale_divisors.push_back(literal_shape.dimensions(dim_indexes[i]) /
-                                     scale_shape.dimensions(dim_indexes[i]));
-      }
-      return {dim_sizes, dim_scale_divisors};
-    }
-
-    ShapeInfo(
-        const Literal& literal, const Literal& scale_literal,
-        const tsl::protobuf::RepeatedField<int64_t>& contracting_dims_field,
-        const tsl::protobuf::RepeatedField<int64_t>& batch_dims_field)
-        : rank(literal.shape().dimensions().size()) {
-      batch_dim_indexes =
-          DimensionVector(batch_dims_field.begin(), batch_dims_field.end());
-      std::tie(batch_dim_sizes, batch_dim_scale_divisors) =
-          dims(batch_dim_indexes, literal.shape(), scale_literal.shape());
-
-      non_contracting_dim_indexes =
-          GetNonContractingDims(rank, contracting_dims_field, batch_dims_field);
-      std::tie(non_contracting_dim_sizes, non_contracting_dim_scale_divisors) =
-          dims(non_contracting_dim_indexes, literal.shape(),
-               scale_literal.shape());
-
-      contracting_dim_indexes = DimensionVector(contracting_dims_field.begin(),
-                                                contracting_dims_field.end());
-      std::tie(contracting_dim_sizes, contracting_dim_scale_divisors) =
-          dims(contracting_dim_indexes, literal.shape(), scale_literal.shape());
-    }
-
-    const int64_t rank;
-    DimensionVector batch_dim_indexes;
-    DimensionVector batch_dim_sizes;
-    DimensionVector batch_dim_scale_divisors;
-
-    DimensionVector non_contracting_dim_indexes;
-    DimensionVector non_contracting_dim_sizes;
-    DimensionVector non_contracting_dim_scale_divisors;
-
-    DimensionVector contracting_dim_indexes;
-    DimensionVector contracting_dim_sizes;
-    DimensionVector contracting_dim_scale_divisors;
-  };
+  using ShapeInfo = HloEvaluator::ShapeInfo;
 
   absl::Status HandleScaledDotSlowPathWithLiterals(
       const HloInstruction* dot, const Literal& lhs_literal,
@@ -2002,21 +1966,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                          /*operand_shape=*/pad->operand(0)->shape(),
                          /*padding_value_shape=*/pad->operand(1)->shape(),
                          /*padding_config=*/pad->padding_config()));
-    // Try to convert the element type if the inferred type is not compatible.
-    bool convert_element_type =
-        pad->shape().element_type() != inferred_return_shape.element_type();
-    if (convert_element_type) {
-      inferred_return_shape.set_element_type(pad->shape().element_type());
-    }
-    CHECK(ShapeUtil::Compatible(pad->shape(), inferred_return_shape))
+    CHECK(ShapeUtil::CompatibleIgnoringElementType(pad->shape(),
+                                                   inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(pad->shape())
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
     ReturnT scalar;
-    if (convert_element_type) {
+    PrimitiveType result_type = pad->shape().element_type();
+    PrimitiveType padding_type = pad->operand(1)->shape().element_type();
+    if (padding_type != result_type) {
       ABSL_ASSIGN_OR_RETURN(auto literal,
                        parent_->GetEvaluatedLiteralFor(pad->operand(1))
-                           .Convert(inferred_return_shape.element_type()));
+                           .Convert(result_type));
       scalar = literal.Get<ReturnT>({});
     } else {
       scalar =
@@ -2028,8 +1989,17 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
         [&scalar](int64_t linear_index, int) { return scalar; }));
 
+    Literal converted_operand;
+    PrimitiveType operand_type = pad->operand(0)->shape().element_type();
+    if (operand_type != result_type) {
+      ABSL_ASSIGN_OR_RETURN(converted_operand,
+                       parent_->GetEvaluatedLiteralFor(pad->operand(0))
+                           .Convert(result_type));
+    }
     const Literal& evaluated_operand =
-        parent_->GetEvaluatedLiteralFor(pad->operand(0));
+        operand_type != result_type
+            ? converted_operand
+            : parent_->GetEvaluatedLiteralFor(pad->operand(0));
 
     std::vector<int64_t> target_index(result.shape().dimensions().size(), 0);
 
@@ -2387,7 +2357,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                              UnaryOp&& unary_op) {
     static_assert(std::is_invocable_r_v<ElementwiseT, UnaryOp, ElementwiseT>,
                   "Invalid UnaryOp signature");
+    return ElementWiseUnaryOpImpl(instruction, unary_op);
+  }
 
+  absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
+      const HloInstruction* instruction,
+      absl::FunctionRef<ElementwiseT(ElementwiseT)> unary_op) {
     const Literal& operand_literal =
         parent_->GetEvaluatedLiteralFor(instruction->operand(0));
     ABSL_ASSIGN_OR_RETURN(
@@ -2404,7 +2379,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     static_assert(std::is_invocable_r_v<ElementwiseT, BinaryOp, ElementwiseT,
                                         ElementwiseT>,
                   "Invalid BinaryOp signature");
+    return ElementWiseBinaryOpImpl(instruction, binary_op);
+  }
 
+  absl::StatusOr<Literal> ElementWiseBinaryOpImpl(
+      const HloInstruction* instruction,
+      absl::FunctionRef<ElementwiseT(ElementwiseT, ElementwiseT)> binary_op) {
     Shape shape = GetShapeWithLayout(instruction->shape());
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
@@ -2423,11 +2403,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                        LayoutUtil::Equal(lhs_layout, shape.layout());
 
     if (same_layout) {
+      const ReturnT* lhs_data = lhs_literal.data<ReturnT>().data();
+      const ReturnT* rhs_data = rhs_literal.data<ReturnT>().data();
       ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int) {
-            return ConvertBinaryFunction(binary_op)(
-                lhs_literal.GetLinear<ReturnT>(linear_index),
-                rhs_literal.GetLinear<ReturnT>(linear_index));
+            return ConvertBinaryFunction(binary_op)(lhs_data[linear_index],
+                                                    rhs_data[linear_index]);
           }));
     } else {
       ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
@@ -2448,14 +2429,25 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     static_assert(
         std::is_invocable_r_v<ReturnT, TernaryOp, LhsType, RhsType, EhsType>,
         "Invalid TernaryOp signature");
+    return ElementwiseTernaryOpImpl<LhsType, RhsType, EhsType>(instruction,
+                                                               ternary_op);
+  }
 
+  template <typename LhsType, typename RhsType, typename EhsType>
+  absl::StatusOr<Literal> ElementwiseTernaryOpImpl(
+      const HloInstruction* instruction,
+      absl::FunctionRef<ReturnT(LhsType, RhsType, EhsType)> ternary_op) {
     Shape shape = GetShapeWithLayout(instruction->shape());
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
     const auto* ehs = instruction->operand(2);
-    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, lhs->shape()));
-    TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
-    TF_RET_CHECK(ShapeUtil::SameDimensions(rhs->shape(), ehs->shape()));
+    const bool is_lhs_scalar = ShapeUtil::IsScalar(lhs->shape());
+    const bool is_ehs_scalar = ShapeUtil::IsScalar(ehs->shape());
+    TF_RET_CHECK(is_lhs_scalar ||
+                 ShapeUtil::SameDimensions(shape, lhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
+    TF_RET_CHECK(is_ehs_scalar ||
+                 ShapeUtil::SameDimensions(shape, ehs->shape()));
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
@@ -2467,24 +2459,31 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     const Layout& lhs_layout = lhs_literal.shape().layout();
     const Layout& rhs_layout = rhs_literal.shape().layout();
     const Layout& ehs_layout = ehs_literal.shape().layout();
-    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
-                       LayoutUtil::Equal(rhs_layout, ehs_layout) &&
-                       LayoutUtil::Equal(lhs_layout, shape.layout());
+    const bool same_layout =
+        LayoutUtil::Equal(rhs_layout, shape.layout()) &&
+        (is_lhs_scalar || LayoutUtil::Equal(lhs_layout, shape.layout())) &&
+        (is_ehs_scalar || LayoutUtil::Equal(ehs_layout, shape.layout()));
 
     if (same_layout) {
+      const LhsType* lhs_data = lhs_literal.data<LhsType>().data();
+      const RhsType* rhs_data = rhs_literal.data<RhsType>().data();
+      const EhsType* ehs_data = ehs_literal.data<EhsType>().data();
       ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int) {
-            return ternary_op(lhs_literal.GetLinear<LhsType>(linear_index),
-                              rhs_literal.GetLinear<RhsType>(linear_index),
-                              ehs_literal.GetLinear<EhsType>(linear_index));
+            return ternary_op(lhs_data[is_lhs_scalar ? 0 : linear_index],
+                              rhs_data[linear_index],
+                              ehs_data[is_ehs_scalar ? 0 : linear_index]);
           }));
 
     } else {
       ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
           [&](absl::Span<const int64_t> multi_index, int) {
-            return ternary_op(lhs_literal.Get<LhsType>(multi_index),
-                              rhs_literal.Get<RhsType>(multi_index),
-                              ehs_literal.Get<EhsType>(multi_index));
+            return ternary_op(
+                lhs_literal.Get<LhsType>(
+                    is_lhs_scalar ? absl::Span<const int64_t>{} : multi_index),
+                rhs_literal.Get<RhsType>(multi_index),
+                ehs_literal.Get<EhsType>(
+                    is_ehs_scalar ? absl::Span<const int64_t>{} : multi_index));
           }));
     }
 

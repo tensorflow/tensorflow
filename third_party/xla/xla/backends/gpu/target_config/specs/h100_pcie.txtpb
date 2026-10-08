@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# proto-file: third_party/tensorflow/compiler/xla/stream_executor/device_description.proto
+# proto-message: stream_executor.GpuTargetConfigProto
+
 gpu_device_info {
   cuda_compute_capability {
     major: 9
@@ -221,9 +224,4 @@ gpu_device_info {
   dnn_version: "8.9.2"
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 8
-  minor: 9
-  patch: 2
-}
 device_description_str: "NVIDIA H100 PCIe"

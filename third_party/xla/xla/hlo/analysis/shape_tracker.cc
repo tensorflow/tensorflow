@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -1253,6 +1253,50 @@ ShapeTracker::MapInputDimensionsToOutputUnordered(
   }
 
   return kept_output_dims;
+}
+
+bool ShapeTracker::MapsToOneStride(absl::Span<const int64_t> input_dims,
+                                   bool allow_swaps) const {
+  std::optional<std::vector<int64_t>> mapped =
+      MapInputDimensionsToOutputUnordered(input_dims);
+  if (!mapped.has_value()) {
+    return false;
+  }
+  if (mapped->empty()) {
+    return true;
+  }
+
+  // Check if output dimensions are consecutive.
+  auto is_invalid_transition = [this](int64_t prev, int64_t next) {
+    if (prev + 1 == next) {
+      return false;
+    }
+    // Check if intermediate dimensions are degenerate.
+    for (int64_t i = prev + 1; i < next; ++i) {
+      if (output_shape_.dimensions(i) != 1) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (absl::c_adjacent_find(*mapped, is_invalid_transition) != mapped->end()) {
+    return false;
+  }
+
+  if (allow_swaps) {
+    return true;
+  }
+
+  // Check for swaps.
+  absl::StatusOr<ShapeTracker> narrowed = Narrow(input_dims);
+  if (!narrowed.ok()) {
+    return false;
+  }
+  bool has_swaps =
+      absl::c_any_of(narrowed->GetSteps(), [](const ShapeTracker::Step& step) {
+        return step.type == ShapeTracker::Step::Type::kTranspose;
+      });
+  return !has_swaps;
 }
 
 absl::StatusOr<ShapeTracker> ShapeTracker::Zip(

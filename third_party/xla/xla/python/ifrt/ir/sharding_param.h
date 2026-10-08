@@ -21,9 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -33,10 +34,6 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
-#include "xla/python/ifrt/ir/sharding_param.pb.h"
-#include "xla/python/ifrt/serdes_default_version_accessor.h"
-#include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -117,7 +114,7 @@ class ShardingParam {
     }
 
     // Produces a flat list of device ids according to the permutation.
-    void ToDeviceList(llvm::SmallVectorImpl<int>& out_devices) const;
+    void ToDeviceList(absl::InlinedVector<int, 4>& out_devices) const;
   };
 
   ShardingParam(std::vector<int64_t> dim_shards, MinorToMajor minor_to_major,
@@ -199,23 +196,6 @@ class ShardingParam {
   }
 
   std::string DebugString() const;
-
-  // Converts this sharding param to a protobuf.
-  absl::Status ToProto(
-      ShardingParamProto& proto,
-      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
-
-  // Returns a `ShardingParamProto` representation.
-  absl::StatusOr<ShardingParamProto> ToProto(
-      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
-    ShardingParamProto proto;
-    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
-    return proto;
-  }
-
-  // Constructs `ShardingParam` from `ShardingParamProto`.
-  static absl::StatusOr<ShardingParam> FromProto(
-      const ShardingParamProto& proto);
 
  private:
   std::vector<int64_t> dim_shards_;

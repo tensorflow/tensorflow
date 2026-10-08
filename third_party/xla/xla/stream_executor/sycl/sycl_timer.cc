@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <level_zero/ze_api.h>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 
 constexpr int kMsecInSec = 1000;
 

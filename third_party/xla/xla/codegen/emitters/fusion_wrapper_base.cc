@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/platform/errors.h"
@@ -56,6 +56,8 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
         computation->AddInstruction(HloInstruction::CreateFusion(
             instruction->shape(), ChooseFusionKind(*instruction, *instruction),
             instruction));
+    fusion_instruction->fused_instructions_computation()->SetExecutionThread(
+        computation->execution_thread());
     const absl::string_view wrapped_opcode =
         HloOpcodeString(instruction->opcode());
     module->SetAndUniquifyInstrName(fusion_instruction,

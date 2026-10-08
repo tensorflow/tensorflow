@@ -13,11 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <stdlib.h>
+#include <cstdint>
+#include <utility>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla_data.pb.h"
@@ -59,6 +65,40 @@ ENTRY entry {
 // CHECK: reduce-window
 // CHECK: reduce-window
   )");
+}
+
+TEST_F(ReduceWindowRewriterExecutionTest, DynamicDimensionScan) {
+  // Regression test for https://github.com/openxla/xla/issues/44944: a
+  // cumsum scan over a dynamic dimension through the full pass pipeline.
+  absl::string_view hlo_string = R"(
+HloModule module
+
+addition {
+  x = s32[] parameter(0)
+  y = s32[] parameter(1)
+  ROOT add = s32[] add(x, y)
+}
+
+ENTRY entry {
+  arg = s32[64]{0} parameter(0)
+  size = s32[] constant(48)
+  arg_dynamic = s32[<=64]{0} set-dimension-size(arg, size), dimensions={0}
+  constant = s32[] constant(0)
+  ROOT reduce-window = s32[<=64]{0} reduce-window(arg_dynamic, constant), window={size=64 pad=63_0}, to_apply=addition
+}
+)";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  std::vector<int32_t> ones(64, 1);
+  Literal arg = LiteralUtil::CreateR1<int32_t>(ones);
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+
+  // Cumulative sums of 48 ones: 1, 2, ..., 48.
+  std::vector<int32_t> prefix_sums(48);
+  absl::c_iota(prefix_sums, 1);
+  Literal expected = LiteralUtil::CreateR1<int32_t>(prefix_sums);
+
+  EXPECT_EQ(result.ToStatic(), expected);
 }
 
 }  // namespace

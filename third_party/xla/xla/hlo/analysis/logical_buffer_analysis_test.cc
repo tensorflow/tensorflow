@@ -262,7 +262,8 @@ TEST_F(LogicalBufferAnalysisTest, CustomCallFusionAsync) {
     fusion = f32[2,3] fusion(p0), kind=kLoop, calls=fused_computation
     async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0),
                                                 custom_call_target="bar"
-    async-update = ((f32[2,3]), f32[2,3], u32[]) async-update(async-start)
+    async-update = ((f32[2,3]), f32[2,3], u32[]) async-update(async-start),
+                            output_to_operand_aliasing={ {2}: (0, {2}) }
     ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
   )";
@@ -499,12 +500,13 @@ TEST_F(LogicalBufferAnalysisTest, SimpleAsyncChain) {
 
   // Verify update buffers:
   // - {} (top-level tuple) -> defined (always defined for new async-update)
+  // - {2} (state) -> defined
   // - all other subshapes are compatible with start -> not defined
   VerifyBufferDefinedAt(update, {});
   VerifyNoBufferDefinedAt(update, {0});
   VerifyNoBufferDefinedAt(update, {0, 0});
   VerifyNoBufferDefinedAt(update, {1});
-  VerifyNoBufferDefinedAt(update, {2});
+  VerifyBufferDefinedAt(update, {2});
 }
 
 TEST_F(LogicalBufferAnalysisTest, AsyncUpdateWithChangedShapes) {
@@ -666,13 +668,14 @@ TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBinding) {
 
   // Verify update buffers:
   // - {} (top-level tuple) -> defined (always defined for new async-update)
+  // - {2} (context) -> defined by async-update if it has no explicit aliasing
   // - all other subshapes are compatible with start -> not defined
   VerifyBufferDefinedAt(async_update, {});
   VerifyBufferDefinedAt(async_update, {0});
   VerifyNoBufferDefinedAt(async_update, {0, 0});
   // {1} is defined in async-update.
   VerifyBufferDefinedAt(async_update, {1});
-  VerifyNoBufferDefinedAt(async_update, {2});
+  VerifyBufferDefinedAt(async_update, {2});
 
   VerifyBufferDefinedAt(async_done, {});
 }
@@ -712,14 +715,14 @@ TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBindingWithAliasing) {
   VerifyBufferDefinedAt(async_start, {2});
 
   // Verify update buffers:
-  // - {} (top-level tuple) -> defined (always defined for new async-update)
+  // - {}  (top-level tuple) -> defined (always defined for new async-update)
+  // - {2} (context) -> defined by async-update if it has no explicit aliasing
   // - all other subshapes are compatible with start -> not defined
   VerifyBufferDefinedAt(async_update, {});
   VerifyBufferDefinedAt(async_update, {0});
   VerifyNoBufferDefinedAt(async_update, {0, 0});
-  // {1} is not defined in due to aliasing.
   VerifyNoBufferDefinedAt(async_update, {1});
-  VerifyNoBufferDefinedAt(async_update, {2});
+  VerifyBufferDefinedAt(async_update, {2});
 
   VerifyBufferDefinedAt(async_done, {});
 }
@@ -738,8 +741,10 @@ TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBindingMultipleUpdates) {
     async-start = ((), (), s32[]) async-start(), calls=async_computation,
                             async_execution_thread="sparsecore",
                             output_to_operand_aliasing={ {1}: (0, {}) }
-    async-update0 = ((), (), s32[]) async-update(async-start)
-    async-update1 = ((f32[4]), f32[4], s32[]) async-update(async-update0, p0)
+    async-update0 = ((), (), s32[]) async-update(async-start),
+                            output_to_operand_aliasing={ {2}: (0, {2}) }
+    async-update1 = ((f32[4]), f32[4], s32[]) async-update(async-update0, p0),
+                            output_to_operand_aliasing={ {2}: (0, {2}) }
     ROOT async-done = f32[4] async-done(async-update1)
   }
   )";
@@ -763,20 +768,20 @@ TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBindingMultipleUpdates) {
   VerifyBufferDefinedAt(async_start, {2});
 
   // Verify update buffers:
-  // - {} (top-level tuple) -> defined (always defined for new async-update)
-  // - all other subshapes are compatible with start -> not defined
+  // {} (top-level tuple) -> defined (always defined for new async-update)
   VerifyBufferDefinedAt(async_update0, {});
-  // not defined due to implicit aliasing from async-start.
+  // Not defined due to implicit aliasing from async-start.
   VerifyNoBufferDefinedAt(async_update0, {0});
-  // {1} is not defined in due to aliasing from async-start.
   VerifyNoBufferDefinedAt(async_update0, {1});
+  // Not defined due to explicit aliasing from async-start.
   VerifyNoBufferDefinedAt(async_update0, {2});
 
   VerifyBufferDefinedAt(async_update1, {});
   VerifyBufferDefinedAt(async_update1, {0});
+  // Not defined due to implicit aliasing from async-start.
   VerifyNoBufferDefinedAt(async_update1, {0, 0});
-  // {1} is not defined in due to aliasing.
   VerifyNoBufferDefinedAt(async_update1, {1});
+  // Not defined due to explicit aliasing from async_update0.
   VerifyNoBufferDefinedAt(async_update1, {2});
 
   VerifyBufferDefinedAt(async_done, {});

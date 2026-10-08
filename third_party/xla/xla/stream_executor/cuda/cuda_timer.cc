@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
@@ -85,9 +85,10 @@ absl::StatusOr<absl::Duration> CudaTimer::GetElapsedDuration() {
   if (semaphore_) {
     if (*semaphore_ == GpuSemaphoreState::kTimedOut) {
       // The delay kernel did not achieve the intended result.
-      LOG(ERROR) << "Delay kernel timed out: measured time has sub-optimal "
-                    "accuracy. There may be a missing warmup execution, please "
-                    "investigate in Nsight Systems.";
+      LOG_FIRST_N(WARNING, 5)
+          << "Delay kernel timed out: measured time has sub-optimal "
+             "accuracy. There may be a missing warmup execution, please "
+             "investigate in Nsight Systems.";
     } else {
       // Signal that the kernel can exit
       *semaphore_ = GpuSemaphoreState::kRelease;

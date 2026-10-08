@@ -69,6 +69,10 @@ class DistributedRuntimeClient
     // expires, then shutdown() reports an error and returns control.
     absl::Duration shutdown_timeout = absl::Minutes(5);
 
+    // Extra time added to `init_timeout` and `shutdown_timeout` so that errors
+    // reported by the service can arrive before the client's own deadline.
+    absl::Duration extra_error_propagation_time = absl::Seconds(5);
+
     // The duration after which the service concludes a client has vanished if
     // it hasn't received any heartbeats from the client.
     absl::Duration heartbeat_timeout = absl::Seconds(100);
@@ -103,6 +107,9 @@ class DistributedRuntimeClient
 
     // An optional gRPC channel credentials to use for the client.
     absl_nullable std::shared_ptr<::grpc::ChannelCredentials> credentials;
+
+    // If true, crash if insecure credentials are used.
+    bool verify_secure_credentials = false;
   };
 
   virtual ~DistributedRuntimeClient() = default;

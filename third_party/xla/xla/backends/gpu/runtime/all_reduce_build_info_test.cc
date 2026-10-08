@@ -20,14 +20,16 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -59,6 +61,18 @@ using ::testing::HasSubstr;
 
 TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveKernelEnabled, bool);
 TSL_LIB_GTL_DEFINE_INT_TYPE(MultimemEnabled, bool);
+
+// Number of devices per host in the test topology. Large enough for all replica
+// groups used in these tests to be local, including groups that exceed the
+// maximum number of ranks supported by the all-reduce kernel.
+constexpr int32_t kNumDevicesPerHost = 2 * se::gpu::kMaxNumAllReduceInputPtrs;
+
+// Returns a replica group containing replicas [0, num_replicas).
+std::vector<int32_t> IotaReplicaGroup(int64_t num_replicas) {
+  std::vector<int32_t> replica_group(num_replicas);
+  absl::c_iota(replica_group, 0);
+  return replica_group;
+}
 
 class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
  protected:
@@ -93,7 +107,8 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
                      gpu::GpuTargetConfig::FromProto(target_config_proto));
     GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
                              /*num_hosts_per_partition=*/1,
-                             /*num_devices_per_host=*/16, target_config);
+                             /*num_devices_per_host=*/kNumDevicesPerHost,
+                             target_config);
     int64_t num_replicas = 0;
     std::vector<std::string> group_strs;
     group_strs.reserve(replica_groups.size());
@@ -147,11 +162,26 @@ TEST_F(BuildAllReduceInfoTest, ReturnsOneShotStrategyForSmallS32) {
 
 TEST_F(BuildAllReduceInfoTest, ReturnsTwoShotStrategyForLargerF32) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {128, 1024}, HloOpcode::kAdd, {0, 1}),
+                        F32, {1024, 1024}, HloOpcode::kAdd, {0, 1}),
               IsOkAndHolds(AllOf(
                   Field(&AllReduceInfo::reduction_kind, ReductionKind::SUM),
                   Field(&AllReduceInfo::all_reduce_strategy,
                         AllReduceStrategy::kTwoShot))));
+}
+
+TEST_F(BuildAllReduceInfoTest, StrategyDependsOnReadSizeBytes) {
+  // 512 KB input (128K F32 elements):
+  // - On 2 devices: read_size_bytes = 1 MB <= 2 MB -> kOneShot.
+  // - On 8 devices: read_size_bytes = 4 MB > 2 MB -> kTwoShot.
+  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
+                        F32, {128, 1024}, HloOpcode::kAdd, {0, 1}),
+              IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                                 AllReduceStrategy::kOneShot)));
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false), F32,
+                {128, 1024}, HloOpcode::kAdd, {0, 1, 2, 3, 4, 5, 6, 7}),
+      IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                         AllReduceStrategy::kTwoShot)));
 }
 
 TEST_F(BuildAllReduceInfoTest, ReturnsMultimemStrategy) {
@@ -177,12 +207,23 @@ TEST_F(BuildAllReduceInfoTest, FailsForNonPowerOfTwoDevices) {
                        HasSubstr("only supported for power of 2")));
 }
 
-TEST_F(BuildAllReduceInfoTest, FailsForTooManyDevices) {
+TEST_F(BuildAllReduceInfoTest, SupportsMaxNumDevices) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
                         F32, {1024}, HloOpcode::kAdd,
-                        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}),
-              StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("does not support more than 8 ranks")));
+                        IotaReplicaGroup(se::gpu::kMaxNumAllReduceInputPtrs)),
+              IsOkAndHolds(Field(&AllReduceInfo::all_reduce_strategy,
+                                 AllReduceStrategy::kOneShot)));
+}
+
+TEST_F(BuildAllReduceInfoTest, FailsForTooManyDevices) {
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false), F32,
+                {1024}, HloOpcode::kAdd,
+                IotaReplicaGroup(2 * se::gpu::kMaxNumAllReduceInputPtrs)),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr(absl::StrCat("does not support more than ",
+                                      se::gpu::kMaxNumAllReduceInputPtrs,
+                                      " ranks"))));
 }
 
 TEST_F(BuildAllReduceInfoTest, FailsForUnsupportedTypeCombination) {
@@ -194,7 +235,7 @@ TEST_F(BuildAllReduceInfoTest, FailsForUnsupportedTypeCombination) {
 
 TEST_F(BuildAllReduceInfoTest, FailsForLargeInputs) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), MultimemEnabled(false),
-                        F32, {2, 1024, 1024}, HloOpcode::kAdd, {0, 1}),
+                        F32, {8, 1024, 1024}, HloOpcode::kAdd, {0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("only supported for small inputs")));
 }

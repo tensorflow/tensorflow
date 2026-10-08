@@ -46,6 +46,9 @@ LoadAddI32Ptrs3TestKernel(StreamExecutor* executor);
 absl::StatusOr<internal::CopyKernel::KernelType> LoadCopyTestKernel(
     StreamExecutor* executor);
 
+absl::StatusOr<internal::DynShmemKernel::KernelType> LoadDynShmemTestKernel(
+    StreamExecutor* executor);
+
 absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
     Platform::Id platform_id);
 

@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,11 +44,10 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
     return false;
   }
   HloComputation* computation = instr->parent();
-  ABSL_ASSIGN_OR_RETURN(
-      HloInstruction * done,
-      computation->CreateAsyncInstructions(
-          instr, {}, StreamAttributeAsyncWrapper::kParallelExecutionThread,
-          /*replace=*/true));
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * done,
+                   computation->CreateAsyncInstructions(
+                       instr, {}, HloInstruction::kParallelExecutionThread,
+                       /*replace=*/true));
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    done->backend_config<GpuBackendConfig>());
   // Set the false delay of done op to be false so it can be scheduled

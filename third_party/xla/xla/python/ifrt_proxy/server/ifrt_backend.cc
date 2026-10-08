@@ -34,6 +34,7 @@
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
@@ -42,7 +43,6 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -472,7 +472,7 @@ IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
             tsl::ThreadOptions options;
             // Use a larger stack size since XLA often requires larger stacks
             // for compilation.
-            options.stack_size = 240 * 1024;
+            options.stack_size = 2 * 1024 * 1024;
             return options;
           }(),
           "IfrtBackend",
@@ -820,7 +820,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
   for (const auto& [id, memory] : memories) {
     auto* m = init_resp->add_memories();
     m->set_id(id);
-    m->set_memory_space_kind(AsProtoStringData(*memory->Kind().memory_kind()));
+    m->set_memory_space_kind(AsProtoStringData(memory->Kind().value()));
     for (const auto* device : memory->Devices()) {
       m->add_device_ids(device->Id().value());
     }
@@ -1517,13 +1517,14 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
 
     // Populate executable metadata.
     compile_resp->set_name(AsProtoStringData(executable->name()));
-    compile_resp->set_num_devices(executable->num_devices());
-    for (const auto* device : executable->addressable_devices()) {
-      compile_resp->add_addressable_device_ids(device->Id().value());
-    }
     if (std::optional<xla::ifrt::DeviceListRef> device_list =
             executable->devices();
         device_list.has_value()) {
+      compile_resp->set_num_devices((*device_list)->size());
+      for (const auto* device :
+           (*device_list)->AddressableDeviceList()->devices()) {
+        compile_resp->add_addressable_device_ids(device->Id().value());
+      }
       for (const auto* device : (*device_list)->devices()) {
         compile_resp->add_device_ids(device->Id().value());
       }

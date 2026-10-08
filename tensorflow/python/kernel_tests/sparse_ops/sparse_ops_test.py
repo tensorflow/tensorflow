@@ -611,7 +611,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
                 reverse_index_map=[-1, 3], grad_values=[]
             )
         )
-        self.assertAllEqual(grad, [0., 0.])
+        self.assertAllEqual(grad, [0.0, 0.0])
       else:
         with self.assertRaisesRegex(
             (ValueError, errors.InvalidArgumentError),

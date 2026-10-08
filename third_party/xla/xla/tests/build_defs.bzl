@@ -26,6 +26,7 @@ load("//xla:xla.default.bzl", "xla_cc_test", "xla_py_test_deps")
 load(
     "//xla/tests:backend_defs.bzl",
     _ALL_BACKENDS = "ALL_BACKENDS",
+    _ALL_HARDWARE_BACKENDS = "ALL_HARDWARE_BACKENDS",
     _AMD_GPU_DEFAULT_BACKENDS = "AMD_GPU_DEFAULT_BACKENDS",
     _DEFAULT_BACKENDS = "DEFAULT_BACKENDS",
     _DEFAULT_DISABLED_BACKENDS = "DEFAULT_DISABLED_BACKENDS",
@@ -47,6 +48,7 @@ load("//xla/tsl/platform/default:cuda_build_defs.bzl", "is_cuda_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
+ALL_HARDWARE_BACKENDS = _ALL_HARDWARE_BACKENDS
 AMD_GPU_DEFAULT_BACKENDS = _AMD_GPU_DEFAULT_BACKENDS
 DEFAULT_DISABLED_BACKENDS = _DEFAULT_DISABLED_BACKENDS
 GPU_BACKENDS = _GPU_BACKENDS
@@ -62,7 +64,6 @@ def xla_test(
         deps,
         backends = [],
         disabled_backends = DEFAULT_DISABLED_BACKENDS,
-        real_hardware_only = False,  # @unused, all backends are real hardware.
         args = [],
         tags = [],
         copts = [],
@@ -134,7 +135,6 @@ def xla_test(
         "gpu". If this list is empty, the test will be generated for all supported
         backends.
       disabled_backends: A list of backends to NOT generate tests for.
-      real_hardware_only: No-op.
       args: Test arguments for the target.
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
@@ -259,6 +259,11 @@ def xla_test(
         }.items():
             this_backend_env[k] = v
 
+        if not use_legacy_runtime:
+            if "XLA_ALLOW_GET_DEFAULT_PLATFORM" in env:
+                fail("XLA_ALLOW_GET_DEFAULT_PLATFORM should not be set multiple times.")
+            this_backend_env["XLA_ALLOW_GET_DEFAULT_PLATFORM"] = "false"
+
         xla_cc_test(
             name = test_name,
             srcs = srcs,
@@ -283,6 +288,10 @@ def xla_test(
                 "XLA_TEST_MODIFIERS": ",".join(modifiers),
             }.items():
                 fast_compile_env[k] = v
+            if not use_legacy_runtime:
+                if "XLA_ALLOW_GET_DEFAULT_PLATFORM" in env:
+                    fail("XLA_ALLOW_GET_DEFAULT_PLATFORM should not be set multiple times.")
+                fast_compile_env["XLA_ALLOW_GET_DEFAULT_PLATFORM"] = "false"
             if "XLA_FLAGS" in fast_compile_env:
                 fast_compile_env["XLA_FLAGS"] += " --xla_cpu_opt_preset=FAST_COMPILE"
             else:

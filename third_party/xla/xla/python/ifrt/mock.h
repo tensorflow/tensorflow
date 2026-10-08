@@ -177,6 +177,11 @@ class MockClient : public RTTIExtends<MockClient, Client> {
               (const absl::Status& error,
                absl::Span<const ArraySpec> array_specs),
               (final));
+  MOCK_METHOD((absl::StatusOr<std::vector<tsl::Future<>>>),
+              CopyArraysToHostBufferShards,
+              (absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+               ArrayCopySemantics semantics),
+              (final));
   MOCK_METHOD(absl::StatusOr<ArrayRef>, AssembleArrayFromSingleDeviceArrays,
               (DType dtype, Shape shape, ShardingRef sharding,
                absl::Span<ArrayRef> arrays,
@@ -243,6 +248,11 @@ class MockClient : public RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<DeviceListRef>, MakeDeviceList,
               (absl::Span<Device* const> devices), (const));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>>,
+              Load,
+              (absl::Span<const ExecutableRef> executables,
+               absl::Span<std::unique_ptr<LoadOptions>> options),
+              (final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
               (const xla::ifrt::DeviceListRef& devices), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
@@ -398,7 +408,6 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
               (const, final));
@@ -427,8 +436,6 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteBundleResult>, ExecuteBundle,
               (absl::Span<BundleRef> args, const ExecuteOptions& options),
               (final));
-  MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
-              (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
   MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
@@ -468,7 +475,6 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
               (const, final));
@@ -497,8 +503,6 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteBundleResult>, ExecuteBundle,
               (absl::Span<BundleRef> args, const ExecuteOptions& options),
               (final));
-  MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
-              (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
   MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 

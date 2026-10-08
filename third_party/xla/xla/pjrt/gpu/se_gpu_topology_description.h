@@ -100,6 +100,10 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return 1;
   }
 
+  absl::StatusOr<std::pair<ProcessId, int>>
+  ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+      GlobalDeviceId device_id) const override;
+
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
       GlobalDeviceId device_id) const override;
@@ -109,6 +113,17 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   const std::optional<stream_executor::GpuTargetConfigProto>& target_config()
       const {
     return target_config_;
+  }
+
+  bool confidential_computing_enabled() const {
+    if (target_config_.has_value()) {
+      return target_config_->gpu_device_info().confidential_computing_enabled();
+    }
+    if (gpu_topology_ != nullptr && gpu_topology_->has_gpu_target_config()) {
+      return gpu_topology_->gpu_target_config()
+          .device_description.confidential_computing_enabled();
+    }
+    return false;
   }
 
   // Returns vendor specific attributes about the topology.
@@ -133,6 +148,16 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
 
   static absl::StatusOr<std::unique_ptr<StreamExecutorGpuTopologyDescription>>
   FromProto(const xla::PjRtTopologyDescriptionProto& proto);
+
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int process_index, int num_replicas,
+      std::optional<int> num_replicas_per_slice, int num_partitions,
+      const MultiSliceConfig* multi_slice_config) const override;
+
+  absl::StatusOr<int> GetMemorySpaceKindForShape(
+      const xla::Shape& shape) const override;
+
+  bool IsMemorySpaceOnCpu(int memory_space_kind_id) const override;
 
  private:
   std::unique_ptr<PjRtStreamExecutorDeviceDescription> CreateDeviceDescription(

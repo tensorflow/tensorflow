@@ -27,9 +27,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
@@ -113,6 +113,9 @@ class TestMemoryReservation final : public se::MemoryReservation {
   se::DeviceAddressBase address() const override {
     return se::DeviceAddressBase(storage_.data(), size_);
   }
+
+  // Matches the allocation granularity the test installs on the allocator.
+  size_t granularity() const override { return kGranularity; }
 
   int active_mapping_count() const { return active_mapping_count_; }
   const void* last_mapped_allocation_address() const {

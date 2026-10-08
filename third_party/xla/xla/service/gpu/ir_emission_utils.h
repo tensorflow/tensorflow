@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
@@ -72,6 +72,25 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
 // GroupedMatMul.
 bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr);
 
+// Returns true if the ragged-dot instruction can be lowered by the Triton
+// XTile backend.  Criteria:
+//   - Exactly one LHS ragged dimension.
+//   - Tiling propagation enabled
+//   (xla_gpu_experimental_enable_tiling_propagation).
+//   - Element types supported by the xtile emitter: F16, BF16, F32, F64,
+//     F8E5M2, F8E4M3FN; nanoo FP8 types (F8E4M3FNUZ, F8E5M2FNUZ) on ROCm only.
+//     Complex types (C64, C128) are not supported.
+bool IsTritonSupportedRaggedDot(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const HloInstruction& instr);
+
+// Returns true if `dnums` describes the weight-gradient (wgrad) flavor of
+// ragged-dot, i.e. the LHS ragged dimension is also one of the contracting
+// dimensions (kRaggedContracting mode), as opposed to a batch or
+// non-contracting dimension. Wgrad ragged-dots lower to cuDNN's
+// moe_grouped_matmul_bwd rather than the forward moe_grouped_matmul path.
+bool IsRaggedDotWgrad(const RaggedDotDimensionNumbers& dnums);
+
 constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
 }
@@ -108,7 +127,7 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 inline constexpr absl::string_view kTritonNestedGemmFusionKind =
     "__triton_nested_gemm_fusion";
 
-// Fusions that use Triton have FusionBackendConfig.kind equal to this string.
+// Fusions that use cuDNN have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
 inline constexpr absl::string_view kUncompilableFusion =
@@ -141,17 +160,9 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // implementation.
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
 
-
-// Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
-// with multimem.
-bool IsMosaicWithMultimem(const HloInstruction& hlo);
-
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
 // with collective metadata.
 bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo);
-
-// Returns true if instruction is a Mosaic GPU collective instruction.
-bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo);
 
 // Returns true if `instr` is a slice (or dynamic slice) instruction and
 // operates on a contiguous slice of the input buffer.

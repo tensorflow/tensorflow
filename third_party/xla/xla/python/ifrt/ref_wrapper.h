@@ -32,6 +32,8 @@ namespace ifrt {
 template <typename T>
 class RCReferenceWrapper {
  public:
+  using element_type = T;  // cf. `unique_ptr::element_type`
+
   RCReferenceWrapper() = default;
 
   explicit RCReferenceWrapper(tsl::RCReference<T> ref) noexcept

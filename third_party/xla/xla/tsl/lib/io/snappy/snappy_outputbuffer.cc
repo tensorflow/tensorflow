@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 
 namespace tsl {
 namespace io {

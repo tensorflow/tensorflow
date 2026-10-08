@@ -19,15 +19,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_serdes.pb.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -68,8 +66,9 @@ class SingleDeviceShardingSerDes
     SingleDeviceShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_device_id(sharding.devices()->devices().front()->Id().value());
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     return proto.SerializeAsCord();
   }
@@ -128,8 +127,9 @@ class OpaqueShardingSerDes : public RTTIExtends<OpaqueShardingSerDes, SerDes> {
     OpaqueShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     return proto.SerializeAsCord();
   }
@@ -189,8 +189,9 @@ class ConcreteShardingSerDes
     ConcreteShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     if (sharding.has_static_shape()) {
       sharding.shape().ToProto(*proto.mutable_shape(), version);
@@ -290,8 +291,9 @@ class ConcreteEvenShardingSerDes
     ConcreteEvenShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      // NOLINTNEXTLINE(*-readability-redundant-string-conversions)
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     sharding.shape().ToProto(*proto.mutable_shape(), version);
     sharding.shard_shape().ToProto(*proto.mutable_shard_shape(), version);
@@ -337,76 +339,10 @@ class ConcreteEvenShardingSerDes
   static char ID;  // NOLINT
 };
 
-class ShardingParamShardingSerDes
-    : public RTTIExtends<ShardingParamShardingSerDes, SerDes> {
- public:
-  absl::string_view type_name() const override {
-    return "xla::ifrt::ShardingParamSharding";
-  }
-
-  absl::StatusOr<absl::Cord> Serialize(
-      const Serializable& serializable,
-      std::unique_ptr<SerializeOptions> options) override {
-    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
-    if (version.version_number() < SerDesVersionNumber(0)) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Unsupported ", version.version_number(),
-                       " for ShardingParamSharding serialization"));
-    }
-    const ShardingParamSharding& sharding =
-        cast<ShardingParamSharding>(serializable);
-    ShardingParamShardingProto proto;
-    proto.set_version_number(SerDesVersionNumber(0).value());
-    sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
-    }
-    ABSL_RETURN_IF_ERROR(sharding.sharding_param().ToProto(
-        *proto.mutable_sharding_param(), version));
-    return proto.SerializeAsCord();
-  }
-
-  absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const absl::Cord& serialized,
-      std::unique_ptr<DeserializeOptions> options) override {
-    const auto* deserialize_sharding_options =
-        dyn_cast_or_null<DeserializeShardingOptions>(options.get());
-    if (deserialize_sharding_options == nullptr) {
-      return absl::InvalidArgumentError(
-          "DeserializeShardingOptions must be provided");
-    }
-    ShardingParamShardingProto proto;
-    if (!proto.ParseFromString(serialized)) {
-      return absl::InvalidArgumentError(
-          "Failed to parse serialized ShardingParamSharding");
-    }
-    const SerDesVersionNumber version_number(proto.version_number());
-    if (version_number != SerDesVersionNumber(0)) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Unsupported ", version_number,
-                       " for ShardingParamSharding deserialization"));
-    }
-    ABSL_ASSIGN_OR_RETURN(auto devices,
-                     DeviceList::FromProto(deserialize_sharding_options->client,
-                                           proto.devices()));
-    MemoryKind memory_kind;
-    if (proto.has_memory_kind()) {
-      memory_kind = MemoryKind(proto.memory_kind());
-    }
-    ABSL_ASSIGN_OR_RETURN(ShardingParam sharding_param,
-                     ShardingParam::FromProto(proto.sharding_param()));
-    return ShardingParamSharding::Create(std::move(sharding_param),
-                                         std::move(devices), memory_kind);
-  }
-
-  static char ID;  // NOLINT
-};
-
 [[maybe_unused]] char SingleDeviceShardingSerDes::ID = 0;   // NOLINT
 [[maybe_unused]] char OpaqueShardingSerDes::ID = 0;         // NOLINT
 [[maybe_unused]] char ConcreteShardingSerDes::ID = 0;       // NOLINT
 [[maybe_unused]] char ConcreteEvenShardingSerDes::ID = 0;   // NOLINT
-[[maybe_unused]] char ShardingParamShardingSerDes::ID = 0;  // NOLINT
 
 // clang-format off
 bool register_single_device_sharding_serdes = ([]{
@@ -427,11 +363,6 @@ bool register_concrete_sharding_serdes = ([]{
 bool register_concrete_even_sharding_serdes = ([]{
   RegisterSerDes<ConcreteEvenSharding>(
       std::make_unique<ConcreteEvenShardingSerDes>());
-}(), true);
-
-bool register_sharding_param_sharding_serdes = ([]{
-  RegisterSerDes<ShardingParamSharding>(
-      std::make_unique<ShardingParamShardingSerDes>());
 }(), true);
 // clang-format on
 

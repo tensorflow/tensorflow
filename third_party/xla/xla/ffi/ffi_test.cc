@@ -30,13 +30,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -281,14 +282,18 @@ struct MyContext {
 struct MyExtension {
   using Type = MyContext;
   using CExtension = MyCExtension;
+
   static constexpr auto kName = "MyExtension";
   static constexpr int64_t kExtensionType = 1234;
   static constexpr int32_t kMajorVersion = 1;
   static constexpr int32_t kMinorVersion = 2;
 
-  static Type Create(const CExtension* ext) { return Type{ext}; }
   static bool Support(int32_t major_version, int32_t minor_version) {
     return major_version == kMajorVersion && minor_version <= kMinorVersion;
+  }
+
+  static Type Create(const XLA_FFI_Api*, const CExtension* ext) {
+    return Type{ext};
   }
 };
 
@@ -540,6 +545,21 @@ TEST(FfiTest, AttrsAsDictionary) {
   auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, CustomOptionsAsDictionary) {
+  xla::CustomOptions options(
+      {{"i64", int64_t{42}}, {"str", std::string("value")}});
+  auto call_frame = CallFrameBuilder(0, 0).Build();
+  auto handler = Ffi::Bind().Ctx<CustomOptions>().To([](Dictionary options) {
+    EXPECT_THAT(options.get<int64_t>("i64"), absl_testing::IsOkAndHolds(42));
+    EXPECT_THAT(options.get<absl::string_view>("str"),
+                absl_testing::IsOkAndHolds("value"));
+    return absl::OkStatus();
+  });
+  InvokeContext context;
+  context.custom_options = &options;
+  EXPECT_OK(Invoke(Api(), *handler, call_frame, context));
 }
 
 TEST(FfiTest, DictionaryAttr) {

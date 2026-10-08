@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/ynn_support.h"
@@ -215,6 +215,21 @@ absl::StatusOr<uint32_t> DefineReshapeOp(ynn_subgraph_t subgraph,
                                          TensorIdMap& tensor_ids,
                                          const HloInstruction* instr) {
   return DefineBitcastOp(subgraph, tensor_ids, instr);
+}
+
+absl::StatusOr<uint32_t> DefineCopyOp(ynn_subgraph_t subgraph,
+                                      TensorIdMap& tensor_ids,
+                                      const HloInstruction* instr) {
+  VLOG(3) << absl::StreamFormat("Define tensor value for copy op: %s",
+                                instr->ToString());
+  CHECK_EQ(instr->opcode(), HloOpcode::kCopy);
+  const HloInstruction* input = instr->operand(0);
+  CHECK_EQ(input->shape().element_type(), instr->shape().element_type());
+  ABSL_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
+  ABSL_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+
+  YNN_RETURN_IF_ERROR(ynn_define_copy(subgraph, in, &out, /*flags=*/0));
+  return out;
 }
 
 absl::StatusOr<uint32_t> DefineTransposeOp(ynn_subgraph_t subgraph,
@@ -845,7 +860,7 @@ absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
       continue;
     }
 
-    if (instr->IsElementwise()) {
+    if (instr->IsElementwise() && instr->opcode() != HloOpcode::kCopy) {
       if (!IsElementwiseOpSupportedByYnn(instr)) {
         return InvalidArgument(
             "Unsupported elementwise instruction in YNN fusion: %s",
@@ -892,6 +907,16 @@ absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
         }
         ABSL_ASSIGN_OR_RETURN(tensor_ids[instr],
                          DefineReshapeOp(subgraph.get(), tensor_ids, instr));
+      } break;
+
+      case HloOpcode::kCopy: {
+        if (!IsCopyOpSupportedByYnn(instr)) {
+          return InvalidArgument(
+              "Unsupported copy instruction in YNN fusion: %s",
+              instr->ToString());
+        }
+        ABSL_ASSIGN_OR_RETURN(tensor_ids[instr],
+                         DefineCopyOp(subgraph.get(), tensor_ids, instr));
       } break;
 
       case HloOpcode::kTranspose: {

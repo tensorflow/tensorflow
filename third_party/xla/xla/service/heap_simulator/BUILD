@@ -20,6 +20,7 @@ load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
 )
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -68,7 +69,6 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/service:time_utils",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
@@ -84,10 +84,14 @@ cc_library(
         "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-    ],
+        "@tsl//tsl/platform",
+    ] + if_google([
+        "//third_party/ortools/ortools/algorithms:multikey_radix_sort",
+    ]),
 )
 
 xla_cc_test(
@@ -110,9 +114,7 @@ xla_cc_test(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_value",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "@com_google_absl//absl/container:flat_hash_map",

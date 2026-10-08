@@ -24,9 +24,10 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/backends/gpu/target_config/target_config.h"
@@ -60,8 +61,10 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/nvptx_alias_info.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
@@ -140,10 +143,13 @@ class GpuOptProvider : public CompiledOptProvider {
   // Registration of GPU-specific HLO Passes                                  //
   //////////////////////////////////////////////////////////////////////////////
   void RegisterProviderPasses(HloModule& module) override {
-    auto device_description = GetDeviceDescription(&module);
+    absl::StatusOr<GpuTopology> gpu_topology = GetGpuTopology(&module);
+    auto device_description = GetDeviceDescription(&module, gpu_topology);
     auto debug_config = module.config().debug_options();
     se::GpuComputeCapability gpu_compute_capability;
+    se::DeviceDescription device_description_or_default;
     if (device_description.ok()) {
+      device_description_or_default = *device_description;
       gpu_compute_capability = device_description->gpu_compute_capability();
       if (gpu_compute_capability.IsCuda()) {
         alias_info_ =
@@ -154,7 +160,10 @@ class GpuOptProvider : public CompiledOptProvider {
     } else {
       LOG(WARNING)
           << "No compute capability specified, defaulting to Hopper. Use "
-             "--xla_gpu_target_config_filename= to specify a target config.";
+             "--xla_gpu_target_config_filename= or "
+             "--xla_gpu_topology_filename= to specify a target config.";
+      device_description_or_default =
+          gpu::TestGpuDeviceInfo::H100SXMDeviceInfo();
       gpu_compute_capability = stream_executor::CudaComputeCapability::Hopper();
     }
     static BufferValue::SizeFunction* const kSizeFunction =
@@ -173,12 +182,12 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<HostOffloader>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
     RegisterPass<gpu::CuDnnCustomCallConverter>();
-    RegisterPass<gpu::DotAlgorithmRewriter>();
+    RegisterPass<gpu::DotAlgorithmRewriter>(gpu_compute_capability);
     RegisterPass<gpu::DotDimensionSorter>();
     RegisterPass<gpu::DotNormalizer>();
     RegisterPass<gpu::DotOperandConverter>();
     RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
-    RegisterPass<gpu::GemmFusion>(gpu_compute_capability);
+    RegisterPass<gpu::GemmFusion>(device_description_or_default);
     RegisterPass<gpu::ReduceScatterCreator>();
     RegisterPass<gpu::ReductionDegenerateDimRemover>();
     RegisterPass<gpu::ReductionDimensionGrouper>();
@@ -197,13 +206,31 @@ class GpuOptProvider : public CompiledOptProvider {
   }
 
  private:
+  absl::StatusOr<GpuTopology> GetGpuTopology(const HloModule* module) {
+    const std::string& topology_file =
+        module->config().debug_options().xla_gpu_topology_filename();
+    if (topology_file.empty()) {
+      return absl::NotFoundError("No GPU topology file specified.");
+    }
+    return ParseGpuTopology(topology_file);
+  }
+
   absl::StatusOr<se::DeviceDescription> GetDeviceDescription(
-      const HloModule* module) {
-    ABSL_ASSIGN_OR_RETURN(
-        gpu::GpuTargetConfig target_config,
-        gpu::GetTargetConfigFromFile(
-            module->config().debug_options().xla_gpu_target_config_filename()));
-    return target_config.device_description;
+      const HloModule* module,
+      const absl::StatusOr<GpuTopology>& gpu_topology) {
+    const std::string& target_config_file =
+        module->config().debug_options().xla_gpu_target_config_filename();
+    if (!target_config_file.empty()) {
+      ABSL_ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
+                       gpu::GetTargetConfigFromFile(target_config_file));
+      return target_config.device_description;
+    }
+    if (gpu_topology.ok() && gpu_topology->has_gpu_target_config()) {
+      return gpu_topology->gpu_target_config().device_description;
+    }
+    return absl::NotFoundError(
+        "Neither --xla_gpu_target_config_filename nor "
+        "--xla_gpu_topology_filename specified a device description.");
   }
 
   absl::StatusOr<std::string> LlvmIrFor(std::unique_ptr<HloModule> input_module,

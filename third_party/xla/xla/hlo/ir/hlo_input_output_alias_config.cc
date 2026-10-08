@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -46,6 +46,15 @@ namespace xla {
 bool HloInputOutputAliasConfig::OutputHasAlias(
     const ShapeIndex& output_index) const {
   return alias_.element(output_index).has_value();
+}
+
+bool HloInputOutputAliasConfig::OutputHasAnyAlias() const {
+  for (const auto& [index, alias] : alias_) {
+    if (alias.has_value()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 absl::Status HloInputOutputAliasConfig::SetUpAlias(

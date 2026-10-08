@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
@@ -76,6 +76,8 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 static constexpr absl::string_view kEntryFuncName = "main";
+}  // namespace
+
 uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
   std::string s;
   llvm::raw_string_ostream os(s);
@@ -84,7 +86,6 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
   module.print(os, flags);
   return tsl::Fingerprint64(os.str());
 }
-}  // namespace
 
 absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   uint64_t fingerprint = tsl::Fingerprint64(platform_name);

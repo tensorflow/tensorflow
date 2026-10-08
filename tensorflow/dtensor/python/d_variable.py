@@ -164,7 +164,7 @@ class DVariable(resource_variable_ops.ResourceVariable):
     if callable(initial_value):
       unwrapped = initial_value
       if issubclass(type(initial_value), functools.partial):
-        unwrapped = initial_value.func
+        unwrapped = initial_value.func  # pyrefly: ignore[missing-attribute]
 
       # If wrapped is a CheckpointInitialValueCallable, this means that
       # we are creating a Variable during a checkpoint restore.

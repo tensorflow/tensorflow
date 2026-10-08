@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/io/path.h"

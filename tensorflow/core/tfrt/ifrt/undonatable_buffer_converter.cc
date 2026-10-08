@@ -22,13 +22,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "llvm/Support/Casting.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/undonatable_common_pjrt_buffer.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
@@ -76,7 +76,7 @@ absl::Status MakeArrayBuffersUndonatable(xla::ifrt::Array* array) {
     return absl::InvalidArgumentError("array must not be null");
   }
   auto* pjrt_compatible_array =
-      llvm::dyn_cast<xla::ifrt::PjRtCompatibleArray>(array);
+      xla::ifrt::dyn_cast<xla::ifrt::PjRtCompatibleArray>(array);
   if (pjrt_compatible_array == nullptr) {
     LOG_FIRST_N(WARNING, 1)
         << "Loaded variable array is not a PjRt-compatible array; keeping "

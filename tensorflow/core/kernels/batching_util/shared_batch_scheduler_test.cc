@@ -3300,6 +3300,106 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, RemoveTaskSkipsCancelledTask) {
 }
 
 TEST_P(SharedBatchSchedulerPriorityAwareTest,
+       ScheduleBatchReturnsNullptrWhenAllTasksLazyCancelled) {
+  absl::Notification block_thread, thread_blocked;
+  absl::Notification live_batch_processed;
+  const int kBlockerTaskSize = 10;
+  const int kExpiredTaskSize = 3;
+  const int kCancelledTaskSize = 2;
+  const int kLiveTaskSize = 4;
+
+  int processed_empty_batch_count = 0;
+
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->size() == kBlockerTaskSize && batch->num_tasks() == 1) {
+      // Blocker task
+      thread_blocked.Notify();
+      block_thread.WaitForNotification();
+    } else if (batch->empty()) {
+      processed_empty_batch_count++;
+    } else {
+      EXPECT_TRUE(batch->IsClosed());
+      EXPECT_EQ(batch->num_tasks(), 1);
+      EXPECT_EQ(batch->task(0).size(), kLiveTaskSize);
+      live_batch_processed.Notify();
+    }
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
+                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, /*max_queue_depth=*/60);
+  options.priority_aware_scheduler_options.enable_lazy_cancellation_filtering =
+      true;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                          CreateQueue(scheduler, options, callback));
+
+  CellReader<int64_t> cancelled_task_count_reader(
+      "/tensorflow/serving/batching/lazy_cancelled_task_count");
+  CellReader<int64_t> cancelled_task_size_reader(
+      "/tensorflow/serving/batching/lazy_cancelled_task_size");
+
+  // 1. Block thread
+  TF_ASSERT_OK(ScheduleTask(kBlockerTaskSize, queue.get(),
+                            tsl::criticality::Criticality::kCritical));
+  thread_blocked.WaitForNotification();
+
+  // 2. Schedule an expired task and a cancelled task.
+  auto done_notification1 = std::make_shared<absl::Notification>();
+  auto status1 = std::make_shared<absl::Status>();
+  auto task1 = std::make_unique<FakeTask>(
+      kExpiredTaskSize, tsl::criticality::Criticality::kCriticalPlus,
+      done_notification1, status1);
+  task1->set_deadline(absl::Now() - absl::Seconds(1));  // Expired
+  TF_ASSERT_OK(queue->Schedule(&task1));
+
+  auto done_notification2 = std::make_shared<absl::Notification>();
+  auto status2 = std::make_shared<absl::Status>();
+  auto task2 = std::make_unique<FakeTask>(
+      kCancelledTaskSize, tsl::criticality::Criticality::kCriticalPlus,
+      done_notification2, status2);
+  task2->set_cancelled(true);
+  TF_ASSERT_OK(queue->Schedule(&task2));
+
+  // 3. Unblock
+  block_thread.Notify();
+
+  // Verify FinishTask was called on both tasks with appropriate errors.
+  done_notification1->WaitForNotification();
+  EXPECT_THAT(*status1,
+              absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded,
+                                     HasSubstr("RPC deadline exceeded")));
+
+  done_notification2->WaitForNotification();
+  EXPECT_THAT(*status2, absl_testing::StatusIs(absl::StatusCode::kCancelled,
+                                               HasSubstr("RPC is cancelled")));
+
+  // Verify cancellation metrics were incremented.
+  EXPECT_EQ(cancelled_task_count_reader.Delta(
+                std::string(kLazyCancellationReasonDeadlineExceeded)),
+            1);
+  EXPECT_EQ(cancelled_task_size_reader.Delta(
+                std::string(kLazyCancellationReasonDeadlineExceeded)),
+            kExpiredTaskSize);
+  EXPECT_EQ(cancelled_task_count_reader.Delta(
+                std::string(kLazyCancellationReasonRpcCancelled)),
+            1);
+  EXPECT_EQ(cancelled_task_size_reader.Delta(
+                std::string(kLazyCancellationReasonRpcCancelled)),
+            kCancelledTaskSize);
+
+  // 4. Verify thread remains healthy and can process subsequent live tasks.
+  TF_ASSERT_OK(ScheduleTask(kLiveTaskSize, queue.get(),
+                            tsl::criticality::Criticality::kCriticalPlus));
+  live_batch_processed.WaitForNotification();
+  // Verify that no empty batches were processed.
+  EXPECT_EQ(processed_empty_batch_count, 0);
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest,
        RemoveTaskDoesNotLazyFilterWhenDisabled) {
   // Verify that expired/cancelled tasks are delivered normally when
   // enable_lazy_cancellation_filtering is false (the default).
@@ -4850,6 +4950,69 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
     // Trigger batch timeout for the second batch.
     env.AdvanceByMicroseconds(1001);
     second_batch_processed.WaitForNotification();
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
+// Tests that when an unsplittable task of size > batch_down_size is at the
+// head of the queue with kMinimizeTpuCostPerRequestPolicy, batching down to
+// the smaller size is skipped and the scheduler falls back to candidate_size,
+// avoiding empty-batch spin loop.
+TEST_P(SharedBatchSchedulerPriorityAwareTest,
+       MinimizeTpuCostPerRequestUnsplittableTaskFallsBackToCandidateSize) {
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    // Set up ModelBatchStats so that batch-down is cheaper per request.
+    // With allowed_batch_sizes={2, 4, 8} and candidate_size=3:
+    //   pad_up_size=4, batch_down_size=2
+    //   cost_per_request(pad_up)  = cost(4) / candidate_size = 3.1s / 3 ≈ 1.03s
+    //   cost_per_request(batch_down) = cost(2) / batch_down_size = 2.0s / 2
+    //   = 1.0s
+    // Since 1.0s < 1.03s, the policy should batch down to size 2.
+    ModelBatchStats model_batch_stats;
+    model_batch_stats.batch_size(2).tpu_cost().Register(absl::Seconds(2));
+    model_batch_stats.batch_size(4).tpu_cost().Register(absl::Seconds(3.1));
+
+    absl::Notification batch_processed;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      EXPECT_TRUE(batch->IsClosed());
+      // Candidate size 3 with cost model prefers batch-down size 2.
+      // Since task size 3 > 2 is unsplittable, trimming is skipped and the
+      // batch is processed at candidate_size 3.
+      EXPECT_EQ(batch->size(), 3);
+      batch_processed.Notify();
+    };
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env));
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/8,
+        /*batch_timeout_micros=*/1000, /*max_queue_depth=*/10);
+    options.allowed_batch_sizes = {2, 4, 8};
+    options.batch_padding_policy = kMinimizeTpuCostPerRequestPolicy;
+    options.model_batch_stats = &model_batch_stats;
+    // Disable large batch splitting to ensure the task is considered
+    // unsplittable.
+    options.enable_large_batch_splitting = false;
+
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                            CreateQueue(scheduler, options, callback));
+
+    // Schedule 1 task of size 3.
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
+                              tsl::criticality::Criticality::kCritical));
+
+    // Trigger batch timeout.
+    env.AdvanceByMicroseconds(1001);
+    batch_processed.WaitForNotification();
 
     start_teardown.Notify();
   }

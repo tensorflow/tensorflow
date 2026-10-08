@@ -35,17 +35,18 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/custom_options.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -87,6 +88,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
@@ -94,7 +96,7 @@ limitations under the License.
 #include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -175,17 +177,17 @@ PjRtCApiClient::PjRtCApiClient(
       extensions_(InitExtensions(c_api)),
       host_memory_allocator_(InitHostMemoryAllocator(c_api, c_client)),
       // Example platform version string:
-      //   PJRT C API
       //   TFRT TPU v2
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_client, c_api)),
       platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   InitDevicesAndMemorySpaces();
   InitAttributes();
   LOG(INFO) << "PjRtCApiClient created.";
 }
+
+bool PjRtCApiClient::IsCApi() const { return true; }
 
 void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   // Initialize devices.
@@ -745,6 +747,15 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
 }
 
 }  // namespace
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  tsl::profiler::TraceMe traceme("PjRtCApiClient::Compile(XlaComputation)");
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* const topology,
+                   GetTopologyDescription());
+  return InitializeArgsAndCompileAot(c_api_, this, &computation, options,
+                                     *topology);
+}
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
     MaybeOwningMlirModule module, CompileOptions options) {
@@ -1390,6 +1401,7 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
       PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.client = c_client_.get();
+  args.allow_cancel_notifier = true;
 
   ShapesInfo shapes_info = MakeShapesInfo(shapes);
   args.num_shapes = shapes.size();
@@ -2674,8 +2686,8 @@ PjRtCApiExecutable::GetOutputMemoryKinds() const {
   return std::vector<std::vector<absl::string_view>>{std::move(out)};
 }
 
-absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
-PjRtCApiExecutable::GetHloModules() const {
+absl::StatusOr<std::shared_ptr<HloModule>> PjRtCApiExecutable::GetHloModule()
+    const {
   auto* c_api = pjrt_c_api();
   auto* executable = c_executable();
   PJRT_Executable_OptimizedProgram_Args args;
@@ -2720,23 +2732,14 @@ PjRtCApiExecutable::GetHloModules() const {
     // equivalent) once implemented.
     mlir::MlirToHloConversionOptions options;
     options.return_tuple = false;
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloModule> hlo_module,
-                     mlir::ConvertMlirHloToHloModule(module.get(), options));
-
-    std::vector<std::shared_ptr<HloModule>> out;
-    out.push_back(std::move(hlo_module));
-    return out;
+    return mlir::ConvertMlirHloToHloModule(module.get(), options);
   }
 
   HloModuleProtoWithConfig proto;
   if (!proto.ParseFromString(code)) {
     return InvalidArgument("Failed to deserialize HloModuleProtoWithConfig");
   }
-  std::vector<std::shared_ptr<HloModule>> out;
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                   HloModule::CreateFromProtoWithConfig(proto));
-  out.push_back(std::move(module));
-  return out;
+  return HloModule::CreateFromProtoWithConfig(proto);
 }
 
 absl::StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
@@ -3287,7 +3290,8 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     SendRecvCallbackData& callback_data,
     std::vector<int64_t>& non_donatable_input_indices_storage,
     std::vector<int>& task_ids_storage,
-    std::vector<int64_t>& incarnation_ids_storage) const {
+    std::vector<int64_t>& incarnation_ids_storage,
+    std::vector<PJRT_NamedValue>& c_custom_options) const {
   bool using_host_callbacks =
       !options.send_callbacks.empty() || !options.recv_callbacks.empty();
   PJRT_LoadedExecutable_Execute_Args args;
@@ -3324,6 +3328,13 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options->num_tasks = options.incarnations.size();
   args.options->task_ids = task_ids_storage.data();
   args.options->incarnation_ids = incarnation_ids_storage.data();
+
+  if (options.custom_options != nullptr) {
+    ABSL_ASSIGN_OR_RETURN(c_custom_options, pjrt::ConvertToPjRtNamedValueList(
+                                           options.custom_options->map()));
+    args.options->custom_options = c_custom_options.data();
+    args.options->num_custom_options = c_custom_options.size();
+  }
 
   // If the executable has no addressable devices, `num_args` cannot be
   // determined but it is unused. 0 serves as a placeholder.
@@ -3430,6 +3441,7 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<int64_t> non_donatable_input_indices_storage;
   std::vector<int> task_ids_storage;
   std::vector<int64_t> incarnation_ids_storage;
+  std::vector<PJRT_NamedValue> c_custom_options;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (returned_futures.has_value()) {
@@ -3455,11 +3467,11 @@ PjRtCApiLoadedExecutable::Execute(
   auto callback_data = std::make_shared<SendRecvCallbackData>();
   ABSL_ASSIGN_OR_RETURN(
       PJRT_LoadedExecutable_Execute_Args args,
-      GetCommonExecuteArgs(argument_handles, options, c_options,
-                           c_argument_lists_storage, c_arguments,
-                           device_complete_events, *callback_data,
-                           non_donatable_input_indices_storage,
-                           task_ids_storage, incarnation_ids_storage));
+      GetCommonExecuteArgs(
+          argument_handles, options, c_options, c_argument_lists_storage,
+          c_arguments, device_complete_events, *callback_data,
+          non_donatable_input_indices_storage, task_ids_storage,
+          incarnation_ids_storage, c_custom_options));
 
   // Allocates memory for output. `c_output_lists_storage` and `c_output_lists`
   // need to stay alive during the call of `PJRT_LoadedExecutable_Execute`.
@@ -3525,6 +3537,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<int64_t> non_donatable_input_indices_storage;
   std::vector<int> task_ids_storage;
   std::vector<int64_t> incarnation_ids_storage;
+  std::vector<PJRT_NamedValue> c_custom_options;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (fill_future) {
@@ -3536,11 +3549,11 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
   ABSL_ASSIGN_OR_RETURN(
       PJRT_LoadedExecutable_Execute_Args args,
-      GetCommonExecuteArgs(argument_handles_vec, options, c_options,
-                           c_argument_lists_storage, c_arguments,
-                           device_complete_events, *callback_data,
-                           non_donatable_input_indices_storage,
-                           task_ids_storage, incarnation_ids_storage));
+      GetCommonExecuteArgs(
+          argument_handles_vec, options, c_options, c_argument_lists_storage,
+          c_arguments, device_complete_events, *callback_data,
+          non_donatable_input_indices_storage, task_ids_storage,
+          incarnation_ids_storage, c_custom_options));
 
   // Allocates memory for output. `c_output_lists_storage` and `c_output_lists`
   // need to stay alive during the call of `PJRT_LoadedExecutable_Execute`.
@@ -4314,8 +4327,7 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
       tpu_topology_extension_(pjrt::FindExtension<PJRT_TpuTopology_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_TpuTopology)),
       c_topology_(c_topology),
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_topology, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_topology, c_api)),
       platform_name_(::pjrt::PlatformName(c_api, c_topology)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   if (owned) {
@@ -5056,6 +5068,14 @@ absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler() {
   }
   return GetCApiCompiler(device_types[0]);
 }
+
+[[maybe_unused]] static bool register_capi_compiler_lookup = []() {
+  PjRtTopologyDescriptionRegistry::Global().RegisterDynamicCompilerLookup(
+      [](absl::string_view platform_name) {
+        return GetCApiCompiler(platform_name);
+      });
+  return true;
+}();
 
 absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler(
     absl::string_view device_type) {

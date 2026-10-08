@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -539,19 +539,6 @@ absl::StatusOr<Shape> LayoutModeToXlaShape(
   Shape result = unsharded_shape;
   LayoutUtil::ClearLayout(&result);
   LayoutMode::Mode mode = layout_mode.mode;
-  if (mode == LayoutMode::Mode::kAuto &&
-      memory_space == Layout::kHostMemorySpace) {
-    // Fall back to default layout mode so that the memory space is preserved,
-    // in order to prevent the
-    // CompileTimeHostOffloadOutputLocationMismatch error later.
-    LOG(WARNING) << "Auto layout mode is not supported for host memory "
-                    "space (memory space is part of Layout). Falling back to "
-                    "default layout mode. "
-                 << "unsharded_shape: " << unsharded_shape.ToString()
-                 << ", sharded_shape: " << sharded_shape.ToString()
-                 << ", memory_space: " << memory_space;
-    mode = LayoutMode::Mode::kDefault;
-  }
   switch (mode) {
     case LayoutMode::Mode::kDefault: {
       ABSL_ASSIGN_OR_RETURN(Shape layout,
@@ -565,11 +552,13 @@ absl::StatusOr<Shape> LayoutModeToXlaShape(
       break;
     }
     case LayoutMode::Mode::kAuto: {
-      // Don't set any layout on `result`.
-      break;
+      if (memory_space != Layout::kDefaultMemorySpace) {
+        // AUTO has no layout but it can have memory space.
+        result.mutable_layout()->set_memory_space(memory_space);
+      }
+      return result;
     }
   }
-  // When layout is AUTO, memory space can't be set since it will be partial.
   if (result.has_layout()) {
     result.mutable_layout()->set_memory_space(memory_space);
   }
@@ -805,7 +794,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+absl::StatusOr<std::vector<int>> ComputeParametersThatMayBeDonated(
     const HloModule& module, bool tuple_inputs) {
   const HloComputation* computation = module.entry_computation();
   int number_of_parameters = [&]() -> int {
@@ -818,11 +807,11 @@ absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     }
     return computation->num_parameters();
   }();
-  return ComputeParametersThatMustBeDonated(module.input_output_alias_config(),
-                                            number_of_parameters, tuple_inputs);
+  return ComputeParametersThatMayBeDonated(module.input_output_alias_config(),
+                                           number_of_parameters, tuple_inputs);
 }
 
-absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+absl::StatusOr<std::vector<int>> ComputeParametersThatMayBeDonated(
     const HloInputOutputAliasConfig& config, int num_parameters,
     bool tuple_inputs) {
   // If any buffer in a parameter is aliased we will donate the entire input

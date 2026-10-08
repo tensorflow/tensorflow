@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
@@ -36,12 +36,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/name_uniquer.h"
@@ -67,7 +67,7 @@ class IrEmitterContext {
                    mlir::MLIRContext* mlir_context, llvm::Triple target_triple,
                    std::string data_layout, KernelCompiler* compiler,
                    xla::cpu::TargetMachineOptions cpu_target_machine_options,
-                   ObjectPool<std::unique_ptr<mlir::MLIRContext>>* pool)
+                   MlirContextPool* pool)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
@@ -186,7 +186,7 @@ class IrEmitterContext {
 
   KernelCompiler* compiler_;
   const xla::cpu::TargetMachineOptions cpu_target_machine_options_;
-  ObjectPool<std::unique_ptr<mlir::MLIRContext>>* mlir_context_pool_;
+  MlirContextPool* mlir_context_pool_;
 };
 
 }  // namespace xla::gpu

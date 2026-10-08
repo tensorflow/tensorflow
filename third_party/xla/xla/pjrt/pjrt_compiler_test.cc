@@ -163,9 +163,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   };
   CompileOptions options;
   std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
-  PjRtRegisterCompiler(topology.platform_name(),
-                       options.compiler_variant.value_or(""),
-                       std::move(compiler));
+  PjRtRegisterCompiler(topology.platform_name(), "", std::move(compiler));
 
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
@@ -280,6 +278,35 @@ TEST(PjRtCompilerTest, VariantRegistryLookup) {
   EXPECT_TRUE(absl::IsNotFound(status.status()));
 }
 
+TEST(PjRtCompilerTest, IsCompilerVariantRegistered) {
+  const std::string platform = "has_variant_test_platform";
+  const std::string factory_variant = "factory_registered_variant";
+  const std::string compiler_variant = "compiler_registered_variant";
+
+  EXPECT_FALSE(PjRtIsCompilerVariantRegistered(platform, factory_variant));
+  EXPECT_FALSE(PjRtIsCompilerVariantRegistered(platform, compiler_variant));
+
+  bool factory_called = false;
+  PjRtRegisterCompilerFactory(
+      platform, factory_variant,
+      [&factory_called]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+        factory_called = true;
+        return std::make_unique<PjRtDeserializeCompiler>();
+      });
+  PjRtRegisterCompiler(platform, compiler_variant,
+                       std::make_unique<PjRtDeserializeCompiler>());
+
+  EXPECT_TRUE(PjRtIsCompilerVariantRegistered(platform, factory_variant));
+  EXPECT_TRUE(PjRtIsCompilerVariantRegistered(platform, compiler_variant));
+  // The query must not instantiate the compiler.
+  EXPECT_FALSE(factory_called);
+
+  EXPECT_FALSE(
+      PjRtIsCompilerVariantRegistered(platform, "unregistered_variant"));
+  EXPECT_FALSE(
+      PjRtIsCompilerVariantRegistered("wrong_platform", factory_variant));
+}
+
 TEST(PjRtTopologyDescriptionTest, DefaultMemorySpaceKindIds) {
   PjRtTestTopology topology;
   EXPECT_THAT(topology.GetMemorySpaceKindIds(), ::testing::ElementsAre(-1));
@@ -305,8 +332,6 @@ TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
   };
   PjRtResetPlatformNameTopology topology;
   CompileOptions options;
-  // The test specifically requires setting a variant option
-  options.compiler_variant = variant;
   XlaComputation computation;
 
   // Factory should not be called yet.

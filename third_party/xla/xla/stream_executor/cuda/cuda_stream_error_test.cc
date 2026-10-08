@@ -21,7 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -46,17 +46,17 @@ class CudaStreamTest : public ::testing::Test {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                            stream_executor::PlatformManager::PlatformWithId(
-                                stream_executor::cuda::kCudaPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(Platform * platform,
+                         stream_executor::PlatformManager::PlatformWithId(
+                             stream_executor::cuda::kCudaPlatformId));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(0));
     executor_ = reinterpret_cast<CudaExecutor*>(executor);
   }
 };
 
 TEST_F(CudaStreamTest, StreamErrorPropagatesToCallback) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CudaStream> stream,
       CudaStream::Create(executor_, /*priority=*/std::nullopt));
   static constexpr absl::string_view kPtx = R"(
@@ -70,7 +70,7 @@ TEST_F(CudaStreamTest, StreamErrorPropagatesToCallback) {
         ret;
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Kernel> kernel,
       xla::gpu::CreateKernel("IllegalAccess", 0, kPtx, stream->parent(), 0));
   std::pair<tsl::Promise<void>, tsl::Future<void>> promise_and_future =
@@ -95,7 +95,7 @@ TEST_F(CudaStreamTest, StreamErrorPropagatesToCallback) {
 }
 
 TEST_F(CudaStreamTest, StreamSuccessPropagatesToCallback) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CudaStream> stream,
       CudaStream::Create(executor_, /*priority=*/std::nullopt));
   static constexpr absl::string_view kPtx = R"(
@@ -106,7 +106,7 @@ TEST_F(CudaStreamTest, StreamSuccessPropagatesToCallback) {
         ret;
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Kernel> kernel,
       xla::gpu::CreateKernel("NoOp", 0, kPtx, stream->parent(), 0));
   std::pair<tsl::Promise<void>, tsl::Future<void>> promise_and_future =

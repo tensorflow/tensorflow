@@ -25,22 +25,22 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -170,15 +169,18 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
   }
 
   absl::StatusOr<int64_t> GetScratchBytes(absl::string_view hlo_text) {
-    NVPTXCompiler compiler;
+    ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
+                     PlatformUtil::GetDefaultPlatform());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                     Compiler::GetForPlatform(platform->id()));
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_text));
     module->mutable_config()
         .mutable_debug_options()
         .clear_xla_gpu_enable_command_buffer();
     ABSL_ASSIGN_OR_RETURN(auto gpu_executable,
-                     compiler.RunBackend(std::move(module), stream_exec_,
-                                         GpuCompiler::CompileOptions()));
+                     compiler->RunBackend(std::move(module), stream_exec_,
+                                          GpuCompiler::CompileOptions()));
     auto profiler =
         GpuProfiler::Create(stream_exec_, ProfileOptions(), allocator_.get());
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
@@ -276,7 +278,7 @@ TEST_P(GpuProfilerTestWithRedzonePadding, CheckInputBuffers) {
   auto profiler = GpuProfiler::Create(stream_exec_, options, allocator_.get());
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
                        profiler->CreateInputBuffers(&mock_executable));
-  TF_EXPECT_OK(profiler->CheckInputBuffers(*buffers));
+  EXPECT_OK(profiler->CheckInputBuffers(*buffers));
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuProfilerTestWithRedzonePadding,
@@ -314,8 +316,9 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreDifferent) {
   ASSERT_OK_AND_ASSIGN(ScopedShapedBuffer reference,
                        CreateTestBuffer(allocator.get(), stream_exec_,
                                         stream.get(), /*value=*/2));
-  EXPECT_THAT(profiler->CheckOutputBuffer(output, reference, /*rtol=*/0.0),
-              StatusIs(absl::StatusCode::kInternal));
+  auto status = profiler->CheckOutputBuffer(output, reference, /*rtol=*/0.0);
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Mismatch count:"));
 }
 
 TEST_F(GpuProfilerTest, CheckOutputBufferWithTupleShapeAreSame) {

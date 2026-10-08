@@ -55,6 +55,12 @@ class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
   static constexpr StringLiteral name = "tfl.control";
 };
 
+// Discardable attribute naming a non-standard quantization contract that the
+// operand types cannot express on their own. Read by the `quant_spec` derived
+// attribute of `tfl.fully_connected`; see `FullyConnectedOptions.quant_spec` in
+// schema.fbs.
+inline constexpr StringLiteral kQuantSpecAttrName = "tfl.quant_spec";
+
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"
 
 }  // end namespace TFL

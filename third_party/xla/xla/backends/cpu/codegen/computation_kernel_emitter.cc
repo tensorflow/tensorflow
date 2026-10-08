@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -156,7 +156,8 @@ ComputationKernelEmitter::EmitKernelDefinition() {
       KernelApiIrBuilder::BufferValidation::kNone);
 
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
-      absl::StrCat(instr_->name(), "_computation_kernel_module"), *ctx);
+      absl::StrCat(instr_->name(), "_computation_kernel_module"), *ctx,
+      target_machine_);
 
   ABSL_ASSIGN_OR_RETURN(std::string kernel_name,
                    kernel_api_ir_builder.GetKernelName(instr_, "_kernel"));

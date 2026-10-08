@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <chrono>  // NOLINT(build/c++11)
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <ostream>
 #include <set>
 #include <string>
 
-#include "absl/time/time.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"

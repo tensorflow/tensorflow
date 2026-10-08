@@ -18,11 +18,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/memory.h"
@@ -65,8 +65,8 @@ class HloShardingSerDes : public RTTIExtends<HloSharding, SerDes> {
     HloShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     sharding.devices()->ToProto(*proto.mutable_devices(), version);
-    if (sharding.memory_kind().memory_kind().has_value()) {
-      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    if (!sharding.memory_kind().is_default()) {
+      proto.set_memory_kind(std::string(sharding.memory_kind().value()));
     }
     *proto.mutable_xla_op_sharding() = sharding.xla_hlo_sharding().ToProto();
     return proto.SerializeAsCord();

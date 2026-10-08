@@ -18,19 +18,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/python/ifrt/sharding_spec_serdes.pb.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -264,58 +262,10 @@ class ConcreteEvenShardingSpecSerDes
   static char ID;  // NOLINT
 };
 
-class ShardingParamShardingSpecSerDes
-    : public RTTIExtends<ShardingParamShardingSpecSerDes, SerDes> {
- public:
-  absl::string_view type_name() const override {
-    return "xla::ifrt::ShardingParamShardingSpec";
-  }
-
-  absl::StatusOr<absl::Cord> Serialize(
-      const Serializable& serializable,
-      std::unique_ptr<SerializeOptions> options) override {
-    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
-    if (version.version_number() < SerDesVersionNumber(0)) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Unsupported ", version.version_number(),
-                       " for ShardingParamShardingSpec serialization"));
-    }
-    const ShardingParamShardingSpec& sharding_spec =
-        cast<ShardingParamShardingSpec>(serializable);
-    ShardingParamShardingSpecProto proto;
-    proto.set_version_number(SerDesVersionNumber(0).value());
-    ABSL_RETURN_IF_ERROR(sharding_spec.sharding_param().ToProto(
-        *proto.mutable_sharding_param(), version));
-    return proto.SerializeAsCord();
-  }
-
-  absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const absl::Cord& serialized,
-      std::unique_ptr<DeserializeOptions> options) override {
-    ShardingParamShardingSpecProto proto;
-    if (!proto.ParseFromString(serialized)) {
-      return absl::InvalidArgumentError(
-          "Failed to parse serialized ShardingParamShardingSpec");
-    }
-    const SerDesVersionNumber version_number(proto.version_number());
-    if (version_number != SerDesVersionNumber(0)) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Unsupported ", version_number,
-                       " for ShardingParamShardingSpec deserialization"));
-    }
-    ABSL_ASSIGN_OR_RETURN(ShardingParam sharding_param,
-                     ShardingParam::FromProto(proto.sharding_param()));
-    return ShardingParamShardingSpec::Create(std::move(sharding_param));
-  }
-
-  static char ID;  // NOLINT
-};
-
 [[maybe_unused]] char SingleDeviceShardingSpecSerDes::ID = 0;   // NOLINT
 [[maybe_unused]] char OpaqueShardingSpecSerDes::ID = 0;         // NOLINT
 [[maybe_unused]] char ConcreteShardingSpecSerDes::ID = 0;       // NOLINT
 [[maybe_unused]] char ConcreteEvenShardingSpecSerDes::ID = 0;   // NOLINT
-[[maybe_unused]] char ShardingParamShardingSpecSerDes::ID = 0;  // NOLINT
 
 // clang-format off
 bool register_single_device_sharding_spec_serdes = ([]{
@@ -336,11 +286,6 @@ bool register_concrete_sharding_spec_serdes = ([]{
 bool register_concrete_even_sharding_spec_serdes = ([]{
   RegisterSerDes<ConcreteEvenShardingSpec>(
       std::make_unique<ConcreteEvenShardingSpecSerDes>());
-}(), true);
-
-bool register_sharding_param_sharding_spec_serdes = ([]{
-  RegisterSerDes<ShardingParamShardingSpec>(
-      std::make_unique<ShardingParamShardingSpecSerDes>());
 }(), true);
 // clang-format on
 

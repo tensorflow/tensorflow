@@ -25,11 +25,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -81,9 +81,6 @@ std::string HloModuleConfig::compilation_cache_key() const {
     static std::atomic<int> counter{0};
     StrAppend(&key, "forcing recompile ", counter++);
   }
-  StrAppend(&key, "::exec_time_optimization_effort=",
-            exec_time_optimization_effort());
-  StrAppend(&key, "::memory_fitting_effort=", memory_fitting_effort());
   StrAppend(&key, "::optimization_level=", optimization_level());
   StrAppend(&key, "::memory_fitting_level=", memory_fitting_level());
   if (replica_count() != 1) {
@@ -299,8 +296,6 @@ HloModuleConfigProto HloModuleConfig::ToProto() const {
   for (int64_t partitioning_id : auto_spmd_partitioning_mesh_ids_) {
     proto.add_auto_spmd_partitioning_mesh_ids(partitioning_id);
   }
-  proto.set_exec_time_optimization_effort(exec_time_optimization_effort_);
-  proto.set_memory_fitting_effort(memory_fitting_effort_);
   proto.set_optimization_level(optimization_level_);
   proto.set_memory_fitting_level(memory_fitting_level_);
   proto.set_deduplicate_hlo(deduplicate_hlo_);
@@ -378,9 +373,6 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   config->auto_spmd_partitioning_mesh_ids_.assign(
       proto.auto_spmd_partitioning_mesh_ids().begin(),
       proto.auto_spmd_partitioning_mesh_ids().end());
-  config->exec_time_optimization_effort_ =
-      proto.exec_time_optimization_effort();
-  config->memory_fitting_effort_ = proto.memory_fitting_effort();
   config->optimization_level_ = proto.optimization_level();
   config->memory_fitting_level_ = proto.memory_fitting_level();
   config->deduplicate_hlo_ = proto.deduplicate_hlo();

@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -147,9 +148,9 @@ TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerRunPhases) {
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {
       std::string(phase_compile_sample_plugin::kPhaseName)};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
 
   TF_ASSERT_OK(partial_programs_out);
 
@@ -175,15 +176,16 @@ TEST_F(SamplePhaseCompilerTest,
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto expected_programs = partial_programs_in;
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
 
   TF_ASSERT_OK(partial_programs_out);
 
-  for (size_t i = 0; i < partial_programs_in.size(); ++i) {
+  for (size_t i = 0; i < expected_programs.size(); ++i) {
     EXPECT_THAT(partial_programs_out->at(i),
-                EqualsProto(partial_programs_in.at(i)));
+                EqualsProto(expected_programs.at(i)));
   }
 }
 
@@ -199,9 +201,9 @@ TEST_F(SamplePhaseCompilerTest,
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {"unregistered_phase_name"};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
   EXPECT_THAT(partial_programs_out,
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
@@ -216,9 +218,9 @@ TEST_F(SamplePhaseCompilerTest,
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {
       std::string(phase_compile_sample_plugin::kPhaseName)};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
   EXPECT_THAT(partial_programs_out,
               absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
@@ -237,9 +239,9 @@ TEST_F(SamplePhaseCompilerTest, PluginSpecificValidationWithUnexpectedFormat) {
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {
       std::string(phase_compile_sample_plugin::kPhaseName)};
-  auto partial_programs_out =
-      phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
-                                 *topology_description_, phases_to_run);
+  auto partial_programs_out = phase_compiler_->RunPhases(
+      xla::CompileOptions(), std::move(partial_programs_in),
+      *topology_description_, phases_to_run);
   EXPECT_THAT(partial_programs_out,
               absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,

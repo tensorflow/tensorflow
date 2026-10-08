@@ -30,10 +30,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "re2/re2.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -77,8 +77,8 @@ absl::StatusOr<int64_t> NumRanks(const T& instr) {
   int64_t num_replicas = config.replica_count();
   ABSL_ASSIGN_OR_RETURN(
       std::vector<int64_t> participant_counts,
-      GetPariticipantCountsForReplicaGroups(
-          num_replicas, num_devices, instr.replica_groups(), group_mode));
+      GetParticipantCountsForReplicaGroups(num_replicas, num_devices,
+                                           instr.replica_groups(), group_mode));
   int64_t num_ranks = 1;
 
   for (auto count : participant_counts) {

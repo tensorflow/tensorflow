@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/FloatingPointMode.h"
@@ -54,7 +54,7 @@ llvm::Function* CreateFunction(llvm::Module* module, Type from, Type to) {
       to.to_ir_type(context), {from.to_ir_type(context)},
       /*isVarArg=*/false);
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
-      module->getOrInsertFunction(FpTrunc::Name(from, to), function_type)
+      module->getOrInsertFunction(FpTrunc::Name({from, to}), function_type)
           .getCallee());
   func->getArg(0)->setName("arg");
   return func;

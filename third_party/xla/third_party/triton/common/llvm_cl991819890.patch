@@ -1,0 +1,12 @@
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -838,7 +838,7 @@
+         if (!pluginFile.empty()) {
+           // TODO: Add some logging here that we inserted a pass into the LLVM
+           // pass pipeline
+-          auto passPlugin = llvm::PassPlugin::Load(pluginFile);
++          auto passPlugin = llvm::PassPlugin::load(pluginFile);
+           if (!passPlugin) {
+             llvm::Error Err = passPlugin.takeError();
+             std::string ErrMsg =
+

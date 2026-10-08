@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -243,8 +243,15 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add_binary(feature_shape, HloOpcode::kMultiply, mean, mean);
 
   // Var[X].
-  auto var =
+  auto raw_var =
       add_binary(feature_shape, HloOpcode::kSubtract, square_mean, mean_square);
+
+  // Clamp variance to 0 to prevent negative variance due to floating-point
+  // rounding errors.
+  auto zero_feature = add(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeStaticShape(feature_shape), zero, {}));
+  auto var =
+      add_binary(feature_shape, HloOpcode::kMaximum, raw_var, zero_feature);
 
   auto var_broadcasted = feature_broadcast(var);
 

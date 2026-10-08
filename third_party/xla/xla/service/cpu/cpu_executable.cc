@@ -32,13 +32,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/constant_allocation.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -291,7 +291,8 @@ absl::Status CpuExecutable::ExecuteThunks(
       Thunk::ExecuteSession(Thunk::ExecuteSession::kMaxWorkers,
                             Thunk::ExecuteSession::kSplitThreshold),
       /*rng_seed=*/
-      run_options ? static_cast<uint64_t>(run_options->rng_seed()) : 0};
+      run_options ? static_cast<uint64_t>(run_options->rng_seed()) : 0,
+      /*custom_options=*/run_options ? run_options->custom_options() : nullptr};
 
   auto executed_event = thunks_->Execute(execute_params);
 

@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/shape.h"
@@ -309,14 +309,18 @@ absl::Status BlasLt::MatmulPlan::SetCachedAlgorithm(size_t algorithm_idx,
                                                     size_t max_algorithm_count,
                                                     size_t max_workspace_size) {
   bool cache_dirty = false;
-  // We drop the cache even if max_algorithm_count < cached_algorithm_count_
+  // We drop the cache if max_algorithm_count > cached_algorithm_count_
   // or max_workspace_size < cached_workspace_size_ since the list of the
   // algorithms may be different in these cases.
   if (cached_algorithms_.empty() ||
-      cached_algorithm_count_ != max_algorithm_count ||
+      max_algorithm_count > cached_algorithm_count_ ||
       cached_workspace_size_ != max_workspace_size) {
     ABSL_ASSIGN_OR_RETURN(cached_algorithms_,
                      GetAlgorithms(max_algorithm_count, max_workspace_size));
+    // Store the *requested* count, not cached_algorithms_.size(): the backend
+    // commonly returns fewer algorithms than asked for, and storing the short
+    // size would make every subsequent request for the original count look like
+    // a growth and refetch forever.
     cached_algorithm_count_ = max_algorithm_count;
     cached_workspace_size_ = max_workspace_size;
     cache_dirty = true;
@@ -326,7 +330,7 @@ absl::Status BlasLt::MatmulPlan::SetCachedAlgorithm(size_t algorithm_idx,
     if (algorithm_idx >= cached_algorithms_.size()) {
       return absl::InternalError(
           absl::StrFormat("Algorithm index is out of range: %zu >= %zu",
-                          algorithm_idx, cached_algorithm_count_));
+                          algorithm_idx, cached_algorithms_.size()));
     }
     cached_algorithm_idx_ = algorithm_idx;
     return SetAlgorithm(cached_algorithms_[algorithm_idx]);
@@ -387,7 +391,8 @@ absl::StatusOr<GemmConfig> GemmConfig::FromProto(
       proto.grad_x(),
       proto.grad_y(),
       static_cast<ScaleMode>(proto.scale_mode()),
-      compute_type};
+      compute_type,
+      proto.has_d_scale()};
 }
 
 xla::GemmConfigProto GemmConfig::ToProto() const {
@@ -410,6 +415,7 @@ xla::GemmConfigProto GemmConfig::ToProto() const {
   if (compute_type.has_value()) {
     proto.set_compute_type(blas::ToProto(*compute_type));
   }
+  proto.set_has_d_scale(has_d_scale);
   return proto;
 }
 

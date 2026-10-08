@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
@@ -69,6 +68,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/thunk_emitter.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/logical_buffer.h"
@@ -97,12 +97,15 @@ CompileModuleResults InitializeResults(const HloModule* hlo_module) {
           hlo_module,
           ExecutionStreamAssignment::Options{
               kDefaultNumComputeStreams,
-              /*number_of_collective_execution_streams=*/
+              /*number_of_communication_execution_streams=*/
               hlo_module->config()
                       .debug_options()
                       .xla_gpu_experimental_enable_collective_multi_streaming()
                   ? kDefaultNumCommunicationStreams
                   : 1,
+              // Keep disabled by default until the 14-day AOT
+              // forward-compatibility window has elapsed (9th of October 2026).
+              /*enable_dedicated_memcpy_streams=*/false,
           });
   return results;
 }
@@ -218,7 +221,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     KernelCompiler* compiler,
     xla::cpu::TargetMachineOptions cpu_target_machine_options,
-    ObjectPool<std::unique_ptr<mlir::MLIRContext>>* mlir_context_pool) {
+    MlirContextPool* mlir_context_pool) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
   const se::DeviceDescription& device_desc =
       gpu_topology.gpu_target_config().device_description;

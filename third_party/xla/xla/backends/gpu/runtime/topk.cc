@@ -26,10 +26,10 @@ limitations under the License.
 
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/topk_kernel.h"
@@ -78,29 +78,37 @@ se::KernelArgsPackingSpec CreateTopKArgsPacking(size_t num_elements, size_t k) {
 // registry.
 template <size_t K, typename T, typename VT>
 absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForPlatform(
-    se::Platform::Id id) {
-  return se::gpu::GpuKernelRegistry::GetGlobalRegistry()
-      .FindKernel<se::gpu::TopKKernel<K, T, VT>>(id);
+    se::Platform::Id id, Order order) {
+  if (order == Order::kTotal) {
+    return se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+        .FindKernel<se::gpu::TopKTotalOrderKernel<K, T, VT>>(id);
+  }
+  if (order == Order::kPartial) {
+    return se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+        .FindKernel<se::gpu::TopKPartialOrderKernel<K, T, VT>>(id);
+  }
+  return absl::UnimplementedError(
+      absl::StrCat("Unsupported order: ", static_cast<int>(order)));
 }
 
 // Gets the right version of TopK kernel based on the value of `k`.
 template <typename T, typename VT>
 absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForKAndPlatform(
-    size_t k, se::Platform::Id id) {
+    size_t k, se::Platform::Id id, Order order) {
   if (k <= 1) {
-    return GetTopKKernelForPlatform<1, T, VT>(id);
+    return GetTopKKernelForPlatform<1, T, VT>(id, order);
   }
   if (k <= 2) {
-    return GetTopKKernelForPlatform<2, T, VT>(id);
+    return GetTopKKernelForPlatform<2, T, VT>(id, order);
   }
   if (k <= 4) {
-    return GetTopKKernelForPlatform<4, T, VT>(id);
+    return GetTopKKernelForPlatform<4, T, VT>(id, order);
   }
   if (k <= 8) {
-    return GetTopKKernelForPlatform<8, T, VT>(id);
+    return GetTopKKernelForPlatform<8, T, VT>(id, order);
   }
   if (k <= 16) {
-    return GetTopKKernelForPlatform<16, T, VT>(id);
+    return GetTopKKernelForPlatform<16, T, VT>(id, order);
   }
   return absl::UnimplementedError(absl::StrCat("Unsupported K: ", k));
 }
@@ -108,22 +116,22 @@ absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForKAndPlatform(
 // Gets the right version of TopK kernel based on the value of `n`.
 template <typename T>
 absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForKAndPlatformAndN(
-    size_t k, se::Platform::Id id, size_t n) {
+    size_t k, se::Platform::Id id, size_t n, Order order) {
   // TODO(doak): Switch to uint32_t if we don't have an efficient
   // implementation for uint16_t.
   if (n < std::numeric_limits<uint16_t>::max()) {
-    return GetTopKKernelForKAndPlatform<T, uint16_t>(k, id);
+    return GetTopKKernelForKAndPlatform<T, uint16_t>(k, id, order);
   }
-  return GetTopKKernelForKAndPlatform<T, uint32_t>(k, id);
+  return GetTopKKernelForKAndPlatform<T, uint32_t>(k, id, order);
 }
 
 // GetTopKKernelForKAndPlatformAndN specialization for float type.
 template <>
 absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForKAndPlatformAndN<float>(
-    size_t k, se::Platform::Id id, size_t n) {
-  // For float data on the H100, using uint32_t indices provides better overall
-  // performance than uint16_t, even for smaller values of n.
-  return GetTopKKernelForKAndPlatform<float, uint32_t>(k, id);
+    size_t k, se::Platform::Id id, size_t n, Order order) {
+  // For float data on the H100, using uint32_t indices provides better
+  // overall performance than uint16_t, even for smaller values of n.
+  return GetTopKKernelForKAndPlatform<float, uint32_t>(k, id, order);
 }
 
 // Implementation for creating a CustomKernel for TopK operation with element
@@ -132,7 +140,7 @@ template <typename T>
 absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
                                           size_t k, size_t batch_size,
                                           absl::string_view platform_name,
-                                          size_t wavefront_size) {
+                                          size_t wavefront_size, Order order) {
   constexpr size_t kMaxKVSize = sizeof(uint64_t);
   // Allocate shmem assuming we have a full reduction.
   int shmem_size = absl::bit_ceil(k) * kMaxKVSize * wavefront_size;
@@ -145,9 +153,9 @@ absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
 
   ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName(platform_name));
-  ABSL_ASSIGN_OR_RETURN(
-      se::KernelLoaderSpec spec,
-      GetTopKKernelForKAndPlatformAndN<T>(k, platform->id(), num_elements));
+  ABSL_ASSIGN_OR_RETURN(se::KernelLoaderSpec spec,
+                   GetTopKKernelForKAndPlatformAndN<T>(k, platform->id(),
+                                                       num_elements, order));
 
   spec.set_kernel_args_packing(CreateTopKArgsPacking(num_elements, k));
   return CustomKernel(std::move(name), std::move(spec),
@@ -157,16 +165,20 @@ absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
 
 }  // namespace
 
-absl::StatusOr<CustomKernel> GetTopKKernel(
-    std::string name, PrimitiveType dtype, size_t num_elements, size_t k,
-    size_t batch_size, absl::string_view platform_name, size_t wavefront_size) {
+absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
+                                           PrimitiveType dtype,
+                                           size_t num_elements, size_t k,
+                                           size_t batch_size,
+                                           absl::string_view platform_name,
+                                           size_t wavefront_size, Order order) {
   switch (dtype) {
     case PrimitiveType::F32:
       return GetTypedTopK<float>(std::move(name), num_elements, k, batch_size,
-                                 platform_name, wavefront_size);
+                                 platform_name, wavefront_size, order);
     case PrimitiveType::BF16:
       return GetTypedTopK<bfloat16>(std::move(name), num_elements, k,
-                                    batch_size, platform_name, wavefront_size);
+                                    batch_size, platform_name, wavefront_size,
+                                    order);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported GpuTopK data type: ", dtype));

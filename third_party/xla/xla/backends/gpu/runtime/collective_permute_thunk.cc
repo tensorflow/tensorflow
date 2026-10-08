@@ -30,11 +30,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -171,9 +171,9 @@ P2PConfig CollectivePermuteThunk::GetP2PConfig(
     // Build replica groups from connected components of the source-target pairs
     // graph. This ensures the GPU clique only includes devices that actually
     // communicate, rather than all devices in the computation.
-    auto connected_components =
+    std::vector<std::vector<int64_t>> connected_components =
         SourceTargetConnectedComponents(num_participants, source_target_pairs);
-    for (auto& [root, members] : connected_components) {
+    for (const std::vector<int64_t>& members : connected_components) {
       ReplicaGroup& group = config.replica_groups.emplace_back();
       for (int64_t id : members) {
         group.add_replica_ids(id);
@@ -593,8 +593,7 @@ static absl::Status RunOneSidedPermute(
 // Collective-permute communicating cliques helpers.
 //===----------------------------------------------------------------------===//
 
-absl::flat_hash_map<int64_t, std::vector<int64_t>>
-SourceTargetConnectedComponents(
+std::vector<std::vector<int64_t>> SourceTargetConnectedComponents(
     int64_t num_participants,
     absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs) {
   std::vector<int64_t> parent(num_participants);
@@ -617,13 +616,19 @@ SourceTargetConnectedComponents(
     }
   }
 
-  // Group participants by component root; sort members for determinism.
-  absl::flat_hash_map<int64_t, std::vector<int64_t>> components;
+  // Group participants by component root. Iterating i in [0, num_participants)
+  // encounters components in ascending order of their minimum participant ID
+  // and populates each component's member list in ascending order.
+  std::vector<std::vector<int64_t>> components;
+  absl::flat_hash_map<int64_t, size_t> root_to_component;
   for (int64_t i = 0; i < num_participants; ++i) {
-    components[find(i)].push_back(i);
-  }
-  for (auto& [root, members] : components) {
-    absl::c_sort(members);
+    auto [it, inserted] =
+        root_to_component.try_emplace(find(i), components.size());
+    if (inserted) {
+      components.push_back({i});
+    } else {
+      components[it->second].push_back(i);
+    }
   }
 
   return components;

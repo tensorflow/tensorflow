@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -54,8 +54,8 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   return executor_.ExecuteOnStream(params);
 }
 
-absl::Status SequentialThunk::WalkNested(Walker callback) {
-  return executor_.thunks().WalkNested(callback);
+absl::Status SequentialThunk::WalkNested(Walker pre_order, Walker post_order) {
+  return executor_.thunks().WalkNested(pre_order, post_order);
 }
 
 absl::Status SequentialThunk::TransformNested(Transformer callback) {

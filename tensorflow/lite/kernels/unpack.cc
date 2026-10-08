@@ -42,10 +42,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TF_LITE_ENSURE(context, NumElements(input) > 0);
   int axis = data->axis;
+  TF_LITE_ENSURE(context, axis >= INT16_MIN && axis <= INT16_MAX);
   if (axis < 0) {
     axis += NumDimensions(input);
   }
   TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
+  TF_LITE_ENSURE(context, axis <= INT16_MAX);
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
       input->type != kTfLiteFloat16 && input->type != kTfLiteBFloat16 &&
 #if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
@@ -92,7 +94,7 @@ template <typename T>
 void UnpackImpl(TfLiteContext* context, TfLiteNode* node,
                 const TfLiteTensor* input, int output_count, int axis) {
   tflite::UnpackParams op_params;
-  op_params.axis = axis;
+  op_params.axis = static_cast<int16_t>(axis);
   op_params.num_split = output_count;
   VectorOfTensors<T> all_outputs(*context, *node->outputs);
   reference_ops::Unpack<T>(op_params, GetTensorShape(input),
@@ -106,21 +108,27 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  int axis = data->axis;
+  if (axis < 0) {
+    axis += NumDimensions(input);
+  }
+  TF_LITE_ENSURE(context, axis >= 0 && axis < NumDimensions(input));
+  TF_LITE_ENSURE(context, axis <= INT16_MAX);
   switch (TfLiteTypeGetSizeBits(input->type)) {
     case 8: {
-      UnpackImpl<uint8_t>(context, node, input, data->num, data->axis);
+      UnpackImpl<uint8_t>(context, node, input, data->num, axis);
       break;
     }
     case 16: {
-      UnpackImpl<uint16_t>(context, node, input, data->num, data->axis);
+      UnpackImpl<uint16_t>(context, node, input, data->num, axis);
       break;
     }
     case 32: {
-      UnpackImpl<uint32_t>(context, node, input, data->num, data->axis);
+      UnpackImpl<uint32_t>(context, node, input, data->num, axis);
       break;
     }
     case 64: {
-      UnpackImpl<uint64_t>(context, node, input, data->num, data->axis);
+      UnpackImpl<uint64_t>(context, node, input, data->num, axis);
       break;
     }
     default: {

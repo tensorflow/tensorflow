@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -51,6 +53,12 @@ class CpuCodegenBackend : public CodegenBackend {
   absl::string_view name() const override { return name_; }
 
   std::string version() const override { return "unknown"; }
+
+  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
+      const HloInstruction& instr) override {
+    return absl::UnimplementedError(
+        "GetSupportedConfigsWithEstimates is not implemented for CPU backend.");
+  }
 
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,

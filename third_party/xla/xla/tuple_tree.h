@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -355,6 +355,17 @@ class TupleTree {
       return false;
     }
     return entry_or.value()->children_start_id == -1;
+  }
+
+  // Returns the number of children of the node at the given index, or 0 if the
+  // node does not exist or is a leaf.
+  size_t num_children(ShapeIndexView index = {}) const {
+    absl::StatusOr<const internal::IndexTable::Entry*> entry_or =
+        index_table_.GetEntry(index);
+    if (!entry_or.ok() || entry_or.value()->children_start_id == -1) {
+      return 0;
+    }
+    return entry_or.value()->num_children;
   }
 
   // Checks if the structure of this TupleTree is compatible with the given

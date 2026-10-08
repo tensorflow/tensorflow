@@ -32,14 +32,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/stack_frame.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tsl/platform/platform.h"
-
-// Include appropriate platform-dependent parts of status.
-#if defined(PLATFORM_GOOGLE)
-#include "xla/tsl/platform/google/status.h"  // IWYU pragma: export
-#else
-#include "xla/tsl/platform/default/status.h"  // IWYU pragma: export
-#endif
 
 namespace tsl {
 
@@ -178,6 +170,11 @@ inline void TfCheckOkDeprecationMarker() {}
 #define TF_QCHECK_OK(val) QCHECK_OK((::tsl::TfCheckOkDeprecationMarker(), val))
 
 #endif
+
+#define MAYBE_ADD_SOURCE_LOCATION(status) \
+  status.AddSourceLocation(absl::SourceLocation::current());
+
+#define ADD_SOURCE_LOCATION(status) status.WithSourceLocation();
 
 }  // namespace tsl
 

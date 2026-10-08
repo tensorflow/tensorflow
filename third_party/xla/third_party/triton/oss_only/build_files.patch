@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1299 @@
+@@ -0,0 +1,1331 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -108,8 +108,8 @@ new file mode 100644
 +gentbl_cc_library(
 +    name = "triton_attr_inc_gen",
 +    tbl_outs = {
-+        "include/triton/Dialect/Triton/IR/TritonAttrDefs.h.inc": ["--gen-attrdef-decls"],
-+        "include/triton/Dialect/Triton/IR/TritonAttrDefs.cpp.inc": ["--gen-attrdef-defs"],
++        "include/triton/Dialect/Triton/IR/AttrDefs.h.inc": ["--gen-attrdef-decls"],
++        "include/triton/Dialect/Triton/IR/AttrDefs.cpp.inc": ["--gen-attrdef-defs"],
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
 +    td_file = "include/triton/Dialect/Triton/IR/TritonAttrDefs.td",
@@ -159,6 +159,17 @@ new file mode 100644
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
 +    td_file = "include/triton/Dialect/Triton/IR/TritonTypes.td",
++    deps = ["td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_type_enums_inc_gen",
++    tbl_outs = {
++        "include/triton/Dialect/Triton/IR/TypesEnums.h.inc": ["--gen-enum-decls"],
++        "include/triton/Dialect/Triton/IR/TypesEnums.cpp.inc": ["--gen-enum-defs"],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/triton/Dialect/Triton/IR/TritonTypeEnums.td",
 +    deps = ["td_files"],
 +)
 +
@@ -482,11 +493,20 @@ new file mode 100644
 +    tbl_outs = {
 +        "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.h.inc": ["--gen-attrdef-decls"],
 +        "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.cpp.inc": ["--gen-attrdef-defs"],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.td",
++    deps = ["td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_nvidia_gpu_enums_inc_gen",
++    tbl_outs = {
 +        "include/triton/Dialect/TritonNvidiaGPU/IR/OpsEnums.h.inc": ["--gen-enum-decls"],
 +        "include/triton/Dialect/TritonNvidiaGPU/IR/OpsEnums.cpp.inc": ["--gen-enum-defs"],
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
-+    td_file = "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.td",
++    td_file = "include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUEnums.td",
 +    deps = ["td_files"],
 +)
 +
@@ -591,6 +611,7 @@ new file mode 100644
 +        ":gluon_attr_inc_gen",
 +        ":gluon_dialect_inc_gen",
 +        ":gluon_ops_inc_gen",
++        ":triton_attr_inc_gen",
 +        ":triton_canonicalize_inc_gen",
 +        ":triton_dialect_inc_gen",
 +        ":triton_gpu_attr_impls_inc_gen",
@@ -609,12 +630,14 @@ new file mode 100644
 +        ":triton_interfaces_inc_gen",
 +        ":triton_nvidia_gpu_attr_inc_gen",
 +        ":triton_nvidia_gpu_dialect_inc_gen",
++        ":triton_nvidia_gpu_enums_inc_gen",
 +        ":triton_nvidia_gpu_op_interfaces_inc_gen",
 +        ":triton_nvidia_gpu_ops_inc_gen",
 +        ":triton_nvidia_gpu_transforms_inc_gen",
 +        ":triton_nvidia_gpu_types_inc_gen",
 +        ":triton_op_interfaces_inc_gen",
 +        ":triton_ops_inc_gen",
++        ":triton_type_enums_inc_gen",
 +        ":triton_type_interfaces_inc_gen",
 +        ":triton_types_inc_gen",
 +        "@llvm-project//llvm:Support",
@@ -633,6 +656,7 @@ new file mode 100644
 +        "@llvm-project//mlir:MathDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
++        "@llvm-project//mlir:SideEffectInterfaces",
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TensorDialect",
 +        "@llvm-project//mlir:TransformUtils",  # for Utility
@@ -678,6 +702,7 @@ new file mode 100644
 +        "@llvm-project//mlir:FuncTransforms",
 +        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:LLVMDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:SCFTransforms",
@@ -806,9 +831,11 @@ new file mode 100644
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:ArithTransforms",
 +        "@llvm-project//mlir:ControlFlowDialect",
++        "@llvm-project//mlir:ControlFlowInterfaces",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:InferTypeOpInterface",
 +        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:LoopLikeInterface",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:SCFTransforms",
@@ -857,6 +884,7 @@ new file mode 100644
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TransformUtils",
++        "@triton//third_party/nvidia:NVGPUDialect",
 +    ],
 +)
 +
@@ -878,6 +906,7 @@ new file mode 100644
 +        ":compiler_is_msvc": [],
 +        "//conditions:default": [
 +            "-Wno-unused-variable",
++            "-Wno-private-header",
 +        ],
 +    }),
 +    deps = [
@@ -891,6 +920,7 @@ new file mode 100644
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:SideEffectInterfaces",
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
 +    ],
@@ -952,6 +982,7 @@ new file mode 100644
 +        "@llvm-project//mlir:ControlFlowInterfaces",
 +        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:LoopLikeInterface",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:Support",
@@ -1123,7 +1154,9 @@ new file mode 100644
 +        include = ["include/triton/Tools/*.h"],
 +        exclude = ["include/triton/Tools/PluginUtils.h"],
 +    ),
-+    copts = _no_unused_variable,
++    copts = _no_unused_variable + [
++        "-Wno-thread-safety-analysis",
++    ],
 +    includes = ["include"],
 +    deps = [
 +        "@llvm-project//llvm:Support",
@@ -1275,7 +1308,6 @@ new file mode 100644
 +#         "@triton//:leakr_badwords.dic",
 +#         "@triton//patches:patch_files",
 +#         "//third_party/xla:copybara_library",
-+#         "@xla//third_party/triton:patch_files",
 +#     ],
 +# )
 +# copybara:uncomment_end
@@ -1310,7 +1342,7 @@ diff --git b/python/BUILD b/python/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/BUILD
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,215 @@
 +# NOTE: Do not depend on any targets from this directory,
 +# but use //third_party/py/triton instead.
 +
@@ -1334,6 +1366,8 @@ new file mode 100644
 +    # copybara:comment_end
 +)
 +
++exports_files(["conftest.py"])
++
 +cc_library(
 +    name = "passes",
 +    hdrs = ["src/passes.h"],
@@ -1355,6 +1389,7 @@ new file mode 100644
 +        "@llvm-project//mlir:IR",
 +        "@triton//:Dump",
 +        "@triton//:GetEnv",
++        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUToLLVM",
 +    ],
 +)
@@ -1463,6 +1498,7 @@ new file mode 100644
 +        "@llvm-project//llvm:Scalar",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//llvm:Target",
++        "@llvm-project//llvm:config",
 +        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
 +        "@llvm-project//mlir:BytecodeWriter",
 +        "@llvm-project//mlir:ControlFlowDialect",
@@ -1499,6 +1535,7 @@ new file mode 100644
 +        "@triton//:TritonToTritonGPUPasses",
 +        "@triton//:TritonTools",
 +        "@triton//:TritonTransforms",
++        "@triton//:triton_version",
 +        "@triton//third_party/amd:TDMUtility",
 +        "@triton//third_party/amd:TritonAMDGPU",
 +        "@triton//third_party/amd:TritonAMDGPUTransforms",
@@ -1526,7 +1563,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,434 @@
+@@ -0,0 +1,431 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1557,6 +1594,11 @@ new file mode 100644
 +    {"@rules_cuda//cuda:is_enabled": []},
 +    no_match_error = "Requires --config=cuda",
 +)
++
++_conftest = [
++    "conftest.py",
++    "@triton//python:conftest.py",
++]
 +
 +_asan_needs_extra_link_memory = select({
 +    "//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
@@ -1653,8 +1695,7 @@ new file mode 100644
 +pytest_multi_tests(
 +    name = "ampere",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1680,8 +1721,7 @@ new file mode 100644
 +pytest_multi_tests(
 +    name = "hopper",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1707,9 +1747,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/language/test_core_h100",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
-+    ],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 40,
 +    tags = _requires_gpu_sm90,
@@ -1725,9 +1763,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/language/test_core_a100",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
-+    ],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 40,
 +    tags = _requires_gpu_sm80,
@@ -1742,8 +1778,9 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_driver_a100",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
++    g3_multiprocessing = True,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
 +    shard_count = 1,
@@ -1759,8 +1796,9 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_driver_h100",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
++    g3_multiprocessing = True,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
 +    shard_count = 1,
@@ -1776,8 +1814,9 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_driver_b200",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
++    g3_multiprocessing = True,
 +    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
 +    # We run it as a single shard to avoid this.
 +    shard_count = 1,
@@ -1793,7 +1832,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_cache_determinism_a100",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
 +    tags = _requires_gpu_sm80,
@@ -1808,7 +1847,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_cache_determinism_h100",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
 +    tags = _requires_gpu_sm90,
@@ -1823,7 +1862,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_cache_determinism_b200",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 1,
 +    tags = _requires_gpu_sm100,
@@ -1837,8 +1876,7 @@ new file mode 100644
 +
 +pytest_test(
 +    name = "deviceless",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/plugins/custom_stages.py",
 +    ],
 +    exec_properties = _asan_needs_extra_link_memory,
@@ -1854,8 +1892,7 @@ new file mode 100644
 +pytest_multi_tests(
 +    name = "blackwell",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1880,8 +1917,7 @@ new file mode 100644
 +pytest_multi_tests(
 +    name = "blackwell_full",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
++    srcs = _conftest + [
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1904,9 +1940,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/language/test_core_b200",
 +    size = "large",
-+    srcs = [
-+        "conftest.py",
-+    ],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    shard_count = 40,
 +    tags = _requires_gpu_sm100,
@@ -1922,7 +1956,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_peer_access_h100_x2",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    tags = [
 +        "config-cuda-only",
@@ -1940,7 +1974,7 @@ new file mode 100644
 +pytest_test(
 +    name = "unit/runtime/test_peer_access_b200_x2",
 +    size = "large",
-+    srcs = ["conftest.py"],
++    srcs = _conftest,
 +    exec_properties = _asan_needs_extra_link_memory,
 +    tags = [
 +        "config-cuda-only",
@@ -2165,7 +2199,7 @@ diff --git b/test/BUILD b/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/test/BUILD
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,124 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +# copybara:uncomment_begin
@@ -2202,6 +2236,11 @@ new file mode 100644
 +#         "TritonGPU/amd/amd-range-analysis.mlir",
 +#         "TritonGPU/amd/amd-schedule-hint.mlir",
 +#     ],
++#     size_override = {
++#         # Runs two full consan pipelines over ~80 split-input cases; under ASAN this
++#         # takes ~70-150s, which regularly exceeds the small-test timeout.
++#         "TritonGPU/consan.mlir": "medium",
++#     },
 +#     test_file_exts = [
 +#         "mlir",
 +#         "ll",
@@ -2777,7 +2816,7 @@ diff --git b/third_party/nvidia/BUILD b/third_party/nvidia/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
-@@ -0,0 +1,565 @@
+@@ -0,0 +1,567 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -3241,6 +3280,7 @@ new file mode 100644
 +        "@llvm-project//mlir:ControlFlowInterfaces",
 +        "@llvm-project//mlir:GPUDialect",
 +        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:TensorDialect",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonNvidiaGPUTransforms",
@@ -3280,6 +3320,7 @@ new file mode 100644
 +        "@llvm-project//mlir:InferIntRangeCommon",
 +        "@llvm-project//mlir:InferIntRangeInterface",
 +        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:LoopLikeInterface",
 +        "@llvm-project//mlir:NVVMDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
@@ -3428,7 +3469,7 @@ diff --git b/third_party/proton/BUILD b/third_party/proton/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/proton/BUILD
-@@ -0,0 +1,452 @@
+@@ -0,0 +1,462 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@xla//third_party/rules_python/python:py_extension.bzl", "py_extension")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -3832,6 +3873,11 @@ new file mode 100644
 +        "-Wno-unused-variable",
 +        "-fexceptions",
 +    ],
++    defines = [
++        "PROTON_ROCPROFILER_SDK_HAS_PC_SAMPLING=0",
++        "PROTON_ROCPROFILER_SDK_HAS_CODEOBJ_ADDRESS_TRANSLATE=0",
++        "PROTON_ROCPROFILER_SDK_HAS_HIP_GRAPH=0",
++    ],
 +    features = [
 +        "exceptions",
 +        "-use_header_modules",
@@ -3862,6 +3908,11 @@ new file mode 100644
 +    copts = [
 +        "-fexceptions",
 +        "-Wno-pessimizing-move",
++    ],
++    defines = [
++        "PROTON_ROCPROFILER_SDK_HAS_PC_SAMPLING=0",
++        "PROTON_ROCPROFILER_SDK_HAS_CODEOBJ_ADDRESS_TRANSLATE=0",
++        "PROTON_ROCPROFILER_SDK_HAS_HIP_GRAPH=0",
 +    ],
 +    features = ["-use_header_modules"],
 +    visibility = [
@@ -3959,7 +4010,7 @@ diff --git b/unittest/BUILD b/unittest/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/unittest/BUILD
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,159 @@
 +load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 +
@@ -3975,6 +4026,7 @@ new file mode 100644
 +    deps = [
 +        "@com_google_googletest//:gtest_main",
 +        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:Parser",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonNvidiaGPUTransforms",
 +        "@triton//:TritonTransforms",

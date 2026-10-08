@@ -28,9 +28,6 @@ namespace ifrt_serving {
 // exclusive owner of its buffers (i.e. freshly created and not yet shared).
 // No-op for arrays whose buffers are not backed by CommonPjRtBuffer.
 //
-// Matches LoadedVariableArrayFn so it can be injected into
-// AsyncLoadRestoredTensorAsIfrtLoadedVariable without adding PjRt
-// implementation deps to ifrt_loaded_variable_utils.
 absl::Status MakeArrayBuffersUndonatable(xla::ifrt::Array* array);
 
 }  // namespace ifrt_serving

@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
@@ -56,6 +56,9 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
 
   HloModuleConfig hlo_module_config(program_shape, /*ignore_layouts=*/false);
   hlo_module_config.set_debug_options(GetDebugOptionsFromFlags());
+  if (customize_hlo_module_config_) {
+    customize_hlo_module_config_(hlo_module_config);
+  }
 
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,

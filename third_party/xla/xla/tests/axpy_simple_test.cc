@@ -29,7 +29,7 @@ namespace xla {
 namespace {
 
 using AxpySimpleTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(AxpySimpleTest, AxTenValues) {
   XlaBuilder builder("ax_10");

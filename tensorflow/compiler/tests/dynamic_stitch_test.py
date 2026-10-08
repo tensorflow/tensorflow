@@ -72,6 +72,12 @@ class DynamicStitchTest(xla_test.XLATestCase):
     self._AssertDynamicStitchResultIs(
         [val1, val2], [val3, val4], expected=expected)
 
+  def testMissingIndicesZeroFilled(self):
+    idx = np.array([4, 4, 4, 4], dtype=np.int32)
+    data = np.array([1, 2, 3, 4], dtype=np.int32)
+    expected = np.array([0, 0, 0, 0, 4], dtype=np.int32)
+    self._AssertDynamicStitchResultIs([idx], [data], expected=expected)
+
   def testSimple2D(self):
     val1 = np.array([0, 4, 7], dtype=np.int32)
     val2 = np.array([1, 6], dtype=np.int32)

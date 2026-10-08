@@ -30,7 +30,8 @@ namespace xla::codegen::intrinsics {
 class Tanh : public Intrinsic<Tanh> {
  public:
   static constexpr absl::string_view kName = "tanh";
-  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
     return {
         {Type::S(xla::F32)},    {Type::V(xla::F32, 2)},  {Type::V(xla::F32, 4)},
         {Type::V(xla::F32, 8)}, {Type::V(xla::F32, 16)}, {Type::S(xla::F64)},

@@ -17,9 +17,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
@@ -65,7 +65,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> EmitPtxCustomKernelThunk(
   Thunk::ThunkInfo thunk_info =
       Thunk::ThunkInfo::WithProfileAnnotation(instr, context->GetNextThunkId());
   return std::make_unique<CustomKernelThunk>(
-      std::move(thunk_info), ptx_custom_kernel, kernel_arguments);
+      std::move(thunk_info), ptx_custom_kernel, kernel_arguments,
+      context->gpu_topology().num_devices_per_process());
 }
 
 }  // namespace gpu

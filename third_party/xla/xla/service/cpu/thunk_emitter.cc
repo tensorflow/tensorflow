@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -42,11 +42,11 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/custom_fusion_configs.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/cpu/runtime/all_to_all_thunk.h"
@@ -72,7 +72,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
 #include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
@@ -90,7 +89,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/sort_utils.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
@@ -147,7 +148,8 @@ absl::StatusOr<std::string> GetFusionFingerprint(
 }  // namespace
 
 static FusionCompiler::Options FusionCompilerOptions(
-    const HloModuleConfig& config) {
+    const HloModuleConfig& config,
+    const TargetMachineFeatures& target_machine_features) {
   const DebugOptions& debug_options = config.debug_options();
   return FusionCompiler::Options{
       debug_options.xla_cpu_prefer_vector_width(),
@@ -155,12 +157,15 @@ static FusionCompiler::Options FusionCompilerOptions(
       debug_options.xla_cpu_enable_fast_min_max(),
       llvm_ir::GetCpuFastMathFlags(config),
       debug_options.xla_cpu_use_new_xtile_lowering(),
-      options::IsMsanEnabled(config)};
+      options::IsMsanEnabled(config),
+      target_machine_features.get_target_feature_string()};
 }
 
-static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
-                                            const HloModule& hlo_module) {
-  FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
+static FusionCompiler FusionCompilerFactory(
+    mlir::MLIRContext* context, const HloModule& hlo_module,
+    const TargetMachineFeatures& target_machine_features) {
+  FusionCompiler::Options options =
+      FusionCompilerOptions(hlo_module.config(), target_machine_features);
   return FusionCompiler(context, std::move(options), &hlo_module);
 }
 
@@ -177,10 +182,12 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)),
       mlir_context_(FusionCompiler::CreateContext()),
-      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
+      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module,
+                                             target_machine_features)),
       parallel_fusion_emitter_(
-          thread_pool, FusionCompilerOptions(hlo_module_config_), &hlo_module,
-          &buffer_assignment,
+          thread_pool,
+          FusionCompilerOptions(hlo_module_config_, target_machine_features),
+          &hlo_module, &buffer_assignment,
           hlo_module_config_.debug_options()
               .xla_cpu_generate_unique_c_style_kernel_entry_points(),
           options::EnableTiledEmitter(hlo_module_config_)) {}
@@ -311,73 +318,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kBatchNormTraining:
       return EmitBatchNormTrainingThunk(instruction);
 
-    // Simple HLO instructions lowered to elemental host kernels (plain loops
-    // behind the HostKernel API).
-    case HloOpcode::kAbs:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
-    case HloOpcode::kAdd:
-    case HloOpcode::kAnd:
-    case HloOpcode::kAtan2:
-    case HloOpcode::kAtanh:
-    case HloOpcode::kBroadcast:
-    case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCbrt:
-    case HloOpcode::kCeil:
-    case HloOpcode::kClamp:
-    case HloOpcode::kClz:
-    case HloOpcode::kCompare:
-    case HloOpcode::kComplex:
-    case HloOpcode::kConvert:
-    case HloOpcode::kCos:
-    case HloOpcode::kCosh:
-    case HloOpcode::kDivide:
-    case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
-    case HloOpcode::kFloor:
-    case HloOpcode::kGather:
-    case HloOpcode::kImag:
-    case HloOpcode::kIota:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kLog1p:
-    case HloOpcode::kLog:
-    case HloOpcode::kMap:
-    case HloOpcode::kMaximum:
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kMulhi:
-    case HloOpcode::kNegate:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
-    case HloOpcode::kPopulationCount:
-    case HloOpcode::kPower:
-    case HloOpcode::kReal:
-    case HloOpcode::kReducePrecision:
-    case HloOpcode::kRemainder:
-    case HloOpcode::kReshape:
-    case HloOpcode::kReverse:
-    case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kRoundNearestEven:
-    case HloOpcode::kRsqrt:
-    case HloOpcode::kSelect:
-    case HloOpcode::kShiftLeft:
-    case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kSinh:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
-    case HloOpcode::kTranspose:
-    case HloOpcode::kXor:
-      return EmitElementalKernelThunk(instruction);
-
     // ReplicaId and PartitionId identify the location of the current device in
     // a logical grid of communicating devices.
     case HloOpcode::kReplicaId:
@@ -398,10 +338,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
     case HloOpcode::kPad:
       return EmitPadKernelThunk(instruction);
-
-    case HloOpcode::kSlice:
-    case HloOpcode::kDynamicSlice:
-      return EmitSliceThunk(instruction);
 
     case HloOpcode::kConcatenate:
       return EmitConcatenateKernelThunk(instruction);
@@ -431,10 +367,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       }
       return EmitFusionKernelThunk(instruction);
 
-    case HloOpcode::kReduce:
-    case HloOpcode::kReduceWindow:
-      return EmitReductionKernelThunk(instruction);
-
     case HloOpcode::kRng:
       return EmitRngThunk(instruction);
 
@@ -456,15 +388,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kConvolution:
       return EmitConvolutionThunk(instruction);
 
-    case HloOpcode::kCopy: {
-      // The copy thunk does not support sub-byte data types.
-      bool has_byte_strides =
-          ShapeUtil::ByteStrides(instruction->shape()).has_value();
-      if (!has_byte_strides || options_.compile_copy_as_llvm_kernel) {
-        return EmitElementalKernelThunk(instruction);
-      }
+    case HloOpcode::kCopy:
       return EmitCopyThunk(instruction);
-    }
 
     case HloOpcode::kDot:
       return EmitDotThunk(instruction);
@@ -482,9 +407,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitSortThunk(instruction);
 
     default:
-      return absl::UnimplementedError(
-          absl::StrCat("HLO opcode `", HloOpcodeString(instruction->opcode()),
-                       "` is not supported by XLA:CPU ThunkEmitter"));
+      return absl::UnimplementedError(absl::StrCat(
+          "HLO opcode `", HloOpcodeString(instruction->opcode()),
+          "` is not supported by XLA:CPU ThunkEmitter. Standalone elemental "
+          "and reduction operations must be wrapped into fusions by "
+          "FusionWrapper."));
   }
 }
 
@@ -741,41 +668,26 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
       /*supported_types=*/
       {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
 
-  // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
-  // different data layouts.
-  if (PotentiallyImplementedAsEigenConvolution(*instruction,
-                                               target_machine_features_)) {
+  if (CanUseEigenConvolution(*instruction, target_machine_features_)) {
     const Shape& input_shape = input->shape();
     const Shape& kernel_shape = kernel->shape();
     const Shape& output_shape = instruction->shape();
 
-    // The input, kernel and output agree with respect to layout.
-    if (LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) &&
-        LayoutUtil::IsMonotonicWithDim0Major(kernel_shape.layout()) &&
-        LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
-      ABSL_ASSIGN_OR_RETURN(auto input_buffer, GetAllocationSlice(input));
+    ABSL_ASSIGN_OR_RETURN(auto input_buffer, GetAllocationSlice(input));
 
-      ABSL_ASSIGN_OR_RETURN(auto kernel_buffer, GetAllocationSlice(kernel));
+    ABSL_ASSIGN_OR_RETURN(auto kernel_buffer, GetAllocationSlice(kernel));
 
-      ABSL_ASSIGN_OR_RETURN(auto output_buffer, GetAllocationSlice(instruction));
+    ABSL_ASSIGN_OR_RETURN(auto output_buffer, GetAllocationSlice(instruction));
 
-      ConvolutionThunk::Options options;
-      return ThunkSequence::Of<ConvolutionThunk>(
-          ThunkInfo(instruction), options, input_buffer, input_shape,
-          kernel_buffer, kernel_shape, output_buffer, output_shape,
-          instruction->convolution_dimension_numbers(), instruction->window(),
-          instruction->feature_group_count());
-    }
+    ConvolutionThunk::Options options;
+    return ThunkSequence::Of<ConvolutionThunk>(
+        ThunkInfo(instruction), options, input_buffer, input_shape,
+        kernel_buffer, kernel_shape, output_buffer, output_shape,
+        instruction->convolution_dimension_numbers(), instruction->window(),
+        instruction->feature_group_count());
   }
 
-  // This is a completely un-optimized version of convolution just to
-  // have an early version that works. E.g. the input index and
-  // padding calculation is not hoisted out of the inner loop.
-  //
-  // See the description of convolution in the XLA documentation for the pseudo
-  // code for convolution.
-  VLOG(2) << "Falling back to unoptimized convolution: " << instruction->name();
-  return EmitElementalKernelThunk(instruction);
+  return Unimplemented("Unoptimized convolution is not supported");
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
@@ -786,23 +698,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
   return ThunkSequence::Of<CopyThunk>(ThunkInfo(instruction), source_buffer,
                                       source->shape(), destination_buffer,
                                       instruction->shape());
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
-    const HloInstruction* instruction) {
-  ElementalKernelEmitter emitter(instruction, &buffer_assignment_,
-                                 &target_machine_features_);
-  ABSL_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
-                   emitter.EmitKernelDefinition());
-
-  auto kernel_spec = kernel_definition.spec();
-  auto kernel_source = std::move(kernel_definition).TakeSource();
-
-  kernels_.push_back(
-      {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
-
-  return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
-                                 /*min_alignment=*/MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
@@ -819,7 +714,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
 
-  if (FusionRoutesToMlirEmitter(hlo_module_config_, fusion)) {
+  if (FusionRoutesToMlirEmitter(fusion)) {
     ABSL_ASSIGN_OR_RETURN(std::string fingerprint,
                      GetFusionFingerprint(*fusion, buffer_assignment_,
                                           GetDefaultBufferAlignment()));
@@ -846,26 +741,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
                                    /*min_alignment=*/MinAlign());
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitFusionHostKernel(fusion));
-  ABSL_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
+  if (fusion->fusion_kind() == HloInstruction::FusionKind::kOutput) {
+    ABSL_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitDotFusionHostKernel(fusion));
+    ABSL_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return MakeKernelThunkSequence(instruction, buffers, kernel,
-                                 /*min_alignment=*/MinAlign());
+    return MakeKernelThunkSequence(instruction, buffers, kernel,
+                                   /*min_alignment=*/MinAlign());
+  }
+
+  return Unimplemented("Unsupported fusion instruction: %s",
+                       fusion->ToString());
 }
 
-bool FusionRoutesToMlirEmitter(const HloModuleConfig& config,
-                               const HloFusionInstruction* fusion) {
+bool FusionRoutesToMlirEmitter(const HloFusionInstruction* fusion) {
   if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
     return true;
   }
-  return options::UseExperimentalLoopFusion(config) &&
-         fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop;
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
-    const HloInstruction* instruction) {
-  // TODO(ezhulenev): Port vectorized reduction emitter from IrEmitter.
-  return EmitElementalKernelThunk(instruction);
+  return fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop;
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngThunk(
@@ -1247,9 +1139,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   ABSL_ASSIGN_OR_RETURN(auto op_buffers, GetOpBuffers<CustomCallThunk::OpBuffers>(
                                         instruction, buffer_assignment_));
 
-  return ThunkSequence::Of<CustomCallThunk>(ThunkInfo(instruction),
-                                            custom_call_target, op_buffers,
-                                            backend_config_str, version);
+  absl::StatusOr<std::unique_ptr<CustomCallThunk>> custom_call_thunk =
+      CustomCallThunk::Create(ThunkInfo(instruction), custom_call_target,
+                              op_buffers, backend_config_str, version);
+
+  if (custom_call_thunk.ok()) {
+    ThunkSequence thunks;
+    thunks.push_back(std::move(*custom_call_thunk));
+    return thunks;
+  }
+  if (hlo_module_config_.debug_options().xla_cpu_mock_custom_calls()) {
+    // xla_cpu_mock_custom_calls=true means we won't emit thunks for custom
+    // call targets that couldn't be found.
+    return ThunkSequence::Empty();
+  }
+  return custom_call_thunk.status();
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
@@ -1262,54 +1166,109 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
                                  /*min_alignment=*/MinAlign());
 }
 
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
-    const HloInstruction* instruction) {
-  // TODO(ezhulenev): Consider implementing slice operations as separate
-  // Thunks because it might be easier to get peak performance from hand
-  // written code (Eigen slice expression for example).
-  return EmitElementalKernelThunk(instruction);
-}
-
-// Parse the sort comparator to determine the sort direction. Comparator is
-// expected to be an HloOpcode::kCompare with two parameters.
+// Parse the sort instruction and comparator to determine the sort direction if
+// it is supported by SortThunk's SortDirection fast path.
 std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
-    const HloComputation* hlo_comparator) const {
-  namespace m = match;
-  std::optional<SortThunk::SortDirection> direction = std::nullopt;
+    const HloSortInstruction* sort) {
+  if (sort->operand_count() != 1 && sort->operand_count() != 2) {
+    return std::nullopt;
+  }
 
-  // TODO(tsilytskyi): Handle more than two input parameters.
-  if (hlo_comparator->root_instruction()->opcode() == HloOpcode::kCompare &&
-      hlo_comparator->root_instruction()->operand(0)->opcode() ==
-          HloOpcode::kParameter &&
-      hlo_comparator->root_instruction()->operand(1)->opcode() ==
-          HloOpcode::kParameter &&
-      hlo_comparator->num_parameters() == 2) {
-    auto* compare =
-        Cast<HloCompareInstruction>(hlo_comparator->root_instruction());
+  PrimitiveType key_type = sort->operand(0)->shape().element_type();
+  if (!SortThunk::IsSupportedKeyType(key_type)) {
+    return std::nullopt;
+  }
 
-    // Take into account the order of the parameters. If they are swapped,
-    // the sort direction will be reversed.
-    const bool expected_param_order =
-        (Match(compare, m::Op()
-                            .WithOperand(0, m::Parameter(0))
-                            .WithOperand(1, m::Parameter(1))));
-    switch (compare->comparison_direction()) {
-      case ComparisonDirection::kGe:
-        direction = (expected_param_order)
-                        ? SortThunk::SortDirection::kDescending
-                        : SortThunk::SortDirection::kAscending;
-        break;
-      case ComparisonDirection::kLt:
-        direction = (expected_param_order)
-                        ? SortThunk::SortDirection::kAscending
-                        : SortThunk::SortDirection::kDescending;
-        break;
-      default:
-        break;
+  if (sort->operand_count() == 2) {
+    PrimitiveType val_type = sort->operand(1)->shape().element_type();
+    if (!primitive_util::IsArrayType(val_type)) {
+      return std::nullopt;
+    }
+    int val_bit_width = primitive_util::BitWidth(val_type);
+    if (val_bit_width != 8 && val_bit_width != 16 && val_bit_width != 32 &&
+        val_bit_width != 64) {
+      return std::nullopt;
+    }
+
+    const Shape& shape = sort->operand(0)->shape();
+    int64_t rank = shape.dimensions().size();
+    int64_t sort_dimension = sort->sort_dimension() >= 0
+                                 ? sort->sort_dimension()
+                                 : rank + sort->sort_dimension();
+    if (sort_dimension < 0 || sort_dimension >= rank) {
+      return std::nullopt;
+    }
+    // CpuLayoutAssignment always assigns descending (row-major) layout to sort
+    // operands, so logical dimensions match physical dimensions.
+    absl::Span<const int64_t> dimensions = shape.dimensions();
+    int64_t sort_dim_size = dimensions[sort_dimension];
+    bool is_strided_sort =
+        absl::c_any_of(dimensions.subspan(sort_dimension + 1),
+                       [](int64_t dim) { return dim != 1; });
+    if (is_strided_sort && sort_dim_size > SortThunk::kMaxSortDimSize) {
+      return std::nullopt;
     }
   }
 
-  return direction;
+  const HloComputation* hlo_comparator = sort->to_apply();
+  if (hlo_comparator->num_parameters() != sort->operand_count() * 2) {
+    return std::nullopt;
+  }
+
+  const HloInstruction* root = hlo_comparator->root_instruction();
+  const auto* compare = DynCast<HloCompareInstruction>(root);
+  if (compare == nullptr ||
+      compare->comparison_direction() == ComparisonDirection::kEq ||
+      compare->comparison_direction() == ComparisonDirection::kNe) {
+    return std::nullopt;
+  }
+
+  int64_t index0 = -1;
+  int64_t index1 = -1;
+
+  auto [simple_idx0, simple_idx1] = MatchSimpleSortComparator(compare);
+  if (simple_idx0 != -1 && simple_idx1 != -1) {
+    // For simple parameter comparisons:
+    // If the comparison is explicitly TOTALORDER on floating point types, do
+    // not map to the inlined NumPy comparator because raw TotalOrder
+    // distinguishes -0.0 < +0.0 and sorts -NaN first.
+    // Standard float comparisons (kPartial order) are mapped to the NumPy
+    // comparator to guarantee strict weak ordering for NaNs.
+    if (compare->order() == ComparisonOrder::kTotal &&
+        primitive_util::IsFloatingPointType(
+            compare->operand(0)->shape().element_type())) {
+      return std::nullopt;
+    }
+    index0 = simple_idx0;
+    index1 = simple_idx1;
+  } else {
+    auto [numpy_idx0, numpy_idx1] = MatchNumpySortComparator(compare);
+    if (numpy_idx0 != -1 && numpy_idx1 != -1) {
+      index0 = numpy_idx0;
+      index1 = numpy_idx1;
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  const bool expected_param_order = (index0 == 0 && index1 == 1);
+  const bool reverse_param_order = (index0 == 1 && index1 == 0);
+  if (!expected_param_order && !reverse_param_order) {
+    return std::nullopt;
+  }
+
+  switch (compare->comparison_direction()) {
+    case ComparisonDirection::kGt:
+    case ComparisonDirection::kGe:
+      return (expected_param_order) ? SortThunk::SortDirection::kDescending
+                                    : SortThunk::SortDirection::kAscending;
+    case ComparisonDirection::kLt:
+    case ComparisonDirection::kLe:
+      return (expected_param_order) ? SortThunk::SortDirection::kAscending
+                                    : SortThunk::SortDirection::kDescending;
+    default:
+      return std::nullopt;
+  }
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
@@ -1319,7 +1278,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   HloComputation* hlocomparator = sort->to_apply();
 
   const std::optional<SortThunk::SortDirection> direction =
-      MatchSortDirection(hlocomparator);
+      MatchSortDirection(sort);
 
   ABSL_ASSIGN_OR_RETURN(auto comparator,
                    ir_emitter_.EmitSortComparator(hlocomparator));

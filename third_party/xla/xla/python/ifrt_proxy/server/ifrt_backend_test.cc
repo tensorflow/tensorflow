@@ -31,6 +31,7 @@
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
@@ -39,7 +40,6 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
@@ -75,7 +75,7 @@
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
@@ -903,7 +903,7 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
   }
   // OSS requires explicit string conversion
   // NOLINTNEXTLINE(*-redundant-string-conversions)
-  copy_arrays_request->set_memory_kind(std::string(*memory_kind.memory_kind()));
+  copy_arrays_request->set_memory_kind(std::string(memory_kind.value()));
   copy_arrays_request->set_copy_semantics(
       proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
   copy_arrays_request->add_result_handles(1);
@@ -1231,6 +1231,7 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   std::vector<MockDevice> devices(4);
   for (int i = 0; i < 4; ++i) {
     EXPECT_CALL(devices[i], Id()).WillRepeatedly(Return(DeviceId(i)));
+    EXPECT_CALL(devices[i], IsAddressable()).WillRepeatedly(Return(true));
   }
 
   std::vector<xla::ifrt::Device*> addressable_devices;
@@ -1242,11 +1243,8 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
 
   auto executable = std::make_unique<MockLoadedExecutable>();
   EXPECT_CALL(*executable, name()).WillOnce(Return("executable_name"));
-  EXPECT_CALL(*executable, num_devices()).WillOnce(Return(4));
   EXPECT_CALL(*executable, devices())
       .WillOnce(Return(std::make_optional(device_list)));
-  EXPECT_CALL(*executable, addressable_devices())
-      .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
 
   TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
@@ -1910,11 +1908,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadataWithMpmd) {
     MockMpmdLoadedExecutable* executable = e.get();
 
     ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
-    ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
     auto device_list = BasicDeviceList::Create({});
     ON_CALL(*executable, devices()).WillByDefault(Return(device_list));
-    ON_CALL(*executable, addressable_devices())
-        .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>({})));
     ON_CALL(*executable, Fingerprint())
         .WillByDefault(Return("mpmd_fingerprint"));
 
@@ -1973,11 +1968,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMpmdCostAnalysis) {
     MockMpmdLoadedExecutable* executable = e.get();
 
     ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
-    ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
     auto device_list = BasicDeviceList::Create({});
     ON_CALL(*executable, devices()).WillByDefault(Return(device_list));
-    ON_CALL(*executable, addressable_devices())
-        .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>()));
     ON_CALL(*executable, Fingerprint())
         .WillByDefault(Return("mpmd_fingerprint"));
 
@@ -2022,11 +2014,8 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccessWithMpmdAddressableDevices) {
   auto executable = std::make_unique<MockMpmdLoadedExecutable>();
 
   ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
-  ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
   auto empty_device_list = BasicDeviceList::Create({});
   ON_CALL(*executable, devices()).WillByDefault(Return(empty_device_list));
-  ON_CALL(*executable, addressable_devices())
-      .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>()));
   ON_CALL(*executable, Fingerprint()).WillByDefault(Return("mpmd_fingerprint"));
 
   std::vector<xla::ifrt::Device*> mesh1_devices = {mock_devices_[0].get()};

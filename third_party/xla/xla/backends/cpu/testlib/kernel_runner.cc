@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetOptions.h"
@@ -129,7 +129,6 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
   };
 
   llvm::TargetOptions target_options;
-  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 
   std::unique_ptr<IrCompiler> ir_compiler =
       IrCompiler::Create(target_options, std::move(ir_compiler_options),

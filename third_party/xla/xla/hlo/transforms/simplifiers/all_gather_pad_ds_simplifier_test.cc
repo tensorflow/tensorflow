@@ -24,9 +24,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,11 +60,9 @@ class AllGatherPadDsSimplifierTest : public HloHardwareIndependentTestBase {
     config.set_use_spmd_partitioning(num_partitions > 1);
     ABSL_ASSIGN_OR_RETURN(auto module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
-    auto changed = AllGatherPadDsSimplifier().Run(module.get(), {});
-    if (!changed.ok()) {
-      return changed.status();
-    }
-    EXPECT_EQ(changed.value(), expect_change);
+    ABSL_ASSIGN_OR_RETURN(bool changed,
+                     AllGatherPadDsSimplifier().Run(module.get(), {}));
+    EXPECT_EQ(changed, expect_change);
     LOG(INFO) << "new module: " << module->ToString();
     return module;
   }

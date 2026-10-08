@@ -32,6 +32,7 @@ tf_proto_library(
     deps = [
         "//xla:xla_data_proto",
         "//xla:xla_proto",
+        "//xla/service:gpu_topology_proto",
         "//xla/stream_executor:device_description_proto",
     ],
 )

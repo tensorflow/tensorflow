@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -41,9 +40,8 @@ ENTRY entry {
    custom_call_target="Sharding", sharding={replicated}
  ROOT %reshape.6032 = f32[] reshape(f32[1,1]{1,0} %custom-call.3380)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardingRemover().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ShardingRemover().Run(module.get()));
   EXPECT_TRUE(changed);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Reshape(op::Parameter()));
@@ -71,9 +69,8 @@ ENTRY entry {
    custom_call_target="SPMDShardToFullShape", sharding={replicated}
  ROOT %reshape.6032 = f32[] reshape(f32[1,1]{1,0} %custom-call.3380)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardingRemover().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ShardingRemover().Run(module.get()));
   EXPECT_TRUE(changed);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Reshape(op::Parameter()));
@@ -89,9 +86,8 @@ ENTRY entry {
    custom_call_target="SPMDFullToShardShape", sharding={replicated}
  ROOT %reshape.6032 = f32[] reshape(f32[1,1]{1,0} %custom-call.3380)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardingRemover().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ShardingRemover().Run(module.get()));
   EXPECT_TRUE(changed);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Reshape(op::Parameter()));
@@ -116,9 +112,8 @@ ENTRY %cluster_2013453984438090939__.47
     %get-tuple-element.1),
     metadata={op_name="XLA_Retvals"}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardingRemover().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ShardingRemover().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 

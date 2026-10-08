@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
@@ -35,7 +35,7 @@ namespace xla {
 namespace {
 
 class DepthwiseConvolution2DTest
-    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
+    : public HloInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<
           ::testing::tuple<DepthwiseConvolution2DSpec, bool>> {};
 

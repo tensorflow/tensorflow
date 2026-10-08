@@ -1,48 +1,54 @@
 diff --git a/include/nccl_device/gin/proxy/gin_proxy.h b/include/nccl_device/gin/proxy/gin_proxy.h
+index 8a6d7dd2..78bd809e 100644
 --- a/include/nccl_device/gin/proxy/gin_proxy.h
 +++ b/include/nccl_device/gin/proxy/gin_proxy.h
-@@ -55,7 +55,7 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
--// 4x16 byte store with the write-through cache hint
-+// 16x4 byte store with the write-through cache hint
- #pragma unroll
--    for (uint8_t i = 0; i < 4; i++) {
--      __stwt((uint4*)&q[idx] + i, ((uint4*)gfd)[i]);
+@@ -85,8 +85,8 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
+     // ncclGinProxyGfd_t is declared __attribute__((packed, aligned(16))) in
+     // gin_proxy_device_host_common.h; static_asserts there enforce the contract.
+     NVCC_PRAGMA_UNROLL_AUTO
+-    for (uint8_t i = 0; i < sizeof(ncclGinProxyGfd_t) / sizeof(uint4); i++) {
+-      __stwt((uint4*)&q[gfdIdx] + i, ((uint4*)gfd)[i]);
 +    for (uint8_t i = 0; i < 16; i++) {
-+      __stwt((__half2*)&q[idx] + i, ((__half2*)gfd)[i]);
++      __stwt((__half2*)&q[gfdIdx] + i, ((__half2*)gfd)[i]);
      }
-   }
- }
+     if (isGet) {
+       // Atomic max with rolling logic.
 diff --git a/include/nccl_device/utility.h b/include/nccl_device/utility.h
+index 6e09fc10..dbc1cc28 100644
 --- a/include/nccl_device/utility.h
 +++ b/include/nccl_device/utility.h
 @@ -17,7 +17,7 @@
-             #define NCCL_CHECK_CUDACC 0
-         #endif
-     #else
--        #if __CUDACC__
-+        #ifdef __CUDACC__
-             #define NCCL_CHECK_CUDACC 1
-         #else
-             #define NCCL_CHECK_CUDACC 0
-        #endif
-diff --git a/include/nccl_device/gin/gdaki/doca_gpunetio/common/doca_gpunetio_verbs_def.h b/include/nccl_device/gin/gdaki/doca_gpunetio/common/doca_gpunetio_verbs_def.h
---- a/include/nccl_device/gin/gdaki/doca_gpunetio/common/doca_gpunetio_verbs_def.h
-+++ b/include/nccl_device/gin/gdaki/doca_gpunetio/common/doca_gpunetio_verbs_def.h
-@@ -49,7 +49,7 @@ extern "C" {
- /**
-  * Macro to temporarily cast a variable to volatile.
-  */
--#define DOCA_GPUNETIO_VOLATILE(x) (*(volatile typeof(x) *)&(x))
-+#define DOCA_GPUNETIO_VOLATILE(x) (*(volatile __typeof__(x) *)&(x))
+ #define NCCL_CHECK_CUDACC 0
+ #endif
+ #else
+-#if __CUDACC__
++#ifdef __CUDACC__
+ #define NCCL_CHECK_CUDACC 1
+ #else
+ #define NCCL_CHECK_CUDACC 0
+diff --git a/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h b/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
+index 4a2cf812..e38f7fc2 100644
+--- a/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
++++ b/include/nccl_device/gin/gpi/gin_gpi_device_host_common.h
+@@ -170,7 +170,7 @@ enum gpi_post_mode {
+ };
  
- /**
-  * Default warp size value of 32 threads
-@@ -123,7 +123,7 @@ extern "C" {
-     (1ULL << DOCA_GPUNETIO_VERBS_MAX_TRANSFER_SIZE_SHIFT)  // 1GiB
- 
- #ifndef ACCESS_ONCE
--#define ACCESS_ONCE(x) (*(volatile typeof(x) *)&(x))
-+#define ACCESS_ONCE(x) (*(volatile __typeof__(x) *)&(x))
+ #ifndef GPI_ACCESS_ONCE
+-#define GPI_ACCESS_ONCE(x) (*(volatile typeof(x)*)&(x))
++#define GPI_ACCESS_ONCE(x) (*(volatile __typeof__(x)*)&(x))
  #endif
  
- #ifndef READ_ONCE
+ #ifndef GPI_READ_ONCE
+diff --git a/include/nccl_device/gin/gpi/gin_gpi.h b/include/nccl_device/gin/gpi/gin_gpi.h
+index c004b4cb..7357c4c0 100644
+--- a/include/nccl_device/gin/gpi/gin_gpi.h
++++ b/include/nccl_device/gin/gpi/gin_gpi.h
+@@ -212,7 +212,7 @@ __device__ static inline void gpi_gpu_channel_post_gfd_thread(gpi_gpu_channel_t*
+     // Manual PTX for MMIO 128-bit store (b128 needs CUDA 12.3+ / PTX 8.3)
+     uint64_t val_lo = segment[0].raw;
+     uint64_t val_hi = segment[1].raw;
+-#if CUDART_VERSION >= 12030
++#if CUDART_VERSION >= 12030 && !defined(__clang__)
+     asm volatile(R"YYY(
+       .reg .b128 _v%=;
+       mov.b128 _v%=, {%1, %2};

@@ -17,17 +17,18 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -36,19 +37,21 @@ namespace xla {
 namespace xla_compile {
 namespace {
 
-class XlaCompileTest : public HloTestBase {
+class XlaCompileTest : public gpu::HloPjRtGpuTestBase {
  public:
   void LoadAndRunExecutable(absl::string_view path_to_serialized_aot_result,
                             absl::Span<const Literal* const> args,
-                            const Literal& expected) {
+                            const Literal& expected,
+                            absl::string_view target_suffix = "") {
     const char* test_device = getenv("XLA_TEST_DEVICE");
     ASSERT_NE(test_device, nullptr) << "XLA_TEST_DEVICE is not set";
-    std::string path = tsl::io::JoinPath(
-        tsl::testing::XlaSrcRoot(), "service",
-        absl::StrCat(path_to_serialized_aot_result, "_", test_device));
+    std::string path =
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
+                          absl::StrCat(path_to_serialized_aot_result, "_",
+                                       test_device, target_suffix));
     std::string serialized_aot_result;
-    TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), path,
-                                       &serialized_aot_result));
+    ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), path,
+                                    &serialized_aot_result));
 
     auto* pjrt_runner = absl::down_cast<HloRunner*>(&test_runner());
     ASSERT_TRUE(pjrt_runner != nullptr);
@@ -77,7 +80,9 @@ TEST_P(XlaAotCompileTest, LoadGpuExecutable) {
 INSTANTIATE_TEST_SUITE_P(
     TestingAotFormats, XlaAotCompileTest,
     ::testing::Values("xla_aot_compile_test_gpu_executable",
-                      "xla_aot_compile_test_gpu_executable_hlo"));
+                      "xla_aot_compile_test_gpu_executable_hlo",
+                      "xla_aot_compile_test_gpu_executable_legacy_cache",
+                      "xla_aot_compile_test_gpu_executable_hlo_legacy_cache"));
 
 TEST_F(XlaCompileTest, LoadGpuExecutableWithConstant) {
   Literal input = LiteralUtil::CreateR1<double>({3.0f, 3.0f, 3.0f});
@@ -86,8 +91,9 @@ TEST_F(XlaCompileTest, LoadGpuExecutableWithConstant) {
                        expected);
 }
 
-// Should also cover the case of loading a GPU executable with a GEMM.
-TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolution) {
+void LoadAndRunConvolution(XlaCompileTest& test,
+                           absl::string_view path_to_serialized_aot_result,
+                           absl::string_view target_suffix = "") {
   Literal input1 = LiteralUtil::CreateR4<float>(
       {{{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}, {7.0, 8.0}},
         {{11.0, 12.0}, {13.0, 14.0}, {15.0, 16.0}, {17.0, 18.0}},
@@ -101,8 +107,31 @@ TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolution) {
       {{1310.0}, {1466.0}, {1622.0}},
       {{2090.0}, {2246.0}, {2402.0}},
   }});
-  LoadAndRunExecutable("xla_aot_compile_test_gpu_executable_convolution",
-                       {&input1, &input2}, expected);
+  test.LoadAndRunExecutable(path_to_serialized_aot_result, {&input1, &input2},
+                            expected, target_suffix);
+}
+
+// Should also cover the case of loading a GPU executable with a GEMM.
+TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolution) {
+  LoadAndRunConvolution(*this,
+                        "xla_aot_compile_test_gpu_executable_convolution");
+}
+
+TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolutionLegacyCache) {
+  LoadAndRunConvolution(
+      *this, "xla_aot_compile_test_gpu_executable_convolution_legacy_cache");
+}
+
+TEST_F(XlaCompileTest, LoadGpuExecutableWithDevicelessCudnnConvolution) {
+  const char* test_device = getenv("XLA_TEST_DEVICE");
+  if (test_device == nullptr || absl::string_view(test_device) != "h100") {
+    GTEST_SKIP() << "Only compiled for h100.";
+  }
+  absl::string_view target_suffix =
+      absl::StrContains(device_description().name(), "MIG") ? "_mig" : "";
+  LoadAndRunConvolution(
+      *this, "xla_aot_compile_test_gpu_executable_convolution_deviceless_cudnn",
+      target_suffix);
 }
 
 }  // namespace

@@ -18,17 +18,25 @@ limitations under the License.
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_BACKEND_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu::nvptx {
+
+// Returns the maximum PTX ISA version advertised by LLVM's NVPTX target,
+// encoded as major * 10 + minor. Returns an error if the target or its MC
+// subtarget information is not registered.
+absl::StatusOr<int> GetMaxPtxVersionSupportedByLlvm(
+    const llvm::Triple& target_triple);
 
 // Resolves the compute capability that XLA actually compiles for given the
 // compute capability of the target device. If the device's compute capability
@@ -54,7 +62,8 @@ std::string GetSmName(
 absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
-    std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
+    std::function<void(llvm::TargetMachine*)> configure_target = nullptr,
+    std::optional<int> max_ptx_isa_version = std::nullopt);
 
 // Returns the LLVM command line flags that we use for compilation.
 std::vector<std::string> GetNVPTXBackendOptions(

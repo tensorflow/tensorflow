@@ -20,10 +20,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -95,8 +95,8 @@ TEST_P(GpuSpmdPartitioningTest, DotWithEntryComputationLayout) {
      rhs_contracting_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(kHloModule, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(kHloModule, /*num_devices=*/8));
 
   EXPECT_EQ(module->config().entry_computation_layout().parameter_shape(0),
             ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 2}, {0, 1}));

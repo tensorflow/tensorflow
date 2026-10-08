@@ -22,17 +22,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/ffi/ffi.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -108,7 +104,6 @@ class DynamicSliceFusionV2Test : public HloPjRtGpuTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
     debug_options.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(
         true);
     return debug_options;
@@ -131,7 +126,7 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUS) {
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     body {
@@ -178,69 +173,6 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUS) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_F(DynamicSliceFusionV2Test, HeroWithExternalUserRunsOncePerIteration) {
-  // A surviving duplicate computes identical values -- a pure performance
-  // defect, visible as a second custom-call in the optimized HLO.
-  const char* hlo = R"(
-    HloModule test
-
-    body {
-      param = (s32[], f32[64], f32[4,64]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      res = f32[64] get-tuple-element(param), index=1
-      buf = f32[4,64] get-tuple-element(param), index=2
-      hero = f32[64] custom-call(res),
-        custom_call_target="__xla_test$$memset_const",
-        api_version=API_VERSION_TYPED_FFI,
-        backend_config="{value = 7.0 : f32}"
-      hero_2d = f32[1,64] reshape(hero)
-      zero = s32[] constant(0)
-      updated = f32[4,64] dynamic-update-slice(buf, hero_2d, i, zero)
-      new_res = f32[64] add(res, hero)
-      one = s32[] constant(1)
-      next_i = s32[] add(i, one)
-      ROOT tuple = (s32[], f32[64], f32[4,64]) tuple(next_i, new_res, updated)
-    }
-
-    cond {
-      param = (s32[], f32[64], f32[4,64]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      limit = s32[] constant(4)
-      ROOT cmp = pred[] compare(i, limit), direction=LT
-    }
-
-    ENTRY main {
-      zero = s32[] constant(0)
-      init_res = f32[64] broadcast(f32[] constant(0)), dimensions={}
-      init_buf = f32[4,64] broadcast(f32[] constant(0)), dimensions={}
-      init = (s32[], f32[64], f32[4,64]) tuple(zero, init_res, init_buf)
-      ROOT while = (s32[], f32[64], f32[4,64])
-        while(init), condition=cond, body=body
-    }
-  )";
-
-  ASSERT_OK_AND_ASSIGN(
-      Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
-                              /*run_hlo_passes=*/true));
-
-  Literal expected = LiteralUtil::MakeTupleOwned(
-      LiteralUtil::CreateR0<int32_t>(4),
-      LiteralUtil::CreateFullWithDescendingLayout<float>({64}, 28.0f),
-      LiteralUtil::CreateFullWithDescendingLayout<float>({4, 64}, 7.0f));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized,
-                       GetOptimizedModule(hlo));
-  int64_t hero_count = 0;
-  for (const HloComputation* computation : optimized->computations()) {
-    for (const HloInstruction* instr : computation->instructions()) {
-      hero_count += instr->opcode() == HloOpcode::kCustomCall &&
-                    instr->custom_call_target() == "__xla_test$$memset_const";
-    }
-  }
-  EXPECT_EQ(hero_count, 1);
-}
-
 TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
   const char* hlo = R"(
     HloModule test, is_scheduled=true
@@ -259,7 +191,7 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %offset, %p2),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":16,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":16,"byte_stride":16}}}
     }
 
     body {
@@ -306,6 +238,67 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetTable) {
+  // The row index saturates before the column index, so the byte offsets cannot
+  // be represented by a linear progression with whole-buffer clamping.
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %p0 = f32[3,5] parameter(0)
+      %p1 = s32[] parameter(1)
+      %fill = f32[1] custom-call(%p0),
+        custom_call_target="__xla_test$$scaled_memset",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{scales = array<f32: 1.0>}"
+      %fill_2d = f32[1,1] bitcast(%fill)
+      ROOT %dus = f32[3,5]
+        dynamic-update-slice(%p0, %fill_2d, %p1, %p1),
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"table":{"offsets":[0,24,48,52,56,56]}}}
+    }
+
+    body {
+      param = (s32[], f32[3,5]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      buf = f32[3,5] get-tuple-element(param), index=1
+      updated = f32[3,5] fusion(buf, i),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[3,5]) tuple(next_i, updated)
+    }
+
+    cond {
+      param = (s32[], f32[3,5]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(6)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      init_buf = f32[3,5] broadcast(f32[] constant(-1)), dimensions={}
+      init = (s32[], f32[3,5]) tuple(zero, init_buf)
+      while = (s32[], f32[3,5])
+        while(init), condition=cond, body=body
+      ROOT result = f32[3,5] get-tuple-element(while), index=1
+    }
+  )";
+
+  Literal expected = LiteralUtil::CreateR2<float>(
+      {{0, -1, -1, -1, -1}, {-1, 1, -1, -1, -1}, {-1, -1, 2, 3, 5}});
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(module), {}, /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(DynamicSliceFusionV2Test, CublasLtMatmulWithBitcastSlicedOperand) {
   const char* hlo = R"(
     HloModule test, is_scheduled=true
@@ -318,7 +311,7 @@ TEST_F(DynamicSliceFusionV2Test, CublasLtMatmulWithBitcastSlicedOperand) {
       %ds = f32[1,4] dynamic-slice(%p0, %p2, %zero),
         dynamic_slice_sizes={1,4},
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %lhs = f32[4,1] bitcast(%ds)
       ROOT %gemm = f32[4,4] custom-call(%lhs, %p1),
         custom_call_target="__cublas$lt$matmul",
@@ -399,11 +392,11 @@ TEST_F(DynamicSliceFusionV2Test, TupleOutputTwoDUS) {
       %dus0 = f32[4,4]
         dynamic-update-slice(%p0, %bc0, %p2, %p3),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus1 = f32[4,4]
         dynamic-update-slice(%p1, %bc1, %p2, %p3),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %tuple = (f32[4,4], f32[4,4]) tuple(%dus0, %dus1)
     }
 
@@ -538,7 +531,7 @@ TEST_F(DynamicSliceFusionV2Test, AsyncSingleOutputOneDUS) {
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     %async_computation {
@@ -611,7 +604,7 @@ TEST_F(DynamicSliceFusionV2Test,
       ROOT %dus = f32[4,8,8] dynamic-update-slice(
         %p_input, %fill_3d, %p_index, %p_zero, %p_zero),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":768,"byte_stride":-256}}
+          {"loop_index":0,"linear":{"byte_offset":768,"byte_stride":-256}}}
     }
 
     %async_computation {
@@ -689,11 +682,11 @@ TEST_F(DynamicSliceFusionV2Test, AsyncTupleOutputTwoDUS) {
       %dus0 = f32[4,4]
         dynamic-update-slice(%p0, %bc0, %p2, %p3),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus1 = f32[4,4]
         dynamic-update-slice(%p1, %bc1, %p2, %p3),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %tuple = (f32[4,4], f32[4,4]) tuple(%dus0, %dus1)
     }
 
@@ -781,7 +774,7 @@ TEST_F(DynamicSliceFusionV2Test, TupleOutputOneDUS) {
       %dus0 = f32[4,4]
         dynamic-update-slice(%p0, %bc0, %p1, %p2),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %gte1 = f32[4] get-tuple-element(%call), index=1
       ROOT %tuple = (f32[4,4], f32[4]) tuple(%dus0, %gte1)
     }
@@ -858,7 +851,7 @@ TEST_F(DynamicSliceFusionV2Test, ZeroSizedParameter) {
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     body {
@@ -989,7 +982,7 @@ TEST_F(DynamicSliceFusionV2Test, AsyncTupleOutputOneDUS) {
       %dus0 = f32[4,4]
         dynamic-update-slice(%p0, %bc0, %p1, %p2),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %gte1 = f32[4] get-tuple-element(%call), index=1
       ROOT %tuple = (f32[4,4], f32[4]) tuple(%dus0, %gte1)
     }
@@ -1072,7 +1065,7 @@ TEST_F(DynamicSliceFusionV2Test, OffsetCheckWrongStride) {
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":32}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":32}}}
     }
 
     body {
@@ -1135,11 +1128,11 @@ TEST_F(DynamicSliceFusionV2Test, NestedTupleOutputTwoDUS) {
       %dus0 = f32[4,4]
         dynamic-update-slice(%p0, %bc0, %p2, %p3),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus1 = f32[4,4]
         dynamic-update-slice(%p1, %bc1, %p2, %p3),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %outer = ((f32[4,4]), f32[4,4]) tuple(
         (f32[4,4]) tuple(%dus0), %dus1)
     }
@@ -1214,7 +1207,7 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDSOneDUS) {
       %ds = f32[1,4] dynamic-slice(%p0, %p2, %zero),
         dynamic_slice_sizes={1,4},
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %ds_flat = f32[4] bitcast(%ds)
       %hero = f32[4] custom-call(%ds_flat),
         custom_call_target="__xla_test$$scaled_memset",
@@ -1224,7 +1217,7 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDSOneDUS) {
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p1, %hero_2d, %p2, %zero),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     body {
@@ -1285,7 +1278,7 @@ TEST_F(DynamicSliceFusionV2Test, CombinedDSInputTupleOutputTwoDUS) {
       %ds = f32[1,4] dynamic-slice(%p_input, %p_i, %zero),
         dynamic_slice_sizes={1,4},
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %ds_flat = f32[4] bitcast(%ds)
       %call = (f32[4], f32[4]) custom-call(%ds_flat),
         custom_call_target="__xla_test$$scaled_memset",
@@ -1298,11 +1291,11 @@ TEST_F(DynamicSliceFusionV2Test, CombinedDSInputTupleOutputTwoDUS) {
       %dus0 = f32[4,4]
         dynamic-update-slice(%p_buf0, %bc0, %p_i, %zero),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus1 = f32[4,4]
         dynamic-update-slice(%p_buf1, %bc1, %p_i, %zero),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %tuple = (f32[4,4], f32[4,4]) tuple(%dus0, %dus1)
     }
 
@@ -1377,7 +1370,7 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDSNoDUS) {
       %ds = f32[1,4] dynamic-slice(%p0, %p1, %zero),
         dynamic_slice_sizes={1,4},
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %ds_flat = f32[4] bitcast(%ds)
       ROOT %hero = f32[4] custom-call(%ds_flat),
         custom_call_target="__xla_test$$scaled_memset",
@@ -1446,7 +1439,7 @@ TEST_F(DynamicSliceFusionV2Test, NestedTupleDSInputTwoDUS) {
       %ds = f32[1,4] dynamic-slice(%p_input, %p_i, %zero),
         dynamic_slice_sizes={1,4},
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %ds_flat = f32[4] bitcast(%ds)
       %call = (f32[4], f32[4]) custom-call(%ds_flat),
         custom_call_target="__xla_test$$scaled_memset",
@@ -1459,11 +1452,11 @@ TEST_F(DynamicSliceFusionV2Test, NestedTupleDSInputTwoDUS) {
       %dus0 = f32[4,4]
         dynamic-update-slice(%p_buf0, %bc0, %p_i, %zero),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       %dus1 = f32[4,4]
         dynamic-update-slice(%p_buf1, %bc1, %p_i, %zero),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
       ROOT %outer = ((f32[4,4]), f32[4,4]) tuple(
         (f32[4,4]) tuple(%dus0), %dus1)
     }
@@ -1545,7 +1538,7 @@ TEST_F(DynamicSliceFusionV2Test, ConstantOffsetDUSNoLoop) {
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %two, %zero),
         backend_config={"dynamic_slice_config":
-          {"byte_offset":32,"byte_stride":0}}
+          {"linear":{"byte_offset":32,"byte_stride":0}}}
     }
 
     ENTRY main {
@@ -1588,7 +1581,7 @@ TEST_F(DynamicSliceFusionV2Test, OobClampingAccumulatesInLastSlice) {
       ROOT %dus = f32[4,4]
         dynamic-update-slice(%p0, %fill_2d, %p1, %p2),
         backend_config={"dynamic_slice_config":
-          {"loop_index":0,"byte_offset":0,"byte_stride":16}}
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
     }
 
     body {

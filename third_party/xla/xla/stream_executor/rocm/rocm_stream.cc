@@ -32,11 +32,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/driver_types.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/rocm_config.h"
@@ -104,7 +104,7 @@ absl::StatusOr<hipStream_t> CreateStream(StreamExecutor* executor,
   // Check the cache for an idle handle with matching (device, flags, priority).
   {
     auto& cache = GetHipStreamHandleCache();
-    absl::MutexLock lock(&cache.mu);
+    absl::MutexLock lock(cache.mu);
     auto key = std::make_tuple(executor->device_ordinal(), kFlags, priority);
     auto it = cache.handles.find(key);
     if (it != cache.handles.end() && !it->second.empty()) {
@@ -328,7 +328,7 @@ void DestroyStream(StreamExecutor* executor, hipStream_t stream) {
 
   // Insert the verified, idle handle into the cache for reuse.
   auto& cache = GetHipStreamHandleCache();
-  absl::MutexLock lock(&cache.mu);
+  absl::MutexLock lock(cache.mu);
   auto key =
       std::make_tuple(executor->device_ordinal(), flags, stream_priority);
   cache.handles[key].push_back(stream);

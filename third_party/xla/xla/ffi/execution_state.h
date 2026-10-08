@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/execution_state.pb.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/platform/statusor.h"

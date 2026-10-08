@@ -136,5 +136,40 @@ TEST(ConvertMlirHloToHloModuleTest, ConvertsReplicaGroupMeshAxes) {
   TF_EXPECT_OK(hlo_module.status());
 }
 
+TEST(ConvertMlirHloToHloModuleTest, PacksSpmdParametersShardingsForTupleArgs) {
+  const std::string kMlirModule = R"mlir(
+    module attributes {
+      mhlo.spmd_parameters_shardings = [
+        "{devices=[1,2]<=[2]}",
+        "{{replicated}, {devices=[2,1]<=[2]}}"
+      ]
+    } {
+      func.func @main(
+          %arg0: tensor<2x4xf32>,
+          %arg1: tuple<tensor<f32>, tensor<2x4xf32>>) -> tensor<2x4xf32> {
+        return %arg0 : tensor<2x4xf32>
+      }
+    }
+  )mlir";
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+
+  mlir::BaseScopedDiagnosticHandler handler(&context);
+  auto module = mlir::parseSourceString<mlir::ModuleOp>(kMlirModule, &context);
+  TF_ASSERT_OK(handler.ConsumeStatus());
+  ASSERT_TRUE(module);
+
+  MlirToHloConversionOptions options;
+  options.use_tuple_args = true;
+  auto hlo_module = ConvertMlirHloToHloModule(*module, options);
+  TF_ASSERT_OK(hlo_module.status());
+  ASSERT_TRUE((*hlo_module)->has_spmd_parameters_shardings());
+  ASSERT_EQ((*hlo_module)->spmd_parameters_shardings().size(), 1);
+  EXPECT_EQ((*hlo_module)->spmd_parameters_shardings()[0].ToString(),
+            "{{devices=[1,2]<=[2]}, {replicated}, {devices=[2,1]<=[2]}}");
+}
+
 }  // namespace
 }  // namespace mlir

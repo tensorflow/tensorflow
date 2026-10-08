@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
@@ -40,10 +41,10 @@ void WriteValueSlices(
   const auto& params_dense_values =
       params_dense_values_in.flat_outer_dims<VALUE_TYPE, 2>();
   auto values = values_out->flat_outer_dims<VALUE_TYPE, 2>();
-  int out_pos = 0;
+  SPLITS_TYPE out_pos = 0;
   for (const auto& slice : value_slices) {
-    for (int i = slice.first; i < slice.second; ++i) {
-      for (int j = 0; j < value_size; ++j) {
+    for (SPLITS_TYPE i = slice.first; i < slice.second; ++i) {
+      for (SPLITS_TYPE j = 0; j < value_size; ++j) {
         values(out_pos, j) = params_dense_values(i, j);
       }
       ++out_pos;
@@ -128,6 +129,7 @@ class RaggedGatherOpBase : public OpKernel {
       std::vector<std::pair<SPLITS_TYPE, SPLITS_TYPE>>* value_slices,
       SPLITS_TYPE* num_values) {
     *num_values = 0;
+    int64_t total_values = 0;
     value_slices->clear();
 
     int num_splits = indices_in.dims() - 1 + params_nested_splits_in.size();
@@ -170,17 +172,25 @@ class RaggedGatherOpBase : public OpKernel {
     // should add a new split point to out_splits that is 4 greater than the
     // previous split point in out_splits.
     for (int i = 0; i < indices.size(); ++i) {
-      int start = indices(i);
-      int limit = indices(i) + 1;
+      SPLITS_TYPE start = indices(i);
+      SPLITS_TYPE limit = indices(i) + 1;
 
       // Copy splits.
       for (int dim = 0; dim < params_nested_splits.size(); ++dim) {
         const auto& splits = params_nested_splits[dim];
         int out_dim = dim + indices_in.dims() - 1;
         if (out_dim >= 0) {
-          SPLITS_TYPE delta = out_splits->at(out_dim).back() - splits(start);
-          for (int j = start; j < limit; ++j) {
-            out_splits->at(out_dim).push_back(splits(j + 1) + delta);
+          // Splits are validated to be non-negative and sorted, so `length` is
+          // in [0, max]. Check before adding so neither int32 nor int64 Tsplits
+          // can overflow.
+          const SPLITS_TYPE last = out_splits->at(out_dim).back();
+          for (SPLITS_TYPE j = start; j < limit; ++j) {
+            const SPLITS_TYPE length = splits(j + 1) - splits(start);
+            if (length > std::numeric_limits<SPLITS_TYPE>::max() - last) {
+              return absl::InvalidArgumentError(
+                  "Output splits value exceeds limits of Tsplits");
+            }
+            out_splits->at(out_dim).push_back(last + length);
           }
         }
         start = splits(start);
@@ -188,9 +198,17 @@ class RaggedGatherOpBase : public OpKernel {
       }
       if (limit != start) {
         value_slices->emplace_back(start, limit);
-        *num_values += limit - start;
+        total_values += limit - start;
       }
     }
+    // The value count is accumulated in a wide type and validated before it is
+    // narrowed to SPLITS_TYPE, so an int32 Tsplits cannot silently wrap and
+    // drive an undersized output allocation in WriteValues.
+    if (total_values > std::numeric_limits<SPLITS_TYPE>::max()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Number of values ", total_values, " exceeds limits of Tsplits"));
+    }
+    *num_values = static_cast<SPLITS_TYPE>(total_values);
     return absl::OkStatus();
   }
 
@@ -200,9 +218,13 @@ class RaggedGatherOpBase : public OpKernel {
     // Validate
     for (int dim = 0; dim < params_nested_splits.size(); ++dim) {
       const auto& splits = params_nested_splits[dim];
+      // For an intermediate ragged dimension, the split values are used as
+      // indices into the next dimension's splits tensor by MakeSplits, so the
+      // largest valid value is one less than that tensor's length. Only the
+      // innermost dimension may reference num_params_dense_values directly.
       SPLITS_TYPE last_split = (dim == params_nested_splits.size() - 1)
                                    ? num_params_dense_values
-                                   : params_nested_splits[dim + 1].size();
+                                   : params_nested_splits[dim + 1].size() - 1;
       if (splits.size() == 0) {
         return absl::InvalidArgumentError("Ragged splits may not be empty");
       }

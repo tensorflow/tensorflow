@@ -268,6 +268,19 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_aarch64_with_onednn_async",
+    constraint_values =
+        [
+            "@platforms//cpu:aarch64",
+            "@platforms//os:linux",
+        ],
+    define_values = {
+        "build_with_onednn_async": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_armhf",
     constraint_values =
         [
@@ -578,6 +591,13 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "chromiumos",
+    # This should never point to a set `config_setting` in OSS.
+    actual = if_google("@platforms//os:chromiumos", ":google"),
+    visibility = ["//visibility:public"],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
@@ -641,7 +661,7 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+        "//conditions:default": ["@grpc//:grpc++"],
     }),
 )
 # copybara:comment_end

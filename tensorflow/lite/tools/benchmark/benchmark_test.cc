@@ -290,6 +290,15 @@ TEST(BenchmarkTest, SingleSignatureModelWithInvalidSignatureKeyFails) {
   EXPECT_EQ(kTfLiteError, status);
 }
 
+TEST(BenchmarkTest, SingleSignatureModelWithUnspecifiedSignatureKeySucceeds) {
+  ASSERT_THAT(g_string_model_path, testing::NotNull());
+
+  BenchmarkParams params = CreateStringParams();
+  TestBenchmark benchmark(std::move(params));
+  auto status = benchmark.Run();
+  EXPECT_EQ(kTfLiteOk, status);
+}
+
 TEST(BenchmarkTest, MultiSignatureModelWithUnspecifiedSignatureKeyFails) {
   ASSERT_THAT(g_multi_signature_model_path, testing::NotNull());
 

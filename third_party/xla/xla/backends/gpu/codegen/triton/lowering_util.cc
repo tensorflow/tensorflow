@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -73,7 +73,7 @@ absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
   if (!num_warps_attr) {
     return absl::InternalError("ttg.num-warps attribute not found.");
   }
-  // AMD/ROCm Triton backend does not support warp specialization.
+  // AMD/ROCm and Intel XPU Triton backends do not support warp specialization.
   // Consequently, `ttg.total-num-warps` and  `nvvm.reqntid` are not added
   // to triton module/function.
   // ThreadDim is therefore calculated from the Module attributes and not
@@ -82,7 +82,8 @@ absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
   if (!target) {
     return absl::InternalError("ttg.target attribute not found.");
   }
-  if (target.getValue().find("gfx") != std::string::npos) {
+  if (target.getValue().find("gfx") != std::string::npos ||
+      target.getValue().find("xpu") != std::string::npos) {
     stream_executor::ThreadDim thread_dims(
         num_warps_attr.getInt() * threads_per_warp_attr.getInt(), 1, 1);
     return thread_dims;
@@ -353,6 +354,28 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
 
     // Combine range with previous iteration.
     range_tile = add_if(arith::AddIOp(), range, range_tile);
+  }
+
+  mlir::Value reduced_mask;
+  for (unsigned dim : reduced_dims) {
+    if (!IsGuaranteedInBounds(offsets[dim], sizes[dim], original_shape[dim])) {
+      mlir::Value upper_bound =
+          arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
+      mlir::Value mask_right = arith::CmpIOp::create(
+          builder, arith::CmpIPredicate::slt, cast_offsets[dim], upper_bound);
+
+      mlir::Value lower_bound =
+          arith::ConstantIntOp::create(builder, i64_type, 0);
+      mlir::Value mask_left = arith::CmpIOp::create(
+          builder, arith::CmpIPredicate::sge, cast_offsets[dim], lower_bound);
+      mlir::Value mask = arith::AndIOp::create(builder, mask_left, mask_right);
+      reduced_mask = add_if(arith::AndIOp(), mask, reduced_mask);
+    }
+  }
+  if (reduced_mask) {
+    reduced_mask = ttir::SplatOp::create(
+        builder, i64_tile_type.clone(builder.getI1Type()), reduced_mask);
+    mask_tile = add_if(arith::AndIOp(), reduced_mask, mask_tile);
   }
 
   // Sum up block-uniform offsets multiplied by strides.

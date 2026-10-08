@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/container/linked_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -125,7 +126,9 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
     }
   }
 
-  absl::flat_hash_set<HloInstructionAdaptor> instructions;
+  // Insertion-ordered: the iteration order below decides which value survives
+  // each union-find merge, and therefore the group order.
+  absl::linked_hash_set<HloInstructionAdaptor> instructions;
   for (const HloInstruction* operand : analysis.fusion().GetParameters()) {
     instructions.insert(HloInstructionAdaptor{*operand, &analysis.fusion()});
   }

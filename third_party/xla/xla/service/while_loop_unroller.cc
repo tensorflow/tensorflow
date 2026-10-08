@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -876,10 +876,13 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
   // Based on the instruction type, start indices start from index 1 or 2 of the
   // operands.
   int64_t start_indices_offset;
+  const Shape* slice_shape;
   if (instr->opcode() == HloOpcode::kDynamicSlice) {
     start_indices_offset = 1;
+    slice_shape = &instr->shape();
   } else if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
     start_indices_offset = 2;
+    slice_shape = &instr->operand(1)->shape();
   } else {
     return std::nullopt;
   }
@@ -928,23 +931,29 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
 
-  if (opcode == HloOpcode::kDynamicSlice) {
-    const Shape& result_shape = instr->shape();
-    if (result_shape.dimensions(dynamic_index) != 1) {
-      VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
-      return std::nullopt;
-    }
+  // With trip count equal to the dimension size, the induction variable only
+  // visits every index if it runs 0, 1, 2, ...
+  std::optional<Range> loop_range = MatchTrivialLoopRange(config.while_instr);
+  if (!loop_range.has_value() || !loop_range->IsStepKnown() ||
+      loop_range->min().GetSignedValue() != 0 ||
+      loop_range->step()->GetSignedValue() != 1) {
+    VLOG(3) << "The loop induction variable must start at 0 with step 1.";
+    return std::nullopt;
+  }
 
-    const Shape& operand_shape = operand->shape();
-    CHECK_EQ(result_shape.dimensions().size(),
-             operand_shape.dimensions().size());
-    for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
-      if (i != dynamic_index &&
-          result_shape.dimensions(i) != operand_shape.dimensions(i)) {
-        VLOG(3) << "The slice sizes must match the operand-shape on "
-                   "non-dynamic-index dimensions.";
-        return std::nullopt;
-      }
+  if (slice_shape->dimensions(dynamic_index) != 1) {
+    VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
+    return std::nullopt;
+  }
+
+  const Shape& operand_shape = operand->shape();
+  CHECK_EQ(slice_shape->dimensions().size(), operand_shape.dimensions().size());
+  for (int64_t i = 0; i < slice_shape->dimensions().size(); ++i) {
+    if (i != dynamic_index &&
+        slice_shape->dimensions(i) != operand_shape.dimensions(i)) {
+      VLOG(3) << "The slice sizes must match the operand-shape on "
+                 "non-dynamic-index dimensions.";
+      return std::nullopt;
     }
   }
 

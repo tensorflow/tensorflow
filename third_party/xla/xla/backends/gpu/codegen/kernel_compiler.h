@@ -33,18 +33,17 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
 struct TritonWrapperResult;
-using BorrowedMlirContext =
-    ObjectPool<std::unique_ptr<mlir::MLIRContext>>::BorrowedObject;
+using BorrowedMlirContext = MlirContextPool::BorrowedObject;
 
 // Abstract base class for asynchronous kernel compilation.
 //
@@ -85,7 +84,7 @@ class KernelCompiler {
   virtual xla::Future<TritonWrapperResult> CompileTritonToLlvm(
       absl::string_view kernel_name, const HloModule& hlo_module,
       const se::DeviceDescription& device_info,
-      const BlockLevelParameters& block_level_parameters,
+      const xla::xtile::BlockLevelParameters& block_level_parameters,
       const llvm::Triple& target_triple, const std::string& data_layout,
       TritonKernelSource triton_source, BorrowedMlirContext borrowed_context,
       bool is_xla_fusion) = 0;

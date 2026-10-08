@@ -22,7 +22,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 
 #define EIGEN_USE_THREADS
 
@@ -982,6 +982,21 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       // Alias output buffers to addend for in-place accumulation
       if (kind == OneDnnFusionConfig::SUM) {
         custom_call->set_output_to_operand_aliasing({{{}, {addend_idx, {}}}});
+      } else if (kind == OneDnnFusionConfig::BINARY_ADD) {
+        // oneDNN's binary post-op operand must match the output rank. Expand a
+        // lower-rank addend with leading size-1 dimensions via a Bitcast.
+        const Shape& out_shape = contraction->shape();
+        int64_t missed_rank =
+            out_shape.dimensions().size() - addend->shape().dimensions().size();
+        if (missed_rank > 0) {
+          std::vector<int64_t> ones(missed_rank, 1);
+          Shape expanded_shape =
+              ShapeUtil::InsertDimensionsAtIndex(addend->shape(), 0, ones);
+          auto* expanded_addend = custom_call->AddInstruction(
+              HloInstruction::CreateBitcast(expanded_shape, addend));
+          ABSL_RETURN_IF_ERROR(custom_call->ReplaceOperandWithDifferentShape(
+              addend_idx, expanded_addend));
+        }
       }
 
       fusions_config->add_ops(kind);
@@ -1425,9 +1440,12 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     HloInstruction *transpose, *operand;
     // Update the dimensions only when the transpose does not involve the batch
     // dimension, as modifying it could significantly impact the performance.
+    // Rank-2 operands have no batch dimension, so their only non-identity
+    // permutation ({1,0}) is always safe to fold.
     if (Match(matmul->mutable_operand(operand_idx),
               m::Copy(m::Transpose(&transpose, m::Op(&operand)))) &&
-        transpose->dimensions()[0] == 0) {
+        (transpose->dimensions().size() == 2 ||
+         transpose->dimensions()[0] == 0)) {
       new_ops[operand_idx] = operand;
       for (auto x : transpose->dimensions()) {
         (*GetOperandTensor(operand_idx, backend_config))->Add(x + 1);

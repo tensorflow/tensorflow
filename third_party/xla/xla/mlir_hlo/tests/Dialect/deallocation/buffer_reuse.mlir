@@ -453,14 +453,14 @@ func.func @hoist_from_if(%cond: i1) {
 // -----
 
 func.func @propagate_alignment_attr() {
-  %alloc = memref.alloc() {alignment = 64 : i64} : memref<f32>
+  %alloc = memref.alloc() alignment = 64 : memref<f32>
   "test.use"(%alloc) : (memref<f32>) -> ()
   memref.dealloc %alloc : memref<f32>
   return
 }
 
 // CHECK-LABEL: @propagate_alignment_attr
-// CHECK-NEXT:  memref.alloca() {alignment = 64 : i64} : memref<f32>
+// CHECK-NEXT:  memref.alloca() alignment = 64 : memref<f32>
 
 // -----
 
@@ -494,3 +494,75 @@ func.func @reuse_after_each_hoist(%cond: i1, %lb: index, %ub: index, %step: inde
 // CHECK-NEXT:  }
 // CHECK-NEXT:  test.use
 // CHECK-NEXT:  }
+
+// -----
+
+func.func @reuse_multiple_allocs_after_each_hoist(%cond: i1, %lb: index, %ub: index, %step: index) {
+  scf.for %i = %lb to %ub step %step {
+    scf.if %cond {
+      %a1 = memref.alloc() : memref<f32>
+      %a2 = memref.alloc() : memref<f32>
+      "a.op"(%a1, %a2) : (memref<f32>, memref<f32>) -> ()
+      memref.dealloc %a1 : memref<f32>
+      memref.dealloc %a2 : memref<f32>
+    }
+    scf.if %cond {
+      %b1 = memref.alloc() : memref<f32>
+      %b2 = memref.alloc() : memref<f32>
+      "b.op"(%b1, %b2) : (memref<f32>, memref<f32>) -> ()
+      memref.dealloc %b1 : memref<f32>
+      memref.dealloc %b2 : memref<f32>
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: @reuse_multiple_allocs_after_each_hoist
+// CHECK-NEXT:  %[[ALLOCA1:.*]] = memref.alloca() : memref<f32>
+// CHECK-NEXT:  %[[ALLOCA2:.*]] = memref.alloca() : memref<f32>
+// CHECK-NEXT:  scf.for
+// CHECK-NEXT:    scf.if
+// CHECK-NEXT:      "a.op"(%[[ALLOCA1]], %[[ALLOCA2]]) : (memref<f32>, memref<f32>) -> ()
+// CHECK-NEXT:    }
+// CHECK-NEXT:    scf.if
+// CHECK-NEXT:      "b.op"(%[[ALLOCA2]], %[[ALLOCA1]]) : (memref<f32>, memref<f32>) -> ()
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// CHECK-NEXT:  return
+
+// -----
+
+func.func @reuse_interleaved_types_after_each_hoist(%cond: i1, %lb: index, %ub: index, %step: index) {
+  scf.for %i = %lb to %ub step %step {
+    scf.if %cond {
+      %a1 = memref.alloc() : memref<f32>
+      %a2 = memref.alloc() : memref<i32>
+      "a.op"(%a1, %a2) : (memref<f32>, memref<i32>) -> ()
+      memref.dealloc %a1 : memref<f32>
+      memref.dealloc %a2 : memref<i32>
+    }
+    scf.if %cond {
+      %b1 = memref.alloc() : memref<i32>
+      %b2 = memref.alloc() : memref<f32>
+      "b.op"(%b1, %b2) : (memref<i32>, memref<f32>) -> ()
+      memref.dealloc %b1 : memref<i32>
+      memref.dealloc %b2 : memref<f32>
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: @reuse_interleaved_types_after_each_hoist
+// CHECK-NEXT:  %[[ALLOCA1:.*]] = memref.alloca() : memref<f32>
+// CHECK-NEXT:  %[[ALLOCA2:.*]] = memref.alloca() : memref<i32>
+// CHECK-NEXT:  scf.for
+// CHECK-NEXT:    scf.if
+// CHECK-NEXT:      "a.op"(%[[ALLOCA1]], %[[ALLOCA2]]) : (memref<f32>, memref<i32>) -> ()
+// CHECK-NEXT:    }
+// CHECK-NEXT:    scf.if
+// CHECK-NEXT:      "b.op"(%[[ALLOCA2]], %[[ALLOCA1]]) : (memref<i32>, memref<f32>) -> ()
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// CHECK-NEXT:  return
+
+

@@ -29,13 +29,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Argument.h"
@@ -628,7 +628,7 @@ llvm::Value* CreateLoad(llvm::Value* address, llvm::Type* data_type,
     llvm::Value* zextd =
         b->CreateZExt(partial_value, output->getType(), "partial_value_zextd");
     llvm::Value* shifted = b->CreateShl(
-        zextd, llvm::ConstantInt::get(b->getInt32Ty(), offset_bytes),
+        zextd, llvm::ConstantInt::get(b->getInt32Ty(), offset_bytes * 8),
         "partial_input_shifted");
     output = b->CreateAdd(output, shifted, "output_updated");
   }
@@ -653,8 +653,8 @@ void CreateStore(llvm::Value* data, llvm::Value* address, int alignment_bytes,
     llvm::Value* offset_address = b->CreateConstInBoundsGEP1_32(
         b->getInt8Ty(), address, offset_bytes, "offset_address");
     llvm::Value* shifted_partial = b->CreateTrunc(
-        b->CreateLShr(data,
-                      llvm::ConstantInt::get(b->getInt32Ty(), offset_bytes)),
+        b->CreateLShr(
+            data, llvm::ConstantInt::get(b->getInt32Ty(), offset_bytes * 8)),
         b->getIntNTy(alignment_bitwidth), "truncated_value");
     b->CreateStore(shifted_partial, offset_address);
   }

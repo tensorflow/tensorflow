@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_MORI_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_MORI_COLLECTIVES_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/runtime/process_id.h"
 
 namespace stream_executor {
 class StreamExecutor;
@@ -100,8 +102,16 @@ class MoriCollectives : public GpuCollectives {
   // collective/idempotent operation, so all participating PEs must call this
   // concurrently with consistent (rank, nranks, uid). Shared by the eager
   // InitializeTopology path and the lazy CreateCommunicatorsWithCancel path.
-  absl::Status InitPe(int32_t rank, int32_t nranks, const CliqueId& clique_id,
+  absl::Status InitPe(size_t rank, size_t nranks, const CliqueId& clique_id,
                       stream_executor::StreamExecutor* executor);
+
+  // Eagerly initializes this process's local PEs concurrently. All PEs across
+  // all processes must run this concurrently for MORI's bootstrap to
+  // rendezvous. Assumes IOTA device assignment, so the global PE id of a local
+  // device is `process_id * nranks_local + dev_ord`.
+  absl::Status EagerInitLocalPes(ProcessId process_id, size_t nranks_local,
+                                 size_t nranks_total,
+                                 const CliqueId& clique_id);
 
   bool initialized_ = false;
 };

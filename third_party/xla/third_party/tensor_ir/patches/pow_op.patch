@@ -1,0 +1,36 @@
+diff --git a/lib/Conversion/TensorToCudaTile/OutlinedComputeOps.cpp b/lib/Conversion/TensorToCudaTile/OutlinedComputeOps.cpp
+--- a/lib/Conversion/TensorToCudaTile/OutlinedComputeOps.cpp
++++ b/lib/Conversion/TensorToCudaTile/OutlinedComputeOps.cpp
+@@ -293,7 +293,7 @@
+                 getSignedness(exponentType),
+                 cuda_tile::RoundingMode::NEAREST_EVEN);
+           }
+-          rewriter.replaceOpWithNewOp<cuda_tile::PowOp>(op, operands[0], rhs);
++          rewriter.replaceOpWithNewOp<cuda_tile::FPowFOp>(op, operands[0], rhs);
+           return success();
+         })
+         .Case<Atan2Op>([&](auto) {
+diff --git a/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir b/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir
+--- a/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir
++++ b/test/Conversion/TensorToCudaTile/iterspace_matmul.mlir
+@@ -267,7 +267,7 @@
+ // CHECK: %[[RHS2:.*]] = reshape %[[RHS]] : [[TILE_RHS]] -> tile<2x128x16xf32>
+ // CHECK: %[[MMA:.*]] = mmaf %[[LHS2]], %[[RHS2]], %[[ACCUM]]
+ // CHECK: %[[RESHAPE:.*]] = reshape %[[MMA]] : tile<2x64x16xf32> -> [[TILE_RS:tile<1x1x2x8x8x4x4xf32>]]
+-// CHECK: %[[TRANS:.*]] = permute %[[RESHAPE]] [2, 3, 0, 4, 5, 1, 6] : [[TILE_RS]] -> [[TILE_TR:tile<2x8x1x8x4x1x4xf32>]]
++// CHECK: %[[TRANS:.*]] = permute %[[RESHAPE]] [2, 3, {{[01]}}, 4, 5, {{[01]}}, 6] : [[TILE_RS]] -> [[TILE_TR:tile<2x8x1x8x4x1x4xf32>]]
+ // CHECK: %[[RESULT:.*]] = broadcast %[[TRANS]] : [[TILE_TR]] -> tile<2x8x1x8x4x2x4xf32>
+ // CHECK: %[[OUT_VIEW:.*]] = make_tensor_view %[[OUT]], shape = [8, 8, 8, 8, 4, 8, 4], strides = [65536, 8192, 1024, 128, 32, 4, 1]
+ // CHECK: %[[OUT_PVIEW:.*]] = make_partition_view %[[OUT_VIEW]]
+diff --git a/test/Conversion/TensorToCudaTile/reduction_padding.mlir b/test/Conversion/TensorToCudaTile/reduction_padding.mlir
+--- a/test/Conversion/TensorToCudaTile/reduction_padding.mlir
++++ b/test/Conversion/TensorToCudaTile/reduction_padding.mlir
+@@ -238,7 +238,7 @@
+ // CHECK: %[[BLOCK:.*]], %{{.*}}, %{{.*}} = get_tile_block_id : tile<i32>
+ // CHECK: %[[LOOP1:.*]] = for %[[IVAR1:.*]] in (%[[ZERO]] to %[[C2]], step %[[ONE]])
+ // CHECK-SAME: iter_values(%[[IARG1:.*]] = %[[ACCUM]]) -> ([[TILE]])
+-// CHECK:   %[[A_MUL:.*]] = muli %[[IVAR]], %[[C16]] : tile<i32>
++// CHECK:   %[[A_MUL:.*]] = muli %[[IVAR1]], %[[C16]] : tile<i32>
+ // CHECK:   %[[A_MUL1:.*]] = reshape %[[A_MUL]] : tile<i32> -> tile<1xi32>
+ // CHECK:   %[[A_MUL2:.*]] = broadcast %[[A_MUL1]] : tile<1xi32> -> tile<16xi32>
+ // CHECK:   %[[A_IOTA:.*]] = iota : tile<16xi32>

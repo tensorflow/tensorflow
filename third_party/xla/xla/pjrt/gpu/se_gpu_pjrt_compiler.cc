@@ -25,17 +25,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -108,14 +112,18 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
 
 absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
     PjRtClient* client) {
-  const StreamExecutorGpuClient* gpu_client =
-      dynamic_cast<const StreamExecutorGpuClient*>(client);
+  const auto* gpu_client = dynamic_cast<const CommonPjRtClient*>(client);
   if (gpu_client != nullptr) {
-    return gpu_client->client()->backend().default_stream_executor();
+    if (const auto* raw_gpu_client =
+            dynamic_cast<const PjRtStreamExecutorRawClient*>(
+                gpu_client->raw_client())) {
+      return raw_gpu_client->client()->backend().default_stream_executor();
+    }
   }
 
   return absl::InvalidArgumentError(
-      "Given PjRtClient is not a StreamExecutorGpuClient.");
+      "Given PjRtClient does not contain a xla::LocalClient needed for "
+      "autotuning.");
 }
 
 }  // namespace
@@ -179,12 +187,44 @@ absl::StatusOr<GpuTopology> GetTopologyWithTargetConfig(
 }
 }  // namespace
 
+static absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+    CommonPjRtClient* client, MaybeOwningMlirModule module,
+    CompileOptions options, const PjRtTopologyDescription& target_topology) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   client->GetTopologyDescription());
+  PjRtStreamExecutorRawClient* raw_client = nullptr;
+  if (client) {
+    raw_client =
+        dynamic_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+  }
+  return raw_client->CrossCompile(
+      std::move(module), std::move(options), client->process_index(),
+      client->key_value_store(), topology, target_topology);
+}
+
+static absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
+    CommonPjRtClient* client, const XlaComputation& computation,
+    CompileOptions options, const PjRtTopologyDescription& target_topology) {
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   client->GetTopologyDescription());
+  PjRtStreamExecutorRawClient* raw_client = nullptr;
+  if (client) {
+    raw_client =
+        dynamic_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+  }
+  return raw_client->CrossCompile(
+      computation, std::move(options), client->process_index(),
+      client->key_value_store(), topology, target_topology);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client,
     LayoutCanonicalizationCallback layout_callback) {
   ABSL_ASSIGN_OR_RETURN(Compiler * gpu_compiler, GetOrCreateCompiler());
+
+  auto* se_client = dynamic_cast<CommonPjRtClient*>(client);
 
   // This function does a bunch of temporary modifications to the CompileOptions
   // which should not be reflected in the options that we keep with the
@@ -203,13 +243,14 @@ StreamExecutorGpuCompiler::Compile(
         topology_with_target_config.status().ToString()));
   }
   if (!topology_with_target_config.ok() && client != nullptr) {
-    LOG(INFO) << "Found PjRtClient and no GPU target config. Performing a JIT "
-                 "compilation. Details: "
-              << topology_with_target_config.status();
+    LOG_EVERY_N(INFO, 60)
+        << "Found PjRtClient and no GPU target config. Performing a JIT "
+           "compilation. Details: "
+        << topology_with_target_config.status();
     TF_RET_CHECK(IsGpuClient(*client))
         << "JIT compilation requires a GPU PjRt client.";
-    ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    return client->Compile(computation, input_options);
+    ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, se_client));
+    return CrossCompile(se_client, computation, input_options, topology);
   }
 
   ABSL_ASSIGN_OR_RETURN(GpuTopology xla_gpu_topology, topology_with_target_config);
@@ -220,8 +261,9 @@ StreamExecutorGpuCompiler::Compile(
   }
 
   if (IsEarlyExitCompilation(options)) {
-    LOG(INFO) << "Early exit compilation is enabled. Note that this is always "
-                 "a deviceless compilation.";
+    LOG_EVERY_N(INFO, 60) << "Early exit after layout assignment is enabled. "
+                             "Note that this is always "
+                             "a deviceless compilation.";
   } else if (client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
@@ -229,18 +271,21 @@ StreamExecutorGpuCompiler::Compile(
 
     if (local_gpu_target_config ==
         topology_with_target_config->gpu_target_config()) {
-      LOG(INFO) << "Found GPU target config and a PjRtClient with matching "
-                   "configuration. Performing a JIT compilation.";
+      LOG_EVERY_N(INFO, 60)
+          << "Found GPU target config and a PjRtClient with matching "
+             "configuration. Performing a JIT compilation.";
       // This code path is necessary as long as the legacy AOT compilation is
       // still in use.
-      return client->Compile(computation, input_options);
+      return CrossCompile(se_client, computation, input_options, topology);
     }
 
-    LOG(INFO) << "Found GPU target config and a PjRtClient. Performing a cross "
-                 "compilation.";
+    LOG_EVERY_N(INFO, 60)
+        << "Found GPU target config and a PjRtClient. Performing a cross "
+           "compilation.";
   } else {
-    LOG(INFO) << "Found GPU target config and no PjRtClient. Performing a "
-                 "deviceless compilation.";
+    LOG_EVERY_N(INFO, 60)
+        << "Found GPU target config and no PjRtClient. Performing a "
+           "deviceless compilation.";
   }
   ABSL_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   std::vector<const Shape*> argument_layout_pointers;
@@ -279,14 +324,40 @@ StreamExecutorGpuCompiler::Compile(
   aot_options.set_gpu_topology(xla_gpu_topology);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());
-  if (IsEarlyExitCompilation(options)) {
-    aot_options.set_early_exit_point(
-        AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
-    aot_options.set_executor(nullptr);
-  } else if (client != nullptr) {
+  if (client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
     aot_options.set_executor(stream_executor);
+  }
+  if (IsEarlyExitCompilation(options)) {
+    // debug_options are always set if IsEarlyExitCompilation is true, either
+    // because the debug_options were explicitly set in the input
+    // CompileOptions, or because we set them in the input options in the
+    // previous call to ApplyAllOptionOverrides.
+    TF_RET_CHECK(options.executable_build_options.has_debug_options());
+    bool early_exit_with_layouts =
+        options.executable_build_options.debug_options()
+            .xla_early_exit_with_layouts();
+    DebugOptions::EarlyExitPoint early_exit =
+        options.executable_build_options.debug_options()
+            .xla_gpu_experimental_early_exit();
+    if (early_exit_with_layouts &&
+        early_exit != DebugOptions::EARLY_EXIT_POINT_UNSET) {
+      return absl::InvalidArgumentError(
+          "xla_early_exit_with_layouts and xla_gpu_experimental_early_exit are "
+          "mutually exclusive.");
+    }
+
+    if (early_exit_with_layouts) {
+      aot_options.set_early_exit_point(
+          AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
+      // Early exit after layout assignment is a deviceless compilation.
+      aot_options.set_executor(nullptr);
+    } else if (early_exit ==
+               DebugOptions::EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT) {
+      aot_options.set_early_exit_point(
+          AotCompilationOptions::EarlyExitPoint::kAfterConfigAssignment);
+    }
   }
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();
@@ -324,12 +395,15 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   absl::StatusOr<GpuTopology> topology_with_target_config =
       GetTopologyWithTargetConfig(topology, options);
 
+  auto* se_client = dynamic_cast<CommonPjRtClient*>(client);
+
   if (!topology_with_target_config.ok() && client != nullptr) {
     TF_RET_CHECK(IsGpuClient(*client))
         << "GPU compilation requires a GPU PjRt client.";
-    ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                     client->Compile(std::move(module), options));
+    ABSL_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, se_client));
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtExecutable> executable,
+        CrossCompile(se_client, std::move(module), options, topology));
     return executable;
   }
 
@@ -339,11 +413,12 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
     gpu::GpuTargetConfig local_gpu_target_config(stream_executor);
     if (local_gpu_target_config ==
         topology_with_target_config->gpu_target_config()) {
-      LOG(INFO) << "Found GPU target config and a PjRtClient with matching "
-                   "configuration. Performing a JIT compilation.";
+      LOG_EVERY_N(INFO, 60)
+          << "Found GPU target config and a PjRtClient with matching "
+             "configuration. Performing a JIT compilation.";
       // This code path is necessary as long as the legacy AOT compilation is
       // still in use.
-      return client->Compile(std::move(module), options);
+      return CrossCompile(se_client, std::move(module), options, topology);
     }
   }
 
@@ -411,6 +486,26 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       ->set_xla_pjrt_allow_auto_layout_in_hlo(true);
   return Compile(std::move(options), xla_computation, topology, client,
                  std::move(layout_callback));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+StreamExecutorGpuCompiler::DeserializePjRtTopologyDescription(
+    const std::string& serialized_topology) {
+  xla::PjRtTopologyDescriptionProto proto;
+  if (!proto.ParseFromString(serialized_topology)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse StreamExecutorGpuTopologyDescription from string.");
+  }
+  return StreamExecutorGpuTopologyDescription::FromProto(proto);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+StreamExecutorGpuCompiler::DeserializeExecutable(
+    const PjRtTopologyDescription& topology,
+    riegeli::Any<riegeli::Reader*> reader,
+    std::optional<CompileOptions>&& options) {
+  return StreamExecutorExecutable::Deserialize(std::move(reader), topology,
+                                               std::move(options));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>

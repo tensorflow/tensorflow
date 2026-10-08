@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -34,8 +35,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "xla/layout.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
@@ -69,11 +69,9 @@ namespace {
 absl::StatusOr<xla::PjRtMemorySpace*> GetMemorySpace(
     std::optional<MemoryKind> memory_kind, xla::ifrt::Device* device) {
   if (memory_kind.has_value()) {
-    xla::ifrt::MemoryKind canonical_memory_kind =
-        CanonicalizeMemoryKind(*memory_kind, device);
     xla::ifrt::Memory* memory = nullptr;
     for (xla::ifrt::Memory* ms : device->Memories()) {
-      if (ms->Kind() == canonical_memory_kind) {
+      if (ms->Kind() == *memory_kind) {
         memory = ms;
         break;
       }
@@ -81,10 +79,10 @@ absl::StatusOr<xla::PjRtMemorySpace*> GetMemorySpace(
     if (memory == nullptr) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "Invalid memory kind: %s; available memory kinds: %s",
-          *canonical_memory_kind.memory_kind(),
+          memory_kind->value(),
           absl::StrJoin(device->Memories(), ", ",
                         [](std::string* out, xla::ifrt::Memory* ms) {
-                          absl::StrAppend(out, *ms->Kind().memory_kind());
+                          absl::StrAppend(out, ms->Kind().value());
                         })));
     }
     return absl::down_cast<PjRtMemory*>(memory)->pjrt_memory();
@@ -193,7 +191,8 @@ absl::Status PjRtTransferServer::CrossHostAwaitPull(
   std::vector<aux::PjRtBufferEntry::BufferRef> refs;
   refs.reserve(buffer_idxs.size() * arrays.size());
   for (xla::ifrt::ArrayRef& arr : arrays) {
-    auto* pjrt_arr = llvm::dyn_cast_or_null<xla::ifrt::PjRtArray>(arr.get());
+    auto* pjrt_arr =
+        xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtArray>(arr.get());
     if (pjrt_arr == nullptr) {
       return absl::InvalidArgumentError(
           "Cannot remote transfer non-pjrt arrays.");

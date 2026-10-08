@@ -26,11 +26,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_compiler_variant.h"
@@ -123,6 +125,19 @@ absl::StatusOr<PjRtCompiler*> PjRtCompilerRegistry::GetCompiler(
   return GetOrCreateCompiler(platform_name, variant_name);
 }
 
+bool PjRtCompilerRegistry::IsCompilerRegistered(
+    absl::string_view platform_name, absl::string_view variant_name) {
+  PjRtCompilerType key{platform_name, variant_name};
+  {
+    absl::MutexLock l(compiler_mutex_);
+    if (compilers_.contains(key)) {
+      return true;
+    }
+  }
+  absl::MutexLock l(factory_mutex_);
+  return factories_.contains(key);
+}
+
 absl::Status PjRtCompilerRegistry::InitializeVariant(
     absl::string_view platform_name, absl::string_view variant_name) {
   return GetOrCreateCompiler(platform_name, variant_name).status();
@@ -184,6 +199,12 @@ absl::Status PjRtInitializeCompilerVariants() {
   return PjRtCompilerRegistry::Global().InitializeAllVariants();
 }
 
+bool PjRtIsCompilerVariantRegistered(absl::string_view platform_name,
+                                     absl::string_view variant_name) {
+  return PjRtCompilerRegistry::Global().IsCompilerRegistered(platform_name,
+                                                             variant_name);
+}
+
 void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
                                  std::unique_ptr<PjRtCompiler> compiler) {
   CHECK_OK(PjRtCompilerRegistry::Global().RegisterCompiler(
@@ -223,44 +244,36 @@ absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
                                                     compiler_variant);
 }
 
+static absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
+    const PjRtTopologyDescription& topology,
+    std::optional<PjRtCompilerVariant> variant = std::nullopt) {
+  if (std::optional<PjRtCompiler*> topology_compiler = topology.compiler()) {
+    return *topology_compiler;
+  }
+  auto platform_name = topology.platform_name();
+  std::string compiler_variant;
+  if (variant.has_value()) {
+    compiler_variant = CompilerVariantToString(*variant);
+    compiler_variant =
+        compiler_variant == kLinkedVariant ? "" : compiler_variant;
+  } else if (auto picker = PjRtCompilerRegistry::Global().GetVariantPicker(
+                 platform_name)) {
+    ABSL_ASSIGN_OR_RETURN(compiler_variant, (*picker)());
+  }
+  return GetPjRtCompiler(platform_name, compiler_variant);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  auto topology_compiler = topology.compiler();
-  if (topology_compiler.has_value()) {
-    return (*topology_compiler)
-        ->Compile(std::move(options), computation, topology, client);
-  }
-
-  auto platform_name = topology.platform_name();
-  std::string compiler_variant;
-  if (auto picker =
-          PjRtCompilerRegistry::Global().GetVariantPicker(platform_name)) {
-    ABSL_ASSIGN_OR_RETURN(compiler_variant, (*picker)());
-  }
-
-  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
-                   GetPjRtCompiler(platform_name, compiler_variant));
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetPjRtCompiler(topology));
   return compiler->Compile(std::move(options), computation, topology, client);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  if (std::optional<PjRtCompiler*> topology_compiler = topology.compiler()) {
-    return (*topology_compiler)
-        ->Compile(std::move(options), std::move(module), topology, client);
-  }
-
-  auto platform_name = topology.platform_name();
-  std::string compiler_variant;
-  if (auto picker =
-          PjRtCompilerRegistry::Global().GetVariantPicker(platform_name)) {
-    ABSL_ASSIGN_OR_RETURN(compiler_variant, (*picker)());
-  }
-
-  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
-                   GetPjRtCompiler(platform_name, compiler_variant));
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetPjRtCompiler(topology));
   return compiler->Compile(std::move(options), std::move(module), topology,
                            client);
 }
@@ -269,17 +282,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtCompilerVariant variant,
     PjRtClient* client) {
-  auto topology_compiler = topology.compiler();
-  if (topology_compiler.has_value()) {
-    return (*topology_compiler)
-        ->Compile(std::move(options), computation, topology, client);
-  }
-
-  auto platform_name = topology.platform_name();
-  std::string compiler_variant = CompilerVariantToString(variant);
-  compiler_variant = compiler_variant == kLinkedVariant ? "" : compiler_variant;
-  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
-                   GetPjRtCompiler(platform_name, compiler_variant));
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetPjRtCompiler(topology, variant));
   return compiler->Compile(std::move(options), computation, topology, client);
 }
 
@@ -287,18 +290,18 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtCompilerVariant variant,
     PjRtClient* client) {
-  if (std::optional<PjRtCompiler*> topology_compiler = topology.compiler()) {
-    return (*topology_compiler)
-        ->Compile(std::move(options), std::move(module), topology, client);
-  }
-
-  auto platform_name = topology.platform_name();
-  std::string compiler_variant = CompilerVariantToString(variant);
-  compiler_variant = compiler_variant == kLinkedVariant ? "" : compiler_variant;
-  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
-                   GetPjRtCompiler(platform_name, compiler_variant));
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetPjRtCompiler(topology, variant));
   return compiler->Compile(std::move(options), std::move(module), topology,
                            client);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
+    const PjRtTopologyDescription& topology,
+    riegeli::Any<riegeli::Reader*> reader,
+    std::optional<CompileOptions> options) {
+  ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetPjRtCompiler(topology));
+  return compiler->DeserializeExecutable(topology, std::move(reader),
+                                         std::move(options));
 }
 
 absl::Status PjRtPhaseCompiler::RegisterPhase(
@@ -328,10 +331,9 @@ absl::StatusOr<std::vector<std::string>> PjRtPhaseCompiler::GetPhaseNames() {
 absl::StatusOr<std::vector<PjRtPartialProgramProto>>
 PjRtPhaseCompiler::RunPhases(
     CompileOptions options,
-    const std::vector<PjRtPartialProgramProto>& input_programs,
+    std::vector<PjRtPartialProgramProto>&& input_programs,
     const PjRtTopologyDescription& topology,
     const std::vector<std::string>& phases_to_run) {
-  std::vector<PjRtPartialProgramProto> programs = input_programs;
   for (const auto& phase_name : phases_to_run) {
     auto it = phase_map_.find(phase_name);
     if (it == phase_map_.end()) {
@@ -342,20 +344,21 @@ PjRtPhaseCompiler::RunPhases(
     }
 
     // Validate (plugin specific) the input programs.
-    auto validation_status = it->second.validator(options, programs);
+    auto validation_status = it->second.validator(options, input_programs);
     if (!validation_status.ok()) {
       return validation_status;
     }
 
     // Run the phase.
-    auto out_programs = it->second.compiler(options, programs, topology);
+    auto out_programs =
+        it->second.compiler(options, std::move(input_programs), topology);
     if (!out_programs.ok()) {
       return out_programs.status();
     }
-    programs = *out_programs;
+    input_programs = std::move(*out_programs);
   }
 
-  return programs;
+  return input_programs;
 }
 
 absl::Span<const int> PjRtTopologyDescription::GetMemorySpaceKindIds() const {

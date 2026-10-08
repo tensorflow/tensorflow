@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/loops.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -712,10 +713,17 @@ XlaOp Digamma(XlaOp input) {
         y - pi * Cos(pi * reduced_input) / Sin(pi * reduced_input);
     XlaOp real_result = Select(need_to_reflect, reflection, y);
 
-    // Digamma has poles at negative integers and zero; return nan for those.
-    return Select(And(Le(input, zero), Eq(input, Floor(input))),
+    // Digamma has poles at zero and at the negative integers. The two one-sided
+    // limits agree at zero, so return -inf there; at the negative integers they
+    // disagree, so return nan. This matches the eager CPU kernel in
+    // tensorflow/core/kernels/cwise_ops.h.
+    XlaOp is_negative_integer = And(Lt(input, zero), Eq(input, Floor(input)));
+    XlaOp result = Select(
+        Eq(input, zero),
+        FullLike(input, -std::numeric_limits<float>::infinity()), real_result);
+    return Select(is_negative_integer,
                   FullLike(input, std::numeric_limits<float>::quiet_NaN()),
-                  real_result);
+                  result);
   };
 
   auto& b = *input.builder();
@@ -968,7 +976,7 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to Igamma must have equal shapes and types; got %s and %s",
           a_shape.ToString(), x_shape.ToString());
@@ -1022,7 +1030,7 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to IgammaGradA must have equal shapes and types; got %s "
           "and %s",
@@ -1076,7 +1084,7 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to RandomGammaGrad must have equal shapes and types; got "
           "%s and %s",
@@ -1121,7 +1129,7 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
-    if (a_shape != x_shape) {
+    if (!ShapeUtil::Compatible(a_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to Igammac must have equal shapes and types; "
           "got %s and %s",
@@ -1191,7 +1199,7 @@ XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
   });
 }
 
-// asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
+// asin(x) = atan2(x, sqrt((1 - x) * (1 + x)))
 XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
            bool expand) {
   if (!expand) {
@@ -2051,7 +2059,7 @@ XlaOp Polygamma(XlaOp n, XlaOp x) {
   return builder.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto n_shape, builder.GetShape(n));
     ABSL_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
-    if (n_shape != x_shape) {
+    if (!ShapeUtil::Compatible(n_shape, x_shape)) {
       return InvalidArgument(
           "Arguments to Polygamma must have equal shapes and types; "
           "got %s and %s",
@@ -2170,7 +2178,7 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
   return builder.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
     ABSL_ASSIGN_OR_RETURN(auto q_shape, builder.GetShape(q));
-    if (x_shape != q_shape) {
+    if (!ShapeUtil::Compatible(x_shape, q_shape)) {
       return InvalidArgument(
           "Arguments to Zeta must have equal shapes and types; got %s and %s",
           x_shape.ToString(), q_shape.ToString());

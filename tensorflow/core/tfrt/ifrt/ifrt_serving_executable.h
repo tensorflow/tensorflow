@@ -73,6 +73,15 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
+// Marker prepended to the error returned when a new executable would have to be
+// compiled while XLA compilation is disabled (see
+// `TfToHloCompiler::IsXlaCompilationDisabled()`). It matches the marker emitted
+// by the non-IFRT TPU runtimes so that model servers can uniformly detect
+// compilation cache misses that happen while compilation is disabled (e.g. to
+// count them, or to retry with compilation enabled in dry-run mode).
+inline constexpr absl::string_view kXlaCompilationDisabledErrorMarker =
+    "[TpuCompilationDisabled]";
+
 // Encodes the layout of `xla_input_shapes` to the module.
 absl::Status EncodeLayout(absl::Span<const xla::Shape> xla_input_shapes,
                           mlir::ModuleOp module);
@@ -98,7 +107,8 @@ class IfrtServingExecutable {
       TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache,
       H2DTransferExecutorFactory* h2d_transfer_executor_factory,
-      bool use_output_arena = false);
+      bool use_output_arena = false,
+      bool use_undonatable_buffer_converter = false);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -210,6 +220,11 @@ class IfrtServingExecutable {
     std::vector<std::shared_ptr<const xla::ifrt::Shape>> ifrt_input_shapes;
     std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
+    // True for inputs the compiled program may donate (input/output aliasing
+    // or buffer donors). Empty when donation info could not be determined.
+    // Callers must treat a missing entry as "may be donated" and leave the
+    // input's buffers donatable.
+    std::vector<bool> input_may_be_donated;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
 
@@ -261,7 +276,8 @@ class IfrtServingExecutable {
       TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache,
       H2DTransferExecutorFactory* h2d_transfer_executor_factory,
-      bool use_output_arena = false)
+      bool use_output_arena = false,
+      bool use_undonatable_buffer_converter = false)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -289,7 +305,8 @@ class IfrtServingExecutable {
         tf_to_hlo_compiler_(tf_to_hlo_compiler),
         persistent_compilation_cache_(persistent_compilation_cache),
         h2d_transfer_executor_factory_(h2d_transfer_executor_factory),
-        use_output_arena_(use_output_arena) {
+        use_output_arena_(use_output_arena),
+        use_undonatable_buffer_converter_(use_undonatable_buffer_converter) {
     execute_options_.fill_status = true;
     if (use_output_arena_) {
       execute_options_.custom_options =
@@ -357,6 +374,7 @@ class IfrtServingExecutable {
 
   H2DTransferExecutorFactory* h2d_transfer_executor_factory_ = nullptr;
   bool use_output_arena_ = false;
+  bool use_undonatable_buffer_converter_ = false;
 
   xla::ifrt::ExecuteOptions execute_options_;
 
@@ -412,6 +430,16 @@ class IfrtServingExecutable {
 
   bool UsePortableExecution();
 };
+
+// Returns a mask over the executable's `num_inputs` inputs that is true when
+// the compiled program may donate that input, derived from the compiled HLO's
+// input/output alias config and buffer-donor config. This is the
+// post-compilation ground truth for both TF (tf.aliasing_output) and JAX
+// (jax.buffer_donor) frontends, unlike
+// LoadedExecutable::GetDonatableInputIndices which only reads the JAX MLIR
+// attribute. Exposed for testing.
+absl::StatusOr<std::vector<bool>> GetInputDonationMask(
+    const xla::ifrt::LoadedExecutable& ifrt_executable, int num_inputs);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

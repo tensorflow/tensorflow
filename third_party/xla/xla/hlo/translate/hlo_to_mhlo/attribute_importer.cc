@@ -28,9 +28,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -229,6 +229,18 @@ mlir::stablehlo::DotAlgorithmAttr ConvertDotAlgorithm(
     }
     case PrecisionConfig::ALG_DOT_F64_F64_F64: {
       lhs = rhs = accum = builder->getF64Type();
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3: {
+      lhs = rhs = builder->getType<mlir::Float8E4M3FNType>();
+      accum = builder->getF32Type();
+      numPrimitiveOperations = 3;
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4: {
+      lhs = rhs = builder->getType<mlir::Float8E4M3FNType>();
+      accum = builder->getF32Type();
+      numPrimitiveOperations = 4;
       break;
     }
     default:

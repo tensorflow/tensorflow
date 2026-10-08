@@ -87,6 +87,18 @@ class ConfigTest(tf_test.TestCase):
     os.environ[config._DT_JOBS] = ','.join(dtensor_jobs)
     self.assertListEqual(dtensor_jobs, config.jobs())
 
+  def test_heartbeat_enabled(self):
+    os.environ[config._DT_HEARTBEAT_ENABLED] = 'false'
+    self.assertFalse(config.heartbeat_enabled())
+    os.environ[config._DT_HEARTBEAT_ENABLED] = '0'
+    self.assertFalse(config.heartbeat_enabled())
+    os.environ[config._DT_HEARTBEAT_ENABLED] = 'true'
+    self.assertTrue(config.heartbeat_enabled())
+    os.environ[config._DT_HEARTBEAT_ENABLED] = '1'
+    self.assertTrue(config.heartbeat_enabled())
+    os.environ.pop(config._DT_HEARTBEAT_ENABLED, None)
+    self.assertTrue(config.heartbeat_enabled())
+
 
 if __name__ == '__main__':
   tf_test.main()

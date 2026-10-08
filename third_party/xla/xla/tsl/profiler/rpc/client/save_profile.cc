@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
 
-#include <cstddef>
 #include <memory>
 #include <ostream>
 #include <sstream>
@@ -23,7 +22,9 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/fd_writer.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -210,7 +211,7 @@ absl::Status SaveXSpace(const std::string& repository_root,
 absl::Status SaveXSpaceChunks(
     absl::string_view repository_root, absl::string_view run,
     absl::string_view host,
-    std::vector<tensorflow::profiler::XSpace>& xspaces) {
+    const std::vector<tensorflow::profiler::XSpace>& xspaces) {
   if (xspaces.empty()) {
     return absl::OkStatus();
   }
@@ -231,11 +232,31 @@ absl::Status SaveXSpaceChunks(
   ABSL_RETURN_IF_ERROR(record_options.FromString("brotli:6"));
   SetPadding(record_options);
 
-  std::string temp_path =
-      absl::StrCat(out_path, ".tmp.", Env::Default()->GetProcessId(), "_",
-                   Env::Default()->NowMicros());
+  absl::string_view scheme;
+  absl::string_view host_part;
+  absl::string_view path_part;
+  io::ParseURI(out_path, &scheme, &host_part, &path_part);
+  // An empty URI scheme indicates a local filesystem path.
+  const bool is_local_path = scheme.empty();
+
+  std::string temp_path;
+  if (is_local_path) {
+    temp_path = absl::StrCat(out_path, ".tmp.", Env::Default()->GetProcessId(),
+                             "_", Env::Default()->NowMicros());
+  } else if (!Env::Default()->LocalTempFilename(&temp_path)) {
+    return absl::InternalError(
+        absl::StrCat("Failed to create local temp filename for: ", out_path));
+  }
+
+  absl::Cleanup cleanup_temp_file = [&temp_path] {
+    Env::Default()->DeleteFile(temp_path).IgnoreError();
+  };
+
   riegeli::RecordWriter writer(riegeli::FdWriter<>(temp_path), record_options);
-  for (tensorflow::profiler::XSpace& xspace : xspaces) {
+  if (!writer.ok()) {
+    return writer.status();
+  }
+  for (const tensorflow::profiler::XSpace& xspace : xspaces) {
     std::string plane_names = GetPlaneNames(xspace);
     VLOG(1) << "SaveXSpaceChunks "
             << ", size: " << xspace.ByteSizeLong() << " bytes"
@@ -245,19 +266,20 @@ absl::Status SaveXSpaceChunks(
     if (!writer.WriteRecord(xspace)) {
       break;
     }
-    tensorflow::profiler::XSpace().Swap(&xspace);
   }
-  xspaces.clear();
   if (!writer.Close()) {
-    Env::Default()->DeleteFile(temp_path).IgnoreError();
     return writer.status();
   }
 
-  absl::Status status =
-      Env::Default()->RenameFile(temp_path, out_path, /*overwrite=*/true);
-  if (!status.ok()) {
-    Env::Default()->DeleteFile(temp_path).IgnoreError();
-    return status;
+  if (is_local_path) {
+    ABSL_RETURN_IF_ERROR(
+        Env::Default()->RenameFile(temp_path, out_path, /*overwrite=*/true));
+  } else {
+    absl::Status status = Env::Default()->CopyFile(temp_path, out_path);
+    if (!status.ok()) {
+      Env::Default()->DeleteFile(out_path).IgnoreError();
+      return status;
+    }
   }
   return absl::OkStatus();
 }

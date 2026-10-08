@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -858,11 +858,11 @@ TEST_P(ToIfrtShardingTest, ToIfrtSharding) {
 
   if (GetParam().expect_single_device_sharding) {
     EXPECT_TRUE(
-        llvm::isa<xla::ifrt::SingleDeviceSharding>(ifrt_sharding.get()));
+        xla::ifrt::isa<xla::ifrt::SingleDeviceSharding>(ifrt_sharding.get()));
     EXPECT_EQ(ifrt_sharding->devices()->devices().front(),
               device_list->devices().front());
   } else {
-    EXPECT_TRUE(llvm::isa<xla::ifrt::HloSharding>(ifrt_sharding.get()));
+    EXPECT_TRUE(xla::ifrt::isa<xla::ifrt::HloSharding>(ifrt_sharding.get()));
     EXPECT_EQ(ifrt_sharding->devices()->size(), device_list->size());
   }
 }

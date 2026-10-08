@@ -26,11 +26,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -170,9 +170,11 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
       opcode == HloOpcode::kCosh ||
       opcode == HloOpcode::kErf ||
       opcode == HloOpcode::kExp ||
+      opcode == HloOpcode::kExp2 ||
       opcode == HloOpcode::kExpm1 ||
       opcode == HloOpcode::kLog ||
       opcode == HloOpcode::kLog1p ||
+      opcode == HloOpcode::kLog2 ||
       opcode == HloOpcode::kLogistic ||
       opcode == HloOpcode::kPower ||
       opcode == HloOpcode::kRsqrt ||
@@ -377,6 +379,10 @@ absl::Status HloCostAnalysis::HandleSelect(const HloInstruction* hlo) {
 }
 
 absl::Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
+  return absl::OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleShuffle(const HloInstruction*) {
   return absl::OkStatus();
 }
 
@@ -1120,6 +1126,11 @@ absl::Status HloCostAnalysis::HandleRaggedAllToAll(const HloInstruction* hlo) {
 }
 
 absl::Status HloCostAnalysis::HandleCollectiveBroadcast(
+    const HloInstruction* /*hlo*/) {
+  return absl::OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleCollectiveReduce(
     const HloInstruction* /*hlo*/) {
   return absl::OkStatus();
 }

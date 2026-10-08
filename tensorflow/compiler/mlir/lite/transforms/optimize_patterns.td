@@ -387,7 +387,7 @@ def ConstAPFloatNegLargestOrNegInfinity : Constraint<CPred<
   "llvm::cast<DenseElementsAttr>($0).getValues<APFloat>()[0].isNegInfinity())">>;
 
 def L2NormValidReduceIndex : Constraint<CPred<
-  "L2NormalizeReduceAxis($0, llvm::cast<DenseElementsAttr>($1))">>;
+  "llvm::isa<DenseElementsAttr>($1) && L2NormalizeReduceAxis($0, llvm::cast<DenseElementsAttr>($1))">>;
 
 // Checks if the ReshapeOp adds a trailing dimension of size 1.
 def IsL2NormalizationKeepDimsReshape
@@ -526,10 +526,7 @@ def IsTailOfShape : Constraint<CPred<
 def IsReducedTailOfShape : Constraint<CPred<
   "TFL::IsReducedTailOfShape($0.getType(), $1.getType())">>;
 
-def Flatten : NativeCodeCall<
-  "llvm::cast<DenseElementsAttr>($0)"
-    ".reshape(RankedTensorType::get({llvm::cast<ShapedType>($0.getType()).getNumElements()}, "
-                                   "llvm::cast<ShapedType>($0.getType()).getElementType()))">;
+def Flatten : NativeCodeCall<"FlattenTo1D($0)">;
 
 def IsLastDimEqualToNumElements : Constraint<CPred<
   "TFL::IsLastDimEqualToNumElements($0.getType(), $1.getType())">>;
@@ -1079,6 +1076,46 @@ foreach ReduceOp = [TFL_MeanOp, TFL_ReduceMaxOp, TFL_ReduceMinOp,
      (HasOneUse $reduce)]>;
 }
 
+def CanFuseSumMulToMean : Constraint<CPred<
+  "CanFuseSumMulToMean($0, $1, $2)">>;
+
+// Fuse Sum + Mul(1/N) -> Mean
+def FuseSumMulRhsIntoMean : Pat<
+  (TFL_MulOp
+    (TFL_SumOp:$sum $input, (Arith_ConstantOp ElementsAttr:$axes), $keep_dims),
+    (Arith_ConstantOp ElementsAttr:$factor),
+    TFL_AF_None),
+  (TFL_MeanOp $input, (Arith_ConstantOp $axes), $keep_dims),
+  [(CanFuseSumMulToMean $input, $axes, $factor),
+   (HasOneUse $sum)]>;
+
+def FuseSumMulLhsIntoMean : Pat<
+  (TFL_MulOp
+    (Arith_ConstantOp ElementsAttr:$factor),
+    (TFL_SumOp:$sum $input, (Arith_ConstantOp ElementsAttr:$axes), $keep_dims),
+    TFL_AF_None),
+  (TFL_MeanOp $input, (Arith_ConstantOp $axes), $keep_dims),
+  [(CanFuseSumMulToMean $input, $axes, $factor),
+   (HasOneUse $sum)]>;
+
+def FuseTflSumMulRhsIntoMean : Pat<
+  (TFL_MulOp
+    (TFL_SumOp:$sum $input, (TFL_ConstOp ElementsAttr:$axes), $keep_dims),
+    (TFL_ConstOp ElementsAttr:$factor),
+    TFL_AF_None),
+  (TFL_MeanOp $input, (TFL_ConstOp $axes), $keep_dims),
+  [(CanFuseSumMulToMean $input, $axes, $factor),
+   (HasOneUse $sum)]>;
+
+def FuseTflSumMulLhsIntoMean : Pat<
+  (TFL_MulOp
+    (TFL_ConstOp ElementsAttr:$factor),
+    (TFL_SumOp:$sum $input, (TFL_ConstOp ElementsAttr:$axes), $keep_dims),
+    TFL_AF_None),
+  (TFL_MeanOp $input, (TFL_ConstOp $axes), $keep_dims),
+  [(CanFuseSumMulToMean $input, $axes, $factor),
+   (HasOneUse $sum)]>;
+
 
 def IsSame : Constraint<CPred<"$0 == $1">>;
 def HasTwoUse : Constraint<CPred<
@@ -1529,6 +1566,41 @@ def MatchGeluApproximate_Mul2 : Pat<
    (HasOneUse $sqr_out),
   ]>;
 
+// Alternate pattern for GeluApproximate to match mul(mul(mul(x, coeff), x), x),
+// the cube shape produced by the left-associative spelling
+// `0.044715 * x * x * x` (common in Python model code), where the coefficient
+// is folded into the innermost mul so no bare x^3 subterm exists.
+//   0.5 * x * ( 1 + tanh( sqrt_2dPi  * ( x + mul(mul(mul(x, 0.044715), x), x) ) ) )
+def MatchGeluApproximate_Mul3 : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TFL_AddOp:$add_out
+    (TFL_TanhOp:$tanh_out
+     (TFL_MulOp:$mul_out1
+      (TFL_AddOp:$add_out1 $arg0,
+       (TFL_MulOp:$mul_out2
+        (TFL_MulOp:$mul_out3
+         (TFL_MulOp:$mul_out4 $arg0,
+          (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None),
+         $arg0, TFL_AF_None),
+        $arg0, TFL_AF_None), TFL_AF_None),
+      (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+    (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $mul_out3),
+   (HasOneUse $mul_out4),
+  ]>;
+
 // Alternate pattern for GeluApproximate (see different order for mul), replaces
 //   x * ( 0.5 * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * pow( x, 3 ) ) ) ) )
 def MatchGeluApproximate1 : Pat<
@@ -1617,6 +1689,38 @@ def MatchGeluApproximate1_Mul2 : Pat<
    (HasOneUse $mul_out2),
    (HasOneUse $pow_out),
    (HasOneUse $sqr_out),
+  ]>;
+
+// Alternate pattern for GeluApproximate1 to match mul(mul(mul(x, coeff), x), x).
+//   x * ( 0.5 * ( 1 + tanh( sqrt_2dPi  * ( x + mul(mul(mul(x, 0.044715), x), x) ) ) ) )
+def MatchGeluApproximate1_Mul3 : Pat<
+  (TFL_MulOp $arg0,
+   (TFL_MulOp:$mul_out
+    (TFL_AddOp:$add_out
+     (TFL_TanhOp:$tanh_out
+      (TFL_MulOp:$mul_out1
+       (TFL_AddOp:$add_out1 $arg0,
+        (TFL_MulOp:$mul_out2
+         (TFL_MulOp:$mul_out3
+          (TFL_MulOp:$mul_out4 $arg0,
+           (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None),
+          $arg0, TFL_AF_None),
+         $arg0, TFL_AF_None), TFL_AF_None),
+       (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+     (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $mul_out3),
+   (HasOneUse $mul_out4),
   ]>;
 
 // For Gelu, replaces
@@ -2028,7 +2132,7 @@ class HasStaticDim<int d> : Constraint<CPred<
 
 class IsBalancedPaddingArray<int spatials_start, int spatials_end> :
   Constraint<CPred<
-    "IsBalancedPaddingArray("# spatials_start #","# spatials_end #","
+    "llvm::isa<DenseElementsAttr>($0) && IsBalancedPaddingArray("# spatials_start #","# spatials_end #","
       "llvm::cast<DenseElementsAttr>($0))">>;
 
 // Given in_shape, out_shape, stride checks ceil(in_shape[d] / stride) == out_shape[d]

@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -469,7 +469,7 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
   const PrecisionConfig::Algorithm precision_algorithm =
       config.precision_config().algorithm();
 
-  return GemmConfig::For(
+  absl::StatusOr<GemmConfig> gemm_config = GemmConfig::For(
       lhs_shape, dot_dims.lhs_batch_dimensions(),
       dot_dims.lhs_contracting_dimensions(), rhs_shape,
       dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
@@ -479,6 +479,10 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
       config.alpha_real(), config.alpha_imag(), config.beta(),
       precision_algorithm, algorithm, precision, grad_x, grad_y,
       static_cast<se::gpu::ScaleMode>(config.scale_mode()), gpu_version);
+  if (gemm_config.ok()) {
+    gemm_config->has_d_scale = config.has_d_scale();
+  }
+  return gemm_config;
 }
 
 /*static*/ absl::StatusOr<GroupedGemmConfig> GroupedGemmConfig::For(
@@ -1134,11 +1138,14 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
   TF_RET_CHECK(proto.num_warps() > 0);
   TF_RET_CHECK(proto.num_ctas() > 0);
   TF_RET_CHECK(proto.waves_per_eu() >= 0);
+  // group_size == 0 in old protos (field absent) is treated as 1 (no reorder)
+  TF_RET_CHECK(proto.group_size() >= 0);
 
   return TritonGemmConfig(
       proto.block_m(), proto.block_n(), proto.block_k(), proto.num_stages(),
       proto.num_warps(), proto.num_ctas(), proto.is_tma_allowed(),
-      proto.is_warp_specialization_allowed(), proto.waves_per_eu());
+      proto.is_warp_specialization_allowed(), proto.waves_per_eu(),
+      /*group_size=*/std::max(static_cast<int64_t>(1), proto.group_size()));
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -1152,6 +1159,7 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_is_tma_allowed(is_tma_allowed);
   key.set_is_warp_specialization_allowed(is_warp_specialization_allowed);
   key.set_waves_per_eu(waves_per_eu);
+  key.set_group_size(group_size);
   return key;
 }
 
@@ -1161,7 +1169,7 @@ std::string TritonGemmConfig::ToString() const {
       ",num_stages:", num_stages, ",num_warps:", num_warps,
       ",num_ctas:", num_ctas, ",is_tma_allowed:", is_tma_allowed,
       ",is_warp_specialization_allowed:", is_warp_specialization_allowed,
-      ",waves_per_eu:", waves_per_eu, "}");
+      ",waves_per_eu:", waves_per_eu, ",group_size:", group_size, "}");
 }
 
 absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(

@@ -26,12 +26,12 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Constants.h"
@@ -67,7 +67,9 @@ void ConstantToEmbed::SerializeIntoBuffer(absl::Span<const uint8_t> buffer) {
 
   std::memcpy(data_buffer.data(), &buffer_size, sizeof(uint64_t));
   std::memset(data_buffer.data() + sizeof(uint64_t), 0, padding_size);
-  std::memcpy(data_buffer.data() + header_size, buffer.data(), buffer.size());
+  if (!buffer.empty()) {
+    std::memcpy(data_buffer.data() + header_size, buffer.data(), buffer.size());
+  }
 }
 
 static absl::Status AddBufferToLlvmModule(

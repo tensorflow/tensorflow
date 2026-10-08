@@ -39,7 +39,7 @@ namespace xla {
 namespace {
 
 using CholeskyTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(CholeskyTest, NonPSDInput) {
   XlaBuilder builder(TestName());
@@ -221,7 +221,7 @@ using CholeskyTestCase = std::tuple<int64_t, int64_t, bool>;
 
 class RandomCholeskyTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
+          HloInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
 TEST_P(RandomCholeskyTest, Real) {

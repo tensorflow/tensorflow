@@ -191,7 +191,7 @@ class Parser(ast.NodeVisitor):
             f'{self._current_file}:{node.lineno} export must be'
             f' assigned to a single value: {ast.dump(node)}'
         )
-      self._add_exported_symbol(node.value.func, symbol)
+      self._add_exported_symbol(node.value.func, symbol)  # pyrefly: ignore[bad-argument-type]
     else:
       self.visit(node)
 
@@ -237,7 +237,7 @@ class Parser(ast.NodeVisitor):
             f'{self._current_file}:{node.lineno} export_constant must be'
             f' called with __name__, <id>: {ast.dump(node)}'
         )
-      self._add_exported_symbol(func.value, self._literal_value(node.args[1]))
+      self._add_exported_symbol(func.value, self._literal_value(node.args[1]))  # pyrefly: ignore[bad-argument-type]
     else:
       self.visit(node)
 

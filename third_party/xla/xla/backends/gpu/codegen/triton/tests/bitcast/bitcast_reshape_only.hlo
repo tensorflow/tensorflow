@@ -20,7 +20,7 @@ fusion {
 // CHECK-LABEL:   xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:.*]]: memref<64xf32>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<8x8xf32>,
-// CHECK-SAME:      %[[ARG2:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-SAME:      %[[ARG2:.*]]: index{{( \{xla.range = \[0 : index, 15 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 // CHECK:           %[[APPLY_INDEXING_0:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[ARG2]])
 // CHECK:           %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]]{{\[}}%[[APPLY_INDEXING_0]]] [4] [1] : memref<64xf32> -> tensor<4xf32>
 // CHECK:           %[[RESHAPE_0:.*]] = tt.reshape %[[EXTRACT_0]] : tensor<4xf32> -> tensor<1x4xf32>

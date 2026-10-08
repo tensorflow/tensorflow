@@ -877,6 +877,32 @@ class ResizeBilinearNonAlignCornersTest(xla_test.XLATestCase):
         out = sess.run(resized, {image: input_image[:, :, :, np.newaxis]})
         self.assertAllClose(expected[:, :, :, np.newaxis], out)
 
+  def testResizeBilinearNanPropagation(self):
+    # 2x2 image, 3 channels. One NaN at [0, 0, 1, 0] (row=0, col=1, channel=0)
+    input_data = [[
+        [[1.0, 2.0, 3.0], [float("nan"), 5.0, 6.0]],
+        [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+    ]]
+    cases = [
+        # (half_pixel_centers, align_corners, expected_nan_count)
+        (True, False, 9),
+        (False, False, 6),
+        (False, True, 9),
+    ]
+    for half_pixel_centers, align_corners, expected_nan_count in cases:
+      with self.session() as sess, self.test_scope():
+        image = array_ops.placeholder(np.float32)
+        resized = gen_image_ops.resize_bilinear(
+            image,
+            [4, 4],
+            half_pixel_centers=half_pixel_centers,
+            align_corners=align_corners,
+        )
+        out = sess.run(resized, {image: np.array(input_data, dtype=np.float32)})
+        self.assertEqual(np.isnan(out[0, :, :, 0]).sum(), expected_nan_count)
+        self.assertEqual(np.isnan(out[0, :, :, 1]).sum(), 0)
+        self.assertEqual(np.isnan(out[0, :, :, 2]).sum(), 0)
+
 
 class ResizeBilinearGradHalfPixelCentersTest(
     parameterized.TestCase, xla_test.XLATestCase

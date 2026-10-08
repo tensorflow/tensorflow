@@ -236,6 +236,10 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       const absl::Status& error,
       absl::Span<const ArraySpec> array_specs) override;
 
+  absl::StatusOr<std::vector<tsl::Future<>>> CopyArraysToHostBufferShards(
+      absl::Span<CopyArraysToHostBufferShardsSpec> specs,
+      ArrayCopySemantics semantics) override;
+
   absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, ShardingRef sharding,
       absl::Span<ArrayRef> arrays, ArrayCopySemantics array_copy_semantics,
@@ -337,6 +341,10 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
     DCHECK(this);
     return &default_compiler_;
   }
+
+  absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
+      absl::Span<const ExecutableRef> executables,
+      absl::Span<std::unique_ptr<LoadOptions>> options) override;
 
   absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
       const DeviceListRef& devices) const override;

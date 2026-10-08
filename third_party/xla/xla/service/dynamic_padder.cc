@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -165,6 +165,7 @@ absl::StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kSort:
     case HloOpcode::kSlice:
     case HloOpcode::kDomain:
+    case HloOpcode::kOptimizationBarrier:
       return nullptr;
     case HloOpcode::kCustomCall:
       // Assume that custom calls created by the client are valid with padded
@@ -1043,7 +1044,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionInputGrad(
   }
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), grad, kernel,
+          custom_call_conv->shape(), {grad, kernel},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
@@ -1102,7 +1103,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionForward(
 
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), input, kernel,
+          custom_call_conv->shape(), {input, kernel},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
@@ -1186,7 +1187,7 @@ absl::StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
 
   HloInstruction* static_conv =
       custom_call_conv->AddInstruction(HloInstruction::CreateConvolve(
-          custom_call_conv->shape(), activations, gradients,
+          custom_call_conv->shape(), {activations, gradients},
           custom_call_conv->feature_group_count(),
           custom_call_conv->batch_group_count(), window,
           custom_call_conv->convolution_dimension_numbers(),
@@ -1973,6 +1974,18 @@ absl::StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
       if (dimension_size == nullptr) {
         dimension_size = inst->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::CreateR0<int32_t>(subshape.dimensions(i))));
+      } else {
+        // Clamp the size to [0, bound]: nothing validates the size operand
+        // of set-dimension-size, and SliceToDynamic uses it as an unchecked
+        // copy bound.
+        HloInstruction* zero = inst->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
+        HloInstruction* bound =
+            inst->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0<int32_t>(subshape.dimensions(i))));
+        dimension_size = inst->AddInstruction(HloInstruction::CreateTernary(
+            dimension_size->shape(), HloOpcode::kClamp, zero, dimension_size,
+            bound));
       }
       slice_operand.push_back(dimension_size);
     }
@@ -2049,7 +2062,8 @@ absl::Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
 absl::Status DynamicShapeRemovingVisitor::HandleCustomCall(
     HloInstruction* hlo) {
   if (hlo->custom_call_target() == "SliceToDynamic" ||
-      hlo->custom_call_target() == "PadToStatic") {
+      hlo->custom_call_target() == "PadToStatic" ||
+      hlo->custom_call_target() == "PadRealToStatic") {
     // Those ops support are created to handle dynamic tensors so by their
     // nature they support dynamic lowering.
     return absl::OkStatus();

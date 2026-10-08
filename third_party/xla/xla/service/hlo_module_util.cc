@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -233,10 +233,6 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     config->set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
         execution_options->auto_spmd_partitioning_mesh_ids().begin(),
         execution_options->auto_spmd_partitioning_mesh_ids().end()));
-    config->set_exec_time_optimization_effort(
-        execution_options->exec_time_optimization_effort());
-    config->set_memory_fitting_effort(
-        execution_options->memory_fitting_effort());
     config->set_optimization_level(execution_options->optimization_level());
     config->set_memory_fitting_level(execution_options->memory_fitting_level());
     config->set_deduplicate_hlo(execution_options->deduplicate_hlo());
@@ -290,11 +286,18 @@ void UpdateEntryComputationLayout(
     ShapeUtil::ForEachMutableSubshape(
         shape, [&shape_representation_fn, empty_tiles_only](
                    Shape* subshape, const ShapeIndex& index) {
-          if (subshape->IsArray() && subshape->has_layout()) {
-            if (!empty_tiles_only ||
-                (empty_tiles_only && subshape->layout().tiles().empty())) {
-              *subshape = shape_representation_fn(*subshape);
-            }
+          if (!subshape->IsArray() || !subshape->has_layout()) {
+            return;
+          }
+          if (subshape->layout().minor_to_major().empty() &&
+              subshape->layout().memory_space() != 0) {
+            // AUTO layout with non-default memory space.
+            return;
+          }
+
+          if (!empty_tiles_only ||
+              (empty_tiles_only && subshape->layout().tiles().empty())) {
+            *subshape = shape_representation_fn(*subshape);
           }
         });
   };

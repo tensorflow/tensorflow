@@ -1408,7 +1408,7 @@ class DebugDumpDir:
             "The debug watch key '%s' exists on multiple (%d) devices, but "
             "device name is not specified." %
             (debug_watch_key, len(matching_device_names)))
-    elif device_name not in self._debug_key_to_datum:
+    elif device_name not in self._watch_key_to_datum[debug_watch_key]:
       raise ValueError(
           "There is no device named '%s' consisting of debug watch keys." %
           device_name)

@@ -15,12 +15,12 @@
 """Tests for tensorflow.ops.math_ops.matrix_inverse."""
 
 import itertools
-import unittest
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -28,12 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_without_tensor_float_32(
-    "XLA QR op calls matmul. Also, matmul used for verification. Also with "
-    'TensorFloat-32, mysterious "Unable to launch cuBLAS gemm" error '
-    "occasionally occurs")
-# TODO(b/165435566): Fix "Unable to launch cuBLAS gemm" error
-class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
+class QrOpTestBase:
 
   def AdjustedNorm(self, x):
     """Computes the norm of matrices in 'x', adjusted for dimension and type."""
@@ -110,6 +105,15 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
       self.CheckApproximation(x_np, q_tf_val, r_tf_val)
       self.CheckUnitary(q_tf_val)
 
+
+@test_util.run_all_without_tensor_float_32(
+    "XLA QR op calls matmul. Also, matmul used for verification. Also with "
+    'TensorFloat-32, mysterious "Unable to launch cuBLAS gemm" error '
+    "occasionally occurs"
+)
+# TODO(b/165435566): Fix "Unable to launch cuBLAS gemm" error
+class QrOpTest(QrOpTestBase, xla_test.XLATestCase, parameterized.TestCase):
+
   SIZES = [1, 2, 5, 10, 32, 100, 300, 603]
   DTYPES = [np.float32, np.complex64]
   PARAMS = itertools.product(SIZES, SIZES, DTYPES)
@@ -122,15 +126,6 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
         x_np = self._random_matrix(dtype, batch_dims + (rows, cols))
         self._test(x_np, full_matrices)
 
-  def testLarge2000x2000(self):
-    x_np = self._random_matrix(np.float32, (2000, 2000))
-    self._test(x_np, full_matrices=True)
-
-  @unittest.skip("Test times out on CI")
-  def testLarge17500x128(self):
-    x_np = self._random_matrix(np.float32, (17500, 128))
-    self._test(x_np, full_matrices=True)
-
   @parameterized.parameters((23, 25), (513, 23))
   def testZeroColumn(self, rows, cols):
     x_np = self._random_matrix(np.complex64, (rows, cols))
@@ -142,6 +137,18 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
     x_np = self._random_matrix(np.complex64, (rows, cols))
     x_np[:, 1] = x_np[:, 2]
     self._test(x_np, full_matrices=True, full_rank=False)
+
+  def testVectorInputRaisesError(self):
+    # Regression test for GitHub issue 110798. The graph-level shape check
+    # only runs for inputs of known rank, so a rank-1 input reaching the
+    # compiler through an unknown-rank placeholder must be rejected at
+    # compile time instead of reaching a fatal check inside QrExplicit.
+    with self.session() as sess:
+      x_tf = array_ops.placeholder(np.float32)
+      with self.device_scope():
+        q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=True)
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "rank >= 2"):
+        sess.run([q_tf, r_tf], feed_dict={x_tf: np.zeros([8], np.float32)})
 
 
 if __name__ == "__main__":

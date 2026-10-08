@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -35,14 +35,16 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/compilation_utils.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -68,7 +70,8 @@ BasicAtomProgramCompiler::BasicAtomProgramCompiler(
       strict_memory_reservation_(strict_memory_reservation) {}
 
 tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
-    std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options) {
+    std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
   // Rewrite device assignment from logical ids to IFRT device ids.
   xla::DeviceAssignment device_assignment =
       options.executable_build_options.device_assignment();
@@ -111,7 +114,8 @@ tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
 
   return client_->GetDefaultCompiler()->CompileAndLoad(
       std::move(hlo_program), std::make_unique<XlaCompileOptions>(
-                                  std::move(options), std::move(devices)));
+                                  std::move(options), std::move(devices),
+                                  std::move(loaded_host_callbacks)));
 }
 
 tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileMpmdReshard(

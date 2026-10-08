@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -106,16 +107,29 @@ TfLiteStatus ResizeOutputAndTemporaryTensors(
   const int depth = shape_data[1];
   const int height = shape_data[2];
   const int width = shape_data[3];
+
+  int output_spatial_elements = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements({depth, height, width},
+                                        output_spatial_elements) == kTfLiteOk,
+                     "%s",
+                     "Conv3DTranspose output spatial dimensions overflow.");
+  int total_output_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements({shape_data[0], depth, height, width, shape_data[4]},
+                         total_output_elements) == kTfLiteOk,
+      "%s", "Conv3DTranspose output dimensions overflow.");
   const int filter_depth = filter_shape.Dims(0);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
   int unused_out_width, unused_out_height, unused_out_depth;
-  opdata->padding = ComputePadding3DValues(
+  TF_LITE_ENSURE_STATUS(ComputePadding3DValuesChecked(
       params->stride_height, params->stride_width, params->stride_depth,
       params->dilation_height_factor, params->dilation_width_factor,
       params->dilation_depth_factor, height, width, depth, filter_height,
       filter_width, filter_depth, params->padding, &unused_out_height,
-      &unused_out_width, &unused_out_depth);
+      &unused_out_width, &unused_out_depth, &opdata->padding));
   // Computed shape must match the shape of the input tensor.
   TF_LITE_ENSURE_EQ(context, unused_out_depth, SizeOfDimension(input, 1));
   TF_LITE_ENSURE_EQ(context, unused_out_height, SizeOfDimension(input, 2));
@@ -183,6 +197,25 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   // Input and filter must have the same number of channels.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 4),
                     SizeOfDimension(filter, 4));
+  TF_LITE_ENSURE(context, input->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[2] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[3] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[4] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[0] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[2] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[3] > 0);
+  TF_LITE_ENSURE(context, filter->dims->data[4] > 0);
+
+  // Validate stride values.
+  TF_LITE_ENSURE(context, params->stride_depth > 0);
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+
+  // Validate dilation values.
+  TF_LITE_ENSURE(context, params->dilation_depth_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_height_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_width_factor > 0);
 
   // Check types.
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
@@ -303,6 +336,10 @@ TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
   if (params->dilation_depth_factor > 1 || params->dilation_height_factor > 1 ||
       params->dilation_width_factor > 1) {
     kernel_type = kReference;
+  }
+
+  if (NumElements(output) == 0) {
+    return kTfLiteOk;
   }
 
   switch (input->type) {

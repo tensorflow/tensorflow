@@ -15,9 +15,9 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"

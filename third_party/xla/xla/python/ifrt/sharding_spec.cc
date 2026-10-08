@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/sharding_spec.h"
 
-#include <cstdint>
-#include <functional>
+#include <array>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -25,7 +24,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -34,13 +35,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -52,110 +48,11 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
-// Returns if `sharding_param` indicates a fully replicated sharding.
-bool ComputeIsFullyReplicated(const ShardingParam& sharding_param) {
-  return llvm::all_of(sharding_param.dim_shards(),
-                      [](auto shards) { return shards == 1; });
-}
-
-// Iterates the major-to-minor Cartesian product of a Span of containers of the
-// same type.
-//
-// For example, for {1, 2, 3} x {4, 5}, it iterates in the order of
-//   {1, 4}, {1, 5}, {2, 4}, {2, 5}, {3, 4}, {3, 5}
-// The values are copied into the result vectors.
-template <typename ContainerT>
-class MajorToMinorIter {
- public:
-  using IteratorT = typename ContainerT::const_iterator;
-  using ValueT = typename ContainerT::value_type;
-
-  // Returns the iterator at the begin of the Cartesian product.
-  static MajorToMinorIter<ContainerT> cbegin(
-      absl::Span<const ContainerT> containers) {
-    std::vector<IteratorT> iters;
-    iters.reserve(containers.size());
-    for (const ContainerT& container : containers) {
-      iters.push_back(container.cbegin());
-    }
-    return MajorToMinorIter(containers, std::move(iters));
-  }
-
-  // Returns the vector of values at the iteration point.
-  std::vector<ValueT> operator*() const {
-    std::vector<ValueT> result;
-    result.reserve(iters_.size());
-    for (const auto& iter : iters_) {
-      result.push_back(*iter);
-    }
-    return result;
-  }
-
-  // Moves to the next.
-  void operator++() {
-    for (int i = iters_.size() - 1; i >= 0; --i) {
-      ++iters_[i];
-      if (iters_[i] != containers_[i].end()) {
-        break;
-      }
-      if (i != 0) {
-        // Carry over.
-        iters_[i] = containers_[i].begin();
-      }
-    }
-  }
-
-  // Returns whether the iterator has reached the end.
-  // Note: Due to the implementation of ++, not all iters_ is end().
-  bool IsEnd() const {
-    return iters_.empty() || iters_[0] == containers_[0].end();
-  }
-
- private:
-  MajorToMinorIter(absl::Span<const ContainerT> containers,
-                   std::vector<IteratorT> iters)
-      : containers_(containers), iters_(iters) {
-    DCHECK_EQ(iters.size(), containers.size());
-  }
-
-  absl::Span<const ContainerT> containers_;
-  std::vector<IteratorT> iters_;
-};
-
-// Returns the indices of the tiles.
-//
-// For example, when `dim_shards` is {2, 3}, the result is
-//   {0, 0}, {0, 1}, {0, 2}, {1, 0}, {1, 1}, {1, 2}
-std::vector<Index> GetTileIndices(absl::Span<const int64_t> dim_shards) {
-  std::vector<std::vector<int64_t>> indices;
-  indices.reserve(dim_shards.size());
-  for (const int64_t dim_shard : dim_shards) {
-    std::vector<int64_t> index(dim_shard);
-    absl::c_iota(index, 0);
-    indices.push_back(std::move(index));
-  }
-
-  std::vector<Index> result;
-  int64_t shard_count =
-      absl::c_accumulate(dim_shards, 1, std::multiplies<int64_t>());
-  result.reserve(shard_count);
-  for (auto iter = MajorToMinorIter<std::vector<int64_t>>::cbegin(indices);
-       !iter.IsEnd(); ++iter) {
-    result.push_back(Index(*iter));
-  }
-  return result;
-}
-
-}  // namespace
-
 char ShardingSpec::ID = 0;
 char SingleDeviceShardingSpec::ID = 0;
 char OpaqueShardingSpec::ID = 0;
 char ConcreteShardingSpec::ID = 0;
 char ConcreteEvenShardingSpec::ID = 0;
-char ShardingParamShardingSpec::ID = 0;
 
 ShardingSpec::ShardingSpec(int num_shards, bool is_fully_replicated)
     : num_shards_(num_shards), is_fully_replicated_(is_fully_replicated) {}
@@ -202,7 +99,14 @@ absl::StatusOr<ShardingRef> SingleDeviceShardingSpec::ToSharding(
         "SingleDeviceShardingSpec requires 1 device, but received %d devices",
         devices->size()));
   }
-  return SingleDeviceSharding::Create(devices->devices().front(), memory_kind);
+  std::shared_ptr<const SingleDeviceShardingSpec> spec =
+      std::static_pointer_cast<const SingleDeviceShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = SingleDeviceShardingSpec::Create();
+  }
+  return std::unique_ptr<SingleDeviceSharding>(new SingleDeviceSharding(
+      std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> SingleDeviceShardingSpec::GetShardShape(
@@ -235,6 +139,23 @@ absl::StatusOr<std::vector<IndexDomain>> SingleDeviceShardingSpec::IndexDomains(
   return std::vector<IndexDomain>{IndexDomain(shape)};
 }
 
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+SingleDeviceShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  static constexpr std::array<int, 1> kShardIndices({0});
+  return absl::InlinedVector<IndexDomainAndShardIndices, 1>{
+      IndexDomainAndShardIndices{
+          /*index_domain=*/IndexDomain(shape),
+          /*shard_indices=*/absl::MakeConstSpan(kShardIndices),
+      },
+  };
+}
+
+absl::StatusOr<absl::Span<const int>>
+SingleDeviceShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  static constexpr std::array<int, 1> kShardToUniqueIndexDomainIndex({0});
+  return absl::MakeConstSpan(kShardToUniqueIndexDomainIndex);
+}
+
 std::string SingleDeviceShardingSpec::DebugString() const {
   return "SingleDeviceShardingSpec()";
 }
@@ -259,7 +180,14 @@ absl::StatusOr<ShardingRef> OpaqueShardingSpec::ToSharding(
         "OpaqueShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
-  return OpaqueSharding::Create(std::move(devices), memory_kind);
+  std::shared_ptr<const OpaqueShardingSpec> spec =
+      std::static_pointer_cast<const OpaqueShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = OpaqueShardingSpec::Create(num_shards());
+  }
+  return std::unique_ptr<OpaqueSharding>(
+      new OpaqueSharding(std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> OpaqueShardingSpec::GetShardShape(
@@ -293,6 +221,18 @@ absl::StatusOr<std::vector<IndexDomain>> OpaqueShardingSpec::IndexDomains(
     const Shape& shape) const {
   return absl::InvalidArgumentError(
       "OpaqueShardingSpec does not have index domain information");
+}
+
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+OpaqueShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  return absl::InvalidArgumentError(
+      "OpaqueShardingSpec does not support UniqueIndexDomains");
+}
+
+absl::StatusOr<absl::Span<const int>>
+OpaqueShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  return absl::InvalidArgumentError(
+      "OpaqueShardingSpec does not support ShardToUniqueIndexDomainIndex");
 }
 
 std::string OpaqueShardingSpec::DebugString() const {
@@ -354,6 +294,13 @@ ConcreteShardingSpec::ConcreteShardingSpec(
       shape_(std::move(dynamic_shape)),
       shard_shapes_(std::move(shard_dynamic_shapes)) {}
 
+ConcreteShardingSpec::ConcreteShardingSpec(const ConcreteShardingSpec& other)
+    : RTTIExtends<ConcreteShardingSpec, ShardingSpec>(other),
+      shape_(other.shape_),
+      shard_shapes_(other.shard_shapes_),
+      shard_shape_(other.shard_shape_),
+      index_domains_(other.index_domains_) {}
+
 absl::StatusOr<ShardingRef> ConcreteShardingSpec::ToSharding(
     DeviceListRef devices, MemoryKind memory_kind) const {
   if (devices->size() != num_shards()) {
@@ -361,12 +308,20 @@ absl::StatusOr<ShardingRef> ConcreteShardingSpec::ToSharding(
         "ConcreteShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
-  if (has_static_shape()) {
-    return ConcreteSharding::Create(std::move(devices), memory_kind, shape(),
-                                    shard_shapes(), index_domains());
+  std::shared_ptr<const ConcreteShardingSpec> spec =
+      std::static_pointer_cast<const ConcreteShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    if (has_static_shape()) {
+      spec = ConcreteShardingSpec::Create(shape(), shard_shapes(),
+                                          index_domains());
+    } else {
+      spec =
+          ConcreteShardingSpec::Create(dynamic_shape(), shard_dynamic_shapes());
+    }
   }
-  return ConcreteSharding::Create(std::move(devices), memory_kind,
-                                  dynamic_shape(), shard_dynamic_shapes());
+  return std::unique_ptr<ConcreteSharding>(
+      new ConcreteSharding(std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> ConcreteShardingSpec::GetShardShape(
@@ -389,7 +344,8 @@ bool ConcreteShardingSpec::HasSamePartitioning(
     return false;
   }
   return shape_ == other_concrete_sharding_spec->shape_ &&
-         shard_shapes_ == other_concrete_sharding_spec->shard_shapes_;
+         shard_shapes_ == other_concrete_sharding_spec->shard_shapes_ &&
+         index_domains_ == other_concrete_sharding_spec->index_domains_;
 }
 
 absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>>
@@ -449,6 +405,76 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteShardingSpec::IndexDomains(
   return *index_domains_;
 }
 
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+ConcreteShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  if (!index_domains_.has_value()) {
+    return absl::InvalidArgumentError(
+        "ConcreteShardingSpec does not have index domain information");
+  }
+  if (has_static_shape() && this->shape() != shape) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec has index domains for shape %v, but was asked "
+        "to get unique index domains for shape %v",
+        this->shape(), shape));
+  }
+  absl::call_once(unique_shard_indices_once_, [this] {
+    absl::flat_hash_map<IndexDomain, int> index_domain_to_unique_idx;
+    std::vector<std::vector<int>> shard_indices;
+    for (int i = 0; i < index_domains_->size(); ++i) {
+      const IndexDomain& domain = (*index_domains_)[i];
+      auto [it, inserted] =
+          index_domain_to_unique_idx.try_emplace(domain, shard_indices.size());
+      if (inserted) {
+        shard_indices.emplace_back();
+      }
+      shard_indices[it->second].push_back(i);
+    }
+    cached_shard_indices_.reserve(index_domains_->size());
+    cached_shard_indices_offsets_.reserve(shard_indices.size() + 1);
+    for (const auto& indices : shard_indices) {
+      cached_shard_indices_offsets_.push_back(cached_shard_indices_.size());
+      cached_shard_indices_.insert(cached_shard_indices_.end(), indices.begin(),
+                                   indices.end());
+    }
+    cached_shard_indices_offsets_.push_back(cached_shard_indices_.size());
+  });
+
+  const int num_unique = cached_shard_indices_offsets_.size() - 1;
+  absl::InlinedVector<IndexDomainAndShardIndices, 1> unique_domains;
+  unique_domains.reserve(num_unique);
+  for (int i = 0; i < num_unique; ++i) {
+    const int offset = cached_shard_indices_offsets_[i];
+    const int count = cached_shard_indices_offsets_[i + 1] - offset;
+    const int first_shard = cached_shard_indices_[offset];
+    unique_domains.push_back(IndexDomainAndShardIndices{
+        /*index_domain=*/(*index_domains_)[first_shard],
+        /*shard_indices=*/
+        absl::MakeConstSpan(cached_shard_indices_).subspan(offset, count),
+    });
+  }
+  return unique_domains;
+}
+
+absl::StatusOr<absl::Span<const int>>
+ConcreteShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  if (!index_domains_.has_value()) {
+    return absl::InvalidArgumentError(
+        "ConcreteShardingSpec does not have index domain information");
+  }
+  absl::call_once(shard_to_unique_index_domain_index_once_, [this] {
+    absl::flat_hash_map<IndexDomain, int> domain_to_unique_idx;
+    cached_shard_to_unique_index_domain_index_.reserve(index_domains_->size());
+    for (int i = 0; i < index_domains_->size(); ++i) {
+      const IndexDomain& domain = (*index_domains_)[i];
+      auto it =
+          domain_to_unique_idx.try_emplace(domain, domain_to_unique_idx.size())
+              .first;
+      cached_shard_to_unique_index_domain_index_.push_back(it->second);
+    }
+  });
+  return absl::MakeConstSpan(cached_shard_to_unique_index_domain_index_);
+}
+
 std::string ConcreteShardingSpec::DebugString() const {
   return std::visit(
       [this](const auto& shape, const auto& shard_shapes) {
@@ -464,8 +490,8 @@ std::string ConcreteShardingSpec::DebugString() const {
 }
 
 void ConcreteShardingSpec::Hash(absl::HashState state) const {
-  absl::HashState::combine(std::move(state), num_shards_, shape_,
-                           shard_shapes_);
+  absl::HashState::combine(std::move(state), num_shards_, shape_, shard_shapes_,
+                           index_domains_);
 }
 
 std::unique_ptr<ConcreteEvenShardingSpec> ConcreteEvenShardingSpec::Create(
@@ -483,6 +509,12 @@ ConcreteEvenShardingSpec::ConcreteEvenShardingSpec(int num_shards, Shape shape,
       shape_(std::move(shape)),
       shard_shape_(std::move(shard_shape)) {}
 
+ConcreteEvenShardingSpec::ConcreteEvenShardingSpec(
+    const ConcreteEvenShardingSpec& other)
+    : RTTIExtends<ConcreteEvenShardingSpec, ShardingSpec>(other),
+      shape_(other.shape_),
+      shard_shape_(other.shard_shape_) {}
+
 absl::StatusOr<ShardingRef> ConcreteEvenShardingSpec::ToSharding(
     DeviceListRef devices, MemoryKind memory_kind) const {
   if (devices->size() != num_shards()) {
@@ -490,8 +522,15 @@ absl::StatusOr<ShardingRef> ConcreteEvenShardingSpec::ToSharding(
         "ConcreteEvenShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
-  return ConcreteEvenSharding::Create(std::move(devices), memory_kind, shape(),
-                                      shard_shape(), IsFullyReplicated());
+  std::shared_ptr<const ConcreteEvenShardingSpec> spec =
+      std::static_pointer_cast<const ConcreteEvenShardingSpec>(
+          weak_from_this().lock());
+  if (spec == nullptr) {
+    spec = ConcreteEvenShardingSpec::Create(num_shards(), shape(),
+                                            shard_shape(), IsFullyReplicated());
+  }
+  return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
+      std::move(devices), memory_kind, std::move(spec)));
 }
 
 absl::StatusOr<Shape> ConcreteEvenShardingSpec::GetShardShape(
@@ -552,6 +591,39 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenShardingSpec::IndexDomains(
       "ConcreteEvenShardingSpec does not have index domain information");
 }
 
+absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
+ConcreteEvenShardingSpec::UniqueIndexDomains(const Shape& shape) const {
+  if (!IsFullyReplicated() || this->shape() != shard_shape() ||
+      this->shape() != shape) {
+    return absl::InvalidArgumentError(
+        "ConcreteEvenShardingSpec does not have index domain information");
+  }
+  absl::call_once(unique_shard_indices_once_, [this] {
+    cached_shard_indices_.reserve(num_shards_);
+    for (int i = 0; i < num_shards_; ++i) {
+      cached_shard_indices_.push_back(i);
+    }
+  });
+  return absl::InlinedVector<IndexDomainAndShardIndices, 1>{
+      IndexDomainAndShardIndices{
+          /*index_domain=*/IndexDomain(shape),
+          /*shard_indices=*/absl::MakeConstSpan(cached_shard_indices_),
+      },
+  };
+}
+
+absl::StatusOr<absl::Span<const int>>
+ConcreteEvenShardingSpec::ShardToUniqueIndexDomainIndex() const {
+  if (!IsFullyReplicated() || this->shape() != shard_shape()) {
+    return absl::InvalidArgumentError(
+        "ConcreteEvenShardingSpec does not have index domain information");
+  }
+  absl::call_once(shard_to_unique_index_domain_index_once_, [this] {
+    cached_shard_to_unique_index_domain_index_.assign(num_shards_, 0);
+  });
+  return absl::MakeConstSpan(cached_shard_to_unique_index_domain_index_);
+}
+
 std::string ConcreteEvenShardingSpec::DebugString() const {
   return absl::StrFormat(
       "ConcreteEvenShardingSpec(num_shards: %d, shape: %v, "
@@ -563,133 +635,6 @@ std::string ConcreteEvenShardingSpec::DebugString() const {
 void ConcreteEvenShardingSpec::Hash(absl::HashState state) const {
   absl::HashState::combine(std::move(state), num_shards_, is_fully_replicated_,
                            shape_, shard_shape_);
-}
-
-std::unique_ptr<ShardingParamShardingSpec> ShardingParamShardingSpec::Create(
-    ShardingParam sharding_param) {
-  int num_shards = sharding_param.NumDevices();
-  return std::unique_ptr<ShardingParamShardingSpec>(
-      new ShardingParamShardingSpec(num_shards, std::move(sharding_param)));
-}
-
-ShardingParamShardingSpec::ShardingParamShardingSpec(
-    int num_shards, ShardingParam sharding_param)
-    : RTTIExtends<ShardingParamShardingSpec, ShardingSpec>(
-          num_shards, ComputeIsFullyReplicated(sharding_param)),
-      sharding_param_(std::move(sharding_param)) {}
-
-absl::StatusOr<ShardingRef> ShardingParamShardingSpec::ToSharding(
-    DeviceListRef devices, MemoryKind memory_kind) const {
-  if (devices->size() != num_shards()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "ShardingParamShardingSpec requires %d devices, but received %d "
-        "devices",
-        num_shards(), devices->size()));
-  }
-  return ShardingParamSharding::Create(sharding_param(), std::move(devices),
-                                       memory_kind);
-}
-
-absl::StatusOr<Shape> ShardingParamShardingSpec::GetShardShape(
-    const Shape& shape) const {
-  if (shape.dims().size() != sharding_param_.dim_shards().size()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Numbers of dimensions don't match. From Shape %d vs from "
-        "ShardingParam %d",
-        shape.dims().size(), sharding_param_.dim_shards().size()));
-  }
-  std::vector<int64_t> dims;
-  dims.reserve(shape.dims().size());
-  for (const auto [dim, dim_shards] :
-       llvm::zip(shape.dims(), sharding_param_.dim_shards())) {
-    if (dim % dim_shards != 0) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Uneven shard is not supported. dim: %d, dim_shards: %d", dim,
-          dim_shards));
-    }
-    dims.push_back(dim / dim_shards);
-  }
-  return Shape(dims);
-}
-
-bool ShardingParamShardingSpec::HasSamePartitioning(
-    const ShardingSpec& other) const {
-  if (this == &other) {
-    return true;
-  }
-  const auto* other_sharding_param_sharding_spec =
-      dyn_cast<ShardingParamShardingSpec>(&other);
-  if (!other_sharding_param_sharding_spec) {
-    return false;
-  }
-  return sharding_param_ == other_sharding_param_sharding_spec->sharding_param_;
-}
-
-absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>>
-ShardingParamShardingSpec::Disassemble(const Shape& shape) const {
-  ABSL_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
-  std::vector<std::pair<Shape, ShardingSpecRef>> result;
-  result.reserve(num_shards_);
-  for (int i = 0; i < num_shards_; ++i) {
-    result.push_back({local_shape, SingleDeviceShardingSpec::Create()});
-  }
-  return result;
-}
-
-absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingSpecRef>>>
-ShardingParamShardingSpec::Disassemble(
-    const DynamicShape& dynamic_shape) const {
-  return absl::InvalidArgumentError(absl::StrFormat(
-      "ShardingParamShardingSpec can only disassemble static shape, but was "
-      "asked to disassemble dynamic shape %v",
-      dynamic_shape));
-}
-
-absl::StatusOr<std::vector<IndexDomain>>
-ShardingParamShardingSpec::IndexDomains(const Shape& shape) const {
-  // Calculate the origins of tiles, ignoring device assignments.
-  ABSL_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
-  std::vector<Index> tile_indices =
-      GetTileIndices(sharding_param_.dim_shards());
-  std::vector<Index> origins;
-  origins.reserve(tile_indices.size());
-  for (const Index& tile_index : tile_indices) {
-    origins.push_back(tile_index * local_shape.dims());
-  }
-
-  // Calculate the device assignments.
-  // `origins[i]` should go to `device_list[i]`.
-  static constexpr int kInvalidIndex = -1;
-  llvm::SmallVector<int, 4> device_list;
-  sharding_param_.minor_to_major().ToDeviceList(device_list);
-  std::vector<int> device_to_index(device_list.size(), kInvalidIndex);
-  for (int i = 0; i < device_list.size(); ++i) {
-    device_to_index[device_list[i]] = i;
-  }
-
-  // Replication is the minor axis in `device_list`.
-  DCHECK_EQ(device_to_index.size() % origins.size(), 0);
-  int replication = device_to_index.size() / origins.size();
-
-  DCHECK_EQ(device_to_index.size(), num_shards_);
-  std::vector<IndexDomain> result;
-  result.reserve(num_shards_);
-  for (int i = 0; i < device_to_index.size(); ++i) {
-    int index = device_to_index[i];
-    DCHECK_NE(index, kInvalidIndex);
-    result.push_back(IndexDomain(origins[index / replication], local_shape));
-  }
-  return result;
-}
-
-std::string ShardingParamShardingSpec::DebugString() const {
-  return absl::StrFormat("ShardingParamShardingSpec(num_shards: %d, %s)",
-                         num_shards_, sharding_param_.DebugString());
-}
-
-void ShardingParamShardingSpec::Hash(absl::HashState state) const {
-  absl::HashState::combine(std::move(state), num_shards_, is_fully_replicated_,
-                           sharding_param_);
 }
 
 }  // namespace ifrt

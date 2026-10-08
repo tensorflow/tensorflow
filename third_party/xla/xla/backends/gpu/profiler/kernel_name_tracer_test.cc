@@ -25,12 +25,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -75,10 +74,9 @@ absl::StatusOr<stream_executor::Platform*> GetPlatform() {
 class KernelNameTracerTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_, GetPlatform());
-    TF_ASSERT_OK_AND_ASSIGN(stream_executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_,
-                            stream_executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(platform_, GetPlatform());
+    ASSERT_OK_AND_ASSIGN(stream_executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, stream_executor_->CreateStream(std::nullopt));
   }
 
   stream_executor::Platform* platform_;
@@ -92,8 +90,8 @@ void LaunchAddI32Kernels(stream_executor::StreamExecutor* executor,
       stream_executor::TypedKernel<stream_executor::DeviceAddress<int>,
                                    stream_executor::DeviceAddress<int>,
                                    stream_executor::DeviceAddress<int>>;
-  TF_ASSERT_OK_AND_ASSIGN(AddI32Kernel add,
-                          stream_executor::gpu::LoadAddI32TestKernel(executor));
+  ASSERT_OK_AND_ASSIGN(AddI32Kernel add,
+                       stream_executor::gpu::LoadAddI32TestKernel(executor));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kLengthInBytes = sizeof(int32_t) * kLength;
@@ -131,8 +129,8 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
       stream_executor::TypedKernel<stream_executor::DeviceAddress<int>,
                                    stream_executor::DeviceAddress<int>,
                                    stream_executor::DeviceAddress<int>>;
-  TF_ASSERT_OK_AND_ASSIGN(AddI32Kernel add,
-                          stream_executor::gpu::LoadAddI32TestKernel(executor));
+  ASSERT_OK_AND_ASSIGN(AddI32Kernel add,
+                       stream_executor::gpu::LoadAddI32TestKernel(executor));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kLengthInBytes = sizeof(int32_t) * kLength;
@@ -167,18 +165,20 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   CommandSequence commands;
   commands.Append(KernelThunk::MakeKernelThunk("AddI32", args, args_access,
                                                LaunchDimensions(1, kLength),
-                                               /*shmem_bytes=*/0));
+                                               /*shmem_bytes=*/0,
+                                               /*devices_per_host=*/1));
   commands.Append(KernelThunk::MakeKernelThunk("AddI32", args, args_access,
                                                LaunchDimensions(1, kLength),
-                                               /*shmem_bytes=*/0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor cmd_buffer_executor,
-      CommandExecutor::Create(
-          std::move(commands),
-          CommandExecutor::SynchronizationMode::kConcurrent));
+                                               /*shmem_bytes=*/0,
+                                               /*devices_per_host=*/1));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor cmd_buffer_executor,
+                       CommandExecutor::Create(
+                           std::move(commands),
+                           CommandExecutor::SynchronizationMode::kConcurrent));
 
   // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo());
+  CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo(),
+                           /*devices_in_process=*/1);
 
   ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(executor);
@@ -190,9 +190,9 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
       /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
 
   // This is where we're getting the 'AddI32' kernel from.
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
-                          stream_executor::gpu::GetGpuTestKernelsFatbin(
-                              executor->GetPlatform()->Name()));
+  ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
+                       stream_executor::gpu::GetGpuTestKernelsFatbin(
+                           executor->GetPlatform()->Name()));
   ASSERT_THAT(
       thunk.Initialize({executor,
                         Thunk::ExecutableSource{/*text=*/"", fatbin,
@@ -210,7 +210,7 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
 }
 
 TEST_F(KernelNameTracerTest, Create) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<KernelNameTracer> tracer,
       KernelNameTracer::Create(stream_executor::cuda::kCudaPlatformId));
   tracer->start();
@@ -224,8 +224,8 @@ TEST_F(KernelNameTracerTest, CreateUnsupportedPlatform) {
 }
 
 TEST_F(KernelNameTracerTest, CaptureKernelNames) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelNameTracer> tracer,
-                          KernelNameTracer::Create(platform_->id()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelNameTracer> tracer,
+                       KernelNameTracer::Create(platform_->id()));
   tracer->start();
 
   LaunchAddI32Kernels(stream_executor_, stream_.get());
@@ -235,8 +235,8 @@ TEST_F(KernelNameTracerTest, CaptureKernelNames) {
 }
 
 TEST_F(KernelNameTracerTest, CaptureKernelNamesFromCommandBufferThunk) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelNameTracer> tracer,
-                          KernelNameTracer::Create(platform_->id()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelNameTracer> tracer,
+                       KernelNameTracer::Create(platform_->id()));
   tracer->start();
 
   LaunchCommandBufferThunk(stream_executor_, stream_.get());

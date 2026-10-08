@@ -27,12 +27,13 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -69,7 +70,7 @@ bool CommandBufferThunk::ExecutorCommandBuffer::HasDynamicAllocations(
 }
 
 CommandBufferThunk::CommandBufferThunk(
-    CommandExecutor commands, ThunkInfo thunk_info,
+    CommandExecutor commands, ThunkInfo thunk_info, int devices_in_process,
     std::unique_ptr<SequentialThunk> thunks,
     bool enable_command_buffers_during_profiling)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
@@ -77,7 +78,7 @@ CommandBufferThunk::CommandBufferThunk(
       thunks_(std::move(thunks)),
       enable_command_buffers_during_profiling_(
           enable_command_buffers_during_profiling),
-      state_(std::make_shared<State>()) {
+      state_(std::make_shared<State>(devices_in_process)) {
   if (VLOG_IS_ON(5)) {
     absl::StatusOr<std::string> graph = commands_.RenderExecutionGraph();
     if (graph.ok()) {
@@ -217,7 +218,8 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       /*device_to_host_stream=*/nullptr,
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
-      /*recv_device_memory_function=*/nullptr, params.ffi_execution_context,
+      /*recv_device_memory_function=*/nullptr, params.custom_options,
+      params.ffi_execution_context,
       /*additional_compute_streams=*/{}, params.execution_scoped_state,
       /*mock_collectives=*/false, /*execution_id=*/0,
       /*rng_seed=*/0, params.persistent_alloc_indices);
@@ -329,6 +331,11 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
       commands_, *params.persistent_alloc_indices);
   auto updated_allocs = cmd_buffer->UpdateBufferAllocations(
       commands_, params, *params.persistent_alloc_indices);
+
+  // TODO(ezhulenev): Commands captured into the command buffer can't depend on
+  // `params.custom_options` as they can change between executions without
+  // triggering an update. Commands that read custom options must currently
+  // set `requires_update_on_execute()`.
   bool needs_update =
       commands_.requires_update_on_execute() || !updated_allocs.empty();
 
@@ -385,20 +392,18 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
 CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
-  absl::MutexLock lock(state_->mutex);
-  // Check if command buffer already exists
-  if (auto it = state_->command_buffers.find(executor);
-      it != state_->command_buffers.end()) {
-    return it->second;
+  ABSL_ASSIGN_OR_RETURN(
+      DeviceState * device_state,
+      state_->device_states.GetOrCreate(executor->device_ordinal()));
+  absl::MutexLock lock(device_state->mutex);
+  if (device_state->command_buffer == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<se::CommandBuffer> command_buffer,
+        executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+    device_state->command_buffer =
+        std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer));
   }
-
-  // Create a new empty command buffer.
-  ABSL_ASSIGN_OR_RETURN(auto command_buffer, executor->CreateCommandBuffer(
-                                            se::CommandBuffer::Mode::kPrimary));
-  auto emplaced = state_->command_buffers.emplace(
-      executor,
-      std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer)));
-  return emplaced.first->second;
+  return device_state->command_buffer;
 }
 
 //===----------------------------------------------------------------------===//
@@ -446,9 +451,13 @@ void CommandBufferThunk::EvictCommandBuffers() {
     }
 
     // Evict all command buffers.
-    absl::MutexLock state_lock(ptr->mutex);
-    num_evicted += ptr->command_buffers.size();
-    ptr->command_buffers.clear();
+    ptr->device_states.ForEach([&](DeviceState& device_state) {
+      absl::MutexLock state_lock(device_state.mutex);
+      if (device_state.command_buffer != nullptr) {
+        device_state.command_buffer.reset();
+        ++num_evicted;
+      }
+    });
   }
 
   if (num_evicted > 0) {
@@ -457,9 +466,10 @@ void CommandBufferThunk::EvictCommandBuffers() {
   }
 }
 
-absl::Status CommandBufferThunk::WalkNested(Walker callback) {
+absl::Status CommandBufferThunk::WalkNested(Walker pre_order,
+                                            Walker post_order) {
   if (thunks_ != nullptr) {
-    ABSL_RETURN_IF_ERROR(thunks_->Walk(callback));
+    ABSL_RETURN_IF_ERROR(thunks_->Walk(pre_order, post_order));
   }
   return absl::OkStatus();
 }

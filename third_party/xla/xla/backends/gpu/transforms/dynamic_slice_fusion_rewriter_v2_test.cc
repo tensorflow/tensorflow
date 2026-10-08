@@ -59,15 +59,15 @@ DynamicSliceConfig MakeConfig(int64_t loop_index, int64_t offset,
                               int64_t stride) {
   DynamicSliceConfig config;
   config.set_loop_index(loop_index);
-  config.set_byte_offset(offset);
-  config.set_byte_stride(stride);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(stride);
   return config;
 }
 
 DynamicSliceConfig MakeStaticConfig(int64_t offset) {
   DynamicSliceConfig config;
-  config.set_byte_offset(offset);
-  config.set_byte_stride(0);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(0);
   return config;
 }
 
@@ -640,64 +640,6 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DUSOnlyNoSlicedInput) {
   RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
 }
 
-TEST_F(DynamicSliceFusionRewriterV2Test, HeroWithExternalUserIsRerouted) {
-  // The rewriter must reroute the residual add and leave the hero dead.
-  const char* hlo = R"(
-    HloModule test
-
-    body {
-      param = (s32[], f32[64], f32[4,64]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      res = f32[64] get-tuple-element(param), index=1
-      buf = f32[4,64] get-tuple-element(param), index=2
-      hero = f32[64] custom-call(res), custom_call_target="fake_target"
-      hero_2d = f32[1,64] bitcast(hero)
-      zero = s32[] constant(0)
-      updated = f32[4,64] dynamic-update-slice(buf, hero_2d, i, zero)
-      new_res = f32[64] add(res, hero)
-      one = s32[] constant(1)
-      next_i = s32[] add(i, one)
-      ROOT tuple = (s32[], f32[64], f32[4,64]) tuple(next_i, new_res, updated)
-    }
-
-    cond {
-      param = (s32[], f32[64], f32[4,64]) parameter(0)
-      i = s32[] get-tuple-element(param), index=0
-      limit = s32[] constant(4)
-      ROOT cmp = pred[] compare(i, limit), direction=LT
-    }
-
-    ENTRY main {
-      res = f32[64] parameter(0)
-      buf = f32[4,64] parameter(1)
-      zero = s32[] constant(0)
-      init = (s32[], f32[64], f32[4,64]) tuple(zero, res, buf)
-      ROOT while = (s32[], f32[64], f32[4,64]) while(init),
-          condition=cond, body=body,
-          backend_config={"known_trip_count":{"n":"4"},
-                          "known_init_step":{"init":"0","step":"1"},
-                          "known_induction_variable":{"tuple_index":"0"}}
-    }
-  )";
-
-  // No custom-call outside the fusion; the add reads back via dynamic-slice.
-  const char* expected = R"(
-    ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK:       {{.*}} custom-call(
-    ; CHECK:              custom_call_target="fake_target"
-    ; CHECK:       ROOT {{.*}} dynamic-update-slice(
-    ; CHECK:     }
-    ; CHECK:     body
-    ; CHECK-NOT:   custom-call(
-    ; CHECK:       {{.*}} = f32[1,64]{{.*}} dynamic-slice(
-    ; CHECK:       {{.*}} = f32[64]{{.*}} add(
-    ; CHECK-NOT:   custom-call(
-    ; CHECK:       ROOT
-  )";
-
-  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected);
-}
-
 TEST_F(DynamicSliceFusionRewriterV2Test, DUSWithConstantOffset) {
   const char* hlo = R"(
     HloModule test
@@ -1216,7 +1158,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       selected = s32[] select(is_lt, inc, dec)
       ds = f32[1,8,8] dynamic-slice(input, selected, c0_s32, c0_s32),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1293,7 +1236,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] subtract(offset_base, offset_base)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1364,7 +1308,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] add(ivar, c1)
       ROOT dus = f32[8,8,8] dynamic-update-slice(
           output, bitcast, offset, c0, c0),
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
     }
   )";
 
@@ -1513,7 +1458,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] add(index_scalar, c1)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1522,13 +1468,14 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       {{.*}} = s32[] reshape(
     ; CHECK:       [[OFFSET:%[^ ]+]] = s32[] add(
     ; CHECK:       {{.*}} dynamic-slice({{.*}}, [[OFFSET]],
     ; CHECK:       ROOT {{.*}} custom-call(
     ; CHECK:              custom_call_target="fake_target"
     ; CHECK:     }
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       ROOT {{.*}} fusion(%input, %index_scalar),
+    ; CHECK:       ROOT {{.*}} fusion(%input, %index_slice),
     ; CHECK:              kind=kCustom
     ; CHECK:              "name":"dynamic_slice_fusion"
     ; CHECK:     }
@@ -1546,7 +1493,7 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
     const HloComputation* body = FindDsfBody(module);
     ASSERT_NE(body, nullptr);
     EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kDynamicSlice), 1);
-    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kReshape), 0);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kReshape), 1);
     EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kAdd), 1);
 
     auto* hero = DynamicSliceFusion::FindHero(body);
@@ -1573,10 +1520,12 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       input = f32[8,8,8] parameter(0)
       ivar = s32[] parameter(1)
       c0 = s32[] constant(0)
-      offset = s32[] maximum(ivar, c0)
+      c7 = s32[] constant(7)
+      offset = s32[] and(ivar, c7)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1606,7 +1555,7 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
   auto fusion_checks = [&](HloModule* module) {
     const HloComputation* body = FindDsfBody(module);
     ASSERT_NE(body, nullptr);
-    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kMaximum), 0);
+    EXPECT_EQ(CountInstructionsWithOpcode(body, HloOpcode::kAnd), 0);
 
     auto* hero = DynamicSliceFusion::FindHero(body);
 
@@ -1621,6 +1570,84 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
   };
 
   RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected, fusion_checks);
+}
+
+// HLO bitcasts can change the element type. A bitcast from a float is not an
+// offset expression, and its result is captured as a fusion parameter.
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       TypeChangingBitcastOffsetIsCapturedAsParameter) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      input = f32[8,8,8] parameter(0)
+      ivar = f32[] parameter(1)
+      c0 = s32[] constant(0)
+      offset = s32[] bitcast(ivar)
+      ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
+          dynamic_slice_sizes={1,8,8},
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
+      bitcast = f32[8,8] bitcast(ds)
+      ROOT hero = f32[8,8] custom-call(bitcast),
+          custom_call_target="fake_target"
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK-NOT:   bitcast(
+    ; CHECK:       {{.*}} dynamic-slice(
+    ; CHECK:       ROOT {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:     }
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT {{.*}} fusion(%input, %offset),
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected);
+}
+
+// Offset verification reads offset parameters as 32- or 64-bit integers, so a
+// convert from a narrower type is captured as a fusion parameter.
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       NarrowConvertOffsetIsCapturedAsParameter) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      input = f32[8,8,8] parameter(0)
+      ivar = s8[] parameter(1)
+      c0 = s32[] constant(0)
+      offset = s32[] convert(ivar)
+      ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
+          dynamic_slice_sizes={1,8,8},
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
+      bitcast = f32[8,8] bitcast(ds)
+      ROOT hero = f32[8,8] custom-call(bitcast),
+          custom_call_target="fake_target"
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK-NOT:   convert(
+    ; CHECK:       {{.*}} dynamic-slice(
+    ; CHECK:       ROOT {{.*}} custom-call(
+    ; CHECK:              custom_call_target="fake_target"
+    ; CHECK:     }
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT {{.*}} fusion(%input, %offset),
+    ; CHECK:              kind=kCustom
+    ; CHECK:              "name":"dynamic_slice_fusion"
+    ; CHECK:     }
+  )";
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1915,8 +1942,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
 
 TEST_F(DynamicSliceFusionRewriterV2Test, TupleOutputOneDUS) {
   // Hero produces (f32[8,8], f32[8,8]). Only the first output flows through
-  // DUS. External users of the sliced and passthrough outputs must read the
-  // corresponding fusion outputs.
+  // DUS; the second is returned directly (passthrough). The fusion output
+  // must be a tuple containing both the DUS result and the passthrough GTE.
   const char* hlo = R"(
     HloModule test
 
@@ -1930,13 +1957,11 @@ TEST_F(DynamicSliceFusionRewriterV2Test, TupleOutputOneDUS) {
           custom_call_target="fake_target"
       gte0 = f32[8,8] get-tuple-element(hero), index=0
       gte1 = f32[8,8] get-tuple-element(hero), index=1
-      gte0_external = f32[8,8] get-tuple-element(hero), index=0
       bc0 = f32[1,8,8] bitcast(gte0)
       dus = f32[4,8,8] dynamic-update-slice(buf, bc0, ivar, c0, c0)
-      new_prev = f32[8,8] add(gte0_external, gte1)
       c1 = s32[] constant(1)
       next_ivar = s32[] add(ivar, c1)
-      ROOT result = (s32[], f32[4,8,8], f32[8,8]) tuple(next_ivar, dus, new_prev)
+      ROOT result = (s32[], f32[4,8,8], f32[8,8]) tuple(next_ivar, dus, gte1)
     }
 
     condition {
@@ -1970,14 +1995,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, TupleOutputOneDUS) {
     ; CHECK:       ROOT {{.*}} tuple(
     ; CHECK:     }
     ; CHECK:     body
-    ; CHECK:       [[FUSION:%[^ ]+]] = {{.*}} fusion(
+    ; CHECK:       {{.*}} fusion(
     ; CHECK-SAME:         kind=kCustom
     ; CHECK-SAME:         "name":"dynamic_slice_fusion"
-    ; CHECK:       [[GTE0:%[^ ]+]] = f32[4,8,8]{{.*}} get-tuple-element([[FUSION]]), index=0
-    ; CHECK:       [[DS:%[^ ]+]] = f32[1,8,8]{{.*}} dynamic-slice([[GTE0]],
-    ; CHECK:       [[BC:%[^ ]+]] = f32[8,8]{{.*}} bitcast([[DS]])
-    ; CHECK:       [[GTE1:%[^ ]+]] = f32[8,8]{{.*}} get-tuple-element([[FUSION]]), index=1
-    ; CHECK:       {{.*}} = f32[8,8]{{.*}} add([[BC]], [[GTE1]])
     ; CHECK:     }
   )";
 
@@ -2611,10 +2631,142 @@ TEST_F(DynamicSliceFusionRewriterV2Test, O2LooksThroughOptBarrier) {
                             fusion_checks);
 }
 
+TEST_F(DynamicSliceFusionRewriterV2Test, SideEffectingTupleHeroRemoved) {
+  const char* hlo = R"(
+    HloModule test
+
+    body {
+      p0 = (s32[], f32[4,8,8], f32[8,8], f32[8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = f32[4,8,8] get-tuple-element(p0), index=1
+      prev0 = f32[8,8] get-tuple-element(p0), index=2
+      prev1 = f32[8,8] get-tuple-element(p0), index=3
+      c0 = s32[] constant(0)
+      ds = f32[1,8,8] dynamic-slice(input, ivar, c0, c0),
+          dynamic_slice_sizes={1,8,8}
+      bc = f32[8,8] bitcast(ds)
+      hero = (f32[8,8], f32[8,8]) custom-call(bc),
+          custom_call_target="fake_target",
+          custom_call_has_side_effect=true
+      gte0 = f32[8,8] get-tuple-element(hero), index=0
+      gte1 = f32[8,8] get-tuple-element(hero), index=1
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], f32[4,8,8], f32[8,8], f32[8,8])
+          tuple(next_ivar, input, gte0, gte1)
+    }
+
+    condition {
+      p0 = (s32[], f32[4,8,8], f32[8,8], f32[8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = f32[4,8,8] parameter(0)
+      prev0 = f32[8,8] parameter(1)
+      prev1 = f32[8,8] parameter(2)
+      c0 = s32[] constant(0)
+      tuple = (s32[], f32[4,8,8], f32[8,8], f32[8,8])
+          tuple(c0, input, prev0, prev1)
+      ROOT while = (s32[], f32[4,8,8], f32[8,8], f32[8,8])
+          while(tuple), condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       {{.*}} dynamic-slice(
+    ; CHECK:       {{.*}} bitcast(
+    ; CHECK:       {{.*}} custom-call(
+    ; CHECK-SAME:         custom_call_target="fake_target"
+    ; CHECK-SAME:         custom_call_has_side_effect=true
+    ; CHECK:       {{.*}} get-tuple-element(
+    ; CHECK:       {{.*}} get-tuple-element(
+    ; CHECK:       ROOT {{.*}} tuple(
+    ; CHECK:     }
+    ; CHECK:     body
+    ; CHECK-NOT:   dynamic-slice(
+    ; CHECK-NOT:   custom-call(
+    ; CHECK:       {{.*}} fusion(
+    ; CHECK-SAME:         kind=kCustom
+    ; CHECK-SAME:         "name":"dynamic_slice_fusion"
+    ; CHECK-NOT:   custom-call(
+    ; CHECK:     }
+  )";
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected);
+}
+
 TEST_F(DynamicSliceFusionRewriterV2Test,
-       ExternalUserFeedingFusionSkipsRewrite) {
-  // The hero's external user is also the DUS target buffer; rerouting it to
-  // the fusion output would create a cycle, so the rewrite is skipped.
+       SideEffectingSingleOutputDusHeroRemoved) {
+  const char* hlo = R"(
+    HloModule test
+
+    body {
+      p0 = (s32[], f32[4,8,8], f32[8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = f32[4,8,8] get-tuple-element(p0), index=1
+      in = f32[8,8] get-tuple-element(p0), index=2
+      c0 = s32[] constant(0)
+      hero = f32[8,8] custom-call(in),
+          custom_call_target="fake_target",
+          custom_call_has_side_effect=true
+      bc = f32[1,8,8] bitcast(hero)
+      dus = f32[4,8,8] dynamic-update-slice(buf, bc, ivar, c0, c0)
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], f32[4,8,8], f32[8,8]) tuple(next_ivar, dus, in)
+    }
+
+    condition {
+      p0 = (s32[], f32[4,8,8], f32[8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      buf = f32[4,8,8] parameter(0)
+      in = f32[8,8] parameter(1)
+      c0 = s32[] constant(0)
+      tuple = (s32[], f32[4,8,8], f32[8,8]) tuple(c0, buf, in)
+      ROOT while = (s32[], f32[4,8,8], f32[8,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       {{.*}} custom-call(
+    ; CHECK-SAME:         custom_call_target="fake_target"
+    ; CHECK-SAME:         custom_call_has_side_effect=true
+    ; CHECK:       {{.*}} bitcast(
+    ; CHECK:       ROOT {{.*}} dynamic-update-slice(
+    ; CHECK:     }
+    ; CHECK:     body
+    ; CHECK-NOT:   custom-call(
+    ; CHECK:       {{.*}} fusion(
+    ; CHECK-SAME:         kind=kCustom
+    ; CHECK-SAME:         "name":"dynamic_slice_fusion"
+    ; CHECK-NOT:   custom-call(
+    ; CHECK:     }
+  )";
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       HeroWithDusAndExternalUserNotDuplicated) {
+  // When a non-tuple hero with no sliced inputs feeds both a DUS and an
+  // external user, it must not absorb the DUS and leave a duplicate hero.
   const char* hlo = R"(
     HloModule test
 
@@ -2622,14 +2774,15 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       param = (s32[], f32[64], f32[4,64]) parameter(0)
       i = s32[] get-tuple-element(param), index=0
       res = f32[64] get-tuple-element(param), index=1
+      buf = f32[4,64] get-tuple-element(param), index=2
       hero = f32[64] custom-call(res), custom_call_target="fake_target"
-      buf = f32[4,64] broadcast(hero), dimensions={1}
       hero_2d = f32[1,64] bitcast(hero)
       zero = s32[] constant(0)
       updated = f32[4,64] dynamic-update-slice(buf, hero_2d, i, zero)
+      new_res = f32[64] add(res, hero)
       one = s32[] constant(1)
       next_i = s32[] add(i, one)
-      ROOT tuple = (s32[], f32[64], f32[4,64]) tuple(next_i, res, updated)
+      ROOT tuple = (s32[], f32[64], f32[4,64]) tuple(next_i, new_res, updated)
     }
 
     cond {
@@ -2654,10 +2807,88 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
 
   const char* expected = R"(
     ; CHECK-NOT: dynamic-slice-fusion
-    ; CHECK:     %hero = {{.*}} custom-call(
-    ; CHECK:     {{.*}} = f32[4,64]{{.*}} broadcast(%hero)
-    ; CHECK-NOT: dynamic-slice-fusion
+    ; CHECK:     body
+    ; CHECK:       {{.*}} custom-call(
+    ; CHECK-NOT:   custom-call(
   )";
+
+  RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected);
+}
+
+TEST_F(DynamicSliceFusionRewriterV2Test,
+       TupleOutputDusLeafWithExternalUserBecomesPassthrough) {
+  // Hero produces (f32[8,8], f32[8,8]) from a sliced input. Output 0 feeds
+  // both a DUS and an external user (`add`), while output 1 feeds only a DUS.
+  // Output 0 must become a passthrough output (replacing all uses of `gte0`)
+  // and output 1's DUS is fused, leaving no duplicate hero in `body`.
+  const char* hlo = R"(
+    HloModule test
+
+    body {
+      p0 = (s32[], f32[4,8,8], f32[4,8,8], f32[4,8,8], f32[8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      in = f32[4,8,8] get-tuple-element(p0), index=1
+      buf0 = f32[4,8,8] get-tuple-element(p0), index=2
+      buf1 = f32[4,8,8] get-tuple-element(p0), index=3
+      accum = f32[8,8] get-tuple-element(p0), index=4
+      c0 = s32[] constant(0)
+      ds = f32[1,8,8] dynamic-slice(in, ivar, c0, c0),
+          dynamic_slice_sizes={1,8,8}
+      bc_in = f32[8,8] bitcast(ds)
+      hero = (f32[8,8], f32[8,8]) custom-call(bc_in),
+          custom_call_target="fake_target"
+      gte0 = f32[8,8] get-tuple-element(hero), index=0
+      gte1 = f32[8,8] get-tuple-element(hero), index=1
+      bc0 = f32[1,8,8] bitcast(gte0)
+      dus0 = f32[4,8,8] dynamic-update-slice(buf0, bc0, ivar, c0, c0)
+      new_accum = f32[8,8] add(accum, gte0)
+      bc1 = f32[1,8,8] bitcast(gte1)
+      dus1 = f32[4,8,8] dynamic-update-slice(buf1, bc1, ivar, c0, c0)
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], f32[4,8,8], f32[4,8,8], f32[4,8,8], f32[8,8])
+          tuple(next_ivar, in, dus0, dus1, new_accum)
+    }
+
+    condition {
+      p0 = (s32[], f32[4,8,8], f32[4,8,8], f32[4,8,8], f32[8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      in = f32[4,8,8] parameter(0)
+      buf0 = f32[4,8,8] parameter(1)
+      buf1 = f32[4,8,8] parameter(2)
+      accum = f32[8,8] parameter(3)
+      c0 = s32[] constant(0)
+      tuple = (s32[], f32[4,8,8], f32[4,8,8], f32[4,8,8], f32[8,8])
+          tuple(c0, in, buf0, buf1, accum)
+      ROOT while = (s32[], f32[4,8,8], f32[4,8,8], f32[4,8,8], f32[8,8])
+          while(tuple), condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
+    ; CHECK:       {{.*}} dynamic-slice(
+    ; CHECK:       {{.*}} custom-call(
+    ; CHECK:       {{.*}} dynamic-update-slice(
+    ; CHECK:       ROOT {{.*}} = (f32[8,8]{1,0}, f32[4,8,8]{2,1,0}) tuple(
+    ; CHECK:     }
+    ; CHECK:     body
+    ; CHECK-NOT:   custom-call(
+    ; CHECK:       {{.*}} fusion(
+    ; CHECK-SAME:         kind=kCustom
+    ; CHECK-SAME:         "name":"dynamic_slice_fusion"
+    ; CHECK-NOT:   custom-call(
+    ; CHECK:     }
+  )";
+
   RunAndFilecheckHloRewrite(hlo, MakePipeline(), expected);
 }
 

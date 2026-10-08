@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -261,9 +261,9 @@ int main(int argc, char** argv) {
   };
 
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
-  tsl::port::InitMain(xla::hlo_diff::kUsage, &argc, &argv);
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
-  LOG_IF(QFATAL, argc != 1 || !parse_ok || need_help) << usage;
+  tsl::port::InitMain(xla::hlo_diff::kUsage, &argc, &argv);
+  LOG_IF(QFATAL, !parse_ok || need_help) << usage;
   xla::hlo_diff::RealMain(opts);
   return 0;
 }

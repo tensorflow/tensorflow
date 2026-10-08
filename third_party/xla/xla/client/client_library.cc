@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/client/local_client.h"
 #include "xla/service/compile_only_service.h"
@@ -178,6 +178,15 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
 
   client_library.local_instances_.clear();
   client_library.compile_only_instances_.clear();
+}
+
+/* static */ void ClientLibrary::DestroyLocalInstance(se::Platform* platform) {
+  if (platform == nullptr) {
+    return;
+  }
+  ClientLibrary& client_library = Singleton();
+  absl::MutexLock lock(client_library.service_mutex_);
+  client_library.local_instances_.erase(platform->id());
 }
 
 }  // namespace xla

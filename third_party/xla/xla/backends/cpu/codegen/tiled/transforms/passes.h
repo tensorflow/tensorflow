@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep

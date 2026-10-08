@@ -26,7 +26,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla::codegen::intrinsics {
@@ -108,9 +107,9 @@ absl::StatusOr<llvm::Function*> Erf::CreateDefinition(
     llvm::Module* module, const Type intrinsic_type) {
   llvm::Type* type = Type::TypeToIrType(intrinsic_type, module->getContext());
   CHECK(type != nullptr);
-  CHECK(type->isFloatTy() ||
+  CHECK(type->isDoubleTy() || type->isFloatTy() ||
         (type->isVectorTy() && type->getScalarType()->isFloatTy()))
-      << "Type must be a f32 or vector of f32.";
+      << "Type must be a f64, f32 or vector of f32.";
 
   llvm::LLVMContext& context = module->getContext();
   llvm::IRBuilder<> builder(context);
@@ -131,6 +130,20 @@ absl::StatusOr<llvm::Function*> Erf::CreateDefinition(
 
   llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(context, "entry", func);
   builder.SetInsertPoint(entry_bb);
+
+  if (type->isDoubleTy()) {
+    llvm::FunctionCallee libm_erf = module->getOrInsertFunction(
+        "erf", llvm::FunctionType::get(type, {type}, false));
+    if (auto* erf_fn = llvm::dyn_cast<llvm::Function>(libm_erf.getCallee())) {
+      erf_fn->setDoesNotAccessMemory();
+      erf_fn->setDoesNotThrow();
+    }
+    func->setDoesNotAccessMemory();
+    func->setDoesNotThrow();
+    llvm::Value* result = builder.CreateCall(libm_erf, {input_value});
+    builder.CreateRet(result);
+    return func;
+  }
 
   builder.CreateRet(EmitErfF32(&builder, input_value));
 
