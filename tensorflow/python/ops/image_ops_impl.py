@@ -4318,18 +4318,21 @@ def psnr(a, b, max_val, name=None):
     a = ops.convert_to_tensor(a, name='a')
     b = ops.convert_to_tensor(b, name='b')
 
-    # Check the shapes before computing anything, so a rank below 3 is
-    # reported as such instead of surfacing from the reduction below.
-    _, _, checks = _verify_compatible_image_shapes(a, b)
-    with ops.control_dependencies(checks):
-      a = array_ops.identity(a)
-
     # Need to convert the images to float32.  Scale max_val accordingly so that
     # PSNR is computed correctly.
     max_val = math_ops.cast(max_val, a.dtype)
     max_val = convert_image_dtype(max_val, dtypes.float32)
     a = convert_image_dtype(a, dtypes.float32)
     b = convert_image_dtype(b, dtypes.float32)
+
+    # Check the shapes before reducing, so a rank below 3 is reported as such
+    # rather than surfacing from the reduction. This has to come after the
+    # conversions above: the check compares the two shapes with an op that
+    # needs both images to have the same dtype.
+    _, _, checks = _verify_compatible_image_shapes(a, b)
+    with ops.control_dependencies(checks):
+      a = array_ops.identity(a)
+
     mse = math_ops.reduce_mean(math_ops.squared_difference(a, b), [-3, -2, -1])
     return math_ops.subtract(
         20 * math_ops.log(max_val) / math_ops.log(10.0),
