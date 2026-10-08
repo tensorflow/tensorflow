@@ -49,8 +49,8 @@ TEST(CompressionUtilsTest, Exceeds4GB) {
 
 TEST(CompressionUtilsTest, ZeroElementNonMemcpyableComponent) {
   // If metadata claims a non-memcpyable component has 65536 uncompressed bytes
-  // when the compressed data only has 0 bytes, the size reconciliation against
-  // the iovec fails before any decompression or deserialization occurs.
+  // when the compressed data only holds 0 bytes, the byte count exhausts the
+  // budget and is rejected before the scratch buffer is sized from it.
   std::vector<Tensor> empty_element;
   CompressedElement compressed;
   TF_ASSERT_OK(CompressElement(empty_element, &compressed));
@@ -63,9 +63,10 @@ TEST(CompressionUtilsTest, ZeroElementNonMemcpyableComponent) {
   metadata->add_uncompressed_bytes(65536);
 
   std::vector<Tensor> element;
-  EXPECT_THAT(UncompressElement(compressed, &element),
-              absl_testing::StatusIs(error::INTERNAL,
-                                     HasSubstr("Uncompressed size mismatch")));
+  EXPECT_THAT(
+      UncompressElement(compressed, &element),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                             HasSubstr("exceeds the uncompressed data size")));
 }
 
 TEST(CompressionUtilsTest, RoundTripEmptyVariantTensor) {
@@ -121,9 +122,9 @@ TEST(CompressionUtilsTest, MalformedTensorShapeString) {
 }
 
 TEST(CompressionUtilsTest, NegativeUncompressedBytes) {
-  // `uncompressed_bytes` is a signed proto field, so a negative count on a
-  // non-memcpyable component must be rejected before it is added to the
-  // unsigned scratch buffer size.
+  // `uncompressed_bytes` is a `uint64` field, so a forged -1 arrives as
+  // `UINT64_MAX`. It has to be rejected before the unsigned scratch buffer is
+  // sized from it.
   std::vector<Tensor> empty_element;
   CompressedElement compressed;
   TF_ASSERT_OK(CompressElement(empty_element, &compressed));
@@ -136,13 +137,16 @@ TEST(CompressionUtilsTest, NegativeUncompressedBytes) {
   metadata->add_uncompressed_bytes(-1);
 
   std::vector<Tensor> element;
-  EXPECT_THAT(UncompressElement(compressed, &element),
-              absl_testing::StatusIs(error::INVALID_ARGUMENT,
-                                     HasSubstr("cannot be negative")));
+  EXPECT_THAT(
+      UncompressElement(compressed, &element),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                             HasSubstr("exceeds the uncompressed data size")));
 }
 
 TEST(CompressionUtilsTest, NegativeUncompressedBytesString) {
-  // The same holds for the per-string byte counts of a `DT_STRING` component.
+  // The same holds for the per-string byte counts of a `DT_STRING` component:
+  // -1 arrives as `UINT64_MAX` and must be rejected before the string is
+  // resized to it.
   std::vector<Tensor> empty_element;
   CompressedElement compressed;
   TF_ASSERT_OK(CompressElement(empty_element, &compressed));
@@ -155,9 +159,29 @@ TEST(CompressionUtilsTest, NegativeUncompressedBytesString) {
   metadata->add_uncompressed_bytes(-1);
 
   std::vector<Tensor> element;
-  EXPECT_THAT(UncompressElement(compressed, &element),
-              absl_testing::StatusIs(error::INVALID_ARGUMENT,
-                                     HasSubstr("cannot be negative")));
+  EXPECT_THAT(
+      UncompressElement(compressed, &element),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                             HasSubstr("exceeds the uncompressed data size")));
+}
+
+TEST(CompressionUtilsTest, StringBytesExceedUncompressedSizeInTotal) {
+  // Each per-string count fits inside the uncompressed data on its own, but
+  // their sum does not, so only a cumulative budget rejects this.
+  std::vector<Tensor> element = {
+      CreateTensor<tstring>(TensorShape{2}, {"ab", "cd"})};
+  CompressedElement compressed;
+  TF_ASSERT_OK(CompressElement(element, &compressed));
+  CompressedComponentMetadata* metadata =
+      compressed.mutable_component_metadata(0);
+  metadata->set_uncompressed_bytes(0, 4);
+  metadata->set_uncompressed_bytes(1, 4);
+
+  std::vector<Tensor> round_trip;
+  EXPECT_THAT(
+      UncompressElement(compressed, &round_trip),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                             HasSubstr("exceeds the uncompressed data size")));
 }
 
 std::vector<std::vector<Tensor>> TestCases() {

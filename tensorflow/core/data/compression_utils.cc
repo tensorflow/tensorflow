@@ -151,6 +151,18 @@ absl::Status UncompressElement(const CompressedElement& compressed,
     return absl::InternalError(absl::StrCat(
         "Unsupported compressed element version: ", compressed.version()));
   }
+  const std::string& compressed_data = compressed.data();
+  size_t uncompressed_size;
+  if (!port::Snappy_GetUncompressedLength(
+          compressed_data.data(), compressed_data.size(), &uncompressed_size)) {
+    return absl::InternalError(absl::StrCat(
+        "Could not get snappy uncompressed length. Compressed data size: ",
+        compressed_data.size()));
+  }
+  // Byte counts that size an allocation are charged against this budget first,
+  // so forged metadata cannot allocate more than the payload holds or wrap the
+  // `size_t` totals below.
+  uint64_t remaining = uncompressed_size;
   int num_components = compressed.component_metadata_size();
   out->clear();
   out->reserve(num_components);
@@ -173,17 +185,20 @@ absl::Status UncompressElement(const CompressedElement& compressed,
     } else if (!DataTypeCanUseMemcpy(metadata.dtype())) {
       // Non-`memcpy`able components always serialize to a non-empty
       // `TensorProto`, even when the tensor has zero elements, so size the
-      // scratch buffer for them regardless of element count. A forged byte
-      // count is then caught by the snappy size reconciliation below.
+      // scratch buffer for them regardless of element count. The byte count is
+      // charged against the budget first, so a forged count can neither size
+      // the buffer past the uncompressed data nor wrap the running total.
       if (metadata.uncompressed_bytes_size() == 0) {
         return absl::InvalidArgumentError(
             "Missing uncompressed_bytes metadata for non-memcpyable tensor");
       }
-      if (metadata.uncompressed_bytes(0) < 0) {
+      const uint64_t bytes = metadata.uncompressed_bytes(0);
+      if (bytes > remaining) {
         return absl::InvalidArgumentError(
-            "uncompressed_bytes metadata cannot be negative");
+            "uncompressed_bytes metadata exceeds the uncompressed data size");
       }
-      total_nonmemcpyable_size += metadata.uncompressed_bytes(0);
+      remaining -= bytes;
+      total_nonmemcpyable_size += bytes;
     } else {
       int64_t num_elements = shape.num_elements();
       if (num_elements > 0 && metadata.uncompressed_bytes_size() == 0) {
@@ -229,12 +244,14 @@ absl::Status UncompressElement(const CompressedElement& compressed,
             ")"));
       }
       for (int j = 0; j < metadata.uncompressed_bytes_size(); ++j) {
-        if (metadata.uncompressed_bytes(j) < 0) {
+        const uint64_t bytes = metadata.uncompressed_bytes(j);
+        if (bytes > remaining) {
           return absl::InvalidArgumentError(
-              "uncompressed_bytes metadata cannot be negative");
+              "uncompressed_bytes metadata exceeds the uncompressed data size");
         }
-        flats.data()[j].resize(metadata.uncompressed_bytes(j));
-        iov.Add(flats.data()[j].mdata(), metadata.uncompressed_bytes(j));
+        remaining -= bytes;
+        flats.data()[j].resize(bytes);
+        iov.Add(flats.data()[j].mdata(), bytes);
       }
     } else {
       out->emplace_back();
@@ -244,14 +261,6 @@ absl::Status UncompressElement(const CompressedElement& compressed,
   }
 
   // Step 2: Uncompress into the iovec.
-  const std::string& compressed_data = compressed.data();
-  size_t uncompressed_size;
-  if (!port::Snappy_GetUncompressedLength(
-          compressed_data.data(), compressed_data.size(), &uncompressed_size)) {
-    return absl::InternalError(absl::StrCat(
-        "Could not get snappy uncompressed length. Compressed data size: ",
-        compressed_data.size()));
-  }
   if (uncompressed_size != static_cast<size_t>(iov.NumBytes())) {
     return absl::InternalError(absl::StrCat(
         "Uncompressed size mismatch. Snappy expects ", uncompressed_size,
