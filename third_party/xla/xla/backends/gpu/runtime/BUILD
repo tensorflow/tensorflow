@@ -1221,6 +1221,7 @@ cc_library(
     srcs = ["fft_thunk.cc"],
     hdrs = ["fft_thunk.h"],
     deps = [
+        ":per_device_state",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:shape_util",
@@ -1239,7 +1240,6 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

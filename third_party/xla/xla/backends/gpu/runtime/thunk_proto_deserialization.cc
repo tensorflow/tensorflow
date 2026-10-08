@@ -203,8 +203,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           buffer_allocations);
     }
     case ThunkProto::kFftThunk:
-      return FftThunk::FromProto(std::move(thunk_info), thunk_proto.fft_thunk(),
-                                 buffer_allocations);
+      return FftThunk::FromProto(
+          std::move(thunk_info), thunk_proto.fft_thunk(), buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kMemset32BitValueThunk:
       return Memset32BitValueThunk::FromProto(
           std::move(thunk_info), thunk_proto.memset32bit_value_thunk(),
