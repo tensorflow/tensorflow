@@ -4533,6 +4533,8 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         mlir::dyn_cast<RankedTensorType>(updates.getType()).getRank();
 
     int64_t window_dims = tensor_rank - num_index_dims;
+    if (window_dims < 0 || updates_rank < window_dims) return failure();
+
     auto dims_attr = stablehlo::ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         llvm::to_vector<4>(

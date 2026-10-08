@@ -282,5 +282,16 @@ class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
                                                "Updates shape must have rank"):
         sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
 
+  def testScatterNdScalarIndices(self):
+    indices_np = np.array(4, dtype=np.int32)
+    updates_np = np.array([9, 10, 11, 12], dtype=np.float32)
+    with self.session() as sess, self.device_scope():
+      indices = array_ops.placeholder(indices_np.dtype)
+      updates = array_ops.placeholder(updates_np.dtype)
+      out = array_ops.scatter_nd(indices, updates, [8])
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "Indices shape must have rank"):
+        sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+
 if __name__ == "__main__":
   test.main()
