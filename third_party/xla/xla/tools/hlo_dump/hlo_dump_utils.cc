@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
@@ -1264,6 +1265,21 @@ void ApplyBoundingBoxTail(const MismatchBoundingBox& bbox, double rel_error,
       !bbox.pattern.empty() ? bbox.pattern : ClassifyMismatchPattern(bbox);
 }
 
+// Strips everything that would let the tensor inspector draw element-level
+// mismatches. The front-end treats a tensor with no shape and no elements as
+// non-inspectable and keeps the inspector closed for it, which is the honest
+// rendering when the producer does not know which elements mismatched.
+void ClearElementLevelData(TensorVisualizationInfo& info) {
+  info.shape.clear();
+  info.box_min.clear();
+  info.box_max.clear();
+  info.top_mismatches.clear();
+  info.mismatched_slices.clear();
+  info.slice_boxes.clear();
+  info.mismatch_count = 0;
+  info.total_elements = 0;
+}
+
 }  // namespace
 
 absl::flat_hash_map<std::string, TensorVisualizationInfo>
@@ -1310,7 +1326,9 @@ PopulateTensorVisualizations(const HloModule& module,
       if (it != instr_to_mismatch.end()) {
         const MismatchDetails* mismatch = it->second;
         info.has_mismatch = true;
-        if (mismatch->bounding_box.has_value()) {
+        if (!mismatch->has_element_level_data) {
+          ClearElementLevelData(info);
+        } else if (mismatch->bounding_box.has_value()) {
           const auto& bbox = *mismatch->bounding_box;
           if (!bbox.tensor_shape.empty()) {
             info.shape = bbox.tensor_shape;
@@ -1340,7 +1358,9 @@ PopulateTensorVisualizations(const HloModule& module,
       TensorVisualizationInfo& info = it->second;
       info.instruction_name = mismatch.target_instruction_name;
       info.has_mismatch = true;
-      if (mismatch.bounding_box.has_value()) {
+      if (!mismatch.has_element_level_data) {
+        ClearElementLevelData(info);
+      } else if (mismatch.bounding_box.has_value()) {
         const auto& bbox = *mismatch.bounding_box;
         info.shape = bbox.tensor_shape;
         info.box_min = bbox.box_min;
@@ -1799,7 +1819,15 @@ GraphData PopulateMismatchGraphData(
 
 absl::StatusOr<std::string> DumpHloModuleMismatchWithGraphData(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches,
-    absl::string_view output_filename) {
+    absl::string_view output_filename, absl::string_view output_dir) {
+  if (!output_dir.empty()) {
+    // Fail before the render rather than after it.
+    absl::Status status =
+        tsl::Env::Default()->RecursivelyCreateDir(std::string(output_dir));
+    if (!status.ok()) {
+      return status;
+    }
+  }
   absl::flat_hash_map<TensorKey, TensorAnnotation> annotations =
       PopulateMismatchAnnotations(module, mismatches);
   GraphData graph_data = PopulateMismatchGraphData(module, mismatches);
@@ -1813,7 +1841,9 @@ absl::StatusOr<std::string> DumpHloModuleMismatchWithGraphData(
   const char* env_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
   std::string outdir;
   std::string html_filename;
-  if (env_dir != nullptr && env_dir[0] != '\0') {
+  if (!output_dir.empty()) {
+    html_filename = tsl::io::JoinPath(output_dir, output_filename);
+  } else if (env_dir != nullptr && env_dir[0] != '\0') {
     outdir = env_dir;
     html_filename = tsl::io::JoinPath(outdir, output_filename);
   } else if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
