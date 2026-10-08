@@ -652,7 +652,7 @@ class TestModelFallback(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
-            with self.assertRaises(_MockClientError):
+            with self.assertRaisesRegex(_MockClientError, "401 UNAUTHENTICATED"):
                 asyncio.run(main.main())
 
         self.assertEqual(mock_run_pr_review.call_count, 1)
@@ -749,14 +749,27 @@ class TestSecurityHardening(unittest.TestCase):
             "pr_number",
             inspect.signature(agent.submit_pr_code_review).parameters,
         )
-        with self.assertRaises(TypeError):
+        with self.assertRaisesRegex(
+            TypeError, "unexpected keyword argument 'pr_number'"
+        ):
             agent.get_pull_request_details(pr_number=99999)  # pylint: disable=unexpected-keyword-arg
-        with self.assertRaises(TypeError):
+        with self.assertRaisesRegex(
+            TypeError, "unexpected keyword argument 'pr_number'"
+        ):
             agent.submit_pr_code_review(  # pylint: disable=unexpected-keyword-arg
                 pr_number=99999,
                 overall_assessment="Minor improvements suggested.",
                 summary_comment="Summary",
                 inline_comments=[],
+            )
+        with self.assertRaisesRegex(
+            TypeError, "unexpected keyword argument 'pr_number'"
+        ):
+            asyncio.run(
+                agent.run_pr_review(  # pylint: disable=unexpected-keyword-arg
+                    model_name="gemini-3.1-pro-preview",
+                    pr_number=99999,
+                )
             )
 
         captured_tools = []
@@ -1045,10 +1058,315 @@ class TestSecurityHardening(unittest.TestCase):
             self.assertNotIn(forbidden_key, passed_env)
 
     def test_low_2_adk_logger_not_configured_at_debug_level(self):
-        """LOW-2: ADK logger is configured at logging.WARNING rather than logging.DEBUG."""
+        """LOW-2: ADK logger is configured at logging.WARNING in both mock and real google-adk environments."""
+        import importlib
         import logging
 
-        main.logs.setup_adk_logger.assert_called_with(level=logging.WARNING)
+        if hasattr(main.logs.setup_adk_logger, "assert_called_with"):
+            main.logs.setup_adk_logger.assert_called_with(level=logging.WARNING)
+        else:
+            adk_logger = logging.getLogger("google_adk")
+            self.assertEqual(adk_logger.getEffectiveLevel(), logging.WARNING)
+
+        # Also verify the real-function path when setup_adk_logger is not a MagicMock
+        def _real_setup_adk_logger(level=logging.INFO):
+            logging.getLogger("google_adk").setLevel(level)
+
+        with patch.object(main.logs, "setup_adk_logger", side_effect=_real_setup_adk_logger):
+            main.logs.setup_adk_logger(level=logging.WARNING)
+            self.assertEqual(
+                logging.getLogger("google_adk").getEffectiveLevel(),
+                logging.WARNING,
+            )
+        # Restore mock call state if running under MagicMock
+        if hasattr(main.logs.setup_adk_logger, "assert_called_with"):
+            importlib.reload(main)
+            main.logs.setup_adk_logger.assert_called_with(level=logging.WARNING)
+
+    @patch("agent.utils._fetch_file_content_at_commit")
+    @patch("agent.utils.subprocess.run")
+    @patch("agent.utils.get_request")
+    @patch("agent.agent.run_graphql_query")
+    @patch("agent.agent.get_diff")
+    def test_engineer_review_full_diff_preserved_for_pylint_beyond_30k(
+        self,
+        mock_get_diff,
+        mock_graphql,
+        mock_get_request,
+        mock_subproc_run,
+        mock_fetch_content,
+    ):
+        """Finding 2: Full diff >30,000 chars is preserved for Pylint in GraphQL & REST paths while LLM diff is capped at 30,000."""
+        padding_lines = "\n".join(
+            f"+// padding line {i} " + ("x" * 60) for i in range(450)
+        )
+        raw_large_diff = (
+            "diff --git a/tensorflow/core/kernels/large_op.cc b/tensorflow/core/kernels/large_op.cc\n"
+            "--- a/tensorflow/core/kernels/large_op.cc\n"
+            "+++ b/tensorflow/core/kernels/large_op.cc\n"
+            "@@ -1,1 +1,450 @@\n"
+            f"{padding_lines}\n"
+            "diff --git a/tensorflow/python/ops/late_file.py b/tensorflow/python/ops/late_file.py\n"
+            "--- a/tensorflow/python/ops/late_file.py\n"
+            "+++ b/tensorflow/python/ops/late_file.py\n"
+            "@@ -1,2 +1,3 @@\n"
+            " def compute():\n"
+            "+   return 42\n"
+        )
+        self.assertGreater(
+            raw_large_diff.index("tensorflow/python/ops/late_file.py"), 30000
+        )
+        mock_get_diff.return_value = raw_large_diff
+
+        files_nodes = [
+            {
+                "path": "tensorflow/core/kernels/large_op.cc",
+                "additions": 450,
+                "deletions": 0,
+                "changeType": "MODIFIED",
+            },
+            {
+                "path": "tensorflow/python/ops/late_file.py",
+                "additions": 1,
+                "deletions": 0,
+                "changeType": "MODIFIED",
+            },
+        ]
+
+        # 1. Verify GraphQL path preserves full diff >30,000 chars for Pylint
+        agent._PREFETCHED_PR_DETAILS = None
+        mock_graphql.return_value = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "id": "PR_1",
+                        "number": 12345,
+                        "title": "Large PR",
+                        "body": "Body",
+                        "state": "OPEN",
+                        "headRefOid": "abcdef1234567890abcdef1234567890abcdef12",
+                        "author": {"login": "dev"},
+                        "files": {"nodes": files_nodes},
+                        "comments": {"nodes": []},
+                        "commits": {"nodes": []},
+                    }
+                }
+            }
+        }
+        gql_details = agent.get_pull_request_details()
+        full_diff_gql = gql_details["pull_request"]["diff"]
+        self.assertGreater(len(full_diff_gql), 30000)
+        self.assertIn("tensorflow/python/ops/late_file.py", full_diff_gql)
+
+        # Verify LLM-facing prefetched return is capped at 30,000 chars without mutating stored full diff
+        agent._PREFETCHED_PR_DETAILS = gql_details
+        llm_details = agent.get_pull_request_details()
+        self.assertEqual(len(llm_details["pull_request"]["diff"]), 30000)
+        self.assertGreater(len(gql_details["pull_request"]["diff"]), 30000)
+
+        # Verify Pylint retains diagnostic on the Python file after the 30,000-char boundary
+        mock_fetch_content.return_value = "def compute():\n   return 42\n"
+        mock_proc = MagicMock()
+        mock_proc.returncode = 4
+        mock_proc.stdout = (
+            "tensorflow/python/ops/late_file.py:2:0: W0311 (bad-indentation): "
+            "Bad indentation. Found 3 spaces, expected 2\n"
+        )
+        mock_subproc_run.return_value = mock_proc
+
+        pylint_out = utils.run_pylint_on_changed_files(
+            files_nodes,
+            raw_diff=full_diff_gql,
+            head_sha="abcdef1234567890abcdef1234567890abcdef12",
+        )
+        self.assertIn(
+            "tensorflow/python/ops/late_file.py:2:0: W0311 (bad-indentation)",
+            pylint_out,
+        )
+
+        # 2. Verify REST fallback path also preserves full diff >30,000 chars
+        agent._PREFETCHED_PR_DETAILS = None
+        mock_graphql.side_effect = requests.exceptions.RequestException("GQL down")
+        mock_get_request.side_effect = [
+            {
+                "id": 1,
+                "number": 12345,
+                "title": "Large PR",
+                "body": "Body",
+                "state": "open",
+                "head": {"sha": "abcdef1234567890abcdef1234567890abcdef12"},
+                "user": {"login": "dev"},
+            },
+            [
+                {
+                    "filename": "tensorflow/core/kernels/large_op.cc",
+                    "additions": 450,
+                    "deletions": 0,
+                    "status": "modified",
+                },
+                {
+                    "filename": "tensorflow/python/ops/late_file.py",
+                    "additions": 1,
+                    "deletions": 0,
+                    "status": "modified",
+                },
+            ],
+        ]
+        rest_details = agent.get_pull_request_details()
+        self.assertGreater(len(rest_details["pull_request"]["diff"]), 30000)
+        self.assertIn(
+            "tensorflow/python/ops/late_file.py",
+            rest_details["pull_request"]["diff"],
+        )
+
+    def test_engineer_review_api_change_classification_per_file(self):
+        """Finding 4: API signature-change detection is associated per file rather than over-counting every Python file."""
+        # Case 1: 1 public Python file has a signature change (+40 pts), 2 other public Python files have only body edits (0 pts),
+        # and 2 TFLite files are modified (2 * 50 = 100 pts). Without per-file association, API change would get 3 * 40 = 120 pts and win.
+        files = [
+            {"path": "tensorflow/python/ops/math_ops.py", "additions": 2, "deletions": 0, "changeType": "MODIFIED"},
+            {"path": "tensorflow/python/ops/array_ops.py", "additions": 1, "deletions": 1, "changeType": "MODIFIED"},
+            {"path": "tensorflow/python/ops/nn_ops.py", "additions": 1, "deletions": 1, "changeType": "MODIFIED"},
+            {"path": "tensorflow/lite/kernels/add.cc", "additions": 5, "deletions": 2, "changeType": "MODIFIED"},
+            {"path": "tensorflow/lite/kernels/sub.cc", "additions": 3, "deletions": 1, "changeType": "MODIFIED"},
+        ]
+        diff = (
+            "diff --git a/tensorflow/python/ops/math_ops.py b/tensorflow/python/ops/math_ops.py\n"
+            "--- a/tensorflow/python/ops/math_ops.py\n"
+            "+++ b/tensorflow/python/ops/math_ops.py\n"
+            "@@ -10,2 +10,4 @@\n"
+            "+def new_public_math_op(x):\n"
+            "+  return x\n"
+            "diff --git a/tensorflow/python/ops/array_ops.py b/tensorflow/python/ops/array_ops.py\n"
+            "--- a/tensorflow/python/ops/array_ops.py\n"
+            "+++ b/tensorflow/python/ops/array_ops.py\n"
+            "@@ -20,2 +20,2 @@\n"
+            "-  val = 1\n"
+            "+  val = 2\n"
+            "diff --git a/tensorflow/python/ops/nn_ops.py b/tensorflow/python/ops/nn_ops.py\n"
+            "--- a/tensorflow/python/ops/nn_ops.py\n"
+            "+++ b/tensorflow/python/ops/nn_ops.py\n"
+            "@@ -30,2 +30,2 @@\n"
+            "-  out = x\n"
+            "+  out = x + 1\n"
+        )
+        cat, _ = agent.classify_pr_with_scoring(files, title="Update ops", body="", diff=diff)
+        self.assertEqual(cat, "TensorFlow Lite")
+
+        # Case 2: Only math_ops.py has an API signature change -> classified as API change
+        single_api_files = [
+            {"path": "tensorflow/python/ops/math_ops.py", "additions": 2, "deletions": 0, "changeType": "MODIFIED"},
+            {"path": "tensorflow/python/ops/array_ops.py", "additions": 1, "deletions": 1, "changeType": "MODIFIED"},
+        ]
+        cat_api, _ = agent.classify_pr_with_scoring(
+            single_api_files, title="Update math op", body="", diff=diff
+        )
+        self.assertEqual(cat_api, "API change")
+
+        # Case 3: A signature change in a test file must not cause an unrelated public Python file to be counted as API change
+        test_sig_files = [
+            {"path": "tensorflow/python/ops/array_ops.py", "additions": 1, "deletions": 1, "changeType": "MODIFIED"},
+            {"path": "tensorflow/python/ops/array_ops_test.py", "additions": 2, "deletions": 0, "changeType": "MODIFIED"},
+        ]
+        test_sig_diff = (
+            "diff --git a/tensorflow/python/ops/array_ops.py b/tensorflow/python/ops/array_ops.py\n"
+            "--- a/tensorflow/python/ops/array_ops.py\n"
+            "+++ b/tensorflow/python/ops/array_ops.py\n"
+            "@@ -20,2 +20,2 @@\n"
+            "-  val = 1\n"
+            "+  val = 2\n"
+            "diff --git a/tensorflow/python/ops/array_ops_test.py b/tensorflow/python/ops/array_ops_test.py\n"
+            "--- a/tensorflow/python/ops/array_ops_test.py\n"
+            "+++ b/tensorflow/python/ops/array_ops_test.py\n"
+            "@@ -10,2 +10,4 @@\n"
+            "+def test_new_helper():\n"
+            "+  pass\n"
+        )
+        cat_non_api, _ = agent.classify_pr_with_scoring(
+            test_sig_files, title="Minor tweak", body="", diff=test_sig_diff
+        )
+        self.assertEqual(cat_non_api, "General TensorFlow")
+
+    @patch("agent.main.requests.post")
+    @patch("agent.main.requests.delete")
+    @patch("agent.main.requests.get")
+    def test_engineer_review_clear_and_set_reaction_deletes_only_bot_eyes(
+        self, mock_get, mock_delete, mock_post
+    ):
+        """Finding 5: clear_and_set_reaction deletes only github-actions[bot] eyes reactions and preserves human eyes reactions."""
+        resp_get = MagicMock()
+        resp_get.status_code = 200
+        resp_get.json.return_value = [
+            {
+                "id": 101,
+                "content": "eyes",
+                "user": {"login": "human-maintainer"},
+            },
+            {
+                "id": 102,
+                "content": "eyes",
+                "user": {"login": "github-actions[bot]"},
+            },
+            {
+                "id": 103,
+                "content": "eyes",
+                "user": None,
+            },
+            {
+                "id": 104,
+                "content": "rocket",
+                "user": {"login": "github-actions[bot]"},
+            },
+        ]
+        mock_get.return_value = resp_get
+
+        main.clear_and_set_reaction(12345, add_content="rocket")
+
+        mock_delete.assert_called_once()
+        deleted_url = mock_delete.call_args[0][0]
+        self.assertTrue(deleted_url.endswith("/issues/reactions/102"))
+        mock_post.assert_called_once()
+        self.assertEqual(mock_post.call_args.kwargs.get("json"), {"content": "rocket"})
+
+    @patch("agent.utils.get_request")
+    @patch("agent.agent.run_graphql_query")
+    @patch("agent.agent.get_diff")
+    def test_engineer_review_rest_fallback_requests_per_page_100(
+        self, mock_get_diff, mock_graphql, mock_get_request
+    ):
+        """Finding 6: REST fallback in get_pull_request_details requests /files with params={'per_page': 100}."""
+        agent._PREFETCHED_PR_DETAILS = None
+        mock_graphql.side_effect = requests.exceptions.RequestException("GraphQL unavailable")
+        mock_get_diff.return_value = ""
+        mock_get_request.side_effect = [
+            {
+                "id": 1,
+                "number": 12345,
+                "title": "PR Title",
+                "body": "PR Body",
+                "state": "open",
+                "head": {"sha": "abcdef1234567890"},
+                "user": {"login": "dev"},
+            },
+            [
+                {
+                    "filename": "tensorflow/python/foo.py",
+                    "additions": 2,
+                    "deletions": 1,
+                    "status": "modified",
+                }
+            ],
+        ]
+
+        res = agent.get_pull_request_details()
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(mock_get_request.call_count, 2)
+        files_call = mock_get_request.call_args_list[1]
+        self.assertEqual(
+            files_call[0][0],
+            "https://api.github.com/repos/tensorflow/tensorflow/pulls/12345/files",
+        )
+        self.assertEqual(files_call.kwargs.get("params"), {"per_page": 100})
 
 
 if __name__ == "__main__":

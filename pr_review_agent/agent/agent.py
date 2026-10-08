@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 from agent.settings import GITHUB_BASE_URL
@@ -25,7 +26,6 @@ from agent.settings import OWNER
 from agent.settings import REPO
 from agent.utils import error_response
 from agent.utils import get_diff
-from agent.utils import post_request
 from agent.utils import read_file
 from agent.utils import run_graphql_query
 
@@ -46,7 +46,7 @@ MODELS_POOL = [
     "gemini-3.1-flash-lite",
 ]
 
-import re
+MAX_LLM_DIFF_CHARS = 30000
 
 _PREFETCHED_PR_DETAILS = None
 _VERIFIED_HEAD_SHA: str | None = None
@@ -70,6 +70,13 @@ def get_pull_request_details() -> dict[str, Any]:
     """Fetch TensorFlow PR details along with file structural metadata."""
     global _PREFETCHED_PR_DETAILS
     if _PREFETCHED_PR_DETAILS is not None:
+        if isinstance(_PREFETCHED_PR_DETAILS, dict) and isinstance(
+            _PREFETCHED_PR_DETAILS.get("pull_request"), dict
+        ):
+            pr_copy = dict(_PREFETCHED_PR_DETAILS["pull_request"])
+            if isinstance(pr_copy.get("diff"), str):
+                pr_copy["diff"] = pr_copy["diff"][:MAX_LLM_DIFF_CHARS]
+            return {**_PREFETCHED_PR_DETAILS, "pull_request": pr_copy}
         return _PREFETCHED_PR_DETAILS
 
     pr_number = _get_trusted_pr_number()
@@ -112,13 +119,13 @@ def get_pull_request_details() -> dict[str, Any]:
         pr = response.get("data", {}).get("repository", {}).get("pullRequest")
         if not pr:
             raise requests.exceptions.RequestException(f"Pull Request #{pr_number} not found.")
-        pr["diff"] = annotate_diff_with_line_numbers(get_diff(url))[:30000]
+        pr["diff"] = annotate_diff_with_line_numbers(get_diff(url))
         return {"status": "success", "pull_request": pr}
     except Exception as e:
         try:
             from agent.utils import get_request, annotate_diff_with_line_numbers
             pr_data = get_request(url)
-            files_data = get_request(f"{url}/files")
+            files_data = get_request(f"{url}/files", params={"per_page": 100})
             files_nodes = [
                 {
                     "path": f.get("filename", ""),
@@ -139,25 +146,11 @@ def get_pull_request_details() -> dict[str, Any]:
                 "files": {"nodes": files_nodes},
                 "comments": {"nodes": []},
                 "commits": {"nodes": []},
-                "diff": annotate_diff_with_line_numbers(get_diff(url))[:30000]
+                "diff": annotate_diff_with_line_numbers(get_diff(url))
             }
             return {"status": "success", "pull_request": pr}
         except Exception as e2:
             return error_response(f"GraphQL error ({e}) and REST fallback error ({e2})")
-
-
-def add_comment_to_pr(comment: str) -> dict[str, Any]:
-    """Post review feedback to the PR."""
-    pr_number = _get_trusted_pr_number()
-    if not pr_number:
-        return error_response("Trusted PULL_REQUEST_NUMBER is not configured.")
-    url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/issues/{pr_number}/comments"
-    payload = {"body": comment}
-    try:
-        post_request(url, payload)
-    except requests.exceptions.RequestException as e:
-        return error_response(str(e))
-    return {"status": "success", "added_comment": comment}
 
 
 def submit_pr_code_review(
@@ -282,6 +275,46 @@ def get_focus_skip_areas(category: str) -> tuple[str, str]:
         )
 
 
+def _extract_diff_by_file(diff: str) -> dict[str, str]:
+    """Splits a raw or line-annotated unified diff into per-file diff sections."""
+    if not diff:
+        return {}
+    chunks_by_file: dict[str, list[str]] = {}
+    current_file: str | None = None
+    diff_git_pattern = re.compile(r"^diff --git a/.+ b/(.+)$")
+    plus_file_pattern = re.compile(r"^\+\+\+\s+(?:b/)?(.+)$")
+    minus_file_pattern = re.compile(r"^---\s+(?:a/)?(.+)$")
+
+    for raw_line in diff.splitlines():
+        clean_line = re.sub(r"^\[(?:LEFT )?L\d+\]\s*", "", raw_line)
+        m_git = diff_git_pattern.match(clean_line)
+        if m_git:
+            current_file = m_git.group(1).strip()
+            chunks_by_file.setdefault(current_file, [])
+            continue
+        if clean_line.startswith("+++ "):
+            m_plus = plus_file_pattern.match(clean_line)
+            if m_plus:
+                path = m_plus.group(1).strip()
+                if path != "/dev/null":
+                    current_file = path
+                    chunks_by_file.setdefault(current_file, [])
+            continue
+        if clean_line.startswith("--- "):
+            if current_file is None:
+                m_minus = minus_file_pattern.match(clean_line)
+                if m_minus:
+                    path = m_minus.group(1).strip()
+                    if path != "/dev/null":
+                        current_file = path
+                        chunks_by_file.setdefault(current_file, [])
+            continue
+        if current_file is not None:
+            chunks_by_file.setdefault(current_file, []).append(clean_line)
+
+    return {k: "\n".join(v) for k, v in chunks_by_file.items()}
+
+
 def classify_pr_with_scoring(files: list[dict[str, Any]], title: str, body: str, diff: str) -> tuple[str, str]:
     """Determines the PR category and concise reason using a weighted scoring system."""
     scores = {
@@ -327,7 +360,11 @@ def classify_pr_with_scoring(files: list[dict[str, Any]], title: str, body: str,
         renamed_files = 0
         balanced_edit_files = 0
 
-        sig_pattern = re.compile(r'^[+-]\s*(def |class |@tf_export)', re.MULTILINE)
+        sig_pattern = re.compile(
+            r'^(?:\[(?:LEFT )?L\d+\]\s*)?[+-](?![+-]{2})\s*(def |class |@tf_export)',
+            re.MULTILINE,
+        )
+        diff_by_file = _extract_diff_by_file(diff)
 
         for f in files:
             p = f.get("path", "")
@@ -351,7 +388,12 @@ def classify_pr_with_scoring(files: list[dict[str, Any]], title: str, body: str,
                 not is_test_file(p) and 
                 not '/internal/' in p and 
                 not p.split('/')[-1].startswith('_')):
-                if sig_pattern.search(diff):
+                file_diff = (
+                    diff_by_file.get(p, "")
+                    if diff_by_file
+                    else (diff if num_files == 1 else "")
+                )
+                if sig_pattern.search(file_diff):
                     api_files_with_changes += 1
                 if change_type in ("ADDED", "DELETED"):
                     scores["API change"] += 30

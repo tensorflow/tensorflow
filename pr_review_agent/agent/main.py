@@ -20,7 +20,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import time
 import requests
 from os import environ
 
@@ -98,27 +97,6 @@ def is_fallback_eligible_error(err: Exception) -> bool:
     return False
 
 
-def get_first_comment_id(pr_number: int) -> int | None:
-    """Fetches the ID of the very first issue comment to attach reactions to."""
-    token = environ.get("GITHUB_TOKEN")
-    if not token or not pr_number:
-        return None
-
-    # Pull requests are treated as issues for top-level comment threads
-    url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/issues/{pr_number}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    try:
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code == 200:
-            return res.json().get("id")
-    except Exception as e:
-        print(f"Failed to fetch issue metadata: {e}")
-    return None
-
-
 def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
     """Cleans up previous runtime reactions and establishes the new active emoji."""
     token = environ.get("GITHUB_TOKEN")
@@ -139,7 +117,11 @@ def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
             reactions_list = existing_res.json()
             # Loop through and remove any active 'eyes' reactions posted by this agent integration
             for reaction in reactions_list:
-                if reaction.get("content") == "eyes":
+                author_login = (reaction.get("user") or {}).get("login") or ""
+                if (
+                    reaction.get("content") == "eyes"
+                    and author_login == "github-actions[bot]"
+                ):
                     reaction_id = reaction.get("id")
                     delete_url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/issues/reactions/{reaction_id}"
                     requests.delete(delete_url, headers=headers, timeout=10)
@@ -298,7 +280,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    start_time = time.time()
     print(f"Start reviewing {OWNER}/{REPO} pull request #{PULL_REQUEST_NUMBER}")
     print("-" * 80)
     asyncio.run(main())
