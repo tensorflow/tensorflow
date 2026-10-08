@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -170,6 +177,96 @@ TEST(ConvertMlirHloToHloModuleTest, PacksSpmdParametersShardingsForTupleArgs) {
   EXPECT_EQ((*hlo_module)->spmd_parameters_shardings()[0].ToString(),
             "{{devices=[1,2]<=[2]}, {replicated}, {devices=[2,1]<=[2]}}");
 }
+
+absl::StatusOr<std::unique_ptr<xla::HloModule>> ParseAndConvert(
+    llvm::StringRef mlir_source) {
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::BaseScopedDiagnosticHandler handler(&context);
+  auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
+  if (absl::Status status = handler.ConsumeStatus(); !status.ok()) {
+    return status;
+  }
+  return ConvertMlirHloToHloModule(*module);
+}
+
+struct ScaledSparseTestCase {
+  std::string test_name;
+  std::string mlir_source;
+  int64_t expected_operand_count;
+  // Expected `sparsity_config` / `block_scaling_config` fragment of the
+  // converted `dot` instruction, in HLO print order.
+  std::string expected_config;
+};
+
+class ConvertScaledSparseDotGeneralTest
+    : public ::testing::TestWithParam<ScaledSparseTestCase> {};
+
+TEST_P(ConvertScaledSparseDotGeneralTest, ConvertsToDot) {
+  const ScaledSparseTestCase& param = GetParam();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                       ParseAndConvert(param.mlir_source));
+  const xla::HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  const xla::HloInstruction* dot =
+      root->opcode() == xla::HloOpcode::kTuple ? root->operand(0) : root;
+  ASSERT_EQ(dot->opcode(), xla::HloOpcode::kDot);
+  EXPECT_EQ(dot->operand_count(), param.expected_operand_count);
+  EXPECT_THAT(dot->ToString(), HasSubstr(param.expected_config));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScaledSparseDotGeneralTests, ConvertScaledSparseDotGeneralTest,
+    ::testing::Values(
+        ScaledSparseTestCase{
+            "BlockScaled",
+            R"mlir(
+func.func @main(%lhs: tensor<64x128xbf16>, %rhs: tensor<128x64xbf16>, %lhs_scale: tensor<64x4xf8E8M0FNU>, %rhs_scale: tensor<4x64xf8E8M0FNU>) -> tensor<64x64xbf16> {
+  %0 = stablehlo.dot_general %lhs, %rhs, [%lhs_scale, %rhs_scale], contracting_dims = [1] x [0] {block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, strides = [1, 32], steps = [1, 1]>, rhs = <scale_idx = 3, strides = [32, 1], steps = [1, 1]>>} : (tensor<64x128xbf16>, tensor<128x64xbf16>, tensor<64x4xf8E8M0FNU>, tensor<4x64xf8E8M0FNU>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
+})mlir",
+            4,
+            "block_scaling_config={lhs={scale_idx=2 "
+            "strides=1x32 steps=1x1} rhs={scale_idx=3 "
+            "strides=32x1 steps=1x1}}",
+        },
+        ScaledSparseTestCase{
+            "AsymmetricBlockScaledWithZeroPoint",
+            R"mlir(
+func.func @main(%lhs: tensor<64x128xbf16>, %rhs: tensor<128x64xbf16>, %lhs_scale: tensor<64x4xf8E8M0FNU>, %lhs_zp: tensor<64x4xf8E8M0FNU>, %rhs_scale: tensor<4x64xf8E8M0FNU>, %rhs_zp: tensor<4x64xf8E8M0FNU>) -> tensor<64x64xbf16> {
+  %0 = stablehlo.dot_general %lhs, %rhs, [%lhs_scale, %lhs_zp, %rhs_scale, %rhs_zp], contracting_dims = [1] x [0] {block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, zero_idx = 3, strides = [1, 32], steps = [1, 1]>, rhs = <scale_idx = 4, zero_idx = 5, strides = [32, 1], steps = [1, 1]>>} : (tensor<64x128xbf16>, tensor<128x64xbf16>, tensor<64x4xf8E8M0FNU>, tensor<64x4xf8E8M0FNU>, tensor<4x64xf8E8M0FNU>, tensor<4x64xf8E8M0FNU>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
+})mlir",
+            6,
+            "block_scaling_config={lhs={scale_idx=2 zero_idx=3 "
+            "strides=1x32 steps=1x1} rhs={scale_idx=4 zero_idx=5 "
+            "strides=32x1 steps=1x1}}",
+        },
+        ScaledSparseTestCase{
+            "RhsStructuredSparse",
+            R"mlir(
+func.func @main(%lhs: tensor<64x128xbf16>, %rhs: tensor<64x64xbf16>, %rhs_indices: tensor<64x16xi8>) -> tensor<64x64xbf16> {
+  %0 = stablehlo.dot_general %lhs, %rhs, [%rhs_indices], contracting_dims = [1] x [0] {sparsity_config = #stablehlo.sparsity_config<rhs = <num_non_zero = 2, block_size = 4, dimension = 0, stride = 1, idx = 2>>} : (tensor<64x128xbf16>, tensor<64x64xbf16>, tensor<64x16xi8>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
+})mlir",
+            3,
+            "sparsity_config={rhs={sparsity=2x4 dimension=0 stride=1 "
+            "idx=2}}",
+        },
+        ScaledSparseTestCase{
+            "BatchedScaledSparse",
+            R"mlir(
+func.func @main(%lhs: tensor<2x64x64xbf16>, %rhs: tensor<2x128x64xbf16>, %lhs_scale: tensor<2x64x2xf8E8M0FNU>, %lhs_indices: tensor<2x64x16xi8>) -> tensor<2x64x64xbf16> {
+  %0 = stablehlo.dot_general %lhs, %rhs, [%lhs_scale, %lhs_indices], batching_dims = [0] x [0], contracting_dims = [2] x [1] {block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, strides = [1, 1, 32], steps = [1, 1, 1]>>, sparsity_config = #stablehlo.sparsity_config<lhs = <num_non_zero = 2, block_size = 4, dimension = 2, stride = 1, idx = 3>>} : (tensor<2x64x64xbf16>, tensor<2x128x64xbf16>, tensor<2x64x2xf8E8M0FNU>, tensor<2x64x16xi8>) -> tensor<2x64x64xbf16>
+  return %0 : tensor<2x64x64xbf16>
+})mlir",
+            4,
+            "sparsity_config={lhs={sparsity=2x4 dimension=2 stride=1 "
+            "idx=3}}, block_scaling_config={lhs={scale_idx=2 "
+            "strides=1x1x32 steps=1x1x1}}",
+        }),
+    [](const auto& info) { return info.param.test_name; });
 
 }  // namespace
 }  // namespace mlir

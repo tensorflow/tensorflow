@@ -784,23 +784,17 @@ def HasValidDotDims : Constraint<CPred<"HasValidDotDims($0)">>;
 
 def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
 
-def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
-          (StableHLO_DotGeneralOp $lhs, $rhs,
-                            (ToDotDimNumsAttr $dimension_numbers),
-                            (ToPrecisionConfigsAttr $precision_config),
-                            (EmptyDotAlgorithmAttr)),
-          [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
-
-//===----------------------------------------------------------------------===//
-// XlaDotV2Op op.
-//===----------------------------------------------------------------------===//
-
-def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
-          (StableHLO_DotGeneralOp $lhs, $rhs,
-                            (ToDotDimNumsAttr $dimension_numbers),
-                            (ToPrecisionConfigsAttr $precision_config),
-                            (EmptyDotAlgorithmAttr)),
-          [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
+foreach DotOp = [TF_XlaDotOp, TF_XlaDotV2Op] in {
+  def : Pat<(DotOp $lhs, $rhs, $dimension_numbers, $precision_config),
+            (StableHLO_DotGeneralOp $lhs, $rhs,
+                              (ToDotDimNumsAttr $dimension_numbers),
+                              (ToPrecisionConfigsAttr $precision_config),
+                              (EmptyDotAlgorithmAttr),
+                              (NativeCodeCall<"mlir::ValueRange{}">),
+                              (NativeCodeCall<"mlir::Attribute{}">),
+                              (NativeCodeCall<"mlir::Attribute{}">)),
+            [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
+}
 
 //===----------------------------------------------------------------------===//
 // XlaDynamicSlice op.
