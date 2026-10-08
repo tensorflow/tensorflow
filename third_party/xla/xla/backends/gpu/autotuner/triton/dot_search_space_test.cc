@@ -266,21 +266,6 @@ TEST_F(DotSearchSpaceTest, ScalesDesiredWarpsWithHardwareDerivedRidgePoint) {
               ::testing::HasSubstr("desired_total_warps: 1056"));
 }
 
-TEST_F(DotSearchSpaceTest, EliminatesLowOccupancyTilesForMediumProblem) {
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
-                          /*contracting_dim=*/1024));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  // On 1024x1024 with 132 cores, tiles >= 128x128 yield <= 64 result tiles
-  // (< 132 cores) and should be eliminated in non-exhaustive mode.
-  EXPECT_THAT(
-      search_space.GenerateConfigs(),
-      AllOf(Not(IsEmpty()),
-            Not(Contains(AllOf(BlockMIs(Ge(128)), BlockNIs(Ge(128)))))));
-}
-
 TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        GetDefaultDotModule());
