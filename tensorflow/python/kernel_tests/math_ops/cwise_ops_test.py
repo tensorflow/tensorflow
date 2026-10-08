@@ -1286,10 +1286,10 @@ class PolyvalTest(test.TestCase):
     x = np.random.rand(2, 2).astype(dtype)
     coeffs = [np.random.rand(2, 2).astype(dtype) for _ in range(degree + 1)]
     np_val = np.polyval(coeffs, x)
-    with self.cached_session():
-      tf_val = math_ops.polyval(coeffs, x)
-      self.assertAllClose(np_val, self.evaluate(tf_val))
+    tf_val = math_ops.polyval(coeffs, x)
+    self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  @test_util.run_in_graph_and_eager_modes
   def testSimple(self):
     for dtype in [
         np.int32, np.float32, np.float64, np.complex64, np.complex128
@@ -1298,6 +1298,7 @@ class PolyvalTest(test.TestCase):
         with self.subTest(dtype=dtype, degree=degree):
           self._runtest(dtype, degree)
 
+  @test_util.run_in_graph_and_eager_modes
   def testBroadcast(self):
     dtype = np.float32
     degree = 3
@@ -1311,34 +1312,33 @@ class PolyvalTest(test.TestCase):
               for _ in range(degree + 1)
           ]
           np_val = np.polyval(coeffs, x)
-          with self.cached_session():
-            tf_val = math_ops.polyval(coeffs, x)
-            self.assertAllClose(np_val, self.evaluate(tf_val))
+          tf_val = math_ops.polyval(coeffs, x)
+          self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  @test_util.run_in_graph_and_eager_modes
   def testEmpty(self):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = []
     np_val = np.polyval(coeffs, x)
-    with self.cached_session():
-      tf_val = math_ops.polyval(coeffs, x)
-      self.assertAllClose(np_val, self.evaluate(tf_val))
+    tf_val = math_ops.polyval(coeffs, x)
+    self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  @test_util.run_in_graph_and_eager_modes
   def testSingleCoeffNanPropagation(self):
     x = np.array([1.0, float("nan"), 3.0], dtype=np.float32)
     coeffs = [np.float32(2.0)]
     np_val = np.polyval(coeffs, x)
-    with self.cached_session():
-      tf_val = math_ops.polyval(coeffs, x)
-      self.assertAllClose(np_val, self.evaluate(tf_val))
+    tf_val = math_ops.polyval(coeffs, x)
+    self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  @test_util.run_in_graph_and_eager_modes
   def testSingleCoeffShapeBroadcast(self):
     x = np.random.rand(3, 4).astype(np.float32)
     coeffs = [np.float32(5.0)]
     np_val = np.polyval(coeffs, x)
-    with self.cached_session():
-      tf_val = math_ops.polyval(coeffs, x)
-      self.assertEqual(tf_val.shape, x.shape)
-      self.assertAllClose(np_val, self.evaluate(tf_val))
+    tf_val = math_ops.polyval(coeffs, x)
+    self.assertEqual(tf_val.shape, x.shape)
+    self.assertAllClose(np_val, self.evaluate(tf_val))
 
   @test_util.run_in_graph_and_eager_modes
   def testSingleCoeffInfReturnsNan(self):
