@@ -811,6 +811,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulF8(
                    GetShapedSliceForHlo(instr->operand(a_scale_index + 1)));
 
   bool is_cuda = ir_emitter_context_->gpu_compute_capability().IsCuda();
+  bool is_rocm = ir_emitter_context_->gpu_compute_capability().IsRocm();
   bool is_fp8 = instr->shape().tuple_shapes(0).element_type() == F8E4M3FN ||
                 instr->shape().tuple_shapes(0).element_type() == F8E5M2;
   // cublasLT requires c_scale/d_scale to be null when C/D is not
@@ -818,6 +819,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulF8(
   std::optional<ShapedSlice> d_scale;
   if (is_cuda && is_fp8) {
     ABSL_ASSIGN_OR_RETURN(d_scale, GetShapedSliceForHlo(instr->operands().back()));
+  } else if (is_rocm) {
+    // On ROCm, the last operand is the D scale only if has_d_scale is set.
+    TF_RET_CHECK(instr->operand_count() == 4 + int{has_matrix_bias} +
+                                               int{has_vector_bias} +
+                                               int{config.has_d_scale()})
+        << instr->ToString();
+    if (config.has_d_scale()) {
+      ABSL_ASSIGN_OR_RETURN(d_scale, GetShapedSliceForHlo(instr->operands().back()));
+    }
   }
 
   std::optional<ShapedSlice> bias;
@@ -1537,9 +1547,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
 
   TF_RET_CHECK(k <= 16) << "CustomCall TopK requires k <= 16";
   // Load TopK custom kernel.
-  ABSL_ASSIGN_OR_RETURN(CustomKernel kernel, kernel::topk::GetTopKKernel(
-                                            "topk", dtype, n, k, batch_size,
-                                            platform_name(), wavefront_size));
+  ABSL_ASSIGN_OR_RETURN(CustomKernel kernel,
+                   kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
+                                               platform_name(), wavefront_size,
+                                               kernel::topk::Order::kTotal));
 
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
