@@ -1395,6 +1395,7 @@ class PolyvalTest(test.TestCase):
               else:
                 self.assertTrue(np.all(np.isinf(result)))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = {}
