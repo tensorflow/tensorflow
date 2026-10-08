@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 
+#include <memory>
+
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/jit/defs.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/service/hlo.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -70,6 +75,25 @@ TEST(GetExecutableOptionTest, DumpingWithoutDetailedLogging) {
 
   EXPECT_FALSE(build_option.debug_options().xla_detailed_logging());
   EXPECT_TRUE(build_option.debug_options().xla_enable_dumping());
+}
+
+TEST(GetExecutableOptionTest, XlaDeterministicFrontendAttribute) {
+  XlaCompiler::Options options;
+  XlaCompiler::CompilationResult result;
+  result.computation = std::make_shared<xla::XlaComputation>();
+
+  auto default_build_option =
+      GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
+  EXPECT_FALSE(default_build_option.debug_options()
+                   .xla_gpu_exclude_nondeterministic_ops());
+
+  (*result.computation->mutable_proto()
+        ->mutable_frontend_attributes()
+        ->mutable_map())[kXlaDeterministicAttr] = "true";
+  auto deterministic_build_option =
+      GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
+  EXPECT_TRUE(deterministic_build_option.debug_options()
+                  .xla_gpu_exclude_nondeterministic_ops());
 }
 
 }  // namespace

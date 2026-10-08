@@ -512,7 +512,9 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
 
  private:
   bool HasSingleUserReadingOnlyTheValueOutput(HloInstruction* inst) {
-    return inst->user_count() == 1 && inst->users().front()->tuple_index() == 0;
+    return inst->user_count() == 1 &&
+           inst->users().front()->opcode() == HloOpcode::kGetTupleElement &&
+           inst->users().front()->tuple_index() == 0;
   }
 
   absl::StatusOr<HloComputation*> CreateVariadicComparator(

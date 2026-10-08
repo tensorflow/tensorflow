@@ -294,6 +294,16 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
       }
     }
 
+    // hipBLASLt only returns algorithms that honor D_SCALE_POINTER if it is
+    // set before the heuristic query. Otherwise it may return algorithms that
+    // silently ignore the D scale at execution time.
+    if (has_d_scale_) {
+      static int64_t dummy_pointer = 0xACEBALL;
+      ABSL_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                              HIPBLASLT_MATMUL_DESC_D_SCALE_POINTER,
+                              &dummy_pointer));
+    }
+
     int found_algorithm_count = 0;
     auto error = hipblasLtMatmulAlgoGetHeuristic(
         blas_lt_.handle_.get(), op_desc_.get(), a_desc_.get(), b_desc_.get(),
@@ -318,6 +328,10 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
 
 absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetHipBlasLtMatmulPlan(
     const gpu::GemmConfig& cfg, Epilogue epilogue) const {
+  if (cfg.has_d_scale &&
+      !xla::primitive_util::IsF8Type(cfg.output_layout.dtype)) {
+    return xla::InvalidArgument("A D scale requires an FP8 output.");
+  }
   auto lhs_layout = cfg.lhs_layout, rhs_layout = cfg.rhs_layout,
        output_layout = cfg.output_layout, c_layout = cfg.c_layout;
 
@@ -403,7 +417,8 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetHipBlasLtMatmulPlan(
 
   auto plan = std::make_unique<RegularMatmulPlan>(
       *this, std::move(op_desc), std::move(a_desc), std::move(b_desc),
-      std::move(c_desc), std::move(d_desc), must_swap_operands);
+      std::move(c_desc), std::move(d_desc), must_swap_operands,
+      cfg.has_d_scale);
 
   auto assign_alpha_beta = [&](auto scale) {
     using Scale = decltype(scale);
@@ -690,6 +705,12 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
   if (!algorithm_.has_value()) {
     return absl::InternalError(
         "Algorithm must be set before calling ExecuteOnStream!");
+  }
+  // The algorithms depend on whether a D scale was set at query time.
+  if (has_d_scale_ != (args.d_scale != nullptr)) {
+    return xla::InvalidArgument(
+        "hipBLASLt plan created %s a D scale but called %s one.",
+        has_d_scale_ ? "with" : "without", has_d_scale_ ? "without" : "with");
   }
   DeviceAddressBase a = args.a, b = args.b;
   DeviceAddressBase a_scale = args.a_scale, b_scale = args.b_scale;
