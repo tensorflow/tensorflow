@@ -442,6 +442,7 @@ HloValueSet HloDataflowAnalysis::GetFlattenedValueSet(
 
 const HloValueSet& HloDataflowAnalysis::GetValueSet(
     const HloInstruction* instruction, const ShapeIndex& index) const {
+  CHECK(ShapeUtil::IndexIsValid(instruction->shape(), index));
   return GetInstructionValueSet(instruction).element(index);
 }
 
