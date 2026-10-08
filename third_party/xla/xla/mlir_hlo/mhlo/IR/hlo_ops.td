@@ -2970,8 +2970,24 @@ def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
     MHLO_Tensor:$rhs,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config,
-    OptionalAttr<MHLO_DotAlgorithmAttr>:$algorithm
+    OptionalAttr<MHLO_DotAlgorithmAttr>:$algorithm,
+    Variadic<MHLO_Tensor>:$ext_operands,
+    OptionalAttr<MHLO_BlockScalingConfigAttr>:$block_scaling_config,
+    OptionalAttr<MHLO_SparsityConfigAttr>:$sparsity_config
   );
+
+  // Backward compatible builder for callers without extra operands. Attributes
+  // are taken as `Attribute` so that DRR patterns can pass `Attribute{}`.
+  let builders = [
+    OpBuilder<(ins "::mlir::Type":$resultType, "::mlir::Value":$lhs,
+      "::mlir::Value":$rhs, "::mlir::Attribute":$dot_dimension_numbers,
+      "::mlir::Attribute":$precision_config, "::mlir::Attribute":$algorithm), [{
+      build($_builder, $_state, resultType, lhs, rhs,
+            ::llvm::cast<DotDimensionNumbersAttr>(dot_dimension_numbers),
+            ::llvm::dyn_cast_or_null<::mlir::ArrayAttr>(precision_config),
+            ::llvm::dyn_cast_or_null<DotAlgorithmAttr>(algorithm), {}, {}, {});
+    }]>
+  ];
 
   let results = (outs MHLO_Tensor);
   // DotGeneral op required custom exporter to pass the preferred element type

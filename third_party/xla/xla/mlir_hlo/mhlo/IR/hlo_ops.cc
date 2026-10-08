@@ -929,6 +929,13 @@ LogicalResult DotGeneralOp::verify() {
       return failure();
   }
 
+  auto getSparsityDim =
+      [](TensorSparsityConfigAttr sp) -> std::optional<hlo::DotSparsityDim> {
+    if (!sp) return std::nullopt;
+    return hlo::DotSparsityDim{sp.getDimension(), sp.getNumNonZero(),
+                               sp.getBlockSize()};
+  };
+  SparsityConfigAttr sp = getSparsityConfigAttr();
   return hlo::verifyDotGeneralOp(
       getLoc(), getLhs(), getRhs(),
       getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
@@ -936,7 +943,8 @@ LogicalResult DotGeneralOp::verify() {
       getDotDimensionNumbersAttr().getLhsContractingDimensions(),
       getDotDimensionNumbersAttr().getRhsContractingDimensions(),
       getPrecisionConfig(), isDefaultPrecisionConfig, hasAlgorithmSpecified,
-      getResult());
+      getResult(), sp ? getSparsityDim(sp.getLhs()) : std::nullopt,
+      sp ? getSparsityDim(sp.getRhs()) : std::nullopt);
 }
 
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(

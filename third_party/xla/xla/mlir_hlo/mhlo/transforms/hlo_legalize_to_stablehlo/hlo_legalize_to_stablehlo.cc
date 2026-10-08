@@ -319,6 +319,30 @@ Attribute convertAttr(Attribute hloAttr) {
         attr.getRhsBatchingDimensions(), attr.getLhsContractingDimensions(),
         attr.getRhsContractingDimensions());
   }
+  if (auto attr = mlir::dyn_cast<mhlo::BlockScalingConfigAttr>(hloAttr)) {
+    auto convertSide = [&](mhlo::TensorBlockScalingConfigAttr side)
+        -> stablehlo::TensorBlockScalingConfigAttr {
+      if (!side) return {};
+      return stablehlo::TensorBlockScalingConfigAttr::get(
+          attr.getContext(), side.getScaleIdx(), side.getZeroIdx(),
+          side.getStrides(), side.getSteps());
+    };
+    return stablehlo::BlockScalingConfigAttr::get(attr.getContext(),
+                                                  convertSide(attr.getLhs()),
+                                                  convertSide(attr.getRhs()));
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::SparsityConfigAttr>(hloAttr)) {
+    auto convertSide = [&](mhlo::TensorSparsityConfigAttr side)
+        -> stablehlo::TensorSparsityConfigAttr {
+      if (!side) return {};
+      return stablehlo::TensorSparsityConfigAttr::get(
+          attr.getContext(), side.getNumNonZero(), side.getBlockSize(),
+          side.getDimension(), side.getStride(), side.getIdx());
+    };
+    return stablehlo::SparsityConfigAttr::get(attr.getContext(),
+                                              convertSide(attr.getLhs()),
+                                              convertSide(attr.getRhs()));
+  }
   if (auto attr = mlir::dyn_cast<mhlo::FftTypeAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(FftType);
   }
