@@ -938,6 +938,27 @@ TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::CheckSubgraphInputsAreNotConstants() {
+  for (int i = 0; i < inputs_.size(); ++i) {
+    const int tensor_index = inputs_[i];
+    if (tensor_index == kTfLiteOptionalTensor) {
+      continue;
+    }
+    const TfLiteTensor* input_tensor = tensor(tensor_index);
+    if (input_tensor->allocation_type == kTfLiteMmapRo) {
+      ReportError(
+          "Subgraph input %d refers to tensor %d ('%s'), which is a read-only "
+          "constant. A subgraph input has to be writable, otherwise loading the "
+          "model from a file path and loading it from a buffer behave "
+          "differently.\n",
+          i, tensor_index, input_tensor->name == nullptr ? "" : input_tensor->name);
+      consistent_ = false;
+      return kTfLiteError;
+    }
+  }
+  return kTfLiteOk;
+}
+
 // We have two arrays and we need to check that elements from one array don't
 // show up in the other. We could sort both arrays and then iterate with two
 // pointers from start to finish always increasing the smaller one but since
@@ -995,6 +1016,12 @@ TfLiteStatus Subgraph::AllocateTensors(InliningStrategy auto_inline) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
   }
+
+  // A subgraph input that points at a read-only constant is accepted by the
+  // FlatBuffer verifier (the index is in range) but has no writable buffer, so
+  // SetTensor() may crash and the failure otherwise only shows up later as
+  // "Input tensor %d lacks data" during Invoke(). Reject it up front.
+  TF_LITE_ENSURE_STATUS(CheckSubgraphInputsAreNotConstants());
 
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());

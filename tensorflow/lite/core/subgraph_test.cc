@@ -72,6 +72,43 @@ TEST(RemoveUnusedInputs, HasUnusedInputs) {
   ASSERT_EQ(subgraph.inputs(), std::vector<int>({-1, -1, 2}));
 }
 
+// A subgraph input that resolves to a read-only constant tensor passes the
+// tensor index range check, but it is not writable. Before this was rejected,
+// the two public entry points diverged: loading the model from a file path
+// crashed inside SetTensor(), while loading it from a buffer only failed much
+// later with "Input tensor 0 lacks data" during Invoke().
+TEST(SubgraphInputIsReadOnlyConstant, AllocateTensorsFails) {
+  Interpreter interpreter;
+  auto& subgraph = interpreter.primary_subgraph();
+  subgraph.AddTensors(2);
+  const float constant_data[] = {1.5f, 2.5f};
+  TfLiteQuantization quantization = {kTfLiteNoQuantization, nullptr};
+  ASSERT_EQ(subgraph.SetTensorParametersReadOnly(
+                0, kTfLiteFloat32, "c", {1, 2}, quantization,
+                reinterpret_cast<const char*>(constant_data),
+                sizeof(constant_data)),
+            kTfLiteOk);
+  subgraph.SetInputs({0});
+  subgraph.SetOutputs({1});
+
+  EXPECT_EQ(subgraph.AllocateTensors(), kTfLiteError);
+}
+
+// Control: the very same graph with a writable input keeps working.
+TEST(SubgraphInputIsReadOnlyConstant, WritableInputStillAllocates) {
+  Interpreter interpreter;
+  auto& subgraph = interpreter.primary_subgraph();
+  subgraph.AddTensors(2);
+  TfLiteQuantization quantization = {kTfLiteNoQuantization, nullptr};
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(0, kTfLiteFloat32, "x", {1, 2},
+                                                  quantization),
+            kTfLiteOk);
+  subgraph.SetInputs({0});
+  subgraph.SetOutputs({1});
+
+  EXPECT_EQ(subgraph.AllocateTensors(), kTfLiteOk);
+}
+
 TEST(RemoveUnusedInputs, BypassInputsWithoutOp) {
   Interpreter interpreter;
   auto& subgraph = interpreter.primary_subgraph();

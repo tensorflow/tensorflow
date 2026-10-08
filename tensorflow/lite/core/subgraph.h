@@ -799,6 +799,14 @@ class Subgraph {
   TfLiteStatus CheckTensorIndices(const char* label, const int* indices,
                                   int length);
 
+  // Verifies that no subgraph input resolves to a read-only constant tensor.
+  // A subgraph input has to be writable, because callers write into it through
+  // SetTensor()/ResizeInputTensor(), no matter how the model was loaded (from a
+  // file path or from a buffer).
+  // NOTE: this changes consistent_ to be false if a subgraph input is a
+  // constant.
+  TfLiteStatus CheckSubgraphInputsAreNotConstants();
+
   // Check that the input indices and the output indices don't overlap.
   // This is needed because same tensor must not be used both as input and
   // output for an operator.
