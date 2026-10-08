@@ -4452,6 +4452,22 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         mlir::dyn_cast<RankedTensorType>(op.getUpdates().getType());
 
     if (!tensor_ty || !indices_ty || !updates_ty) return failure();
+
+    // The eager kernels (tensorflow/core/kernels/scatter_nd_op.cc) reject
+    // rank-0 operands with the errors below, so the same errors are emitted
+    // here to keep both paths consistent.
+    if (tensor_ty.getRank() == 0) {
+      return op.emitOpError() << "Output must be at least 1-D";
+    }
+    if (indices_ty.getRank() == 0) {
+      return op.emitOpError()
+             << "Indices shape must have rank at least one. Found:[]";
+    }
+    if (updates_ty.getRank() == 0) {
+      return op.emitOpError()
+             << "Updates shape must have rank at least one. Found:[]";
+    }
+
     // Last dimension of the indices needs to known at compile time for
     // computation of the 'update_window_dims' attribute in the dimensions
     // struct.
@@ -4459,14 +4475,6 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
     if (ShapedType::isDynamic(num_index_dims)) return failure();
 
     auto updates = op.getUpdates();
-
-    // The eager kernels (tensorflow/core/kernels/scatter_nd_op.cc) reject
-    // rank-0 `updates` for all TensorScatter ops with the error below, so the
-    // same error is emitted here to keep both paths consistent.
-    if (updates_ty.getRank() == 0) {
-      return op.emitOpError()
-             << "Updates shape must have rank at least one. Found:[]";
-    }
 
     int64_t tensor_rank = tensor_ty.getRank();
     int64_t indices_rank = indices_ty.getRank();
