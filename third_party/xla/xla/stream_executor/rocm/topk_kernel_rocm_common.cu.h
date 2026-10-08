@@ -143,6 +143,29 @@ struct Descending {
     V idx;
   };
 
+  static __device__ __forceinline__ OrderedKey ToOrdered(T x) {
+    return details::OrderedTraits<T>::ToOrdered(x);
+  }
+  static __device__ __forceinline__ T FromOrdered(OrderedKey x) {
+    return details::OrderedTraits<T>::FromOrdered(x);
+  }
+
+  __device__ __forceinline__ static bool cmp(const KVT& lhs, const KVT& rhs) {
+    return lhs.key == rhs.key ? lhs.idx < rhs.idx : lhs.key > rhs.key;
+  }
+};
+
+template <typename T, typename V>
+struct PartialOrderDescending {
+  using OrderedKey = T;
+  struct KVT {
+    OrderedKey key;
+    V idx;
+  };
+
+  static __device__ __forceinline__ OrderedKey ToOrdered(T x) { return x; }
+  static __device__ __forceinline__ T FromOrdered(OrderedKey x) { return x; }
+
   __device__ __forceinline__ static bool cmp(const KVT& lhs, const KVT& rhs) {
     return lhs.key == rhs.key ? lhs.idx < rhs.idx : lhs.key > rhs.key;
   }
@@ -224,7 +247,7 @@ struct TopK {
   using Trait = Traits<KT, VT>;
   using KVT = typename Trait::KVT;
 
-  __device__ TopK(void* buffer, int num_outputs)
+  __device__ __forceinline__ TopK(void* buffer, int num_outputs)
       : buffer_(reinterpret_cast<KVT*>(buffer)), num_outputs_(num_outputs) {}
 
   __device__ __forceinline__ uint32_t Idx(uint32_t i) {
@@ -232,12 +255,12 @@ struct TopK {
   }
 
   // Compute a per-warp topk of a slice of data.
-  __device__ void PerWarpTopK(KT* key, int n) {
+  __device__ __forceinline__ void PerWarpTopK(KT* key, int n) {
     KVT tmp[K];
     // TODO(doak): Use bitonic sort.
 #pragma unroll
     for (int i = 0; i < K; i++) {
-      tmp[i] = {details::OrderedTraits<KT>::ToOrdered(key[Idx(i)]), VT(Idx(i))};
+      tmp[i] = {Trait::ToOrdered(key[Idx(i)]), VT(Idx(i))};
     }
 #pragma unroll
     for (int i = 0; i < K; i++) {
@@ -253,8 +276,7 @@ struct TopK {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
 
     for (int idx = K; idx < n; idx++) {
-      KVT kv{details::OrderedTraits<KT>::ToOrdered(key[Idx(idx)]),
-             VT(Idx(idx))};
+      KVT kv{Trait::ToOrdered(key[Idx(idx)]), VT(Idx(idx))};
       Push(tmp, kv);
     }
     Reduce(tmp, WarpSize);
@@ -269,7 +291,7 @@ struct TopK {
 
   // Merge the per-warp topks into a single topk. The final data is written to
   // `keys` and `idxs`
-  __device__ void MergeTopKs(KT* keys, uint32_t* idxs) {
+  __device__ __forceinline__ void MergeTopKs(KT* keys, uint32_t* idxs) {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
     KVT tmp[K];
     // We only use one warp for this step.
@@ -282,7 +304,7 @@ struct TopK {
     Reduce(tmp, blockDim.x / WarpSize);
     if (threadIdx.x != 0) return;
     for (int i = 0; i < num_outputs_; ++i) {
-      keys[i] = details::OrderedTraits<KT>::FromOrdered(tmp[i].key);
+      keys[i] = Trait::FromOrdered(tmp[i].key);
       idxs[i] = tmp[i].idx;
     }
   }
@@ -354,9 +376,28 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
   obj.MergeTopKs(vals_out, idxs_out);
 }
 
+template <size_t K, typename KT, typename VT>
+__launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
+    void RunPartialOrder(KT* data, int n, KT* result, uint32_t* result_idxs,
+                         int k) {
+  TopK<K, KT, VT, PartialOrderDescending> obj(shmem, k);
+
+  const uint32_t bidx = blockIdx.x;
+  auto in = data + n * bidx;
+  auto vals_out = result + k * bidx;
+  auto idxs_out = result_idxs + k * bidx;
+  int slice_size = n / blockDim.x;
+  if (threadIdx.x < n % blockDim.x) {
+    slice_size++;
+  }
+
+  obj.PerWarpTopK(in, slice_size);
+  obj.MergeTopKs(vals_out, idxs_out);
+}
+
 #define KERNEL_TRAIT(K_VAL, TYPE, VT) \
-  stream_executor::gpu::TopKKernel<K_VAL, TYPE, VT>
-#define REGISTER_TOPK_KERNEL(K_VAL, TYPE, VT)                                 \
+  stream_executor::gpu::TopKTotalOrderKernel<K_VAL, TYPE, VT>
+#define REGISTER_TOPK_TOTAL_ORDER_KERNEL(K_VAL, TYPE, VT)                     \
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
       TopKKernelRocm_K##K_VAL##_##TYPE##_##VT, KERNEL_TRAIT(K_VAL, TYPE, VT), \
       stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {             \
@@ -369,6 +410,25 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
   KERNEL_SYMBOL_REGISTRY_REGISTER_SYMBOL_STATICALLY(                          \
       topk_k##K_VAL##_##TYPE##_##VT, stream_executor::rocm::kROCmPlatformId,  \
       (&Run<K_VAL, TYPE, VT>));
+
+#define PARTIAL_ORDER_KERNEL_TRAIT(K_VAL, TYPE, VT) \
+  stream_executor::gpu::TopKPartialOrderKernel<K_VAL, TYPE, VT>
+#define REGISTER_TOPK_PARTIAL_ORDER_KERNEL(K_VAL, TYPE, VT)               \
+  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                         \
+      TopKPartialOrderKernelRocm_K##K_VAL##_##TYPE##_##VT,                \
+      PARTIAL_ORDER_KERNEL_TRAIT(K_VAL, TYPE, VT),                        \
+      stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {         \
+        return stream_executor::KernelLoaderSpec::                        \
+            CreateSerializableInProcessSymbolSpec(                        \
+                /*persistent_kernel_name=*/"topk_partial_order_k" #K_VAL  \
+                                           "_" #TYPE "_" #VT,             \
+                absl::bit_cast<void*>(&RunPartialOrder<K_VAL, TYPE, VT>), \
+                "topk_partial_order_k" #K_VAL "_" #TYPE "_" #VT, arity);  \
+      }));                                                                \
+  KERNEL_SYMBOL_REGISTRY_REGISTER_SYMBOL_STATICALLY(                      \
+      topk_partial_order_k##K_VAL##_##TYPE##_##VT,                        \
+      stream_executor::rocm::kROCmPlatformId,                             \
+      (&RunPartialOrder<K_VAL, TYPE, VT>));
 
 }  // namespace stream_executor::rocm
 

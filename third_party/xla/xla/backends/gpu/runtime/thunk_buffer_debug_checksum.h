@@ -33,7 +33,7 @@ absl::Status RunChecksumPassInternal(
     ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
     const HloModule* absl_nonnull hlo_module,
     const std::vector<ShapedSlice>& module_output_slices,
-    ThunkPassBufferAllocator& allocator);
+    ThunkPassBufferAllocator& allocator, int devices_per_host);
 
 }  // namespace xla::gpu
 

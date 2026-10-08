@@ -21,14 +21,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -48,11 +46,11 @@ class ShardingSpecSerDesTest
 TEST_P(ShardingSpecSerDesTest, SingleDeviceShardingSpecRoundTrip) {
   auto sharding_spec = SingleDeviceShardingSpec::Create();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto serialized,
       Serialize(*sharding_spec, std::make_unique<SerializeOptions>(version())));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding_spec,
       Deserialize<SingleDeviceShardingSpec>(serialized, /*options=*/nullptr));
 }
@@ -61,10 +59,10 @@ TEST_P(ShardingSpecSerDesTest, OpaqueShardingSpecRoundTrip) {
   auto sharding_spec = OpaqueShardingSpec::Create(num_shards());
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding_spec, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding_spec, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding_spec,
       Deserialize<OpaqueShardingSpec>(serialized, /*options=*/nullptr));
 
@@ -78,10 +76,10 @@ TEST_P(ShardingSpecSerDesTest, ConcreteShardingSpecRoundTrip) {
                                    /*shard_shapes=*/shard_shapes);
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding_spec, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding_spec, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding_spec,
       Deserialize<ConcreteShardingSpec>(serialized, /*options=*/nullptr));
 
@@ -92,13 +90,13 @@ TEST_P(ShardingSpecSerDesTest, ConcreteShardingSpecRoundTrip) {
 }
 
 TEST_P(ShardingSpecSerDesTest, ConcreteShardingSpecWithDynamicShapeRoundTrip) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape shard_dynamic_shape,
       DynamicShape::Create(Shape({10, 20}),
                            BoundedDynamicShapeTag({false, true})));
   std::vector<DynamicShape> shard_dynamic_shapes(num_shards(),
                                                  shard_dynamic_shape);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape dynamic_shape,
       DynamicShape::Create(Shape({10 * num_shards(), 20}),
                            BoundedDynamicShapeTag({false, true})));
@@ -107,10 +105,10 @@ TEST_P(ShardingSpecSerDesTest, ConcreteShardingSpecWithDynamicShapeRoundTrip) {
       /*shard_dynamic_shapes=*/shard_dynamic_shapes);
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding_spec, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding_spec, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding_spec,
       Deserialize<ConcreteShardingSpec>(serialized, /*options=*/nullptr));
 
@@ -128,10 +126,10 @@ TEST_P(ShardingSpecSerDesTest, ConcreteEvenShardingSpecRoundTrip) {
       /*shard_shape=*/Shape({10, 20}), /*is_fully_replicated=*/false);
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding_spec, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding_spec, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding_spec,
       Deserialize<ConcreteEvenShardingSpec>(serialized, /*options=*/nullptr));
 
@@ -140,43 +138,6 @@ TEST_P(ShardingSpecSerDesTest, ConcreteEvenShardingSpecRoundTrip) {
   EXPECT_THAT(out_sharding_spec->shard_shape(), sharding_spec->shard_shape());
   EXPECT_THAT(out_sharding_spec->IsFullyReplicated(),
               sharding_spec->IsFullyReplicated());
-}
-
-TEST_P(ShardingSpecSerDesTest, ShardingParamShardingSpecRoundTrip) {
-  auto sharding_spec = ShardingParamShardingSpec::Create(
-      ShardingParam({num_shards(), 1}, {{0}, {num_shards()}}));
-
-  auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding_spec, std::move(options)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto out_sharding_spec,
-      Deserialize<ShardingParamShardingSpec>(serialized, /*options=*/nullptr));
-
-  EXPECT_THAT(out_sharding_spec->num_shards(), sharding_spec->num_shards());
-  EXPECT_THAT(out_sharding_spec->sharding_param(),
-              sharding_spec->sharding_param());
-}
-
-TEST_P(ShardingSpecSerDesTest,
-       ShardingParamShardingSpecWithUnreducedDimsRoundTrip) {
-  if (version().version_number() < SerDesVersionNumber(1)) {
-    GTEST_SKIP() << "Unreduced dims not supported before version 1.";
-  }
-  auto sharding_spec = ShardingParamShardingSpec::Create(
-      ShardingParam({1, 1}, {{0}, {num_shards()}},
-                    /*unreduced_axes=*/{0}));
-
-  auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(*sharding_spec, std::move(options)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto out_sharding_spec,
-      Deserialize<ShardingParamShardingSpec>(serialized, /*options=*/nullptr));
-
-  EXPECT_THAT(out_sharding_spec->num_shards(), sharding_spec->num_shards());
-  EXPECT_THAT(out_sharding_spec->sharding_param(),
-              sharding_spec->sharding_param());
 }
 
 INSTANTIATE_TEST_SUITE_P(

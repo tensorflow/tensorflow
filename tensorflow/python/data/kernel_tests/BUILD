@@ -1072,7 +1072,7 @@ tf_py_strict_test(
     name = "repeat_test",
     size = "medium",
     srcs = ["repeat_test.py"],
-    shard_count = 2,
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
