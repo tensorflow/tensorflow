@@ -1165,6 +1165,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     return absl::StrJoin(collective_ops, ", ", Formatter());
   };
 
+  auto collective_kernel_type_to_string =
+      [](google::protobuf::RepeatedField<int> collective_kernels) -> std::string {
+    struct Formatter {
+      void operator()(std::string* out, int type) const {
+        absl::StrAppend(out, DebugOptions::CollectiveKernelType_Name(type));
+      }
+    };
+    return absl::StrJoin(collective_kernels, ", ", Formatter());
+  };
+
   // Custom parser for `xla_cpu_xnn_graph_fusion_mode` flag.
   auto setter_for_xla_cpu_experimental_xnn_graph_fusion_mode =
       [debug_options](absl::string_view input) {
@@ -3367,7 +3377,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             return debug_options
                 ->mutable_xla_gpu_experimental_use_collective_kernels();
           }),
-      collective_op_types_to_string(
+      collective_kernel_type_to_string(
           debug_options->xla_gpu_experimental_use_collective_kernels()),
       "Experimental: comma-separated filter of collective ops that should use "
       "custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL. "
