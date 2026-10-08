@@ -251,6 +251,11 @@ TEST(CudaComputeCapabilityTest, GenerationNumericTest) {
   EXPECT_TRUE(CudaComputeCapability(8, 0).IsAtLeastAmpere());
 }
 
+TEST(CudaComputeCapabilityTest, Rubin) {
+  EXPECT_EQ(CudaComputeCapability::Rubin(), CudaComputeCapability(10, 7));
+  EXPECT_EQ(CudaComputeCapability::Rubin().GetPtxAsTargetName(), "sm_107");
+}
+
 TEST(CudaComputeCapabilityTest, ComparisonTest) {
   using FeatureExtension = CudaComputeCapability::FeatureExtension;
 

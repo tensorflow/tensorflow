@@ -147,6 +147,37 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::B200SXMDeviceInfo(
   return b;
 }
 
+stream_executor::DeviceDescription TestGpuDeviceInfo::VRNVL72DeviceInfo(
+    stream_executor::GpuComputeCapability cc) {
+  stream_executor::DeviceDescription b;
+  b.set_name("NVIDIA VR NVL72");
+  b.set_gpu_compute_capability(cc);
+  b.set_threads_per_block_limit(1024);
+  b.set_threads_per_warp(32);
+  b.set_shared_memory_per_block(48 * 1024);
+  b.set_shared_memory_per_block_optin(227 * 1024);
+  b.set_shared_memory_per_core(228 * 1024);
+  b.set_threads_per_core_limit(1024);
+  b.set_core_count(212);
+  b.set_block_dim_limit_x(2'147'483'647);
+  b.set_block_dim_limit_y(65535);
+  b.set_block_dim_limit_z(65535);
+  b.set_memory_bandwidth(19'160'064'000'000);
+  b.set_l2_cache_size(126 * 1024 * 1024);
+  b.set_clock_rate_ghz(2.424);
+  b.set_device_memory_size(299'103'551'488);
+  b.set_registers_per_core_limit(65536);
+  b.set_registers_per_block_limit(65536);
+  b.set_runtime_version(stream_executor::SemanticVersion{13, 4, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{13, 4, 0});
+
+  b.set_fpus_per_core(
+      stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
+                                              b.clock_rate_ghz(), b);
+  return b;
+}
+
 stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   const stream_executor::GpuComputeCapability cc(
       stream_executor::RocmComputeCapability("gfx90a"));

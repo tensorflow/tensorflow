@@ -55,15 +55,17 @@ class GpuModel(enum.Enum):
 
   PVC = 15
 
-  V100 = 16
+  VR_NVL72 = 16
 
-  GB200 = 17
+  V100 = 17
 
-  GB300 = 18
+  GB200 = 18
 
-  RTX6000PRO = 19
+  GB300 = 19
 
-  GFX1250 = 20
+  RTX6000PRO = 20
+
+  GFX1250 = 21
 
   MI350 = 13
 

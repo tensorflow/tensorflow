@@ -98,6 +98,9 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
     case GpuModel::PVC:
       filename = "pvc.txtpb";
       break;
+    case GpuModel::VR_NVL72:
+      filename = "vr_nvl72.txtpb";
+      break;
     case GpuModel::V100:
       filename = "v100.txtpb";
       break;

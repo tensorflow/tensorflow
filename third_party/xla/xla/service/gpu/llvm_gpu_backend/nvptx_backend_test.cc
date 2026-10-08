@@ -69,7 +69,7 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 3, FeatureExtension::kAcceleratedFeatures}),
             "sm_103a");
-  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 7}), "sm_107");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability::Rubin()), "sm_107");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 7, FeatureExtension::kAcceleratedFeatures}),
             "sm_107a");
