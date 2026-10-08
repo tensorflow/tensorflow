@@ -2402,14 +2402,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def testAvgPoolGradOutputMemoryOutOfBounds(self):
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        (
-            # CPU error message
-            "(Output only has 3 elements but computation requested would use"
-            " element with index=6"
-            ")|("
-            # GPU error message
-            r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\])"
-        ),
+        r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\]",
     ):
       self.evaluate(
           gen_nn_ops.AvgPoolGrad(
@@ -2421,6 +2414,56 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
               ],
               ksize=[1, 1, 1, 1],
               strides=[1, 1, 1, 2],
+              padding="VALID",
+              data_format="NHWC",
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Xla does not raise error on out of bounds access")
+  def testAvgPoolGradMismatchedGradShapeRaisesError(self):
+    # Each grad has a different number of channels than the input. With more
+    # channels, the CPU kernel used to write past the end of its output buffer
+    # instead of raising an error.
+    for orig_input_shape, grad_shape, ksize, expected in (
+        (
+            [1, 28, 28, 3],
+            [1, 14, 14, 6],
+            2,
+            r"\[1,14,14,3\], but got " r"\[1,14,14,6\]",
+        ),
+        ([2, 2, 2, 2], [2, 3, 3, 3], 1, r"\[2,2,2,2\], but got \[2,3,3,3\]"),
+        ([1, 10, 10, 3], [1, 5, 5, 0], 2, r"\[1,5,5,3\], but got \[1,5,5,0\]"),
+    ):
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "Expected grad shape to be " + expected,
+      ):
+        self.evaluate(
+            gen_nn_ops.AvgPoolGrad(
+                orig_input_shape=orig_input_shape,
+                grad=array_ops.zeros(grad_shape),
+                ksize=[1, ksize, ksize, 1],
+                strides=[1, ksize, ksize, 1],
+                padding="VALID",
+                data_format="NHWC",
+            )
+        )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolGradEmptyTensorFastExit(self):
+    for empty_input_shape, empty_grad_shape in (
+        ([0, 10, 10, 3], [0, 5, 5, 3]),
+        ([1, 0, 10, 3], [1, 0, 5, 3]),
+        ([1, 10, 10, 0], [1, 5, 5, 0]),
+        ([1, 1, 10, 3], [1, 0, 5, 3]),
+    ):
+      self.evaluate(
+          gen_nn_ops.AvgPoolGrad(
+              orig_input_shape=empty_input_shape,
+              grad=array_ops.zeros(empty_grad_shape),
+              ksize=[1, 2, 2, 1],
+              strides=[1, 2, 2, 1],
               padding="VALID",
               data_format="NHWC",
           )
