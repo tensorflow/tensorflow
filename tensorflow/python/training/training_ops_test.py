@@ -354,6 +354,8 @@ class TrainingOpsTest(TensorFlowTestCase):
            (var, accum, accum, grad, indices, lr, lr, lr, lr)),
           (gen_training_ops.sparse_apply_ftrl_v2,
            (var, accum, accum, grad, indices, lr, lr, lr, lr, lr)),
+          (gen_training_ops.sparse_apply_keras_momentum,
+           (var, accum, lr, grad, indices, lr)),
           (gen_training_ops.sparse_apply_momentum,
            (var, accum, lr, grad, indices, lr)),
           (gen_training_ops.sparse_apply_proximal_adagrad,

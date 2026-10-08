@@ -63,8 +63,11 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
         context->device()->tensorflow_cpu_worker_threads()->workers;
     const int64_t num_threads = thread_pool->NumThreads() + 1;
     Tensor partial_bins_t;
+    TensorShape partial_bins_shape;
+    TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape({num_threads, num_bins},
+                                                     &partial_bins_shape));
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        DT_BOOL, TensorShape({num_threads, num_bins}), &partial_bins_t));
+        DT_BOOL, partial_bins_shape, &partial_bins_t));
     auto partial_bins = partial_bins_t.matrix<bool>();
     partial_bins.setZero();
     thread_pool->ParallelForWithWorkerId(
@@ -135,9 +138,11 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       }
     } else {
       Tensor partial_bins_t;
+      TensorShape partial_bins_shape;
+      TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape({num_threads, num_bins},
+                                                       &partial_bins_shape));
       TF_RETURN_IF_ERROR(context->allocate_temp(
-          DataTypeToEnum<T>::value, TensorShape({num_threads, num_bins}),
-          &partial_bins_t));
+          DataTypeToEnum<T>::value, partial_bins_shape, &partial_bins_t));
       auto partial_bins = partial_bins_t.matrix<T>();
       partial_bins.setZero();
       thread_pool->ParallelForWithWorkerId(

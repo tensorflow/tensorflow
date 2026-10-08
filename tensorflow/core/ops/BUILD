@@ -80,7 +80,6 @@ tf_gen_op_libs(
         "map_ops",
         "lookup_ops",
         "manip_ops",
-        "math_ops",
         "mkl_nn_ops",
         "nccl_ops",
         "nn_ops",
@@ -113,6 +112,20 @@ tf_gen_op_libs(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "math_ops",
+    ],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/strings",
     ],
 )

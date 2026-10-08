@@ -407,8 +407,8 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError, errors.InternalError),
-        "Too many elements in tensor|Encountered overflow|negative"):
+        (ValueError, errors.InvalidArgumentError),
+        "Encountered overflow"):
       # Large enough size to overflow int64 when multiplied by num_rows
       self.evaluate(
           gen_math_ops.dense_bincount(
@@ -421,8 +421,8 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
 
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError, errors.InternalError),
-        "Too many elements in tensor|Encountered overflow|negative"):
+        (ValueError, errors.InvalidArgumentError),
+        "Encountered overflow"):
       # Large enough size to overflow int64 when multiplied by num_rows
       self.evaluate(
           gen_math_ops.sparse_bincount(
@@ -712,8 +712,8 @@ class RaggedBincountOpTest(test_util.TensorFlowTestCase,
 
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError, errors.InternalError),
-        "Too many elements in tensor|Encountered overflow|negative"):
+        (ValueError, errors.InvalidArgumentError),
+        "Encountered overflow"):
       # Large enough size to overflow int64 when multiplied by num_rows
       self.evaluate(
           gen_math_ops.ragged_bincount(
