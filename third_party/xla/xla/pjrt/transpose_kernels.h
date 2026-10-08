@@ -1117,6 +1117,32 @@ struct TransposeMicroKernel {
   }
 };
 
+// Kernels for InnerKernelKind::kInterleave and kDeinterleave over `n` elements
+// of each of the K rows. They are written as scalar loops because, with K a
+// compile-time constant, clang vectorizes them into structured loads/stores
+// (ld3/st3 on NEON, shuffle sequences on x86).
+template <typename T, int K>
+void InterleaveKernel(const char* __restrict a, int64_t lda, char* __restrict b,
+                      int64_t n) {
+  for (int64_t i = 0; i < n; ++i) {
+    for (int k = 0; k < K; ++k) {
+      std::memcpy(b + k * sizeof(T), a + k * lda + i * sizeof(T), sizeof(T));
+    }
+    b += K * sizeof(T);
+  }
+}
+
+template <typename T, int K>
+void DeinterleaveKernel(const char* __restrict a, char* __restrict b,
+                        int64_t ldb, int64_t n) {
+  for (int64_t i = 0; i < n; ++i) {
+    for (int k = 0; k < K; ++k) {
+      std::memcpy(b + k * ldb + i * sizeof(T), a + k * sizeof(T), sizeof(T));
+    }
+    a += K * sizeof(T);
+  }
+}
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_TRANSPOSE_KERNELS_H_

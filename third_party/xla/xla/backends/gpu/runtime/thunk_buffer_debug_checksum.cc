@@ -83,7 +83,8 @@ namespace {
 std::unique_ptr<Thunk> WrapWithChecksumThunk(
     std::unique_ptr<Thunk> thunk, BufferAllocation::Slice log_slice,
     const Thunk& predecessor_thunk, Thunk& successor_thunk,
-    std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store) {
+    std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
+    int devices_per_host) {
   const auto& thunk_buffers = thunk->buffer_uses();
   if (thunk_buffers.empty()) {
     return thunk;
@@ -112,7 +113,8 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
         std::make_unique<BuffersDebugChecksumThunk>(
             Thunk::ThunkInfo(), log_slice, thunk->thunk_info().thunk_id,
             std::move(buffers_to_check_before),
-            /*runs_before_checked_thunk=*/true, metadata_store);
+            /*runs_before_checked_thunk=*/true, metadata_store,
+            devices_per_host);
     thunk_and_checks.push_back(std::move(buffer_debug_before_thunk));
   }
 
@@ -123,7 +125,7 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
     auto buffer_debug_after_thunk = std::make_unique<BuffersDebugChecksumThunk>(
         Thunk::ThunkInfo(), log_slice, thunk_ptr->thunk_info().thunk_id,
         std::move(buffers_to_check_after),
-        /*runs_before_checked_thunk=*/false, metadata_store);
+        /*runs_before_checked_thunk=*/false, metadata_store, devices_per_host);
     thunk_and_checks.push_back(std::move(buffer_debug_after_thunk));
   }
 
@@ -218,7 +220,7 @@ absl::Status RunChecksumPassInternal(
     ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
     const HloModule* absl_nonnull hlo_module,
     const std::vector<ShapedSlice>& module_output_slices,
-    ThunkPassBufferAllocator& allocator) {
+    ThunkPassBufferAllocator& allocator, int devices_per_host) {
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
 
@@ -243,7 +245,7 @@ absl::Status RunChecksumPassInternal(
     return WrapWithChecksumThunk(std::move(thunk), log_slice,
                                  /*predecessor_thunk=*/*buffer_debug_init_thunk,
                                  /*successor_thunk=*/*buffer_debug_dump_thunk,
-                                 metadata_store);
+                                 metadata_store, devices_per_host);
   };
 
   ABSL_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
@@ -258,7 +260,7 @@ absl::Status RunChecksumPassInternal(
     }
     output_buffers_check_thunk = std::make_unique<BuffersDebugChecksumThunk>(
         Thunk::ThunkInfo(), log_slice, ThunkId{0}, std::move(buffers_to_check),
-        /*runs_before_checked_thunk=*/false, metadata_store);
+        /*runs_before_checked_thunk=*/false, metadata_store, devices_per_host);
   }
 
   thunk_sequence->reserve(thunk_sequence->size() + 3);
