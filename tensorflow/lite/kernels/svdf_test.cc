@@ -19,8 +19,9 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -598,6 +599,53 @@ TEST_F(SVDFOpTest, BlackBoxTestInteger) {
     const std::vector<int8_t> res = svdf.GetOutput();
     EXPECT_THAT(res, ElementsAreArray(expected_output[sequence_index]));
   }
+}
+
+class TypeConfusionSVDFOpModel : public SingleOpModel {
+ public:
+  TypeConfusionSVDFOpModel() {
+    int batches = 2;
+    int units = 2;
+    int input_size = 3;
+    int memory_size = 2;
+    int rank = 1;
+    int num_filters = units * rank;
+
+    input_id_ = AddInput(TensorType_FLOAT32);
+    weights_feature_id_ = AddInput(TensorType_INT8);
+    weights_time_id_ = AddInput(TensorType_INT8);
+    bias_id_ = AddNullInput();
+    // Mismatched state tensor type (INT8 instead of FLOAT32 for hybrid mode)
+    activation_state_id_ = AddVariableInput(
+        TensorData{TensorType_INT8, {batches, memory_size * num_filters}});
+    output_id_ = AddOutput(TensorType_FLOAT32);
+
+    SetBuiltinOp(BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+                 CreateSVDFOptions(builder_, rank, ActivationFunctionType_NONE,
+                                   /*asymmetric_quantize_inputs=*/false)
+                     .Union());
+    BuildInterpreter(
+        {{batches, input_size},
+         {num_filters, input_size},
+         {num_filters, memory_size},
+         {units},
+         {batches, memory_size * num_filters}},
+        /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+        /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  }
+
+ protected:
+  int input_id_;
+  int weights_feature_id_;
+  int weights_time_id_;
+  int bias_id_;
+  int activation_state_id_;
+  int output_id_;
+};
+
+TEST_F(SVDFOpTest, TypeConfusionTest) {
+  TypeConfusionSVDFOpModel model;
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace
