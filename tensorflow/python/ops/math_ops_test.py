@@ -145,6 +145,27 @@ class ReduceTest(test_util.TensorFlowTestCase):
                                      []])
     self.assertAllClose(math_ops.reduce_std(x, axis=0), [0., 4., 1., 0.])
 
+  def testReduceStdFloat16LargeMagnitude(self):
+    # Regression test: squared deviations of large-magnitude float16 values
+    # can overflow float16's range even when the standard deviation itself
+    # does not, so reduce_std/reduce_variance need to compute internally in
+    # a wider dtype. Previously this produced NaN on CPU and Inf on GPU for
+    # reduce_std, instead of a finite, correct result on both.
+    np.random.seed(0)
+    x_np = np.random.randn(1000).astype(np.float32) * 1e4
+    x_f16 = constant_op.constant(x_np.astype(np.float16))
+    expected_std = np.std(x_np.astype(np.float64))
+
+    std = self.evaluate(math_ops.reduce_std(x_f16))
+    self.assertTrue(np.isfinite(std), f"Expected a finite result, got {std}")
+    self.assertAllClose(std, expected_std, rtol=0.02)
+
+    # The true variance here does exceed float16's range (~65504), so,
+    # unlike the standard deviation, it should consistently overflow to Inf
+    # rather than landing on NaN on some platforms.
+    variance = self.evaluate(math_ops.reduce_variance(x_f16))
+    self.assertTrue(np.isposinf(variance), f"Expected Inf, got {variance}")
+
   def testReduceStdComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
     complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
