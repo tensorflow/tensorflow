@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
@@ -6895,6 +6896,8 @@ absl::Status PlanEnumerationStatus(bool deviceless,
                                           "): ", result.get_message()));
 }
 
+extern "C" ABSL_ATTRIBUTE_WEAK void EnsureCudaCompatLoaded();
+
 }  // namespace
 
 absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
@@ -6936,6 +6939,9 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
   } else {
     // Deviceless mode. No cuDNN version guard needed: DeviceProperties
     // deserialization inside BuildDeviceProperties rejects runtimes < 9.8.
+    if (EnsureCudaCompatLoaded != nullptr) {
+      EnsureCudaCompatLoaded();
+    }
     ABSL_ASSIGN_OR_RETURN(auto device_props,
                      xla::gpu::BuildDeviceProperties(gpu_device_info));
     graph_.set_device_properties(device_props);
