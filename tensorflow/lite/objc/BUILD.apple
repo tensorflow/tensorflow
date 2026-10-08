@@ -147,7 +147,6 @@ objc_library(
 
 ios_application(
     name = "TestApp",
-    app_icons = glob(["apps/TestApp/TestApp/Assets.xcassets/AppIcon.appiconset/**"]),
     bundle_id = "com.tensorflow.lite.objc.TestApp",
     families = [
         "ipad",
