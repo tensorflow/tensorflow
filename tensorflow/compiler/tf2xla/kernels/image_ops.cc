@@ -484,6 +484,10 @@ class NonMaxSuppressionOp : public XlaOpKernel {
         context,
         TensorShapeUtils::IsScalar(context->InputShape("iou_threshold")),
         absl::InvalidArgumentError("IOU Threshold isn't a scalar"));
+    OP_REQUIRES(
+        context,
+        TensorShapeUtils::IsScalar(context->InputShape("score_threshold")),
+        absl::InvalidArgumentError("Score Threshold isn't a scalar"));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &output_size));
     OP_REQUIRES(context, output_size >= 0,
                 absl::InvalidArgumentError(

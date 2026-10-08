@@ -1022,7 +1022,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       self.assertEqual(indices_tf.size, 3)
       self.assertAllClose(indices_tf[:3], [3, 0, 5])
 
-  def testNMSV3MixedThresholdDtype(self):
+  def _testMixedThresholdDtype(self, nms):
     # Regression test for GitHub issue 128614: boxes and scores of one
     # floating-point type with thresholds of another, which
     # tf.image.non_max_suppression produces for float16 boxes, failed to
@@ -1041,15 +1041,11 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
         scores = array_ops.placeholder(dtype, shape=[6])
         iou_threshold = array_ops.placeholder(threshold_dtype, shape=[])
         score_threshold = array_ops.placeholder(threshold_dtype, shape=[])
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_v3(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=6,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold)
-        indices_tf = sess.run(
-            selected_indices,
+        with self.device_scope():
+          selected_indices, num_valid = nms(boxes, scores, iou_threshold,
+                                            score_threshold)
+        indices_tf, num_valid_tf = sess.run(
+            [selected_indices, num_valid],
             feed_dict={
                 boxes: np.array(boxes_data, dtype=dtype),
                 scores: np.array(scores_data, dtype=dtype),
@@ -1057,7 +1053,34 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
                 score_threshold: 0.4
             })
         # Box 5 is below the score threshold.
-        self.assertAllEqual([3, 0], indices_tf)
+        self.assertEqual(num_valid_tf, 2)
+        self.assertAllEqual([3, 0], indices_tf[:num_valid_tf])
+
+  def testNMSV3MixedThresholdDtype(self):
+
+    def nms(boxes, scores, iou_threshold, score_threshold):
+      selected_indices = image_ops.non_max_suppression_v3(
+          boxes=boxes,
+          scores=scores,
+          max_output_size=6,
+          iou_threshold=iou_threshold,
+          score_threshold=score_threshold)
+      return selected_indices, array_ops.size(selected_indices)
+
+    self._testMixedThresholdDtype(nms)
+
+  def testNMSV4MixedThresholdDtype(self):
+
+    def nms(boxes, scores, iou_threshold, score_threshold):
+      return gen_image_ops.non_max_suppression_v4(
+          boxes=boxes,
+          scores=scores,
+          max_output_size=6,
+          iou_threshold=iou_threshold,
+          score_threshold=score_threshold,
+          pad_to_max_output_size=True)
+
+    self._testMixedThresholdDtype(nms)
 
   def testNMSV3EmptyInput(self):
     # Regression test for #117245: with no boxes the suppression loop was
