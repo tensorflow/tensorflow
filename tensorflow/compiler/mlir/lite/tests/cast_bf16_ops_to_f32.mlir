@@ -101,3 +101,15 @@ func.func private @test.impl(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
   %0 = "tfl.add"(%arg0, %arg0) <{fused_activation_function = "NONE"}> : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
   return %0 : tensor<2x2xbf16>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @keep_non_bf16_cast_round_trip
+func.func @keep_non_bf16_cast_round_trip(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: %[[NARROW:.*]] = "tfl.cast"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf16>
+  // CHECK: %[[WIDEN:.*]] = "tfl.cast"(%[[NARROW]]) : (tensor<2x2xf16>) -> tensor<2x2xf32>
+  // CHECK: return %[[WIDEN]] : tensor<2x2xf32>
+  %0 = "tfl.cast"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf16>
+  %1 = "tfl.cast"(%0) : (tensor<2x2xf16>) -> tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+}

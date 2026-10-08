@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 namespace internal {
-// InputSplitMetadata represents the task sizes of an batch-task after it's
+// InputSplitMetadata represents the task sizes of a batch-task after it's
 // tailored according to queue status (`open_batch_remaining_slot` and
 // `batch_size_limit`).
 //
