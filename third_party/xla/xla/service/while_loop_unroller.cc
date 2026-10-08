@@ -931,6 +931,16 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
 
+  // With trip count equal to the dimension size, the induction variable only
+  // visits every index if it runs 0, 1, 2, ...
+  std::optional<Range> loop_range = MatchTrivialLoopRange(config.while_instr);
+  if (!loop_range.has_value() || !loop_range->IsStepKnown() ||
+      loop_range->min().GetSignedValue() != 0 ||
+      loop_range->step()->GetSignedValue() != 1) {
+    VLOG(3) << "The loop induction variable must start at 0 with step 1.";
+    return std::nullopt;
+  }
+
   if (slice_shape->dimensions(dynamic_index) != 1) {
     VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
     return std::nullopt;

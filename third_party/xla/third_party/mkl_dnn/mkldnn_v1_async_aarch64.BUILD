@@ -120,7 +120,7 @@ expand_template(
     name = "dnnl_version_hash_h",
     out = "include/oneapi/dnnl/dnnl_version_hash.h",
     substitutions = {
-        "@DNNL_VERSION_HASH@": "e0d8b940aba7ece3d4374f80e508bbcdb8f141db",
+        "@DNNL_VERSION_HASH@": "706abccc1fd48aa65fac796deed278b65311e203",
     },
     template = "include/oneapi/dnnl/dnnl_version_hash.h.in",
 )
@@ -177,6 +177,7 @@ cc_library(
         exclude = [
             "src/cpu/aarch64/acl_*.cpp",
             "src/cpu/aarch64/matmul/acl_*.cpp",
+            "src/cpu/aarch64/matmul/kai_*.cpp",
             "src/cpu/aarch64/reorder/acl_*.cpp",
             "src/cpu/ppc64/**",
             "src/cpu/rv64/**",

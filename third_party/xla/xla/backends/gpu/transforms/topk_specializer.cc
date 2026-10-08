@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -177,6 +178,11 @@ HloInstruction* BuildUnpackU64ToF32(HloInstruction* u64_values,
 
 // Checks if we can safely route stable TopK to RAFT using the Uint64 adapter.
 bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
+  // The Uint64 bit-packing adapter implements TOTAL ordering.
+  if (hlo_instruction_utils::GetTopKComparatorOrder(topk) !=
+      ComparisonOrder::kTotal) {
+    return false;
+  }
   if (!hlo_instruction_utils::IsTopKStable(topk)) {
     return false;
   }
@@ -286,6 +292,19 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
     HloCustomCallInstruction* topk, bool is_cuda) {
+  // __gpu$TopK currently only implements TOTAL ordering (+0.0 > -0.0).
+  // For non-TOTAL comparators (e.g., PARTIAL order in ApproxTopK), return an
+  // error to fall back to sort + slice.
+  // TODO(b/473829358): Enable PARTIAL order in SmallBufferOptimization once
+  // TopKPartialOrderKernel is rolled out to the runtime and wired up in
+  // ThunkEmitter.
+  if (hlo_instruction_utils::GetTopKComparatorOrder(topk) !=
+      ComparisonOrder::kTotal) {
+    return InvalidArgument(
+        "Unsupported comparator order: only TOTAL order is currently "
+        "supported.");
+  }
+
   Shape data_shape = topk->operand(0)->shape();
   auto dtype = data_shape.element_type();
   auto supported_dtypes = {F32, BF16};

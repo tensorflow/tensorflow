@@ -1195,7 +1195,7 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
       op, {op.getThenRegionAttrsAttr(), op.getElseRegionAttrsAttr()});
 }
 
-// Given an potentially null attribute that would represent a constant value,
+// Given a potentially null attribute that would represent a constant value,
 // try to narrow it to a statically known condition.
 // TODO(jeffniu): Incorporate the other cases of `tf.ToBool`.
 static std::optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
