@@ -313,7 +313,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kCollectiveReduceThunk:
       return CollectiveReduceThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_reduce_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kCollectiveGroupThunk:
       return CollectiveGroupThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_group_thunk(),
