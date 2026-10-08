@@ -597,10 +597,13 @@ Future<ThunkSequence> ThunkEmitter::EmitConditional(
       instr, ir_emitter_context_->GetNextThunkId());
   ShapedSlice shaped_slice{slice, instr->operand(0)->shape()};
   return tsl::JoinFutures(absl::MakeSpan(branch_thunks))
-      .Map([info = std::move(info), shaped_slice = std::move(shaped_slice)](
+      .Map([info = std::move(info), shaped_slice = std::move(shaped_slice),
+            devices_per_host =
+                ir_emitter_context_->gpu_topology().num_devices_per_host()](
                std::vector<ThunkSequence> branch_thunks) mutable {
         return ThunkSequence::Of<ConditionalThunk>(
-            std::move(info), std::move(shaped_slice), std::move(branch_thunks));
+            std::move(info), std::move(shaped_slice), std::move(branch_thunks),
+            devices_per_host);
       });
 }
 
