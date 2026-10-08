@@ -336,6 +336,33 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "cpu_client_host_callback_test",
+    srcs = ["cpu_client_host_callback_test.cc"],
+    deps = [
+        ":cpu_client",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi/api:ffi",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:host_callback",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "cpu_async_execution_tracker",
     srcs = ["cpu_async_execution_tracker.cc"],
