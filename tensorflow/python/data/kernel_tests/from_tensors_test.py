@@ -119,7 +119,7 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsMixed(self):
-    """Test an dataset that represents a single tuple of tensors."""
+    """Test a dataset that represents a single tuple of tensors."""
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0),
                   sparse_tensor.SparseTensorValue(
                       indices=np.array([[0]]),

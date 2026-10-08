@@ -97,6 +97,22 @@ class TransposePlan {
     kPackSubbyte = 2,
   };
 
+  // The kernel used for the innermost (stride-1) dimensions of the plan.
+  enum class InnerKernelKind {
+    // Blocked transpose using TransposeMicroKernel.
+    kDefault,
+    // A and B have the same stride-1 dimension, so the inner loop is a memcpy.
+    kMemcpy,
+    // B's stride-1 dimension has size 3 and A's stride-1 dimension is large:
+    // three contiguous rows of A, `lda` bytes apart, are merged element by
+    // element into one contiguous run of B, i.e. b[3 * i + k] = a[k][i].
+    kInterleave,
+    // The reverse of kInterleave: A's stride-1 dimension has size 3 and one
+    // contiguous run of A is split into three rows of B, `ldb` bytes apart,
+    // i.e. b[k][i] = a[3 * i + k].
+    kDeinterleave,
+  };
+
   // Requested contiguity of chunks.
   enum class ChunkContiguity {
     // We don't care about contiguity (default).
@@ -200,7 +216,9 @@ class TransposePlan {
   // Returns the number of items of parallel work in the plan.
   int Parallelism() const { return nodes_.size(); }
 
-  bool inner_kernel_is_memcpy() const { return inner_kernel_is_memcpy_; }
+  bool inner_kernel_is_memcpy() const {
+    return inner_kernel_kind_ == InnerKernelKind::kMemcpy;
+  }
 
   struct Node;
 
@@ -275,7 +293,8 @@ class TransposePlan {
   void ChooseLoopOrder(std::vector<Loop>& loop_order) const;
 
   void set_inner_kernel_is_memcpy(bool is_memcpy) {
-    inner_kernel_is_memcpy_ = is_memcpy;
+    inner_kernel_kind_ =
+        is_memcpy ? InnerKernelKind::kMemcpy : InnerKernelKind::kDefault;
   }
 
  private:
@@ -381,9 +400,8 @@ class TransposePlan {
   // nest. The outer vector is indexed on the thread ID.
   absl::InlinedVector<std::vector<Node>, 1> nodes_;
 
-  // Are the innermost (stride-1) dimensions the same dimension? This determines
-  // whether the inner kernel is a transpose or a memcpy.
-  bool inner_kernel_is_memcpy_ = false;
+  // Which kernel handles the innermost (stride-1) dimensions.
+  InnerKernelKind inner_kernel_kind_ = InnerKernelKind::kDefault;
 
   // Size of the inner (microkernel) block size. This is the unit of work for
   // our vectorized kernels.
