@@ -6150,6 +6150,19 @@ class PSNRTest(test_util.TensorFlowTestCase):
         tf_psnr = self.evaluate(image_ops.psnr(a, b, 1.0, "psnr"))
         self.assertAllClose(expected, tf_psnr, atol=0.001)
 
+      # An integer list converts to int32 rather than uint8, so it is scaled
+      # by a different range than the uint8 array. PSNR is invariant under
+      # that, since max_val is scaled the same way, and both must still match
+      # the value computed from the integers directly.
+      image1_int = (image1 * 255).astype(np.uint8)
+      image2_int = (image2 * 255).astype(np.uint8)
+      expected_int = self._PSNR_NumPy(
+          image1_int.astype(np.float32), image2_int.astype(np.float32), 255)
+      for a, b in ((image1_int.tolist(), image2_int.tolist()),
+                   (image1_int, image2_int)):
+        tf_psnr_int = self.evaluate(image_ops.psnr(a, b, 255, "psnr_int"))
+        self.assertAllClose(expected_int, tf_psnr_int, atol=0.001)
+
   def testPSNRMultiImage(self):
     image1 = self._RandomImage((10, 8, 8, 1), 1)
     image2 = self._RandomImage((10, 8, 8, 1), 1)
