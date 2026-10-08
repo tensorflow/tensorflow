@@ -228,6 +228,57 @@ class MathTest(test.TestCase, parameterized.TestCase):
       for grad in tape.gradient(y, (x1, x2)):
         self.assertAllClose(grad, [0.5, 0.5, 0.5, 0.5])
 
+  def testHeaviside(self):
+    # x1 < 0 -> 0, x1 == 0 -> x2, x1 > 0 -> 1 (NumPy semantics).
+    x1 = np.array([-1.0, 0.0, 1.0, 2.0, -3.0, 0.5], dtype=np.float32)
+    x2 = np.array([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], dtype=np.float32)
+    self.match(
+        np_math_ops.heaviside(x1, x2),
+        np.heaviside(x1, x2),
+        msg='heaviside standard',
+    )
+
+  @parameterized.parameters(
+      *[(dtype,) for dtype in (np.float16, np.float32, np.float64,
+                               dtypes.bfloat16.as_numpy_dtype)]
+  )
+  def testHeavisideNaNPropagation(self, dtype):
+    # NumPy propagates NaN from the first argument. TensorFlow's relational
+    # operators evaluate to False for NaN, so the unguarded implementation
+    # returned x2 (or 0/1) instead of NaN. Regression test for
+    # tensorflow/tensorflow#127819.
+    #
+    # `x2` is deliberately 0.5 -- a value produced by neither the `x1 > 0`
+    # branch (1) nor the `x1 < 0` branch (0) -- so a NaN that silently falls
+    # through to `x2` cannot masquerade as a correct result. float16 and
+    # bfloat16 are included so half-precision propagation is covered;
+    # bfloat16 in particular is the dtype for which
+    # `np.issubdtype(bfloat16, np.inexact)` is False, which is precisely the
+    # regression this test guards against.
+    x1 = np.array([np.nan, 0.0, -1.0, 1.0], dtype=dtype)
+    x2 = np.array([0.5, 0.5, 0.5, 0.5], dtype=dtype)
+    actual = np_math_ops.heaviside(x1, x2)
+    expected = np.heaviside(x1, x2)
+    # Assert the dtype explicitly: `np.array_equal` compares values only, so a
+    # silent upcast (e.g. bfloat16 -> float64) would otherwise pass unnoticed.
+    self.assertEqual(actual.dtype.as_numpy_dtype, expected.dtype)
+    # np.testing.assert_equal treats NaN != NaN, so compare with equal_nan.
+    self.assertTrue(np.array_equal(actual.numpy(), expected, equal_nan=True))
+
+  def testHeavisideIntegerInputs(self):
+    # Integer inputs have no NaN; the result is still promoted to a floating
+    # point dtype (matching NumPy) and the integer cases are reproduced.
+    # `self.match` is used (rather than comparing `.tolist()` values) so that
+    # the promoted dtype and the shape are asserted as well, which catches an
+    # integer input failing to promote to floating point.
+    x1 = np.array([-1, 0, 1, 2], dtype=np.int32)
+    x2 = np.array([3, 3, 3, 3], dtype=np.int32)
+    self.match(
+        np_math_ops.heaviside(x1, x2),
+        np.heaviside(x1, x2),
+        msg='heaviside integer inputs promote to float',
+    )
+
   def testLogaddexp(self):
     self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
     self._testBinaryOp(np_math_ops.logaddexp2, np.logaddexp2, 'logaddexp2')
