@@ -3137,7 +3137,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     # Invalid input or filter rank (< 4) in eager/graph execution.
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be (at least )?4-dimensional|input\.shape\.rank)",
+        r"(must be (at least )?4-dimensional|"
+        r"Shape must be rank 4 but is rank 3)",
     ):
       self.evaluate(
           nn_ops.conv2d(
@@ -3149,7 +3150,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
       )
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be (at least )?4-dimensional|filter\.shape\.rank)",
+        r"(must be (at least )?4-dimensional|"
+        r"Shape must be rank 4 but is rank 3)",
     ):
       self.evaluate(
           nn_ops.conv2d(
@@ -3163,12 +3165,26 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     # Ensure raw ops are protected by the C++ kernel boundary.
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be (at least )?4-dimensional|input\.shape\.rank)",
+        r"(must be (at least )?4-dimensional|"
+        r"Shape must be rank 4 but is rank 3)",
     ):
       self.evaluate(
           raw_ops.Conv2D(
               input=np.ones([1, 1, 3], dtype=np.float32),
               filter=np.ones([1, 2, 2, 1], dtype=np.float32),
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+          )
+      )
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"(must be (at least )?4-dimensional|"
+        r"Shape must be rank 4 but is rank 3)",
+    ):
+      self.evaluate(
+          raw_ops.Conv2D(
+              input=np.ones([1, 1, 3, 3], dtype=np.float32),
+              filter=np.ones([1, 2, 2], dtype=np.float32),
               strides=[1, 1, 1, 1],
               padding="VALID",
           )

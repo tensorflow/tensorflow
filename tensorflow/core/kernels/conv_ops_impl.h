@@ -663,19 +663,6 @@ class Conv2DOp : public BinaryOp<T> {
     // [ filter_rows, filter_cols, in_depth, out_depth]
     const Tensor& filter = context->input(1);
 
-    const int required_dims =
-        params_.data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
-    OP_REQUIRES(
-        context, input.dims() == required_dims,
-        absl::InvalidArgumentError(
-            absl::StrCat("convolution input must be ", required_dims,
-                         "-dimensional: ", input.shape().DebugString())));
-    OP_REQUIRES(
-        context, filter.dims() == required_dims,
-        absl::InvalidArgumentError(absl::StrCat(
-            "convolution filter must be ", required_dims,
-            "-dimensional: ", filter.shape().DebugString())));
-
     Conv2DDimensions dimensions;
     OP_REQUIRES_OK(context,
                    ComputeConv2DDimension(params_, input, filter, &dimensions));
