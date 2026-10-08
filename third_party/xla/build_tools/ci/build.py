@@ -164,6 +164,8 @@ class Build:
     extra_setup_commands: Tuple of shell commands to run before Bazel.
     use_bazel_diff: Whether to enable bazel-diff target filtering on presubmit.
     bazel_diff_use_cquery: Whether bazel-diff should use cquery (--useCquery).
+    command_retries: Number of times to retry failed Bazel commands against the
+      warm cache (e.g. to mitigate transient Windows lld-link file-open races).
   """
 
   _builds: ClassVar[Dict[BuildType, "Build"]] = {}
@@ -185,6 +187,7 @@ class Build:
   extra_setup_commands: Tuple[List[str], ...] = ()
   use_bazel_diff: bool = False
   bazel_diff_use_cquery: bool = True
+  command_retries: int = 0
 
   def __post_init__(self):
     # pylint: disable=protected-access
@@ -488,6 +491,11 @@ Build(
     startup_options={
         "output_user_root": "C:/x",
     },
+    # Retry failed Bazel builds against the warm local cache to mitigate
+    # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
+    # the Windows CI container image includes the lld/COFF/Driver.cpp
+    # LinkerDriver::enqueuePath fix (b/571437556).
+    command_retries=2,
 )
 
 Build(
@@ -915,6 +923,11 @@ Build(
     startup_options={
         "output_base": f"{_GITHUB_WORKSPACE}\\bazel_output_base",
     },
+    # Retry failed Bazel builds against the warm local cache to mitigate
+    # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
+    # the Windows CI container image includes the lld/COFF/Driver.cpp
+    # LinkerDriver::enqueuePath fix (b/571437556).
+    command_retries=2,
 )
 
 Build(
@@ -984,6 +997,37 @@ def get_xla_dir(build: Build) -> str:
   return "."
 
 
+def execute_build_commands(
+    build: Build, target_pattern_file: str | None = None
+) -> None:
+  """Executes commands for a build, retrying failed Bazel commands if configured."""
+  for command in build.commands(target_pattern_file=target_pattern_file):
+    max_retries = (
+        build.command_retries
+        if command and command[0] == "bazel" and build.command_retries > 0
+        else 0
+    )
+    for attempt in range(max_retries + 1):
+      result = sh(command, check=False)
+      if result.returncode == 0:
+        break
+      if result.returncode == 4 and target_pattern_file:
+        logging.info(
+            "Bazel returned exit code 4 (no tests found), treating as success."
+        )
+        break
+      if attempt < max_retries:
+        logging.warning(
+            "Bazel command failed with exit code %d (attempt %d/%d); retrying"
+            " against warm Bazel cache...",
+            result.returncode,
+            attempt + 1,
+            max_retries + 1,
+        )
+        continue
+      sys.exit(result.returncode)
+
+
 def _parse_args():
   """Defines flags and parses args."""
   parser = argparse.ArgumentParser(allow_abbrev=False)
@@ -1001,7 +1045,7 @@ def _parse_args():
   return parser.parse_args()
 
 
-def main():
+def main() -> None:
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
 
@@ -1067,15 +1111,7 @@ def main():
       elif decision.decision == bazel_diff.BazelDiffDecisionType.IMPACTED:
         target_pattern_file = decision.impacted_targets_file
 
-  for command in build.commands(target_pattern_file=target_pattern_file):
-    result = sh(command, check=False)
-    if result.returncode == 4 and target_pattern_file:
-      logging.info(
-          "Bazel returned exit code 4 (no tests found), treating as success."
-      )
-      continue
-    if result.returncode != 0:
-      sys.exit(result.returncode)
+  execute_build_commands(build, target_pattern_file=target_pattern_file)
 
 
 if __name__ == "__main__":
