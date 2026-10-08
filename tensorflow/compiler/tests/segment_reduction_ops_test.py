@@ -20,7 +20,9 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.client import device_lib
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -174,6 +176,112 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
           self._segmentMaxV2(
               np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
               np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 5))
+
+  def _testZeroSegments(self, reductions, all_indices):
+    # With no segments, every segment id is dropped and the result is empty.
+    # Negative ids are dropped in eager too; non-negative ones are out of range,
+    # which XLA drops as it does for any number of segments, while eager
+    # rejects them.
+    for indices in all_indices:
+      for reduction, types in reductions:
+        for dtype in types:
+          self.assertAllEqual(
+              reduction(np.ones([2, 3], dtype=dtype), indices, 0),
+              np.zeros([0, 3], dtype=dtype),
+          )
+
+  def testUnsortedSegmentReductionWithZeroSegments(self):
+    real_types = self.int_types | self.float_types
+    self._testZeroSegments(
+        (
+            (self._unsortedSegmentSum, self.numeric_types),
+            (self._unsortedSegmentProd, self.numeric_types),
+            (self._unsortedSegmentMin, real_types),
+            (self._unsortedSegmentMax, real_types),
+        ),
+        (np.array([-1, -2], dtype=np.int32), np.array([0, 1], dtype=np.int32)),
+    )
+
+  def testSortedSegmentReductionV2WithZeroSegments(self):
+    # The sorted V2 ops share the XLA kernel. The ids have to be non-empty to
+    # reach the scatter, and sorted.
+    real_types = self.int_types | self.float_types
+    self._testZeroSegments(
+        (
+            (self._segmentSumV2, self.numeric_types),
+            (self._segmentProdV2, self.numeric_types),
+            (self._segmentMinV2, real_types),
+            (self._segmentMaxV2, real_types),
+        ),
+        (np.array([-1, -1], dtype=np.int32), np.array([0, 1], dtype=np.int32)),
+    )
+
+  def testSegmentSumNegativeNumSegments(self):
+    # Graph shape inference rejects a negative constant num_segments, so feed
+    # it to reach the XLA kernel, which used to CHECK-fail on it.
+    for op in (math_ops.unsorted_segment_sum, math_ops.segment_sum_v2):
+      with self.subTest(op=op.__name__), self.session() as sess:
+        with self.test_scope():
+          d = array_ops.placeholder(np.float32, shape=[2, 3])
+          i = array_ops.placeholder(np.int32, shape=[2])
+          n = array_ops.placeholder(np.int32, shape=[])
+          out = op(d, i, n)
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            "num_segments == -1 must not be negative",
+        ):
+          sess.run(
+              out, {d: np.ones([2, 3], dtype=np.float32), i: [0, 1], n: -1}
+          )
+
+  def testSegmentSumRuntimeNumSegments(self):
+    if "GPU" in self.device or "TPU" in self.device:
+      self.skipTest(
+          "XLA:GPU's dynamic padder doesn't support the dynamic "
+          "select that boolean_mask produces, and XLA:TPU doesn't "
+          "support the scatter into a padded dynamic dimension."
+      )
+    # num_segments is only known at run time, where it is 2 - offset, with a
+    # bound of 4 - offset. Zero gives no segments, and a negative one, which
+    # the check on the bound can't see, is clamped to no segments rather than
+    # set as a dimension size.
+    for dtype in (dtypes.int32, dtypes.int64):
+      for offset, expected in (
+          (0, np.ones([2, 3])),
+          (2, np.zeros([0, 3])),
+          (3, np.zeros([0, 3])),
+      ):
+
+        @def_function.function(jit_compile=True)
+        def segment_sums(data, ids, mask, dtype=dtype, offset=offset):
+          n = (
+              array_ops.shape(
+                  array_ops.boolean_mask(mask, mask), out_type=dtype
+              )[0]
+              - offset
+          )
+          return (
+              math_ops.unsorted_segment_sum(data, ids, n),
+              math_ops.segment_sum_v2(data, ids, n),
+          )
+
+        with self.subTest(dtype=dtype.name, offset=offset):
+          with self.session() as sess:
+            with self.test_scope():
+              data = array_ops.placeholder(np.float32, shape=[2, 3])
+              ids = array_ops.placeholder(np.int32, shape=[2])
+              mask = array_ops.placeholder(np.bool_, shape=[4])
+              out = segment_sums(data, ids, mask)
+            unsorted_result, sorted_result = sess.run(
+                out,
+                {
+                    data: np.ones([2, 3], dtype=np.float32),
+                    ids: [0, 1],
+                    mask: [True, False, True, False],
+                },
+            )
+          self.assertAllEqual(expected, unsorted_result)
+          self.assertAllEqual(expected, sorted_result)
 
   def testUnsortedSegmentSum0DIndices1DData(self):
     for dtype in self.numeric_types:

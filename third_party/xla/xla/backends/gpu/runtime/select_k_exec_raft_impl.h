@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -48,117 +49,86 @@ using raft::matrix::SelectAlgo;
 
 namespace raft_internal {
 
-// Simple RAII wrapper to manage temporary device memory allocations
-class OwningScratchAllocator {
+// Custom RMM memory resource backed by a fixed pre-allocated device buffer.
+// Employs a monotonic bump allocator without dynamic allocations or
+// deallocations.
+class FixedBufferDeviceMemoryResource : public rmm::mr::device_memory_resource {
  public:
-  OwningScratchAllocator(int device_ordinal,
-                         se::DeviceAddressAllocator* allocator)
-      : device_ordinal_(device_ordinal), allocator_(allocator) {}
+  FixedBufferDeviceMemoryResource() = default;
 
-  OwningScratchAllocator(OwningScratchAllocator&&) = default;
-  OwningScratchAllocator& operator=(OwningScratchAllocator&&) = default;
-
-  // Allocate memory and track ownership
-  absl::StatusOr<se::DeviceAddress<uint8_t>> AllocateBytes(int64_t byte_size) {
-    ABSL_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
-                     allocator_->Allocate(device_ordinal_, byte_size,
-                                          /*retry_on_failure=*/false));
-
-    se::DeviceAddress<uint8_t> res = *buffer;
-    void* raw_ptr = res.opaque();
-    buffers_.emplace(raw_ptr, std::move(buffer));
-    return res;
+  void Reset(void* base_ptr, size_t capacity) {
+    base_ptr_ = static_cast<char*>(base_ptr);
+    capacity_ = capacity;
+    offset_ = 0;
+    VLOG(3) << "FixedBufferDeviceMemoryResource: reset with capacity "
+            << capacity_;
   }
 
-  // Deallocate tracked memory; safe no-op if pointer not found
-  absl::Status DeallocateBytes(void* ptr) noexcept {
-    auto it = buffers_.find(ptr);
-    if (it != buffers_.end()) {
-      buffers_.erase(it);  // RAII frees memory
-      return absl::OkStatus();
-    }
-    return absl::NotFoundError("Pointer not found");
-  }
-
-  se::DeviceAddressAllocator* get_allocator() const { return allocator_; }
-
-  void set_allocator(se::DeviceAddressAllocator* allocator) {
-    allocator_ = allocator;
-  }
-
- private:
-  int device_ordinal_;
-  se::DeviceAddressAllocator* allocator_;
-  // key = raw device pointer, value = owning memory object
-  absl::flat_hash_map<void*, se::ScopedDeviceAddress<uint8_t>> buffers_;
-};
-
-// Custom RMM memory resource backed by StreamExecutor allocator
-class XlaDeviceMemoryResource : public rmm::mr::device_memory_resource {
- public:
-  XlaDeviceMemoryResource(int device_ordinal,
-                          se::DeviceAddressAllocator* allocator)
-      : scratch_allocator_(device_ordinal, allocator) {}
-
-  se::DeviceAddressAllocator* get_allocator() const {
-    return scratch_allocator_.get_allocator();
-  }
-
-  void set_allocator(se::DeviceAddressAllocator* allocator) {
-    scratch_allocator_.set_allocator(allocator);
-  }
+  size_t capacity() const { return capacity_; }
+  size_t allocated_bytes() const { return offset_; }
 
  protected:
   void* do_allocate(std::size_t bytes, rmm::cuda_stream_view stream) override {
-    auto mem = scratch_allocator_.AllocateBytes(bytes);
-    if (!mem.ok()) {
-      // RMM expects exceptions
-      throw rmm::bad_alloc(std::string(mem.status().ToString()));
+    // Ensure 256-byte alignment for CUDA / CUB operations.
+    constexpr size_t kAlignment = 256;
+    size_t current_addr = reinterpret_cast<size_t>(base_ptr_ + offset_);
+    size_t padding = (kAlignment - (current_addr % kAlignment)) % kAlignment;
+    size_t aligned_bytes = (bytes + kAlignment - 1) & ~(kAlignment - 1);
+    if (offset_ + padding + aligned_bytes > capacity_) {
+      throw rmm::bad_alloc(absl::StrCat(
+          "FixedBufferDeviceMemoryResource: scratch capacity exceeded! "
+          "Requested: ",
+          bytes, " (aligned: ", aligned_bytes,
+          "), remaining: ", capacity_ >= offset_ ? capacity_ - offset_ : 0,
+          ", total capacity: ", capacity_));
     }
-    return mem->opaque();
+    offset_ += padding;
+    void* ptr = base_ptr_ + offset_;
+    offset_ += aligned_bytes;
+    VLOG(3) << "FixedBufferDeviceMemoryResource: allocated " << aligned_bytes
+            << " bytes at offset " << offset_ - aligned_bytes;
+    return ptr;
   }
 
   void do_deallocate(void* ptr, std::size_t bytes,
                      rmm::cuda_stream_view stream) noexcept override {
-    auto status = scratch_allocator_.DeallocateBytes(ptr);
-    if (!status.ok()) {
-      // do_deallocate should be noexcept. Don’t throw; just log.
-      LOG(ERROR) << "Scratch Deallocation failed: " << status;
-    }
+    // Intentional NO-OP: Memory lifetime is managed externally by XLA
+    // BufferAssignment.
+    VLOG(3) << "FixedBufferDeviceMemoryResource: deallocate " << bytes
+            << " bytes at offset "
+            << (reinterpret_cast<size_t>(ptr) -
+                reinterpret_cast<size_t>(base_ptr_));
   }
 
  private:
-  OwningScratchAllocator scratch_allocator_;
+  char* base_ptr_ = nullptr;
+  size_t capacity_ = 0;
+  size_t offset_ = 0;
 };
 
 // RAII wrapper for RAFT resources bound to a CUDA stream
 struct RaftStreamResource : public se::Stream::Resource {
   raft::resources res;
-  std::shared_ptr<XlaDeviceMemoryResource> xla_dev_mem_res;
+  std::shared_ptr<FixedBufferDeviceMemoryResource> fixed_buffer_mr;
   ~RaftStreamResource() override = default;
 
   // Factory to create a RaftStreamResource tied to a CUDA stream.
-  // Sets up `raft::resources` with a custom XlaDeviceMemoryResource
-  // using the given allocator and binds it to the provided stream.
+  // Sets up `raft::resources` with FixedBufferDeviceMemoryResource
+  // and binds it to the provided stream.
   //
   // Args:
-  //   device_ordinal: Device index.
-  //   allocator: StreamExecutor memory allocator.
   //   cuda_stream: CUDA stream to bind.
   // Returns:
   //   Unique pointer to an initialized RaftStreamResource.
-  static std::unique_ptr<RaftStreamResource> Create(
-      int device_ordinal, se::DeviceAddressAllocator* allocator,
-      cudaStream_t cuda_stream) {
-    // Assign our custom AllocatorForRaft for this device
+  static std::unique_ptr<RaftStreamResource> Create(cudaStream_t cuda_stream) {
     auto handle = std::make_unique<RaftStreamResource>();
-    handle->xla_dev_mem_res =
-        std::make_shared<XlaDeviceMemoryResource>(device_ordinal, allocator);
+    handle->fixed_buffer_mr =
+        std::make_shared<FixedBufferDeviceMemoryResource>();
     raft::resource::set_workspace_resource(handle->res,
-                                           handle->xla_dev_mem_res);
-    // Set Cuda Stream
+                                           handle->fixed_buffer_mr);
     raft::resource::set_cuda_stream(handle->res,
                                     rmm::cuda_stream_view{cuda_stream});
+    VLOG(3) << "RaftStreamResource: created for stream " << cuda_stream;
     return handle;
   }
 };
@@ -176,7 +146,8 @@ absl::Status select_k_exec(int device_ordinal,
                            se::DeviceAddressBase data_out,
                            se::DeviceAddressBase indices_out,
                            std::uint32_t batch, std::uint32_t n,
-                           std::uint32_t k) {
+                           std::uint32_t k,
+                           se::DeviceAddressBase scratch_buffer) {
   // Pick the most suitable algorithm
   SelectAlgo algo = raft_internal::choose_select_k_algorithm<T>(batch, n, k);
   VLOG(3) << "select_k_exec_raft: "
@@ -188,6 +159,8 @@ absl::Status select_k_exec(int device_ordinal,
           << "B)"
           << ", indices_out: " << indices_out.opaque() << " ("
           << indices_out.size() << "B)"
+          << ", scratch: " << scratch_buffer.opaque() << " ("
+          << scratch_buffer.size() << "B)"
           << ", batch: " << batch << ", n: " << n << ", k: " << k
           << ", algo: " << algo;
 
@@ -198,19 +171,22 @@ absl::Status select_k_exec(int device_ordinal,
       << "Failed to cast se::Stream to cudaStream_t.";
   raft_internal::RaftStreamResource* resContainer =
       stream->GetOrCreateResource<raft_internal::RaftStreamResource>(
-          [device_ordinal, allocator, cuda_stream] {
-            return raft_internal::RaftStreamResource::Create(
-                device_ordinal, allocator, cuda_stream);
+          [cuda_stream] {
+            return raft_internal::RaftStreamResource::Create(cuda_stream);
           });
   TF_RET_CHECK(resContainer != nullptr)
       << "Failed to create or retrieve RaftStreamResource";
 
-  // resContainer is scoped to a single stream.
-  // Because a stream does not execute select_k_exec concurrently from multiple
-  // threads, it is safe to update the allocator without additional locking.
-  if (allocator != resContainer->xla_dev_mem_res->get_allocator()) {
-    resContainer->xla_dev_mem_res->set_allocator(allocator);
+  // Check the pre-allocated scratch buffer is valid.
+  if (scratch_buffer.opaque() == nullptr || scratch_buffer.size() == 0) {
+    return absl::InvalidArgumentError(
+        "select_k_exec requires a valid non-empty scratch_buffer");
   }
+
+  resContainer->fixed_buffer_mr->Reset(scratch_buffer.opaque(),
+                                       scratch_buffer.size());
+  auto reset_cleanup = absl::MakeCleanup(
+      [resContainer] { resContainer->fixed_buffer_mr->Reset(nullptr, 0); });
 
   try {
     // Wrap raw device pointers in RAFT matrix views

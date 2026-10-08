@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -31,7 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -64,6 +64,15 @@ KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
                           std::move(kernel_name), arity, kernel_args_packing};
 }
 
+KernelLoaderSpec KernelLoaderSpec::CreateSharedCudaCubinInMemorySpec(
+    std::shared_ptr<const std::vector<uint8_t>> cubin_bytes,
+    std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  CHECK(cubin_bytes != nullptr);
+  return KernelLoaderSpec{SharedCudaCubinInMemory{std::move(cubin_bytes)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
+
 KernelLoaderSpec KernelLoaderSpec::CreateCudaPtxInMemorySpec(
     absl::string_view ptx, std::string kernel_name, size_t arity,
     KernelArgsPacking kernel_args_packing) {
@@ -76,6 +85,26 @@ KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
     KernelArgsPacking kernel_args_packing) {
   return KernelLoaderSpec{OwningCudaPtxInMemory{std::move(ptx)},
                           std::move(kernel_name), arity, kernel_args_packing};
+}
+
+KernelLoaderSpec KernelLoaderSpec::CreateSharedCudaPtxInMemorySpec(
+    std::shared_ptr<const std::string> ptx, std::string kernel_name,
+    size_t arity, KernelArgsPacking kernel_args_packing) {
+  CHECK(ptx != nullptr);
+  return KernelLoaderSpec{SharedCudaPtxInMemory{std::move(ptx)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
+
+bool KernelLoaderSpec::IsSerializable() const {
+  if (std::holds_alternative<KernelArgsPackingFunc>(kernel_args_packing_) &&
+      std::get<KernelArgsPackingFunc>(kernel_args_packing_) != nullptr) {
+    return false;
+  }
+  if (has_in_process_symbol() && in_process_symbol()->persistent_name.empty()) {
+    return false;
+  }
+  return has_cuda_cubin_in_memory() || has_cuda_ptx_in_memory() ||
+         has_in_process_symbol();
 }
 
 absl::StatusOr<KernelLoaderSpecProto> KernelLoaderSpec::ToProto() const {
@@ -171,6 +200,17 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
           "been "
           "found.");
   }
+}
+
+KernelLoaderSpec KernelLoaderSpec::ToShared() && {
+  if (std::holds_alternative<OwningCudaCubinInMemory>(payload_)) {
+    payload_ = SharedCudaCubinInMemory{std::make_shared<std::vector<uint8_t>>(
+        std::move(std::get<OwningCudaCubinInMemory>(payload_).cubin_bytes))};
+  } else if (std::holds_alternative<OwningCudaPtxInMemory>(payload_)) {
+    payload_ = SharedCudaPtxInMemory{std::make_shared<std::string>(
+        std::move(std::get<OwningCudaPtxInMemory>(payload_).ptx))};
+  }
+  return std::move(*this);
 }
 
 }  // namespace stream_executor

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -60,7 +59,7 @@ TEST_F(CollectiveBackendAssignerTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_collective_permute_mode(
@@ -88,7 +87,7 @@ TEST_F(CollectiveBackendAssignerTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   // Default is COLLECTIVES_MODE_INVALID — collectives_mode should not be set.
 
   ASSERT_THAT(RunCollectiveBackendAssigner(module.get()), absl_testing::IsOk());
@@ -118,7 +117,7 @@ TEST_F(CollectiveBackendAssignerTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_collective_permute_mode(
@@ -147,7 +146,7 @@ TEST_F(CollectiveBackendAssignerTest, AllGatherSymmetricMemorySetsMode) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config().mutable_debug_options().set_xla_gpu_all_gather_mode(
       DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
 
@@ -172,7 +171,7 @@ TEST_F(CollectiveBackendAssignerTest, AllGatherPrivateMemoryLeavesDefault) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   ASSERT_THAT(RunCollectiveBackendAssigner(module.get()), absl_testing::IsOk());
 

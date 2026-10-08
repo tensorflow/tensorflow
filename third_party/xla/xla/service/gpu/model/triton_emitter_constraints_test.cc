@@ -644,6 +644,99 @@ ENTRY entry_computation {
               StatusIs(_, HasSubstr("neither a power of 2 nor equal")));
 }
 
+class VerifySubsetOfTritonConstraintsTest
+    : public HloHardwareIndependentTestBase {
+ protected:
+  mlir::MLIRContext mlir_context_;
+  se::DeviceDescription device_description_ =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+};
+
+TEST_F(VerifySubsetOfTritonConstraintsTest, ValidTilingPasses) {
+  auto space = std::make_unique<experimental::TilingSpace>();
+  space->AppendDimension(
+      nullptr, 0, 1024,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+
+  Decision decision = experimental::VerifySubsetOfTritonConstraints(
+      {64}, *space, device_description_);
+  EXPECT_TRUE(decision.IsAllowed());
+}
+
+TEST_F(VerifySubsetOfTritonConstraintsTest, RejectsExcessiveElements) {
+  auto space = std::make_unique<experimental::TilingSpace>();
+  space->AppendDimension(
+      nullptr, 0, 1024,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+  space->AppendDimension(
+      nullptr, 1, 2048,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+
+  // Cumulative product 1024 * 2048 = 2097152 exceeds 1048576 elements:
+  Decision decision = experimental::VerifySubsetOfTritonConstraints(
+      {1024, 2048}, *space, device_description_);
+  EXPECT_TRUE(decision.IsForbidden());
+  EXPECT_THAT(decision.Explain(),
+              HasSubstr("Padded tile size product exceeds the maximum number "
+                        "of elements of a Triton tensor"));
+}
+
+TEST_F(VerifySubsetOfTritonConstraintsTest, RejectsDotTileExceedingMMALimit) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16,512] parameter(0)
+      p1 = f32[512,16] parameter(1)
+      ROOT dot = f32[16,16] dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+  ASSERT_OK_AND_ASSIGN(auto space, experimental::TilingSpace::Create(
+                                       *fusion_adaptor, &mlir_context_));
+
+  // Tile sizes [16, 16, 512] has contracting tile 512 > 256 (MMA limit).
+  Decision invalid_decision = experimental::VerifySubsetOfTritonConstraints(
+      {16, 16, 512}, *space, device_description_);
+  EXPECT_TRUE(invalid_decision.IsForbidden());
+  EXPECT_THAT(invalid_decision.Explain(),
+              HasSubstr("exceeds the maximum MMA dimension size"));
+
+  // Contracting tile 256 (<= 256) passes.
+  Decision valid_decision = experimental::VerifySubsetOfTritonConstraints(
+      {16, 16, 256}, *space, device_description_);
+  EXPECT_TRUE(valid_decision.IsAllowed()) << valid_decision.Explain();
+}
+
+TEST_F(VerifySubsetOfTritonConstraintsTest, MultiOutputFusionEvaluatedPerRoot) {
+  auto space = std::make_unique<experimental::TilingSpace>();
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1000000] parameter(0)
+      root0 = f32[1000000] exponential(p0)
+      root1 = f32[1000000] negate(p0)
+      ROOT tuple = (f32[1000000], f32[1000000]) tuple(root0, root1)
+    }
+  )"));
+  const HloInstruction* root0 =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* root1 =
+      module->entry_computation()->root_instruction()->operand(1);
+
+  space->AppendDimension(
+      root0, 0, 1000000,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+  space->AppendDimension(
+      root1, 0, 1000000,
+      experimental::TilingSpace::DimensionSemantics::kParallel);
+
+  Decision decision = experimental::VerifySubsetOfTritonConstraints(
+      {1000000, 1000000}, *space, device_description_);
+  EXPECT_TRUE(decision.IsAllowed()) << decision.Explain();
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

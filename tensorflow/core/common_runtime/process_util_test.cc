@@ -28,6 +28,12 @@ TEST(ProcessUtilTest, NumThreads) {
   EXPECT_EQ(10, NumInterOpThreadsFromSessionOptions(opts));
 }
 
+TEST(ProcessUtilTest, NumThreadsNegative) {
+  SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(-1);
+  EXPECT_GT(NumInterOpThreadsFromSessionOptions(opts), 0);
+}
+
 TEST(ProcessUtilTest, ThreadPool) {
   SessionOptions opts;
   opts.config.set_inter_op_parallelism_threads(10);

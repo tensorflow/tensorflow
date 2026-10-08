@@ -14,26 +14,14 @@
 
 """JAX microbenchmarks for measuring ICI bandwidth across TPU chips."""
 
-from absl import flags
 from absl.testing import absltest
 import jax
 import jax.numpy as jnp
 from xla.benchmarks.dma_microbenchmarks import memory_base
 
 
-_NUMBER_OF_MEASUREMENTS = flags.DEFINE_integer(
-    "number_of_measurements",
-    default=5,
-    help="Number of measurements to take. Default: 5",
-)
-
-
 class ChipToChipBenchmarks(memory_base.MemoryBenchmarks):
   """Test suite measuring inter-chip interconnect (ICI) bandwidth."""
-
-  def setUp(self):
-    super().setUp()
-    self.number_of_measurements = _NUMBER_OF_MEASUREMENTS.value
 
   def get_devices(self):
     """Get a pair of TPU devices on different physical chips."""

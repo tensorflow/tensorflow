@@ -256,6 +256,19 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       std::vector<dnn::ProfileResult>* out_algorithms) override;
 
+  bool GetMIOpenConvolveAlgorithmsInternal(
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      DeviceAddressBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceAddressBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceAddressBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      ScratchAllocator* scratch_allocator,
+      std::vector<dnn::ProfileResult>* out_algorithms, bool use_fallback);
+
   absl::Status GetMIOpenConvolveAlgorithmsImmediateMode(
       dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataType output_type, Stream* stream,
@@ -575,7 +588,6 @@ class MIOpenSupport : public dnn::DnnSupport {
 // and tensorflow/core/grappler/optimizers/generic_layout_optimizer.cc)
 // This will decide whether to use NHWC in Convolution/Batchnorm.
 // This mode can be faster in in FP16 workloads on gfx908 and beyond.
-// Requires ROCm 5.0+.
 // TODO (ROCm): Use autotune to choose between this mode and NCHW
 // when MIOpen has more optimized kernels.
 bool UseNhwcLayoutForRocm();

@@ -190,7 +190,7 @@ class ExtractImagePatches(test.TestCase):
         self.evaluate(out_tensor)
 
   def testLargeKsizeDynamic(self):
-    """Test for integer overflow during OpKernel execution by using dynamic shapes."""
+    """Tests OpKernel integer overflow using dynamic shapes."""
     with ops.Graph().as_default():
       image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 1, 1, None])
       out_tensor = array_ops.extract_image_patches(
@@ -209,6 +209,40 @@ class ExtractImagePatches(test.TestCase):
               out_tensor,
               feed_dict={image_ph: np.ones([1, 1, 1, 3], dtype=np.float32)},
           )
+
+  def testNegativeOrZeroAttributes(self):
+    """Test for negative or zero spatial attributes."""
+    image = constant_op.constant(np.ones([1, 2, 2, 1], dtype=np.float32))
+    valid = [1, 1, 1, 1]
+    for attr, value in [
+        ("ksizes", [1, -1, 2, 1]),
+        ("ksizes", [1, 2, 0, 1]),
+        ("ksizes", [1, -1, -2, 1]),
+        ("strides", [1, -1, 1, 1]),
+        ("strides", [1, 1, 0, 1]),
+        ("rates", [1, -1, 1, 1]),
+        ("rates", [1, 1, 0, 1]),
+    ]:
+      kwargs = {"ksizes": valid, "strides": valid, "rates": valid}
+      kwargs[attr] = value
+      # Graph construction runs the shape function (ValueError); eager
+      # execution runs the kernel constructor (OutOfRangeError).
+      with self.assertRaisesRegex(
+          (errors_impl.OutOfRangeError, ValueError),
+          rf"ExtractImagePatches requires spatial {attr} to be positive"
+          rf"|{attr} is out of range",
+      ):
+        self.evaluate(
+            array_ops.extract_image_patches(image, padding="VALID", **kwargs)
+        )
+      # Shape inference must reject the same attributes.
+      with ops.Graph().as_default():
+        image_ph = array_ops.placeholder(dtypes.float32, shape=[1, 2, 2, 1])
+        with self.assertRaisesRegex(
+            ValueError,
+            rf"ExtractImagePatches requires spatial {attr} to be positive",
+        ):
+          array_ops.extract_image_patches(image_ph, padding="VALID", **kwargs)
 
 
 if __name__ == "__main__":

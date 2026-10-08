@@ -682,7 +682,7 @@ absl::Status FunctionLibraryRuntimeImpl::CreateKernel(
   // are always on device memory. Now, having TFT_SHAPE_TENSOR full type
   // information specifies host memory and unspecified or other full type
   // information specifies device memory. Full type information can be set to
-  // match the orginal behavior, manually for manual placement or by using type
+  // match the original behavior, manually for manual placement or by using type
   // inference over function body to derive the correct input/output memory
   // types.
   MemoryTypeVector input_memory_types;

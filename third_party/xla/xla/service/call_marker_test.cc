@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -51,11 +51,11 @@ TEST_F(CallMarkerTest, MarkSingleCall) {
     a = f32[] call(c), to_apply=a
     ROOT tuple = (f32[], f32[]) tuple(a, c)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
   const absl::string_view expected_hlo =
@@ -94,11 +94,11 @@ TEST_F(CallMarkerTest, MarkRootCall) {
     ROOT a = f32[] call(c), to_apply=a
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
   // This test checks that if the call instruction is the root of the entry
@@ -142,13 +142,13 @@ TEST_F(CallMarkerTest, MarkRootCallPreservesEntryResultLayout) {
   HloParserOptions parser_options;
   parser_options.set_keep_module_auto_layouts(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest(),
                                    parser_options));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
   EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
@@ -179,11 +179,11 @@ TEST_F(CallMarkerTest, MarkNestedCalls) {
     ROOT result = f32[] call(c), to_apply=a
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
   HloInstruction* call_before_c = FindInstruction(module.get(), "custom-call");
   EXPECT_TRUE(call_before_c != nullptr);
@@ -303,11 +303,11 @@ TEST_F(CallMarkerTest, MarkCallInsideWhileLoop) {
     ROOT loop = (s32[], f32[], ((f32[], f32[]), f32[])) while(init_state), condition=cond, body=body
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
   auto status = verifier().Run(module.get()).status();
@@ -329,11 +329,11 @@ TEST_F(CallMarkerTest, MetadataAndAttributesCopiedToMarkers) {
     ROOT tuple = (f32[], f32[]) tuple(my_call, c)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
   HloInstruction* before = FindInstruction(module.get(), "custom-call");
@@ -391,11 +391,11 @@ TEST_F(CallMarkerTest, ControlDependenciesSplitBetweenMarkers) {
     ROOT tuple = (f32[], f32[], f32[], f32[]) tuple(my_call, c, other1, other2)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
   HloInstruction* before = FindInstruction(module.get(), "custom-call");
@@ -446,15 +446,15 @@ TEST_F(CallMarkerTest, ReusedComputationNameAfterInliningAndCleanup) {
     ROOT tuple = (f32[], f32[]) tuple(b, c)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
 
   // Run CallMarker and CallInliner.
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
-  TF_ASSERT_OK_AND_ASSIGN(bool inlined, inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool inlined, inliner.Run(module.get()));
   EXPECT_TRUE(inlined);
 
   // Call Cleanup().
@@ -486,10 +486,10 @@ TEST_F(CallMarkerTest, ReusedComputationNameAfterInliningAndCleanup) {
   EXPECT_TRUE(root->ReplaceOperandWith(1, new_call).ok());
 
   // Run CallMarker and CallInliner again.
-  TF_ASSERT_OK_AND_ASSIGN(mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
-  TF_ASSERT_OK_AND_ASSIGN(inlined, inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(inlined, inliner.Run(module.get()));
   EXPECT_TRUE(inlined);
 
   module->Cleanup();
@@ -528,11 +528,11 @@ TEST_F(CallMarkerTest, SkipCallWithNoParameters) {
     ROOT tuple = (f32[]) tuple(a)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_FALSE(mutated);
 }
 
@@ -560,13 +560,13 @@ TEST_F(CallMarkerTest, DontLoseLayoutOnParameters) {
   HloParserOptions parser_options;
   parser_options.set_keep_module_auto_layouts(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest(),
                                    parser_options));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_TRUE(mutated);
 
   const absl::string_view just_call_marked =
@@ -590,7 +590,7 @@ ENTRY inline {
   EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()),
             just_call_marked);
 
-  TF_ASSERT_OK_AND_ASSIGN(mutated, inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(mutated, inliner.Run(module.get()));
   EXPECT_TRUE(mutated);
 
   const absl::string_view inlined =
@@ -622,11 +622,11 @@ TEST_F(CallMarkerTest, DoNotMarkCallWithUnusedParameters) {
     a = f32[] call(c), to_apply=a
     ROOT tuple = (f32[], f32[]) tuple(a, c)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   CallInliner inliner;
   CallMarker call_marker(inliner);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_marker.Run(module.get()));
   EXPECT_FALSE(mutated);
 }
 

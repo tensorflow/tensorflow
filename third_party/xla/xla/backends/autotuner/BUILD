@@ -416,10 +416,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:protobuf",
     ],
 )
@@ -579,6 +577,7 @@ xla_cc_test(
     name = "config_selector_test",
     srcs = ["config_selector_test.cc"],
     deps = [
+        ":backends_proto_cc",
         ":codegen_backend",
         ":config_runner",
         ":config_selector",
@@ -604,6 +603,7 @@ tf_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla:autotuning_proto",
+        "//xla/backends/cpu:ynn_fusion_options_proto",
         "//xla/codegen/xtile:xtile_config_proto",
         "//xla/service/cpu:backend_config_proto",
         "//xla/service/gpu:backend_configs",

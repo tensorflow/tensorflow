@@ -52,6 +52,7 @@ default format "NDHWC", the data is stored in the order of:
     [batch, in_depth, in_height, in_width, in_channels].
 Alternatively, the format could be "NCDHW", the data storage order is:
     [batch, in_channels, in_depth, in_height, in_width].
+Without oneDNN, CPU kernels support only "NDHWC".
 END
   }
   summary: "Computes second-order gradients of the maxpooling function."

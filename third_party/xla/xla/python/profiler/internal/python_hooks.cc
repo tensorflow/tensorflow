@@ -34,6 +34,10 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
+#if PY_VERSION_HEX < 0x030C0000
+#include "tsl/platform/platform.h"
+#endif  // PY_VERSION_HEX < 0x030C0000
+
 #ifdef Py_GIL_DISABLED
 #include "absl/synchronization/mutex.h"
 #endif  // Py_GIL_DISABLED
@@ -111,26 +115,26 @@ void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
   // Note: PyThreadState's interp is not accessible in open source due to
   // Py_LIMITED_API definition nuances. We can not iterate all threads through
   // that PyInterpreterState.
-#ifndef NDEBUG
-  // If debug version of python runtime is used, (e.g. monolithic binaries in
-  // g3). PyGILState_Check will fail because current thread's PyThreadState
-  // is not the one that holding GIL (after PyThreadState_Swap). This extra
-  // check in PyEval_SetProfile is not useful, but will sporadic crash if user
-  // use debug version of python runtime. In this case, we fallback to only
-  // set up profile hooks in current threads.
-  // In OSS, the python runtime and tensorflow profiler are built separately.
-  // So this workaround doesn't apply.
-  callback(curr_thread);
-#else
-  for (PyThreadState* p = curr_thread; p != nullptr; p = p->next) {
-    PyThreadState_Swap(p);
-    callback(p);
+  if constexpr (tsl::kIsDebugBuild) {
+    // If debug version of python runtime is used, (e.g. monolithic binaries in
+    // g3). PyGILState_Check will fail because current thread's PyThreadState
+    // is not the one that holding GIL (after PyThreadState_Swap). This extra
+    // check in PyEval_SetProfile is not useful, but will sporadic crash if user
+    // use debug version of python runtime. In this case, we fallback to only
+    // set up profile hooks in current threads.
+    // In OSS, the python runtime and tensorflow profiler are built separately.
+    // So this workaround doesn't apply.
+    callback(curr_thread);
+  } else {
+    for (PyThreadState* p = curr_thread; p != nullptr; p = p->next) {
+      PyThreadState_Swap(p);
+      callback(p);
+    }
+    for (PyThreadState* p = curr_thread->prev; p != nullptr; p = p->prev) {
+      PyThreadState_Swap(p);
+      callback(p);
+    }
   }
-  for (PyThreadState* p = curr_thread->prev; p != nullptr; p = p->prev) {
-    PyThreadState_Swap(p);
-    callback(p);
-  }
-#endif
 }
 
 #endif  // PY_VERSION_HEX

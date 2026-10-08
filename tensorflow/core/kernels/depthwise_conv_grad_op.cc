@@ -1147,6 +1147,14 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     // If there is nothing to compute, return.
     if (out_backprop.shape().num_elements() == 0) {
+      // The output is sized from `filter_shape`, which is independent of
+      // `out_backprop`, so it can be non-empty on this path. Nothing below
+      // writes it and `forward_input_or_allocate_output` does not initialize
+      // the buffer, so it would be returned to the caller uninitialized. A
+      // filter that received no contribution has a gradient of exactly zero.
+      if (filter_backprop->NumElements() > 0) {
+        filter_backprop->template flat<T>().setZero();
+      }
       return;
     }
 

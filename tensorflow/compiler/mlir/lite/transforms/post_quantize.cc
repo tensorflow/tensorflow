@@ -15,7 +15,6 @@ limitations under the License.
 
 // This transformation pass applies some clean up steps after quantization.
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -50,6 +49,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_in_place_transpose.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -430,36 +430,6 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     }
   }
 
-  void ComputePermutationRaw(ArrayRef<int32_t> perm,
-                             ArrayRef<int64_t> output_shape,
-                             const char* raw_input, int element_byte_size,
-                             int output_axis, char*& raw_output,
-                             SmallVectorImpl<uint64_t>& current_input_index,
-                             ArrayRef<int64_t> input_shape) const {
-    const int num_dimensions = output_shape.size();
-    assert(output_axis < num_dimensions);
-    const int input_axis = perm[output_axis];
-    for (int i = 0; i < output_shape[output_axis]; ++i) {
-      current_input_index[input_axis] = i;
-      const bool is_last_axis = output_axis == num_dimensions - 1;
-      if (is_last_axis) {
-        uint64_t input_flat_index = 0;
-        uint64_t stride = 1;
-        for (int d = num_dimensions - 1; d >= 0; --d) {
-          input_flat_index += current_input_index[d] * stride;
-          stride *= input_shape[d];
-        }
-        memcpy(raw_output, raw_input + input_flat_index * element_byte_size,
-               element_byte_size);
-        raw_output += element_byte_size;
-      } else {
-        ComputePermutationRaw(perm, output_shape, raw_input, element_byte_size,
-                              output_axis + 1, raw_output, current_input_index,
-                              input_shape);
-      }
-    }
-  }
-
   LogicalResult matchAndRewrite(TransposeOp op,
                                 PatternRewriter& rewriter) const override {
     Operation* def_op = op.getInput().getDefiningOp();
@@ -539,95 +509,21 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
       }
 
       size_t num_elements = result_type.getNumElements();
-      if (storage_bit_width == 4) {
-        size_t out_byte_size = (num_elements + 1) / 2;
-        auto raw_output_blob = mlir::HeapAsmResourceBlob::allocate(
-            out_byte_size, /*align=*/64, /*dataIsMutable=*/true);
-        char* raw_output =
-            const_cast<char*>(raw_output_blob.getDataAs<char>().data());
-        std::memset(raw_output, 0, out_byte_size);
-
-        const uint8_t* raw_input_u8 =
-            reinterpret_cast<const uint8_t*>(blob->getData().data());
-        std::vector<char> unpacked_input(num_elements);
-        for (size_t i = 0; i < num_elements; ++i) {
-          uint8_t byte = raw_input_u8[i / 2];
-          uint8_t nibble = (i % 2 == 0) ? (byte & 0x0F) : ((byte >> 4) & 0x0F);
-          unpacked_input[i] = static_cast<char>(nibble);
-        }
-
-        std::vector<char> unpacked_output(num_elements);
-        char* unpacked_output_ptr = unpacked_output.data();
-        SmallVector<uint64_t> current_input_index(num_dimensions, 0);
-        ComputePermutationRaw(perm, output_shape, unpacked_input.data(),
-                              /*element_byte_size=*/1,
-                              /*output_axis=*/0, unpacked_output_ptr,
-                              current_input_index, input_shape);
-
-        for (size_t i = 0; i < num_elements; ++i) {
-          uint8_t nibble = static_cast<uint8_t>(unpacked_output[i]) & 0x0F;
-          if (i % 2 == 0) {
-            raw_output[i / 2] |= nibble;
-          } else {
-            raw_output[i / 2] |= (nibble << 4);
-          }
-        }
-
-        DenseResourceElementsAttr new_res_attr = DenseResourceElementsAttr::get(
-            result_type, dense_res.getRawHandle().getKey(),
-            std::move(raw_output_blob));
-        rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
-                                              new_res_attr);
-        return success();
-      } else if (storage_bit_width == 2) {
-        size_t out_byte_size = (num_elements + 3) / 4;
-        auto raw_output_blob = mlir::HeapAsmResourceBlob::allocate(
-            out_byte_size, /*align=*/64, /*dataIsMutable=*/true);
-        char* raw_output =
-            const_cast<char*>(raw_output_blob.getDataAs<char>().data());
-        std::memset(raw_output, 0, out_byte_size);
-
-        const uint8_t* raw_input_u8 =
-            reinterpret_cast<const uint8_t*>(blob->getData().data());
-        std::vector<char> unpacked_input(num_elements);
-        for (size_t i = 0; i < num_elements; ++i) {
-          uint8_t byte = raw_input_u8[i / 4];
-          uint8_t val = (byte >> ((i % 4) * 2)) & 0x03;
-          unpacked_input[i] = static_cast<char>(val);
-        }
-
-        std::vector<char> unpacked_output(num_elements);
-        char* unpacked_output_ptr = unpacked_output.data();
-        SmallVector<uint64_t> current_input_index(num_dimensions, 0);
-        ComputePermutationRaw(perm, output_shape, unpacked_input.data(),
-                              /*element_byte_size=*/1,
-                              /*output_axis=*/0, unpacked_output_ptr,
-                              current_input_index, input_shape);
-
-        for (size_t i = 0; i < num_elements; ++i) {
-          uint8_t val = static_cast<uint8_t>(unpacked_output[i]) & 0x03;
-          raw_output[i / 4] |= (val << ((i % 4) * 2));
-        }
-
-        DenseResourceElementsAttr new_res_attr = DenseResourceElementsAttr::get(
-            result_type, dense_res.getRawHandle().getKey(),
-            std::move(raw_output_blob));
-        rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
-                                              new_res_attr);
-        return success();
-      }
-
-      const int element_byte_size = std::max<int>(1, storage_bit_width / 8);
+      size_t out_byte_size = storage_bit_width < 8
+                                 ? (num_elements * storage_bit_width + 7) / 8
+                                 : num_elements * (storage_bit_width / 8);
       auto raw_output_blob = mlir::HeapAsmResourceBlob::allocate(
-          blob->getData().size(), /*align=*/64, /*dataIsMutable=*/true);
+          out_byte_size, /*align=*/64, /*dataIsMutable=*/true);
       char* raw_output =
           const_cast<char*>(raw_output_blob.getDataAs<char>().data());
+      std::memset(raw_output, 0, out_byte_size);
       const char* raw_input = blob->getData().data();
 
-      SmallVector<uint64_t> current_input_index(num_dimensions, 0);
-      ComputePermutationRaw(perm, output_shape, raw_input, element_byte_size,
-                            /*output_axis=*/0, raw_output, current_input_index,
-                            input_shape);
+      SmallVector<int64_t, 4> perms_i64(perm.begin(), perm.end());
+      if (!TransposeBuffer(raw_input, raw_output, input_shape, perms_i64,
+                           storage_bit_width)) {
+        return failure();
+      }
 
       DenseResourceElementsAttr new_res_attr = DenseResourceElementsAttr::get(
           result_type, dense_res.getRawHandle().getKey(),

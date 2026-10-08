@@ -78,7 +78,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@shardy//shardy/common:file_utils",
         "@shardy//shardy/dialect/sdy/transforms/common:propagation_options",
+        "@shardy//shardy/dialect/sdy/transforms/export:utils",
         "@shardy//shardy/dialect/sdy/transforms/propagation:passes",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -145,9 +147,10 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:computation_layout",
         "//xla/service/spmd:sharding_format_picker",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
+        "@shardy//shardy/dialect/sdy/transforms/common:partitioner_stage",
+        "@shardy//shardy/dialect/sdy/transforms/common:propagation_options",
     ],
 )
 

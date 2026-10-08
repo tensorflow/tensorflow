@@ -67,8 +67,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -149,13 +147,11 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
       HloModule* module, int64_t alignment = 1,
       BufferAssigner::Colorer colorer = BufferAssigner::DefaultColorer(),
-      const BufferAssigner::PrivateStacks& private_stacks = {},
       std::optional<BufferAssignment::BufferIsolationOptions>
           isolation_options = std::nullopt) {
     BufferAssigner::Options opts;
     opts.allocate_buffers_for_constants = true;
     opts.colorer = colorer;
-    opts.private_stacks = &private_stacks;
     opts.isolation_options = isolation_options;
     return BufferAssigner::Run(
                module,
@@ -772,6 +768,101 @@ TEST_F(BufferAssignmentTest, OOMFallbackToDefault) {
   // (288 bytes) compared to FAST_MERGE (408 bytes).
   EXPECT_EQ(assignment_fallback->GetStats().total_allocation_bytes, 288);
   EXPECT_EQ(assignment_fast->GetStats().total_allocation_bytes, 408);
+}
+
+// Thread-local allocations (the buffers of embedded computations, e.g. custom
+// call callees) are alloca-style and never part of the preallocated footprint,
+// so they must not count against the memory limit that decides whether to fall
+// back from FAST_MERGE to DEFAULT.
+TEST_F(BufferAssignmentTest, OOMFallbackIgnoresThreadLocalAllocations) {
+  // Same sequentially growing chain as in OOMFallbackToDefault, except that the
+  // first custom call carries an embedded computation whose root is far larger
+  // than the whole chain.
+  Shape s0 = ShapeUtil::MakeShape(F32, {});         // 4 bytes
+  Shape s1 = ShapeUtil::MakeShape(F32, {1});        // 4 bytes
+  Shape s10 = ShapeUtil::MakeShape(F32, {10});      // 40 bytes
+  Shape s20 = ShapeUtil::MakeShape(F32, {20});      // 80 bytes
+  Shape s30 = ShapeUtil::MakeShape(F32, {30});      // 120 bytes
+  Shape s40 = ShapeUtil::MakeShape(F32, {40});      // 160 bytes
+  Shape s1000 = ShapeUtil::MakeShape(F32, {1000});  // 4000 bytes
+
+  auto module = CreateNewVerifiedModule();
+
+  auto embedded_builder = HloComputation::Builder("embedded");
+  auto embedded_param = embedded_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s0, "ep"));
+  auto embedded_root = embedded_builder.AddInstruction(
+      HloInstruction::CreateBroadcast(s1000, embedded_param, {}));
+  HloComputation* embedded =
+      module->AddEmbeddedComputation(embedded_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s0, "p1"));
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s10, {param}, embedded, "dummy"));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s20, {a}, "dummy"));
+  auto c = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s30, {b}, "dummy"));
+  auto d = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s40, {c}, "dummy"));
+  auto root = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s1, {d}, "dummy"));
+  module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(), {param, a, b, c, d, root});
+  schedule.set_sequence(embedded, {embedded_param, embedded_root});
+  CHECK_OK(module->set_schedule(schedule));
+
+  constexpr int64_t kSafetyMargin = int64_t{5} << 29;
+  auto run = [&](int64_t limit) {
+    BufferAssigner::Options opts;
+    opts.assignment_algorithm_for_computations_without_ordering =
+        buffer_assignment::
+            AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
+    opts.buffer_assignment_algorithm = buffer_assignment::
+        BufferAssignmentAlgorithmProto::FAST_MERGE_WITH_FALLBACK;
+    opts.fallback_algorithm =
+        buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+    opts.color_memory_limit = [limit](LogicalBuffer::Color) {
+      return kSafetyMargin + limit;
+    };
+    return BufferAssigner::Run(
+        module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+        &BufferSizeBytes, &alias_info_, [](LogicalBuffer::Color) { return 1; },
+        std::move(opts));
+  };
+  auto allocated_bytes = [](const BufferAssignment& assignment) {
+    int64_t thread_local_bytes = 0;
+    int64_t other_bytes = 0;
+    for (const BufferAllocation& allocation : assignment.Allocations()) {
+      (allocation.is_thread_local() ? thread_local_bytes : other_bytes) +=
+          allocation.size();
+    }
+    return std::make_pair(thread_local_bytes, other_bytes);
+  };
+
+  // Run 1: the limit holds the chain under FAST_MERGE (408 bytes) but not the
+  // chain plus the embedded computation's parameter and root (4004 bytes),
+  // which are thread-local. No fallback must happen.
+  constexpr int64_t kLimit = 1000;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> assignment,
+                       run(kLimit));
+  auto [thread_local_bytes, other_bytes] = allocated_bytes(*assignment);
+  EXPECT_EQ(thread_local_bytes, 4004);
+  EXPECT_GT(thread_local_bytes, kLimit);
+  EXPECT_EQ(other_bytes, 408);
+
+  // Run 2: a limit the chain itself exceeds does trigger the fallback, which
+  // produces the tighter DEFAULT layout (288 bytes).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> assignment_fallback,
+                       run(/*limit=*/100));
+  auto [thread_local_bytes_fallback, other_bytes_fallback] =
+      allocated_bytes(*assignment_fallback);
+  EXPECT_EQ(thread_local_bytes_fallback, 4004);
+  EXPECT_EQ(other_bytes_fallback, 288);
 }
 
 MATCHER(IdEq, "") {
@@ -3464,7 +3555,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   schedule.set_sequence(
       module->entry_computation(),
       {token, infeed, infeed_data, while0, while1, zero, add, while2, tuple});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -3685,226 +3776,6 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
     EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_7", {}));
     EXPECT_NE(get_slice(hlo_name, {}), get_slice("add_0", {}));
   }
-}
-
-TEST_F(BufferAssignmentTest, AsyncCallPrivateStack) {
-  const char* hlo_text = R"(
-HloModule AsyncCall, is_scheduled=true
-
-%called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
-  %param_0 = f32[4096]{0} parameter(0)
-  %param_1 = f32[4096]{0} parameter(1)
-  %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
-  %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
-  %negate_2 = f32[4096]{0} negate(f32[4096]{0} %negate_1)
-  %negate_3 = f32[4096]{0} negate(f32[4096]{0} %negate_2)
-  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_3)
-}, execution_thread="foobar"
-
-ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
-  %a = f32[4096]{0} parameter(0)
-  %b = f32[4096]{0} parameter(1)
-  %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), async_execution_thread="foobar", to_apply=%called_computation
-  %negate_4 = f32[4096]{0} negate(f32[4096]{0} %a)
-  %negate_5 = f32[4096]{0} negate(f32[4096]{0} %b)
-  %negate_6 = f32[4096]{0} negate(f32[4096]{0} %negate_5)
-  %negate_7 = f32[4096]{0} negate(f32[4096]{0} %negate_6)
-  %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_4, f32[4096]{0} %negate_7)
-  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
-  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
-
-  auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-    for (const HloBuffer& buffer : alias_analysis->buffers()) {
-      int color = 1;
-      for (const HloValue* value : buffer.values()) {
-        if (absl::c_any_of(
-                value->positions(),
-                [](const HloPosition& position) {
-                  return position.instruction->parent()->execution_thread() !=
-                         "foobar";
-                }) ||
-            absl::c_any_of(value->GetUses(), [](const HloUse& use) {
-              return use.instruction->parent()->execution_thread() != "foobar";
-            })) {
-          color = 0;
-        }
-      }
-      for (const HloValue* value : buffer.values()) {
-        const HloPosition& defining_position = value->defining_position();
-        if (defining_position.shape().has_layout()) {
-          const int memory_space =
-              defining_position.shape().layout().memory_space();
-          if (memory_space != 0) {
-            color = memory_space;
-          }
-        }
-        alias_analysis->dataflow_analysis()
-            .GetValue(value->id())
-            .set_color(BufferValue::Color(color));
-      }
-    }
-    return absl::OkStatus();
-  };
-
-  BufferAssigner::PrivateStacks private_stacks;
-  private_stacks[1] = {FindComputation(m.get(), "called_computation")};
-  auto buffers = RunBufferAssignmentWithSequentialOrdering(
-      m.get(), /*alignment=*/1, colorer, private_stacks);
-
-  LOG(INFO) << buffers->ToString();
-
-  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
-    return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
-        .value();
-  };
-
-  // Make sure the parameters and root of the async called computation has the
-  // same slice as the async call operands/output.
-  EXPECT_EQ(get_slice("param_0", {}), get_slice("a", {}));
-  EXPECT_EQ(get_slice("param_1", {}), get_slice("b", {}));
-  EXPECT_EQ(get_slice("result.1", {}), get_slice("async-done", {}));
-
-  // Make sure the intermediate values in the async called computation have
-  // different allocated slices than the values that overlap it.
-  for (const auto& hlo_name :
-       {"negate_0", "negate_1", "negate_2", "negate_3"}) {
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_4", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_5", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_6", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_7", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("add_0", {}));
-  }
-
-  // Make sure the private stack allocations negate_1-3 are allocated at the
-  // same offset.
-  EXPECT_NE(get_slice("negate_0", {}), get_slice("negate_1", {}));
-  EXPECT_EQ(get_slice("negate_1", {}), get_slice("negate_2", {}));
-  EXPECT_EQ(get_slice("negate_1", {}), get_slice("negate_3", {}));
-}
-
-TEST_F(BufferAssignmentTest, MultipleAsyncCallPrivateStack) {
-  const char* hlo_text = R"(
-HloModule AsyncCall, is_scheduled=true
-
-%called_computation1 {
-  %param_0 = f32[4096]{0} parameter(0)
-  %param_1 = f32[4096]{0} parameter(1)
-  %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
-  %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
-  %negate_2 = f32[4096]{0} negate(f32[4096]{0} %negate_1)
-  %negate_3 = f32[4096]{0} negate(f32[4096]{0} %negate_2)
-  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_3)
-}, execution_thread="foobar"
-
-%called_computation2 {
-  %param_2 = f32[4096]{0} parameter(0)
-  %param_3 = f32[4096]{0} parameter(1)
-  %negate_4 = f32[4096]{0} negate(f32[4096]{0} %param_2)
-  %negate_5 = f32[4096]{0} negate(f32[4096]{0} %param_3)
-  ROOT %result.2 = f32[4096]{0} add(f32[4096]{0} %negate_4, f32[4096]{0} %negate_5)
-}, execution_thread="foobar"
-
-ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
-  %a = f32[4096]{0} parameter(0)
-  %b = f32[4096]{0} parameter(1)
-  %async-start.1 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), async_execution_thread="foobar", to_apply=%called_computation1
-  %async-start.2 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %b, f32[4096]{0} %a), async_execution_thread="foobar", to_apply=%called_computation2
-  %negate_6 = f32[4096]{0} negate(f32[4096]{0} %a)
-  %negate_7 = f32[4096]{0} negate(f32[4096]{0} %b)
-  %negate_8 = f32[4096]{0} negate(f32[4096]{0} %negate_7)
-  %negate_9 = f32[4096]{0} negate(f32[4096]{0} %negate_8)
-  %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_6, f32[4096]{0} %negate_9)
-  %async-done.1 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.1)
-  %async-done.2 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.2)
-  %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done.1)
-  ROOT %add_2 = f32[4096]{0} add(f32[4096]{0} %add_1, f32[4096]{0} %async-done.2)
-}
-)";
-
-  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
-
-  auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-    for (const HloBuffer& buffer : alias_analysis->buffers()) {
-      int color = 1;
-      for (const HloValue* value : buffer.values()) {
-        if (absl::c_any_of(
-                value->positions(),
-                [](const HloPosition& position) {
-                  return position.instruction->parent()->execution_thread() !=
-                         "foobar";
-                }) ||
-            absl::c_any_of(value->GetUses(), [](const HloUse& use) {
-              return use.instruction->parent()->execution_thread() != "foobar";
-            })) {
-          color = 0;
-        }
-      }
-      for (const HloValue* value : buffer.values()) {
-        const HloPosition& defining_position = value->defining_position();
-        if (defining_position.shape().has_layout()) {
-          const int memory_space =
-              defining_position.shape().layout().memory_space();
-          if (memory_space != 0) {
-            color = memory_space;
-          }
-        }
-        alias_analysis->dataflow_analysis()
-            .GetValue(value->id())
-            .set_color(BufferValue::Color(color));
-      }
-    }
-    return absl::OkStatus();
-  };
-
-  BufferAssigner::PrivateStacks private_stacks;
-  private_stacks[1] = {FindComputation(m.get(), "called_computation1"),
-                       FindComputation(m.get(), "called_computation2")};
-  auto buffers = RunBufferAssignmentWithSequentialOrdering(
-      m.get(), /*alignment=*/1, colorer, private_stacks);
-
-  LOG(INFO) << buffers->ToString();
-
-  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
-    return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
-        .value();
-  };
-
-  // Make sure the parameters and root of the async called computation has the
-  // same slice as the async call operands/output.
-  EXPECT_EQ(get_slice("param_0", {}), get_slice("a", {}));
-  EXPECT_EQ(get_slice("param_3", {}), get_slice("a", {}));
-  EXPECT_EQ(get_slice("param_1", {}), get_slice("b", {}));
-  EXPECT_EQ(get_slice("param_2", {}), get_slice("b", {}));
-  EXPECT_EQ(get_slice("result.1", {}), get_slice("async-done.1", {}));
-  EXPECT_EQ(get_slice("result.2", {}), get_slice("async-done.2", {}));
-
-  // Make sure the intermediate values in the async called computation have
-  // different allocated slices than the values that overlap it.
-  for (const auto& hlo_name : {"negate_0", "negate_1", "negate_2", "negate_3",
-                               "negate_4", "negate_5"}) {
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_6", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_7", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_8", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("negate_9", {}));
-    EXPECT_NE(get_slice(hlo_name, {}), get_slice("add_0", {}));
-  }
-
-  // Make sure the private stack allocations negate_1-3 are allocated at the
-  // same offset.
-  EXPECT_NE(get_slice("negate_0", {}), get_slice("negate_1", {}));
-  EXPECT_EQ(get_slice("negate_1", {}), get_slice("negate_2", {}));
-  EXPECT_EQ(get_slice("negate_1", {}), get_slice("negate_3", {}));
-
-  // Make sure the private stacks for called_computation1 and
-  // called_computation2 are able to reuse the same offsets.
-  EXPECT_TRUE(get_slice("negate_4", {}) == get_slice("negate_0", {}) ||
-              get_slice("negate_4", {}) == get_slice("negate_1", {}));
-  EXPECT_TRUE(get_slice("negate_5", {}) == get_slice("negate_0", {}) ||
-              get_slice("negate_5", {}) == get_slice("negate_1", {}));
 }
 
 TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
@@ -4198,7 +4069,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   // If this ASSERT fails, we constructed a bogus sequence above and this test
   // itself is buggy.
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -4435,6 +4306,18 @@ TEST(BufferAllocationSliceProtoTest, FromProtoErrorSliceOutOfRange) {
                   absl::StatusCode::kOutOfRange,
                   HasSubstr("Buffer slice [offset=150, size=60] is out of "
                             "range for allocation #0 of size 200")));
+}
+
+TEST(BufferAllocationSliceTest, Empty) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/100, /*color=*/0);
+  BufferAllocation::Slice default_slice;
+  EXPECT_TRUE(default_slice.empty());
+
+  BufferAllocation::Slice empty_slice(&alloc, /*offset=*/0, /*size=*/0);
+  EXPECT_TRUE(empty_slice.empty());
+
+  BufferAllocation::Slice non_empty_slice(&alloc, /*offset=*/0, /*size=*/10);
+  EXPECT_FALSE(non_empty_slice.empty());
 }
 
 TEST(BufferAllocationTest, ToProto) {
@@ -5461,7 +5344,7 @@ TEST_F(BufferAssignmentTest, LiveRangeStartOrder) {
     opts.assignment_algorithm_for_computations_without_ordering =
         buffer_assignment::
             AssignmentAlgorithmForComputationsWithoutOrderingProto::FAST_MERGE;
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto assignment,
         BufferAssigner::Run(
             module.get(), std::make_unique<SequentialHloOrdering>(schedule),
@@ -5911,6 +5794,47 @@ TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeSize) {
                                             &BufferSizeBytes, &alias_info_);
   EXPECT_FALSE(result.ok());
   EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
+}
+
+TEST_F(BufferAssignmentTest,
+       ToProtoSortsAssignedBuffersAndPopulatesNestedTupleAliases) {
+  const char* const hlo_text = R"(
+    HloModule test
+    cond {
+      p = (f32[4]{0}, f32[8]{0}) parameter(0)
+      ROOT cond_res = pred[] constant(true)
+    }
+    body {
+      p = (f32[4]{0}, f32[8]{0}) parameter(0)
+      gte0 = f32[4]{0} get-tuple-element(p), index=0
+      gte1 = f32[8]{0} get-tuple-element(p), index=1
+      neg0 = f32[4]{0} negate(gte0)
+      ROOT out = (f32[4]{0}, f32[8]{0}) tuple(neg0, gte1)
+    }
+    ENTRY e {
+      p0 = (f32[4]{0}, f32[8]{0}) parameter(0)
+      ROOT loop = (f32[4]{0}, f32[8]{0}) while(p0), condition=cond, body=body
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  std::unique_ptr<BufferAssignment> buffers = RunBufferAssignment(module.get());
+  BufferAssignmentProto proto = buffers->ToProto();
+
+  EXPECT_FALSE(proto.logical_buffers().empty());
+  EXPECT_FALSE(proto.buffer_aliases().empty());
+  for (const BufferAllocationProto& alloc : proto.buffer_allocations()) {
+    for (int i = 1; i < alloc.assigned_size(); ++i) {
+      EXPECT_LT(alloc.assigned(i - 1).logical_buffer_id(),
+                alloc.assigned(i).logical_buffer_id());
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> roundtrip,
+      BufferAssignment::FromProto(proto, module.get(), &BufferSizeBytes,
+                                  &alias_info_));
+  EXPECT_EQ(roundtrip->Allocations().size(), buffers->Allocations().size());
 }
 
 }  // namespace

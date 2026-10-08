@@ -94,7 +94,7 @@ template <typename Op>
 absl::Status PopulateConvMap(
     const ConvMapProto& m,
     AutotuneMap<ConvParameters, AutotuneEntry<Op>>* autotune_map) {
-  if (m.kv_pairs().size() == 0) {
+  if (m.kv_pairs().empty()) {
     return absl::OkStatus();
   }
 

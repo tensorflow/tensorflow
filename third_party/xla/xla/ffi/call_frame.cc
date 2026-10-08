@@ -17,25 +17,21 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/types/span.h"
-#include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/attribute_map.h"
+#include "xla/ffi/attributes_storage.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
@@ -126,7 +122,7 @@ void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
 
 CallFrame CallFrameBuilder::Build() {
   return CallFrame(CallFrame::CreateArgs(args_), CallFrame::CreateRets(rets_),
-                   CallFrame::CreateAttrs(attrs_));
+                   AttributesStorage::Create(attrs_));
 }
 
 CallFrameBuilder::CallFrameBuilder(CallFrameBuilder&&) = default;
@@ -134,7 +130,7 @@ CallFrameBuilder& CallFrameBuilder::operator=(CallFrameBuilder&&) = default;
 
 // ------------------------    !!! !!! !!!     ------------------------------ //
 
-// WARNING: In many structs defined below we use a pattern where we declare
+// WARNING: In the structs defined below we use a pattern where we declare
 // a storage (e.g. an `std::string` member) and an XLA FFI reference type
 // pointing into that storage in the same struct (XLA_FFI_ByteSpan). Extra care
 // should be taken of keeping reference type up to date, e.g. if a parent
@@ -158,33 +154,6 @@ struct CallFrame::Buffer {
   XLA_FFI_Buffer buffer = {XLA_FFI_Buffer_STRUCT_SIZE, nullptr};
 };
 
-struct CallFrame::Dictionary {
-  std::unique_ptr<Attributes> attrs;
-};
-
-struct CallFrame::Array {
-  xla::ffi::Array value;  // XLA_FFI_Array::data
-
-  XLA_FFI_Array array = {};
-};
-
-struct CallFrame::Scalar {
-  xla::ffi::Scalar value;  // XLA_FFI_Scalar::value
-
-  XLA_FFI_Scalar scalar = {};
-};
-
-struct CallFrame::String {
-  std::string value;  // XLA_FFI_ByteSpan::ptr
-
-  XLA_FFI_ByteSpan span = {};
-};
-
-struct CallFrame::NamedAttribute {
-  String name;
-  Attribute value;
-};
-
 struct CallFrame::Arguments {
   std::vector<Buffer> arguments;
 
@@ -203,16 +172,6 @@ struct CallFrame::Results {
   XLA_FFI_Rets ffi_rets = {XLA_FFI_Rets_STRUCT_SIZE, nullptr};
 };
 
-struct CallFrame::Attributes {
-  std::vector<NamedAttribute> attributes;
-
-  std::vector<XLA_FFI_ByteSpan*> names;  // XLA_FFI_Attributes::names
-  std::vector<XLA_FFI_AttrType> types;   // XLA_FFI_Attributes::types
-  std::vector<void*> attrs;              // XLA_FFI_Attributes::attrs
-
-  XLA_FFI_Attrs ffi_attrs = {XLA_FFI_Attrs_STRUCT_SIZE, nullptr};
-};
-
 //===----------------------------------------------------------------------===//
 // CallFrame
 //===----------------------------------------------------------------------===//
@@ -223,7 +182,7 @@ CallFrame::~CallFrame() = default;
 
 CallFrame::CallFrame(std::unique_ptr<Arguments> arguments,
                      std::unique_ptr<Results> results,
-                     std::shared_ptr<Attributes> attributes)
+                     std::shared_ptr<const AttributesStorage> attributes)
     : arguments_(std::move(arguments)),
       results_(std::move(results)),
       attributes_(std::move(attributes)) {}
@@ -237,7 +196,7 @@ XLA_FFI_CallFrame CallFrame::Build(const XLA_FFI_Api* api,
   call_frame.stage = stage;
   call_frame.args = arguments_->ffi_args;
   call_frame.rets = results_->ffi_rets;
-  call_frame.attrs = attributes_->ffi_attrs;
+  call_frame.attrs = attributes_->ffi_attrs();
   return call_frame;
 }
 
@@ -407,150 +366,6 @@ std::unique_ptr<CallFrame::Results> CallFrame::FixUpRets(
   rets->ffi_rets.rets = rets->rets.data();
 
   return rets;
-}
-
-//===----------------------------------------------------------------------===//
-// Call frame attributes
-//===----------------------------------------------------------------------===//
-
-// An std::visit overload set for converting CallFrameBuilder::Attribute to
-// CallFrame::Attribute.
-struct CallFrame::ConvertAttribute {
-  CallFrame::Attribute operator()(const xla::ffi::Array& array) {
-    return CallFrame::Array{array};
-  }
-
-  CallFrame::Attribute operator()(const xla::ffi::Scalar& scalar) {
-    return CallFrame::Scalar{scalar};
-  }
-
-  CallFrame::Attribute operator()(const std::string& str) {
-    return CallFrame::String{str};
-  }
-
-  CallFrame::Attribute operator()(const xla::ffi::AttributesDictionary& dict) {
-    return Dictionary{CreateAttrs(*dict.attrs)};
-  }
-};
-
-// An std::visit overload set to fix up CallFrame::Attribute storage and
-// initialize XLA FFI structs with valid pointers into storage objects.
-struct CallFrame::FixUpAttribute {
-  void operator()(CallFrame::Array& array) {
-    auto visitor = [&](auto& value) {
-      using T = typename std::remove_reference_t<decltype(value)>::value_type;
-      array.array.dtype = internal::NativeTypeToCApiDataType<T>();
-      array.array.size = value.size();
-      array.array.data = value.data();
-    };
-    std::visit(visitor, array.value.AsVariant());
-  }
-
-  void operator()(CallFrame::Scalar& scalar) {
-    auto visitor = [&](auto& value) {
-      using T = std::remove_reference_t<decltype(value)>;
-      scalar.scalar.dtype = internal::NativeTypeToCApiDataType<T>();
-      scalar.scalar.value = &value;
-    };
-    std::visit(visitor, scalar.value.AsVariant());
-  }
-
-  void operator()(CallFrame::String& str) {
-    str.span.ptr = str.value.data();
-    str.span.len = str.value.size();
-  }
-
-  void operator()(CallFrame::Dictionary&) {}
-};
-
-// An std::visit overload set to get CallFrame::Attribute XLA FFI type.
-struct CallFrame::AttributeType {
-  XLA_FFI_AttrType operator()(CallFrame::Array&) {
-    return XLA_FFI_AttrType_ARRAY;
-  }
-
-  XLA_FFI_AttrType operator()(CallFrame::Scalar&) {
-    return XLA_FFI_AttrType_SCALAR;
-  }
-
-  XLA_FFI_AttrType operator()(CallFrame::String&) {
-    return XLA_FFI_AttrType_STRING;
-  }
-
-  XLA_FFI_AttrType operator()(CallFrame::Dictionary&) {
-    return XLA_FFI_AttrType_DICTIONARY;
-  }
-};
-
-// An std::visit overload set to get CallFrame::Attribute storage pointer.
-struct CallFrame::AttributeStorage {
-  template <typename T>
-  void* operator()(T& value) {
-    return &value;
-  }
-
-  void* operator()(CallFrame::Array& array) { return &array.array; }
-
-  void* operator()(CallFrame::Scalar& scalar) { return &scalar.scalar; }
-
-  void* operator()(CallFrame::String& str) { return &str.span; }
-
-  void* operator()(CallFrame::Dictionary& dict) {
-    return &dict.attrs->ffi_attrs;
-  }
-};
-
-std::unique_ptr<CallFrame::Attributes> CallFrame::CreateAttrs(
-    const xla::ffi::AttributesMap& battrs) {
-  auto attrs = std::make_unique<Attributes>();
-
-  // Convert call frame builder attributes to a collection of named attributes.
-  attrs->attributes.reserve(battrs.size());
-  for (auto& [name, battr] : battrs) {
-    NamedAttribute attr = {String{name},
-                           std::visit(ConvertAttribute(), battr.AsVariant())};
-    attrs->attributes.push_back(std::move(attr));
-  }
-
-  // Sort attributes by name to enable binary search at run time.
-  absl::c_sort(attrs->attributes,
-               [](const NamedAttribute& a, const NamedAttribute& b) {
-                 return a.name.value < b.name.value;
-               });
-
-  return FixUpAttrs(std::move(attrs));
-}
-
-std::unique_ptr<CallFrame::Attributes> CallFrame::FixUpAttrs(
-    std::unique_ptr<CallFrame::Attributes> attrs) {
-  size_t num_attrs = attrs->attributes.size();
-  DCHECK(attrs->names.empty() && attrs->types.empty() && attrs->attrs.empty());
-
-  attrs->names.reserve(num_attrs);
-  attrs->types.reserve(num_attrs);
-  attrs->attrs.reserve(num_attrs);
-
-  // Fix up XLA FFI structs to point to correct storage.
-  for (NamedAttribute& attr : attrs->attributes) {
-    std::invoke(FixUpAttribute{}, attr.name);
-    std::visit(FixUpAttribute{}, attr.value);
-  }
-
-  // Initialize vectors required for building XLA_FFI_Attributes.
-  for (NamedAttribute& attr : attrs->attributes) {
-    attrs->names.push_back(&attr.name.span);
-    attrs->types.push_back(std::visit(AttributeType(), attr.value));
-    attrs->attrs.push_back(std::visit(AttributeStorage(), attr.value));
-  }
-
-  // Finally initialize XLA FFI struct. At this point all storage is allocated
-  // and it's safe to grab a pointer to it.
-  attrs->ffi_attrs.size = attrs->attributes.size();
-  attrs->ffi_attrs.names = attrs->names.data();
-  attrs->ffi_attrs.types = attrs->types.data();
-  attrs->ffi_attrs.attrs = attrs->attrs.data();
-
-  return attrs;
 }
 
 //===----------------------------------------------------------------------===//

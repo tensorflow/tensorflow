@@ -264,6 +264,25 @@ TEST(DebugOptions, CollectiveKernelsFlagShortEnumNameUppercase) {
               ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE));
 }
 
+TEST(DebugOptions, CollectiveKernelsFlagAllCollectives) {
+  DebugOptions opts = ParseCollectiveKernelsFlag("ALL_COLLECTIVES");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
+}
+
+TEST(DebugOptions, CollectiveKernelsFlagLowercaseAllCollectives) {
+  DebugOptions opts = ParseCollectiveKernelsFlag("all_collectives");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
+}
+
+TEST(DebugOptions, CollectiveKernelsFlagFullEnumNameAllCollectives) {
+  DebugOptions opts =
+      ParseCollectiveKernelsFlag("COLLECTIVE_KERNEL_ALL_COLLECTIVES");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
+}
+
 TEST(DebugOptions, CollectiveKernelsFlagEmptyDisablesAll) {
   DebugOptions opts = ParseCollectiveKernelsFlag("");
   EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(), IsEmpty());

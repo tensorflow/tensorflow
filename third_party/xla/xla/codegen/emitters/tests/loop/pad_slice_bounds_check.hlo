@@ -1,0 +1,19 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt --xla-test-optimize | FileCheck %s
+// RUN: cpu_fusion_to_mlir %s | emitters_opt --xla-test-optimize | FileCheck %s
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+fusion {
+  p0 = f32[4,4] parameter(0)
+  c0 = f32[] constant(0)
+  pad = f32[7,6] pad(p0, c0), padding=0_0_1x0_2
+  ROOT slice = f32[7,5] slice(pad), slice={[0:7], [1:6]}
+}
+
+// CHECK-LABEL: func.func private @fusion_slice(
+// CHECK-SAME:    %[[IN:[a-zA-Z0-9]*]]: tensor<4x4xf32>
+// CHECK-SAME:    %[[J:[a-zA-Z0-9]*]]: index {xla.range = [0 : index, 4 : index]}
+// CHECK:         %[[COL:.*]] = xla.apply_indexing #{{.*}}(%[[J]])
+// CHECK:         arith.cmpi sle, %[[COL]], %{{.*}} : index
+// CHECK:         scf.if
+// CHECK:           tensor.extract %[[IN]][%{{.*}}, %[[COL]]]

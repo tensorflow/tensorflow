@@ -187,8 +187,12 @@ struct TransposePlan::Node {
   bool is_inner_dim_in_b = false;
 };
 
+// Size of the stride-1 dimension handled by the interleave kernels.
+constexpr int kInterleaveSize = 3;
+
 template <typename T, int inner_bs,
-          TransposePlan::Transformation transformation>
+          TransposePlan::Transformation transformation,
+          TransposePlan::InnerKernelKind kind>
 ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
                  char* __restrict b, int64_t ldb, int outer_bs_b,
@@ -196,6 +200,14 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
   DVLOG(10) << "MacroKernel lda=" << lda << " ldb=" << ldb
             << " outer_bs_a=" << outer_bs_a << " outer_bs_b=" << outer_bs_b
             << " inner_bs=" << inner_bs;
+
+  if constexpr (kind == TransposePlan::InnerKernelKind::kInterleave) {
+    InterleaveKernel<T, kInterleaveSize>(a, lda, b, outer_bs_a * inner_bs);
+    return;
+  } else if constexpr (kind == TransposePlan::InnerKernelKind::kDeinterleave) {
+    DeinterleaveKernel<T, kInterleaveSize>(a, b, ldb, outer_bs_b * inner_bs);
+    return;
+  }
 
   // TODO(phawkins): consider adding prefetching and streaming stores.
 
@@ -254,7 +266,8 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
 // Transpose() is a driver function that implements a multidimensional loop nest
 // following by iterating over the linked Node data structure.
 template <typename T, int inner_bs,
-          TransposePlan::Transformation transformation>
+          TransposePlan::Transformation transformation,
+          TransposePlan::InnerKernelKind kind>
 ABSL_ATTRIBUTE_FUNC_ALIGN(64)
 void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
                int outer_bs_b, TransposePlan::Node const* __restrict node,
@@ -291,7 +304,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
     const int64_t ldb_block = next_node->ldb;
     int64_t i;
     for (i = 0; i < stop; i += inc) {
-      MacroKernel<T, inner_bs, transformation>(
+      MacroKernel<T, inner_bs, transformation, kind>(
           a_offset(i), lda_block, outer_bs_a, b_offset(i), ldb_block,
           outer_bs_b, scratch, bits_per_element);
     }
@@ -303,7 +316,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
       if (node->is_inner_dim_in_a) {
         outer_bs_a = (end - i) / inner_bs;
         if (outer_bs_a > 0) {
-          MacroKernel<T, inner_bs, transformation>(
+          MacroKernel<T, inner_bs, transformation, kind>(
               a_offset(i), lda_block, outer_bs_a, b_offset(i), ldb_block,
               outer_bs_b, scratch, bits_per_element);
           i += outer_bs_a * inner_bs;
@@ -311,20 +324,20 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
         // If there are still trailing elements left over that don't fit in the
         // inner block size, handle them via an unvectorized transpose.
         if (i < end) {
-          MacroKernel<T, 1, transformation>(
+          MacroKernel<T, 1, transformation, kind>(
               a_offset(i), lda_block, end - i, b_offset(i), ldb_block,
               outer_bs_b * inner_bs, scratch, bits_per_element);
         }
       } else if (node->is_inner_dim_in_b) {
         outer_bs_b = (end - i) / inner_bs;
         if (outer_bs_b > 0) {
-          MacroKernel<T, inner_bs, transformation>(
+          MacroKernel<T, inner_bs, transformation, kind>(
               a_offset(i), lda_block, outer_bs_a, b_offset(i), ldb_block,
               outer_bs_b, scratch, bits_per_element);
           i += outer_bs_b * inner_bs;
         }
         if (i < end) {
-          MacroKernel<T, 1, transformation>(
+          MacroKernel<T, 1, transformation, kind>(
               a_offset(i), lda_block, outer_bs_a * inner_bs, b_offset(i),
               ldb_block, end - i, scratch, bits_per_element);
         }
@@ -340,11 +353,11 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
       if (trailing_next_node->inc < 0) {
         const int64_t lda_block = trailing_next_node->lda;
         const int64_t ldb_block = trailing_next_node->ldb;
-        MacroKernel<T, inner_bs, transformation>(
+        MacroKernel<T, inner_bs, transformation, kind>(
             a_offset(i), lda_block, outer_bs_a, b_offset(i), ldb_block,
             outer_bs_b, scratch, bits_per_element);
       } else {
-        Transpose<T, inner_bs, transformation>(
+        Transpose<T, inner_bs, transformation, kind>(
             a_offset(i), outer_bs_a, b_offset(i), outer_bs_b,
             trailing_next_node, scratch, bits_per_element);
       }
@@ -355,9 +368,9 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
     // but we call Transpose() recursively instead of MacroKernel().
     int64_t i;
     for (i = 0; i < stop; i += inc) {
-      Transpose<T, inner_bs, transformation>(a_offset(i), outer_bs_a,
-                                             b_offset(i), outer_bs_b, next_node,
-                                             scratch, bits_per_element);
+      Transpose<T, inner_bs, transformation, kind>(
+          a_offset(i), outer_bs_a, b_offset(i), outer_bs_b, next_node, scratch,
+          bits_per_element);
     }
     if (i < end) {
       DCHECK_EQ(node->trailing_tile_next_node_inc, 0);
@@ -365,28 +378,28 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
       if (node->is_inner_dim_in_a) {
         outer_bs_a = (end - i) / inner_bs;
         if (outer_bs_a > 0) {
-          Transpose<T, inner_bs, transformation>(
+          Transpose<T, inner_bs, transformation, kind>(
               a_offset(i), outer_bs_a, b_offset(i), outer_bs_b, next_node,
               scratch, bits_per_element);
           i += outer_bs_a * inner_bs;
         }
         if (i < end) {
-          Transpose<T, 1, transformation>(a_offset(i), end - i, b_offset(i),
-                                          outer_bs_b * inner_bs, next_node,
-                                          scratch, bits_per_element);
+          Transpose<T, 1, transformation, kind>(
+              a_offset(i), end - i, b_offset(i), outer_bs_b * inner_bs,
+              next_node, scratch, bits_per_element);
         }
       } else if (node->is_inner_dim_in_b) {
         outer_bs_b = (end - i) / inner_bs;
         if (outer_bs_b > 0) {
-          Transpose<T, inner_bs, transformation>(
+          Transpose<T, inner_bs, transformation, kind>(
               a_offset(i), outer_bs_a, b_offset(i), outer_bs_b, next_node,
               scratch, bits_per_element);
           i += outer_bs_b * inner_bs;
         }
         if (i < end) {
-          Transpose<T, 1, transformation>(a_offset(i), outer_bs_a * inner_bs,
-                                          b_offset(i), end - i, next_node,
-                                          scratch, bits_per_element);
+          Transpose<T, 1, transformation, kind>(
+              a_offset(i), outer_bs_a * inner_bs, b_offset(i), end - i,
+              next_node, scratch, bits_per_element);
         }
       }
     } else if (node->trailing_tile_next_node_inc) {
@@ -395,11 +408,11 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
       if (trailing_next_node->inc < 0) {
         const int64_t lda_block = trailing_next_node->lda;
         const int64_t ldb_block = trailing_next_node->ldb;
-        MacroKernel<T, inner_bs, transformation>(
+        MacroKernel<T, inner_bs, transformation, kind>(
             a_offset(i), lda_block, outer_bs_a, b_offset(i), ldb_block,
             outer_bs_b, scratch, bits_per_element);
       } else {
-        Transpose<T, inner_bs, transformation>(
+        Transpose<T, inner_bs, transformation, kind>(
             a_offset(i), outer_bs_a, b_offset(i), outer_bs_b,
             trailing_next_node, scratch, bits_per_element);
       }
@@ -472,45 +485,86 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
   tsl::profiler::TraceMe traceme([&]() {
     return tsl::profiler::TraceMeEncode(
         "TransposePlan::ExecuteTyped",
-        {{"inner_kernel_is_memcpy", inner_kernel_is_memcpy_},
+        {{"inner_kernel_is_memcpy", inner_kernel_is_memcpy()},
          {"inner_block_elems", inner_block_elems_}});
   });
 
-  CHECK(!inner_kernel_is_memcpy_);
+  CHECK(!inner_kernel_is_memcpy());
   std::unique_ptr<char[]> scratch;
   if (scratch_size_ > 0) {
     scratch.reset(new char[scratch_size_]);
   }
   DCHECK_LE(sizeof(T) * inner_block_elems_, kMaxInnerBlockSizeBytes);
-  auto handle_inner_block_elems = [&](auto const_inner_block_elems) {
+  auto handle_inner_block_elems = [&](auto const_inner_block_elems,
+                                      auto const_kind) {
     if (nodes.size() > 1) {
-      Transpose<T, const_inner_block_elems, transformation>(
+      Transpose<T, const_inner_block_elems, transformation, const_kind>(
           a, outer_block_elems_a_, b, outer_block_elems_b_, nodes.data(),
           scratch.get(), bits_per_element);
     } else {
-      MacroKernel<T, const_inner_block_elems, transformation>(
+      MacroKernel<T, const_inner_block_elems, transformation, const_kind>(
           a, nodes.back().lda, outer_block_elems_a_, b, nodes.back().ldb,
           outer_block_elems_b_, scratch.get(), bits_per_element);
     }
   };
-  switch (inner_block_elems_) {
-    case 1:
-      handle_inner_block_elems(std::integral_constant<int, 1>{});
+  switch (inner_kernel_kind_) {
+    case InnerKernelKind::kDefault: {
+      auto const_kind =
+          std::integral_constant<InnerKernelKind, InnerKernelKind::kDefault>{};
+      switch (inner_block_elems_) {
+        case 1:
+          handle_inner_block_elems(std::integral_constant<int, 1>{},
+                                   const_kind);
+          break;
+        case 2:
+          handle_inner_block_elems(std::integral_constant<int, 2>{},
+                                   const_kind);
+          break;
+        case 4:
+          handle_inner_block_elems(std::integral_constant<int, 4>{},
+                                   const_kind);
+          break;
+        case 8:
+          handle_inner_block_elems(std::integral_constant<int, 8>{},
+                                   const_kind);
+          break;
+        case 16:
+          handle_inner_block_elems(std::integral_constant<int, 16>{},
+                                   const_kind);
+          break;
+        default:
+          LOG(FATAL) << "Invalid inner_block_elems_ " << inner_block_elems_;
+      }
       break;
-    case 2:
-      handle_inner_block_elems(std::integral_constant<int, 2>{});
+    }
+    case InnerKernelKind::kInterleave:
+      if constexpr (transformation == Transformation::kNone && sizeof(T) <= 8) {
+        DCHECK_EQ(inner_block_elems_, 1);
+        handle_inner_block_elems(
+            std::integral_constant<int, 1>{},
+            std::integral_constant<InnerKernelKind,
+                                   InnerKernelKind::kInterleave>{});
+      } else {
+        LOG(FATAL) << "Unreachable: kInterleave with transformation="
+                   << static_cast<int>(transformation)
+                   << " sizeof(T)=" << sizeof(T);
+      }
       break;
-    case 4:
-      handle_inner_block_elems(std::integral_constant<int, 4>{});
+    case InnerKernelKind::kDeinterleave:
+      if constexpr (transformation == Transformation::kNone && sizeof(T) <= 8) {
+        DCHECK_EQ(inner_block_elems_, 1);
+        handle_inner_block_elems(
+            std::integral_constant<int, 1>{},
+            std::integral_constant<InnerKernelKind,
+                                   InnerKernelKind::kDeinterleave>{});
+      } else {
+        LOG(FATAL) << "Unreachable: kDeinterleave with transformation="
+                   << static_cast<int>(transformation)
+                   << " sizeof(T)=" << sizeof(T);
+      }
       break;
-    case 8:
-      handle_inner_block_elems(std::integral_constant<int, 8>{});
-      break;
-    case 16:
-      handle_inner_block_elems(std::integral_constant<int, 16>{});
-      break;
-    default:
-      LOG(FATAL) << "Invalid inner_block_elems_ " << inner_block_elems_;
+    case InnerKernelKind::kMemcpy:
+      LOG(FATAL) << "Unreachable: memcpy plans do not call ExecuteTyped";
   }
 }
 
@@ -559,7 +613,7 @@ void TransposePlan::ExecuteChunk(int chunk_id, const void* a, void* b,
     }
   }
 
-  if (inner_kernel_is_memcpy_) {
+  if (inner_kernel_is_memcpy()) {
     CHECK(transformation_ == Transformation::kNone);
     // Memcpy-based plans all assume element size 1 (i.e., bytes).
     TransposeConstStride1(ac, bc, nodes.data());
@@ -790,14 +844,14 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       // We've reached the end of the loop nest.
       // Transpose loops have a sentinel node, indicated by a negative `inc`
       // value, that describes the striding of the inner transpose kernel.
-      if (!inner_kernel_is_memcpy_) {
+      if (!inner_kernel_is_memcpy()) {
         Node node;
         node.end = node.inc = -1;
         node.lda = sentinel_lda_;
         node.ldb = sentinel_ldb_;
         nodes.push_back(node);
       }
-      DCHECK(!(inner_kernel_is_memcpy_ && agendum.parent_node_id >= 0));
+      DCHECK(!(inner_kernel_is_memcpy() && agendum.parent_node_id >= 0));
       continue;
     }
 
@@ -820,12 +874,12 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       int64_t actual_end = std::min<int64_t>(size, loop.end);
       node.end = std::max<int64_t>(0, actual_end - actual_start);
 
-      if (node.is_inner_dim_in_a && inner_kernel_is_memcpy_) {
+      if (node.is_inner_dim_in_a && inner_kernel_is_memcpy()) {
         node.end *= elem_size_in_bytes_;
       }
 
       if (!loop_has_trivial_iteration_space(node) ||
-          (inner_kernel_is_memcpy_ && node.is_inner_dim_in_a)) {
+          (inner_kernel_is_memcpy() && node.is_inner_dim_in_a)) {
         nodes.push_back(node);
       }
       Agendum new_agendum;
@@ -867,13 +921,13 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       node.end = std::max<int64_t>(
           0, std::min<int64_t>(num_tiles, loop.end) - loop.start);
 
-      if (node.is_inner_dim_in_a && inner_kernel_is_memcpy_) {
+      if (node.is_inner_dim_in_a && inner_kernel_is_memcpy()) {
         node.end *= elem_size_in_bytes_;
       }
 
       // If this loop has a trivial iteration space, drop it.
       if (!loop_has_trivial_iteration_space(node) ||
-          (inner_kernel_is_memcpy_ && node.is_inner_dim_in_a) ||
+          (inner_kernel_is_memcpy() && node.is_inner_dim_in_a) ||
           has_trailing_plan_node) {
         nodes.push_back(node);
       }
@@ -1168,11 +1222,13 @@ absl::Status TransposePlan::Initialize() {
   int64_t stride_pos1b =
       inner_stride(pos_stride1b_in_b, ldb_, ldb_tile_, b_tiling_);
 
-  inner_kernel_is_memcpy_ = (pos_stride1b_in_a == pos_stride1a_in_a) &&
-                            (stride_pos1a == elem_size_in_bytes_) &&
-                            (stride_pos1b == elem_size_in_bytes_);
+  inner_kernel_kind_ = (pos_stride1b_in_a == pos_stride1a_in_a) &&
+                               (stride_pos1a == elem_size_in_bytes_) &&
+                               (stride_pos1b == elem_size_in_bytes_)
+                           ? InnerKernelKind::kMemcpy
+                           : InnerKernelKind::kDefault;
 
-  if (inner_kernel_is_memcpy_ && transformation_ != Transformation::kNone) {
+  if (inner_kernel_is_memcpy() && transformation_ != Transformation::kNone) {
     if (transformation_ == Transformation::kPackSubbyte) {
       transformation_ = Transformation::kNone;
       use_fallback_pack_ = true;
@@ -1183,7 +1239,7 @@ absl::Status TransposePlan::Initialize() {
   }
 
   // Calculate sentinel strides.
-  if (!inner_kernel_is_memcpy_) {
+  if (!inner_kernel_is_memcpy()) {
     int pos_stride1a_in_b = inverse_permutation[pos_stride1a_in_a];
     sentinel_lda_ = inner_stride(pos_stride1b_in_a, lda_, lda_tile_, a_tiling_);
     sentinel_ldb_ = inner_stride(pos_stride1a_in_b, ldb_, ldb_tile_, b_tiling_);
@@ -1269,8 +1325,32 @@ absl::Status TransposePlan::Initialize() {
     b_stride1_size = std::min(b_stride1_size, b_dims_[pos_stride1b_in_b]);
   }
 
-  constexpr int kMaxOuterBlockElems = 16;
-  if (inner_kernel_is_memcpy_) {
+  if (!inner_kernel_is_memcpy() && transformation_ == Transformation::kNone &&
+      (elem_size_in_bytes_ == 1 || elem_size_in_bytes_ == 2 ||
+       elem_size_in_bytes_ == 4 || elem_size_in_bytes_ == 8)) {
+    auto loop_a = absl::c_find_if(
+        loop_order, [](const Loop& l) { return l.is_inner_dim_in_a; });
+    auto loop_b = absl::c_find_if(
+        loop_order, [](const Loop& l) { return l.is_inner_dim_in_b; });
+    if (loop_a != loop_order.end() && loop_b != loop_order.end() &&
+        loop_a != loop_b && loop_a->lda == elem_size_in_bytes_ &&
+        loop_a->ldb == sentinel_ldb_ && loop_b->lda == sentinel_lda_ &&
+        loop_b->ldb == elem_size_in_bytes_) {
+      if (!loop_b->tile_interior && loop_b->tile_size == 1 &&
+          loop_b->dim_size == kInterleaveSize &&
+          b_stride1_size == kInterleaveSize && a_stride1_size >= 8 &&
+          sentinel_ldb_ == kInterleaveSize * elem_size_in_bytes_) {
+        inner_kernel_kind_ = InnerKernelKind::kInterleave;
+      } else if (!loop_a->tile_interior && loop_a->tile_size == 1 &&
+                 loop_a->dim_size == kInterleaveSize &&
+                 a_stride1_size == kInterleaveSize && b_stride1_size >= 8 &&
+                 sentinel_lda_ == kInterleaveSize * elem_size_in_bytes_) {
+        inner_kernel_kind_ = InnerKernelKind::kDeinterleave;
+      }
+    }
+  }
+
+  if (inner_kernel_is_memcpy()) {
     inner_block_elems_ = -1;
     outer_block_elems_a_ = -1;
     outer_block_elems_b_ = -1;
@@ -1295,23 +1375,35 @@ absl::Status TransposePlan::Initialize() {
       default:
         LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
     }
-    inner_block_elems_ = max_inner_block_elems;
-    while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
-      inner_block_elems_ /= 2;
-    }
-    if (inner_block_elems_ < min_inner_block_elems) {
-      // Size is smaller than our smallest vectorized kernel. Use the scalar
-      // path.
+    if (inner_kernel_kind_ == InnerKernelKind::kInterleave) {
       inner_block_elems_ = 1;
+      outer_block_elems_a_ = std::min<int64_t>(
+          a_stride1_size, max_inner_block_elems * kMaxOuterBlockElems);
+      outer_block_elems_b_ = 1;
+    } else if (inner_kernel_kind_ == InnerKernelKind::kDeinterleave) {
+      inner_block_elems_ = 1;
+      outer_block_elems_a_ = 1;
+      outer_block_elems_b_ = std::min<int64_t>(
+          b_stride1_size, max_inner_block_elems * kMaxOuterBlockElems);
+    } else {
+      inner_block_elems_ = max_inner_block_elems;
+      while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
+        inner_block_elems_ /= 2;
+      }
+      if (inner_block_elems_ < min_inner_block_elems) {
+        // Size is smaller than our smallest vectorized kernel. Use the scalar
+        // path.
+        inner_block_elems_ = 1;
+      }
+      outer_block_elems_a_ = FloorOfRatio<int64_t>(
+          std::min<int64_t>(kMaxOuterBlockElems, a_stride1_size),
+          inner_block_elems_);
+      outer_block_elems_a_ = std::max<int64_t>(outer_block_elems_a_, 1);
+      outer_block_elems_b_ = FloorOfRatio<int64_t>(
+          std::min<int64_t>(kMaxOuterBlockElems, b_stride1_size),
+          inner_block_elems_);
+      outer_block_elems_b_ = std::max<int64_t>(outer_block_elems_b_, 1);
     }
-    outer_block_elems_a_ = FloorOfRatio<int64_t>(
-        std::min<int64_t>(kMaxOuterBlockElems, a_stride1_size),
-        inner_block_elems_);
-    outer_block_elems_a_ = std::max<int64_t>(outer_block_elems_a_, 1);
-    outer_block_elems_b_ = FloorOfRatio<int64_t>(
-        std::min<int64_t>(kMaxOuterBlockElems, b_stride1_size),
-        inner_block_elems_);
-    outer_block_elems_b_ = std::max<int64_t>(outer_block_elems_b_, 1);
   }
 
   // Identify contiguous loops for chunk scheduling.
@@ -1322,12 +1414,16 @@ absl::Status TransposePlan::Initialize() {
   ChooseLoopOrder(loop_order);
 
   for (Loop& loop : loop_order) {
-    if (!inner_kernel_is_memcpy_ &&
+    if (!inner_kernel_is_memcpy() &&
         (loop.tile_interior || loop.tile_size == 1)) {
       if (loop.is_inner_dim_in_a) {
-        loop.inc = inner_block_elems_ * outer_block_elems_a_;
+        loop.inc = (inner_kernel_kind_ == InnerKernelKind::kDeinterleave)
+                       ? loop.dim_size
+                       : inner_block_elems_ * outer_block_elems_a_;
       } else if (loop.is_inner_dim_in_b) {
-        loop.inc = inner_block_elems_ * outer_block_elems_b_;
+        loop.inc = (inner_kernel_kind_ == InnerKernelKind::kInterleave)
+                       ? loop.dim_size
+                       : inner_block_elems_ * outer_block_elems_b_;
       }
     }
   }
@@ -1338,7 +1434,7 @@ absl::Status TransposePlan::Initialize() {
   // both input and output.
 
   // The stride-1 loop must be innermost for a memcpy loop.
-  DCHECK(!inner_kernel_is_memcpy_ || loop_order.back().is_inner_dim_in_a)
+  DCHECK(!inner_kernel_is_memcpy() || loop_order.back().is_inner_dim_in_a)
       << ToString();
 
   int num_chunks = ChooseParallelizationStrategy(loop_order);
@@ -1361,13 +1457,13 @@ absl::Status TransposePlan::Initialize() {
     case Transformation::kF64ToEf57:
       scratch_size_ = sizeof(float) * inner_block_elems_ * inner_block_elems_ *
                       outer_block_elems_a_ * outer_block_elems_b_;
-      DCHECK(!inner_kernel_is_memcpy_);
+      DCHECK(!inner_kernel_is_memcpy());
       break;
     case Transformation::kPackSubbyte:
       scratch_size_ = sizeof(uint8_t) * inner_block_elems_ *
                       inner_block_elems_ * outer_block_elems_a_ *
                       outer_block_elems_b_;
-      DCHECK(!inner_kernel_is_memcpy_);
+      DCHECK(!inner_kernel_is_memcpy());
       break;
   }
 
@@ -1398,11 +1494,11 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
   //    favor better locality in at least one buffer for the inner loop.
   auto soft_cost = [&](const Loop& l) -> std::tuple<int, double, double> {
     int64_t a_stride = std::abs(l.lda);
-    if (!inner_kernel_is_memcpy_ && l.is_inner_dim_in_a) {
+    if (!inner_kernel_is_memcpy() && l.is_inner_dim_in_a) {
       a_stride *= inner_block_elems_ * outer_block_elems_a_;
     }
     int64_t b_stride = std::abs(l.ldb);
-    if (!inner_kernel_is_memcpy_ && l.is_inner_dim_in_b) {
+    if (!inner_kernel_is_memcpy() && l.is_inner_dim_in_b) {
       b_stride *= inner_block_elems_ * outer_block_elems_b_;
     }
 
@@ -1450,7 +1546,7 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
       const Loop& l = remaining[i];
 
       // Hard constraint 1: memcpy kernel requirement.
-      if (inner_kernel_is_memcpy_ && l.is_inner_dim_in_a &&
+      if (inner_kernel_is_memcpy() && l.is_inner_dim_in_a &&
           remaining.size() > 1) {
         continue;
       }
@@ -1496,7 +1592,11 @@ int TransposePlan::ChooseParallelizationStrategy(
   // Estimate the number of bytes each iteration of each loop processes.
   absl::InlinedVector<int64_t, 4> work_in_bytes(loop_order.size());
   int64_t acc = elem_size_in_bytes_;
-  if (!inner_kernel_is_memcpy_) {
+  if (inner_kernel_kind_ == InnerKernelKind::kInterleave ||
+      inner_kernel_kind_ == InnerKernelKind::kDeinterleave) {
+    acc *= kInterleaveSize * inner_block_elems_ * outer_block_elems_a_ *
+           outer_block_elems_b_;
+  } else if (!inner_kernel_is_memcpy()) {
     acc *= inner_block_elems_ * inner_block_elems_ * outer_block_elems_a_ *
            outer_block_elems_b_;
   }
@@ -1539,7 +1639,7 @@ int TransposePlan::ChooseParallelizationStrategy(
       continue;
     }
 
-    int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 26);
+    int kMinBytesPerThread = inner_kernel_is_memcpy() ? (1 << 20) : (1 << 26);
     int64_t min_iterations_per_thread =
         CeilOfRatio<int64_t>(kMinBytesPerThread, work_in_bytes[i]);
     int64_t parallel_work = CeilOfRatio(iterations, min_iterations_per_thread);
@@ -1752,10 +1852,25 @@ std::string TransposePlan::ToString() const {
       transformation_str = absl::StrCat("pack(", bits_per_element_, ")");
       break;
   }
+  absl::string_view inner_kernel_str;
+  switch (inner_kernel_kind_) {
+    case InnerKernelKind::kDefault:
+      inner_kernel_str = "default";
+      break;
+    case InnerKernelKind::kMemcpy:
+      inner_kernel_str = "memcpy";
+      break;
+    case InnerKernelKind::kInterleave:
+      inner_kernel_str = "interleave";
+      break;
+    case InnerKernelKind::kDeinterleave:
+      inner_kernel_str = "deinterleave";
+      break;
+  }
   return absl::StrFormat(
       "elem_size=%d a_dims=%s b_dims=%s permutation=%s a_tiling=%s b_tiling=%s "
       "lda=%s lda_tile=%s ldb=%s ldb_tile=%s "
-      "outer_bs=[%d,%d] inner_bs=%d "
+      "outer_bs=[%d,%d] inner_bs=%d inner_kernel=%s "
       "transformation=%s scratch_size=%d num_chunks_requested=%d\n"
       "chunk_loops:\n%s\n"
       "nodes:\n%s",
@@ -1765,7 +1880,7 @@ std::string TransposePlan::ToString() const {
       absl::StrJoin(b_tiling_, ","), absl::StrJoin(lda_, ","),
       absl::StrJoin(lda_tile_, ","), absl::StrJoin(ldb_, ","),
       absl::StrJoin(ldb_tile_, ","), outer_block_elems_a_, outer_block_elems_b_,
-      inner_block_elems_, transformation_str, scratch_size_,
+      inner_block_elems_, inner_kernel_str, transformation_str, scratch_size_,
       num_chunks_requested_, chunk_loops_str, nodes_str);
 }
 

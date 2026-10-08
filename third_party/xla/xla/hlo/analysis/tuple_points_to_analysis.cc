@@ -1088,45 +1088,6 @@ void TuplePointsToAnalysis::ApplyDeferredAliases(
   }
 }
 
-bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
-    const HloInstruction* operand, const ShapeIndex& index,
-    const HloInstruction* user) const {
-  CHECK(user->IsUserOf(operand))
-      << "user: " << user->ToString() << " operand: " << operand->ToString();
-  if (user->opcode() == HloOpcode::kGetTupleElement && !index.empty()) {
-    // GetTupleElement instructions only access the top-level buffer of their
-    // operand.
-    return true;
-  }
-  if (user->IsLoopFusion()) {
-    // Find fusion parameter associated with 'operand'.
-    auto it = absl::c_find_if(
-        user->fused_parameters(), [&](HloInstruction* fused_param) {
-          return user->operand(fused_param->parameter_number()) == operand;
-        });
-    CHECK(it != user->fused_parameters().end());
-    // Iterate through all users of all buffer aliases of the buffer in the
-    // points-to set of fusion parameter at 'index'.
-    // Return false if any uses are detected at 'index', returns true otherwise.
-    absl::StatusOr<const LogicalBuffer*> buffer =
-        GetBufferDefinedAt(*it, index);
-    CHECK_OK(buffer);
-    for (const BufferAlias& alias : GetBufferAliases(**buffer)) {
-      for (HloInstruction* alias_user : alias.instruction()->users()) {
-        if (DoesNotUseOperandBuffer(alias.instruction(), alias.index(),
-                                    alias_user)) {
-          continue;
-        }
-        // Return false: use detected at 'buffer' -> 'alias' -> 'alias_user'.
-        return false;
-      }
-    }
-    // Return true: found no uses of 'operand' at 'index' in 'user'.
-    return true;
-  }
-  return false;
-}
-
 std::string PointsToSet::ToString() const {
   std::string output;
   ForEachElement([&output](const ShapeIndex& index,

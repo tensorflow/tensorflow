@@ -20,8 +20,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -50,6 +53,10 @@ class CudaDeviceAllocator : public MemoryAllocator {
 
     // Whether to mark allocations as GPUDirect RDMA capable.
     bool enable_rdma = false;
+
+    // Whether to use CUDA Virtual Memory Management (VMM) APIs. If false,
+    // falls back to legacy cuMemAlloc / cuMemFree APIs.
+    bool use_vmm = true;
   };
 
   explicit CudaDeviceAllocator(StreamExecutor* executor);
@@ -59,6 +66,9 @@ class CudaDeviceAllocator : public MemoryAllocator {
       uint64_t size) final;
 
   const Options& options() const { return options_; }
+
+  static void EnterStreamCapture(StreamExecutor* executor);
+  static void ExitStreamCapture(StreamExecutor* executor);
 
  private:
   StreamExecutor* executor_;

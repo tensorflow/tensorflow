@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for Python ops defined in math_grad.py."""
 
+import math
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -668,12 +670,16 @@ class XdivyTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testZeroXGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      x = constant_op.constant(0., dtype=dtype)
-      y = constant_op.constant(3.1, dtype=dtype)
-      xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
-      zero = self.evaluate(x)
-      self.assertAllClose(zero, xdivy_xgrad)
-      self.assertAllClose(zero, xdivy_ygrad)
+      for y_val in [3.1, 0.0]:
+        x = constant_op.constant(0.0, dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
+        # Gradient w.r.t. x at x=0 should be 1 / y, not 0.
+        # d/dx (x / y) = 1 / y for all x including x=0.
+        expected_xgrad = self.evaluate(1 / y)
+        zero = self.evaluate(x)
+        self.assertAllClose(expected_xgrad, xdivy_xgrad)
+        self.assertAllClose(zero, xdivy_ygrad)
 
   @test_util.run_deprecated_v1
   def testZeroYGrad(self):
@@ -690,9 +696,19 @@ class XdivyTest(test.TestCase):
       x = constant_op.constant(0., dtype=dtype)
       y = constant_op.constant(0., dtype=dtype)
       xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
+      # Gradient w.r.t. x at x=0, y=0 is 1 / 0 = inf.
+      self.assertAllClose(np.inf, xdivy_xgrad)
       zero = self.evaluate(x)
-      self.assertAllClose(zero, xdivy_xgrad)
       self.assertAllClose(zero, xdivy_ygrad)
+
+  def testZeroNumeratorTapeGrad(self):
+    x = constant_op.constant(0.0, dtype=dtypes.float64)
+    y = constant_op.constant(2.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      z = math_ops.xdivy(x, y)
+    grad = tape.gradient(z, x)
+    self.assertAllClose(0.5, self.evaluate(grad))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -817,6 +833,110 @@ class PowGradTest(test.TestCase):
     g = self.evaluate(g)
     self.assertAllClose([-2., 0., 2.], g)
 
+  def test_pow_grad_y_finite_when_forward_overflows(self):
+    # Regression test for GitHub issue #126627 (b/555972764).
+    cases = [
+        (dtypes.float64, 2.0, 1024.0, 1.0, 1.2460659279417838e308),
+        (dtypes.float64, 2.0, 1023.0, 2.0, 1.2460659279417838e308),
+        (dtypes.float64, 8.0, 341.0, 0.25, 4.672747229781689e307),
+        (dtypes.float64, 0.5, -1024.0, 1.0, -1.2460659279417838e308),
+        (dtypes.float64, 2.0, 1025.0, 0.25, 6.230329639708919e307),
+        (dtypes.float64, 1e307, 2.0, 0.0, 0.0),
+        (dtypes.float32, 2.0, 128.0, 1.0, 2.3586576e38),
+        (dtypes.bfloat16, 2.0, 128.0, 1.0, 2.3586576e38),
+        (dtypes.float16, 1.0 + 2.0**-10, 11392.0, 512.0, 33696.0),
+    ]
+    for dtype, x_val, y_val, scale_val, expected in cases:
+      with self.subTest(dtype=dtype, x=x_val, y=y_val, scale=scale_val):
+        x = constant_op.constant(x_val, dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        scale = constant_op.constant(scale_val, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(y)
+          z = math_ops.pow(x, y)
+        gy = self.evaluate(tape.gradient(z, y, output_gradients=scale))
+        self.assertTrue(np.isfinite(gy))
+        rtol = 1e-2 if dtype == dtypes.bfloat16 else 1e-6
+        self.assertAllClose(expected, gy, rtol=rtol)
+
+    # Also verify elementwise masking across a mixed vector containing
+    # overflowing, non-overflowing, x = 0 (including z = inf), x < 0
+    # (including z = inf), and all z = NaN cases (y = NaN, x = NaN, and
+    # x < 0 with non-integer y).
+    x_vec = constant_op.constant(
+        [2.0, 2.0, 0.0, 0.0, -2.0, -2.0, 2.0, np.nan, -2.0],
+        dtype=dtypes.float64,
+    )
+    y_vec = constant_op.constant(
+        [1024.0, 3.0, 2.0, -2.0, 2.0, 1024.0, np.nan, 2.0, 0.5],
+        dtype=dtypes.float64,
+    )
+    with backprop.GradientTape() as tape:
+      tape.watch(y_vec)
+      z_vec = math_ops.pow(x_vec, y_vec)
+    gy_vec = self.evaluate(tape.gradient(z_vec, y_vec))
+    self.assertAllClose(
+        [
+            1.2460659279417838e308,
+            8.0 * np.log(2.0),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            np.nan,
+            np.nan,
+            np.nan,
+        ],
+        gy_vec,
+        rtol=1e-6,
+    )
+
+    # Verify empty-tensor (N = 0) shape preservation.
+    x_empty = constant_op.constant([], dtype=dtypes.float64)
+    y_empty = constant_op.constant([], dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(y_empty)
+      z_empty = math_ops.pow(x_empty, y_empty)
+    gy_empty = self.evaluate(tape.gradient(z_empty, y_empty))
+    self.assertEqual(gy_empty.shape, (0,))
+
+  def test_pow_grad_y_second_order_when_forward_overflows(self):
+    for x_val, y_val, expected_ggy in [
+        (2.0, 1024.0, 8.637070549523295e307),
+        (1.5, 1751.0, 3.562063418193927e307),
+    ]:
+      with self.subTest(x=x_val, y=y_val):
+        x = constant_op.constant(x_val, dtype=dtypes.float64)
+        y = constant_op.constant(y_val, dtype=dtypes.float64)
+        with backprop.GradientTape() as tape2:
+          tape2.watch(y)
+          with backprop.GradientTape() as tape1:
+            tape1.watch(y)
+            z = math_ops.pow(x, y)
+          gy = tape1.gradient(z, y)
+        ggy = self.evaluate(tape2.gradient(gy, y))
+        self.assertTrue(np.isinf(self.evaluate(z)))
+        self.assertTrue(np.isfinite(ggy))
+        self.assertAllClose(expected_ggy, ggy, rtol=1e-6)
+
+    # Also verify that when both x and y are watched (mixed second-order
+    # gradient d^2z / dx dy) at a point where x^(y-1) also overflows (e.g.
+    # x=2.0, y=1025.0), the unselected z branch does not inject 0 * inf = NaN.
+    x2 = constant_op.constant(2.0, dtype=dtypes.float64)
+    y2 = constant_op.constant(1025.0, dtype=dtypes.float64)
+    scale2 = constant_op.constant(2.0**-15, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape_outer:
+      tape_outer.watch([x2, y2])
+      with backprop.GradientTape() as tape_inner:
+        tape_inner.watch([x2, y2])
+        z2 = math_ops.pow(x2, y2)
+      _, gy2 = tape_inner.gradient(z2, [x2, y2], output_gradients=scale2)
+    dgydx, dgydy = self.evaluate(tape_outer.gradient(gy2, [x2, y2]))
+    self.assertFalse(np.isnan(dgydx))
+    self.assertTrue(np.isfinite(dgydx))
+    self.assertAllClose(3.9032448403173547e306, dgydx, rtol=1e-6)
+    self.assertTrue(np.isfinite(dgydy))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NextAfterTest(test.TestCase):
@@ -928,6 +1048,114 @@ class IgammaGradTest(test.TestCase):
       )  # pylint: disable=cell-var-from-loop
       err = gradient_checker_v2.max_error(*grad)
       self.assertLess(err, 1e-3)
+
+
+class TanhGradFloat64PrecisionTest(test.TestCase):
+  """Regression tests for GitHub issues #126524 and #126637.
+
+  tf.math.tanh / tf.nn.tanh used to return 0.0 for the gradient at float64
+  inputs with |x| >= ~19 because the C++ TanhGrad kernel computed
+  grad*(1 - y*y) using the rounded output y=tanh(x), which equals ±1.0 at
+  the tail, making 1-y*y = 0.  The fix uses the input x directly.
+  """
+
+  def _expected_tanh_grad(self, x_val):
+    """Analytic tanh derivative: 4*exp(-2|x|) / (1 + exp(-2|x|))^2."""
+    two_abs_x = 2.0 * abs(x_val)
+    e = math.exp(-two_abs_x)
+    return 4.0 * e / (1.0 + e) ** 2
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTanhGradFloat64TailPositive(self):
+    """Gradient must be finite and correct at x=+20.0 (float64)."""
+    x = constant_op.constant(20.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.tanh(x)
+    g = float(self.evaluate(tape.gradient(y, x)))
+    expected = self._expected_tanh_grad(20.0)
+    self.assertNotEqual(
+        g, 0.0, msg="Gradient must not be zero at x=20.0 (float64)"
+    )
+    self.assertNear(
+        g,
+        expected,
+        err=expected * 1e-6,
+        msg=f"Expected ~{expected:.6e}, got {g:.6e}",
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTanhGradFloat64TailNegative(self):
+    """Gradient must be finite and correct at x=-20.0 (float64)."""
+    x = constant_op.constant(-20.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.tanh(x)
+    g = float(self.evaluate(tape.gradient(y, x)))
+    expected = self._expected_tanh_grad(-20.0)
+    self.assertNotEqual(
+        g, 0.0, msg="Gradient must not be zero at x=-20.0 (float64)"
+    )
+    self.assertNear(
+        g,
+        expected,
+        err=expected * 1e-6,
+        msg=f"Expected ~{expected:.6e}, got {g:.6e}",
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTanhGradFloat64NearZeroUnchanged(self):
+    """Gradient at x=1.0 must still be correct (standard range, float64)."""
+    x = constant_op.constant(1.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.tanh(x)
+    g = float(self.evaluate(tape.gradient(y, x)))
+    expected = self._expected_tanh_grad(1.0)
+    self.assertNear(
+        g,
+        expected,
+        err=expected * 1e-12,
+        msg=f"Standard range broken: expected ~{expected:.6e}, got {g:.6e}",
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTanhGradFloat32UnchangedAtTail(self):
+    """Float32 path must still pass through C++ kernel (no regression)."""
+    x = constant_op.constant(20.0, dtype=dtypes.float32)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.tanh(x)
+    g = float(self.evaluate(tape.gradient(y, x)))
+    # float32 tanh(20) rounds to 1.0, so grad = 0.0 is expected (kernel
+    # precision limit), but must not raise an exception.
+    self.assertIsNotNone(g)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTanhGradFloat64ViaGradientChecker(self):
+    """Gradient checker must pass for float64 over a range with the tail."""
+    xs = np.array([-20.0, -10.0, -1.0, 0.0, 1.0, 10.0, 20.0], dtype=np.float64)
+    err = gradient_checker_v2.max_error(
+        *gradient_checker_v2.compute_gradient(math_ops.tanh, [xs])
+    )
+    # Central finite difference with default delta=1/1024 has an O(delta^2)
+    # truncation error of ~3.18e-7 at x=0. 1e-4 accounts for finite-difference
+    # approximation while maintaining high precision.
+    self.assertLess(
+        err,
+        1e-4,
+        msg=f"Gradient checker failed for tanh float64: err={err}",
+    )
+
+  @test_util.run_v2_only
+  def testTanhGradEagerDoesNotCrash(self):
+    """In eager mode (TF2), gradient computation must not raise TypeError."""
+    x = constant_op.constant(2.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.tanh(x)
+    g = tape.gradient(y, x)
+    self.assertIsNotNone(g)
 
 
 if __name__ == "__main__":

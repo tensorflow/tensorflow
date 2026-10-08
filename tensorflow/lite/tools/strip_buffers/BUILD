@@ -34,7 +34,6 @@ cc_library(
     hdrs = ["stripping_lib.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core:framework",
@@ -54,7 +53,6 @@ cc_binary(
     linkopts = tflite_linkopts(),
     deps = [
         ":stripping_lib",
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
@@ -71,7 +69,6 @@ cc_binary(
     linkopts = tflite_linkopts(),
     deps = [
         ":stripping_lib",
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",

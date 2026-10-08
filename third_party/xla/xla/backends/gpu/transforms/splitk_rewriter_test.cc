@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -60,11 +60,11 @@ ENTRY test {
                               lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          rewriter_.HloModulePass::Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       rewriter_.HloModulePass::Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
 CHECK: dot({{.*}}), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
@@ -86,11 +86,11 @@ TEST_F(SplitkRewriterTest, PaddingIsInserted) {
                                 lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          rewriter_.HloModulePass::Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       rewriter_.HloModulePass::Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
 CHECK: f32[16,102912]{1,0} pad(%lhs, %constant), padding=0_0x0_511
@@ -111,11 +111,11 @@ TEST_F(SplitkRewriterTest, AccumulatorTypeIsDifferentFromOutputType) {
                                 lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          rewriter_.HloModulePass::Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       rewriter_.HloModulePass::Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
 CHECK: f32{{.*}} dot(
@@ -137,11 +137,11 @@ TEST_F(SplitkRewriterTest, NoSplitKIfEnoughWork) {
                              lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          rewriter_.HloModulePass::Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       rewriter_.HloModulePass::Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -158,11 +158,11 @@ TEST_F(SplitkRewriterTest, DoNotSplitKS32) {
                     lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          rewriter_.HloModulePass::Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       rewriter_.HloModulePass::Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -181,8 +181,8 @@ ENTRY %main.2 (broadcast: f32[2,128,128], b.1: f32[128,2,128]) -> f32[2,128,128]
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   CHECK_OK(splitk_rewriter.HloModulePass::Run(module.get()));
 }
@@ -198,15 +198,15 @@ TEST_F(SplitkRewriterTest, ForceSplitK) {
                              lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_force_split_k(2);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          rewriter_.HloModulePass::Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       rewriter_.HloModulePass::Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
 CHECK: dot({{.*}}), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}

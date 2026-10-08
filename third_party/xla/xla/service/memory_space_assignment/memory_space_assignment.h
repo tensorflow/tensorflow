@@ -195,25 +195,11 @@ Useful logging and error messages
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/utils/hlo_live_range.h"
-#include "xla/layout.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/memory_space_assignment/allocation.h"
-#include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
-#include "xla/service/memory_space_assignment/options.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -304,163 +290,6 @@ class PresetAssignments {
   std::string buffer_info_str_;
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
-};
-
-// MemorySpaceAssignment assigns memory spaces (default or alternate) to each
-// instruction in the module. It will greedily try placing as as many values in
-// the alternate memory space as possible. It uses the heap simulator to
-// determine the actual allocation offsets of values in the alternate memory
-// space to account for fragmentation. The default memory space is assumed to be
-// large enough to hold the values that could not be placed in the alternate
-// memory space.
-class MemorySpaceAssignment {
- public:
-  // Statistics of asynchronous copies.
-  struct AsyncCopyStats {
-    // Includes both async copies and async sliced copies.
-    int64_t max_outstanding_async_copies = 0;
-    // Includes both async copies and async sliced copies.
-    int64_t num_prefetches = 0;
-    int64_t num_sliced_prefetches = 0;
-    int64_t num_sliced_prefetch_slices = 0;
-    int64_t prefetch_bytes = 0;
-    int64_t num_evictions = 0;
-    int64_t eviction_bytes = 0;
-  };
-
-  virtual ~MemorySpaceAssignment() = default;
-
-  // Runs the MemorySpaceAssignment pass.
-  static absl::StatusOr<std::unique_ptr<PresetAssignments>> Run(
-      HloModule* module, const HloLiveRange& hlo_live_range,
-      const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const Options& options);
-
-  // Calculates asynchronous copy statistics.
-  absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats(
-      const HloDataflowAnalysis& dataflow_analysis) const;
-
-  // Verify that allocations_ are free of overlapping Allocations in time and
-  // space. This is a post-processing step called after all allocations have
-  // been finalized, before the async copies get scheduled.
-  absl::Status VerifyAllocations() const;
-
-  // Verify that the memory space assignment is free of overlapping buffers and
-  // export heap simulator trace to be used by buffer_assignment.
-  //
-  // If alt_mem_bytes_occupied is not null, it will be populated with the number
-  // of bytes occupied in the alternate memory space at each instruction time.
-  absl::Status VerifyAndExportHeapSimulatorTrace(
-      const HloAliasAnalysis& alias_analysis,
-      std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
-
-  static constexpr absl::string_view kName = "memory-space-assignment";
-
- protected:
-  // Main driver of the memory space assignment pass.
-  virtual absl::StatusOr<std::unique_ptr<PresetAssignments>>
-  RunMemorySpaceAssignment(const HloLiveRange& hlo_live_range,
-                           const HloAliasAnalysis& alias_analysis);
-
-  // Finds an AllocationSequence for placing buffers in alternate memory using
-  // the MsaAlgorithm algorithm. Must be set before Process() is called.
-  virtual absl::Status FindAllocationSequence(
-      const HloLiveRange& hlo_live_range,
-      const HloAliasAnalysis& alias_analysis);
-
-  const Options& options() const { return options_; }
-
-  MemorySpaceAssignment(HloModule* module, const AliasInfo* alias_info,
-                        const Options& options,
-                        const HloLiveRange& hlo_live_range)
-      : module_(module),
-        alias_info_(alias_info),
-        options_(options),
-        flattened_instructions_(hlo_live_range.flattened_instruction_sequence()
-                                    .instructions()
-                                    .begin(),
-                                hlo_live_range.flattened_instruction_sequence()
-                                    .instructions()
-                                    .end()),
-        computations_in_schedule_(),
-        preset_assignments_(std::make_unique<PresetAssignments>()) {
-    for (const auto& computation_and_bound :
-         hlo_live_range.computation_span_times()) {
-      computations_in_schedule_.insert(computation_and_bound.first);
-    }
-  }
-
-  AllocationSequence allocations_;
-
-  HloModule* module() { return module_; }
-
- private:
-  // A struct that represents the source of scoped alternate memory. It can be
-  // either for an instruction or for post-module operations.
-  struct ScopedMemorySource {
-    static ScopedMemorySource ForInstruction(HloInstruction* instruction);
-    static ScopedMemorySource ForPostModule();
-
-    std::string ToString() const;
-
-    bool is_post_module = false;
-    HloInstruction* instruction = nullptr;
-  };
-
-  // Process calls Process methods of the allocations after the allocations have
-  // been finalized.
-  absl::Status Process(const HloLiveRange& hlo_live_range,
-                       const HloAliasAnalysis& alias_analysis);
-
-  // Process() might have altered the computation graph by inserting kTuple and
-  // kGetTupleElement instructions. SimplifyGraph performs a simple DCE and
-  // tuple simplification operation (e.g., given GetTupleElement(Tuple(a, b),
-  // 1), simply forwards b). Runs to fixed point.
-  absl::Status SimplifyGraph();
-
-  // Places copy-start and copy-done instructions in the schedule, according to
-  // the schedule_before_ and schedule_after_ data structures, making necessary
-  // adjustments to the schedule to ensure correctness.
-  absl::Status SetSchedule();
-
-  // Export the alternate memory assignments to the PresetAssignments and color
-  // the HLO graph with the determined memory spaces.
-  absl::Status ExportAndColorBuffers(const HloAliasAnalysis& alias_analysis);
-
-  // Schedules asynchronous copies and ensures that the CopyStarts and their
-  // corresponding CopyDones follow the same order.
-  void ScheduleAsynchronousCopies();
-
-  // Remove the positions and chunks associated with instructions, from
-  // alternate_memory_assignments_.
-  void RemoveAlternateMemoryAssignments(
-      const absl::flat_hash_set<const HloInstruction*>& instructions);
-
-  // Remove the positions and chunks associated with instructions, from
-  // scoped_memory_assignments_.
-  void RemoveScopedMemoryAssignments(
-      const absl::flat_hash_set<const HloInstruction*>& instructions);
-
-  HloModule* module_;
-  // Backend specific aliasing information.
-  const AliasInfo* alias_info_;
-  const Options& options_;
-  std::vector<HloInstruction*> flattened_instructions_;
-  absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
-  std::unique_ptr<PresetAssignments> preset_assignments_;
-  std::vector<std::pair<HloPosition, HeapSimulator::Chunk>>
-      alternate_memory_assignments_;
-  // Maps from a defining position to a shape if the tensor is split.
-  absl::flat_hash_map<HloPosition, const Layout*> split_map_;
-  std::vector<std::pair<ScopedMemorySource, HeapSimulator::Chunk>>
-      scoped_memory_assignments_;
-  int64_t alternate_memory_size_ = 0;
-
-  // These maps hold vectors of new instructions that need to be scheduled after
-  // (or before) the instruction index in the key. FixSchedule uses these maps
-  // to modify and fix the schedule.
-  absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_after_;
-  absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_before_;
 };
 
 }  // namespace memory_space_assignment

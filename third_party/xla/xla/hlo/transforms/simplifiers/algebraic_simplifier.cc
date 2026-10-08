@@ -32,6 +32,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -77,6 +78,7 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -293,13 +295,35 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
   return mantissa == 0.5 || mantissa == -0.5;
 }
 
+bool HasCombineDimensionTile(const Shape& shape) {
+  if (!shape.has_layout()) {
+    return false;
+  }
+  for (const Tile& tile : shape.layout().tiles()) {
+    if (absl::c_linear_search(tile.dimensions(), Tile::kCombineDimension)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Returns whether the given transpose produces a result which is bit-wise
 // identical to its operand and thus may be replaced with a bitcast.
 bool TransposeIsBitcast(const HloInstruction* transpose) {
   CHECK_EQ(HloOpcode::kTranspose, transpose->opcode());
   const HloInstruction* operand = transpose->operand(0);
-  return ShapeUtil::TransposeIsBitcast(operand->shape(), transpose->shape(),
-                                       transpose->dimensions());
+  if (!ShapeUtil::TransposeIsBitcast(operand->shape(), transpose->shape(),
+                                     transpose->dimensions())) {
+    return false;
+  }
+  if (!HasCombineDimensionTile(operand->shape()) &&
+      !HasCombineDimensionTile(transpose->shape())) {
+    return true;
+  }
+  return absl::c_equal(operand->shape().layout().tiles(),
+                       transpose->shape().layout().tiles()) &&
+         ShapeUtil::ArraySize(operand->shape()) ==
+             ShapeUtil::ArraySize(transpose->shape());
 }
 
 // Recursive helper for method below.
@@ -531,6 +555,15 @@ int64_t GetReduceFlops(const HloInstruction* reduce) {
   }
   // Reduce along a dimension of size n requires n-1 reductions
   return ShapeUtil::ElementsIn(reduce->shape()) * (reduce_product - 1);
+}
+
+// Returns true if any edge padding is negative, i.e. the pad crops its operand.
+bool HasNegativePadding(const PaddingConfig& config) {
+  return absl::c_any_of(config.dimensions(),
+                        [](const PaddingConfig::PaddingConfigDimension& dim) {
+                          return dim.edge_padding_low() < 0 ||
+                                 dim.edge_padding_high() < 0;
+                        });
 }
 
 }  // namespace
@@ -1861,7 +1894,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   // Replace Copy(Reshape()) with Reshape() if the Reshape is a logical bitcast.
   if (copy->operand(0)->opcode() == HloOpcode::kReshape &&
       copy->operand(0)->user_count() == 1 &&
-      ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape())) {
+      ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape()) &&
+      (!options_.is_layout_sensitive() ||
+       (!HasCombineDimensionTile(copy->operand(0)->shape()) &&
+        !HasCombineDimensionTile(copy->shape())) ||
+       absl::c_equal(copy->operand(0)->shape().layout().tiles(),
+                     copy->shape().layout().tiles()))) {
     return ReplaceWithNewInstruction(
         copy,
         copy->operand(0)->CloneWithNewOperands(
@@ -2503,8 +2541,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
                                              HloOpcode::kMultiply, a, new_exp));
   }
 
-  // A/pow(B,C) => A*pow(B,-C)
-  if (Match(divide, m::Divide(m::Op(&a), m::Power(m::Op(&b), m::Op(&c))))) {
+  // A/pow(B,C) => A*pow(B,-C), never for integers: there pow(B,-C) is 0 for
+  // |B| > 1 (or a wrapped exponent), not a reciprocal.
+  if (!ShapeUtil::ElementIsIntegral(divide->shape()) &&
+      Match(divide, m::Divide(m::Op(&a), m::Power(m::Op(&b), m::Op(&c))))) {
     VLOG(10) << "transform [A/pow(B,C) => A*pow(B,-C)]: " << divide->ToString();
     // The output shape of the created negate operator should be the same as the
     // input.
@@ -4190,6 +4230,9 @@ AlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
 
 absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   CHECK(computation_ == dot->parent());
+  if (dot->operand_count() > 2) {
+    return absl::OkStatus();
+  }
   HloDotInstruction* dot_cast = Cast<HloDotInstruction>(dot);
   const auto& dnums = dot->dot_dimension_numbers();
 
@@ -5889,21 +5932,30 @@ absl::Status AlgebraicSimplifierVisitor::HandleConvert(
 
 absl::Status AlgebraicSimplifierVisitor::HandleCustomCall(
     HloInstruction* custom_call) {
-  // Remove redundant slice to dynamic of pad to static
+  // Remove redundant SliceToDynamic of PadToStatic. The dynamic padder
+  // wraps the size operand in clamp(0, size, bound); looking through it is
+  // value-preserving since PadToStatic sizes are within bounds.
   HloInstruction *pad_to_static0, *pad_to_static1, *pad_to_static_operand;
-  if (Match(
-          custom_call,
-          m::CustomCall(
-              {"SliceToDynamic"},
-              m::GetTupleElement(m::CustomCall(&pad_to_static0, {"PadToStatic"},
-                                               m::Op(&pad_to_static_operand)),
-                                 0),
-              m::GetTupleElement(
-                  m::CustomCall(&pad_to_static1, {"PadToStatic"}, m::Op()),
-                  1))) &&
-      pad_to_static0 == pad_to_static1 &&
-      SameShape(custom_call->shape(), pad_to_static_operand->shape())) {
-    return ReplaceInstruction(custom_call, pad_to_static_operand);
+  if (custom_call->shape().IsArray() &&
+      custom_call->shape().dimensions().size() == 1) {
+    auto size_gte = m::GetTupleElement(
+        m::CustomCall(&pad_to_static1, {"PadToStatic"}, m::Op()), 1);
+    if (Match(custom_call,
+              m::CustomCall(
+                  {"SliceToDynamic"},
+                  m::GetTupleElement(
+                      m::CustomCall(&pad_to_static0, {"PadToStatic"},
+                                    m::Op(&pad_to_static_operand)),
+                      0),
+                  m::AnyOf<HloInstruction>(
+                      size_gte,
+                      m::Clamp(m::ConstantScalar(0), size_gte,
+                               m::ConstantScalar(
+                                   custom_call->shape().dimensions(0)))))) &&
+        pad_to_static0 == pad_to_static1 &&
+        SameShape(custom_call->shape(), pad_to_static_operand->shape())) {
+      return ReplaceInstruction(custom_call, pad_to_static_operand);
+    }
   }
   if (options_.is_layout_sensitive() &&
       custom_call->IsCustomCall("LayoutConstraint")) {
@@ -7098,6 +7150,84 @@ absl::Status AlgebraicSimplifierVisitor::HandleReverse(
   return absl::OkStatus();
 }
 
+absl::Status AlgebraicSimplifierVisitor::HandleShuffle(HloInstruction* hlo) {
+  auto* shuffle = Cast<HloShuffleInstruction>(hlo);
+
+  switch (shuffle->mode()) {
+    case ShuffleMode::kRotate: {
+      // Accumulate shifts per dimension (in ascending order of dim).
+      absl::btree_map<int64_t, int64_t> combined_shifts;
+      for (int64_t i = 0; i < shuffle->dimensions().size(); ++i) {
+        combined_shifts[shuffle->dimensions()[i]] +=
+            shuffle->rotate().shifts(i);
+      }
+
+      // rotate(rotate(x, {d}, {m}), {d}, {n}) ==> rotate(x, {d}, {m + n})
+      HloInstruction* base_operand = shuffle->mutable_operand(0);
+      while (base_operand->opcode() == HloOpcode::kShuffle &&
+             Cast<HloShuffleInstruction>(base_operand)->mode() ==
+                 ShuffleMode::kRotate) {
+        auto* inner_shuffle = Cast<HloShuffleInstruction>(base_operand);
+        for (int64_t i = 0; i < inner_shuffle->dimensions().size(); ++i) {
+          combined_shifts[inner_shuffle->dimensions()[i]] +=
+              inner_shuffle->rotate().shifts(i);
+        }
+        base_operand = inner_shuffle->mutable_operand(0);
+      }
+
+      // Helper to check if base_operand is a splat along dim.
+      auto is_dim_splat = [&](int64_t dim) -> bool {
+        if (base_operand->IsConstant() &&
+            base_operand->literal().IsAllFirst()) {
+          return true;
+        }
+        if (base_operand->opcode() == HloOpcode::kBroadcast) {
+          return !absl::c_linear_search(base_operand->dimensions(), dim);
+        }
+        return false;
+      };
+
+      // Canonicalize shifts & dimensions, remove no-op dims.
+      DimensionVector new_dimensions;
+      DimensionVector new_shifts;
+      for (const auto& [dim, total_shift] : combined_shifts) {
+        int64_t dim_size = shuffle->shape().dimensions(dim);
+        // No-op: size 1 dim
+        if (dim_size <= 1) {
+          continue;
+        }
+        // No-op: splat along dim
+        if (is_dim_splat(dim)) {
+          continue;
+        }
+        int64_t norm_shift = shuffle::NormalizeShift(total_shift, dim_size);
+        // No-op: shift == 0
+        if (norm_shift == 0) {
+          continue;
+        }
+        new_dimensions.push_back(dim);
+        new_shifts.push_back(norm_shift);
+      }
+
+      // Replace if changed.
+      if (new_dimensions.empty()) {
+        return ReplaceInstruction(shuffle, base_operand);
+      }
+      if (base_operand != shuffle->operand(0) ||
+          new_dimensions != shuffle->dimensions() ||
+          !absl::c_equal(new_shifts, shuffle->rotate().shifts())) {
+        auto new_shuffle = HloInstruction::CreateShuffle(
+            shuffle->shape(), base_operand, new_dimensions,
+            shuffle::Rotate(new_shifts));
+        return ReplaceWithNewInstruction(shuffle, std::move(new_shuffle));
+      }
+      return absl::OkStatus();
+    }
+    default:
+      return absl::OkStatus();
+  }
+}
+
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
     HloInstruction* slice) {
   // Only try to do this for effective scalars. We could do the same for slicing
@@ -7194,8 +7324,16 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     // slice_elements align cleanly with the sub-dimension boundaries of the
     // operand. Otherwise, reordering would slice an interior dimension of the
     // operand, creating strided memory access and complex index decomposition.
+    //
+    // The first dimension of the slice is equivalent to the first non-unit
+    // dimension of the reshape.
+    int64_t sliced_dim_in_reshape = 0;
+    for (; sliced_dim_in_reshape < rank; ++sliced_dim_in_reshape) {
+      if (new_slice_shape.dimensions(sliced_dim_in_reshape) != 1) break;
+    }
+
     int64_t operand_sub_dim_elements = 1;
-    for (int64_t i = 1; i < rank; ++i) {
+    for (int64_t i = sliced_dim_in_reshape + 1; i < rank; ++i) {
       operand_sub_dim_elements *= new_slice_shape.dimensions(i);
     }
     if (operand_sub_dim_elements == 0 ||
@@ -7402,6 +7540,71 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
                                     slice->slice_strides()));
       *(new_slice->mutable_shape()) = slice->shape();
       return ReplaceInstruction(slice, new_slice);
+    }
+  }
+
+  // A slice of a dynamic update slice can be replaced by a slice of the update
+  // if the slice is entirely within the update.
+  //
+  // Slice(DynamicUpdateSlice(base, update, $indices), $indices) -> update
+  HloInstruction* dynamic_update_slice;
+  if (Match(slice, m::Slice(m::DynamicUpdateSlice(&dynamic_update_slice)))) {
+    HloInstruction* dus_update = dynamic_update_slice->mutable_operand(1);
+    const int64_t rank = slice->shape().dimensions().size();
+    if (dynamic_update_slice->operand_count() == 2 + rank) {
+      bool all_indices_constant = true;
+      std::vector<int64_t> start_indices(rank);
+      for (int64_t i = 0; i < rank; ++i) {
+        HloInstruction* index = dynamic_update_slice->mutable_operand(2 + i);
+        if (!Match(index, m::ConstantScalar())) {
+          all_indices_constant = false;
+          break;
+        }
+        std::optional<int64_t> val = index->literal().GetFirstInteger();
+        if (!val.has_value()) {
+          all_indices_constant = false;
+          break;
+        }
+        start_indices[i] = *val;
+      }
+      if (all_indices_constant) {
+        bool slice_matches_dus = true;
+        bool slice_inside_dus = true;
+        std::vector<int64_t> new_starts(rank);
+        std::vector<int64_t> new_limits(rank);
+        for (int64_t i = 0; i < rank; ++i) {
+          const int64_t operand_dim =
+              dynamic_update_slice->shape().dimensions(i);
+          const int64_t update_dim = dus_update->shape().dimensions(i);
+          const int64_t clamped_start = std::min(
+              std::max<int64_t>(0, start_indices[i]), operand_dim - update_dim);
+          const int64_t clamped_limit = clamped_start + update_dim;
+          if (slice->slice_starts(i) != clamped_start ||
+              slice->slice_limits(i) != clamped_limit) {
+            slice_matches_dus = false;
+          }
+          if (slice->slice_starts(i) < clamped_start ||
+              slice->slice_limits(i) > clamped_limit) {
+            slice_inside_dus = false;
+          }
+          new_starts[i] = slice->slice_starts(i) - clamped_start;
+          new_limits[i] = slice->slice_limits(i) - clamped_start;
+        }
+        if (slice_matches_dus &&
+            hlo_instruction_utils::IsUnstridedSlice(slice) &&
+            ReplaceInstructionIfCompatible(slice, dus_update)) {
+          return absl::OkStatus();
+        }
+        if (slice_inside_dus &&
+            (!options_.is_layout_sensitive() ||
+             slice->shape().layout() == dus_update->shape().layout())) {
+          ABSL_ASSIGN_OR_RETURN(HloInstruction * new_slice,
+                           MakeSliceHlo(dus_update, new_starts, new_limits,
+                                        slice->slice_strides()));
+          *(new_slice->mutable_shape()) = slice->shape();
+          return ReplaceInstruction(slice, new_slice);
+        }
+      }
     }
   }
 
@@ -7997,19 +8200,26 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     }
   }
 
-  // ds(ds(x,id),inner_id) -> ds(x, id + inner_id)
+  // ds(ds(x, inner_id), id) ->
+  //   ds(x, clamp(0, id, inner_size - outer_size) +
+  //         clamp(0, inner_id, operand_size - inner_size))
   if (operand->opcode() == HloOpcode::kDynamicSlice) {
     ABSL_RETURN_IF_ERROR(dynamic_slice->ReplaceOperandWithDifferentShape(
         0, operand->mutable_operand(0)));
     for (int64_t i = 1; i < dynamic_slice->operand_count(); ++i) {
       HloInstruction* index = dynamic_slice->mutable_operand(i);
+      index = index->AddInstruction(HloInstruction::CreateTernary(
+          index->shape(), HloOpcode::kClamp, MakeScalarLike(index, 0), index,
+          MakeScalarLike(index,
+                         operand->dynamic_slice_sizes()[i - 1] -
+                             dynamic_slice->dynamic_slice_sizes()[i - 1])));
       HloInstruction* inner_index = operand->mutable_operand(i);
       inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
           inner_index->shape(), HloOpcode::kClamp,
           MakeScalarLike(inner_index, 0), inner_index,
           MakeScalarLike(inner_index,
                          operand->operand(0)->shape().dimensions(i - 1) -
-                             dynamic_slice->dynamic_slice_sizes()[i - 1])));
+                             operand->dynamic_slice_sizes()[i - 1])));
       if (inner_index->shape().element_type() !=
           index->shape().element_type()) {
         inner_index = inner_index->AddInstruction(
@@ -8139,6 +8349,98 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     return ReplaceInstruction(dynamic_update_slice, dus_update);
   }
 
+  // Rewriting dynamic_update_slice(pad(x), y) to concat(x, y) if y overwrites
+  // the padded region.
+  HloInstruction* pad;
+  HloInstruction* pad_operand;
+  if (Match(updated, m::Pad(&pad, m::Op(&pad_operand), m::Op()))) {
+    const Shape& pad_shape = pad->shape();
+    const Shape& x_shape = pad_operand->shape();
+    const Shape& update_shape = dus_update->shape();
+    const int64_t rank = pad_shape.dimensions().size();
+    CHECK_EQ(x_shape.dimensions().size(), rank);
+    CHECK_EQ(update_shape.dimensions().size(), rank);
+    // We skip the variadic form of DUS for now.
+    if (dynamic_update_slice->operand_count() == 2 + rank) {
+      int64_t padded_dim;
+      const PaddingConfig& padding_config = pad->padding_config();
+      enum class PaddingType { kLow, kHigh };
+      std::optional<PaddingType> padding_type;
+      for (int64_t i = 0; i < rank; ++i) {
+        const auto& dim_config = padding_config.dimensions(i);
+        const int64_t low = dim_config.edge_padding_low();
+        const int64_t high = dim_config.edge_padding_high();
+        if (dim_config.interior_padding() != 0 || low < 0 || high < 0) {
+          padding_type = std::nullopt;
+          break;
+        }
+
+        HloInstruction* index = dynamic_update_slice->mutable_operand(2 + i);
+        if (!Match(index, m::ConstantScalar())) {
+          padding_type = std::nullopt;
+          break;
+        }
+        std::optional<int64_t> val = index->literal().GetFirstInteger();
+        if (!val.has_value()) {
+          padding_type = std::nullopt;
+          break;
+        }
+
+        const int64_t operand_dim = pad_shape.dimensions(i);
+        const int64_t update_dim = update_shape.dimensions(i);
+        const int64_t clamped_start =
+            std::min(std::max<int64_t>(0, *val), operand_dim - update_dim);
+
+        if (low != 0 || high != 0) {
+          if (padding_type.has_value()) {
+            // More than one dimension is padded.
+            padding_type = std::nullopt;
+            break;
+          }
+          const int64_t x_dim = x_shape.dimensions(i);
+          if (x_dim <= 0) {
+            padding_type = std::nullopt;
+            break;
+          }
+          if (low == 0 && high > 0 && update_dim == high &&
+              clamped_start == x_dim) {
+            padded_dim = i;
+            padding_type = PaddingType::kHigh;
+          } else if (low > 0 && high == 0 && update_dim == low &&
+                     clamped_start == 0) {
+            padded_dim = i;
+            padding_type = PaddingType::kLow;
+          } else {
+            padding_type = std::nullopt;
+            break;
+          }
+        } else {
+          if (x_shape.dimensions(i) != update_dim || clamped_start != 0) {
+            padding_type = std::nullopt;
+            break;
+          }
+        }
+      }
+
+      if (padding_type.has_value()) {
+        std::vector<HloInstruction*> concat_operands =
+            *padding_type == PaddingType::kHigh
+                ? std::vector<HloInstruction*>{pad_operand, dus_update}
+                : std::vector<HloInstruction*>{dus_update, pad_operand};
+
+        if (!options_.is_layout_sensitive() ||
+            (pad_operand->shape().layout() == dus_update->shape().layout() &&
+             pad_operand->shape().layout() ==
+                 dynamic_update_slice->shape().layout())) {
+          ABSL_ASSIGN_OR_RETURN(HloInstruction * concat,
+                           MakeConcatHlo(concat_operands, padded_dim));
+          *(concat->mutable_shape()) = dynamic_update_slice->shape();
+          return ReplaceInstruction(dynamic_update_slice, concat);
+        }
+      }
+    }
+  }
+
   // DynamicUpdateSlice clamps the offset. If the slice size has the same size
   // on a dim as dus_update, we can replace it with zero.
   std::vector<int> same_size_dims_to_simplify;
@@ -8171,7 +8473,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     return ReplaceInstruction(dynamic_update_slice, updated);
   }
 
-  // dus(a,dus(ds(a,id),c,inner_id)),id) is equivalent to dus(a,c,inner_id + id)
+  // dus(a,dus(ds(a,id),c,inner_id)),id) ->
+  //   dus(a, c, clamp(0, id, operand_size - inner_size) +
+  //             clamp(0, inner_id, inner_size - update_size))
   if (dus_update->opcode() == HloOpcode::kDynamicUpdateSlice &&
       (dus_update->operand(0)->opcode() == HloOpcode::kDynamicSlice &&
        dus_update->operand(0)->operand(0) == dynamic_update_slice->operand(0) &&
@@ -8183,6 +8487,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
         1, dus_update->mutable_operand(1)));
     for (int64_t i = 2; i < dynamic_update_slice->operand_count(); ++i) {
       HloInstruction* index = dynamic_update_slice->mutable_operand(i);
+      index = index->AddInstruction(HloInstruction::CreateTernary(
+          index->shape(), HloOpcode::kClamp, MakeScalarLike(index, 0), index,
+          MakeScalarLike(index,
+                         dynamic_update_slice->shape().dimensions(i - 2) -
+                             dus_update->shape().dimensions(i - 2))));
       HloInstruction* inner_index = dus_update->mutable_operand(i);
       inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
           inner_index->shape(), HloOpcode::kClamp,
@@ -9396,6 +9705,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return absl::OkStatus();
   }
 
+  // A cropping pad does not compose with the window padding by addition.
+  if (HasNegativePadding(pad_config)) {
+    VLOG(10) << "Not folding negative pad into reduce-window.";
+    return absl::OkStatus();
+  }
+
   // If reduce_window already has padding, the pad value of the pad op and the
   // init value of reduce_window must match to allow folding the pad.
   const HloInstruction* pad_value = pad->operand(1);
@@ -9762,6 +10077,14 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryFoldTransposeIntoScatter(
   }
 
   absl::Span<const int64_t> permutation = transpose->dimensions();
+  // Folding makes the scatter write through the transposed operand. Bail if
+  // that makes the written windows less contiguous than they are now:
+  // strided window writes do not coalesce and can cost far more than the
+  // transpose this rewrite saves.
+  if (ScatterSimplifier::WriteRunLength(scatter, permutation) <
+      ScatterSimplifier::WriteRunLength(scatter)) {
+    return false;
+  }
   std::vector<int64_t> inverse_permutation = InversePermutation(permutation);
 
   // Step 1 : Transpose base operand
@@ -10165,6 +10488,11 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
           p.interior_padding() != 0) {
         return false;
       }
+    }
+
+    // A cropping pad does not compose with the window padding by addition.
+    if (HasNegativePadding(padding)) {
+      return false;
     }
 
     // Compute the window which is the result of merging the kPad and the

@@ -49,6 +49,8 @@ class Autotuner {
   struct Options {
     int scratch_bytes_window_size_us = 2;
     std::vector<autotuner::Backend> excluded_backends;
+    autotuner::Backend preferred_backend =
+        autotuner::Backend::UNSPECIFIED_BACKEND;
     ConfigRunner::CorrectnessCheckOptions correctness_check_options;
     // File path to dump the profiles for all configs profiled for each HLO
     // instruction.

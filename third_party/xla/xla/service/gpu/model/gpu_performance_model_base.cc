@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
@@ -112,7 +111,8 @@ GpuPerformanceModelCache::GetAllConsumers(const HloInstruction& producer) {
 bool GpuPerformanceModelCache::ContainsConsumers(
     const HloInstruction& producer) {
   absl::MutexLock lock(mutex_);
-  return fusion_runtime_data_.contains(&producer);
+  auto it = fusion_runtime_data_.find(&producer);
+  return it != fusion_runtime_data_.end() && !it->second.empty();
 }
 
 void GpuPerformanceModelCache::Set(const HloInstruction& instruction,

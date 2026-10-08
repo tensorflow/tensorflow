@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -179,6 +180,21 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         result = sess.run(out, {a: test_input, index: [1]})
       self.assertAllEqual([max_value], result)
 
+  def testReduceEuclideanNorm(self, index_dtype):
+
+    def reference_euclidean_norm(dtype, inp, axis):
+      inp = inp.astype(dtype)
+      return np.sqrt(np.sum(inp * np.conj(inp), axis)).astype(dtype)
+
+    for dtype in [np.float32, np.float64]:
+      self._testReduction(
+          math_ops.reduce_euclidean_norm,
+          functools.partial(reference_euclidean_norm, dtype),
+          dtype,
+          self.REAL_DATA,
+          index_dtype,
+      )
+
   def testReduceAll(self, index_dtype):
     self._testReduction(math_ops.reduce_all, np.all, np.bool_, self.BOOL_DATA,
                         index_dtype)
@@ -187,17 +203,53 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_any, np.any, np.bool_, self.BOOL_DATA,
                         index_dtype)
 
-  @test_util.disable_mlir_bridge('Error messages differ')
-  def testReduceSumWithDuplicateAxes(self, index_dtype):
+  def testReduceSumWithDuplicateAxesDynamic(self, index_dtype):
+    # Covers the dynamic path: the axes arrive as a feed, so the reduction
+    # cannot be lowered by the MLIR legalization pattern and falls back to
+    # the legacy tf2xla kernel, which must reject duplicate axes too.
     with self.session() as sess:
       with self.test_scope():
         a = array_ops.placeholder(np.float32)
-        index = array_ops.placeholder(np.int32)
+        index = array_ops.placeholder(index_dtype)
         out = math_ops.reduce_sum(a, index)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           'Axes contains duplicate dimension'):
         sess.run(out, {a: [10, 20, 30], index: [0, 0]})
+
+  def testReduceSumWithDuplicateAxesConstant(self, index_dtype):
+    # Regression test for GitHub issue 119360. Eager execution, the tf2xla
+    # kernel path, and the MLIR legalization for auto-clustering all reject
+    # duplicate axes with the same error.
+    with self.session() as sess:
+      with self.test_scope():
+        a = array_ops.placeholder(np.float32)
+        # The axes must be compile-time constants for the reduction to be
+        # lowered by the MLIR legalization pattern under test instead of
+        # falling back to the legacy tf2xla kernel.
+        index = constant_op.constant([0, 0], dtype=index_dtype)
+        out = math_ops.reduce_sum(a, index)
+        # Duplicate axes that only alias the same dimension after negative
+        # index normalization must be rejected as well.
+        index_neg = constant_op.constant([0, -1], dtype=index_dtype)
+        out_neg = math_ops.reduce_sum(a, index_neg)
+        # On a rank-2 input, [1, -1] aliases axis 1 after normalization while
+        # axis 0 remains untouched, covering multi-axis index combinations.
+        b = array_ops.placeholder(np.float32)
+        index_2d = constant_op.constant([1, -1], dtype=index_dtype)
+        out_2d = math_ops.reduce_sum(b, index_2d)
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError, 'Axes contains duplicate dimension'
+      ):
+        sess.run(out, {a: [10, 20, 30]})
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError, 'Axes contains duplicate dimension'
+      ):
+        sess.run(out_neg, {a: [10, 20, 30]})
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError, 'Axes contains duplicate dimension'
+      ):
+        sess.run(out_2d, {b: [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]})
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):

@@ -22,11 +22,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
@@ -161,7 +164,7 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB200) {
   EXPECT_TRUE(topology.has_gpu_target_config());
   EXPECT_THAT(topology.host_target_machine_options(),
               Optional(Property(&cpu::TargetMachineOptions::triple,
-                                "aarch64-linux-gnu")));
+                                "aarch64-unknown-linux-gnu")));
 }
 
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB300) {
@@ -175,12 +178,92 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB300) {
   EXPECT_TRUE(topology.has_gpu_target_config());
   EXPECT_THAT(topology.host_target_machine_options(),
               Optional(Property(&cpu::TargetMachineOptions::triple,
-                                "aarch64-linux-gnu")));
+                                "aarch64-unknown-linux-gnu")));
 }
 
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformInvalid) {
   EXPECT_THAT(GetGpuTopologyForPlatform("invalid_gpu", 1, 1, 1),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(GpuTopologyTest, ParseGpuTopologyShorthand) {
+  ASSERT_OK_AND_ASSIGN(GpuTopology dims_only_3d, ParseGpuTopology("1x2x8"));
+  EXPECT_EQ(dims_only_3d.platform_version(), "");
+  EXPECT_EQ(dims_only_3d.num_partitions(), 1);
+  EXPECT_EQ(dims_only_3d.num_hosts_per_partition(), 2);
+  EXPECT_EQ(dims_only_3d.num_devices_per_host(), 8);
+  EXPECT_FALSE(dims_only_3d.has_gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology dims_only_2d, ParseGpuTopology("2x8"));
+  EXPECT_EQ(dims_only_2d.platform_version(), "");
+  EXPECT_EQ(dims_only_2d.num_partitions(), 1);
+  EXPECT_EQ(dims_only_2d.num_hosts_per_partition(), 2);
+  EXPECT_EQ(dims_only_2d.num_devices_per_host(), 8);
+  EXPECT_FALSE(dims_only_2d.has_gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology with_platform_3d,
+                       ParseGpuTopology("nvidia_h100:1x2x8"));
+  EXPECT_EQ(with_platform_3d.platform_version(), "nvidia_h100");
+  EXPECT_EQ(with_platform_3d.num_partitions(), 1);
+  EXPECT_EQ(with_platform_3d.num_hosts_per_partition(), 2);
+  EXPECT_EQ(with_platform_3d.num_devices_per_host(), 8);
+  EXPECT_TRUE(with_platform_3d.has_gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology with_platform_2d,
+                       ParseGpuTopology("oberon_b300:4x4"));
+  EXPECT_EQ(with_platform_2d.platform_version(), "oberon_b300");
+  EXPECT_EQ(with_platform_2d.num_partitions(), 1);
+  EXPECT_EQ(with_platform_2d.num_hosts_per_partition(), 4);
+  EXPECT_EQ(with_platform_2d.num_devices_per_host(), 4);
+  EXPECT_TRUE(with_platform_2d.has_gpu_target_config());
+  EXPECT_THAT(with_platform_2d.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-unknown-linux-gnu")));
+}
+
+TEST(GpuTopologyTest, ParseGpuTopologySpecFiles) {
+  auto spec_path = [](absl::string_view file_name) {
+    return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                             "backends/gpu/target_config/specs", file_name);
+  };
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology h100_1x8,
+                       ParseGpuTopology(spec_path("h100_1x8.txtpb")));
+  EXPECT_EQ(h100_1x8.platform_version(), "nvidia_h100");
+  EXPECT_EQ(h100_1x8.num_partitions(), 1);
+  EXPECT_EQ(h100_1x8.num_hosts_per_partition(), 1);
+  EXPECT_EQ(h100_1x8.num_devices_per_host(), 8);
+  EXPECT_TRUE(h100_1x8.has_gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology h100_2x8,
+                       ParseGpuTopology(spec_path("h100_2x8.txtpb")));
+  EXPECT_EQ(h100_2x8.platform_version(), "nvidia_h100");
+  EXPECT_EQ(h100_2x8.num_partitions(), 1);
+  EXPECT_EQ(h100_2x8.num_hosts_per_partition(), 2);
+  EXPECT_EQ(h100_2x8.num_devices_per_host(), 8);
+  EXPECT_TRUE(h100_2x8.has_gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology gb200_2x4,
+                       ParseGpuTopology(spec_path("gb200_2x4.txtpb")));
+  EXPECT_EQ(gb200_2x4.platform_version(), "oberon_b200");
+  EXPECT_EQ(gb200_2x4.num_partitions(), 1);
+  EXPECT_EQ(gb200_2x4.num_hosts_per_partition(), 2);
+  EXPECT_EQ(gb200_2x4.num_devices_per_host(), 4);
+  EXPECT_TRUE(gb200_2x4.has_gpu_target_config());
+  EXPECT_THAT(gb200_2x4.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-unknown-linux-gnu")));
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology gb300_4x4,
+                       ParseGpuTopology(spec_path("gb300_4x4.txtpb")));
+  EXPECT_EQ(gb300_4x4.platform_version(), "oberon_b300");
+  EXPECT_EQ(gb300_4x4.num_partitions(), 1);
+  EXPECT_EQ(gb300_4x4.num_hosts_per_partition(), 4);
+  EXPECT_EQ(gb300_4x4.num_devices_per_host(), 4);
+  EXPECT_TRUE(gb300_4x4.has_gpu_target_config());
+  EXPECT_THAT(gb300_4x4.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-unknown-linux-gnu")));
 }
 
 }  // namespace

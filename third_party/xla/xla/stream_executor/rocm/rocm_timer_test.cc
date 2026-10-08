@@ -22,7 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/time/time.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -43,7 +43,7 @@ using ::testing::Gt;
 class RocmTimerTest : public ::testing::TestWithParam<RocmTimer::TimerType> {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
-    TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
+    ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
 
     int64_t length = 4;
     int64_t byte_length = sizeof(int32_t) * length;
@@ -64,26 +64,25 @@ class RocmTimerTest : public ::testing::TestWithParam<RocmTimer::TimerType> {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                            stream_executor::PlatformManager::PlatformWithId(
-                                stream_executor::rocm::kROCmPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(Platform * platform,
+                         stream_executor::PlatformManager::PlatformWithId(
+                             stream_executor::rocm::kROCmPlatformId));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(0));
     executor_ = reinterpret_cast<RocmExecutor*>(executor);
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
   }
 };
 
 TEST_P(RocmTimerTest, Create) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      RocmTimer timer, RocmTimer::Create(executor_, stream_.get(), GetParam()));
+  ASSERT_OK_AND_ASSIGN(RocmTimer timer,
+                       RocmTimer::Create(executor_, stream_.get(), GetParam()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.
   LaunchSomeKernel(executor_, stream_.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(absl::Duration timer_result,
-                          timer.GetElapsedDuration());
+  ASSERT_OK_AND_ASSIGN(absl::Duration timer_result, timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));

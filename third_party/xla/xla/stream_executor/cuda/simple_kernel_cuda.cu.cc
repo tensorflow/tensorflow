@@ -34,6 +34,24 @@ __global__ void Write42Kernel(int32_t* out, int num_elements) {
 
 Write42KernelFn GetWrite42Kernel() { return &Write42Kernel; }
 
+// A variant of Write42Kernel that declares __launch_bounds__ and uses a fixed
+// amount of static shared memory, so that tests can verify statically-extracted
+// occupancy attributes (max threads per block and shared memory size).
+__global__ void __launch_bounds__(kWrite42LaunchBoundsMaxThreads)
+    Write42WithLaunchBoundsKernel(int32_t* out, int num_elements) {
+  __shared__ int32_t buffer[kWrite42SharedElements];
+  int index = threadIdx.x + blockIdx.x * blockDim.x;
+  buffer[threadIdx.x] = 42;
+  __syncthreads();
+  if (index < num_elements) {
+    out[index] = buffer[threadIdx.x];
+  }
+}
+
+Write42KernelFn GetWrite42WithLaunchBoundsKernel() {
+  return &Write42WithLaunchBoundsKernel;
+}
+
 absl::Status ChevronLaunchWrite42Kernel(
     Stream* stream, stream_executor::DeviceAddress<int32_t> out,
     int num_elements) {

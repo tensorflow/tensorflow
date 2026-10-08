@@ -125,7 +125,7 @@ class HloModuleMetadata {
       const HloModuleMetadata& prepartitioning_metadata);
 
   // Setters for HloModuleMetadataProto.
-  void set_module_group_name(const std::string& name) {
+  void set_module_group_name(absl::string_view name) {
     module_metadata_.set_module_group_name(name);
   }
   void set_canonical_module_id(int64_t id) {
@@ -137,7 +137,7 @@ class HloModuleMetadata {
   absl::Status set_custom_metadata(const ::tsl::protobuf::Message& message);
   // Adds a (key, value) pair metric if none was already set. Otherwise, it
   // updates the existing value.
-  absl::Status set_key_value_metric(const std::string& key, int64_t value);
+  absl::Status set_key_value_metric(absl::string_view key, int64_t value);
 
   absl::StatusOr<int64_t> current_pass_id() {
     ABSL_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
@@ -146,23 +146,21 @@ class HloModuleMetadata {
   }
 
   // Setters for the current HloPassMetadata.
-  absl::Status set_current_pass_name(const std::string& pass_name) {
+  absl::Status set_current_pass_name(absl::string_view pass_name) {
     return MutateCurrentHloPassMetadata(
-        [&pass_name](HloPassMetadata* pass_metadata) {
+        [pass_name](HloPassMetadata* pass_metadata) {
           pass_metadata->set_pass_name(pass_name);
         });
   }
-  absl::Status set_current_pass_pipeline_name(
-      const std::string& pipeline_name) {
+  absl::Status set_current_pass_pipeline_name(absl::string_view pipeline_name) {
     return MutateCurrentHloPassMetadata(
-        [&pipeline_name](HloPassMetadata* pass_metadata) {
+        [pipeline_name](HloPassMetadata* pass_metadata) {
           pass_metadata->set_pipeline_name(pipeline_name);
         });
   }
-  absl::Status add_current_pass_dump_filename(
-      const std::string& dump_filename) {
+  absl::Status add_current_pass_dump_filename(absl::string_view dump_filename) {
     return MutateCurrentHloPassMetadata(
-        [&dump_filename](HloPassMetadata* pass_metadata) {
+        [dump_filename](HloPassMetadata* pass_metadata) {
           pass_metadata->add_dump_filenames(dump_filename);
         });
   }

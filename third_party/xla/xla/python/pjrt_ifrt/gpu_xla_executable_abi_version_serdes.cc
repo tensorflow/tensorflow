@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version_serdes.h"
-
 #include <memory>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/python/ifrt/rtti.h"
@@ -36,56 +36,90 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<absl::Cord> GpuXlaExecutableAbiVersionSerDes::Serialize(
-    const xla::ifrt::Serializable& serializable,
-    std::unique_ptr<xla::ifrt::SerializeOptions> options) {
-  const auto& version =
-      ifrt::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
-
-  ABSL_ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
-                   version.ExecutableAbiVersion().ToProto());
-  absl::Cord executable_abi_version;
-  if (!proto.SerializeToString(&executable_abi_version)) {
-    return absl::InternalError(
-        "Failed to serialize PjRtExecutableAbiVersion to string.");
-  }
-  return executable_abi_version;
-}
-
-absl::StatusOr<std::unique_ptr<xla::ifrt::Serializable>>
-GpuXlaExecutableAbiVersionSerDes::Deserialize(
-    const absl::Cord& serialized,
-    std::unique_ptr<xla::ifrt::DeserializeOptions> options) {
-  xla::PjRtExecutableAbiVersionProto proto;
-  if (!proto.ParseFromString(serialized)) {
-    return absl::InvalidArgumentError(
-        "Failed to parse PjRtExecutableAbiVersion from string.");
-  }
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::PjRtExecutableAbiVersion> runtime_abi_version,
-      factory_function_(proto));
-  return std::make_unique<GpuXlaExecutableAbiVersion>(
-      std::move(runtime_abi_version));
-}
-
-[[maybe_unused]] char GpuXlaExecutableAbiVersionSerDes::ID = 0;
+namespace gpu_xla_executable_abi_version_serdes {
 
 namespace {
 
-absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
-CApiPjRtExecutableAbiVersionFromProto(
+absl::StatusOr<const PJRT_Api*> GetGpuPjrtApi(
     const xla::PjRtExecutableAbiVersionProto& proto) {
-  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
+  const absl::string_view platform_names[] = {
+      kGpuPjrtName, xla::CudaName(), xla::RocmName(), xla::OneapiName()};
+  for (absl::string_view name : platform_names) {
+    if (absl::StatusOr<const PJRT_Api*> c_api = pjrt::PjrtApi(name);
+        c_api.ok()) {
+      return *c_api;
+    }
+  }
+  return absl::NotFoundError("Supported GPU plugins not found");
+}
+
+}  // namespace
+
+ABSL_ATTRIBUTE_WEAK
+absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
+PjRtExecutableAbiVersionFromProto(
+    const xla::PjRtExecutableAbiVersionProto& proto) {
+  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, GetGpuPjrtApi(proto));
   return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
 }
+
+}  // namespace gpu_xla_executable_abi_version_serdes
+
+namespace {
+
+// IFRT SerDes implementation for XlaExecutableAbiVersion on GPU.
+class GpuXlaExecutableAbiVersionSerDes
+    : public ifrt::RTTIExtends<GpuXlaExecutableAbiVersionSerDes,
+                               xla::ifrt::SerDes> {
+ public:
+  absl::string_view type_name() const override {
+    return "xla::GpuXlaExecutableAbiVersion";
+  }
+
+  absl::StatusOr<absl::Cord> Serialize(
+      const xla::ifrt::Serializable& serializable,
+      std::unique_ptr<xla::ifrt::SerializeOptions> options) override {
+    const auto& version =
+        ifrt::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
+
+    ABSL_ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
+                     version.ExecutableAbiVersion().ToProto());
+    absl::Cord executable_abi_version;
+    if (!proto.SerializeToString(&executable_abi_version)) {
+      return absl::InternalError(
+          "Failed to serialize PjRtExecutableAbiVersion to string.");
+    }
+    return executable_abi_version;
+  }
+
+  absl::StatusOr<std::unique_ptr<xla::ifrt::Serializable>> Deserialize(
+      const absl::Cord& serialized,
+      std::unique_ptr<xla::ifrt::DeserializeOptions> options) override {
+    xla::PjRtExecutableAbiVersionProto proto;
+    if (!proto.ParseFromString(serialized)) {
+      return absl::InvalidArgumentError(
+          "Failed to parse PjRtExecutableAbiVersion from string.");
+    }
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::PjRtExecutableAbiVersion> runtime_abi_version,
+        gpu_xla_executable_abi_version_serdes::
+            PjRtExecutableAbiVersionFromProto(proto));
+    return std::make_unique<GpuXlaExecutableAbiVersion>(
+        std::move(runtime_abi_version));
+  }
+
+  static char ID;  // NOLINT
+};
 
 bool register_gpu_abi_version_serdes =
     ([] {
       xla::ifrt::RegisterSerDes<xla::GpuXlaExecutableAbiVersion>(
-          std::make_unique<xla::GpuXlaExecutableAbiVersionSerDes>(
-            CApiPjRtExecutableAbiVersionFromProto));
+          std::make_unique<xla::GpuXlaExecutableAbiVersionSerDes>());
     }(),
      true);
 
 }  // namespace
+
+[[maybe_unused]] char GpuXlaExecutableAbiVersionSerDes::ID = 0;
+
 }  // namespace xla

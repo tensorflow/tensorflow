@@ -114,12 +114,11 @@ absl::StatusOr<nanobind::object> LiteralToPython(
 template <typename T>
 nanobind::typed<nanobind::tuple, T, nanobind::ellipsis> SpanToNbTuple(
     absl::Span<T const> xs) {
-  nanobind::tuple out =
-      nanobind::steal<nanobind::tuple>(PyTuple_New(xs.size()));
-  for (int i = 0; i < xs.size(); ++i) {
-    PyTuple_SET_ITEM(out.ptr(), i, nanobind::cast(xs[i]).release().ptr());
+  nanobind::tuple_builder out(xs.size());
+  for (const T& x : xs) {
+    out.put(x);
   }
-  return out;
+  return out.commit();
 }
 
 // Converts a sequence of Python objects to a Python tuple, stealing the

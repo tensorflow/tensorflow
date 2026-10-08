@@ -281,6 +281,19 @@ absl::Status CreateClientOnce(
     auto kv_store =
         std::make_shared<XlaKeyValueStore>(coordination_service_agent);
     xla::GpuClientOptions options;
+    // TF may simulate several workers with threads in one process (see the
+    // comment above CreateClientOnce). Only the first thread runs
+    // BuildDistributedDevices, with its own node_id; the other threads run
+    // ExchangeEmptyStreamExecutorGpuTopology, which never publishes the
+    // "topology_fingerprint" key that process 0 is expected to write. If the
+    // first thread is not node 0, fingerprint verification blocks until the
+    // 5-minute get_global_topology_timeout. The check was introduced in
+    // cl/990436201 and this path never relied on it, so disable it here.
+    // Multi-process deployments can still opt in with
+    // XLA_PJRT_GPU_VALIDATE_TOPOLOGY=true, which overrides this default.
+    // TODO(b/569388851): re-enable once the handshake also works with
+    // in-process simulated workers.
+    options.verify_topology_fingerprint = false;
     options.kv_store = kv_store;
     options.node_id = node_id;
     options.num_nodes = num_nodes;
@@ -838,7 +851,7 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
     if (sg.ok()) {
       // Create remote contexts on the newly added workers only if the master
       // has collected all device information from them (i.e., the
-      // GetAllRemoteDevices call returns succussfully). Note that in rare cases
+      // GetAllRemoteDevices call returns successfully). Note that in rare cases
       // GetAllRemoteDevices can still fail even with RPCs configured to wait
       // until the remote workers to become alive. If the master creates remote
       // contexts on the workers whose devices are still not collected, those

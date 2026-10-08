@@ -33,27 +33,22 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Memory transaction width for the Triton all-gather kernel in bits (128 bits =
-// 16 bytes). The total buffer size in bits must be aligned to this value so
-// that each thread can load/store a complete 128-bit transaction.
-inline constexpr uint64_t kBitsPerMemoryTransaction = 128;
-
 // Element types supported by the Triton all-gather kernel.
-// Triton tt.load/tt.store support signless integers and floating-point types.
-// Unsigned integer types, complex types, tokens, tuples, and exotic types
-// (e.g. 4-bit integers, 8-bit floats) are not supported.
+// Complex types, tokens, tuples, and exotic types (e.g. 4-bit integers, 8-bit
+// floats) are not supported.
 inline constexpr auto kSupportedAllGatherTypes =
-    std::array{F16, BF16, F32, F64, S8, S16, S32, S64};
+    std::array{PRED, F16, BF16, F32, F64, S8, S16, S32, S64, U8, U16, U32, U64};
 
 // Maximum number of GPU thread-blocks launched per all-gather kernel.
-// This constant is shared between the kernel launcher (all_gather.cc) and the
-// unmanaged-argument shaper (collective_emitter.cc) so that the signal buffer
-// is always sized to match the actual grid.
-inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 32;
+// This number is set by picking the max number of blocks for all reduce and
+// scaling it because the outputs are bigger for all-gather.
+// The number is somewhat arbitrary and should be revisited.
+inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 64;
 
-// Optimal threshold for one-shot all-gather in bytes for the collective kernel.
+// Optimal threshold for one-shot all-gather in bytes for the collective kernel,
+// applied to the gathered output buffer size.
 // Base on the experimental results.
-inline constexpr int64_t kMaxAllGatherSizeBytes = 512 * 1024;  // 512 KB
+inline constexpr int64_t kMaxAllGatherSizeBytes = 16 * 1024 * 1024;  // 16 MB
 
 // Encapsulates the information needed to perform an all-gather via the Triton
 // collective kernel backend.
@@ -64,19 +59,20 @@ struct AllGatherInfo {
 };
 
 // Returns absl::OkStatus() if the all-gather kernel is supported for the given
-// element type and number of elements, or an error status detailing why it is
-// not supported.
+// element type, per-rank input element count, and number of devices, or an
+// error status detailing why it is not supported.
 absl::Status IsAllGatherKernelSupported(int64_t num_elements,
+                                        int64_t num_devices,
                                         PrimitiveType element_type);
 
 // A broader check for all-gather kernel support that verifies device, operand
-// count, replica group, and element-type constraints.
+// count, replica group, gather dimension, and element-type constraints.
 // Returns absl::OkStatus() if supported, or an absl::UnimplementedError
 // explaining why not.
 absl::Status IsAllGatherKernelSupported(
     bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
     int32_t num_operands, int64_t num_devices, int64_t num_elements,
-    PrimitiveType element_type, bool is_local,
+    int64_t per_rank_gather_dim_size, PrimitiveType element_type, bool is_local,
     const std::vector<ReplicaGroup>& replica_groups);
 
 // Constructs an AllGatherInfo object for the given all-gather instruction.
@@ -97,16 +93,17 @@ LaunchDimensions AllGatherLaunchDimensions(
     const se::DeviceDescription& device_info);
 
 // Creates a CollectiveKernelSpec describing the resource requirements of a
-// Triton all-gather kernel.  The kernel argument layout is:
-//   [0] input/scratch buffer pointer table (kScratchBuffer, index 1)
+// Triton all-gather kernel.  The kernel argument layout matches all-reduce:
+//   [0] local input buffer (kInputBuffer, index 0)
 //   [1] output buffer (kOutputBuffer, index 0)
 //   [2] runtime rank  (kRuntimeRank)
 //   [3] invocation count (kInvocationCount)
 //   [4] signal flags (kScratchBuffer, index 0)
-// The runtime performs a D2D copy from the input buffer to the local rank's
-// scratch buffer before kernel launch (copy_input_to_scratch=true).
+//   [5] remote scratch buffer pointer table (kScratchBuffer, index 1)
+// `scratch_memory_type` is used for both scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type);
 
 }  // namespace xla::gpu
 

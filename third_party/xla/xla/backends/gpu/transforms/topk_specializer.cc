@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -50,6 +51,9 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
+
+// Scratch memory allocated for RAFT select_k temporary buffers (32 MB).
+constexpr size_t kRaftScratchSize = 32 * 1024 * 1024;
 
 // Broadcast a 32-bit scalar to a target shape.
 HloInstruction* BroadcastU32(HloComputation* comp, const Shape& target_shape,
@@ -174,6 +178,11 @@ HloInstruction* BuildUnpackU64ToF32(HloInstruction* u64_values,
 
 // Checks if we can safely route stable TopK to RAFT using the Uint64 adapter.
 bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
+  // The Uint64 bit-packing adapter implements TOTAL ordering.
+  if (hlo_instruction_utils::GetTopKComparatorOrder(topk) !=
+      ComparisonOrder::kTotal) {
+    return false;
+  }
   if (!hlo_instruction_utils::IsTopKStable(topk)) {
     return false;
   }
@@ -246,11 +255,13 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
   Shape k_shape =
       ShapeUtil::ChangeElementType(topk->shape().tuple_shapes(0), U64);
   Shape idx_shape = topk->shape().tuple_shapes(1);
-  Shape new_cc_shape = ShapeUtil::MakeTupleShape({k_shape, idx_shape});
+  Shape scratch_shape = ShapeUtil::MakeShape(U8, {kRaftScratchSize});
+  Shape new_cc_shape =
+      ShapeUtil::MakeTupleShape({k_shape, idx_shape, scratch_shape});
 
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
-          new_cc_shape, {packed_u64}, topk->to_apply(), "__gpu$TopK", "",
+          new_cc_shape, {packed_u64}, "__gpu$TopK", "",
           CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   // The packed U64 keys guarantee uniqueness, making ties impossible.
@@ -281,6 +292,19 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
     HloCustomCallInstruction* topk, bool is_cuda) {
+  // __gpu$TopK currently only implements TOTAL ordering (+0.0 > -0.0).
+  // For non-TOTAL comparators (e.g., PARTIAL order in ApproxTopK), return an
+  // error to fall back to sort + slice.
+  // TODO(b/473829358): Enable PARTIAL order in SmallBufferOptimization once
+  // TopKPartialOrderKernel is rolled out to the runtime and wired up in
+  // ThunkEmitter.
+  if (hlo_instruction_utils::GetTopKComparatorOrder(topk) !=
+      ComparisonOrder::kTotal) {
+    return InvalidArgument(
+        "Unsupported comparator order: only TOTAL order is currently "
+        "supported.");
+  }
+
   Shape data_shape = topk->operand(0)->shape();
   auto dtype = data_shape.element_type();
   auto supported_dtypes = {F32, BF16};
@@ -338,13 +362,17 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   if (n < min_n) {
     return InvalidArgument("Input too small (n=%d, min_n=%d)", n, min_n);
   }
+  Shape cc_shape = topk->shape();
+  if (is_cuda && use_raft) {
+    Shape scratch_shape = ShapeUtil::MakeShape(U8, {kRaftScratchSize});
+    cc_shape = ShapeUtil::MakeTupleShape({topk->shape().tuple_shapes(0),
+                                          topk->shape().tuple_shapes(1),
+                                          scratch_shape});
+  }
   HloComputation* comp = topk->parent();
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
-          topk->shape(), topk->operands(),
-          // We don't need the original to_apply, but keeping it around allows
-          // us to round-trip this CustomCall on tests.
-          topk->to_apply(), "__gpu$TopK",
+          cc_shape, topk->operands(), "__gpu$TopK",
           /*opaque=*/"", CustomCallApiVersion::API_VERSION_TYPED_FFI));
   new_topk->set_raw_backend_config_string(topk->raw_backend_config_string());
   return TupleUtil::ExtractPrefix(new_topk, 2);
@@ -363,8 +391,15 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
     }
     TF_RET_CHECK(topk->operand_count() == 1);
     bool is_cuda = compute_capability_.IsCuda();
+    bool enable_raft_for_stable_topk =
+        topk->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_raft_for_stable_topk();
     // Route stable TopK to RAFT select_k via Uint64 adapter
-    if (is_cuda && ShouldRewriteStableTopKToUint64(topk)) {
+    if (is_cuda && enable_raft_for_stable_topk &&
+        ShouldRewriteStableTopKToUint64(topk)) {
+      VLOG(2) << "Rewriting stable TopK to RAFT select_k via Uint64 adapter";
       ABSL_ASSIGN_OR_RETURN(HloInstruction * new_topk,
                        RewriteStableTopKToUint64(topk));
       return ReplaceInstruction(topk, new_topk);

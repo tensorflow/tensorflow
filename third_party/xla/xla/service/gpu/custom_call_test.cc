@@ -203,7 +203,7 @@ TEST_F(CustomCallTest, WithStatusSucceeded) {
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 TEST_F(CustomCallTest, WithStatusFailed) {
@@ -320,7 +320,7 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
@@ -376,7 +376,7 @@ TEST_F(CustomCallTest, ExportedFfiIsInvoked) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_TRUE(is_ffi_invoked);
 }
 
@@ -429,7 +429,7 @@ TEST_F(CustomCallTest, ExportedFfiOpaque) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 static absl::Status CheckTokens(std::vector<PrimitiveType> args,
@@ -500,7 +500,7 @@ TEST_P(CustomCallTokensTest, ExportedTokensTest) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 INSTANTIATE_TEST_SUITE_P(CustomCallTokensTest, CustomCallTokensTest,
@@ -525,7 +525,7 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -572,7 +572,7 @@ TEST_F(CustomCallTest, FfiAttributes) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -637,7 +637,7 @@ TEST_F(CustomCallTest, WithCalledComputation) {
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
@@ -661,7 +661,7 @@ TEST_F(CustomCallTest, WithCalledComputationAndLayouts) {
       /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
       /*literal=*/nullptr, /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}, &shape));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}, &shape));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
@@ -795,17 +795,17 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   ffi::ExecutionContext execution_context;
-  TF_ASSERT_OK(execution_context.Emplace<SomeExtraContext>(42));
+  ASSERT_OK(execution_context.Emplace<SomeExtraContext>(42));
   {
     absl::MutexLock lock(execution_context_mutex);
     global_execution_context = &execution_context;
   }
 
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 
   // Check that FFI handler was called during initialization and execution.
-  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
-                          execution_context.Lookup<SomeExtraContext>());
+  ASSERT_OK_AND_ASSIGN(auto* user_context,
+                       execution_context.Lookup<SomeExtraContext>());
   EXPECT_TRUE(user_context->prepared);
   EXPECT_TRUE(user_context->initialized);
   EXPECT_TRUE(user_context->executed);
@@ -900,7 +900,7 @@ TEST_F(CustomCallTest, FfiInitializationState) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -989,7 +989,7 @@ TEST_F(CustomCallTest, AsyncCustomCalls) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   Literal literal = LiteralUtil::CreateR0<float>(42.0f);
-  TF_ASSERT_OK(ExecuteAndTransfer(&b, {&literal}).status());
+  ASSERT_OK(ExecuteAndTransfer(&b, {&literal}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1050,7 +1050,7 @@ TEST_F(CustomCallHloTest, HloBufferStraightLine) {
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
   EXPECT_TRUE(module.ok());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1114,7 +1114,7 @@ TEST_F(CustomCallHloTest, HloBufferRotated) {
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
   EXPECT_TRUE(module.ok());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1228,7 +1228,7 @@ TEST_F(CustomCallHloTest, CallConcurrentUpdateTwoBuffers) {
   Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
   Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()),
                         {{&input_literal1, &input_literal2}}, kNumReplicas,
@@ -1303,7 +1303,7 @@ TEST_F(CustomCallHloTest, CustomCallConcurrentUpdateTwoBuffers) {
   Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
   Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()),
                         {{&input_literal1, &input_literal2}}, kNumReplicas,

@@ -24,8 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"

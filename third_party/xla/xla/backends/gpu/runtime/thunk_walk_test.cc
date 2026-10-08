@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -75,6 +76,7 @@ TEST(ThunkWalkTest, CommandBufferThunk) {
   Thunk* sequential_thunk_ptr = sequential_thunk.get();
 
   CommandBufferThunk command_buffer_thunk(CommandExecutor(), Thunk::ThunkInfo(),
+                                          /*devices_in_process=*/1,
                                           std::move(sequential_thunk));
   EXPECT_THAT(GetAllThunks(&command_buffer_thunk),
               UnorderedElementsAre(thunk_ptr, &command_buffer_thunk,
@@ -116,7 +118,8 @@ TEST(ThunkWalkTest, WhileThunk) {
 
   WhileThunk while_thunk(Thunk::ThunkInfo(), BufferAllocation::Slice(),
                          std::move(condition_thunk_sequence),
-                         std::move(body_thunk_sequence));
+                         std::move(body_thunk_sequence),
+                         /*trip_count=*/std::nullopt, /*devices_per_host=*/1);
 
   EXPECT_THAT(
       GetAllThunks(&while_thunk),

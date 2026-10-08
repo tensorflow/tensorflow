@@ -64,7 +64,9 @@ TEST(SaveProfileTest, SaveXSpaceChunksVectorSuccessAndPadding) {
 
   std::vector<XSpace> spaces = {space1, space2};
   ASSERT_OK(SaveXSpaceChunks(temp_dir, run, host, spaces));
-  EXPECT_TRUE(spaces.empty());
+  EXPECT_EQ(spaces.size(), 2);
+  EXPECT_EQ(spaces[0].hostnames(0), "host1");
+  EXPECT_EQ(spaces[1].hostnames(0), "host2");
 
   std::string file_path =
       io::JoinPath(temp_dir, run, "test_host_batch_vector.xplane.riegeli");
@@ -120,7 +122,9 @@ TEST(SaveProfileTest, SaveXSpaceChunksRemoteFileSystemCopySuccess) {
   std::vector<XSpace> spaces = {space1, space2};
 
   ASSERT_OK(SaveXSpaceChunks(repo_root, run, host, spaces));
-  EXPECT_TRUE(spaces.empty());
+  EXPECT_EQ(spaces.size(), 2);
+  EXPECT_EQ(spaces[0].hostnames(0), "host1");
+  EXPECT_EQ(spaces[1].hostnames(0), "host2");
 
   std::string file_path =
       io::JoinPath(repo_root, run, "test_host_remote.xplane.riegeli");

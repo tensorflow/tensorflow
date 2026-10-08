@@ -1,15 +1,6 @@
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_cuda_or_rocm_is_configured",
-)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -72,13 +63,17 @@ cc_library(
         "//xla:executable_run_options",
         "//xla:future",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -207,8 +202,10 @@ cc_library(
         ":host_callback",
         ":host_memory_spaces",
         ":infer_dispatch_info",
+        ":linearize_throttler",
         ":pjrt_client",
         ":pjrt_compiler",
+        ":pjrt_device_description",
         ":pjrt_executable",
         ":raw_buffer",
         ":raw_pjrt_client",
@@ -286,10 +283,12 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_sharding",
         "//xla/mlir/utils:type_util",
         "//xla/service:computation_layout",
+        "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
@@ -298,6 +297,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -571,6 +571,7 @@ xla_cc_test(
         ":pjrt_executable",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:executable_metadata_proto_cc",
@@ -757,6 +758,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -827,6 +829,8 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@riegeli//riegeli/bytes:writer",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/ir:register",
         "@stablehlo//:chlo_ops",
@@ -836,6 +840,7 @@ cc_library(
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -852,6 +857,8 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@riegeli//riegeli/bytes:writer",
         "@stablehlo//:stablehlo_portable_api",
     ],
 )
@@ -942,6 +949,7 @@ cc_library(
     hdrs = ["transpose_kernels.h"],
     deps = [
         "//xla:compiler_macros",
+        "@highway//:hwy",
     ],
 )
 
@@ -1001,6 +1009,7 @@ xla_cc_test(
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1144,164 +1153,6 @@ cc_library(
 )
 
 cc_library(
-    name = "triton_stub",
-    srcs = [
-        "triton.h",
-        "triton_stub.cc",
-    ],
-    tags = ["manual"],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:path",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "triton_cuda",
-    srcs = [
-        "triton.h",
-        "triton_cuda.cc",
-    ],
-    compatible_with = [],
-    tags = [
-        "cuda-only",
-        "gpu",
-        "manual",
-    ],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        "//xla:xla_proto_cc",
-        "//xla/backends/gpu/codegen/triton:compilation_pipeline",
-        "//xla/service/gpu/llvm_gpu_backend",
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:IRReader",
-        "@llvm-project//llvm:Linker",
-        "@llvm-project//llvm:MC",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithToLLVM",
-        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
-        "@llvm-project//mlir:ExecutionEngineUtils",
-        "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:IndexToLLVM",
-        "@llvm-project//mlir:LLVMCommonConversion",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMIRTransforms",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:NVVMToLLVMIRTranslation",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@triton//:TritonDialects",
-        "@triton//:TritonTransforms",
-        "@triton//third_party/nvidia:NVGPUToLLVM",
-        "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
-        "@tsl//tsl/platform:path",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "triton_rocm",
-    srcs = [
-        "triton.h",
-        "triton_rocm.cc",
-    ],
-    compatible_with = [],
-    tags = [
-        "gpu",
-        "manual",
-        "rocm-only",
-    ],
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        "//xla:debug_options_flags",
-        "//xla:xla_proto_cc",
-        "//xla/backends/gpu/codegen/triton:compilation_pipeline",
-        "//xla/service/gpu:target_constants",
-        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/rocm:rocm_compute_capability",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMIRTransforms",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@llvm-project//mlir:Transforms",
-        "@triton//:TritonDialects",
-        "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:random",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "triton",
-    srcs = [],
-    hdrs = ["triton.h"],
-    visibility = internal_visibility([":friends"]),
-    deps = if_cuda_or_rocm_is_configured(
-        [],
-        [":triton_stub"],
-    ) + if_rocm_is_configured(
-        [":triton_rocm"],
-    ) + if_cuda_is_configured(
-        [":triton_cuda"],
-    ) + [
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "triton_test",
-    srcs = ["triton_test.cc"],
-    deps = [
-        ":triton",
-        "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "device_event",
     srcs = [
         "device_event.cc",
@@ -1353,6 +1204,33 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "linearize_throttler",
+    srcs = ["linearize_throttler.cc"],
+    hdrs = ["linearize_throttler.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":async_work_runner",
+        ":host_memory_allocator",
+        ":raw_buffer",
+        ":staging_buffer",
+        "//xla/runtime:device_id",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:chunked_queue",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:context",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

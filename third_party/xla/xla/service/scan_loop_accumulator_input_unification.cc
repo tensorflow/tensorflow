@@ -257,7 +257,10 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::RunImpl(
   XLA_VLOG_LINES(2, module->ToString());
 
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false,
+                                            /*execution_threads=*/{},
+                                            /*propagate_through_calls=*/false));
 
   // This pass can only be applied to unrollable loops since we need to find the
   // accumulators and inputs that are by definition updated and read fully via

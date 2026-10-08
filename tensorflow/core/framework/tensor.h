@@ -350,8 +350,8 @@ class Tensor {
   /// This tensor shares other's underlying storage. Returns `true`
   /// iff `other.shape()` has the same number of elements of the given
   /// `shape`.
-  bool CopyFrom(const Tensor& other,
-                const TensorShape& shape) TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT bool CopyFrom(const Tensor& other,
+                                   const TensorShape& shape) {
     if (other.NumElements() != shape.num_elements()) return false;
     CopyFromInternal(other, shape);
     return true;
@@ -396,8 +396,8 @@ class Tensor {
 
   /// Returns `true` iff the parsing succeeds. If the parsing fails,
   /// the state of `*this` is unchanged.
-  bool FromProto(const TensorProto& other) TF_MUST_USE_RESULT;
-  bool FromProto(Allocator* a, const TensorProto& other) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool FromProto(const TensorProto& other);
+  TF_MUST_USE_RESULT bool FromProto(Allocator* a, const TensorProto& other);
 
   /// \brief Fills in `proto` with `*this` tensor's content.
   ///

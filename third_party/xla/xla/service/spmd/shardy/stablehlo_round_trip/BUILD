@@ -29,6 +29,7 @@ cc_library(
         "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -171,7 +172,6 @@ cc_library(
     srcs = ["export_manual_reduction_collectives.cc"],
     hdrs = ["export_manual_reduction_collectives.h"],
     deps = [
-        "//xla:array",
         "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log",
@@ -182,6 +182,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/export:utils",
         "@stablehlo//:stablehlo_ops",
     ],
 )

@@ -48,8 +48,8 @@ def get_field(
 
   Args:
     proto: Parent proto of any message type.
-    fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
-      can represent `proto.nodes.attr["value"]`.
+    fields: A string/int/map key field or a sequence of them, e.g. ["nodes",
+      "attr", "value"] can represent `proto.nodes.attr["value"]`.
 
   Returns:
     Tuple of (
@@ -71,8 +71,8 @@ def get_field_tag(
 
   Args:
     proto: Parent proto of any message type.
-    fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
-      can represent `proto.nodes.attr["value"]`.
+    fields: A string/int/map key field or a sequence of them, e.g. ["nodes",
+      "attr", "value"] can represent `proto.nodes.attr["value"]`.
 
   Returns:
     A list of FieldIndex protos with the same length as `fields`.
@@ -95,8 +95,8 @@ def _walk_fields(proto: message.Message, fields: FieldTypes):
 
   Args:
     proto: Parent proto of any message type.
-    fields: List of string/int/map key fields, e.g. ["nodes", "attr", "value"]
-      can represent `proto.nodes.attr["value"]`.
+    fields: A string/int/map key field or a sequence of them, e.g. ["nodes",
+      "attr", "value"] can represent `proto.nodes.attr["value"]`.
 
   Yields:
     Tuple of (
@@ -105,7 +105,9 @@ def _walk_fields(proto: message.Message, fields: FieldTypes):
       Key into this map field (or None),
       Index into this repeated field (or None))
   """
-  if not isinstance(fields, list):
+  if isinstance(fields, Sequence) and not isinstance(fields, (str, bytes)):
+    fields = list(fields)  # pyrefly: ignore[bad-assignment]
+  else:
     fields = [fields]  # pyrefly: ignore[bad-assignment]
 
   field_proto = proto

@@ -1,4 +1,3 @@
-
 // RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/a100_pcie_80.txtpb --split-input-file | FileCheck %s
 // CHECK: %conv_fprop_fusion_comp
 // CHECK: convolution

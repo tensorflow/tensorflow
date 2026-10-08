@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -70,6 +71,19 @@ arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
                                          rewriter.getIntegerType(64));
   auto attr = DenseElementsAttr::get(attr_type, shape);
   return arith::ConstantOp::create(rewriter, value.getLoc(), attr_type, attr);
+}
+
+// Returns a scalar (rank-0) constant holding `raw_value`, typed with the same
+// floating point element type as `value`. Decompositions that introduce a
+// literal operand must match the input precision; hardcoding an f32 constant
+// restricts the pattern to f32 inputs and leaves e.g. bf16 operands illegal.
+arith::ConstantOp ScalarConstantLike(OpBuilder& b, Value value,
+                                     double raw_value) {
+  Type element_type = getElementTypeOrSelf(value.getType());
+  auto attr_type = RankedTensorType::get({}, element_type);
+  auto attr = DenseElementsAttr::get(attr_type,
+                                     b.getFloatAttr(element_type, raw_value));
+  return arith::ConstantOp::create(b, value.getLoc(), attr_type, attr);
 }
 
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new

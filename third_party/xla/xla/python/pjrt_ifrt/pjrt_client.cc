@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
@@ -1233,12 +1234,10 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     return arrays[0];
   } else if (!isa<const SingleDeviceSharding, const OpaqueSharding,
                   const ConcreteSharding, const ConcreteEvenSharding,
-                  const ShardingParamSharding, const HloSharding>(
-                 sharding.get())) {
+                  const HloSharding>(sharding.get())) {
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
-        "ConcreteEvenSharding, ShardingParamSharding, HloSharding are "
-        "supported: sharding=%v",
+        "ConcreteEvenSharding, and HloSharding are supported: sharding=%v",
         sharding);
   }
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
@@ -1957,6 +1956,12 @@ absl::StatusOr<BundleRef> PjRtClient::Bundle(absl::Span<ValueRef> values,
 absl::StatusOr<BundleRef> PjRtClient::ConcatBundles(
     absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) {
   return BasicBundle::ConcatBundles(bundles, semantics);
+}
+
+absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> PjRtClient::Load(
+    absl::Span<const ExecutableRef> executables,
+    absl::Span<std::unique_ptr<LoadOptions>> options) {
+  return absl::UnimplementedError("Load is not implemented in PjRtClient.");
 }
 
 absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(

@@ -21,9 +21,12 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/gpu/abi_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
@@ -83,6 +86,36 @@ CreateXlaExecutableAbiVersion(
 }
 
 TEST(GpuXlaExecutableAbiVersionTest, SerializeDeserialize) {
+  ASSERT_OK_AND_ASSIGN(auto runtime_abi_version,
+                       GetPjrtAbiVersion(GetTestRuntimeAbi()));
+  ASSERT_OK_AND_ASSIGN(
+      auto test_executable_abi_version,
+      GetTestExecutableAbiVersion(stream_executor::SemanticVersion(1, 2, 3)));
+  ASSERT_OK_AND_ASSIGN(
+      auto executable_abi_version,
+      GetPjrtExecutableAbiVersion(test_executable_abi_version));
+  ASSERT_OK_AND_ASSIGN(
+      auto xla_executable_abi_version,
+      CreateXlaExecutableAbiVersion(std::move(executable_abi_version)));
+
+  ASSERT_OK_AND_ASSIGN(auto serialized_version,
+                       xla_executable_abi_version->Serialize());
+  ASSERT_OK_AND_ASSIGN(
+      auto deserialized_version,
+      xla::ifrt::XlaExecutableAbiVersion::Deserialize(serialized_version));
+
+  EXPECT_THAT(runtime_abi_version->IsCompatibleWith(
+                  deserialized_version->ExecutableAbiVersion()),
+              IsOk());
+}
+
+TEST(GpuXlaExecutableAbiVersionTest, SerializeDeserializeWithCudaPluginName) {
+  ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
+  absl::Status status = pjrt::SetPjrtApi(xla::CudaName(), c_api);
+  if (!status.ok() && !absl::IsAlreadyExists(status)) {
+    ASSERT_OK(status);
+  }
+
   ASSERT_OK_AND_ASSIGN(auto runtime_abi_version,
                        GetPjrtAbiVersion(GetTestRuntimeAbi()));
   ASSERT_OK_AND_ASSIGN(

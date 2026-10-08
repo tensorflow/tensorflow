@@ -104,6 +104,7 @@ xla_cc_test(
         ":executable_build_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:compilation_environments",
         "//xla/service:device_assignment",
@@ -214,5 +215,23 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "client_library_test",
+    srcs = ["client_library_test.cc"],
+    deps = [
+        ":client_library",
+        ":compile_only_client",
+        ":local_client",
+        "//xla/service:backend",
+        "//xla/service:cpu_plugin",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )

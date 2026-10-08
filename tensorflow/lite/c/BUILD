@@ -91,9 +91,6 @@ tflite_cc_library_with_c_headers_test(
     ],
 )
 
-# TODO(b/248514738): Deprecate this target in favour
-# of //third_party/tensorflow/lite/core/c:c_api_without_op_resolver after all known existing uses of
-# those targets have been changed to instead refer to the new target.
 # Same as ":c_api", but doesn't link in the default CreateOpResolver implementation.
 cc_library_with_tflite_with_c_headers_test(
     name = "c_api_without_op_resolver",

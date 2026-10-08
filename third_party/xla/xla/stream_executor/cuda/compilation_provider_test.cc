@@ -25,7 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -81,8 +81,8 @@ void CompilationProviderTest::SetUp() {
     GTEST_SKIP() << "nvptxcompiler is not supported in this build.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(compilation_provider_,
-                          CreateCompilationProvider(GetParam()));
+  ASSERT_OK_AND_ASSIGN(compilation_provider_,
+                       CreateCompilationProvider(GetParam()));
 }
 
 absl::StatusOr<std::unique_ptr<CompilationProvider>>
@@ -540,8 +540,8 @@ constexpr stream_executor::CudaComputeCapability kDefaultComputeCapability{8,
 
 TEST_P(CompilationProviderTest, CompileStandaloneModuleSucceeds) {
   CompilationOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(
-      Assembly module, compilation_provider()->Compile(
+  ASSERT_OK_AND_ASSIGN(Assembly module,
+                       compilation_provider()->Compile(
                            kDefaultComputeCapability, kStandalonePtx, options));
   EXPECT_FALSE(module.cubin.empty());
   EXPECT_EQ(module.compilation_log, std::nullopt);
@@ -551,8 +551,8 @@ TEST_P(CompilationProviderTest,
        CompileStandaloneModuleDumpsCompilationLogWhenRequested) {
   CompilationOptions options;
   options.dump_compilation_log = true;
-  TF_ASSERT_OK_AND_ASSIGN(
-      Assembly module, compilation_provider()->Compile(
+  ASSERT_OK_AND_ASSIGN(Assembly module,
+                       compilation_provider()->Compile(
                            kDefaultComputeCapability, kStandalonePtx, options));
   EXPECT_THAT(module.compilation_log, Optional(Not(IsEmpty())));
 }
@@ -563,10 +563,9 @@ TEST_P(CompilationProviderTest, CompileStandaloneRelocatableModuleSucceeds) {
   }
 
   CompilationOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(
-      RelocatableModule module,
-      compilation_provider()->CompileToRelocatableModule(
-          kDefaultComputeCapability, kStandalonePtx, options));
+  ASSERT_OK_AND_ASSIGN(RelocatableModule module,
+                       compilation_provider()->CompileToRelocatableModule(
+                           kDefaultComputeCapability, kStandalonePtx, options));
   EXPECT_FALSE(module.cubin.empty());
   EXPECT_EQ(module.compilation_log, std::nullopt);
 }
@@ -579,10 +578,9 @@ TEST_P(CompilationProviderTest,
 
   CompilationOptions options;
   options.dump_compilation_log = true;
-  TF_ASSERT_OK_AND_ASSIGN(
-      RelocatableModule module,
-      compilation_provider()->CompileToRelocatableModule(
-          kDefaultComputeCapability, kStandalonePtx, options));
+  ASSERT_OK_AND_ASSIGN(RelocatableModule module,
+                       compilation_provider()->CompileToRelocatableModule(
+                           kDefaultComputeCapability, kStandalonePtx, options));
   EXPECT_THAT(module.compilation_log, Optional(Not(IsEmpty())));
 }
 
@@ -604,7 +602,7 @@ TEST_P(CompilationProviderTest, CompileAndLinkStandaloneModule) {
   }
 
   CompilationOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Assembly assembly,
       compilation_provider()->CompileAndLink(kDefaultComputeCapability,
                                              {Ptx{kStandalonePtx}}, options));
@@ -617,10 +615,9 @@ TEST_P(CompilationProviderTest, CompileDependentRelocatableModuleSucceeds) {
   }
 
   CompilationOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(
-      RelocatableModule module,
-      compilation_provider()->CompileToRelocatableModule(
-          kDefaultComputeCapability, kDependentPtx, options));
+  ASSERT_OK_AND_ASSIGN(RelocatableModule module,
+                       compilation_provider()->CompileToRelocatableModule(
+                           kDefaultComputeCapability, kDependentPtx, options));
   EXPECT_FALSE(module.cubin.empty());
 }
 
@@ -669,7 +666,7 @@ TEST_P(CompilationProviderTest, CompileAndLinkMultipleModulesSucceeds) {
   }
 
   CompilationOptions default_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Assembly assembly,
       compilation_provider()->CompileAndLink(
           kDefaultComputeCapability, {Ptx{kDependentPtx}, Ptx{kDependeePtx}},
@@ -688,15 +685,15 @@ TEST_P(CompilationProviderTest, CompileAndLaterLinkMultipleModulesSucceeds) {
   }
 
   CompilationOptions default_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RelocatableModule module1,
       compilation_provider()->CompileToRelocatableModule(
           kDefaultComputeCapability, kDependentPtx, default_options));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RelocatableModule module2,
       compilation_provider()->CompileToRelocatableModule(
           kDefaultComputeCapability, kDependeePtx, default_options));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Assembly assembly,
       compilation_provider()->CompileAndLink(
           kDefaultComputeCapability, {std::move(module1), std::move(module2)},
@@ -783,7 +780,7 @@ TEST_P(CompilationProviderTest,
 }
 
 TEST_P(CompilationProviderTest, ParallelCompileReturnsSameResult) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Assembly reference_assembly,
       compilation_provider()->Compile(kDefaultComputeCapability, kStandalonePtx,
                                       CompilationOptions()));
@@ -811,7 +808,7 @@ TEST_P(CompilationProviderTest,
         << "Compilation provider doesn't support CompileToRelocatableModule";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RelocatableModule reference_module,
       compilation_provider()->CompileToRelocatableModule(
           kDefaultComputeCapability, kStandalonePtx, CompilationOptions()));
@@ -838,10 +835,10 @@ TEST_P(CompilationProviderTest, ParallelCompileAndLinkReturnsSameResult) {
     GTEST_SKIP() << "Compilation provider doesn't support CompileAndLink";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(Assembly reference_assembly,
-                          compilation_provider()->CompileAndLink(
-                              kDefaultComputeCapability, {Ptx{kStandalonePtx}},
-                              CompilationOptions()));
+  ASSERT_OK_AND_ASSIGN(Assembly reference_assembly,
+                       compilation_provider()->CompileAndLink(
+                           kDefaultComputeCapability, {Ptx{kStandalonePtx}},
+                           CompilationOptions()));
 
   // We spawn a hundred threads and schedule parallel calls to `CompileAndLink`
   // on them. This is not guaranteed to fail if something was broken, but since
@@ -862,8 +859,8 @@ TEST_P(CompilationProviderTest, ParallelCompileAndLinkReturnsSameResult) {
 TEST_P(CompilationProviderTest,
        QueryLatestPtxIsaVersionReturnsAValidPtxIsaVersion) {
   CompilationProvider* provider = compilation_provider();
-  TF_ASSERT_OK_AND_ASSIGN(int latest_ptx_isa_version,
-                          provider->GetLatestPtxIsaVersion());
+  ASSERT_OK_AND_ASSIGN(int latest_ptx_isa_version,
+                       provider->GetLatestPtxIsaVersion());
   EXPECT_GE(latest_ptx_isa_version, 80);
   // Update when PTX 20.0 comes out.
   EXPECT_LE(latest_ptx_isa_version, 200);

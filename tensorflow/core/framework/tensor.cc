@@ -585,6 +585,10 @@ template <>
 struct ProtoHelper<float8_e5m2fnuz>
     : public Float8ProtoHelper<float8_e5m2fnuz> {};
 
+template <>
+struct ProtoHelper<float8_e8m0fnu> : public Float8ProtoHelper<float8_e8m0fnu> {
+};
+
 template <typename Float4>
 struct Float4ProtoHelper {
   typedef std::string RepeatedFieldType;
@@ -1035,7 +1039,7 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
 #define SINGLE_ARG(...) __VA_ARGS__
 #define CASE(TYPE, STMTS)               \
   case DataTypeToEnum<TYPE>::value: {   \
-    typedef TF_ATTRIBUTE_UNUSED TYPE T; \
+    typedef TYPE T TF_ATTRIBUTE_UNUSED; \
     STMTS;                              \
     break;                              \
   }
@@ -1069,6 +1073,7 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     CASE(float8_e4m3fnuz, SINGLE_ARG(STMTS))                   \
     CASE(float8_e4m3b11fnuz, SINGLE_ARG(STMTS))                \
     CASE(float8_e5m2fnuz, SINGLE_ARG(STMTS))                   \
+    CASE(float8_e8m0fnu, SINGLE_ARG(STMTS))                    \
     CASE(float4_e2m1fn, SINGLE_ARG(STMTS))                     \
     CASE(int4, SINGLE_ARG(STMTS))                              \
     CASE(uint4, SINGLE_ARG(STMTS))                             \
@@ -1373,7 +1378,19 @@ float PrintOneElement(float8_e4m3fn f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+float PrintOneElement(float8_e4m3fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 float PrintOneElement(float8_e4m3b11fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+float PrintOneElement(float8_e5m2fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
+float PrintOneElement(float8_e8m0fnu f, bool print_v2) {
   return static_cast<float>(f);
 }
 
@@ -1579,9 +1596,18 @@ std::string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     case DT_FLOAT8_E4M3FN:
       return SummarizeArray<float8_e4m3fn>(limit, num_elts, shape_, data,
                                            print_v2);
+    case DT_FLOAT8_E4M3FNUZ:
+      return SummarizeArray<float8_e4m3fnuz>(limit, num_elts, shape_, data,
+                                             print_v2);
     case DT_FLOAT8_E4M3B11FNUZ:
       return SummarizeArray<float8_e4m3b11fnuz>(limit, num_elts, shape_, data,
                                                 print_v2);
+    case DT_FLOAT8_E5M2FNUZ:
+      return SummarizeArray<float8_e5m2fnuz>(limit, num_elts, shape_, data,
+                                             print_v2);
+    case DT_FLOAT8_E8M0FNU:
+      return SummarizeArray<float8_e8m0fnu>(limit, num_elts, shape_, data,
+                                            print_v2);
     case DT_FLOAT4_E2M1FN:
       return SummarizeArray<float4_e2m1fn>(limit, num_elts, shape_, data,
                                            print_v2);

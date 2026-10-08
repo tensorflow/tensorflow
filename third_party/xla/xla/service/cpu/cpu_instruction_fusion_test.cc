@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
-#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/tests/test_utils.h"
@@ -591,10 +590,6 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
 
 TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
   auto module = CreateNewVerifiedModule();
-
-  if (options::UseExperimentalLoopFusion(module->config())) {
-    GTEST_SKIP() << "New fusion emitter does not support DUS yet.";
-  }
 
   HloComputation::Builder builder(TestName());
 
@@ -1368,6 +1363,71 @@ ENTRY main {
                        CpuInstructionFusion(&alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kMultiply));
+}
+
+TEST_F(InstructionFusionTest,
+       DoNotFuseMinorDimensionConcatenateWithSufficientBytes) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  %p0 = f32[16,32]{1,0} parameter(0)
+  %p1 = f32[16,32]{1,0} parameter(1)
+  %concat = f32[16,64]{1,0} concatenate(%p0, %p1), dimensions={1}
+  ROOT %negate = f32[16,64]{1,0} negate(%concat)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(EntryHasStandaloneOp(*module, HloOpcode::kConcatenate));
+  EXPECT_TRUE(EntryHasStandaloneOp(*module, HloOpcode::kNegate));
+}
+
+TEST_F(InstructionFusionTest, FuseMinorDimensionConcatenateWithTinyBytes) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  %p0 = f32[4,2]{1,0} parameter(0)
+  %p1 = f32[4,2]{1,0} parameter(1)
+  %concat = f32[4,4]{1,0} concatenate(%p0, %p1), dimensions={1}
+  ROOT %negate = f32[4,4]{1,0} negate(%concat)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kConcatenate));
+  EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kNegate));
+}
+
+TEST_F(InstructionFusionTest,
+       FuseMinorDimensionConcatenateWithSmallTotalBytes) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  %p0 = f32[8,8]{1,0} parameter(0)
+  %p1 = f32[8,8]{1,0} parameter(1)
+  %concat = f32[8,16]{1,0} concatenate(%p0, %p1), dimensions={1}
+  ROOT %negate = f32[8,16]{1,0} negate(%concat)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kConcatenate));
+  EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kNegate));
 }
 
 }  // namespace

@@ -18,6 +18,10 @@ limitations under the License.
 // incorporates the extension from section 4 to maintain the topological order
 // explicitly in a doubly-linked list.
 //
+// All topological order metadata and links are stored in a contiguous array
+// (std::vector) managed by TopologicalSort, indexed directly by the node's
+// dense integer ID (IndexInParent).
+//
 // Per Bender et al, inserting m edges into a graph of n nodes takes
 // O(m*min(m**(1/2), n**(2/3))). For the use case of our compiler IR, we assume
 // that the number of edges is at most a small multiple of the number of nodes,
@@ -48,11 +52,11 @@ limitations under the License.
 //   we use them to index into vectors. If we didn't have a dense range, we
 //   could use an associative map data structure instead, but that would be
 //   slower to lookup.
-// - Link is a pointer to the embedded TopologicalSortNode<T> field in T.
 // - IndexInParent is a pointer to the index_in_parent field in T.
 //   These indices must remain fixed only during a call to AddEdge(), which
 //   is obviously true because we don't allow threads and the topological sort
-//   will not change them, but they are allowed to change between calls.
+//   will not change them, but they are allowed to change between calls (if
+//   Reindex() is called to update the internal node table).
 // - PredecessorIterator, PredecessorsBegin, PredecessorsEnd iterate over the
 //   predecessors of the node. Duplicates are allowed.
 // - SuccessorIterator, SuccessorsBegin, SuccessorsEnd iterate over the
@@ -77,69 +81,46 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/logging.h"
 
-// The topological sort is an intrusive data structure. Nodes of type T that
-// participate in the topological sort must have a TopologicalSortNode<T>
-// embedded within them.
-template <typename T>
-class TopologicalSortNode {
- public:
-  TopologicalSortNode() = default;
-  ~TopologicalSortNode() { DCHECK(!in_topological_order()) << level_; }
+namespace xla {
 
-  TopologicalSortNode(const TopologicalSortNode&) = delete;
-  TopologicalSortNode(TopologicalSortNode&&) = delete;
-  TopologicalSortNode& operator=(const TopologicalSortNode&) = delete;
-  TopologicalSortNode& operator=(TopologicalSortNode&&) = delete;
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
+          PredecessorIterator (T::*PredecessorsBegin)() const,
+          PredecessorIterator (T::*PredecessorsEnd)() const,
+          typename SuccessorIterator,
+          SuccessorIterator (T::*SuccessorsBegin)() const,
+          SuccessorIterator (T::*SuccessorsEnd)() const>
+class TopologicalSort;
 
-  void clear() {
-    next_ = nullptr;
-    prev_ = nullptr;
-    level_ = -1;
-    index_ = -1;
-  }
+template <typename Index>
+class TopologicalSortForwardIterator;
 
-  // Returns true if this node has been added to a topological order.
-  // It may have temporarily been removed from a specific location in that
-  // order if we are in the middle of an AddEdge() operation.
-  bool in_topological_order() const { return level_ >= 0; }
+template <typename Index>
+class TopologicalSortReverseIterator;
 
- private:
-  template <typename S, typename Index, TopologicalSortNode<S> S::* Link,
-            Index S::* IndexInParent, typename PredecessorIterator,
-            PredecessorIterator (S::*PredecessorsBegin)() const,
-            PredecessorIterator (S::*PredecessorsEnd)() const,
-            typename SuccessorIterator,
-            SuccessorIterator (S::*SuccessorsBegin)() const,
-            SuccessorIterator (S::*SuccessorsEnd)() const>
-  friend class TopologicalSort;
-
-  template <typename S, TopologicalSortNode<S> S::* Link>
-  friend class TopologicalSortForwardIterator;
-  template <typename S, TopologicalSortNode<S> S::* Link>
-  friend class TopologicalSortReverseIterator;
-
-  int index_ = -1;
-  int level_ = -1;
-
-  // The nodes form a doubly-linked list, where the `next_` pointers are not
-  // circular, but the `prev_` pointers are circular.
-  // There is also an asymmetry in the types of `next_` and `prev_`: the former
-  // is a pointer to a node, while the latter is a pointer to a
-  // TopologicalSortNode embedded within a node. This trick helps us define
-  // an intrusive templated list in C++.
-  T* next_ = nullptr;
-  TopologicalSortNode<T>* prev_ = nullptr;
+// Internal node stored in the contiguous vector of TopologicalSort.
+// The nodes form a circular doubly-linked list through `next` and `prev`
+// indices into the vector (with kSentinel = 0 acting as the list head).
+template <typename Index>
+struct TopologicalSortInternalNode {
+  Index next = 0;
+  Index prev = 0;
+  int level = -1;
+  int index = -1;
 };
 
 // Iterator that traverses through the topological sort in order.
-template <typename T, TopologicalSortNode<T> T::* Link>
+template <typename Index>
 class TopologicalSortForwardIterator {
  public:
-  TopologicalSortForwardIterator() : current_(nullptr) {}
-  explicit TopologicalSortForwardIterator(const TopologicalSortNode<T>* current)
-      : current_(current) {}
+  using Node = TopologicalSortInternalNode<Index>;
+
+  TopologicalSortForwardIterator() : nodes_(nullptr), current_(0) {}
+  TopologicalSortForwardIterator(const std::vector<Node>* nodes, Index current)
+      : nodes_(nodes), current_(current) {}
 
   TopologicalSortForwardIterator(const TopologicalSortForwardIterator&) =
       default;
@@ -149,8 +130,7 @@ class TopologicalSortForwardIterator {
   TopologicalSortForwardIterator& operator=(TopologicalSortForwardIterator&&) =
       default;
 
-  T& operator*() const { return *current_->next_; }
-  T* operator->() const { return current_->next_; }
+  Index operator*() const { return static_cast<Index>(current_ - 1); }
 
   bool operator==(const TopologicalSortForwardIterator& other) const {
     return current_ == other.current_;
@@ -160,28 +140,31 @@ class TopologicalSortForwardIterator {
   }
 
   TopologicalSortForwardIterator& operator++() {
-    current_ = &(current_->next_->*Link);
+    current_ = (*nodes_)[current_].next;
     return *this;
   }
 
   TopologicalSortForwardIterator& operator--() {
-    current_ = &current_->prev_;
+    current_ = (*nodes_)[current_].prev;
     return *this;
   }
 
  private:
-  // Note: the iterator is a pointer to a node whose *next* pointer points to
-  // the current node.
-  TopologicalSortNode<T> const* current_;
+  const std::vector<Node>* nodes_;
+  // Index into `nodes_` of the current node in the traversal (kSentinel = 0 at
+  // end).
+  Index current_;
 };
 
 // Iterator that traverses through the topological sort in reverse order.
-template <typename T, TopologicalSortNode<T> T::* Link>
+template <typename Index>
 class TopologicalSortReverseIterator {
  public:
-  TopologicalSortReverseIterator() : current_(nullptr) {}
-  explicit TopologicalSortReverseIterator(const TopologicalSortNode<T>* current)
-      : current_(current) {}
+  using Node = TopologicalSortInternalNode<Index>;
+
+  TopologicalSortReverseIterator() : nodes_(nullptr), current_(0) {}
+  TopologicalSortReverseIterator(const std::vector<Node>* nodes, Index current)
+      : nodes_(nodes), current_(current) {}
 
   TopologicalSortReverseIterator(const TopologicalSortReverseIterator&) =
       default;
@@ -191,8 +174,7 @@ class TopologicalSortReverseIterator {
   TopologicalSortReverseIterator& operator=(TopologicalSortReverseIterator&&) =
       default;
 
-  T& operator*() const { return *current_->next_; }
-  T* operator->() const { return current_->next_; }
+  Index operator*() const { return static_cast<Index>(current_ - 1); }
 
   bool operator==(const TopologicalSortReverseIterator& other) const {
     return current_ == other.current_;
@@ -202,18 +184,24 @@ class TopologicalSortReverseIterator {
   }
 
   TopologicalSortReverseIterator& operator++() {
-    current_ = current_->prev_;
+    current_ = (*nodes_)[current_].prev;
+    return *this;
+  }
+
+  TopologicalSortReverseIterator& operator--() {
+    current_ = (*nodes_)[current_].next;
     return *this;
   }
 
  private:
-  // Note: the iterator is a pointer to a node whose *next* pointer points to
-  // the current node.
-  TopologicalSortNode<T> const* current_;
+  const std::vector<Node>* nodes_;
+  // Index into `nodes_` of the current node in the traversal (kSentinel = 0 at
+  // rend).
+  Index current_;
 };
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
@@ -221,13 +209,18 @@ template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
           SuccessorIterator (T::*SuccessorsEnd)() const>
 class TopologicalSort {
  public:
+  using Node = TopologicalSortInternalNode<Index>;
+  static constexpr Index kSentinel = 0;
+
   TopologicalSort() {
-    node_.next_ = nullptr;
-    node_.prev_ = &node_;
-    first_in_level_.push_back(&node_);
+    nodes_.emplace_back();  // nodes_[0] is kSentinel
+    nodes_[kSentinel].next = kSentinel;
+    nodes_[kSentinel].prev = kSentinel;
+    nodes_[kSentinel].level = 0;
+    first_in_level_.push_back(kSentinel);
   }
 
-  ~TopologicalSort();
+  ~TopologicalSort() = default;
 
   // Invalidates iterators.
   void AddNode(T* v);
@@ -246,49 +239,63 @@ class TopologicalSort {
   // ordering, and there's nothing for us to do here. The user still needs to
   // remove the edge from their own data structure, of course.
 
+  // Rebuilds the internal node table to reflect updated IndexInParent values
+  // (e.g., after ID compaction) by remapping node IDs according to old_to_new
+  // (where old_to_new[old_idx] is the new IndexInParent, or -1 if removed),
+  // while preserving every node's exact level, index, and topological order.
+  void Reindex(absl::Span<const Index> old_to_new);
+
   // Returns an iterator over the nodes in topological order.
-  TopologicalSortForwardIterator<T, Link> begin() const {
-    return TopologicalSortForwardIterator<T, Link>(&node_);
+  TopologicalSortForwardIterator<Index> begin() const {
+    return TopologicalSortForwardIterator<Index>(&nodes_,
+                                                 nodes_[kSentinel].next);
   }
-  TopologicalSortForwardIterator<T, Link> end() const {
-    return TopologicalSortForwardIterator<T, Link>(node_.prev_);
+  TopologicalSortForwardIterator<Index> end() const {
+    return TopologicalSortForwardIterator<Index>(&nodes_, kSentinel);
   }
 
   // Returns an iterator over the nodes in reverse topological order.
-  TopologicalSortReverseIterator<T, Link> rbegin() const {
-    return TopologicalSortReverseIterator<T, Link>(node_.prev_->prev_);
+  TopologicalSortReverseIterator<Index> rbegin() const {
+    return TopologicalSortReverseIterator<Index>(&nodes_,
+                                                 nodes_[kSentinel].prev);
   }
-  TopologicalSortReverseIterator<T, Link> rend() const {
-    return TopologicalSortReverseIterator<T, Link>(node_.prev_);
+  TopologicalSortReverseIterator<Index> rend() const {
+    return TopologicalSortReverseIterator<Index>(&nodes_, kSentinel);
+  }
+
+  template <typename Fn>
+  void ForEachPostOrder(Fn&& fn) const {
+    const Node* const data = nodes_.data();
+    for (Index curr = data[kSentinel].prev; curr != kSentinel;
+         curr = data[curr].prev) {
+      fn(static_cast<Index>(curr - 1));
+    }
   }
 
   // This is a helper for debugging. It logs the current order and checks a
   // number of invariants.
   void LogOrder() {
-    std::vector<T*> order;
+    std::vector<Index> order;
     int level = -1;
-    for (T& node : *this) {
-      const auto& link = node.*Link;
-      CHECK_GE(link.level_, level);
-      level = link.level_;
-      if (link.next_) {
-        CHECK((link.next_->*Link).prev_ == &link);
-      } else {
-        CHECK(node_.prev_ == &link);
-      }
-      CHECK(link.prev_->next_ == &node);
-      order.push_back(&node);
+    for (Index idx : *this) {
+      Index id = idx + 1;
+      const auto& link = nodes_[id];
+      CHECK_GE(link.level, level);
+      level = link.level;
+      CHECK(nodes_[link.next].prev == id);
+      CHECK(nodes_[link.prev].next == id);
+      order.push_back(idx);
     }
-    auto node_formatter = [](std::string* out, T* v) {
-      absl::StrAppend(out, v->*IndexInParent, "[", (v->*Link).level_, ":",
-                      (v->*Link).index_, "]");
+    auto node_formatter = [this](std::string* out, Index idx) {
+      Index id = idx + 1;
+      absl::StrAppend(out, idx, "[", nodes_[id].level, ":", nodes_[id].index,
+                      "]");
     };
     DVLOG(2) << this << " order=" << absl::StrJoin(order, ", ", node_formatter);
-    auto first_in_level_formatter = [](std::string* out,
-                                       TopologicalSortNode<T>* v) {
-      if (v->next_) {
-        absl::StrAppend(out, v->next_->*IndexInParent, ":",
-                        (v->next_->*Link).level_);
+    auto first_in_level_formatter = [this](std::string* out, Index v) {
+      if (nodes_[v].next != kSentinel) {
+        absl::StrAppend(out, nodes_[v].next - 1, ":",
+                        nodes_[nodes_[v].next].level);
       } else {
         absl::StrAppend(out, "-:-");
       }
@@ -296,17 +303,48 @@ class TopologicalSort {
     DVLOG(2) << this << " first_in_level_="
              << absl::StrJoin(first_in_level_, ", ", first_in_level_formatter);
 
-    CHECK(first_in_level_[0] == &node_);
+    CHECK(first_in_level_[0] == kSentinel);
     auto it = order.begin();
-    for (TopologicalSortNode<T>* v : first_in_level_) {
-      it = std::find(it, order.end(), v->next_);
-      CHECK(v->next_ == nullptr || it != order.end());
+    for (Index v : first_in_level_) {
+      if (nodes_[v].next != kSentinel) {
+        it = std::find(it, order.end(), static_cast<Index>(nodes_[v].next - 1));
+        CHECK(it != order.end());
+      }
     }
   }
 
-  void clear() { node_.clear(); }
+  void clear() {
+    nodes_.clear();
+    nodes_.emplace_back();
+    nodes_[kSentinel].next = kSentinel;
+    nodes_[kSentinel].prev = kSentinel;
+    nodes_[kSentinel].level = 0;
+    num_edges_ = 0;
+    num_nodes_ = 0;
+    delta_ = 0;
+    next_index_ = std::numeric_limits<int>::max();
+    first_in_level_.clear();
+    first_in_level_.push_back(kSentinel);
+    visited_backwards_.clear();
+    visited_backwards_nodes_.clear();
+    visited_forwards_.clear();
+    increased_.clear();
+  }
 
  private:
+  Index NodeId(const T* v) const {
+    return static_cast<Index>(v->*IndexInParent) + 1;
+  }
+
+  // Returns true if this node has been added to a topological order.
+  // It may have temporarily been removed from a specific location in that
+  // order if we are in the middle of an AddEdge() operation.
+  bool in_topological_order(const T* v) const {
+    Index id = NodeId(v);
+    return id > 0 && static_cast<size_t>(id) < nodes_.size() &&
+           nodes_[id].level >= 0;
+  }
+
   // Updates delta_ after we have increased num_edges_ and num_nodes_.
   // We don't bother decreasing delta_ after removals, since we assume that our
   // graphs will not significantly shrink.
@@ -326,22 +364,21 @@ class TopologicalSort {
   // it here.)
   void SearchForwards(T* v, T* w, std::vector<T*>& f);
 
-  // Removes v from the topological order.
-  void RemoveFromOrder(T* v);
-
+  // Removes the node with ID `id` from the topological order.
+  void RemoveFromOrder(Index id);
   void UpdateIndex(T* v);
 
   // Helper that makes sure that the AddEdge() data structures are large enough
-  // to hold nodes with index max_index_in_parent.
-  void UpdateMaxIndexInParent(Index max_index_in_parent) {
-    if (max_index_in_parent >= visited_backwards_.size()) {
-      visited_backwards_.resize(max_index_in_parent + 1);
-      visited_forwards_.resize(max_index_in_parent + 1);
-      increased_.resize(max_index_in_parent + 1);
+  // to hold nodes with ID `id`.
+  void UpdateMaxNodeId(Index id) {
+    if (static_cast<size_t>(id) >= visited_backwards_.size()) {
+      visited_backwards_.resize(id + 1, false);
+      visited_forwards_.resize(id + 1, false);
+      increased_.resize(id + 1, false);
     }
   }
 
-  TopologicalSortNode<T> node_;
+  std::vector<Node> nodes_;
 
   int num_edges_ = 0;  // aka "m" in the paper.
   int num_nodes_ = 0;  // aka "n" in the paper.
@@ -351,7 +388,7 @@ class TopologicalSort {
   // nodes and edges via UpdateDelta().
   int64_t delta_ = 0;
 
-  // The next value of index_ to assign, aka "a" in the paper. Monotonically
+  // The next value of index to assign, aka "a" in the paper. Monotonically
   // decreasing as indices are assigned.
   // You might also wonder where 'b' from the paper is, but we simply don't
   // need it, since we're trying to maintain a doubly-linked list in topological
@@ -360,139 +397,123 @@ class TopologicalSort {
 
   // The first node in each level or a higher level.
   // As is the usual convention for this data structure, this is actually the
-  // TopologicalSortNode whose next_ pointer points to that node, if any.
-  // Invariant: There is always at least one level. Futher, these pointers are
-  // never nullptr: there's always a preceding node (node_, if nothing else).
-  std::vector<TopologicalSortNode<T>*> first_in_level_;
+  // index of the node in nodes_ whose next pointer points to that node, if any.
+  // Invariant: There is always at least one level. Further, these indices are
+  // always valid: there's always a preceding node (kSentinel = 0, if nothing
+  // else).
+  std::vector<Index> first_in_level_;
 
   // Visited state for forwards and backwards searches which are used during
   // AddEdge(). We keep this state in the class to save repeatedly allocating
   // it. This would not be thread-safe, but neither is AddEdge().
   std::vector<bool> visited_backwards_;
+  std::vector<Index> visited_backwards_nodes_;
   std::vector<bool> visited_forwards_;
   std::vector<bool> increased_;
 };
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
           SuccessorIterator (T::*SuccessorsBegin)() const,
           SuccessorIterator (T::*SuccessorsEnd)() const>
-TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
-                PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
-                SuccessorsBegin, SuccessorsEnd>::~TopologicalSort() {
-  TopologicalSortNode<T>* next;
-  for (TopologicalSortNode<T>* node = &node_; node != nullptr; node = next) {
-    if (node->next_) {
-      next = &(node->next_->*Link);
-    } else {
-      next = nullptr;
-    }
-    node->clear();
-  }
-}
-
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
-          PredecessorIterator (T::*PredecessorsBegin)() const,
-          PredecessorIterator (T::*PredecessorsEnd)() const,
-          typename SuccessorIterator,
-          SuccessorIterator (T::*SuccessorsBegin)() const,
-          SuccessorIterator (T::*SuccessorsEnd)() const>
-void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
+void TopologicalSort<T, Index, IndexInParent, PredecessorIterator,
                      PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
                      SuccessorsBegin, SuccessorsEnd>::AddNode(T* v) {
-  TopologicalSortNode<T>* node = &(v->*Link);
   if (VLOG_IS_ON(1)) {
     DVLOG(1) << this << " AddNode(" << v->*IndexInParent << ")";
     LogOrder();
   }
 
-  // next_ and prev_ should be nullptr for a new node.
-  CHECK(node->next_ == nullptr);
-  CHECK(node->prev_ == nullptr);
-  node->level_ = 0;
-  node->index_ = next_index_--;
+  CHECK(!in_topological_order(v));
+  Index id = NodeId(v);
+  if (static_cast<size_t>(id) >= nodes_.size()) {
+    nodes_.resize(id + 1);
+  }
+  Node& node = nodes_[id];
+  node.level = 0;
+  node.index = next_index_--;
+  node.prev = -1;
+  node.next = -1;
   ++num_nodes_;
   UpdateDelta();
 
   // Add the node to the front of the topological ordering.
-  node->next_ = first_in_level_[0]->next_;
-  node->prev_ = first_in_level_[0];
-  if (node->next_) {
-    (node->next_->*Link).prev_ = node;
-  } else {
-    node_.prev_ = node;
-  }
-  first_in_level_[0]->next_ = v;
+  Index first_0 = first_in_level_[0];
+  node.next = nodes_[first_0].next;
+  node.prev = first_0;
+  nodes_[node.next].prev = id;
+  nodes_[first_0].next = id;
   for (int level = 1;
-       level < first_in_level_.size() && first_in_level_[level] == &node_;
+       level < first_in_level_.size() && first_in_level_[level] == kSentinel;
        ++level) {
-    first_in_level_[level] = node;
+    first_in_level_[level] = id;
   }
   if (VLOG_IS_ON(1)) {
     LogOrder();
   }
 }
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
           SuccessorIterator (T::*SuccessorsBegin)() const,
           SuccessorIterator (T::*SuccessorsEnd)() const>
-void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
+void TopologicalSort<T, Index, IndexInParent, PredecessorIterator,
                      PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
                      SuccessorsBegin, SuccessorsEnd>::RemoveNode(T* v) {
-  TopologicalSortNode<T>* node = &(v->*Link);
   DVLOG(1) << this << " RemoveNode(" << v->*IndexInParent << ")";
-  CHECK(node->prev_ == &node_ || node->prev_->in_topological_order());
+  CHECK(in_topological_order(v));
+  Index id = NodeId(v);
   --num_nodes_;
   if (VLOG_IS_ON(1)) {
     LogOrder();
   }
-  RemoveFromOrder(v);
-  node->level_ = -1;
-  node->index_ = -1;
+  RemoveFromOrder(id);
+  nodes_[id].level = -1;
+  nodes_[id].index = -1;
   if (VLOG_IS_ON(1)) {
     LogOrder();
   }
 }
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
           SuccessorIterator (T::*SuccessorsBegin)() const,
           SuccessorIterator (T::*SuccessorsEnd)() const>
-void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
+void TopologicalSort<T, Index, IndexInParent, PredecessorIterator,
                      PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
                      SuccessorsBegin, SuccessorsEnd>::AddEdge(T* v, T* w) {
-  TopologicalSortNode<T>* v_node = &(v->*Link);
-  TopologicalSortNode<T>* w_node = &(w->*Link);
+  Index v_id = NodeId(v);
+  Index w_id = NodeId(w);
+  Node& v_node = nodes_[v_id];
+  Node& w_node = nodes_[w_id];
 
   ++num_edges_;
   UpdateDelta();
 
   DVLOG(1) << this << " AddEdge(" << v->*IndexInParent << ", "
-           << w->*IndexInParent << ") v={level=" << v_node->level_ << " "
-           << "index=" << v_node->index_ << "} "
-           << " w={level=" << w_node->level_ << " "
-           << "index=" << w_node->index_ << "} "
+           << w->*IndexInParent << ") v={level=" << v_node.level << " "
+           << "index=" << v_node.index << "} "
+           << " w={level=" << w_node.level << " "
+           << "index=" << w_node.index << "} "
            << "delta_=" << delta_;
 
   // Verify that both nodes are in the topological order.
-  DCHECK(v_node->in_topological_order());
-  DCHECK(w_node->in_topological_order());
+  DCHECK(in_topological_order(v));
+  DCHECK(in_topological_order(w));
 
   // Step 1: test order: if w is already higher than v in the lexicographical
   // order then the current ordering is fine.
-  if (std::tie(v_node->level_, v_node->index_) <
-      std::tie(w_node->level_, w_node->index_)) {
+  if (std::tie(v_node.level, v_node.index) <
+      std::tie(w_node.level, w_node.index)) {
     if (VLOG_IS_ON(1)) {
       LogOrder();
     }
@@ -507,19 +528,19 @@ void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
   if (visited_delta_edges) {
     b.resize(1);
     b.front() = v;
-    RemoveFromOrder(w);
-    w_node->level_ = v_node->level_ + 1;
+    RemoveFromOrder(w_id);
+    w_node.level = v_node.level + 1;
 
     should_search_forwards = true;
-  } else if (w_node->level_ == v_node->level_) {
+  } else if (w_node.level == v_node.level) {
     // l = b;
     should_search_forwards = false;
   } else {
-    // We know that w_node->level < v_node->level, by the case above and by the
+    // We know that w_node.level < v_node.level, by the case above and by the
     // test in step 1.
-    DCHECK_LT(w_node->level_, v_node->level_);
-    RemoveFromOrder(w);
-    w_node->level_ = v_node->level_;
+    DCHECK_LT(w_node.level, v_node.level);
+    RemoveFromOrder(w_id);
+    w_node.level = v_node.level;
     should_search_forwards = true;
   }
 
@@ -528,13 +549,18 @@ void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
   std::vector<T*> f;
   if (should_search_forwards) {
     SearchForwards(v, w, f);
-    if (v_node->level_ < w_node->level_) {
+    if (v_node.level < w_node.level) {
       b.clear();  // l = reverse(f)
     } else {
-      CHECK_EQ(v_node->level_, w_node->level_);
+      CHECK_EQ(v_node.level, w_node.level);
       // l = b + reverse(f)
     }
   }
+
+  for (Index id : visited_backwards_nodes_) {
+    visited_backwards_[id] = false;
+  }
+  visited_backwards_nodes_.clear();
 
   // Step 4: update indices.
   auto node_formatter = [](std::string* out, T* v) {
@@ -543,6 +569,9 @@ void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
   DVLOG(2) << "b=" << absl::StrJoin(b, ", ", node_formatter)
            << " f=" << absl::StrJoin(f, ", ", node_formatter);
   for (auto it = f.begin(); it != f.end(); ++it) {
+    Index id = NodeId(*it);
+    visited_forwards_[id] = false;
+    increased_[id] = false;
     UpdateIndex(*it);
   }
   for (auto it = b.rbegin(); it != b.rend(); ++it) {
@@ -554,67 +583,130 @@ void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
   // the edge to their own data structures. It doesn't matter whether the user
   // does that before or after they call our AddEdge(), since we only search
   // backwards from v and forwards from w.
-
   if (VLOG_IS_ON(1)) {
     LogOrder();
 
     DVLOG(1) << "end AddEdge(" << v->*IndexInParent << ", " << w->*IndexInParent
-             << ") v={level=" << v_node->level_ << " "
-             << "index=" << v_node->index_ << "} "
-             << " w={level=" << w_node->level_ << " "
-             << "index=" << w_node->index_ << "} "
+             << ") v={level=" << v_node.level << " "
+             << "index=" << v_node.index << "} "
+             << " w={level=" << w_node.level << " "
+             << "index=" << w_node.index << "} "
              << "delta_=" << delta_;
   }
 }
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
           SuccessorIterator (T::*SuccessorsBegin)() const,
           SuccessorIterator (T::*SuccessorsEnd)() const>
-bool TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
+void TopologicalSort<
+    T, Index, IndexInParent, PredecessorIterator, PredecessorsBegin,
+    PredecessorsEnd, SuccessorIterator, SuccessorsBegin,
+    SuccessorsEnd>::Reindex(absl::Span<const Index> old_to_new) {
+  auto map_id = [&](Index old_id) -> Index {
+    if (old_id <= kSentinel) {
+      return old_id;
+    }
+    Index old_idx = old_id - 1;
+    CHECK_LT(static_cast<size_t>(old_idx), old_to_new.size());
+    Index new_idx = old_to_new[old_idx];
+    CHECK_GE(new_idx, 0);
+    return new_idx + 1;
+  };
+
+  Index max_new_id = kSentinel;
+  for (Index new_idx : old_to_new) {
+    if (new_idx >= 0) {
+      max_new_id = std::max<Index>(max_new_id, new_idx + 1);
+    }
+  }
+
+  std::vector<Node> new_nodes(max_new_id + 1);
+  new_nodes[kSentinel].next = map_id(nodes_[kSentinel].next);
+  new_nodes[kSentinel].prev = map_id(nodes_[kSentinel].prev);
+  new_nodes[kSentinel].level = nodes_[kSentinel].level;
+  new_nodes[kSentinel].index = nodes_[kSentinel].index;
+
+  for (size_t old_idx = 0; old_idx < old_to_new.size(); ++old_idx) {
+    Index new_idx = old_to_new[old_idx];
+    if (new_idx < 0) {
+      continue;
+    }
+    Index old_id = static_cast<Index>(old_idx) + 1;
+    Index new_id = new_idx + 1;
+    if (static_cast<size_t>(old_id) < nodes_.size() &&
+        nodes_[old_id].level >= 0) {
+      new_nodes[new_id].next = map_id(nodes_[old_id].next);
+      new_nodes[new_id].prev = map_id(nodes_[old_id].prev);
+      new_nodes[new_id].level = nodes_[old_id].level;
+      new_nodes[new_id].index = nodes_[old_id].index;
+    }
+  }
+
+  for (Index& v : first_in_level_) {
+    v = map_id(v);
+  }
+
+  nodes_ = std::move(new_nodes);
+  visited_backwards_.assign(nodes_.size(), false);
+  visited_forwards_.assign(nodes_.size(), false);
+  increased_.assign(nodes_.size(), false);
+  if (VLOG_IS_ON(1)) {
+    LogOrder();
+  }
+}
+
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
+          PredecessorIterator (T::*PredecessorsBegin)() const,
+          PredecessorIterator (T::*PredecessorsEnd)() const,
+          typename SuccessorIterator,
+          SuccessorIterator (T::*SuccessorsBegin)() const,
+          SuccessorIterator (T::*SuccessorsEnd)() const>
+bool TopologicalSort<T, Index, IndexInParent, PredecessorIterator,
                      PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
                      SuccessorsBegin,
                      SuccessorsEnd>::SearchBackwards(T* v, T* w,
                                                      std::vector<T*>& b) {
   std::vector<std::pair<T*, bool>> agenda;
-  std::fill(visited_backwards_.begin(), visited_backwards_.end(), false);
   int num_edges_visited = 0;
   agenda.emplace_back(v, false);
   while (!agenda.empty()) {
     auto [y, post] = agenda.back();
     agenda.pop_back();
+    Index y_id = NodeId(y);
     DVLOG(3) << "SearchBackwards visiting " << y->*IndexInParent
              << " post=" << post;
     CHECK(y != w) << "Cycle detected";
-    TopologicalSortNode<T>* y_node = &(y->*Link);
-    int level = y_node->level_;
+    int level = nodes_[y_id].level;
     if (post) {
       b.push_back(y);
       continue;
     }
 
-    Index y_index_in_parent = y->*IndexInParent;
-    UpdateMaxIndexInParent(y_index_in_parent);
-    if (visited_backwards_[y_index_in_parent]) {
+    UpdateMaxNodeId(y_id);
+    if (visited_backwards_[y_id]) {
       continue;
     }
-    visited_backwards_[y_index_in_parent] = true;
+    visited_backwards_[y_id] = true;
+    visited_backwards_nodes_.push_back(y_id);
 
     agenda.emplace_back(y, true);
     for (auto it = std::invoke(PredecessorsBegin, y);
          num_edges_visited < delta_ && it != std::invoke(PredecessorsEnd, y);
          ++it) {
       T* x = *it;
-      TopologicalSortNode<T>* x_node = &(x->*Link);
-      if (!x_node->in_topological_order()) {
+      if (!in_topological_order(x)) {
         continue;
       }
-      CHECK_LE(x_node->level_, level);
+      Index x_id = NodeId(x);
+      int x_level = nodes_[x_id].level;
+      CHECK_LE(x_level, level);
       VLOG(2) << "visiting edge " << x->*IndexInParent;
-      if (x_node->level_ == level) {
+      if (x_level == level) {
         ++num_edges_visited;
         if (num_edges_visited >= delta_) {
           return true;
@@ -626,150 +718,142 @@ bool TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
   return false;
 }
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
           SuccessorIterator (T::*SuccessorsBegin)() const,
           SuccessorIterator (T::*SuccessorsEnd)() const>
-void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
+void TopologicalSort<T, Index, IndexInParent, PredecessorIterator,
                      PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
                      SuccessorsBegin,
                      SuccessorsEnd>::SearchForwards(T* v, T* w,
                                                     std::vector<T*>& f) {
-  std::fill(visited_forwards_.begin(), visited_forwards_.end(), false);
-  std::fill(increased_.begin(), increased_.end(), false);
   std::vector<std::pair<T*, bool>> agenda;
   agenda.emplace_back(w, false);
-  UpdateMaxIndexInParent(w->*IndexInParent);
-  increased_[w->*IndexInParent] = true;
+  Index w_id = NodeId(w);
+  UpdateMaxNodeId(w_id);
+  increased_[w_id] = true;
 
   // f list of vertices whose level increases, in reverse postorder, i.e.,
   // a vertex appears in f before its successors.
   while (!agenda.empty()) {
     auto [x, post] = agenda.back();
     agenda.pop_back();
+    Index x_id = NodeId(x);
     DVLOG(3) << "SearchForwards visiting " << x->*IndexInParent
              << " post=" << post;
     if (post) {
       f.push_back(x);
       continue;
     }
-    Index x_index_in_parent = x->*IndexInParent;
-    UpdateMaxIndexInParent(x_index_in_parent);
-    if (visited_forwards_[x_index_in_parent] ||
-        !increased_[x_index_in_parent]) {
+    if (visited_forwards_[x_id] || !increased_[x_id]) {
       continue;
     }
-    visited_forwards_[x_index_in_parent] = true;
+    visited_forwards_[x_id] = true;
 
     agenda.emplace_back(x, true);
 
-    TopologicalSortNode<T>* x_node = &(x->*Link);
+    int x_level = nodes_[x_id].level;
     for (auto it = std::invoke(SuccessorsBegin, x);
          it != std::invoke(SuccessorsEnd, x); ++it) {
       T* y = *it;
-      VLOG(3) << "fwd edge to " << y->*IndexInParent;
-      TopologicalSortNode<T>* y_node = &(y->*Link);
-      if (!y_node->in_topological_order()) {
+      if (!in_topological_order(y)) {
         continue;
       }
-      Index y_index_in_parent = y->*IndexInParent;
-      UpdateMaxIndexInParent(y_index_in_parent);
+      Index y_id = NodeId(y);
+      VLOG(3) << "fwd edge to " << y->*IndexInParent;
       DCHECK(y != v) << "Cycle detected " << y->*IndexInParent;
-      DCHECK(!visited_backwards_[y_index_in_parent])
+      UpdateMaxNodeId(y_id);
+      DCHECK(!visited_backwards_[y_id])
           << "Cycle detected " << y->*IndexInParent;
       agenda.emplace_back(y, false);
-      if (x_node->level_ > y_node->level_) {
-        RemoveFromOrder(y);
-        y_node->level_ = x_node->level_;
-        increased_[y_index_in_parent] = true;
+      if (x_level > nodes_[y_id].level) {
+        RemoveFromOrder(y_id);
+        nodes_[y_id].level = x_level;
+        increased_[y_id] = true;
       }
     }
   }
 }
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
           SuccessorIterator (T::*SuccessorsBegin)() const,
           SuccessorIterator (T::*SuccessorsEnd)() const>
-void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
+void TopologicalSort<T, Index, IndexInParent, PredecessorIterator,
                      PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
-                     SuccessorsBegin, SuccessorsEnd>::RemoveFromOrder(T* v) {
-  TopologicalSortNode<T>* v_node = &(v->*Link);
+                     SuccessorsBegin, SuccessorsEnd>::RemoveFromOrder(Index
+                                                                          id) {
+  Node& v_node = nodes_[id];
+  Index prev_id = v_node.prev;
+  Index next_id = v_node.next;
   // If this node is the last node in any level, it may appear in the
   // first_in_level_ vector for subsequent levels.
-  for (int level = v_node->level_ + 1;
-       level < first_in_level_.size() && first_in_level_[level] == v_node;
+  for (int level = v_node.level + 1;
+       level < first_in_level_.size() && first_in_level_[level] == id;
        ++level) {
-    first_in_level_[level] = v_node->prev_;
+    first_in_level_[level] = prev_id;
   }
-  v_node->prev_->next_ = v_node->next_;
-  if (v_node->next_) {
-    (v_node->next_->*Link).prev_ = v_node->prev_;
-  } else {
-    node_.prev_ = v_node->prev_;
-  }
-  v_node->next_ = nullptr;
-  v_node->prev_ = nullptr;
+  nodes_[prev_id].next = next_id;
+  nodes_[next_id].prev = prev_id;
+  v_node.next = -1;
+  v_node.prev = -1;
 }
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
           SuccessorIterator (T::*SuccessorsBegin)() const,
           SuccessorIterator (T::*SuccessorsEnd)() const>
-void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
+void TopologicalSort<T, Index, IndexInParent, PredecessorIterator,
                      PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
                      SuccessorsBegin, SuccessorsEnd>::UpdateIndex(T* v) {
-  TopologicalSortNode<T>* v_node = &(v->*Link);
+  Index id = NodeId(v);
+  Node& v_node = nodes_[id];
 
-  if (v_node->prev_) {
+  if (v_node.prev != -1) {
     // TODO(phawkins): could we just do this above?
-    RemoveFromOrder(v);
+    RemoveFromOrder(id);
   }
 
   // Since this node just decreased in index, it now becomes the first node on
   // its level.
-  v_node->index_ = next_index_--;
-  if (v_node->level_ >= first_in_level_.size()) {
-    TopologicalSortNode<T>* t = first_in_level_.back();
-    while (t->next_ != nullptr) {
-      t = &(t->next_->*Link);
+  v_node.index = next_index_--;
+  if (v_node.level >= first_in_level_.size()) {
+    Index t = first_in_level_.back();
+    while (nodes_[t].next != kSentinel) {
+      t = nodes_[t].next;
     }
-    first_in_level_.resize(v_node->level_ + 1, t);
+    first_in_level_.resize(v_node.level + 1, t);
   }
 
-  TopologicalSortNode<T>* old_first = first_in_level_[v_node->level_];
-  v_node->next_ = old_first->next_;
-  v_node->prev_ = old_first;
-  if (v_node->next_) {
-    (v_node->next_->*Link).prev_ = v_node;
-  } else {
-    node_.prev_ = v_node;
-  }
-  old_first->next_ = v;
-  for (int level = v_node->level_ + 1;
+  Index old_first = first_in_level_[v_node.level];
+  v_node.next = nodes_[old_first].next;
+  v_node.prev = old_first;
+  nodes_[v_node.next].prev = id;
+  nodes_[old_first].next = id;
+  for (int level = v_node.level + 1;
        level < first_in_level_.size() && first_in_level_[level] == old_first;
        ++level) {
-    first_in_level_[level] = v_node;
+    first_in_level_[level] = id;
   }
 }
 
-template <typename T, typename Index, TopologicalSortNode<T> T::* Link,
-          Index T::* IndexInParent, typename PredecessorIterator,
+template <typename T, typename Index, Index T::* IndexInParent,
+          typename PredecessorIterator,
           PredecessorIterator (T::*PredecessorsBegin)() const,
           PredecessorIterator (T::*PredecessorsEnd)() const,
           typename SuccessorIterator,
           SuccessorIterator (T::*SuccessorsBegin)() const,
           SuccessorIterator (T::*SuccessorsEnd)() const>
-void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
+void TopologicalSort<T, Index, IndexInParent, PredecessorIterator,
                      PredecessorsBegin, PredecessorsEnd, SuccessorIterator,
                      SuccessorsBegin, SuccessorsEnd>::UpdateDelta() {
   int64_t m = num_edges_;
@@ -779,5 +863,7 @@ void TopologicalSort<T, Index, Link, IndexInParent, PredecessorIterator,
     ++delta_;
   }
 }
+
+}  // namespace xla
 
 #endif  // XLA_ONLINE_TOPSORT_H_

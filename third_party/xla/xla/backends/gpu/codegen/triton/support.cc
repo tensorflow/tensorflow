@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -439,6 +440,40 @@ CodegenDecision IsTritonSupportedAllReduce(
   return CodegenDecision::Allow();
 }
 
+CodegenDecision IsTritonSupportedReduceScatter(
+    const HloReduceScatterInstruction& reduce_scatter,
+    const se::GpuComputeCapability& gpu_version) {
+  if (!reduce_scatter.shape().IsArray()) {
+    return CodegenDecision::Forbid(
+        "Only non-tuple reduce-scatters are supported.");
+  }
+  if (reduce_scatter.replica_groups().empty()) {
+    return CodegenDecision::Forbid(
+        "Reduce-scatter does not have replica groups.");
+  }
+  if (reduce_scatter.shape().element_type() == PrimitiveType::F8E4M3FN ||
+      reduce_scatter.shape().element_type() == PrimitiveType::F8E5M2 ||
+      reduce_scatter.shape().element_type() == PrimitiveType::S4 ||
+      reduce_scatter.shape().element_type() == PrimitiveType::U4) {
+    return CodegenDecision::Forbid(
+        "4-bit integer, F8E4M3FN and F8E5M2 are not supported for "
+        "reduce-scatters.");
+  }
+
+  bool is_triton_supported_reduce_scatter_computation = absl::c_all_of(
+      reduce_scatter.to_apply()->instructions(),
+      [&](const HloInstruction* instr) {
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version)
+            .IsAllowed();
+      });
+  if (!is_triton_supported_reduce_scatter_computation) {
+    return CodegenDecision::Forbid(
+        "Unsupported reduce-scatter computation by Triton.");
+  }
+
+  return CodegenDecision::Allow();
+}
+
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
   // Only checking one side of bach and contracting dimensions, since they must
@@ -675,6 +710,16 @@ CodegenDecision IsTritonSupportedDot(
 CodegenDecision IsTritonSupportedScaledDot(
     const HloScaledDotInstruction& dot,
     const se::GpuComputeCapability& gpu_version) {
+  if (gpu_version.IsCuda()) {
+    auto cc = gpu_version.cuda_compute_capability();
+    if (!cc || !cc->IsAtLeastAmpere()) {
+      return CodegenDecision::Forbid(
+          "Scaled dot is not supported by Triton for pre-Ampere GPUs.");
+    }
+  } else if (!gpu_version.IsRocm()) {
+    return CodegenDecision::Forbid(
+        "Scaled dot is only supported on CUDA and ROCm.");
+  }
   CHECK_GE(dot.operand_count(), 4);
   PrimitiveType lhs_type = dot.operand(0)->shape().element_type();
   PrimitiveType rhs_type = dot.operand(1)->shape().element_type();
@@ -692,18 +737,27 @@ CodegenDecision IsTritonSupportedScaledDot(
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
   std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
                                                       F8E8M0FNU, S8};
-  // Unscaled 16-bit operands (BF16) do not use dequantization block scales.
-  // In HLO, they carry dummy/placeholder scale constants (e.g. BF16 1.0), so
-  // we skip the scale type check when the operand type is BF16.
-  if (lhs_type != BF16 &&
-      !absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
-    return CodegenDecision::Forbid(absl::StrCat(
-        "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));
+  // tt.dot_scaled only dequantizes some operand types; a scale on any other
+  // operand type is dropped, so it has to be all ones to be emittable.
+  if (xtile::IsTritonDotScaledOperandType(lhs_type)) {
+    if (!absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));
+    }
+  } else if (!xtile::IsAllOnesScale(*dot.operand(2))) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("LHS scale is ignored for operand type ",
+                     PrimitiveType_Name(lhs_type), " but is not all ones."));
   }
-  if (rhs_type != BF16 &&
-      !absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
-    return CodegenDecision::Forbid(absl::StrCat(
-        "Unsupported RHS scale type: ", PrimitiveType_Name(rhs_scale_type)));
+  if (xtile::IsTritonDotScaledOperandType(rhs_type)) {
+    if (!absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unsupported RHS scale type: ", PrimitiveType_Name(rhs_scale_type)));
+    }
+  } else if (!xtile::IsAllOnesScale(*dot.operand(3))) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("RHS scale is ignored for operand type ",
+                     PrimitiveType_Name(rhs_type), " but is not all ones."));
   }
   return CodegenDecision::Allow();
 }
@@ -729,6 +783,19 @@ CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
     }
   }
   return CodegenDecision::Allow();
+}
+
+bool IsWithinGemmFusion(const HloInstruction& instr) {
+  const HloComputation* computation = instr.parent();
+  if (computation == nullptr || !computation->IsFusionComputation()) {
+    return false;
+  }
+  const HloInstruction* fusion = computation->FusionInstruction();
+  if (fusion == nullptr) {
+    return false;
+  }
+  return IsGpuFusionKind(*fusion, kTritonGemmFusionKind) ||
+         IsGpuFusionKind(*fusion, kTritonNestedGemmFusionKind);
 }
 
 CodegenDecision IsTritonSupportedInstructionImpl(
@@ -787,8 +854,14 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   // Special handling for the kPad instruction. Right now we only support "high"
-  // padding. "Interior" and "low" padding are not supported.
+  // padding within GEMM fusions. "Interior" and "low" padding are not
+  // supported.
   if (instr.opcode() == HloOpcode::kPad) {
+    // TODO(b/568080363): Support pads outside of GEMM fusions.
+    if (!IsWithinGemmFusion(instr)) {
+      return CodegenDecision::Forbid(
+          "Pads are only supported within GEMM fusions.");
+    }
     auto pad = Cast<HloPadInstruction>(&instr);
     bool no_op = true;
     for (const auto& dim_config : pad->padding_config().dimensions()) {
@@ -881,6 +954,9 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kAllGather:
       return CodegenDecision(instr.shape().element_type() != S4,
                              "S4 is not supported.");
+    case HloOpcode::kReduceScatter:
+      return IsTritonSupportedReduceScatter(
+          *Cast<HloReduceScatterInstruction>(&instr), gpu_version);
     default:
       // Not all instructions have a special handling.
       break;
@@ -910,13 +986,16 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kExp2:
     case HloOpcode::kGather:
+    case HloOpcode::kLog2:
     case HloOpcode::kMulhi:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:
+    case HloOpcode::kShuffle:
       return true;
     default:
       return false;

@@ -775,7 +775,7 @@ cuda_py_strict_test(
     name = "memory_cleanup_test",
     size = "medium",
     srcs = ["memory_cleanup_test.py"],
-    shard_count = 12,
+    shard_count = 24,
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
     ],
@@ -1072,7 +1072,7 @@ tf_py_strict_test(
     name = "repeat_test",
     size = "medium",
     srcs = ["repeat_test.py"],
-    shard_count = 2,
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
