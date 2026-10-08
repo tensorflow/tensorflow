@@ -35,7 +35,6 @@ tf_cc_test(
     srcs = ["slice_util_test.cc"],
     deps = [
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/dtensor/cc:slice_util",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
@@ -51,7 +50,6 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",

@@ -62,6 +62,8 @@ load(
 
 cc_toolchain_deps()
 
+register_toolchains("@rules_ml_toolchain//cc:darwin_aarch64_darwin_aarch64")
+
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")

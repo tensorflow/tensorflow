@@ -9240,6 +9240,41 @@ TEST_F(AlgebraicSimplifierTest, BatchDotTransposeBatchDimsAndOperands) {
             PrecisionConfig::HIGH);
 }
 
+TEST_F(AlgebraicSimplifierTest, BatchDotTransposeNonCommutingBatchDims) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[2,3,5,7,11] parameter(0)
+      rhs = f32[2,3,5,11,13] parameter(1)
+      lhs_t = f32[3,2,5,7,11] transpose(lhs), dimensions={1,0,2,3,4}
+      rhs_t = f32[3,2,5,11,13] transpose(rhs), dimensions={1,0,2,3,4}
+      ROOT root = f32[3,5,2,7,13] dot(lhs_t, rhs_t),
+                  lhs_batch_dims={0,2,1}, rhs_batch_dims={0,2,1},
+                  lhs_contracting_dims={4}, rhs_contracting_dims={3}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_THAT(RunHloPass(&simplifier, module.get()),
+              absl_testing::IsOkAndHolds(true));
+  const HloInstruction* dot;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Transpose(m::Dot(&dot, m::Parameter(0), m::Parameter(1))
+                                  .WithShape(F32, {2, 3, 5, 7, 13}))
+                     .WithShape(F32, {3, 5, 2, 7, 13})));
+  EXPECT_THAT(module->entry_computation()->root_instruction()->dimensions(),
+              ElementsAre(1, 2, 0, 3, 4));
+  EXPECT_THAT(dot->dot_dimension_numbers().lhs_batch_dimensions(),
+              ElementsAre(0, 1, 2));
+  EXPECT_THAT(dot->dot_dimension_numbers().rhs_batch_dimensions(),
+              ElementsAre(0, 1, 2));
+}
+
 TEST_F(AlgebraicSimplifierTest, DotIsAnnotatedWithUnreducedSharding) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module

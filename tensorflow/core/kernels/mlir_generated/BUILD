@@ -448,7 +448,6 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:cwise_op",
@@ -579,7 +578,6 @@ tf_cuda_cc_test(
         ":base_ops_test",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

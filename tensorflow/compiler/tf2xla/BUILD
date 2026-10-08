@@ -635,6 +635,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
+        ":functionalize_control_flow",
         ":host_compute_metadata_proto_cc",
         ":layout_util",
         ":rearrange_function_argument",
@@ -950,7 +951,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "@com_google_googletest//:gtest_main",
         "@xla//xla:shape_util",
@@ -1292,7 +1292,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/types:span",

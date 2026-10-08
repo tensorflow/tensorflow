@@ -125,7 +125,6 @@ tf_cc_test(
         ":stream_executor_test_util",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",

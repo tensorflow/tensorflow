@@ -151,14 +151,13 @@ build --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
 # Default options should come above this line.
 
+# Set the LLVM version to 19 for MacOS because LLVM 18 fails to compile SME
+# on macOS because it doesn't account for the Darwin ABI's definition of
+# uint64_t, and it strictly requires +sve alongside +sme.
+common:macos --repo_env=LLVM_VERSION=19
+
 # Sets the default Apple platform to macOS.
 common:macos --apple_platform_type=macos
-
-# Use cc toolchains from apple_support for Apple builds.
-# https://github.com/bazelbuild/apple_support/tree/master?tab=readme-ov-file#bazel-6-setup
-common:macos --apple_crosstool_top=@local_config_apple_cc//:toolchain
-common:macos --crosstool_top=@local_config_apple_cc//:toolchain
-common:macos --host_crosstool_top=@local_config_apple_cc//:toolchain
 
 # gRPC on MacOS requires this #define
 common:macos --copt=-DGRPC_BAZEL_BUILD
@@ -635,7 +634,6 @@ common:release_macos_base --define=no_nccl_support=true --output_filter=^$
 
 # Ensure release_base is set on mac
 common:release_macos_base --config=cpu_cross
-common:release_macos_base --config=clang_local
 
 # Build configs for macOS x86
 common:release_macos_x86 --config=release_macos_base

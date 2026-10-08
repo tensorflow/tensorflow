@@ -74,7 +74,6 @@ tf_cc_test(
         "@xla//xla/tsl/lib/core:status_test_util",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:test",
-        "@xla//xla/tsl/platform:test_main",
     ],
 )
 

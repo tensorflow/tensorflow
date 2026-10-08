@@ -258,7 +258,6 @@ tf_cc_test(
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
         "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device",  # buildcleaner: keep
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:test_next_pluggable_device_plugin",  # buildcleaner: keep
         "@com_google_googletest//:gtest_main",
@@ -280,7 +279,6 @@ tf_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_googletest//:gtest_main",

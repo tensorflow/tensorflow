@@ -200,7 +200,6 @@ tf_cc_test(
         ],
         "//conditions:default": [
             "//tensorflow/core:test",
-            "//tensorflow/core:test_main",
             "//tensorflow/core/platform:status",
             "//tensorflow/core/platform:types",
         ],
@@ -235,7 +234,6 @@ tf_cc_test(
         ],
         "//conditions:default": [
             "//tensorflow/core:test",
-            "//tensorflow/core:test_main",
             "//tensorflow/core/platform:status",
             "//tensorflow/core/platform:types",
         ],
