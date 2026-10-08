@@ -881,9 +881,9 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 +Performs element-wise base-2 exponential operation on `operand` tensor and
 +produces a `result` tensor. Depending on the element type, does the following:
 +
-+*   For floats: `exp2` from IEEE-754.
-+*   For complex numbers: complex base-2 exponential.
-+*   For quantized types: `dequantize_op_quantize(exp2, operand, type(result))`.
++* For floats: `exp2` from IEEE-754.
++* For complex numbers: complex base-2 exponential.
++* For quantized types: `dequantize_op_quantize(exp2, operand, type(result))`.
 +
 +#### Inputs
 +
@@ -907,7 +907,7 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 +
 +#### Constraints
 +
-+*   (C1) `baseline_type(operand) = baseline_type(result)`.
++* (C1) `baseline_type(operand) = baseline_type(result)`.
 +
 +#### Examples
 +
@@ -947,9 +947,9 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 +Performs element-wise base-2 logarithm operation on `operand` tensor and
 +produces a `result` tensor. Depending on the element type, does the following:
 +
-+*   For floats: `log2` from IEEE-754.
-+*   For complex numbers: complex base-2 logarithm.
-+*   For quantized types: `dequantize_op_quantize(log2, operand, type(result))`.
++* For floats: `log2` from IEEE-754.
++* For complex numbers: complex base-2 logarithm.
++* For quantized types: `dequantize_op_quantize(log2, operand, type(result))`.
 +
 +#### Inputs
 +
@@ -973,7 +973,7 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
 +
 +#### Constraints
 +
-+*   (C1) `baseline_type(operand) = baseline_type(result)`.
++* (C1) `baseline_type(operand) = baseline_type(result)`.
 +
 +#### Examples
 +
@@ -1018,22 +1018,24 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
  * (C1) `element_type(operand) = element_type(source)`.
  * (C2) `shape(source) = num_windows` where:
    * `padded_operand_shape = padding[:, 0] + shape(operand) + padding[:, 1]`.
-@@ -7501,6 +7597,7 @@
+@@ -7501,7 +7597,7 @@
  syntax ([ISO/IEC 14977:1996](https://www.iso.org/standard/26153.html),
  [Wikipedia](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form)),
  with two modifications: 1) rules are defined using `::=` rather than `=`,
-+
- 2) concatenation is expressed using juxtaposition rather than `,`.
+-2) concatenation is expressed using juxtaposition rather than `,`.
++2\) concatenation is expressed using juxtaposition rather than `,`.
  
  For describing semantics (i.e. within "Types", "Constants" and "Ops" sections),
-@@ -7571,6 +7668,7 @@
+ we are using formulas which are based on Python syntax extended with support
+@@ -7571,7 +7667,7 @@
  ### Names
  
  In formulas, lexical scope includes: 1) global functions, 2) member definitions,
-+
- 3) local definitions. The list of global functions is provided below. The list
+-3) local definitions. The list of global functions is provided below. The list
++3\) local definitions. The list of global functions is provided below. The list
  of element definitions depends on the program element that the notation is
  applied to:
+ 
 diff --ruN a/stablehlo/rfcs/20260821-low-precision-complex.md b/stablehlo/rfcs/20260821-low-precision-complex.md
 --- stablehlo/rfcs/20260821-low-precision-complex.md
 +++ stablehlo/rfcs/20260821-low-precision-complex.md
@@ -1657,16 +1659,16 @@ diff --ruN a/stablehlo/rfcs/20260907-exp2-log2.md b/stablehlo/rfcs/20260907-exp2
 +
 +Currently, StableHLO lacks native `exp2` and `log2` operations:
 +
-+*   Frameworks expose `exp2` and `log2` directly: JAX provides
-+    [`jnp.exp2`][jax1] / `lax.exp2` and [`jnp.log2`][jax2] / `lax.log2`, and
-+    PyTorch provides [`torch.exp2`][torch1] and [`torch.log2`][torch2].
-+*   Without first-class ops in StableHLO, frameworks must decompose `exp2(x)`
-+    into `exponential(x * ln(2))` and `log2(x)` into `log(x) / ln(2)`.
-+*   Decomposing `exp2` and `log2` into natural `exponential` and `log` scaled by
-+    `ln(2)` degrades numerical accuracy (introducing rounding error on integer
-+    powers of two where `exp2(n)` and `log2(2^n)` should evaluate exactly) and
-+    prevents backends from emitting single-instruction base-2 hardware
-+    operations without fragile algebraic pattern-matching.
++* Frameworks expose `exp2` and `log2` directly: JAX provides [`jnp.exp2`][jax1]
++  / `lax.exp2` and [`jnp.log2`][jax2] / `lax.log2`, and PyTorch provides
++  [`torch.exp2`][torch1] and [`torch.log2`][torch2].
++* Without first-class ops in StableHLO, frameworks must decompose `exp2(x)` into
++  `exponential(x * ln(2))` and `log2(x)` into `log(x) / ln(2)`.
++* Decomposing `exp2` and `log2` into natural `exponential` and `log` scaled by
++  `ln(2)` degrades numerical accuracy (introducing rounding error on integer
++  powers of two where `exp2(n)` and `log2(2^n)` should evaluate exactly) and
++  prevents backends from emitting single-instruction base-2 hardware operations
++  without fragile algebraic pattern-matching.
 +
 +Following the precedent of `TanOp` ([20240312-tanop.md](20240312-tanop.md)) and
 +the transcendental accuracy specification
@@ -1681,12 +1683,12 @@ diff --ruN a/stablehlo/rfcs/20260907-exp2-log2.md b/stablehlo/rfcs/20260907-exp2
 +
 +## Exp2Op, Log2Op, and Compatibility
 +
-+*   **VHLO Serialization**: StableHLO version `1.21.0` introduces
-+    `VHLO_Exp2OpV1` (`exp2_v1`) and `VHLO_Log2OpV1` (`log2_v1`).
-+*   **Forward Compatibility & Decomposition**: For runtimes targeting StableHLO
-+    versions prior to `1.21.0`, compatibility expansion lowers `exp2(x)` to
-+    `exponential(multiply(x, constant(ln(2))))` and `log2(x)` to `divide(log(x),
-+    constant(ln(2)))`.
++* **VHLO Serialization**: StableHLO version `1.21.0` introduces `VHLO_Exp2OpV1`
++  (`exp2_v1`) and `VHLO_Log2OpV1` (`log2_v1`).
++* **Forward Compatibility & Decomposition**: For runtimes targeting StableHLO
++  versions prior to `1.21.0`, compatibility expansion lowers `exp2(x)` to
++  `exponential(multiply(x, constant(ln(2))))` and `log2(x)` to
++  `divide(log(x), constant(ln(2)))`.
 +
 +[jax1]: https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.exp2.html
 +[jax2]: https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.log2.html
@@ -2713,6 +2715,281 @@ diff --ruN a/stablehlo/stablehlo/dialect/Register.h b/stablehlo/stablehlo/dialec
  
  }  // namespace stablehlo
  }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
+--- stablehlo/stablehlo/dialect/StablehloAttrs.td
++++ stablehlo/stablehlo/dialect/StablehloAttrs.td
+@@ -93,6 +93,56 @@
+   let hasCustomAssemblyFormat = 1;
+ }
+ 
++def StableHLO_OptionalDims : OptionalArrayRefParameter<"int64_t", "Dimension"> {
++  let parser = "parseDimSizes($_parser)";
++  let printer = "printDimSizes($_printer, $_self)";
++}
++
++def StableHLO_TensorBlockScalingConfig : AttrDef<StableHLO_Dialect, "TensorBlockScalingConfig"> {
++  let mnemonic = "tensor_block_scaling_config";
++  let summary = "Describes the block scaling configuration for a dot_general operand.";
++  let parameters = (ins
++    "int64_t":$scale_idx,
++    OptionalParameter<"std::optional<int64_t>">:$zero_idx,
++    StableHLO_OptionalDims:$strides,
++    StableHLO_OptionalDims:$steps
++  );
++  let assemblyFormat = "`<` struct(params) `>`";
++}
++
++def StableHLO_BlockScalingConfig : AttrDef<StableHLO_Dialect, "BlockScalingConfig"> {
++  let mnemonic = "block_scaling_config";
++  let summary = "Describes the block scaling configuration for dot_general operands.";
++  let parameters = (ins
++    OptionalParameter<"TensorBlockScalingConfigAttr">:$lhs,
++    OptionalParameter<"TensorBlockScalingConfigAttr">:$rhs
++  );
++  let assemblyFormat = "`<` struct(params) `>`";
++}
++
++def StableHLO_TensorSparsityConfig : AttrDef<StableHLO_Dialect, "TensorSparsityConfig"> {
++  let mnemonic = "tensor_sparsity_config";
++  let summary = "Describes the structured sparsity configuration for a dot_general operand.";
++  let parameters = (ins
++    "int64_t":$num_non_zero,
++    "int64_t":$block_size,
++    "int64_t":$dimension,
++    "int64_t":$stride,
++    "int64_t":$idx
++  );
++  let assemblyFormat = "`<` struct(params) `>`";
++}
++
++def StableHLO_SparsityConfig : AttrDef<StableHLO_Dialect, "SparsityConfig"> {
++  let mnemonic = "sparsity_config";
++  let summary = "Describes the structured sparsity configuration for dot_general operands.";
++  let parameters = (ins
++    OptionalParameter<"TensorSparsityConfigAttr">:$lhs,
++    OptionalParameter<"TensorSparsityConfigAttr">:$rhs
++  );
++  let assemblyFormat = "`<` struct(params) `>`";
++}
++
+ def StableHLO_OutputOperandAlias : AttrDef<StableHLO_Dialect, "OutputOperandAlias"> {
+   let mnemonic = "output_operand_alias";
+   let summary =
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloBytecode.cpp b/stablehlo/stablehlo/dialect/StablehloBytecode.cpp
+--- stablehlo/stablehlo/dialect/StablehloBytecode.cpp
++++ stablehlo/stablehlo/dialect/StablehloBytecode.cpp
+@@ -223,6 +223,36 @@
+   //   device_ids: DenseIntElementsAttr (optional)
+   // }
+   kMeshAttr = 22,
++
++  // TensorBlockScalingConfigAttr {
++  //   scale_idx: svarint
++  //   has_zero_idx: bool
++  //   zero_idx: svarint (optional)
++  //   strides: svarint[]
++  //   steps: svarint[]
++  // }
++  kTensorBlockScalingConfigAttr = 23,
++
++  // BlockScalingConfigAttr {
++  //   lhs: Attribute (optional)
++  //   rhs: Attribute (optional)
++  // }
++  kBlockScalingConfigAttr = 24,
++
++  // TensorSparsityConfigAttr {
++  //   num_non_zero: svarint
++  //   block_size: svarint
++  //   dimension: svarint
++  //   stride: svarint
++  //   idx: svarint
++  // }
++  kTensorSparsityConfigAttr = 25,
++
++  // SparsityConfigAttr {
++  //   lhs: Attribute (optional)
++  //   rhs: Attribute (optional)
++  // }
++  kSparsityConfigAttr = 26,
+ };
+ 
+ /// This enum contains marker codes used to indicate which type is
+@@ -307,6 +337,14 @@
+   AxisRefAttr readAxisRefAttr(DialectBytecodeReader& reader) const;
+   MeshAxisAttr readMeshAxisAttr(DialectBytecodeReader& reader) const;
+   MeshAttr readMeshAttr(DialectBytecodeReader& reader) const;
++  TensorBlockScalingConfigAttr readTensorBlockScalingConfigAttr(
++      DialectBytecodeReader& reader) const;
++  BlockScalingConfigAttr readBlockScalingConfigAttr(
++      DialectBytecodeReader& reader) const;
++  TensorSparsityConfigAttr readTensorSparsityConfigAttr(
++      DialectBytecodeReader& reader) const;
++  SparsityConfigAttr readSparsityConfigAttr(
++      DialectBytecodeReader& reader) const;
+ 
+   // TO ADD ATTRIBUTE: Include a write method for each attribute in StableHLO
+   // Ex: void write(SomeAttr attr, DialectBytecodeWriter &writer) const;
+@@ -336,6 +374,12 @@
+   void write(AxisRefAttr attr, DialectBytecodeWriter& writer) const;
+   void write(MeshAxisAttr attr, DialectBytecodeWriter& writer) const;
+   void write(MeshAttr attr, DialectBytecodeWriter& writer) const;
++  void write(TensorBlockScalingConfigAttr attr,
++             DialectBytecodeWriter& writer) const;
++  void write(BlockScalingConfigAttr attr, DialectBytecodeWriter& writer) const;
++  void write(TensorSparsityConfigAttr attr,
++             DialectBytecodeWriter& writer) const;
++  void write(SparsityConfigAttr attr, DialectBytecodeWriter& writer) const;
+ 
+   //===--------------------------------------------------------------------===//
+   // Types
+@@ -419,6 +463,14 @@
+       return readMeshAxisAttr(reader);
+     case stablehlo_encoding::kMeshAttr:
+       return readMeshAttr(reader);
++    case stablehlo_encoding::kTensorBlockScalingConfigAttr:
++      return readTensorBlockScalingConfigAttr(reader);
++    case stablehlo_encoding::kBlockScalingConfigAttr:
++      return readBlockScalingConfigAttr(reader);
++    case stablehlo_encoding::kTensorSparsityConfigAttr:
++      return readTensorSparsityConfigAttr(reader);
++    case stablehlo_encoding::kSparsityConfigAttr:
++      return readSparsityConfigAttr(reader);
+     default:
+       reader.emitError() << "unknown stablehlo attribute code: " << code;
+       return Attribute();
+@@ -437,12 +489,13 @@
+             PrecisionAttr, ResultAccuracyAttr, ResultAccuracyModeAttr,
+             RngAlgorithmAttr, RngDistributionAttr, ScatterDimensionNumbersAttr,
+             TransposeAttr, TypeExtensionsAttr, ReplicaGroupMeshAxesAttr,
+-            SubAxisInfoAttr, AxisRefAttr, MeshAxisAttr, MeshAttr>(
+-          [&](auto attr) {
+-            LOG_WRITE_CALL;
+-            write(attr, writer);
+-            return success();
+-          })
++            SubAxisInfoAttr, AxisRefAttr, MeshAxisAttr, MeshAttr,
++            TensorBlockScalingConfigAttr, BlockScalingConfigAttr,
++            TensorSparsityConfigAttr, SparsityConfigAttr>([&](auto attr) {
++        LOG_WRITE_CALL;
++        write(attr, writer);
++        return success();
++      })
+       .Default([&](Attribute) {
+         LOG_NOT_IMPLEMENTED;
+         return failure();
+@@ -1115,6 +1168,111 @@
+   writer.writeAttribute(attr.getMode());
+ }
+ 
++//===----------------------------------------------------------------------===//
++// TensorBlockScalingConfigAttr
++
++TensorBlockScalingConfigAttr
++StablehloBytecodeInterface::readTensorBlockScalingConfigAttr(
++    DialectBytecodeReader& reader) const {
++  LOG_READ_CALL;
++  int64_t scaleIdx;
++  bool hasZeroIdx;
++  std::optional<int64_t> zeroIdx;
++  llvm::SmallVector<int64_t> strides, steps;
++  if (failed(reader.readSignedVarInt(scaleIdx)) ||
++      failed(reader.readBool(hasZeroIdx)))
++    return TensorBlockScalingConfigAttr();
++  if (hasZeroIdx) {
++    int64_t z;
++    if (failed(reader.readSignedVarInt(z)))
++      return TensorBlockScalingConfigAttr();
++    zeroIdx = z;
++  }
++  if (failed(reader.readSignedVarInts(strides)) ||
++      failed(reader.readSignedVarInts(steps)))
++    return TensorBlockScalingConfigAttr();
++  return TensorBlockScalingConfigAttr::get(getContext(), scaleIdx, zeroIdx,
++                                           strides, steps);
++}
++
++void StablehloBytecodeInterface::write(TensorBlockScalingConfigAttr attr,
++                                       DialectBytecodeWriter& writer) const {
++  writer.writeVarInt(stablehlo_encoding::kTensorBlockScalingConfigAttr);
++  writer.writeSignedVarInt(attr.getScaleIdx());
++  bool hasZeroIdx = attr.getZeroIdx().has_value();
++  writer.writeOwnedBool(hasZeroIdx);
++  if (hasZeroIdx) writer.writeSignedVarInt(*attr.getZeroIdx());
++  writer.writeSignedVarInts(attr.getStrides());
++  writer.writeSignedVarInts(attr.getSteps());
++}
++
++//===----------------------------------------------------------------------===//
++// BlockScalingConfigAttr
++
++BlockScalingConfigAttr StablehloBytecodeInterface::readBlockScalingConfigAttr(
++    DialectBytecodeReader& reader) const {
++  LOG_READ_CALL;
++  TensorBlockScalingConfigAttr lhs, rhs;
++  if (failed(reader.readOptionalAttribute(lhs)) ||
++      failed(reader.readOptionalAttribute(rhs)))
++    return BlockScalingConfigAttr();
++  return BlockScalingConfigAttr::get(getContext(), lhs, rhs);
++}
++
++void StablehloBytecodeInterface::write(BlockScalingConfigAttr attr,
++                                       DialectBytecodeWriter& writer) const {
++  writer.writeVarInt(stablehlo_encoding::kBlockScalingConfigAttr);
++  writer.writeOptionalAttribute(attr.getLhs());
++  writer.writeOptionalAttribute(attr.getRhs());
++}
++
++//===----------------------------------------------------------------------===//
++// TensorSparsityConfigAttr
++
++TensorSparsityConfigAttr
++StablehloBytecodeInterface::readTensorSparsityConfigAttr(
++    DialectBytecodeReader& reader) const {
++  LOG_READ_CALL;
++  int64_t n, m, dim, stride, idx;
++  if (failed(reader.readSignedVarInt(n)) ||
++      failed(reader.readSignedVarInt(m)) ||
++      failed(reader.readSignedVarInt(dim)) ||
++      failed(reader.readSignedVarInt(stride)) ||
++      failed(reader.readSignedVarInt(idx)))
++    return TensorSparsityConfigAttr();
++  return TensorSparsityConfigAttr::get(getContext(), n, m, dim, stride, idx);
++}
++
++void StablehloBytecodeInterface::write(TensorSparsityConfigAttr attr,
++                                       DialectBytecodeWriter& writer) const {
++  writer.writeVarInt(stablehlo_encoding::kTensorSparsityConfigAttr);
++  writer.writeSignedVarInt(attr.getNumNonZero());
++  writer.writeSignedVarInt(attr.getBlockSize());
++  writer.writeSignedVarInt(attr.getDimension());
++  writer.writeSignedVarInt(attr.getStride());
++  writer.writeSignedVarInt(attr.getIdx());
++}
++
++//===----------------------------------------------------------------------===//
++// SparsityConfigAttr
++
++SparsityConfigAttr StablehloBytecodeInterface::readSparsityConfigAttr(
++    DialectBytecodeReader& reader) const {
++  LOG_READ_CALL;
++  TensorSparsityConfigAttr lhs, rhs;
++  if (failed(reader.readOptionalAttribute(lhs)) ||
++      failed(reader.readOptionalAttribute(rhs)))
++    return SparsityConfigAttr();
++  return SparsityConfigAttr::get(getContext(), lhs, rhs);
++}
++
++void StablehloBytecodeInterface::write(SparsityConfigAttr attr,
++                                       DialectBytecodeWriter& writer) const {
++  writer.writeVarInt(stablehlo_encoding::kSparsityConfigAttr);
++  writer.writeOptionalAttribute(attr.getLhs());
++  writer.writeOptionalAttribute(attr.getRhs());
++}
++
+ }  // namespace
+ 
+ void addBytecodeInterface(StablehloDialect* dialect) {
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloBytecode.h b/stablehlo/stablehlo/dialect/StablehloBytecode.h
 --- stablehlo/stablehlo/dialect/StablehloBytecode.h
 +++ stablehlo/stablehlo/dialect/StablehloBytecode.h
@@ -2807,7 +3084,196 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloEnums.td b/stablehlo/stablehlo
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -4332,6 +4332,23 @@
+@@ -871,7 +871,155 @@
+ // DotGeneralOp
+ //===----------------------------------------------------------------------===//
+ 
++namespace {
++
++std::optional<hlo::DotSparsityDim> getDotSparsityDim(
++    TensorSparsityConfigAttr sp) {
++  if (!sp) return std::nullopt;
++  return hlo::DotSparsityDim{sp.getDimension(), sp.getNumNonZero(),
++                             sp.getBlockSize()};
++}
++
++LogicalResult verifyDotGeneralBlockScalingConfig(DotGeneralOp op,
++                                                 llvm::SmallBitVector& seen) {
++  BlockScalingConfigAttr config = op.getBlockScalingConfigAttr();
++  if (!config) return success();
++  if (!config.getLhs() && !config.getRhs()) {
++    return emitOptionalError(op.getLoc(),
++                             "block_scaling_config must specify lhs or rhs");
++  }
++  ValueRange extOperands = op.getExtOperands();
++  auto claimIdx = [&](int64_t rawIdx, StringRef side) -> LogicalResult {
++    int64_t idx = rawIdx - 2;
++    if (idx < 0 || idx >= static_cast<int64_t>(extOperands.size()) ||
++        seen.test(idx)) {
++      return emitOptionalError(
++          op.getLoc(), "block_scaling_config for ", side,
++          " must have distinct scale_idx/zero_idx referring to one of the ",
++          extOperands.size(), " extra operands");
++    }
++    seen.set(idx);
++    return success();
++  };
++  for (auto [side, operand, scaling] :
++       {std::tuple{StringRef("lhs"), op.getLhs(), config.getLhs()},
++        std::tuple{StringRef("rhs"), op.getRhs(), config.getRhs()}}) {
++    if (!scaling) continue;
++    if (failed(claimIdx(scaling.getScaleIdx(), side)) ||
++        (scaling.getZeroIdx() &&
++         failed(claimIdx(*scaling.getZeroIdx(), side)))) {
++      return failure();
++    }
++    int64_t scaleIdx = scaling.getScaleIdx() - 2;
++    auto operandType = cast<ShapedType>(operand.getType());
++    auto scaleType = cast<ShapedType>(extOperands[scaleIdx].getType());
++    if (!scaleType.hasRank() || !operandType.hasRank()) continue;
++    if (scaleType.getRank() != operandType.getRank()) {
++      return emitOptionalError(
++          op.getLoc(), "scale_factor rank (", scaleType.getRank(), ") for ",
++          side, " must match operand rank (", operandType.getRank(), ")");
++    }
++    if (scaling.getZeroIdx()) {
++      auto zeroType =
++          cast<ShapedType>(extOperands[*scaling.getZeroIdx() - 2].getType());
++      if (zeroType.hasRank() && zeroType.getShape() != scaleType.getShape()) {
++        return emitOptionalError(op.getLoc(), "zero_point shape for ", side,
++                                 " must match scale_factor shape");
++      }
++    }
++    for (auto [name, vals] :
++         {std::pair{StringRef("strides"), scaling.getStrides()},
++          std::pair{StringRef("steps"), scaling.getSteps()}}) {
++      if (!vals.empty() &&
++          static_cast<int64_t>(vals.size()) != operandType.getRank()) {
++        return emitOptionalError(op.getLoc(), "block_scaling_config ", name,
++                                 " for ", side, " must match operand rank (",
++                                 operandType.getRank(), ")");
++      }
++    }
++    for (int64_t dim = 0; dim < operandType.getRank(); ++dim) {
++      int64_t operandSize = operandType.getDimSize(dim);
++      int64_t scaleSize = scaleType.getDimSize(dim);
++      if (!ShapedType::isDynamic(operandSize) &&
++          !ShapedType::isDynamic(scaleSize) && scaleSize > 1 &&
++          operandSize % scaleSize != 0) {
++        return emitOptionalError(op.getLoc(), "scale_factor dimension at axis ",
++                                 dim, " for ", side,
++                                 " must evenly divide operand dimension size (",
++                                 operandSize, " vs ", scaleSize, ")");
++      }
++    }
++  }
++  return success();
++}
++
++LogicalResult verifyDotGeneralSparsityConfig(DotGeneralOp op,
++                                             llvm::SmallBitVector& seen) {
++  SparsityConfigAttr config = op.getSparsityConfigAttr();
++  if (!config) return success();
++  if (!config.getLhs() && !config.getRhs()) {
++    return emitOptionalError(op.getLoc(),
++                             "sparsity_config must specify lhs or rhs");
++  }
++  DotDimensionNumbersAttr dims = op.getDotDimensionNumbersAttr();
++  ValueRange extOperands = op.getExtOperands();
++  for (auto [side, operand, contractingDims, sparsity] :
++       {std::tuple{StringRef("lhs"), op.getLhs(),
++                   dims.getLhsContractingDimensions(), config.getLhs()},
++        std::tuple{StringRef("rhs"), op.getRhs(),
++                   dims.getRhsContractingDimensions(), config.getRhs()}}) {
++    if (!sparsity) continue;
++    int64_t indicesIdx = sparsity.getIdx() - 2;
++    if (indicesIdx < 0 ||
++        indicesIdx >= static_cast<int64_t>(extOperands.size()) ||
++        seen.test(indicesIdx)) {
++      return emitOptionalError(
++          op.getLoc(), "sparsity_config for ", side,
++          " must have distinct idx referring to one of the ",
++          extOperands.size(), " extra operands");
++    }
++    seen.set(indicesIdx);
++    auto operandType = cast<ShapedType>(operand.getType());
++    int64_t n = sparsity.getNumNonZero();
++    int64_t m = sparsity.getBlockSize();
++    int64_t stride = sparsity.getStride();
++    int64_t dim = sparsity.getDimension();
++    if (n <= 0 || m <= n || stride <= 0 || dim < 0 ||
++        (operandType.hasRank() && dim >= operandType.getRank())) {
++      return emitOptionalError(
++          op.getLoc(), "StructuredSparsity invariants violated for ", side,
++          ": expected 0 < n < m, stride > 0 and valid dimension, but got n=", n,
++          ", m=", m, ", stride=", stride, ", dimension=", dim);
++    }
++    if (!llvm::is_contained(contractingDims, dim)) {
++      return emitOptionalError(op.getLoc(), "sparsity dimension ", dim, " for ",
++                               side, " must be a contracting dimension");
++    }
++    if (operandType.hasRank()) {
++      int64_t dimSize = operandType.getDimSize(dim);
++      if (!ShapedType::isDynamic(dimSize) && dimSize % n != 0) {
++        return emitOptionalError(op.getLoc(), "sparse operand dimension ", dim,
++                                 " size (", dimSize, ") for ", side,
++                                 " must be divisible by n (", n, ")");
++      }
++    }
++  }
++  return success();
++}
++
++}  // namespace
++
+ LogicalResult DotGeneralOp::verify() {
++  llvm::SmallBitVector seen(getExtOperands().size());
++  if (failed(verifyDotGeneralBlockScalingConfig(*this, seen)) ||
++      failed(verifyDotGeneralSparsityConfig(*this, seen))) {
++    return failure();
++  }
++  if (!seen.all()) {
++    return emitOpError(
++        "every operand in ext_operands must be referenced by "
++        "block_scaling_config or sparsity_config");
++  }
+   bool isDefaultPrecisionConfig =
+       !getPrecisionConfig().has_value() ||
+       llvm::all_of(getPrecisionConfig().value(), [](Attribute attr) {
+@@ -889,6 +1037,7 @@
+       return failure();
+   }
+ 
++  SparsityConfigAttr sp = getSparsityConfigAttr();
+   return hlo::verifyDotGeneralOp(
+       getLoc(), getLhs(), getRhs(),
+       getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
+@@ -896,7 +1045,8 @@
+       getDotDimensionNumbersAttr().getLhsContractingDimensions(),
+       getDotDimensionNumbersAttr().getRhsContractingDimensions(),
+       getPrecisionConfig(), isDefaultPrecisionConfig, hasAlgorithmSpecified,
+-      getResult());
++      getResult(), sp ? getDotSparsityDim(sp.getLhs()) : std::nullopt,
++      sp ? getDotSparsityDim(sp.getRhs()) : std::nullopt);
+ }
+ 
+ LogicalResult DotGeneralOp::inferReturnTypeComponents(
+@@ -922,10 +1072,13 @@
+     rhsContractingDimensions =
+         adaptor.getDotDimensionNumbersAttr().getRhsContractingDimensions();
+   }
++  SparsityConfigAttr sp = adaptor.getSparsityConfigAttr();
+   return hlo::inferDotGeneralOp(
+       location, adaptor.getLhs().getType(), adaptor.getRhs().getType(),
+       lhsBatchingDimensions, rhsBatchingDimensions, lhsContractingDimensions,
+-      rhsContractingDimensions, {}, inferredReturnShapes);
++      rhsContractingDimensions, {}, inferredReturnShapes,
++      sp ? getDotSparsityDim(sp.getLhs()) : std::nullopt,
++      sp ? getDotSparsityDim(sp.getRhs()) : std::nullopt);
+ }
+ 
+ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
+@@ -4332,6 +4485,23 @@
    ReturnOp::create(*builder, loc, compare);
  }
  
@@ -2831,7 +3297,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  void buildMaxAndArgmaxBody(Type elementType, Type indices_type, Region& body,
                             OpBuilder& builder) {
    OpBuilder::InsertionGuard guard(builder);
-@@ -4366,15 +4383,18 @@
+@@ -4366,15 +4536,18 @@
    // Final lhs Selection Condition: (gt_pred) OR (tie_breaker_condition)
    auto final_lhs_condition =
        OrOp::create(builder, loc, gt_pred, tie_breaker_condition).getResult();
@@ -2880,6 +3346,198 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      }]>,
      OpBuilder<(ins
        "::mlir::TypeRange":$resultTypes, "::mlir::ValueRange":$inputs,
+@@ -2743,6 +2745,20 @@
+     Computes dot products between slices of `lhs` and slices of `rhs` and
+     produces a `result` tensor.
+ 
++    Optionally accepts trailing `ext_operands` referenced by
++    `block_scaling_config` (`#stablehlo.block_scaling_config`) and
++    `sparsity_config` (`#stablehlo.sparsity_config`) using absolute operand
++    indices (where `lhs` is 0, `rhs` is 1, and `ext_operands[i]` is `i + 2`):
++    * `block_scaling_config`: `#stablehlo.block_scaling_config<lhs = #stablehlo.tensor_block_scaling_config<scale_idx = <i64>, zero_idx = <i64>, strides = [...], steps = [...]>, rhs = ...>`.
++      The referenced scale tensor must have the same rank as the operand and
++      each scale dimension size must evenly divide the corresponding operand
++      dimension size.
++    * `sparsity_config`: `#stablehlo.sparsity_config<lhs = #stablehlo.tensor_sparsity_config<num_non_zero = <i64>, block_size = <i64>, dimension = <i64>, stride = <i64>, idx = <i64>>, rhs = ...>`
++      describing structured sparsity along a contracting dimension
++      (`0 < num_non_zero < block_size`, `stride > 0`). Along the sparse
++      contracting dimension, the operand has compressed size
++      `K * num_non_zero / block_size` while its logical contracting size is `K`.
++
+     See:
+     https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dot_general
+ 
+@@ -2761,15 +2777,30 @@
+     HLO_TensorOrPerAxisQuantizedTensor:$rhs /*dot_general_i2*/,
+     StableHLO_DotDimensionNumbers:$dot_dimension_numbers /*dot_general_i3, dot_general_i4, dot_general_i5, dot_general_i6*/,
+     OptionalAttr<StableHLO_PrecisionConfigAttr>:$precision_config /*dot_general_i7*/,
+-    OptionalAttr<StableHLO_DotAlgorithm>:$algorithm
++    OptionalAttr<StableHLO_DotAlgorithm>:$algorithm,
++    Variadic<HLO_Tensor>:$ext_operands,
++    OptionalAttr<StableHLO_BlockScalingConfig>:$block_scaling_config,
++    OptionalAttr<StableHLO_SparsityConfig>:$sparsity_config
+   );
+ 
+   let results = (outs HLO_TensorOrPerAxisQuantizedTensor);
+   let hasVerifier = 1;
+ 
++  let builders = [
++    OpBuilder<(ins "::mlir::Type":$resultType, "::mlir::Value":$lhs,
++      "::mlir::Value":$rhs, "::mlir::Attribute":$dot_dimension_numbers,
++      CArg<"::mlir::Attribute", "{}">:$precision_config,
++      CArg<"::mlir::Attribute", "{}">:$algorithm), [{
++      build($_builder, $_state, resultType, lhs, rhs,
++            ::llvm::cast<DotDimensionNumbersAttr>(dot_dimension_numbers),
++            ::llvm::dyn_cast_or_null<::mlir::ArrayAttr>(precision_config),
++            ::llvm::dyn_cast_or_null<DotAlgorithmAttr>(algorithm), {}, {}, {});
++    }]>
++  ];
++
+   // Use empty `` to prevent extra whitespace before precision config.
+   let assemblyFormat = [{
+-    $lhs `,` $rhs `,` custom<DotDimensionNumbers>($dot_dimension_numbers) ``
++    $lhs `,` $rhs `,` (`[` $ext_operands^ `]` `,`)? custom<DotDimensionNumbers>($dot_dimension_numbers) ``
+     custom<PrecisionConfigAndAlgorithm>($precision_config, $algorithm) attr-dict
+       `:` functional-type(operands, results)
+   }];
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -2376,7 +2376,9 @@
+     ArrayRef<int64_t> rhsBatchingDimensions,
+     ArrayRef<int64_t> lhsContractingDimensions,
+     ArrayRef<int64_t> rhsContractingDimensions,
+-    std::optional<ArrayAttr> precisionConfig) {
++    std::optional<ArrayAttr> precisionConfig,
++    std::optional<DotSparsityDim> lhsSparsity,
++    std::optional<DotSparsityDim> rhsSparsity) {
+   // dot_general_c11
+   if (failed(verifyPrecisionConfig(location, precisionConfig)))
+     return failure();
+@@ -2447,10 +2449,21 @@
+                                "match for lhs/rhs");
+   }
+ 
++  auto getLogicalDimSize = [](int64_t size, int64_t dim,
++                              std::optional<DotSparsityDim> sp) -> int64_t {
++    if (!ShapedType::isDynamic(size) && sp && sp->dimension == dim &&
++        sp->numNonZero > 0) {
++      return size * sp->blockSize / sp->numNonZero;
++    }
++    return size;
++  };
++
+   for (auto [lhs, rhs] :
+        llvm::zip(lhsContractingDimensions, rhsContractingDimensions)) {
++    int64_t lhsDimSize = getLogicalDimSize(lhsShape[lhs], lhs, lhsSparsity);
++    int64_t rhsDimSize = getLogicalDimSize(rhsShape[rhs], rhs, rhsSparsity);
+     // dot_general_c10
+-    if (!verifyCompatibleDims(lhsShape[lhs], rhsShape[rhs]))
++    if (!verifyCompatibleDims(lhsDimSize, rhsDimSize))
+       return emitOptionalError(location,
+                                "contracting dimension sizes must "
+                                "match for lhs/rhs");
+@@ -2465,11 +2478,14 @@
+     ArrayRef<int64_t> lhsContractingDimensions,
+     ArrayRef<int64_t> rhsContractingDimensions,
+     std::optional<ArrayAttr> precisionConfig,
+-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
++    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes,
++    std::optional<DotSparsityDim> lhsSparsity,
++    std::optional<DotSparsityDim> rhsSparsity) {
+   if (failed(checkDotGeneralConstraints(
+           location, lhsType, rhsType, lhsBatchingDimensions,
+           rhsBatchingDimensions, lhsContractingDimensions,
+-          rhsContractingDimensions, precisionConfig))) {
++          rhsContractingDimensions, precisionConfig, lhsSparsity,
++          rhsSparsity))) {
+     return failure();
+   }
+ 
+@@ -4259,12 +4275,15 @@
+                                  ArrayRef<int64_t> rhsContractingDimensions,
+                                  std::optional<ArrayAttr> precisionConfig,
+                                  bool isDefaultPrecisionConfig,
+-                                 bool hasAlgorithmSpecified, Value result) {
++                                 bool hasAlgorithmSpecified, Value result,
++                                 std::optional<DotSparsityDim> lhsSparsity,
++                                 std::optional<DotSparsityDim> rhsSparsity) {
+   SmallVector<ShapedTypeComponents> inferredReturnShapes;
+-  if (failed(inferDotGeneralOp(
+-          location, lhs.getType(), rhs.getType(), lhsBatchingDimensions,
+-          rhsBatchingDimensions, lhsContractingDimensions,
+-          rhsContractingDimensions, precisionConfig, inferredReturnShapes)))
++  if (failed(inferDotGeneralOp(location, lhs.getType(), rhs.getType(),
++                               lhsBatchingDimensions, rhsBatchingDimensions,
++                               lhsContractingDimensions,
++                               rhsContractingDimensions, precisionConfig,
++                               inferredReturnShapes, lhsSparsity, rhsSparsity)))
+     return failure();
+ 
+   auto inferredShape = inferredReturnShapes[0];
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -228,13 +228,21 @@
+     RankedTensorType rhsType, std::optional<ArrayAttr> precisionConfig,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
+ 
++struct DotSparsityDim {
++  int64_t dimension;
++  int64_t numNonZero;
++  int64_t blockSize;
++};
++
+ LogicalResult checkDotGeneralConstraints(
+     std::optional<Location> location, Type lhsType, Type rhsType,
+     ArrayRef<int64_t> lhsBatchingDimensions,
+     ArrayRef<int64_t> rhsBatchingDimensions,
+     ArrayRef<int64_t> lhsContractingDimensions,
+     ArrayRef<int64_t> rhsContractingDimensions,
+-    std::optional<ArrayAttr> precisionConfig);
++    std::optional<ArrayAttr> precisionConfig,
++    std::optional<DotSparsityDim> lhsSparsity = std::nullopt,
++    std::optional<DotSparsityDim> rhsSparsity = std::nullopt);
+ 
+ LogicalResult inferDotGeneralOp(
+     std::optional<Location> location, Type lhsType, Type rhsType,
+@@ -243,7 +251,9 @@
+     ArrayRef<int64_t> lhsContractingDimensions,
+     ArrayRef<int64_t> rhsContractingDimensions,
+     std::optional<ArrayAttr> precisionConfig,
+-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
++    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes,
++    std::optional<DotSparsityDim> lhsSparsity = std::nullopt,
++    std::optional<DotSparsityDim> rhsSparsity = std::nullopt);
+ 
+ LogicalResult inferDynamicConvOp(
+     std::optional<Location> location, Type lhsType, Type rhsType, Value padding,
+@@ -483,15 +493,16 @@
+                           std::optional<ArrayAttr> precisionConfig,
+                           Value result);
+ 
+-LogicalResult verifyDotGeneralOp(std::optional<Location> location, Value lhs,
+-                                 Value rhs,
+-                                 ArrayRef<int64_t> lhsBatchingDimensions,
+-                                 ArrayRef<int64_t> rhsBatchingDimensions,
+-                                 ArrayRef<int64_t> lhsContractingDimensions,
+-                                 ArrayRef<int64_t> rhsContractingDimensions,
+-                                 std::optional<ArrayAttr> precisionConfig,
+-                                 bool isDefaultPrecisionConfig,
+-                                 bool hasAlgorithmSpecified, Value result);
++LogicalResult verifyDotGeneralOp(
++    std::optional<Location> location, Value lhs, Value rhs,
++    ArrayRef<int64_t> lhsBatchingDimensions,
++    ArrayRef<int64_t> rhsBatchingDimensions,
++    ArrayRef<int64_t> lhsContractingDimensions,
++    ArrayRef<int64_t> rhsContractingDimensions,
++    std::optional<ArrayAttr> precisionConfig, bool isDefaultPrecisionConfig,
++    bool hasAlgorithmSpecified, Value result,
++    std::optional<DotSparsityDim> lhsSparsity = {},
++    std::optional<DotSparsityDim> rhsSparsity = {});
+ 
+ LogicalResult verifyDotAlgorithmAttr(
+     ::llvm::function_ref<InFlightDiagnostic()> emitError, Type lhsPrecisionType,
 diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
 --- stablehlo/stablehlo/dialect/Version.h
 +++ stablehlo/stablehlo/dialect/Version.h
@@ -2911,7 +3569,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/di
        1.18.0: Add `result_tilings` attribute to `custom_call` op.
        1.19.0: Add CollectiveReduceOp.
        1.20.0: Add has_dynamic_root to collective_broadcast op. Allow mixed fp8 operands in `convolution` and `dynamic_conv` ops.
-+      1.21.0: Add F8E4M3FN_F8E4M3FN_F32_X3 and F8E4M3FN_F8E4M3FN_F32_X4 dot algorithms.
++      1.21.0: Add F8E4M3FN_F8E4M3FN_F32_X3 and F8E4M3FN_F8E4M3FN_F32_X4 dot algorithms. Add `ext_operands`, `block_scaling_config`, and `sparsity_config` to `dot_general` op.
    }];
  
    let useDefaultAttributePrinterParser = 0;
@@ -3004,11 +3662,41 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialec
  }
  
 -def VHLO_DotGeneralOpV2 : VHLO_Op<"dot_general_v2", "1.6.0", "current"> {
-+def VHLO_DotGeneralOpV2 : VHLO_Op<"dot_general_v2", "1.6.0", "current",
++def VHLO_DotGeneralOpV2 : VHLO_Op<"dot_general_v2", "1.6.0", "1.20.0",
 +    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
    let arguments = (ins
      VHLO_AnyType:$lhs,
      VHLO_AnyType:$rhs,
+@@ -532,6 +533,29 @@
+   let results = (outs VHLO_AnyType:$result);
+ }
+ 
++def VHLO_DotGeneralOpV3 : VHLO_Op<"dot_general_v3", "1.21.0", "current"> {
++  let arguments = (ins
++    VHLO_AnyType:$lhs,
++    VHLO_AnyType:$rhs,
++    VHLO_AnyAttr:$lhs_batching_dimensions,
++    VHLO_AnyAttr:$rhs_batching_dimensions,
++    VHLO_AnyAttr:$lhs_contracting_dimensions,
++    VHLO_AnyAttr:$rhs_contracting_dimensions,
++    VHLO_AnyAttr:$precision_config,
++    VHLO_AnyAttr:$lhs_precision_type,
++    VHLO_AnyAttr:$rhs_precision_type,
++    VHLO_AnyAttr:$accumulation_type,
++    VHLO_AnyAttr:$lhs_component_count,
++    VHLO_AnyAttr:$rhs_component_count,
++    VHLO_AnyAttr:$num_primitive_operations,
++    VHLO_AnyAttr:$allow_imprecise_accumulation,
++    Variadic<VHLO_AnyType>:$ext_operands,
++    VHLO_AnyAttr:$block_scaling_config,
++    VHLO_AnyAttr:$sparsity_config
++  );
++  let results = (outs VHLO_AnyType:$result);
++}
++
+ // TODO(#3): DotOp is not part of the StableHLO spec.
+ // This operation is on its way out of StableHLO, so it is not included in
+ // the StableHLO specification.
 diff --ruN a/stablehlo/stablehlo/integrations/c/ChloAttributes.cpp b/stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
 --- stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
 +++ stablehlo/stablehlo/integrations/c/ChloAttributes.cpp
@@ -3343,6 +4031,31 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
          StringWriterHelper accumulator;
          if (mlirLogicalResultIsFailure(stablehloDeserializePortableArtifact(
                  toMlirStringRef(artifact), accumulator.getMlirStringCallback(),
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+@@ -25,3 +25,21 @@
+     if "num_composite_regions" not in kwargs:
+       kwargs["num_composite_regions"] = 0
+     super().__init__(*args, **kwargs)
++
++
++class DotGeneralOp(_stablehlo_ops_gen.DotGeneralOp):
++  """`dot_general` builder that defaults the new `ext_operands` operand.
++
++  `ext_operands` is the fifth positional argument and the new attributes are
++  passed by keyword only, so callers of the old signature pass at most 4
++  positional arguments.
++  """
++
++  def __init__(self, *args, **kwargs):
++    if len(args) <= 4:
++      kwargs.setdefault("ext_operands", [])
++    super().__init__(*args, **kwargs)
++
++
++def dot_general(*args, **kwargs):
++  return DotGeneralOp(*args, **kwargs).result
 diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
 --- stablehlo/stablehlo/reference/Api.cpp
 +++ stablehlo/stablehlo/reference/Api.cpp
@@ -3698,15 +4411,30 @@ diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stable
  
  #include "llvm/Support/Casting.h"
  #include "llvm/Support/Errc.h"
-@@ -175,36 +176,39 @@
+@@ -174,37 +175,52 @@
+     ArrayRef<InterpreterValue> inputs, std::queue<StringAttr>& infeed,
      SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
      InterpreterFallback* fallback) {
-   llvm::DefaultThreadPool threadPool;
+-  llvm::DefaultThreadPool threadPool;
 -  SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
-+  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
- 
+-
    uint32_t numReplicas = programs.size();
    uint32_t numPartitions = programs[0].size();
++
++  // StableHLO collectives are blocking barriers: a process inside rendezvous
++  // waits for every other process in its group to arrive, so all processes
++  // must run concurrently. Size the pool from the process count rather than
++  // the default (hardware_concurrency(), i.e. the host thread count). With a
++  // default-sized pool, a program with more processes than the host has
++  // hardware threads leaves the surplus tasks queued and never started while
++  // the started tasks block forever waiting for them - a deadlock that only
++  // surfaces as the rendezvous timeout. hardware_concurrency(N) leaves
++  // ThreadPoolStrategy::Limit false, so the pool gets N threads uncapped by the
++  // host.
++  llvm::DefaultThreadPool threadPool(
++      llvm::hardware_concurrency(numReplicas * numPartitions));
++  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
++
    ProcessGrid processGrid(numReplicas, numPartitions, infeed);
  
 +  SmallVector<SmallVector<InterpreterValue>> taskOutputs(numReplicas *
@@ -4407,6 +5135,111 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_dot_general_algorithms.mlir b/stableh
  // CHECK-LABEL: func @dot_algorithm_bf16_bf16_f32_x6
  func.func @dot_algorithm_bf16_bf16_f32_x6(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
    %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -3341,6 +3341,101 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @ext_dot_general
++func.func @ext_dot_general(%arg0: tensor<2x4x2xf32>, %arg1: tensor<2x4x4xf32>, %scale: tensor<2x4x1xf32>, %meta: tensor<2x4x1xi16>, %rhs_scale: tensor<2x2x4xf32>, %rhs_zp: tensor<2x2x4xf32>) -> tensor<2x4x4xf32> {
++  %0 = stablehlo.dot_general %arg0, %arg1, [%scale, %meta, %rhs_scale, %rhs_zp],
++    batching_dims = [0] x [0],
++    contracting_dims = [2] x [1] {
++    block_scaling_config = #stablehlo.block_scaling_config<
++      lhs = <scale_idx = 2>,
++      rhs = <scale_idx = 4, zero_idx = 5>
++    >,
++    sparsity_config = #stablehlo.sparsity_config<
++      lhs = <num_non_zero = 2, block_size = 4, dimension = 2, stride = 4, idx = 3>
++    >
++  } : (tensor<2x4x2xf32>, tensor<2x4x4xf32>, tensor<2x4x1xf32>, tensor<2x4x1xi16>, tensor<2x2x4xf32>, tensor<2x2x4xf32>) -> tensor<2x4x4xf32>
++  func.return %0 : tensor<2x4x4xf32>
++}
++
++// -----
++
++func.func @err_dot_general_block_scaling(%arg0: tensor<2x4x4xf32>, %arg1: tensor<2x4x4xf32>, %scale0: tensor<2x3x1xf32>) -> tensor<2x4x4xf32> {
++  // expected-error @+1 {{scale_factor dimension at axis 1 for lhs must evenly divide operand dimension size (4 vs 3)}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1, %scale0) {
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [1]>,
++    block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2>>
++  } : (tensor<2x4x4xf32>, tensor<2x4x4xf32>, tensor<2x3x1xf32>) -> tensor<2x4x4xf32>
++  func.return %0 : tensor<2x4x4xf32>
++}
++
++// -----
++
++func.func @err_dot_general_zero_idx_out_of_range(%arg0: tensor<2x4x4xf32>, %arg1: tensor<2x4x4xf32>, %scale0: tensor<2x4x1xf32>) -> tensor<2x4x4xf32> {
++  // expected-error @+1 {{block_scaling_config for lhs must have distinct scale_idx/zero_idx referring to one of the 1 extra operands}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1, %scale0) {
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [1]>,
++    block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, zero_idx = 3>>
++  } : (tensor<2x4x4xf32>, tensor<2x4x4xf32>, tensor<2x4x1xf32>) -> tensor<2x4x4xf32>
++  func.return %0 : tensor<2x4x4xf32>
++}
++
++// -----
++
++func.func @err_dot_general_sparsity(%arg0: tensor<2x4x2xf32>, %arg1: tensor<2x4x4xf32>, %meta: tensor<2x4x1xi16>) -> tensor<2x4x4xf32> {
++  // expected-error @+1 {{StructuredSparsity invariants violated for lhs: expected 0 < n < m, stride > 0 and valid dimension, but got n=4, m=2, stride=4, dimension=2}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1, %meta) {
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    sparsity_config = #stablehlo.sparsity_config<lhs = <num_non_zero = 4, block_size = 2, dimension = 2, stride = 4, idx = 2>>
++  } : (tensor<2x4x2xf32>, tensor<2x4x4xf32>, tensor<2x4x1xi16>) -> tensor<2x4x4xf32>
++  func.return %0 : tensor<2x4x4xf32>
++}
++
++// -----
++
++func.func @err_dot_general_sparsity_indices_idx_out_of_range(%arg0: tensor<2x4x2xf32>, %arg1: tensor<2x4x4xf32>, %meta: tensor<2x4x1xi16>) -> tensor<2x4x4xf32> {
++  // expected-error @+1 {{sparsity_config for lhs must have distinct idx referring to one of the 1 extra operands}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1, %meta) {
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    sparsity_config = #stablehlo.sparsity_config<lhs = <num_non_zero = 2, block_size = 4, dimension = 2, stride = 1, idx = 5>>
++  } : (tensor<2x4x2xf32>, tensor<2x4x4xf32>, tensor<2x4x1xi16>) -> tensor<2x4x4xf32>
++  func.return %0 : tensor<2x4x4xf32>
++}
++
++// -----
++
++func.func @err_dot_general_sparsity_non_contracting_dim(%arg0: tensor<2x4x2xf32>, %arg1: tensor<2x4x4xf32>, %meta: tensor<2x4x1xi16>) -> tensor<2x4x4xf32> {
++  // expected-error @+1 {{sparsity dimension 1 for lhs must be a contracting dimension}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1, %meta) {
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    sparsity_config = #stablehlo.sparsity_config<lhs = #stablehlo.tensor_sparsity_config<num_non_zero = 2, block_size = 4, dimension = 1, stride = 1, idx = 2>>
++  } : (tensor<2x4x2xf32>, tensor<2x4x4xf32>, tensor<2x4x1xi16>) -> tensor<2x4x4xf32>
++  func.return %0 : tensor<2x4x4xf32>
++}
++
++// -----
++
++func.func @err_dot_general_sparsity_dim_not_divisible_by_n(%arg0: tensor<2x4x3xf32>, %arg1: tensor<2x6x4xf32>, %meta: tensor<2x4x1xi16>) -> tensor<2x4x4xf32> {
++  // expected-error @+1 {{sparse operand dimension 2 size (3) for lhs must be divisible by n (2)}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1, %meta) {
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    sparsity_config = #stablehlo.sparsity_config<lhs = #stablehlo.tensor_sparsity_config<num_non_zero = 2, block_size = 4, dimension = 2, stride = 1, idx = 2>>
++  } : (tensor<2x4x3xf32>, tensor<2x6x4xf32>, tensor<2x4x1xi16>) -> tensor<2x4x4xf32>
++  func.return %0 : tensor<2x4x4xf32>
++}
++
++// -----
++
++func.func @err_dot_general_sparsity_contracting_dim_mismatch(%arg0: tensor<2x4x2xf32>, %arg1: tensor<2x8x4xf32>, %meta: tensor<2x4x1xi16>) -> tensor<2x4x4xf32> {
++  // expected-error @+1 {{contracting dimension sizes must match for lhs/rhs}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1, %meta) {
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    sparsity_config = #stablehlo.sparsity_config<lhs = #stablehlo.tensor_sparsity_config<num_non_zero = 2, block_size = 4, dimension = 2, stride = 1, idx = 2>>
++  } : (tensor<2x4x2xf32>, tensor<2x8x4xf32>, tensor<2x4x1xi16>) -> tensor<2x4x4xf32>
++  func.return %0 : tensor<2x4x4xf32>
++}
++
++// -----
++
+ func.func @dot_general_c1(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+   // expected-error @+1 {{lhs and rhs should have the same number of batching dimensions}}
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
 diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir b/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
 --- stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
 +++ stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
@@ -4443,6 +5276,159 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
  
    // CHECK-LABEL: @all_reduce_sdy_mesh_max
    func.func @all_reduce_sdy_mesh_max(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
+@@ -168,6 +168,18 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_broadcast_in_dim_discardable_attrs
++func.func @dynamic_broadcast_in_dim_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<3x4xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_broadcast_in_dim
++  //      CHECK: stablehlo.broadcast_in_dim %arg0, dims = [1]
++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
++  %0 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
++  %1 = stablehlo.dynamic_broadcast_in_dim %arg0, %0, dims = [1] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<2xi64>) -> tensor<3x4xf32>
++  return %1 : tensor<3x4xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_broadcast_in_dim_inapplicable_dynamic_operand_type
+ func.func @dynamic_broadcast_in_dim_inapplicable_dynamic_operand_type(%arg0: tensor<?xf32>) -> tensor<3x4xf32> {
+   // CHECK: stablehlo.dynamic_broadcast_in_dim
+@@ -225,6 +237,26 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_conv_discardable_attrs
++func.func @dynamic_conv_discardable_attrs(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_conv
++  //      CHECK: stablehlo.convolution(%arg0, %arg1)
++  // CHECK-SAME:   mhlo.frontend_attributes = {MUST_FUSE = "0"}
++  %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
++  %1 = "stablehlo.dynamic_conv"(%arg0, %arg1, %0) {
++    dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
++    window_strides = array<i64: 1, 1>,
++    lhs_dilation = array<i64: 1, 1>,
++    rhs_dilation = array<i64: 1, 1>,
++    feature_group_count = 1 : i64,
++    batch_group_count = 1 : i64,
++    mhlo.frontend_attributes = {MUST_FUSE = "0"}
++  } : (tensor<100x26x26x32xf32>, tensor<3x3x1x32xf32>, tensor<2x2xi32>) -> tensor<100x28x28x1xf32>
++  return %1 : tensor<100x28x28x1xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_conv_success_dynamic_result_type
+ func.func @dynamic_conv_success_dynamic_result_type(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf32>) -> tensor<?x28x28x1xf32> {
+   //  CHECK-NOT: stablehlo.dynamic_conv
+@@ -295,6 +327,25 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: @dynamic_gather_discardable_attrs
++func.func @dynamic_gather_discardable_attrs(%arg0 : tensor<2x4x9xi32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
++  //  CHECK-NOT: stablehlo.dynamic_gather
++  //      CHECK: "stablehlo.gather"(%arg0, %arg1)
++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
++  %0 = stablehlo.constant dense<[1, 1, 8]> : tensor<3xi32>
++  %1 = "stablehlo.dynamic_gather"(%arg0, %arg1, %0) <{
++    dimension_numbers = #stablehlo.gather<
++      collapsed_slice_dims = [0, 1],
++      index_vector_dim = 2,
++      offset_dims = [2],
++      start_index_map = [0, 1]
++    >
++  }> {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x4x9xi32>, tensor<1x5x2xi32>, tensor<3xi32>) -> tensor<1x5x8xi32>
++  return %1 : tensor<1x5x8xi32>
++}
++
++// -----
++
+ // CHECK-LABEL: @dynamic_gather_success_dynamic_result_type
+ func.func @dynamic_gather_success_dynamic_result_type(%arg0 : tensor<2x4x9xi32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x?xi32> {
+   //  CHECK-NOT: stablehlo.dynamic_gather
+@@ -348,6 +399,18 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_iota_discardable_attrs
++func.func @dynamic_iota_discardable_attrs() -> tensor<4xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_iota
++  //      CHECK: stablehlo.iota
++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
++  %0 = stablehlo.constant dense<4> : tensor<1xi64>
++  %1 = stablehlo.dynamic_iota %0, dim = 0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<1xi64>) -> tensor<4xf32>
++  return %1 : tensor<4xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_iota_inapplicable_dynamic_output_shape
+ func.func @dynamic_iota_inapplicable_dynamic_output_shape(%arg0: tensor<1xi64>) -> tensor<4xf32> {
+   // CHECK: stablehlo.dynamic_iota
+@@ -380,6 +443,20 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_pad_discardable_attrs
++func.func @dynamic_pad_discardable_attrs(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<11xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_pad
++  //      CHECK: stablehlo.pad
++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
++  %0 = stablehlo.constant dense<0> : tensor<1xi64>
++  %1 = stablehlo.constant dense<1> : tensor<1xi64>
++  %2 = stablehlo.constant dense<2> : tensor<1xi64>
++  %3 = stablehlo.dynamic_pad %arg0, %arg1, %0, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<f32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<11xf32>
++  return %3 : tensor<11xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_pad_success_dynamic_result_type
+ func.func @dynamic_pad_success_dynamic_result_type(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+   // CHECK-NOT: stablehlo.dynamic_pad
+@@ -437,6 +514,17 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_reshape_discardable_attrs
++func.func @dynamic_reshape_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<1x4xf32> {
++  //  CHECK-NOT: stablehlo.dynamic_reshape
++  //      CHECK: stablehlo.reshape %arg0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>) -> tensor<1x4xf32>
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
++  %1 = stablehlo.dynamic_reshape %arg0, %0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<2xi64>) -> tensor<1x4xf32>
++  return %1 : tensor<1x4xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_reshape_inapplicable_dynamic_output_shape
+ func.func @dynamic_reshape_inapplicable_dynamic_output_shape(%arg0: tensor<4xf32>, %arg1: tensor<2xi64>) -> tensor<1x4xf32> {
+   // CHECK: stablehlo.dynamic_reshape
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
+@@ -10,6 +10,16 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: op_dot_discardable_attrs
++func.func @op_dot_discardable_attrs(%arg0: tensor<2x3xf32>,
++                 %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
++  // CHECK: stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
++  %0 = "stablehlo.dot"(%arg0, %arg1) {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
++  func.return %0 : tensor<2x?xf32>
++}
++
++// -----
++
+ // CHECK-LABEL: op_unary_einsum
+ func.func @op_unary_einsum(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
+   // CHECK:      %cst = stablehlo.constant dense<1.000000e+00> : tensor<f32>
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
@@ -4472,7 +5458,7 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.mlir
-@@ -0,0 +1,3425 @@
+@@ -0,0 +1,3435 @@
 +// RUN: stablehlo-opt --mlir-print-op-generic %s.bc | FileCheck %s
 +// RUN: stablehlo-translate --deserialize %s.bc | stablehlo-translate --serialize --target=1.21.0 | stablehlo-opt --mlir-print-op-generic | FileCheck %s
 +// RUN: stablehlo-translate --deserialize %s.bc | stablehlo-opt > %t.0
@@ -5162,9 +6148,10 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +// CHECK-LABEL: "default_dot_general"
 +// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
 +func.func @default_dot_general(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) -> tensor<8x8x8xf32> {
-+  //      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++  //      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
 +  // CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.none_v1>,
 +  // CHECK-SAME:   allow_imprecise_accumulation = #vhlo.type_v1<!vhlo.none_v1>,
++  // CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
 +  // CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +  // CHECK-SAME:   lhs_component_count = #vhlo.type_v1<!vhlo.none_v1>,
 +  // CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
@@ -5174,7 +6161,8 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +  // CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +  // CHECK-SAME:   rhs_component_count = #vhlo.type_v1<!vhlo.none_v1>,
 +  // CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
-+  // CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.none_v1>
++  // CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.none_v1>,
++  // CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
 +  // CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.f32_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.f32_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
 +  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
 +    dot_dimension_numbers = #stablehlo.dot<
@@ -5190,9 +6178,10 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +// CHECK-LABEL: "dot_general_algorithm"
 +// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
 +func.func @dot_general_algorithm(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) -> tensor<8x8x8xf32> {
-+//      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++//      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
 +// CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.f32_v1>,
 +// CHECK-SAME:   allow_imprecise_accumulation = #vhlo.bool_v1<false>,
++// CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
 +// CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   lhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
@@ -5202,7 +6191,8 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +// CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   rhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
-+// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.tf31_v1>
++// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.tf31_v1>,
++// CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
 +// CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.f32_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.f32_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
 +  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
 +    dot_dimension_numbers = #stablehlo.dot<
@@ -5227,9 +6217,10 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +// CHECK-LABEL: "dot_general_algorithm_f8e4m3fn_x3"
 +// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
 +func.func @dot_general_algorithm_f8e4m3fn_x3(%arg0: tensor<8x8x16xbf16>, %arg1: tensor<8x16x8xbf16>) -> tensor<8x8x8xf32> {
-+//      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++//      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
 +// CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.f32_v1>,
 +// CHECK-SAME:   allow_imprecise_accumulation = #vhlo.bool_v1<false>,
++// CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
 +// CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   lhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
@@ -5239,7 +6230,8 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +// CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   rhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
-+// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.f8E4M3FN_v1>
++// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.f8E4M3FN_v1>,
++// CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
 +// CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.bf16_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.bf16_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
 +  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
 +    dot_dimension_numbers = #stablehlo.dot<
@@ -5264,9 +6256,10 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +// CHECK-LABEL: "dot_general_algorithm_f8e4m3fn_x4"
 +// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
 +func.func @dot_general_algorithm_f8e4m3fn_x4(%arg0: tensor<8x8x16xbf16>, %arg1: tensor<8x16x8xbf16>) -> tensor<8x8x8xf32> {
-+//      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++//      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
 +// CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.f32_v1>,
 +// CHECK-SAME:   allow_imprecise_accumulation = #vhlo.bool_v1<false>,
++// CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
 +// CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   lhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
@@ -5276,7 +6269,8 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +// CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   rhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
-+// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.f8E4M3FN_v1>
++// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.f8E4M3FN_v1>,
++// CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
 +// CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.bf16_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.bf16_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
 +  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
 +    dot_dimension_numbers = #stablehlo.dot<
@@ -6161,9 +7155,10 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +// CHECK-LABEL: "op_dot_general"
 +// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
 +func.func @op_dot_general(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) -> tensor<8x8x8xf32> {
-+  //      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++  //      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
 +  // CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.none_v1>,
 +  // CHECK-SAME:   allow_imprecise_accumulation = #vhlo.type_v1<!vhlo.none_v1>,
++  // CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
 +  // CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +  // CHECK-SAME:   lhs_component_count = #vhlo.type_v1<!vhlo.none_v1>,
 +  // CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
@@ -6173,7 +7168,8 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +  // CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +  // CHECK-SAME:   rhs_component_count = #vhlo.type_v1<!vhlo.none_v1>,
 +  // CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
-+  // CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.none_v1>
++  // CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.none_v1>,
++  // CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
 +  // CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.f32_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.f32_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
 +  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
 +    dot_dimension_numbers = #stablehlo.dot<
@@ -7903,16 +8899,61 @@ Binary files /dev/null and stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
-@@ -749,6 +749,80 @@
+@@ -687,9 +687,10 @@
+ // CHECK-LABEL: "default_dot_general"
+ // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
+ func.func @default_dot_general(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) -> tensor<8x8x8xf32> {
+-  //      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++  //      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
+   // CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.none_v1>,
+   // CHECK-SAME:   allow_imprecise_accumulation = #vhlo.type_v1<!vhlo.none_v1>,
++  // CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
+   // CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
+   // CHECK-SAME:   lhs_component_count = #vhlo.type_v1<!vhlo.none_v1>,
+   // CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
+@@ -699,7 +700,8 @@
+   // CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
+   // CHECK-SAME:   rhs_component_count = #vhlo.type_v1<!vhlo.none_v1>,
+   // CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
+-  // CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.none_v1>
++  // CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.none_v1>,
++  // CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
+   // CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.f32_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.f32_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+     dot_dimension_numbers = #stablehlo.dot<
+@@ -715,9 +717,10 @@
+ // CHECK-LABEL: "dot_general_algorithm"
+ // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
+ func.func @dot_general_algorithm(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) -> tensor<8x8x8xf32> {
+-//      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++//      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
+ // CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.f32_v1>,
+ // CHECK-SAME:   allow_imprecise_accumulation = #vhlo.bool_v1<false>,
++// CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
+ // CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
+ // CHECK-SAME:   lhs_component_count = #vhlo.integer_v1<1 : i64>,
+ // CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
+@@ -727,7 +730,8 @@
+ // CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
+ // CHECK-SAME:   rhs_component_count = #vhlo.integer_v1<1 : i64>,
+ // CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
+-// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.tf31_v1>
++// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.tf31_v1>,
++// CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
+ // CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.f32_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.f32_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+     dot_dimension_numbers = #stablehlo.dot<
+@@ -749,6 +753,84 @@
    func.return %0 : tensor<8x8x8xf32>
  }
  
 +// CHECK-LABEL: "dot_general_algorithm_f8e4m3fn_x3"
 +// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
 +func.func @dot_general_algorithm_f8e4m3fn_x3(%arg0: tensor<8x8x16xbf16>, %arg1: tensor<8x16x8xbf16>) -> tensor<8x8x8xf32> {
-+//      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++//      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
 +// CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.f32_v1>,
 +// CHECK-SAME:   allow_imprecise_accumulation = #vhlo.bool_v1<false>,
++// CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
 +// CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   lhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
@@ -7922,7 +8963,8 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/st
 +// CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   rhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
-+// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.f8E4M3FN_v1>
++// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.f8E4M3FN_v1>,
++// CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
 +// CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.bf16_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.bf16_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
 +  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
 +    dot_dimension_numbers = #stablehlo.dot<
@@ -7947,9 +8989,10 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/st
 +// CHECK-LABEL: "dot_general_algorithm_f8e4m3fn_x4"
 +// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
 +func.func @dot_general_algorithm_f8e4m3fn_x4(%arg0: tensor<8x8x16xbf16>, %arg1: tensor<8x16x8xbf16>) -> tensor<8x8x8xf32> {
-+//      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++//      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
 +// CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.f32_v1>,
 +// CHECK-SAME:   allow_imprecise_accumulation = #vhlo.bool_v1<false>,
++// CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
 +// CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   lhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
@@ -7959,7 +9002,8 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/st
 +// CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
 +// CHECK-SAME:   rhs_component_count = #vhlo.integer_v1<1 : i64>,
 +// CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
-+// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.f8E4M3FN_v1>
++// CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.f8E4M3FN_v1>,
++// CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
 +// CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.bf16_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.bf16_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
 +  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
 +    dot_dimension_numbers = #stablehlo.dot<
@@ -7984,16 +9028,65 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/st
  // CHECK-LABEL: "default_dynamic_broadcast_in_dim"
  // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
  func.func @default_dynamic_broadcast_in_dim(%arg0: tensor<?x?xf32>, %arg1: tensor<2xindex>) -> tensor<?x?xf32> {
+@@ -1612,9 +1694,10 @@
+ // CHECK-LABEL: "op_dot_general"
+ // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
+ func.func @op_dot_general(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) -> tensor<8x8x8xf32> {
+-  //      CHECK: "vhlo.dot_general_v2"(%[[ARG0]], %[[ARG1]]) <{
++  //      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]]) <{
+   // CHECK-SAME:   accumulation_type = #vhlo.type_v1<!vhlo.none_v1>,
+   // CHECK-SAME:   allow_imprecise_accumulation = #vhlo.type_v1<!vhlo.none_v1>,
++  // CHECK-SAME:   block_scaling_config = #vhlo.type_v1<!vhlo.none_v1>,
+   // CHECK-SAME:   lhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
+   // CHECK-SAME:   lhs_component_count = #vhlo.type_v1<!vhlo.none_v1>,
+   // CHECK-SAME:   lhs_contracting_dimensions = #vhlo.tensor_v1<dense<2> : tensor<1xi64>>,
+@@ -1624,7 +1707,8 @@
+   // CHECK-SAME:   rhs_batching_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
+   // CHECK-SAME:   rhs_component_count = #vhlo.type_v1<!vhlo.none_v1>,
+   // CHECK-SAME:   rhs_contracting_dimensions = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
+-  // CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.none_v1>
++  // CHECK-SAME:   rhs_precision_type = #vhlo.type_v1<!vhlo.none_v1>,
++  // CHECK-SAME:   sparsity_config = #vhlo.type_v1<!vhlo.none_v1>
+   // CHECK-SAME: }> : (!vhlo.tensor_v1<8x8x16x!vhlo.f32_v1>, !vhlo.tensor_v1<8x16x8x!vhlo.f32_v1>) -> !vhlo.tensor_v1<8x8x8x!vhlo.f32_v1>
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+     dot_dimension_numbers = #stablehlo.dot<
+@@ -1638,6 +1722,26 @@
+   func.return %0 : tensor<8x8x8xf32>
+ }
+ 
++// CHECK-LABEL: "op_dot_general_block_scaling_and_sparsity"
++// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}, %[[SCALE:.*]]: {{.*}}, %[[INDICES:.*]]: {{.*}})
++func.func @op_dot_general_block_scaling_and_sparsity(%arg0: tensor<2x64x64xbf16>, %arg1: tensor<2x128x64xbf16>, %scale: tensor<2x64x2xf8E8M0FNU>, %indices: tensor<2x64x16xi8>) -> tensor<2x64x64xbf16> {
++  //      CHECK: "vhlo.dot_general_v3"(%[[ARG0]], %[[ARG1]], %[[SCALE]], %[[INDICES]]) <{
++  // CHECK-SAME:   block_scaling_config = #vhlo.dict_v1<{#vhlo.string_v1<"lhs"> = #vhlo.dict_v1<{#vhlo.string_v1<"scale_idx"> = #vhlo.integer_v1<2 : i64>, #vhlo.string_v1<"steps"> = #vhlo.array_v1<[#vhlo.integer_v1<1 : i64>, #vhlo.integer_v1<1 : i64>, #vhlo.integer_v1<1 : i64>]>, #vhlo.string_v1<"strides"> = #vhlo.array_v1<[#vhlo.integer_v1<1 : i64>, #vhlo.integer_v1<1 : i64>, #vhlo.integer_v1<32 : i64>]>}>}>,
++  // CHECK-SAME:   sparsity_config = #vhlo.dict_v1<{#vhlo.string_v1<"lhs"> = #vhlo.dict_v1<{#vhlo.string_v1<"block_size"> = #vhlo.integer_v1<4 : i64>, #vhlo.string_v1<"dimension"> = #vhlo.integer_v1<2 : i64>, #vhlo.string_v1<"idx"> = #vhlo.integer_v1<3 : i64>, #vhlo.string_v1<"num_non_zero"> = #vhlo.integer_v1<2 : i64>, #vhlo.string_v1<"stride"> = #vhlo.integer_v1<1 : i64>}>}>
++  // CHECK-SAME: }>
++  %0 = "stablehlo.dot_general"(%arg0, %arg1, %scale, %indices) {
++    dot_dimension_numbers = #stablehlo.dot<
++      lhs_batching_dimensions = [0],
++      lhs_contracting_dimensions = [2],
++      rhs_batching_dimensions = [0],
++      rhs_contracting_dimensions = [1]
++    >,
++    block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, strides = [1, 1, 32], steps = [1, 1, 1]>>,
++    sparsity_config = #stablehlo.sparsity_config<lhs = <num_non_zero = 2, block_size = 4, dimension = 2, stride = 1, idx = 3>>
++  } : (tensor<2x64x64xbf16>, tensor<2x128x64xbf16>, tensor<2x64x2xf8E8M0FNU>, tensor<2x64x16xi8>) -> tensor<2x64x64xbf16>
++  func.return %0 : tensor<2x64x64xbf16>
++}
++
+ // CHECK-LABEL: "op_dot"
+ // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}})
+ func.func @op_dot(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_20_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_20_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_20_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_20_0.mlir
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,59 @@
 +// RUN: stablehlo-opt --stablehlo-legalize-to-vhlo --vhlo-to-version='target=1.20.0' --verify-diagnostics --split-input-file %s
 +
 +// expected-error @+1 {{failed to convert VHLO to v1.20.0}}
 +module {
 +  func.func @dot_general_algorithm_f8e4m3fn_x3(%arg0: tensor<8x8x16xbf16>, %arg1: tensor<8x16x8xbf16>) -> tensor<8x8x8xf32> {
-+    // expected-error @+1 {{failed to legalize operation 'vhlo.dot_general_v2' that was explicitly marked illegal}}
++    // expected-error @+1 {{failed to legalize operation 'vhlo.dot_general_v3' that was explicitly marked illegal}}
 +    %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
 +      dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
 +      precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
@@ -8016,7 +9109,7 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_
 +// expected-error @+1 {{failed to convert VHLO to v1.20.0}}
 +module {
 +  func.func @dot_general_algorithm_f8e4m3fn_x4(%arg0: tensor<8x8x16xbf16>, %arg1: tensor<8x16x8xbf16>) -> tensor<8x8x8xf32> {
-+    // expected-error @+1 {{failed to legalize operation 'vhlo.dot_general_v2' that was explicitly marked illegal}}
++    // expected-error @+1 {{failed to legalize operation 'vhlo.dot_general_v3' that was explicitly marked illegal}}
 +    %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
 +      dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
 +      precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
@@ -8033,6 +9126,32 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_
 +    func.return %0 : tensor<8x8x8xf32>
 +  }
 +}
++
++// -----
++
++// expected-error @+1 {{failed to convert VHLO to v1.20.0}}
++module {
++  func.func @dot_general_block_scaling(%arg0: tensor<2x4x4xf32>, %arg1: tensor<2x4x4xf32>, %scale: tensor<2x4x1xf32>) -> tensor<2x4x4xf32> {
++    // expected-error @+1 {{failed to legalize operation 'vhlo.dot_general_v3' that was explicitly marked illegal}}
++    %0 = "stablehlo.dot_general"(%arg0, %arg1, %scale) {
++      dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++      block_scaling_config = #stablehlo.block_scaling_config<lhs = #stablehlo.tensor_block_scaling_config<scale_idx = 2>>
++    } : (tensor<2x4x4xf32>, tensor<2x4x4xf32>, tensor<2x4x1xf32>) -> tensor<2x4x4xf32>
++    func.return %0 : tensor<2x4x4xf32>
++  }
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_5_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_5_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_5_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_5_0.mlir
+@@ -3,7 +3,7 @@
+ // expected-error @+1 {{failed to convert VHLO to v1.5.0}}
+ module {
+ func.func @dot_general_algorithm(%arg0: tensor<2x2x2xi64>, %arg1: tensor<2x2x2xi64>) -> tensor<2x2x2xi64> {
+-  // expected-error @+1 {{failed to legalize operation 'vhlo.dot_general_v2' that was explicitly marked illegal}}
++  // expected-error @+1 {{failed to legalize operation 'vhlo.dot_general_v3' that was explicitly marked illegal}}
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
+     dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+     precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
 diff --ruN a/stablehlo/stablehlo/tools/StablehloLspServerMain.cpp b/stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
 --- stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
 +++ stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
@@ -8292,6 +9411,18 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
            newElement);
  
        int64_t outRank = outputType.getRank();
+diff --ruN a/stablehlo/stablehlo/transforms/MapStablehloToVhlo.h b/stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
+--- stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
++++ stablehlo/stablehlo/transforms/MapStablehloToVhlo.h
+@@ -85,7 +85,7 @@
+ MAP_STABLEHLO_TO_VHLO(CrossReplicaSumOp, V1)
+ MAP_STABLEHLO_TO_VHLO(CustomCallOp, V2)
+ MAP_STABLEHLO_TO_VHLO(DivOp, V1)
+-MAP_STABLEHLO_TO_VHLO(DotGeneralOp, V2)
++MAP_STABLEHLO_TO_VHLO(DotGeneralOp, V3)
+ MAP_STABLEHLO_TO_VHLO(DotOp, V1)
+ MAP_STABLEHLO_TO_VHLO(DynamicBroadcastInDimOp, V1)
+ MAP_STABLEHLO_TO_VHLO(DynamicConvOp, V2)
 diff --ruN a/stablehlo/stablehlo/transforms/PassPipelines.cpp b/stablehlo/stablehlo/transforms/PassPipelines.cpp
 --- stablehlo/stablehlo/transforms/PassPipelines.cpp
 +++ stablehlo/stablehlo/transforms/PassPipelines.cpp
@@ -8393,6 +9524,99 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
      return success();
    }
  };
+@@ -119,8 +120,11 @@
+                                          "expected static output_dimensions");
+     if (!op.getType().hasStaticShape())
+       return rewriter.notifyMatchFailure(op, "expected static result type");
+-    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+-        op, op.getType(), op.getOperand(), op.getBroadcastDimensionsAttr());
++    auto broadcastInDimOp = BroadcastInDimOp::create(
++        rewriter, op.getLoc(), op.getType(), op.getOperand(),
++        op.getBroadcastDimensionsAttr());
++    broadcastInDimOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, broadcastInDimOp);
+     return success();
+   }
+ };
+@@ -139,12 +143,14 @@
+         RankedTensorType::get({static_cast<int64_t>(padding.size()) / 2, 2},
+                               rewriter.getI64Type()),
+         padding);
+-    rewriter.replaceOpWithNewOp<ConvolutionOp>(
+-        op, op.getType(), op.getLhs(), op.getRhs(), op.getWindowStridesAttr(),
+-        paddingAttr, op.getLhsDilationAttr(), op.getRhsDilationAttr(),
+-        op.getWindowReversalAttr(), op.getDimensionNumbers(),
+-        op.getFeatureGroupCount(), op.getBatchGroupCount(),
+-        op.getPrecisionConfigAttr());
++    auto convolutionOp = ConvolutionOp::create(
++        rewriter, op.getLoc(), op.getType(), op.getLhs(), op.getRhs(),
++        op.getWindowStridesAttr(), paddingAttr, op.getLhsDilationAttr(),
++        op.getRhsDilationAttr(), op.getWindowReversalAttr(),
++        op.getDimensionNumbers(), op.getFeatureGroupCount(),
++        op.getBatchGroupCount(), op.getPrecisionConfigAttr());
++    convolutionOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, convolutionOp);
+     return success();
+   }
+ };
+@@ -159,10 +165,13 @@
+     SmallVector<int64_t> sliceSizes;
+     if (!succeeded(hlo::matchInts(op.getSliceSizes(), sliceSizes)))
+       return rewriter.notifyMatchFailure(op, "expected static slice_sizes");
+-    rewriter.replaceOpWithNewOp<GatherOp>(
+-        op, op.getType(), op.getOperand(), op.getStartIndices(),
+-        op.getDimensionNumbersAttr(), rewriter.getDenseI64ArrayAttr(sliceSizes),
+-        op.getIndicesAreSortedAttr());
++    auto gatherOp =
++        GatherOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand(),
++                         op.getStartIndices(), op.getDimensionNumbersAttr(),
++                         rewriter.getDenseI64ArrayAttr(sliceSizes),
++                         op.getIndicesAreSortedAttr());
++    gatherOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, gatherOp);
+     return success();
+   }
+ };
+@@ -179,8 +188,10 @@
+       return rewriter.notifyMatchFailure(op, "expected static output_shape");
+     if (!op.getType().hasStaticShape())
+       return rewriter.notifyMatchFailure(op, "expected static result type");
+-    rewriter.replaceOpWithNewOp<IotaOp>(op, op.getType(),
+-                                        op.getIotaDimension());
++    auto iotaOp = IotaOp::create(rewriter, op.getLoc(), op.getType(),
++                                 op.getIotaDimension());
++    iotaOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, iotaOp);
+     return success();
+   }
+ };
+@@ -198,9 +209,11 @@
+       return rewriter.notifyMatchFailure(op, "expected static high");
+     if (!succeeded(hlo::matchInts(op.getInteriorPadding(), interiorPadding)))
+       return rewriter.notifyMatchFailure(op, "expected static interior");
+-    rewriter.replaceOpWithNewOp<PadOp>(op, op.getType(), op.getOperand(),
+-                                       op.getPaddingValue(), edgePaddingLow,
+-                                       edgePaddingHigh, interiorPadding);
++    auto padOp = PadOp::create(
++        rewriter, op.getLoc(), op.getType(), op.getOperand(),
++        op.getPaddingValue(), edgePaddingLow, edgePaddingHigh, interiorPadding);
++    padOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, padOp);
+     return success();
+   }
+ };
+@@ -216,7 +229,10 @@
+       return rewriter.notifyMatchFailure(op, "expected static output_shape");
+     if (!op.getType().hasStaticShape())
+       return rewriter.notifyMatchFailure(op, "expected static result type");
+-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
++    auto reshapeOp =
++        ReshapeOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand());
++    reshapeOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
++    rewriter.replaceOp(op, reshapeOp);
+     return success();
+   }
+ };
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
 --- stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
 +++ stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
@@ -8433,6 +9657,42 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/s
    populateWithGenerated(*patterns);
  }
  
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
+@@ -132,6 +132,14 @@
+   llvm::report_fatal_error("unsupported type");
+ }
+ 
++void copyDiscardableAttrs(Operation* src, Operation* dst) {
++  dst->setDiscardableAttrs(src->getDiscardableAttrDictionary());
++}
++
++void copyDiscardableAttrs(Value src, Value dst) {
++  copyDiscardableAttrs(src.getDefiningOp(), dst.getDefiningOp());
++}
++
+ #include "stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.h.inc"
+ }  // namespace
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
+--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
+@@ -45,9 +45,12 @@
+ 
+ // def CrossReplicaSumToAllReduce : <Declared in cpp>
+ 
++def CopyDiscardableAttrs : NativeCodeCallVoid<"copyDiscardableAttrs($0, $1)">;
++
+ def DotToDotGeneral : Pat<
+-  (StableHLO_DotOp $lhs, $rhs, $precision_config),
+-  (StableHLO_DotGeneralOp $lhs, $rhs, (GetDefaultDotDimensionNumbers $lhs), $precision_config, (NativeCodeCall<"Attribute{}">))>;
++  (StableHLO_DotOp:$src $lhs, $rhs, $precision_config),
++  (StableHLO_DotGeneralOp:$dst $lhs, $rhs, (GetDefaultDotDimensionNumbers $lhs), $precision_config, (NativeCodeCall<"Attribute{}">), (NativeCodeCall<"ValueRange{}">), (NativeCodeCall<"Attribute{}">), (NativeCodeCall<"Attribute{}">)),
++  [], [(CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def UnaryEinsumToEinsum : Pat<
+   (StableHLO_UnaryEinsumOp $operand, $equation),
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
 --- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
 +++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
@@ -8486,7 +9746,71 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cp
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
 --- stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
 +++ stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
-@@ -1131,15 +1131,17 @@
+@@ -179,6 +179,49 @@
+     return vhlo::SubAxisInfoV1Attr::get(attr.getContext(), attr.getPreSize(),
+                                         attr.getSize());
+   }
++  if (auto attr =
++          dyn_cast<stablehlo::TensorBlockScalingConfigAttr>(stablehloAttr)) {
++    Builder b(attr.getContext());
++    SmallVector<NamedAttribute> fields = {
++        b.getNamedAttr("scale_idx", b.getI64IntegerAttr(attr.getScaleIdx()))};
++    if (attr.getZeroIdx())
++      fields.push_back(
++          b.getNamedAttr("zero_idx", b.getI64IntegerAttr(*attr.getZeroIdx())));
++    if (!attr.getStrides().empty())
++      fields.push_back(
++          b.getNamedAttr("strides", b.getI64ArrayAttr(attr.getStrides())));
++    if (!attr.getSteps().empty())
++      fields.push_back(
++          b.getNamedAttr("steps", b.getI64ArrayAttr(attr.getSteps())));
++    return convertGeneric(b.getDictionaryAttr(fields), typeConverter);
++  }
++  if (auto attr = dyn_cast<stablehlo::BlockScalingConfigAttr>(stablehloAttr)) {
++    Builder b(attr.getContext());
++    SmallVector<NamedAttribute> sides;
++    if (attr.getLhs()) sides.push_back(b.getNamedAttr("lhs", attr.getLhs()));
++    if (attr.getRhs()) sides.push_back(b.getNamedAttr("rhs", attr.getRhs()));
++    return convertGeneric(b.getDictionaryAttr(sides), typeConverter);
++  }
++  if (auto attr =
++          dyn_cast<stablehlo::TensorSparsityConfigAttr>(stablehloAttr)) {
++    Builder b(attr.getContext());
++    SmallVector<NamedAttribute> fields = {
++        b.getNamedAttr("num_non_zero",
++                       b.getI64IntegerAttr(attr.getNumNonZero())),
++        b.getNamedAttr("block_size", b.getI64IntegerAttr(attr.getBlockSize())),
++        b.getNamedAttr("dimension", b.getI64IntegerAttr(attr.getDimension())),
++        b.getNamedAttr("stride", b.getI64IntegerAttr(attr.getStride())),
++        b.getNamedAttr("idx", b.getI64IntegerAttr(attr.getIdx())),
++    };
++    return convertGeneric(b.getDictionaryAttr(fields), typeConverter);
++  }
++  if (auto attr = dyn_cast<stablehlo::SparsityConfigAttr>(stablehloAttr)) {
++    Builder b(attr.getContext());
++    SmallVector<NamedAttribute> sides;
++    if (attr.getLhs()) sides.push_back(b.getNamedAttr("lhs", attr.getLhs()));
++    if (attr.getRhs()) sides.push_back(b.getNamedAttr("rhs", attr.getRhs()));
++    return convertGeneric(b.getDictionaryAttr(sides), typeConverter);
++  }
+   if (auto attr = dyn_cast<stablehlo::AxisRefAttr>(stablehloAttr)) {
+     auto vhloName = convertGeneric(
+         StringAttr::get(attr.getContext(), attr.getName()), typeConverter);
+@@ -964,6 +1007,13 @@
+         addDefaultAttr(attrName, noneTypeAttr);
+       }
+     }
++    auto noneTypeAttr = TypeAttr::get(NoneType::get(pattern.getContext()));
++    if (!stablehloOp.getBlockScalingConfigAttr()) {
++      addDefaultAttr("block_scaling_config", noneTypeAttr);
++    }
++    if (!stablehloOp.getSparsityConfigAttr()) {
++      addDefaultAttr("sparsity_config", noneTypeAttr);
++    }
+   }
+   if constexpr (std::is_same<StablehloOpTy, stablehlo::CbrtOp>::value ||
+                 std::is_same<StablehloOpTy, stablehlo::CosineOp>::value ||
+@@ -1131,15 +1181,17 @@
      // This can almost be done in a generic fashion, except for
      // stablehlo.case that uses a variadic number of regions which means an
      // additional argument for the generic builder.
@@ -8525,7 +9849,109 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp b/stabl
 diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
-@@ -1121,15 +1121,17 @@
+@@ -411,8 +411,9 @@
+   return {};
+ }
+ 
++template <typename VhloOpTy>
+ FailureOr<Attribute> convertDotAlgorithm(
+-    vhlo::DotGeneralOpV2 vhloOp, const vhlo::VhloTypeConverter* typeConverter) {
++    VhloOpTy vhloOp, const vhlo::VhloTypeConverter* typeConverter) {
+   Type lhsPrecisionType, rhsPrecisionType, accumulationType;
+   if (isNoneType(vhloOp.getLhsComponentCount())) {
+     // All must be nonetype
+@@ -448,8 +449,9 @@
+       numPrimitiveOperations, allowImpreciseAccumulation);
+ }
+ 
++template <typename VhloOpTy>
+ Attribute convertDotDimensionNumbers(
+-    vhlo::DotGeneralOpV2 vhloOp, const vhlo::VhloTypeConverter* typeConverter) {
++    VhloOpTy vhloOp, const vhlo::VhloTypeConverter* typeConverter) {
+   SmallVector<int64_t> stablehloLhsBatchingDimensions,
+       stablehloRhsBatchingDimensions, stablehloLhsContractingDimensions,
+       stablehloRhsContractingDimensions;
+@@ -553,7 +555,8 @@
+                "output_batch_dimension", "output_feature_dimension",
+                "output_spatial_dimensions");
+   }
+-  if constexpr (std::is_same<VhloOpTy, vhlo::DotGeneralOpV2>::value) {
++  if constexpr (std::is_same<VhloOpTy, vhlo::DotGeneralOpV2>::value ||
++                std::is_same<VhloOpTy, vhlo::DotGeneralOpV3>::value) {
+     // Dot Dimension Numbers
+     auto stablehloDotDimAttr =
+         convertDotDimensionNumbers(vhloOp, typeConverter);
+@@ -575,6 +578,61 @@
+                "accumulation_type", "lhs_component_count",
+                "rhs_component_count", "num_primitive_operations",
+                "allow_imprecise_accumulation");
++    if constexpr (std::is_same<VhloOpTy, vhlo::DotGeneralOpV3>::value) {
++      auto getInt = [](DictionaryAttr d,
++                       StringRef k) -> std::optional<int64_t> {
++        if (auto a = d.getAs<IntegerAttr>(k)) return a.getInt();
++        return std::nullopt;
++      };
++      auto getInts = [](DictionaryAttr d, StringRef k) -> SmallVector<int64_t> {
++        SmallVector<int64_t> out;
++        if (auto arr = d.getAs<ArrayAttr>(k)) {
++          for (Attribute el : arr)
++            out.push_back(cast<IntegerAttr>(el).getInt());
++        }
++        return out;
++      };
++      Attribute bsVal = vhloOp.getBlockScalingConfigAttr();
++      if (!isNoneType(bsVal)) {
++        DictionaryAttr dict = dyn_cast_or_null<DictionaryAttr>(
++            convertGeneric(bsVal, typeConverter));
++        if (!dict) return failure();
++        auto parseSide =
++            [&](StringRef side) -> stablehlo::TensorBlockScalingConfigAttr {
++          auto s = dict.getAs<DictionaryAttr>(side);
++          if (!s) return {};
++          return stablehlo::TensorBlockScalingConfigAttr::get(
++              pattern.getContext(), getInt(s, "scale_idx").value_or(0),
++              getInt(s, "zero_idx"), getInts(s, "strides"),
++              getInts(s, "steps"));
++        };
++        stablehloAttrs.emplace_back(
++            StringAttr::get(pattern.getContext(), "block_scaling_config"),
++            stablehlo::BlockScalingConfigAttr::get(
++                pattern.getContext(), parseSide("lhs"), parseSide("rhs")));
++      }
++      Attribute spVal = vhloOp.getSparsityConfigAttr();
++      if (!isNoneType(spVal)) {
++        DictionaryAttr dict = dyn_cast_or_null<DictionaryAttr>(
++            convertGeneric(spVal, typeConverter));
++        if (!dict) return failure();
++        auto parseSide =
++            [&](StringRef side) -> stablehlo::TensorSparsityConfigAttr {
++          auto s = dict.getAs<DictionaryAttr>(side);
++          if (!s) return {};
++          return stablehlo::TensorSparsityConfigAttr::get(
++              pattern.getContext(), getInt(s, "num_non_zero").value_or(0),
++              getInt(s, "block_size").value_or(0),
++              getInt(s, "dimension").value_or(0),
++              getInt(s, "stride").value_or(0), getInt(s, "idx").value_or(0));
++        };
++        stablehloAttrs.emplace_back(
++            StringAttr::get(pattern.getContext(), "sparsity_config"),
++            stablehlo::SparsityConfigAttr::get(
++                pattern.getContext(), parseSide("lhs"), parseSide("rhs")));
++      }
++      eraseAttrs(vhloAttrs, "block_scaling_config", "sparsity_config");
++    }
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::DynamicGatherOpV2>::value ||
+                 std::is_same<VhloOpTy, vhlo::GatherOpV2>::value) {
+@@ -979,6 +1037,7 @@
+       eraseAttrs(vhloAttrs, "result_tilings");
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::DotGeneralOpV2>::value ||
++                std::is_same<VhloOpTy, vhlo::DotGeneralOpV3>::value ||
+                 std::is_same<VhloOpTy, vhlo::DotOpV1>::value) {
+     if (isSplatArray(vhloOp.getPrecisionConfigAttr(),
+                      vhlo::PrecisionV1Attr::get(pattern.getContext(),
+@@ -1121,15 +1180,17 @@
      // Convert the VHLO operation to a StableHLO equivalent. This can almost be
      // done in a generic fashion, except for ops with a variadic number of
      // regions which means an additional argument for the generic builder.
@@ -8548,6 +9974,66 @@ diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stable
      }
  
      for (auto [vhloRegion, stablehloRegion] :
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
+--- stablehlo/stablehlo/transforms/VhloToVersion.cpp
++++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
+@@ -580,6 +580,48 @@
+   }
+ };
+ 
++struct DotGeneralOpV2ToV3 : public OpRewritePattern<DotGeneralOpV2> {
++  using OpRewritePattern<DotGeneralOpV2>::OpRewritePattern;
++
++  LogicalResult matchAndRewrite(DotGeneralOpV2 op,
++                                PatternRewriter& rewriter) const override {
++    auto newOp = rewriter.replaceOpWithNewOp<DotGeneralOpV3>(
++        op, op->getResultTypes(), op.getLhs(), op.getRhs(),
++        op.getLhsBatchingDimensions(), op.getRhsBatchingDimensions(),
++        op.getLhsContractingDimensions(), op.getRhsContractingDimensions(),
++        op.getPrecisionConfig(), op.getLhsPrecisionType(),
++        op.getRhsPrecisionType(), op.getAccumulationType(),
++        op.getLhsComponentCount(), op.getRhsComponentCount(),
++        op.getNumPrimitiveOperations(), op.getAllowImpreciseAccumulation(),
++        ValueRange{}, getNoneType(rewriter), getNoneType(rewriter));
++    copyDiscardableAttrs(op.getOperation(), newOp.getOperation());
++    return success();
++  }
++};
++
++struct DotGeneralOpV3ToV2 : public OpRewritePattern<DotGeneralOpV3> {
++  using OpRewritePattern<DotGeneralOpV3>::OpRewritePattern;
++
++  LogicalResult matchAndRewrite(DotGeneralOpV3 op,
++                                PatternRewriter& rewriter) const override {
++    if (!op.getExtOperands().empty() ||
++        !isNoneType(op.getBlockScalingConfig()) ||
++        !isNoneType(op.getSparsityConfig())) {
++      return rewriter.notifyMatchFailure(op, "block scaling or sparsity");
++    }
++    auto newOp = rewriter.replaceOpWithNewOp<DotGeneralOpV2>(
++        op, op->getResultTypes(), op.getLhs(), op.getRhs(),
++        op.getLhsBatchingDimensions(), op.getRhsBatchingDimensions(),
++        op.getLhsContractingDimensions(), op.getRhsContractingDimensions(),
++        op.getPrecisionConfig(), op.getLhsPrecisionType(),
++        op.getRhsPrecisionType(), op.getAccumulationType(),
++        op.getLhsComponentCount(), op.getRhsComponentCount(),
++        op.getNumPrimitiveOperations(), op.getAllowImpreciseAccumulation());
++    copyDiscardableAttrs(op.getOperation(), newOp.getOperation());
++    return success();
++  }
++};
++
+ #include "stablehlo/transforms/VhloToVersionPatterns.h.inc"
+ 
+ }  // namespace
+@@ -590,6 +632,7 @@
+                                    RewritePatternSet* patterns,
+                                    vhlo::VhloTypeConverter* converter) {
+   vhlo::populateWithGenerated(*patterns);
++  patterns->add<vhlo::DotGeneralOpV2ToV3, vhlo::DotGeneralOpV3ToV2>(context);
+   patterns->add<vhlo::ScatterOpV1ToV2, vhlo::ScatterOpV2ToV1>(context);
+   patterns->add<vhlo::AllReduceOpV1ToV2, vhlo::AllReduceOpV2ToV1>(context);
+   patterns->add<vhlo::CompositeOpV1ToV2, vhlo::CompositeOpV2ToV1>(context);
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.h b/stablehlo/stablehlo/transforms/optimization/Passes.h
 --- stablehlo/stablehlo/transforms/optimization/Passes.h
 +++ stablehlo/stablehlo/transforms/optimization/Passes.h

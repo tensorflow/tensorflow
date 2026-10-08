@@ -1100,6 +1100,30 @@ func.func @op_dot_general_algorithm_fp8x4(%arg0: tensor<8x8x16xbf16>, %arg1: ten
   func.return %0 : tensor<8x8x8xf32>
 }
 
+// CHECK-LABEL: "op_dot_general_block_scaling_and_sparsity"
+func.func @op_dot_general_block_scaling_and_sparsity(%arg0: tensor<2x64x64xbf16>, %arg1: tensor<2x128x64xbf16>, %scale: tensor<2x64x2xf8E8M0FNU>, %indices: tensor<2x64x16xi8>) -> tensor<2x64x64xbf16> {
+  //      CHECK: "stablehlo.dot_general"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[SCALE:%arg[0-9]+]], [[INDICES:%arg[0-9]+]]) <{
+  // CHECK-SAME:   block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, strides = [1, 1, 32], steps = [1, 1, 1]>>,
+  // CHECK-SAME:   dot_dimension_numbers = #stablehlo.dot<
+  // CHECK-SAME:     lhs_batching_dimensions = [0],
+  // CHECK-SAME:     rhs_batching_dimensions = [0],
+  // CHECK-SAME:     lhs_contracting_dimensions = [2],
+  // CHECK-SAME:     rhs_contracting_dimensions = [1]
+  // CHECK-SAME:   >,
+  // CHECK-SAME:   sparsity_config = #stablehlo.sparsity_config<lhs = <num_non_zero = 2, block_size = 4, dimension = 2, stride = 1, idx = 3>>
+  // CHECK-SAME: }> : (tensor<2x64x64xbf16>, tensor<2x128x64xbf16>, tensor<2x64x2xf8E8M0FNU>, tensor<2x64x16xi8>) -> tensor<2x64x64xbf16>
+  %0 = "mhlo.dot_general"(%arg0, %arg1, %scale, %indices) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    block_scaling_config = #mhlo.block_scaling_config<lhs = <scale_idx = 2, strides = [1, 1, 32], steps = [1, 1, 1]>>,
+    sparsity_config = #mhlo.sparsity_config<lhs = <num_non_zero = 2, block_size = 4, dimension = 2, stride = 1, idx = 3>>
+  } : (tensor<2x64x64xbf16>, tensor<2x128x64xbf16>, tensor<2x64x2xf8E8M0FNU>, tensor<2x64x16xi8>) -> tensor<2x64x64xbf16>
+  func.return %0 : tensor<2x64x64xbf16>
+}
 // CHECK-LABEL: "op_dot"
 func.func @op_dot(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   //      CHECK: "stablehlo.dot"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{
