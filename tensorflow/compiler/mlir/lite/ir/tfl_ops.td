@@ -5838,6 +5838,7 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
 
   let description = [{
     Performs convolution operation on 3D inputs.
+
     Inputs:
       `inputs[0]`: required: the input activation tensor
       `inputs[1]`: required: the filter weight tensor
@@ -5895,6 +5896,7 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
 
   let description = [{
     Performs transposed convolution operation on 3D inputs.
+
     Inputs:
       `inputs[0]`: required: the shape of output tensor
       `inputs[1]`: required: the filter weight tensor
