@@ -182,8 +182,8 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
                               typename TTypes<T, 2>::Tensor& out,
                               const Tidx num_bins) {
     std::atomic<int> err_neg_val = 0;
-    const int num_rows = out.dimension(0);
-    const int num_cols = in.dimension(1);
+    const int64_t num_rows = out.dimension(0);
+    const int64_t num_cols = in.dimension(1);
     ThreadPool* thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     thread_pool->ParallelForWithWorkerId(
@@ -428,6 +428,11 @@ class SparseBincountOp : public OpKernel {
     OP_REQUIRES(ctx, dense_shape.NumElements() > 0,
                 absl::InvalidArgumentError(absl::StrCat(
                     "dense_shape must have at least 1 dimension, got ",
+                    dense_shape.NumElements())));
+
+    OP_REQUIRES(ctx, dense_shape.NumElements() <= 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be at most rank 2 but is rank ",
                     dense_shape.NumElements())));
 
     bool is_1d = dense_shape.NumElements() == 1;

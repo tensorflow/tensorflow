@@ -554,10 +554,11 @@ class TrainingOpsTest(TensorFlowTestCase):
   def testSparseApplyOpsRejectLowerRankGrad(self):
     # Regression test for #94131: a grad of lower rank than var made the
     # per-dimension shape check read past grad's rank and crash the process.
-    var, accum, accum2, accum3 = [
-        variables.Variable(np.ones((4, 4), np.float32)) for _ in range(4)
-    ]
-    self.evaluate(variables.global_variables_initializer())
+    with ops.device("/cpu:0"):
+      var, accum, accum2, accum3 = [
+          variables.Variable(np.ones((4, 4), np.float32)) for _ in range(4)
+      ]
+      self.evaluate(variables.global_variables_initializer())
     s = np.float32(0.1)
     grad = np.zeros(3, np.float32)  # rank 1, var is rank 2
     idx = constant_op.constant([0, 1, 2], dtypes.int32)
@@ -616,11 +617,12 @@ class TrainingOpsTest(TensorFlowTestCase):
             idx,
         ),
     ]
-    for apply_op in cases:
-      with self.assertRaisesRegex(
-          errors.InvalidArgumentError, "grad and var must have the same rank"
-      ):
-        self.evaluate(apply_op())
+    with ops.device("/cpu:0"):
+      for apply_op in cases:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "grad and var must have the same rank"
+        ):
+          self.evaluate(apply_op())
 
 
 if __name__ == '__main__':

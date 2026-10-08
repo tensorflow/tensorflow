@@ -419,6 +419,18 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 class SparseBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
 
+  def test_sparse_bincount_rank_greater_than_2_fails(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Shape must be at most rank 2 but is rank 3"):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0, 0, 0]],
+              values=[0],
+              dense_shape=[1, 1, 1],
+              size=10,
+              weights=[]))
+
   def test_bincount_overflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
