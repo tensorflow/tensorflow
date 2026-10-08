@@ -397,6 +397,7 @@ cc_library(
     hdrs = ["hlo_instruction_utils.h"],
     deps = [
         ":hlo",
+        "//xla:comparison_util",
         "//xla:shape_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
@@ -411,6 +412,7 @@ xla_cc_test(
     deps = [
         ":hlo",
         ":hlo_instruction_utils",
+        "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",

@@ -60,6 +60,12 @@ std::optional<int64_t> GetLoopInductionVarTupleIdxWithKnownValues(
     const HloInstruction *while_op,
     const absl::flat_hash_map<const HloInstruction *, Range> &known_values);
 
+// Returns the constant step C if the while body updates the induction variable
+// at `indvar_tuple_idx` as `i += C` (where C is a positive constant), and
+// nullopt otherwise.
+std::optional<int64_t> MatchTrivialLoopInductionStep(
+    const HloInstruction* while_op, int64_t indvar_tuple_idx);
+
 // Checks the following conditions:
 //  - `i`, the induction variable, is initialized to a scalar constant K
 //    (namely, `indvar_init`),
