@@ -15,23 +15,35 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/types.h"
 #include "xla/stream_executor/rocm/topk_kernel_rocm_common.cu.h"
+#include "xla/types.h"
 
 namespace stream_executor::rocm {
 
 using xla::bfloat16;
 
-REGISTER_TOPK_KERNEL(1, bfloat16, uint16_t);
-REGISTER_TOPK_KERNEL(2, bfloat16, uint16_t);
-REGISTER_TOPK_KERNEL(4, bfloat16, uint16_t);
-REGISTER_TOPK_KERNEL(8, bfloat16, uint16_t);
-REGISTER_TOPK_KERNEL(16, bfloat16, uint16_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(1, bfloat16, uint16_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(2, bfloat16, uint16_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(4, bfloat16, uint16_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(8, bfloat16, uint16_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(16, bfloat16, uint16_t);
 
-REGISTER_TOPK_KERNEL(1, bfloat16, uint32_t);
-REGISTER_TOPK_KERNEL(2, bfloat16, uint32_t);
-REGISTER_TOPK_KERNEL(4, bfloat16, uint32_t);
-REGISTER_TOPK_KERNEL(8, bfloat16, uint32_t);
-REGISTER_TOPK_KERNEL(16, bfloat16, uint32_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(1, bfloat16, uint32_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(2, bfloat16, uint32_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(4, bfloat16, uint32_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(8, bfloat16, uint32_t);
+REGISTER_TOPK_TOTAL_ORDER_KERNEL(16, bfloat16, uint32_t);
+
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(1, bfloat16, uint16_t);
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(2, bfloat16, uint16_t);
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(4, bfloat16, uint16_t);
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(8, bfloat16, uint16_t);
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(16, bfloat16, uint16_t);
+
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(1, bfloat16, uint32_t);
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(2, bfloat16, uint32_t);
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(4, bfloat16, uint32_t);
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(8, bfloat16, uint32_t);
+REGISTER_TOPK_PARTIAL_ORDER_KERNEL(16, bfloat16, uint32_t);
 
 }  // namespace stream_executor::rocm

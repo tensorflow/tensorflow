@@ -77,7 +77,8 @@ PrimitiveType Get(bfloat16) { return PrimitiveType::BF16; }
 //  - k: number of elements to return.
 //  - batch_size
 //  - offset
-using TopKKernelTest = ::testing::TestWithParam<std::tuple<int, int, int, int>>;
+using TopKKernelTest =
+    ::testing::TestWithParam<std::tuple<int, int, int, int, Order>>;
 
 // In this test we only check that the TopK logic works with float. For the full
 // dtype coverage suite, please add them to topk_test.cc, where we can use XLA
@@ -97,7 +98,7 @@ TEST_P(TopKKernelTest, TopKFloat) {
 
   auto stream = executor->CreateStream().value();
 
-  const auto [n_kb, k, batch_size, offset] = GetParam();
+  const auto [n_kb, k, batch_size, offset, order] = GetParam();
   const size_t n = n_kb * 1024 + offset;
 
   se::DeviceAddress<T> input_buffer =
@@ -118,7 +119,7 @@ TEST_P(TopKKernelTest, TopKFloat) {
   ASSERT_OK_AND_ASSIGN(
       auto custom_kernel,
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
-                    platform->Name(), desc->threads_per_warp()));
+                    platform->Name(), desc->threads_per_warp(), order));
 
   ASSERT_OK_AND_ASSIGN(auto kernel,
                        executor->LoadKernel(custom_kernel.kernel_spec()));
@@ -162,7 +163,7 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
 
   auto stream = executor->CreateStream().value();
 
-  const auto [n_kb, k, batch_size, offset] = GetParam();
+  const auto [n_kb, k, batch_size, offset, order] = GetParam();
   const size_t n = n_kb * 1024 + offset;
 
   se::DeviceAddress<T> input_buffer =
@@ -183,7 +184,7 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   ASSERT_OK_AND_ASSIGN(
       auto custom_kernel,
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
-                    platform->Name(), desc->threads_per_warp()));
+                    platform->Name(), desc->threads_per_warp(), order));
 
   ASSERT_OK_AND_ASSIGN(auto kernel,
                        executor->LoadKernel(custom_kernel.kernel_spec()));
@@ -222,13 +223,13 @@ TEST_P(TopKKernelTest, EnsureSerializable) {
   }
   se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
 
-  const auto [n_kb, k, batch_size, offset] = GetParam();
+  const auto [n_kb, k, batch_size, offset, order] = GetParam();
   const size_t n = n_kb * 1024 + offset;
 
   ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
-                    platform->Name(), desc->threads_per_warp());
+                    platform->Name(), desc->threads_per_warp(), order);
 
   stream_executor::gpu::VerifyKernelIsSerializable(custom_kernel->kernel_spec(),
                                                    platform->id());
@@ -239,13 +240,16 @@ INSTANTIATE_TEST_SUITE_P(TopKTests, TopKKernelTest,
                              /*n_kb=*/Values(1, 8, 12, 64, 128),
                              /*k=*/Values(1, 2, 8, 16, 7, 12),
                              /*batch_size=*/Values(1, 16, 64, 128),
-                             /*offset=*/Values(0, 7, 4)),
+                             /*offset=*/Values(0, 7, 4),
+                             /*order=*/Values(Order::kTotal, Order::kPartial)),
                          [](const auto& info) {
                            return absl::Substitute(
-                               "n$0KiB_k$1_batch_size$2_offset$3",
+                               "n$0KiB_k$1_batch_size$2_offset$3_order$4",
                                std::get<0>(info.param), std::get<1>(info.param),
-                               std::get<2>(info.param),
-                               std::get<3>(info.param));
+                               std::get<2>(info.param), std::get<3>(info.param),
+                               std::get<4>(info.param) == Order::kTotal
+                                   ? "Total"
+                                   : "Partial");
                          });
 
 }  // namespace xla::gpu::kernel::topk
