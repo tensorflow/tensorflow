@@ -1890,9 +1890,11 @@ REGISTER_OP("SparseBincount")
         c->set_output(0, c->MakeShape({size_val}));
       } else if (shape_tensor->NumElements() == 2) {
         int64_t num_rows = shape_tensor->flat<int64_t>()(0);
-        if (MultiplyWithoutOverflow(num_rows, size_val) < 0) {
-          return absl::InvalidArgumentError(
-              "Encountered overflow when multiplying shape dimensions");
+        if (num_rows != InferenceContext::kUnknownDim) {
+          if (MultiplyWithoutOverflow(num_rows, size_val) < 0) {
+            return absl::InvalidArgumentError(
+                "Encountered overflow when multiplying shape dimensions");
+          }
         }
         c->set_output(
             0, c->MakeShape({num_rows, size_val}));
