@@ -26,6 +26,11 @@ OverridableFetchContent_Declare(
   # Github link:
   # https://github.com/jax-ml/ml_dtypes/commit/0fa5313b65efe848c5968a15dd37dd220cc29567
   GIT_TAG 00d98cd92ade342fef589c0470379abb27baebe9
+  # Download a pinned archive from the TensorFlow mirror by default. Cloning
+  # the repository also recursively clones its Eigen submodule from gitlab.com,
+  # which is frequently rate limited on CI and isn't needed here.
+  URL https://storage.googleapis.com/mirror.tensorflow.org/github.com/jax-ml/ml_dtypes/archive/00d98cd92ade342fef589c0470379abb27baebe9/ml_dtypes-00d98cd92ade342fef589c0470379abb27baebe9.tar.gz
+  URL_HASH SHA256=f6e5880666661351e6cd084ac4178ddc4dabcde7e9a73722981c0d1500cf5937
   # It's not currently possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.

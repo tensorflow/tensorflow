@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -1125,6 +1126,26 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDS) {
   EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
                   instr, input, HloOpcode::kDynamicSlice, config.value())
                   .has_value());
+}
+
+// With trip count 3 on a dimension of size 3, starting at 1 leaves index 0
+// unwritten and stepping by 2 leaves index 1 unwritten.
+TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUSRequiresStartZeroStepOne) {
+  for (auto [start, stop, step] : {std::tuple(1, 4, 1), std::tuple(0, 6, 2)}) {
+    auto module = MakeModuleWithDUS(start, stop, step, /*slice_size=*/1,
+                                    /*dim_size=*/3);
+    HloInstruction* loop = module->entry_computation()->root_instruction();
+    auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+    ASSERT_TRUE(config.has_value());
+    ASSERT_EQ(config->trip_count, 3);
+    HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+    HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+    HloInstruction* instr = body->GetInstructionWithName("slice");
+    EXPECT_FALSE(MatchShapeCoveringDynamicIndexInstruction(
+                     instr, input, HloOpcode::kDynamicUpdateSlice, *config)
+                     .has_value())
+        << "start=" << start << " step=" << step;
+  }
 }
 
 TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSShapeMismatch) {
