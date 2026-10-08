@@ -491,8 +491,11 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               weights=[]))
 
   def test_bincount_1d_overflow(self):
-    with self.assertRaises((ValueError, errors.InvalidArgumentError,
-                             errors.ResourceExhaustedError)):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError,
+         errors.ResourceExhaustedError),
+        r"Encountered overflow|OOM|Resource exhausted|allocate",
+    ):
       self.evaluate(
           gen_math_ops.dense_bincount(
               input=constant_op.constant([0], dtype=dtypes.int64),
@@ -542,8 +545,11 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               weights=[]))
 
   def test_sparse_bincount_1d_overflow(self):
-    with self.assertRaises((ValueError, errors.InvalidArgumentError,
-                             errors.ResourceExhaustedError)):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError,
+         errors.ResourceExhaustedError),
+        r"Encountered overflow|OOM|Resource exhausted|allocate",
+    ):
       self.evaluate(
           gen_math_ops.sparse_bincount(
               indices=[[0]],
@@ -833,8 +839,8 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
     # the input first, so both messages are accepted.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "Input must be less than rank 2|"
-        "dense_shape must have at least 1 dimension",
+        r"Shape must be at most rank 2|Input must be less than rank 2|"
+        r"dense_shape must have at least 1 dimension",
     ):
       self.evaluate(
           gen_math_ops.sparse_bincount(

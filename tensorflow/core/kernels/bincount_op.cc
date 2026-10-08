@@ -181,7 +181,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
                               const typename TTypes<T, 2>::ConstTensor& weights,
                               typename TTypes<T, 2>::Tensor& out,
                               const Tidx num_bins) {
-    std::atomic<int> err_neg_val = 0;
+    std::atomic<int64_t> err_neg_val(0);
     const int64_t num_rows = out.dimension(0);
     const int64_t num_cols = in.dimension(1);
     ThreadPool* thread_pool =
@@ -212,7 +212,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
     if (err_neg_val < 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Input 'in' must be non-negative! Negative input value found: ",
-          static_cast<int>(err_neg_val)));
+          err_neg_val.load()));
     }
 
     return absl::OkStatus();
