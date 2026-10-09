@@ -1488,7 +1488,8 @@ absl::StatusOr<Tile> PropagateTileThroughReshape(const Tile& tile,
         mlir_context, minimal_reshape, src, reshape_shape, tile,
         target_dim_tiles));
   }
-  Tile reshape_tile(tiling_space, std::move(target_dim_tiles));
+  Tile reshape_tile(tiling_space, std::move(target_dim_tiles),
+                    llvm::to_vector(tile.replica_ids()), tile.constraints());
   return PropagateTileToOutputForBroadcastOpImpl(dst, non_trivial_dim_positions,
                                                  reshape_tile);
 }
@@ -1635,19 +1636,38 @@ std::string ToString(const Tiles& tiles) {
   return ss.str();
 }
 
-Tiles PropagateTileToInputForAllGatherOp(const TilingSpace& tiling_space,
-                                         const HloInstruction& hlo,
-                                         const Tile& output_tile) {
+absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const Tile& output_tile, int64_t output_index) {
   const auto& all_gather = *Cast<HloAllGatherInstruction>(&hlo);
   int64_t gather_dim = all_gather.all_gather_dimension();
-  // Crash OK. Must be checked while forming the fusion.
-  CHECK_EQ(hlo.operand_count(), 1)
-      << "Multi-operand AllGather is not yet supported.";
-  const Shape& input_shape = hlo.operand(0)->shape();
+  if (output_index < 0 || output_index >= hlo.operand_count()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Output index ", output_index, " is out of range for ",
+                     hlo.ToString()));
+  }
+  // Each output of a (possibly variadic) all-gather depends only on the operand
+  // with the same index.
+  const Shape& input_shape = hlo.operand(output_index)->shape();
+  const Shape& output_shape = GetFirstShape(&hlo, output_index);
   int64_t local_size = input_shape.dimensions(gather_dim);
-  int64_t num_replicas = hlo.shape().dimensions(gather_dim) / local_size;
+  int64_t num_replicas = output_shape.dimensions(gather_dim) / local_size;
 
   const DimTile& output_dim_tile = output_tile.dim_tiles()[gather_dim];
+
+  if (!tiling_space.IsSymbolic()) {
+    DimTile simplified_dim_tile = output_dim_tile;
+    simplified_dim_tile.Simplify(tiling_space);
+    if (simplified_dim_tile.size.GetType() != SymbolicExprType::kConstant ||
+        simplified_dim_tile.size.GetValue() <= 0 ||
+        local_size % simplified_dim_tile.size.GetValue() != 0) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Output ", output_index, " of ", hlo.name(), " is tiled with size ",
+          simplified_dim_tile.size.ToString(), " on gather dimension ",
+          gather_dim, ", expected tile size to divide per-rank size ",
+          local_size, " (one peer per tile)"));
+    }
+  }
 
   SymbolicExpr replica_id = output_dim_tile.offset / local_size;
   SymbolicExpr input_offset = output_dim_tile.offset % local_size;
@@ -1677,9 +1697,9 @@ Tiles PropagateTileToInputForAllGatherOp(const TilingSpace& tiling_space,
   });
 
   Tile input_tile(output_tile.tiling_space(), std::move(input_dim_tiles),
-                  std::move(replica_id_dim_tiles));
+                  std::move(replica_id_dim_tiles), output_tile.constraints());
 
-  return {input_tile};
+  return Tiles{input_tile};
 }
 
 absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
@@ -1697,7 +1717,8 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
     return {PropagateTileToInputForCwiseOp(hlo, output_tile)};
   }
   if (hlo.opcode() == HloOpcode::kAllGather) {
-    return PropagateTileToInputForAllGatherOp(tiling_space, hlo, output_tile);
+    return PropagateTileToInputForAllGatherOp(tiling_space, hlo, output_tile,
+                                              output_index);
   }
   if (hlo.opcode() == HloOpcode::kReduceScatter) {
     return PropagateTileToInputForReduceScatterOp(
@@ -1753,6 +1774,37 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   return absl::InvalidArgumentError(
       absl::StrCat("Output to input tile propagation not implemented for ",
                    HloOpcodeString(hlo.opcode())));
+}
+
+absl::StatusOr<Tiles> PropagateTilesToInputs(
+    TilingSpace& tiling_space, const HloInstruction& hlo,
+    absl::Span<const Tile> output_tiles) {
+  if (IsIndexWiseVariadic(hlo)) {
+    if (output_tiles.size() != hlo.operand_count()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected one tile per output of ", hlo.ToString(),
+                       ", got ", output_tiles.size()));
+    }
+    Tiles operand_tiles;
+    operand_tiles.reserve(hlo.operand_count());
+    for (int64_t k = 0; k < hlo.operand_count(); ++k) {
+      ABSL_ASSIGN_OR_RETURN(Tiles tiles, PropagateTileToInput(tiling_space, hlo,
+                                                         output_tiles[k], k));
+      if (tiles.size() != 1) {
+        return absl::InternalError(
+            absl::StrCat("Expected a single input tile for output ", k, " of ",
+                         hlo.ToString(), ", got ", tiles.size()));
+      }
+      operand_tiles.push_back(std::move(tiles[0]));
+    }
+    return operand_tiles;
+  }
+  if (output_tiles.size() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a single output tile for ", hlo.ToString(),
+                     ", got ", output_tiles.size()));
+  }
+  return PropagateTileToInput(tiling_space, hlo, output_tiles[0], 0);
 }
 
 absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,

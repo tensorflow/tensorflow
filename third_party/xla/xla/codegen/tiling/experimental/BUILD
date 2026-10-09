@@ -137,6 +137,7 @@ xla_cc_test(
         ":tile_propagation",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

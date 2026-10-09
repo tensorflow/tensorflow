@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -35,6 +36,10 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
                                            const HloInstruction& hlo,
                                            const Tile& output_tile,
                                            int64_t output_index);
+
+absl::StatusOr<Tiles> PropagateTilesToInputs(
+    TilingSpace& tiling_space, const HloInstruction& hlo,
+    absl::Span<const Tile> output_tiles);
 
 absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
                                             const HloInstruction& hlo,
