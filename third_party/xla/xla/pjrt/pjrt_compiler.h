@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_relocatable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/runtime/chip_id.h"
@@ -688,6 +689,46 @@ class PjRtPhaseCompiler : public PjRtCompiler {
       const std::string& serialized_topology) override {
     return absl::UnimplementedError(
         "DeserializePjRtTopologyDescription is not implemented.");
+  }
+
+  // Compiles a StableHLO module to a relocatable.
+  //
+  // See LinkRelocatables for how to use is_entrypoint.
+  //
+  // Implementations of `PjRtPhaseCompiler` are not required to implement
+  // this method, but is grouped here because a phased compiler is a
+  // prerequisite for precompiling modules at all.
+  virtual absl::StatusOr<std::unique_ptr<PjRtRelocatable>> CompileToRelocatable(
+      CompileOptions options, MaybeOwningMlirModule module,
+      const PjRtTopologyDescription& topology, absl::string_view name,
+      bool is_entrypoint, PjRtClient* client) {
+    return absl::UnimplementedError("CompileToRelocatable is not implemented.");
+  }
+
+  // Deserializes a relocatable into a PjRtRelocatable.
+  //
+  // Implementations of `PjRtPhaseCompiler` are not required to implement
+  // this method, but is grouped here because a phased compiler is a
+  // prerequisite for precompiling modules at all.
+  virtual absl::StatusOr<std::unique_ptr<PjRtRelocatable>>
+  DeserializeRelocatable(absl::string_view serialized) const {
+    return absl::UnimplementedError(
+        "DeserializeRelocatable is not implemented.");
+  }
+
+  // Links the provided relocatables into an executable.
+  //
+  // The entrypoint relocatable must have been compiled with is_entrypoint=true,
+  // while the dependencies must have been compiled with is_entrypoint=false.
+  //
+  // Implementations of `PjRtPhaseCompiler` are not required to implement
+  // this method, but is grouped here because a phased compiler is a
+  // prerequisite for having a link phase at all.
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> LinkRelocatables(
+      CompileOptions options, const PjRtTopologyDescription& topology,
+      std::shared_ptr<const PjRtRelocatable> entrypoint,
+      std::vector<std::shared_ptr<const PjRtRelocatable>> dependencies) {
+    return absl::UnimplementedError("LinkRelocatables is not implemented.");
   }
 
   PjRtPhaseCompiler* AsPhaseCompiler() override { return this; }

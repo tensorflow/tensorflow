@@ -612,6 +612,7 @@ cc_library(
         ":pjrt_device_description",
         ":pjrt_device_dimensions",
         ":pjrt_executable",
+        ":pjrt_relocatable",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_computation",
@@ -1543,5 +1544,27 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+cc_library(
+    name = "pjrt_relocatable",
+    hdrs = ["pjrt_relocatable.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":pjrt_layout",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_relocatable_test",
+    srcs = ["pjrt_relocatable_test.cc"],
+    deps = [
+        ":pjrt_relocatable",
+        "@com_google_googletest//:gtest_main",
     ],
 )
