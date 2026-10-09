@@ -24,7 +24,9 @@ package(
 
 [
     lit_test(
-        name = "%s.test" % src,
+        # Prevents creation of the files with identical names located in different
+        # directories on Windows platform.
+        name = "%s.test" % src.replace("/", "_"),
         srcs = [src],
         data = [
             "lit.cfg.py",
