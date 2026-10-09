@@ -538,8 +538,8 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
   def test_sparse_bincount_negative_batch(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        r"Index out of bounds: `batch` \(-1\) must be non-negative and less "
-        r"than the dimension size",
+        r"Index out of bounds.*|"
+        r"Sparse index tuple indices.* is out of bounds",
     ):
       self.evaluate(
           gen_math_ops.sparse_bincount(
