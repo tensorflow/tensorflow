@@ -38,6 +38,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(MathTest, self).setUp()
+    ops.set_dtype_conversion_mode('legacy')
+    np_math_ops.enable_numpy_methods_on_tensor()
     self.array_transforms = [
         lambda x: x,  # Identity,
         ops.convert_to_tensor,
@@ -174,7 +176,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
     # branch out of Python scalars made it float32 for every real dtype, which
     # for float64 also cost precision.
     for dtype in [np.float16, np.float32, np.float64]:
-      arg = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=dtype)
+      arg = np.array([-2.0, -0.5, -0.0, 0.0, 0.5, 2.0], dtype=dtype)
       self.match(
           np_math_ops.angle(arg), np.angle(arg), msg='angle({})'.format(arg)
       )
@@ -876,6 +878,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
     x_bf16 = constant_op.constant([-0.0, 0.0, -8.0, 8.0], dtype=dtypes.bfloat16)
     out_bf16 = np_math_ops.cbrt(x_bf16)
+    self.assertAllClose(out_bf16, [-0.0, 0.0, -2.0, 2.0])
     self.assertAllEqual(
         np_math_ops.signbit(out_bf16), [True, False, True, False]
     )
@@ -898,6 +901,9 @@ class MathTest(test.TestCase, parameterized.TestCase):
       out_edge = np_math_ops.cbrt(x_edge)
       # inf ** (1/3) == inf; NaN ** (1/3) == NaN
       # Negative sign bit for -inf is preserved.
+      self.assertAllEqual(
+          out_edge[0:2], [-float('inf'), float('inf')]
+      )
       self.assertAllEqual(np_math_ops.signbit(out_edge[0:2]), [True, False])
       self.assertAllEqual(math_ops.is_nan(out_edge[2]), True)
 
