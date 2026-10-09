@@ -15,6 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #define EIGEN_USE_THREADS
 
