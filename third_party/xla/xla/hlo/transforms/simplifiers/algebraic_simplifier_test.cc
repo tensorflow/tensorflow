@@ -15438,6 +15438,43 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceOfDynamicSlice) {
                                   m::ConstantScalar(6))))));
 }
 
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfDynamicSliceNarrowIndexOverflow) {
+  // Each individual clamp bound (70) fits in s8, but their sum (140) overflows
+  // s8.
+  constexpr absl::string_view hlo_outer_overflow = R"(
+    HloModule module
+
+    ENTRY test {
+      operand = f32[150] parameter(0)
+      i = s8[] parameter(1)
+      j = s8[] parameter(2)
+      inner_ds = f32[80] dynamic-slice(operand, i), dynamic_slice_sizes={80}
+      ROOT outer_ds = f32[10] dynamic-slice(inner_ds, j), dynamic_slice_sizes={10}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module1,
+                       ParseAndReturnVerifiedModule(hlo_outer_overflow));
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_THAT(simplifier.Run(module1.get()), absl_testing::IsOkAndHolds(false));
+
+  // The combined bound (190) fits in the outer index type s32, but the inner
+  // clamp bound (150) overflows the inner index type s8.
+  constexpr absl::string_view hlo_inner_overflow = R"(
+    HloModule module
+
+    ENTRY test {
+      operand = f32[200] parameter(0)
+      i = s8[] parameter(1)
+      j = s32[] parameter(2)
+      inner_ds = f32[50] dynamic-slice(operand, i), dynamic_slice_sizes={50}
+      ROOT outer_ds = f32[10] dynamic-slice(inner_ds, j), dynamic_slice_sizes={10}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module2,
+                       ParseAndReturnVerifiedModule(hlo_inner_overflow));
+  EXPECT_THAT(simplifier.Run(module2.get()), absl_testing::IsOkAndHolds(false));
+}
+
 TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfDynamicUpdateSlice) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module

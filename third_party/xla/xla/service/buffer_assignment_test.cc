@@ -2257,6 +2257,65 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
   EXPECT_FALSE(map_alloc.is_thread_local());
 }
 
+TEST_F(BufferAssignmentTest, EmbeddedComputationConstantAndTupleBuffers) {
+  // Verify that constants in thread-local computations respect
+  // allocate_buffers_for_constants (marked as constant rather than
+  // thread-local, or omitted when disabled), and tuple buffers in thread-local
+  // computations are marked as thread-local.
+  auto module = CreateNewVerifiedModule();
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+
+  auto map_builder = HloComputation::Builder(TestName() + "_map");
+  auto map_param = map_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "map_param"));
+  auto map_const = map_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+  auto map_tuple = map_builder.AddInstruction(
+      HloInstruction::CreateTuple({map_param, map_const}));
+  auto map_gte0 = map_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, map_tuple, 0));
+  auto map_gte1 = map_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, map_tuple, 1));
+  auto map_root = map_builder.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, map_gte0, map_gte1));
+  HloComputation* map_computation =
+      module->AddEmbeddedComputation(map_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+  builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {param}, map_computation));
+  module->AddEntryComputation(builder.Build());
+
+  // 1. With allocate_buffers_for_constants = true:
+  std::unique_ptr<BufferAssignment> assignment_with_consts =
+      RunBufferAssignment(module.get());
+  EXPECT_TRUE(assignment_with_consts->HasTopLevelAllocation(map_const));
+  const BufferAllocation& const_alloc =
+      GetTopLevelAllocation(*assignment_with_consts, map_const);
+  EXPECT_TRUE(const_alloc.is_constant());
+  EXPECT_FALSE(const_alloc.is_thread_local());
+
+  const BufferAllocation& tuple_alloc =
+      GetTopLevelAllocation(*assignment_with_consts, map_tuple);
+  EXPECT_TRUE(tuple_alloc.is_thread_local());
+  EXPECT_FALSE(tuple_alloc.is_tuple());
+
+  const BufferAllocation& root_alloc =
+      GetTopLevelAllocation(*assignment_with_consts, map_root);
+  EXPECT_TRUE(root_alloc.is_thread_local());
+
+  // 2. With allocate_buffers_for_constants = false:
+  std::unique_ptr<BufferAssignment> assignment_no_consts =
+      RunBufferAssignmentNoBuffersForConstants(module.get());
+  EXPECT_FALSE(assignment_no_consts->HasTopLevelAllocation(map_const));
+  EXPECT_TRUE(GetTopLevelAllocation(*assignment_no_consts, map_tuple)
+                  .is_thread_local());
+  EXPECT_TRUE(
+      GetTopLevelAllocation(*assignment_no_consts, map_root).is_thread_local());
+}
+
 TEST_F(BufferAssignmentTest, CustomCallEmbeddedComputationBuffers) {
   // Verify that buffers for embedded computations in a custom call are properly
   // marked as thread-local.

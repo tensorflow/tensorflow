@@ -1065,6 +1065,10 @@ TEST(ExecutableTest, ExecutableSerialization) {
       EXPECT_EQ(pjrt_layout->ToString(), output_layouts[i]->ToString());
     }
   }
+  EXPECT_THAT(metadata.output_specs(0).shape().dims(), ElementsAre(2, 3));
+  EXPECT_THAT(metadata.output_specs(0).shard_shape().dims(), ElementsAre(2, 3));
+  EXPECT_THAT(metadata.output_specs(1).shape().dims(), ElementsAre(2, 3));
+  EXPECT_THAT(metadata.output_specs(1).shard_shape().dims(), ElementsAre(1, 3));
 
   int kNumParameters = 2;
   auto parameter_shardings = loaded_executable->GetParameterShardings();

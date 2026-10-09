@@ -189,6 +189,7 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
 
   const TfLiteTensor& q_tensor = context->tensors[sdpa_inputs.q_index];
   const TfLiteTensor& k_tensor = context->tensors[sdpa_inputs.k_index];
+  const TfLiteTensor& v_tensor = context->tensors[sdpa_inputs.v_index];
   const TfLiteTensor& output_tensor = context->tensors[node.outputs[0]];
 
   uint32_t q_val_id = GetOrCreateValueId(context, subgraph, tensor_to_value_id,
@@ -333,9 +334,9 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   }
 
   uint32_t scale_const_id = YNN_INVALID_VALUE_ID;
-  TF_LITE_ENSURE_YNN_STATUS(
-      ynn_define_tensor(subgraph, ynn_type_fp32, 0, nullptr, &scale_val,
-                        YNN_VALUE_FLAG_COPY_DATA_FP32, &scale_const_id));
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
+      subgraph, GetYnnType(q_tensor.type), 0, nullptr, &scale_val,
+      YNN_VALUE_FLAG_COPY_DATA_FP32, &scale_const_id));
 
   const int q_head_dim = is_seq_major ? 2 : 1;
   const int k_head_dim = is_seq_major ? 2 : 1;
@@ -492,6 +493,8 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   }
 
   uint32_t probs_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(
+      subgraph, GetYnnType(v_tensor.type), 0, nullptr, nullptr, 0, &probs_id));
   TF_LITE_ENSURE_YNN_STATUS(
       ynn::define_softmax(subgraph, masked_logits_id, 1.0f, probs_id));
 
@@ -531,6 +534,9 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
 
     uint32_t post_bmm_t_id = YNN_INVALID_VALUE_ID;
     TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_tensor(subgraph, GetYnnType(output_tensor.type), 0, nullptr,
+                          nullptr, 0, &post_bmm_t_id));
+    TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, /*num_k_dims=*/1, current_v_val_id, probs_t_id,
                        YNN_INVALID_VALUE_ID, &post_bmm_t_id, 0));
 
@@ -545,6 +551,11 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
         subgraph, 2, is_seq_major ? seq_major_v_perm : swap_last_two_perm,
         current_v_val_id, &v_trans_id, YNN_NODE_FLAG_KEEP_DIMS));
 
+    if (*post_bmm_ptr == YNN_INVALID_VALUE_ID) {
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_tensor(subgraph, GetYnnType(output_tensor.type), 0,
+                            nullptr, nullptr, 0, post_bmm_ptr));
+    }
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, /*num_k_dims=*/1, probs_id, v_trans_id,
                        YNN_INVALID_VALUE_ID, post_bmm_ptr, 0));
