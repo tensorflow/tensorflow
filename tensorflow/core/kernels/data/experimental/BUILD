@@ -224,9 +224,12 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
-        "//tensorflow/core/platform:regexp",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )
 
