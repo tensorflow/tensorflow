@@ -113,7 +113,12 @@ def get_request(
 
         data = response.json()
         if not isinstance(data, list):
-            return data if len(visited_urls) == 1 else results
+            if len(visited_urls) == 1:
+                return data
+            raise requests.exceptions.RequestException(
+                f"Expected list response for paginated request to {next_url}, "
+                f"got {type(data).__name__}"
+            )
 
         results.extend(data)
         next_url = get_next_page_url(response)

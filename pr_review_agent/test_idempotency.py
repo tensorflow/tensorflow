@@ -1888,6 +1888,92 @@ class TestSecurityHardening(unittest.TestCase):
             utils.has_agent_reviewed_commit(reviews_url, commit_sha)
         )
 
+    @patch("agent.utils.requests.get")
+    def test_engineer_review_get_request_later_page_non_list_raises_error(
+        self, mock_http_get
+    ):
+        """Later paginated page returning non-list JSON raises RequestException instead of returning partial results."""
+        reviews_url = "https://api.github.com/repos/tensorflow/tensorflow/pulls/128063/reviews"
+        commit_sha = "45e821c3df6e49c0ac3db3c06c62ff3f6469ce7e"
+        marker = utils.format_commit_review_marker(commit_sha)
+
+        page1_without_match = MagicMock()
+        page1_without_match.status_code = 200
+        page1_without_match.links = {}
+        page1_without_match.headers = {
+            "Link": (
+                '<https://api.github.com/repositories/45717250/pulls/128063/reviews?per_page=100&page=2>; rel="next"'
+            )
+        }
+        page1_without_match.json.return_value = [
+            {
+                "id": 1,
+                "user": {"login": "reviewer-1"},
+                "commit_id": commit_sha,
+                "body": "Human review comment",
+            }
+        ]
+
+        page1_with_match = MagicMock()
+        page1_with_match.status_code = 200
+        page1_with_match.links = {}
+        page1_with_match.headers = {
+            "Link": (
+                '<https://api.github.com/repositories/45717250/pulls/128063/reviews?per_page=100&page=2>; rel="next"'
+            )
+        }
+        page1_with_match.json.return_value = [
+            {
+                "id": 1,
+                "user": {"login": "github-actions[bot]"},
+                "commit_id": commit_sha,
+                "body": f"### Summary\nAutomated review.{marker}",
+            }
+        ]
+
+        non_list_page2 = MagicMock()
+        non_list_page2.status_code = 200
+        non_list_page2.links = {}
+        non_list_page2.headers = {}
+        non_list_page2.json.return_value = {"message": "Unexpected object on page 2"}
+
+        # 1. Direct get_request call raises RequestException rather than returning partial list
+        mock_http_get.side_effect = [page1_without_match, non_list_page2]
+        with self.assertRaisesRegex(
+            requests.exceptions.RequestException,
+            r"Expected list response for paginated request.*got dict",
+        ):
+            utils.get_request(reviews_url, params={"per_page": 100})
+
+        # 2. When page 1 has no match and page 2 is non-list, has_agent_reviewed_commit
+        # explicitly catches RequestException and logs a warning instead of silently
+        # iterating over partial results.
+        mock_http_get.reset_mock()
+        mock_http_get.side_effect = [page1_without_match, non_list_page2]
+        with patch("builtins.print") as mock_print:
+            self.assertFalse(
+                utils.has_agent_reviewed_commit(reviews_url, commit_sha)
+            )
+            mock_print.assert_called_once()
+            self.assertIn(
+                "Warning: Failed to check PR reviews for commit",
+                mock_print.call_args.args[0],
+            )
+
+        # 3. Even if page 1 contained a matching review, an incomplete paginated history
+        # must fail explicitly and not pass has_agent_reviewed_commit.
+        mock_http_get.reset_mock()
+        mock_http_get.side_effect = [page1_with_match, non_list_page2]
+        with patch("builtins.print") as mock_print:
+            self.assertFalse(
+                utils.has_agent_reviewed_commit(reviews_url, commit_sha)
+            )
+            mock_print.assert_called_once()
+            self.assertIn(
+                "Warning: Failed to check PR reviews for commit",
+                mock_print.call_args.args[0],
+            )
+
     @patch("agent.utils._fetch_file_content_at_commit")
     @patch("agent.utils.subprocess.run")
     def test_engineer_review_pylint_diagnostic_truncation_line_boundaries(
