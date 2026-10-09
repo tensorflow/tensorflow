@@ -103,7 +103,7 @@ def xla_aot_compile_gpu(
         name,
         module,
         gpu_targets,
-        autotune_results,
+        autotune_results = None,
         xla_flags = ""):
     """Runs xla_compile to compile an MHLO, StableHLO or HLO module into an AotCompilationResult for GPU
 
@@ -111,7 +111,7 @@ def xla_aot_compile_gpu(
         name: The name of the build rule.
         module: The MHLO or StableHLO file to compile.
         gpu_targets: The list of gpu targets.
-        autotune_results: AOT AutotuneResults or AutotuneCache file.
+        autotune_results: Optional AOT AutotuneResults or AutotuneCache file.
         xla_flags: Additional XLA_FLAGS to set during compilation.
     """
 
@@ -126,13 +126,25 @@ def xla_aot_compile_gpu(
             " --platform=gpu" +
             " --gpu_target_config=$(location " + gpu_target_config_map[target] + ")"
         )
-        flags = "--xla_gpu_load_autotune_results_from=$(location " + autotune_results + ")"
+        srcs = [module, gpu_target_config_map[target]]
+        flags = []
+        if autotune_results:
+            srcs.append(autotune_results)
+            flags.append("--xla_gpu_load_autotune_results_from=$(location " + autotune_results + ")")
         if xla_flags:
-            flags = flags + " " + xla_flags
-        cmd = "XLA_FLAGS=\"" + flags + "\" " + cmd
+            flags.append(xla_flags)
+        if flags:
+            cmd = "XLA_FLAGS=\"" + " ".join(flags) + "\" " + cmd
+        cmd = (
+            "if ! err=`" + cmd + " 2>&1`; then " +
+            "echo \"$$err\" >&2; " +
+            "if echo \"$$err\" | grep -q \"Deviceless cuDNN compilation requires cuDNN >=\"; then " +
+            "touch $(location " + compiled_binary + "); " +
+            "else exit 1; fi; fi"
+        )
         native.genrule(
             name = "gen_" + name + "_" + target,
-            srcs = [module, gpu_target_config_map[target], autotune_results],
+            srcs = srcs,
             outs = [name + "_" + target],
             cmd = cmd,
             tags = ["manual"] if target in _MIN_CUDA_VERSION else [],
