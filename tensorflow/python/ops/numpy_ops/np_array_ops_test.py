@@ -995,6 +995,9 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
     run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(0, 2), ddof=1)
     run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(-1, 0), ddof=1)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(), ddof=1)
+    run_test(5.0, ddof=1)
+    run_test(5.0, axis=(), ddof=1)
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
@@ -1002,6 +1005,10 @@ class ArrayMethodsTest(test.TestCase):
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
     self.assertRaises(ValueError, np_array_ops.var, np.ones([2, 2]), out=[])
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      np_array_ops.var(np.ones([2, 2]), axis=-3, ddof=1)
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      np_array_ops.var(np.ones([2, 2]), axis=(-3, 0), ddof=1)
 
   def testProd(self):
 
