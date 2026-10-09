@@ -37,3 +37,4 @@ useStrictPropertiesInAssemblyFormat.patch
 llvm_cl991819890.patch
 fix_load_ops.patch
 fp64_large_k.patch
+llvm_cl996185532.patch
