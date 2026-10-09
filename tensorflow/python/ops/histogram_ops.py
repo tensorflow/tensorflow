@@ -83,13 +83,14 @@ def histogram_fixed_width_bins(values,
     check = control_flow_assert.Assert(
         math_ops.greater(nbins, 0), ['nbins %s must > 0' % nbins])
     nbins = control_flow_ops.with_dependencies([check], nbins)
-    nbins_float = math_ops.cast(nbins, values.dtype)
 
     # Map tensor values that fall within value_range to [0, 1].
     scaled_values = math_ops.truediv(
         values - value_range[0],
         value_range[1] - value_range[0],
         name='scaled_values')
+    # truediv returns a float tensor for integer values.
+    nbins_float = math_ops.cast(nbins, scaled_values.dtype)
 
     # map tensor values within the open interval value_range to {0,.., nbins-1},
     # values outside the open interval will be zero or less, or nbins or more.
