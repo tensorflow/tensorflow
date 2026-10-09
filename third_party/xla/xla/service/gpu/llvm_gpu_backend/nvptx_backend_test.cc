@@ -116,6 +116,36 @@ TEST(UtilsTest, UnknownCapabilityFallsBackToFamilyCompatible) {
             (se::CudaComputeCapability{9, 0, FeatureExtension::kNone}));
 }
 
+TEST(UtilsTest, SM107FallsBackWhenPtxVersionTooLow) {
+  using FeatureExtension = se::CudaComputeCapability::FeatureExtension;
+  // SM107 requires PTX 9.4. With PTX 8.8 (e.g. CUDA 12.9), it falls back to
+  // sm_103f.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(
+                se::CudaComputeCapability{
+                    10, 7, FeatureExtension::kAcceleratedFeatures},
+                se::SemanticVersion{8, 8, 0}),
+            (se::CudaComputeCapability{
+                10, 3, FeatureExtension::kFamilyCompatibleFeatures}));
+  // With PTX 9.4, SM107 remains sm_107a.
+  EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(
+                se::CudaComputeCapability{
+                    10, 7, FeatureExtension::kAcceleratedFeatures},
+                se::SemanticVersion{9, 4, 0}),
+            (se::CudaComputeCapability{
+                10, 7, FeatureExtension::kAcceleratedFeatures}));
+
+  EXPECT_EQ(nvptx::GetSmName(
+                se::CudaComputeCapability{
+                    10, 7, FeatureExtension::kAcceleratedFeatures},
+                se::SemanticVersion{8, 8, 0}),
+            "sm_103f");
+  EXPECT_EQ(nvptx::GetSmName(
+                se::CudaComputeCapability{
+                    10, 7, FeatureExtension::kAcceleratedFeatures},
+                se::SemanticVersion{9, 4, 0}),
+            "sm_107a");
+}
+
 using VersionPair = std::pair<se::SemanticVersion, se::SemanticVersion>;
 using PtxVersionFromCudaVersionTest = ::testing::TestWithParam<VersionPair>;
 

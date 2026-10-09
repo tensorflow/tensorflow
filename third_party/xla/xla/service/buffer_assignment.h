@@ -1034,12 +1034,12 @@ class BufferAssigner {
       const std::vector<const HloComputation*>& thread_local_computations,
       BufferAssignment* assignment);
 
-  // is modified to reflect the new buffer assignments. If is_thread_local is
-  // true, then all assigned buffers have the is_thread_local flag set to
-  // true.
-  absl::Status AssignBuffersForComputations(
+  // Assigns buffers for the given global computations. `assignment` is modified
+  // to reflect the new buffer assignments. Temporary buffers for computations
+  // with sequential ordering are collected in `buffers_to_assign_sequentially`
+  // for later heap simulation.
+  absl::Status AssignBuffersForGlobalComputations(
       const std::vector<const HloComputation*>& computations,
-      bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
                           absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
@@ -1047,6 +1047,13 @@ class BufferAssigner {
       buffer_assignment::
           AssignmentAlgorithmForComputationsWithoutOrderingProto::Value
               algorithm);
+
+  // Assigns dedicated thread-local buffers for the given thread-local
+  // computations. `assignment` is modified to reflect the new buffer
+  // assignments.
+  absl::Status AssignBuffersForThreadLocalComputations(
+      const std::vector<const HloComputation*>& computations,
+      BufferAssignment* assignment);
 
   // Returns true if buffer's live range interferences with buffer2's.
   bool LiveRangeInterferes(const HloValue* buffer1,
@@ -1061,17 +1068,22 @@ class BufferAssigner {
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
       BufferAssignment* assignment);
 
-  // Assigns HloBuffers that require dedicated allocations upfront (constants,
-  // entry parameters, thread-local, tuples).
+  // Handles HloBuffers that represent DUS views or constants. Returns true if
+  // the buffer was handled (either allocated as a constant or skipped).
+  absl::StatusOr<bool> AssignViewOrConstantBuffer(const HloBuffer* hlo_buffer,
+                                                  BufferAssignment* assignment);
+
+  // Assigns HloBuffers that require dedicated allocations upfront (views,
+  // constants, entry parameters, tuples).
   absl::StatusOr<bool> AssignSpecialHloBuffer(
-      const HloBuffer* hlo_buffer, bool is_thread_local,
+      const HloBuffer* hlo_buffer,
       BufferAllocationsManagerForComputationsWithoutOrdering*
           allocation_manager,
       BufferAssignment* assignment);
 
   // Assigns a single hlo buffer to an HLO allocation.
   absl::Status AssignSingleHloBuffer(
-      const HloBuffer* hlo_buffer, bool is_thread_local,
+      const HloBuffer* hlo_buffer,
       absl::flat_hash_map<const HloComputation*,
                           absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
