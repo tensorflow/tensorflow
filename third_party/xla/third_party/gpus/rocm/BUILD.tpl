@@ -490,6 +490,7 @@ rocm_lib_import(
             "%{rocm_root}/lib/libhipblaslt.so*",
             "%{rocm_root}/lib/librocroller.so*",
             "%{rocm_root}/lib/liborigami.so*",
+            "%{rocm_root}/lib/libtensilelite-host.so*",
         ],
     ) + glob([
         pattern
