@@ -727,33 +727,34 @@ class Conv3DTest(parameterized.TestCase, test.TestCase):
       self.evaluate(
           nn_ops.conv3d(x1, filter_in, strides=[1, 1, 1, 1, 1], padding="SAME"))
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testBackpropShortStridesThrowsError(self):
     # The 3-D backprop ops require at least 5 strides. Check that the oneDNN
-    # eager path, which rewrites these ops, enforces that as well.
-    x = constant_op.constant(np.zeros([1, 4, 4, 3], np.float32))
-    dy = constant_op.constant(np.zeros([1, 3, 3, 5], np.float32))
-    w = constant_op.constant(np.zeros([2, 2, 3, 5], np.float32))
+    # eager path, which rewrites these ops on CPU, enforces that as well. Only
+    # `strides` is invalid; the other arguments describe a valid 3-D conv.
+    x = constant_op.constant(np.zeros([1, 4, 4, 4, 3], np.float32))
+    dy = constant_op.constant(np.zeros([1, 3, 3, 3, 5], np.float32))
+    w = constant_op.constant(np.zeros([2, 2, 2, 3, 5], np.float32))
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, ValueError), "minimum 5"):
       self.evaluate(
           gen_nn_ops.conv3d_backprop_filter_v2(
               input=x,
-              filter_sizes=[2, 2, 3, 5],
+              filter_sizes=[2, 2, 2, 3, 5],
               out_backprop=dy,
               strides=[1, 1, 1, 1],
               padding="VALID",
-              dilations=[1, 1, 1, 1]))
+              dilations=[1, 1, 1, 1, 1]))
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, ValueError), "minimum 5"):
       self.evaluate(
           gen_nn_ops.conv3d_backprop_input_v2(
-              input_sizes=[1, 4, 4, 3],
+              input_sizes=[1, 4, 4, 4, 3],
               filter=w,
               out_backprop=dy,
               strides=[1, 1, 1, 1],
               padding="VALID",
-              dilations=[1, 1, 1, 1]))
+              dilations=[1, 1, 1, 1, 1]))
 
   def _ConstructAndTestGradientForConfig(
       self, batch, input_shape, filter_shape, in_depth, out_depth, stride,
