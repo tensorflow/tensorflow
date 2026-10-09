@@ -76,8 +76,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/legalize_tf_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+// #include
+// "third_party/tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
+// #include
+// "third_party/tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
@@ -97,7 +99,7 @@ namespace {
 // destination type is not inferred and must be given explicitly.
 //
 // Preconditions: The given value must have a ShapedType.
-static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
+static Value CreateTFCastOpI32(OpBuilder* builder, Location loc, Value x,
                                BoolAttr truncate) {
   auto x_type = mlir::dyn_cast_or_null<ShapedType>(x.getType());
   if (!x_type) llvm_unreachable("unsupported type");
@@ -121,7 +123,7 @@ class PrepareTFPass : public impl::PrepareTFPassBase<PrepareTFPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
 
   PrepareTFPass() = default;
-  PrepareTFPass(const PrepareTFPass &) {}
+  PrepareTFPass(const PrepareTFPass&) {}
   explicit PrepareTFPass(bool unfold_batch_matmul,
                          bool allow_bf16_and_f16_type_legalization,
                          bool use_fake_quant_num_bits = false) {
@@ -131,7 +133,7 @@ class PrepareTFPass : public impl::PrepareTFPassBase<PrepareTFPass> {
     this->use_fake_quant_num_bits_ = use_fake_quant_num_bits;
   }
 
-  explicit PrepareTFPass(const PrepareTFPassOptions &options) {
+  explicit PrepareTFPass(const PrepareTFPassOptions& options) {
     this->unfold_batch_matmul_ = options.unfold_batch_matmul_;
     this->allow_bf16_and_f16_type_legalization_ =
         options.allow_bf16_and_f16_type_legalization_;
@@ -167,15 +169,15 @@ struct ConvertTFConvOpMatchState {
 template <typename ConcreteType, typename TFConvOpType>
 class ConvertTFConvOp : public RewritePattern {
  public:
-  ConvertTFConvOp(MLIRContext *context,
+  ConvertTFConvOp(MLIRContext* context,
                   bool allow_bf16_and_f16_type_legalization)
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
         intAttrOne(Builder(context).getI32IntegerAttr(1)),
         allow_bf16_and_f16_type_legalization_(
             allow_bf16_and_f16_type_legalization) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     // Assumes TensorFlow convolution op is already verified to be
     // in valid form.
 
@@ -247,7 +249,7 @@ class ConvertTFConvOp : public RewritePattern {
 
     // Get a splat zero tensor with the expected dimension for the bias tensor
     auto elem_type = filter_type.getElementType();
-    auto bias_dim = static_cast<const ConcreteType *>(this)->getBiasDim(
+    auto bias_dim = static_cast<const ConcreteType*>(this)->getBiasDim(
         filter_type.getShape());
     auto bias_type =
         tensorflow::GetTypeFromTFTensorShape({bias_dim}, elem_type);
@@ -286,7 +288,7 @@ class ConvertTFConvOp : public RewritePattern {
       // Set Conv padding to `VALID` since padding has been handled by Pad op.
       state.padding = rewriter.getStringAttr("VALID");
     }
-    auto conv_op = static_cast<const ConcreteType *>(this)->createTFLOp(
+    auto conv_op = static_cast<const ConcreteType*>(this)->createTFLOp(
         &state, rewriter, op->getLoc(), tf_op.getType(), input, filter, bias);
 
     rewriter.replaceOp(op, conv_op.getResult());
@@ -303,15 +305,15 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
  public:
   using BaseType = ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp>;
 
-  ConvertTFConv2D(MLIRContext *context, bool allow_bf16_type_legalization)
+  ConvertTFConv2D(MLIRContext* context, bool allow_bf16_type_legalization)
       : BaseType(context, allow_bf16_type_legalization) {}
 
   int64_t getBiasDim(ArrayRef<int64_t> filterShape) const {
     return filterShape.back();
   }
 
-  TFL::Conv2DOp createTFLOp(ConvertTFConvOpMatchState *state,
-                            PatternRewriter &rewriter, Location loc,
+  TFL::Conv2DOp createTFLOp(ConvertTFConvOpMatchState* state,
+                            PatternRewriter& rewriter, Location loc,
                             Type result_type, Value input, Value filter,
                             Value bias) const {
     filter = legalizeFilter(rewriter, loc, filter);
@@ -330,7 +332,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
   // format HWIO to TFLite Conv2D op filter data format OHWI and return Value
   // for the converted filter.  Requires that filter is verified by the match
   // method that it is a 4-D RankedTensorType.
-  Value legalizeFilter(PatternRewriter &rewriter, Location loc,
+  Value legalizeFilter(PatternRewriter& rewriter, Location loc,
                        Value filter) const {
     // Create a constant op for HWIO to OHWI transpose permutation.
     SmallVector<int, 4> perm = {3, 0, 1, 2};
@@ -361,7 +363,7 @@ class ConvertTFDepthwiseConv2dNative
   using BaseType = ConvertTFConvOp<ConvertTFDepthwiseConv2dNative,
                                    TF::DepthwiseConv2dNativeOp>;
 
-  ConvertTFDepthwiseConv2dNative(MLIRContext *context,
+  ConvertTFDepthwiseConv2dNative(MLIRContext* context,
                                  bool allow_bf16_type_legalization)
       : BaseType(context, allow_bf16_type_legalization) {}
 
@@ -369,8 +371,8 @@ class ConvertTFDepthwiseConv2dNative
     return filterShape[2] * filterShape[3];
   }
 
-  TFL::DepthwiseConv2DOp createTFLOp(ConvertTFConvOpMatchState *state,
-                                     PatternRewriter &rewriter, Location loc,
+  TFL::DepthwiseConv2DOp createTFLOp(ConvertTFConvOpMatchState* state,
+                                     PatternRewriter& rewriter, Location loc,
                                      Type result_type, Value input,
                                      Value filter, Value bias) const {
     // Compared to tfl.conv_2d, tfl.depthwise_conv_2d has an additional
@@ -401,7 +403,7 @@ class ConvertTFDepthwiseConv2dNative
   /// filter data format is [1, filter_height, filter_width, out_channels].
   /// Requires that filter is verified by the match method that it is a 4-D
   /// RankedTensorType.
-  Value legalizeFilter(PatternRewriter &rewriter, Location loc,
+  Value legalizeFilter(PatternRewriter& rewriter, Location loc,
                        Value filter) const {
     auto filter_type = mlir::cast<RankedTensorType>(filter.getType());
     auto filterShape = filter_type.getShape();
@@ -443,11 +445,11 @@ class ConvertTFDepthwiseConv2dNative
 // [1 0 0 1], and that means we're inserting two new axes at 0 & 3 dim, so
 // if original shape is [2, 3], now we reshape that into [1, 2, 3, 1].
 struct ConvertTFStridedSlice : public RewritePattern {
-  explicit ConvertTFStridedSlice(MLIRContext *context)
+  explicit ConvertTFStridedSlice(MLIRContext* context)
       : RewritePattern(TF::StridedSliceOp::getOperationName(), 2, context) {}
 
-  LogicalResult RewriteNewAxisMask(Operation *op,
-                                   PatternRewriter &rewriter) const {
+  LogicalResult RewriteNewAxisMask(Operation* op,
+                                   PatternRewriter& rewriter) const {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
     uint64_t new_axis_mask = strided_slice_op.getNewAxisMask();
 
@@ -466,7 +468,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
       return failure();
     }
 
-    const ArrayRef<int64_t> &original_input_shape =
+    const ArrayRef<int64_t>& original_input_shape =
         original_input_type.getShape();
     SmallVector<int64_t, 4> revised_shape;
     int index = 0;
@@ -526,8 +528,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
     return success();
   }
 
-  LogicalResult RewriteEllipsisMask(Operation *op,
-                                    PatternRewriter &rewriter) const {
+  LogicalResult RewriteEllipsisMask(Operation* op,
+                                    PatternRewriter& rewriter) const {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
     uint64_t ellipsis_mask = strided_slice_op.getEllipsisMask();
@@ -677,11 +679,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
   }
 
   void PadStridedSliceAttributeArray(DenseIntElementsAttr dense_elem_attr,
-                                     SmallVectorImpl<int32_t> &val,
-                                     SmallVectorImpl<int32_t> &padded_val,
+                                     SmallVectorImpl<int32_t>& val,
+                                     SmallVectorImpl<int32_t>& padded_val,
                                      ArrayRef<int32_t> padding_val,
-                                     int *mask) const {
-    for (const auto &idx : dense_elem_attr.getValues<APInt>()) {
+                                     int* mask) const {
+    for (const auto& idx : dense_elem_attr.getValues<APInt>()) {
       val.push_back(idx.getSExtValue());
       padded_val.push_back(idx.getSExtValue());
     }
@@ -693,8 +695,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
     }
   }
 
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
     // Handle ellipsis mask.
@@ -797,7 +799,6 @@ struct ConvertTFStridedSlice : public RewritePattern {
   }
 };
 
-
 // The below pattern is equivalent to the DRR rule below
 // The checks are dependent on generated values, so we can't add
 // the checks on intermediate values, ideally we should find equivalent
@@ -880,14 +881,14 @@ struct ConvertTFStridedSlice : public RewritePattern {
 //      (HasNoUseOf:$root__5), (AreBroadcastableTypes $multiplier, $x)]>;
 
 struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
-  explicit FusedBatchNormV3Pat(::mlir::MLIRContext *context)
+  explicit FusedBatchNormV3Pat(::mlir::MLIRContext* context)
       : ::mlir::RewritePattern(
             "tf.FusedBatchNormV3", 1, context,
             {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}) {}
 
   ::mlir::LogicalResult matchAndRewrite(
-      ::mlir::Operation *fused_batch_norm,
-      ::mlir::PatternRewriter &rewriter) const override {
+      ::mlir::Operation* fused_batch_norm,
+      ::mlir::PatternRewriter& rewriter) const override {
     // Variables for capturing values and attributes used for creating ops
     Operation::operand_range mean(fused_batch_norm->getOperands());
     ::mlir::FloatAttr exponential_avg_factor;
@@ -923,7 +924,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       if (!(((mlir::isa<::mlir::FloatAttr>(epsilon))) &&
             ((mlir::cast<::mlir::FloatAttr>(epsilon).getType().isF32())))) {
         return rewriter.notifyMatchFailure(
-            fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
               diag << "op 'tf.FusedBatchNormV3' attribute 'epsilon' failed to "
                       "satisfy constraint: 32-bit float attribute";
             });
@@ -943,35 +944,35 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
 
     if (!(((*root.getODSResults(1).begin()).use_empty()))) {
       return rewriter.notifyMatchFailure(
-          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+          fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
             diag << "entities '' failed to satisfy constraint: has no use";
           });
     }
 
     if (!(((*root.getODSResults(2).begin()).use_empty()))) {
       return rewriter.notifyMatchFailure(
-          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+          fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
             diag << "entities '' failed to satisfy constraint: has no use";
           });
     }
 
     if (!(((*root.getODSResults(3).begin()).use_empty()))) {
       return rewriter.notifyMatchFailure(
-          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+          fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
             diag << "entities '' failed to satisfy constraint: has no use";
           });
     }
 
     if (!(((*root.getODSResults(4).begin()).use_empty()))) {
       return rewriter.notifyMatchFailure(
-          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+          fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
             diag << "entities '' failed to satisfy constraint: has no use";
           });
     }
 
     if (!(((*root.getODSResults(5).begin()).use_empty()))) {
       return rewriter.notifyMatchFailure(
-          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+          fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
             diag << "entities '' failed to satisfy constraint: has no use";
           });
     }
@@ -983,7 +984,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     // We need to make sure input and output shapes are compatible.
     int64_t last_dim = ShapedType::kDynamic;
     {
-      auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
+      auto is_last_dim_compatible = [](const Value& v, int64_t& last_dim) {
         auto v_type = mlir::dyn_cast_or_null<RankedTensorType>(v.getType());
         if (!v_type) return true;
         int64_t v_last_dim = v_type.getDimSize(v_type.getRank() - 1);
@@ -998,7 +999,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
           !is_last_dim_compatible(*scale.begin(), last_dim) ||
           !is_last_dim_compatible(*offset.begin(), last_dim)) {
         return rewriter.notifyMatchFailure(
-            fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
               diag << "Shapes of scale and offset should be 1D and "
                       "compatible with x";
             });
@@ -1008,7 +1009,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
         if (!is_last_dim_compatible(mean_value, last_dim) ||
             !is_last_dim_compatible(variance_value, last_dim)) {
           return rewriter.notifyMatchFailure(
-              fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+              fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
                 diag << "Shapes of mean and variance should be 1D and "
                         "compatible with x";
               });
@@ -1020,7 +1021,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       auto y_type = (*root.getODSResults(0).begin()).getType();
       if (!OpTrait::util::getBroadcastedType(x_type, y_type)) {
         return rewriter.notifyMatchFailure(
-            fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
               diag << "Shapes of x and the first output should be compatible";
             });
       }
@@ -1032,7 +1033,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
           fused_batch_norm_op.getX().getType());
       if (!input_type || input_type.getRank() != 4) {
         return rewriter.notifyMatchFailure(
-            fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            fused_batch_norm_op, [&](::mlir::Diagnostic& diag) {
               diag << "op 'tf.FusedBatchNormV3' that has 'is_training' equals "
                       "True is only supported with input of rank 4";
             });
@@ -1173,14 +1174,14 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
 };
 
 static LogicalResult static_dag_matcher(
-    PatternRewriter &rewriter, Operation *op,
-    ::llvm::SmallVector<Operation *, 4> &target_ops,
-    Operation::operand_range &max, Operation::operand_range &min,
-    Operation::operand_range &input, IntegerAttr &num_bits,
-    BoolAttr &narrow_range) {
+    PatternRewriter& rewriter, Operation* op,
+    ::llvm::SmallVector<Operation*, 4>& target_ops,
+    Operation::operand_range& max, Operation::operand_range& min,
+    Operation::operand_range& input, IntegerAttr& num_bits,
+    BoolAttr& narrow_range) {
   auto fakequant_op = ::llvm::dyn_cast<TF::FakeQuantWithMinMaxVarsOp>(op);
   if (!(fakequant_op)) {
-    return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
+    return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
       diag << "fakequant_op is not TF::FakeQuantWithMinMaxVarsOp type";
     });
   }
@@ -1201,7 +1202,7 @@ static LogicalResult static_dag_matcher(
   {
     for (auto user : fakequant_op->getResult(0).getUsers()) {
       if (!absl::c_linear_search(target_ops, user)) {
-        return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
+        return rewriter.notifyMatchFailure(op, [&](Diagnostic& diag) {
           diag << "Skipping reordering between FakeQuant and "
                << (*target_ops.begin())->getName()
                << ", since there are other ops using the FakeQuant result.";
@@ -1230,19 +1231,19 @@ static LogicalResult static_dag_matcher(
 //    fakequant
 template <typename ReorderOp>
 struct ReorderFakeQuantPattern : public RewritePattern {
-  explicit ReorderFakeQuantPattern(MLIRContext *context)
+  explicit ReorderFakeQuantPattern(MLIRContext* context)
       : RewritePattern(
             ReorderOp::getOperationName(), 2, context,
             {"tf.FakeQuantWithMinMaxVars", ReorderOp::getOperationName()}) {}
   LogicalResult findTargetOps(
-      ReorderOp &casted_op, PatternRewriter &rewriter,
-      Operation::operand_range &max, Operation::operand_range &min,
-      Operation::operand_range &input, IntegerAttr &num_bits,
-      BoolAttr &narrow_range,
-      ::llvm::SmallVector<Operation *, 4> &target_ops) const {
-    auto *defining_op = (*casted_op.getODSOperands(0).begin()).getDefiningOp();
+      ReorderOp& casted_op, PatternRewriter& rewriter,
+      Operation::operand_range& max, Operation::operand_range& min,
+      Operation::operand_range& input, IntegerAttr& num_bits,
+      BoolAttr& narrow_range,
+      ::llvm::SmallVector<Operation*, 4>& target_ops) const {
+    auto* defining_op = (*casted_op.getODSOperands(0).begin()).getDefiningOp();
     if (!(defining_op)) {
-      return rewriter.notifyMatchFailure(casted_op, [&](Diagnostic &diag) {
+      return rewriter.notifyMatchFailure(casted_op, [&](Diagnostic& diag) {
         diag << "There's no operation that defines operand 0 of casted_op";
       });
     }
@@ -1254,11 +1255,11 @@ struct ReorderFakeQuantPattern : public RewritePattern {
     return success();
   }
 
-  LogicalResult CreateReorderOp(PatternRewriter &rewriter,
-                                Operation::operand_range &input,
-                                Operation::operand_range &shape,
-                                Location &ods_loc,
-                                ReorderOp &new_reorder_op) const {
+  LogicalResult CreateReorderOp(PatternRewriter& rewriter,
+                                Operation::operand_range& input,
+                                Operation::operand_range& shape,
+                                Location& ods_loc,
+                                ReorderOp& new_reorder_op) const {
     Value tensor_value = (*input.begin());
     Value shape_value = (*shape.begin());
     new_reorder_op = ReorderOp::create(rewriter, ods_loc,
@@ -1268,11 +1269,11 @@ struct ReorderFakeQuantPattern : public RewritePattern {
   }
 
   LogicalResult createFakeQuantOp(
-      ReorderOp &casted_op, PatternRewriter &rewriter,
-      ReorderOp &new_reorder_op, Operation::operand_range &max,
-      Operation::operand_range &min, IntegerAttr &num_bits,
-      BoolAttr &narrow_range, Location &ods_loc,
-      TF::FakeQuantWithMinMaxVarsOp &fakequant_op) const {
+      ReorderOp& casted_op, PatternRewriter& rewriter,
+      ReorderOp& new_reorder_op, Operation::operand_range& max,
+      Operation::operand_range& min, IntegerAttr& num_bits,
+      BoolAttr& narrow_range, Location& ods_loc,
+      TF::FakeQuantWithMinMaxVarsOp& fakequant_op) const {
     ::llvm::SmallVector<Value, 4> target_values;
     ::llvm::SmallVector<NamedAttribute, 4> target_attrs;
     target_values.push_back((*new_reorder_op.getODSResults(0).begin()));
@@ -1294,8 +1295,8 @@ struct ReorderFakeQuantPattern : public RewritePattern {
     return success();
   }
 
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     // Variables for capturing values and attributes used while creating ops
     Operation::operand_range max(op->getOperands());
     Operation::operand_range min(op->getOperands());
@@ -1303,7 +1304,7 @@ struct ReorderFakeQuantPattern : public RewritePattern {
     Operation::operand_range shape(op->getOperands());
     IntegerAttr num_bits;
     BoolAttr narrow_range;
-    ::llvm::SmallVector<Operation *, 4> target_ops;
+    ::llvm::SmallVector<Operation*, 4> target_ops;
 
     target_ops.push_back(op);
     ReorderOp old_reorder_op = ::llvm::dyn_cast<ReorderOp>(op);
@@ -1342,9 +1343,9 @@ struct ReorderFakeQuantPattern : public RewritePattern {
 
 // Returns success if all the operations in the `op`'s regions including `op`
 // itself are legal in a TFLite pipeline.
-LogicalResult ValidateOp(Operation *op) {
+LogicalResult ValidateOp(Operation* op) {
   bool has_illegal_ops = false;
-  op->walk([&](Operation *op) {
+  op->walk([&](Operation* op) {
     if (isa<TF::VariableV2Op>(op)) {
       has_illegal_ops = true;
       op->emitOpError() << "is illegal in a TFLite pipeline";
@@ -1356,7 +1357,7 @@ LogicalResult ValidateOp(Operation *op) {
 
 // Converts a set of TF2XLA ops into pure TF ops for future legalizations as
 // TF2XLA ops aren't supported by later stages.
-LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
+LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext* context) {
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<func::FuncDialect>();
@@ -1400,11 +1401,11 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
 //       |
 //     squeeze
 struct ConvertRfftToRfft2d : public RewritePattern {
-  explicit ConvertRfftToRfft2d(MLIRContext *context)
+  explicit ConvertRfftToRfft2d(MLIRContext* context)
       : RewritePattern(TF::RFFTOp::getOperationName(), 1, context) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     auto rfft_op = dyn_cast<TF::RFFTOp>(op);
 
     auto input = rfft_op.getInput();
@@ -1487,7 +1488,7 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
   using OpRewritePattern<TF::IdentityOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TF::IdentityOp identity,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // Replace the op with the input if input and result have the same type.
     if (identity.getInput().getType() == identity.getType()) {
       rewriter.replaceOp(identity, identity.getInput());
@@ -1498,7 +1499,7 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
     // every consumer op to be a TF op before applying this pattern. We can
     // consider to revisit this in the future if this turns out to be too
     // restrictive.
-    for (Operation *user : identity->getUsers()) {
+    for (Operation* user : identity->getUsers()) {
       if (user->getDialect()->getNamespace() != "tf") {
         return failure();
       }
@@ -1510,7 +1511,7 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
 };
 
 llvm::FailureOr<TF::FakeQuantWithMinMaxVarsOp> TryGetAncestorFakeQuantOp(
-    Operation *operand) {
+    Operation* operand) {
   if (auto fq =
           mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(operand)) {
     return fq;
@@ -1540,14 +1541,14 @@ llvm::FailureOr<TF::FakeQuantWithMinMaxVarsOp> TryGetAncestorFakeQuantOp(
 // handle the quantization of the concat op incorrectly.
 class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
  public:
-  QuantizeConcatResult(MLIRContext *context, bool use_fake_quant_num_bits)
+  QuantizeConcatResult(MLIRContext* context, bool use_fake_quant_num_bits)
       : OpRewritePattern<TF::ConcatV2Op>(context),
         use_fake_quant_num_bits_(use_fake_quant_num_bits) {}
 
   LogicalResult matchAndRewrite(TF::ConcatV2Op concat,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // Skip concat ops where the output is already quantized.
-    for (auto *user : concat->getUsers()) {
+    for (auto* user : concat->getUsers()) {
       if (mlir::dyn_cast_or_null<TFL::QuantizeOp>(user) ||
           mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(user)) {
         return failure();
@@ -1608,8 +1609,8 @@ class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
     }
 
     Value concat_result = concat.getResult();
-    llvm::SmallVector<OpOperand *> uses;
-    for (OpOperand &use : concat_result.getUses()) {
+    llvm::SmallVector<OpOperand*> uses;
+    for (OpOperand& use : concat_result.getUses()) {
       uses.push_back(&use);
     }
 
@@ -1620,7 +1621,7 @@ class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
         rewriter, concat.getLoc(), concat->getResultTypes(), inputs,
         (*fake_quant_ops.begin())->getAttrs());
 
-    for (OpOperand *use : uses) {
+    for (OpOperand* use : uses) {
       use->assign(new_fake_quant_op);
     }
 
@@ -1646,14 +1647,14 @@ class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
 // which some models do not have FQ ops generated for the output of this op.
 class QuantizeMeanResult : public OpRewritePattern<TF::MeanOp> {
  public:
-  QuantizeMeanResult(MLIRContext *context, bool use_fake_quant_num_bits)
+  QuantizeMeanResult(MLIRContext* context, bool use_fake_quant_num_bits)
       : OpRewritePattern<TF::MeanOp>(context),
         use_fake_quant_num_bits_(use_fake_quant_num_bits) {}
 
   LogicalResult matchAndRewrite(TF::MeanOp mean,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // Skip ops where the output is already quantized.
-    for (auto *user : mean->getUsers()) {
+    for (auto* user : mean->getUsers()) {
       if (mlir::dyn_cast_or_null<TFL::QuantizeOp>(user) ||
           mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(user)) {
         return failure();
@@ -1667,8 +1668,8 @@ class QuantizeMeanResult : public OpRewritePattern<TF::MeanOp> {
     auto fq = fq_or.value();
 
     Value mean_result = mean.getResult();
-    llvm::SmallVector<OpOperand *> uses;
-    for (OpOperand &use : mean_result.getUses()) {
+    llvm::SmallVector<OpOperand*> uses;
+    for (OpOperand& use : mean_result.getUses()) {
       uses.push_back(&use);
     }
 
@@ -1679,7 +1680,7 @@ class QuantizeMeanResult : public OpRewritePattern<TF::MeanOp> {
         rewriter, mean.getLoc(), mean->getResultTypes(), inputs,
         fq->getAttrs());
 
-    for (OpOperand *use : uses) {
+    for (OpOperand* use : uses) {
       use->assign(new_fake_quant_op);
     }
 
@@ -1699,7 +1700,7 @@ class QuantizeMeanResult : public OpRewritePattern<TF::MeanOp> {
 };
 
 void PrepareTFPass::runOnOperation() {
-  MLIRContext *ctx = &getContext();
+  MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   RewritePatternSet phase_2_patterns(ctx);
   RewritePatternSet phase_3_patterns(ctx);
@@ -1762,8 +1763,8 @@ void PrepareTFPass::runOnOperation() {
   if (unfold_batch_matmul_) {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
-  phase_2_patterns.add<TF::ConvertTFEinsumOp, ConvertTFStridedSlice,
-                       ConvertRfftToRfft2d, RemoveIdentity>(ctx);
+  // phase_2_patterns.add<TF::ConvertTFEinsumOp, ConvertTFStridedSlice,
+  //                      ConvertRfftToRfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
   // Remove redundant reshape ops.
@@ -1789,7 +1790,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
-    const PrepareTFPassOptions &options) {
+    const PrepareTFPassOptions& options) {
   return std::make_unique<PrepareTFPass>(options);
 }
 
