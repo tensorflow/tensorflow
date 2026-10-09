@@ -259,6 +259,29 @@ class StatefulScatterNdTest(test.TestCase):
             )
         )
 
+  def testResourceScatterNdUpdateRejectsVariableOfAnotherDtype(self):
+    # The op takes its type from the updates, so it can be given a variable of
+    # another dtype. Once the variable is in copy-on-read mode, which a gather
+    # puts it in, EnsureSparseVariableAccess returns before checking the dtype,
+    # and the kernel aborted the process reading the variable as that type.
+    with ops.device("/CPU:0"):
+      for copy_on_read in (False, True):
+        with self.subTest(copy_on_read=copy_on_read):
+          ref = resource_variable_ops.ResourceVariable(
+              np.zeros((4, 2)), dtype=dtypes.bfloat16)
+          self.evaluate(ref.initializer)
+          if copy_on_read:
+            self.evaluate(
+                resource_variable_ops.resource_gather(
+                    ref.handle, [0], dtype=dtypes.bfloat16))
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "dtype mismatch: expected float but got bfloat16"):
+            self.evaluate(
+                state_ops.resource_scatter_nd_update(
+                    ref.handle, [[0]],
+                    constant_op.constant(np.ones((1, 2)), dtypes.float32)))
+
   @test_util.run_deprecated_v1
   def testEmptyRankOneIndices(self):
     ref = resource_variable_ops.ResourceVariable([1.0])
