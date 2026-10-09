@@ -1484,14 +1484,22 @@ class RemoveLogicalNotStage : public ArithmeticOptimizerStage {
       new_op = "NotEqual";
     } else if (IsNotEqual(*input)) {
       new_op = "Equal";
-    } else if (IsLess(*input)) {
-      new_op = "GreaterEqual";
-    } else if (IsLessEqual(*input)) {
-      new_op = "Greater";
-    } else if (IsGreater(*input)) {
-      new_op = "LessEqual";
-    } else if (IsGreaterEqual(*input)) {
-      new_op = "Less";
+    } else if ((IsLess(*input) || IsLessEqual(*input) || IsGreater(*input) ||
+                IsGreaterEqual(*input)) &&
+               !DataTypeIsFloating(GetDataTypeFromAttr(*input, "T"))) {
+      // Not(Less(x, y)) is only GreaterEqual(x, y) if the operands are totally
+      // ordered. For floating point types every ordering comparison with a NaN
+      // is false, so Not(Less(NaN, y)) is true but GreaterEqual(NaN, y) is
+      // false. Equal/NotEqual are exact complements even for NaN.
+      if (IsLess(*input)) {
+        new_op = "GreaterEqual";
+      } else if (IsLessEqual(*input)) {
+        new_op = "Greater";
+      } else if (IsGreater(*input)) {
+        new_op = "LessEqual";
+      } else if (IsGreaterEqual(*input)) {
+        new_op = "Less";
+      }
     }
     if (!new_op.empty()) {
       input->set_op(new_op);
