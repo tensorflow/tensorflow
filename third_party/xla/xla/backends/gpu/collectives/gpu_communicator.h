@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
@@ -45,6 +47,10 @@ limitations under the License.
 namespace stream_executor {
 class StreamExecutor;
 }  // namespace stream_executor
+
+namespace xla::ffi {
+struct RecordContext;
+}  // namespace xla::ffi
 
 namespace xla::gpu {
 
@@ -307,6 +313,12 @@ class GpuCommunicator : public Communicator {
 
   virtual absl::Status LaunchMultiGpuBarrier(const Executor& executor) {
     return Unimplemented("LaunchMultiGpuBarrier is not implemented");
+  }
+
+  virtual absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrier(
+      xla::ffi::RecordContext& record_ctx,
+      const XLA_FFI_Command* absl_nullable cmd) {
+    return Unimplemented("RecordMultiGpuBarrier is not implemented");
   }
 
   virtual void InitializeCrossDeviceBarrier(
