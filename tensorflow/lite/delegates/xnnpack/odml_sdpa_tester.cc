@@ -162,7 +162,7 @@ std::vector<char> ODMLSDPATester::CreateTfLiteModel() const {
     }};
 
     auto fbb = std::make_unique<flexbuffers::Builder>();
-    float scale = 1 / sqrt(QueryShape().data()[QueryShape().size() - 1]);
+    float scale = 1 / sqrt(QueryShape()[QueryShape().size() - 1]);
     fbb->Map([&]() { fbb->Float("scale", scale); });
     fbb->Finish();
 
