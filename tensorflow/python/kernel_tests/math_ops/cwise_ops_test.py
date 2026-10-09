@@ -1342,6 +1342,9 @@ class PolyvalTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSingleCoeffInfReturnsNan(self):
+    # Degree-0 polynomials return NaN for +/-inf inputs: the x * 0 step in
+    # math_ops.py both broadcasts x's shape and propagates NaN, and IEEE 754
+    # specifies 0 * inf = NaN (matching numpy.polyval behavior).
     for dtype in [
         np.float16, np.float32, np.float64, np.complex64, np.complex128
     ]:
@@ -1361,7 +1364,12 @@ class PolyvalTest(test.TestCase):
               self.assertTrue(np.all(np.isnan(result)))
 
   @test_util.run_in_graph_and_eager_modes
-  def testNonFiniteXReturnsInf(self):
+  def testInfXReturnsInf(self):
+    """Tests that +/-inf x evaluates to inf for degree >= 1 polynomials.
+
+    Covers inf inputs only: NaN x inputs correctly propagate to NaN (NaN
+    propagation) rather than returning inf.
+    """
     # inf x must evaluate to inf (not nan): the limit of a polynomial such as
     # p(x) = x + 1 as x -> inf is mathematically inf. NumPy returns nan here
     # only because it starts its Horner accumulator at zero (0 * inf -> nan).
