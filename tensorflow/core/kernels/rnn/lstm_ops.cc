@@ -586,9 +586,8 @@ class LSTMBlockCellGradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, check_rank(cs_grad_tensor, "cs_grad", 2));
     OP_REQUIRES_OK(ctx, check_rank(h_grad_tensor, "h_grad", 2));
 
-    // An empty cs_prev yields a zero-sized GPU launch configuration in
-    // LSTMBlockCellBpropWithCUDA, which aborts via TF_CHECK_OK. The forward
-    // op rejects this for the same reason; see #58270.
+    // Reject an empty cs_prev as LSTMBlockCellOp does (#58270), so the
+    // gradient accepts exactly the inputs the forward op accepts.
     OP_REQUIRES(
         ctx, cs_prev_tensor->dim_size(0) > 0 && cs_prev_tensor->dim_size(1) > 0,
         absl::InvalidArgumentError(
@@ -1266,7 +1265,7 @@ class BlockLSTMGradOp : public OpKernel {
     OP_REQUIRES(ctx, b_tensor->dims() == 1,
                 absl::InvalidArgumentError(absl::StrCat(
                     "b must be rank 1 but is rank ", b_tensor->dims())));
-    OP_REQUIRES(ctx, cell_size == b_tensor->dim_size(0) / 4,
+    OP_REQUIRES(ctx, b_tensor->dim_size(0) == cell_size * 4,
                 absl::InvalidArgumentError(
                     absl::StrCat("w and b cell_size don't match: ", cell_size,
                                  " vs. ", b_tensor->dim_size(0))));
@@ -1291,28 +1290,6 @@ class BlockLSTMGradOp : public OpKernel {
 
     const Tensor* h_out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h", &h_out));
-
-    OP_REQUIRES(ctx, i_out->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "i must be rank 3. Received: ", i_out->dims())));
-    OP_REQUIRES(ctx, cs_out->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "cs must be rank 3. Received: ", cs_out->dims())));
-    OP_REQUIRES(ctx, f_out->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "f must be rank 3. Received: ", f_out->dims())));
-    OP_REQUIRES(ctx, o_out->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "o must be rank 3. Received: ", o_out->dims())));
-    OP_REQUIRES(ctx, ci_out->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "ci must be rank 3. Received: ", ci_out->dims())));
-    OP_REQUIRES(ctx, co_out->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "co must be rank 3. Received: ", co_out->dims())));
-    OP_REQUIRES(ctx, h_out->dims() == 3,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "h must be rank 3. Received: ", h_out->dims())));
 
     const Tensor* cs_grad = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("cs_grad", &cs_grad));

@@ -295,32 +295,57 @@ class RNNGradTest(test.TestCase):
             gen_rnn_ops.lstm_block_cell_grad, name, use_peephole=False,
             **kwargs)
 
+  def _block_lstm_kwargs(self):
+    w, b, x, cs_prev, h_prev, w_peephole = self._block_lstm_inputs()
+    return dict(
+        seq_len_max=math_ops.cast(x.shape[0], dtypes.int64),
+        x=x, cs_prev=cs_prev, h_prev=h_prev, w=w,
+        wci=w_peephole, wcf=w_peephole, wco=w_peephole, b=b,
+        use_peephole=False,
+    )
+
+  def _block_lstm_grad_kwargs(self):
+    kwargs = self._block_lstm_kwargs()
+    i, cs, f, o, ci, co, h = gen_rnn_ops.BlockLSTM(**kwargs)
+    kwargs.update(
+        i=i, cs=cs, f=f, o=o, ci=ci, co=co, h=h,
+        cs_grad=deterministic_random_uniform(cs.shape.as_list()),
+        h_grad=deterministic_random_uniform(h.shape.as_list()),
+    )
+    return kwargs
+
+  def testBlockLSTMInvalidPeepholeSize(self):
+    for name in ["wci", "wcf", "wco"]:
+      kwargs = self._block_lstm_kwargs()
+      kwargs[name] = deterministic_random_uniform([3])
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  f"{name}.dim_size\\(0\\) != cell_size"):
+        self._run_with_unknown_shape(gen_rnn_ops.BlockLSTM, name, **kwargs)
+
   def testBlockLSTMGradInvalidPeepholeSize(self):
     # As in LSTMBlockCellGrad, wci_grad is allocated with the shape of wci but
     # written with cell_size elements.
     for name in ["wci", "wcf", "wco"]:
-      w, b, x, cs_prev, h_prev, w_peephole = self._block_lstm_inputs()
-      i, cs, f, o, ci, co, h = self._block_lstm(
-          w, b, x, cs_prev, h_prev, w_peephole, seq_len_max=x.shape[0])
-      kwargs = dict(
-          seq_len_max=math_ops.cast(x.shape[0], dtypes.int64),
-          x=x, cs_prev=cs_prev, h_prev=h_prev, w=w,
-          wci=w_peephole, wcf=w_peephole, wco=w_peephole, b=b,
-          i=i, cs=cs, f=f, o=o, ci=ci, co=co, h=h,
-          cs_grad=deterministic_random_uniform(cs.shape.as_list()),
-          h_grad=deterministic_random_uniform(h.shape.as_list()),
-          use_peephole=False,
-      )
+      kwargs = self._block_lstm_grad_kwargs()
       kwargs[name] = deterministic_random_uniform([3])
       with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                   f"{name}.dim_size\\(0\\) != cell_size"):
         self._run_with_unknown_shape(
             gen_rnn_ops.BlockLSTMGrad, name, **kwargs)
 
+  def testBlockLSTMGradInvalidBiasSize(self):
+    # A bias of length 4 * cell_size + 3 passed the old
+    # `cell_size == b.dim_size(0) / 4` check through integer division.
+    kwargs = self._block_lstm_grad_kwargs()
+    cell_size = kwargs["cs_prev"].shape[1]
+    kwargs["b"] = deterministic_random_uniform([4 * cell_size + 3])
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "w and b cell_size don't match"):
+      self._run_with_unknown_shape(gen_rnn_ops.BlockLSTMGrad, "b", **kwargs)
+
   def testLSTMBlockCellGradEmptyCsPrev(self):
-    # An empty cs_prev gives LSTMBlockCellBpropWithCUDA a zero-sized launch
-    # configuration, which aborts the process. The forward op already rejects
-    # it; see #58270.
+    # The forward op rejects an empty cs_prev (#58270); the gradient must
+    # reject the same inputs.
     kwargs = self._lstm_block_cell_grad_inputs(cell_size=0)
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 "cs_prev_tensor is empty"):
