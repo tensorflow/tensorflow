@@ -183,8 +183,14 @@ single_version_override(
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-python.defaults(python_version = "3.11")
+python.defaults(
+    python_version = "3.11",
+    python_version_env = "HERMETIC_PYTHON_VERSION",
+)
 python.toolchain(python_version = "3.11")
+python.toolchain(python_version = "3.12")
+python.toolchain(python_version = "3.13")
+python.toolchain(python_version = "3.14")
 use_repo(python, "pythons_hub")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
@@ -200,17 +206,25 @@ cc_library(
     hub_name = "pypi_mods",
     whl_name = "numpy",
 )
-pip.parse(
-    extra_hub_aliases = {
-        "numpy": ["numpy_headers"],
-    },
-    hub_name = "xla_pypi",
-    python_version = "3.11",
-    requirements_lock = "//:requirements_lock_3_11.txt",
-    whl_modifications = {
-        "@pypi_mods//:numpy.json": "numpy",
-    },
-)
+[
+    pip.parse(
+        extra_hub_aliases = {
+            "numpy": ["numpy_headers"],
+        },
+        hub_name = "xla_pypi",
+        python_version = python_version,
+        requirements_lock = "//:requirements_lock_3_11.txt" if python_version == "3.11" else "//:requirements_lock_3_12.txt",
+        whl_modifications = {
+            "@pypi_mods//:numpy.json": "numpy",
+        },
+    )
+    for python_version in [
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14",
+    ]
+]
 use_repo(pip, "pypi_mods", pypi = "xla_pypi")
 
 override_repo(

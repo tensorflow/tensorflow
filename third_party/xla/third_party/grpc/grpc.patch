@@ -166,3 +166,17 @@ diff --git a/src/python/grpcio/grpc/_cython/_cygrpc/private_key_signing/BUILD.ba
          "@rules_python//python/cc:current_py_cc_headers",
 -        "@rules_python//python/cc:current_py_cc_libs",
      ],
+
+diff --git a/bazel/grpc_build_system.bzl b/bazel/grpc_build_system.bzl
+--- a/bazel/grpc_build_system.bzl
++++ b/bazel/grpc_build_system.bzl
+@@ -187,9 +187,7 @@
+         testonly = testonly,
+         linkopts = linkopts,
+         includes = [
+             include_prefix + "include",
+-            include_prefix + "src/core/ext/upb-gen",  # Once upb code-gen issue is resolved, remove this.
+-            include_prefix + "src/core/ext/upbdefs-gen",  # Once upb code-gen issue is resolved, remove this.
+         ],
+         alwayslink = alwayslink,
+         data = data,

@@ -1,0 +1,110 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+name: ASAN Tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/asan.yml"
+      - "build_tools/ci/asan_wrapper.sh"
+      - "build_tools/ci/run_asan.sh"
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Test suite preset to run ('full' or 'quick')"
+        required: false
+        type: choice
+        default: "full"
+        options:
+          - "full"
+          - "quick"
+      targets:
+        description: "Optional space-separated Bazel test targets (overrides suite preset)"
+        required: false
+        type: string
+        default: ""
+      rbe:
+        description: "RBE mode: 'true' (remote build+test), 'compile_only' (remote build + local test), 'cache' (remote cache + local build/test), or 'false'"
+        required: false
+        type: choice
+        default: "true"
+        options:
+          - "true"
+          - "compile_only"
+          - "cache"
+          - "false"
+      python_version:
+        description: "Hermetic Python version to test with"
+        required: false
+        type: choice
+        default: "3.14"
+        options:
+          - "3.14"
+          - "3.13"
+          - "3.12"
+          - "3.11"
+      extra_bazel_args:
+        description: "Optional extra space-separated Bazel test flags (e.g. --nocache_test_results)"
+        required: false
+        type: string
+        default: ""
+  schedule:
+    # Run once a day at 04:00 UTC.
+    - cron: "0 4 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  asan_tests:
+    name: Linux x86 CPU ASAN (Python ${{ inputs.python_version || '3.14' }})
+    runs-on: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' && inputs.rbe != 'true')
+        && 'linux-x86-n2-64'
+        || 'linux-x86-n2-16'
+      }}
+    timeout-minutes: 360
+    container:
+      image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:ea67e8453d8b09c2ba48853da5e79efef4b65804b4a48dfae4b4da89ffd38405
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run ASAN tests
+        env:
+          SUITE: ${{ inputs.suite || 'full' }}
+          TARGETS: ${{ inputs.targets || '' }}
+          USE_RBE: >-
+            ${{
+              (github.event_name == 'workflow_dispatch' && inputs.rbe)
+              || 'true'
+            }}
+          HERMETIC_PYTHON_VERSION: ${{ inputs.python_version || '3.14' }}
+          EXTRA_BAZEL_ARGS: ${{ inputs.extra_bazel_args || '' }}
+        run: |
+          set -euo pipefail
+          set -x
+          git config --global --add safe.directory '*'
+          bash ./build_tools/ci/run_asan.sh

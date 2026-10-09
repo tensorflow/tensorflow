@@ -276,13 +276,21 @@ common:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 common:dbg --copt -DDEBUG_BUILD
 
+common:asan --features=asan
+common:asan --host_features=-asan
 common:asan --strip=never
-common:asan --copt -fsanitize=address
+common:asan --copt=-fno-omit-frame-pointer
 common:asan --copt -DADDRESS_SANITIZER
 common:asan --copt -O1
-common:asan --copt -g
-common:asan --copt -fno-omit-frame-pointer
-common:asan --linkopt -fsanitize=address
+common:asan --copt=-gmlt
+common:asan --per_file_copt=+.*,-xla.*@-g0
+common:asan --action_env=ASAN_OPTIONS=detect_leaks=0
+common:asan --host_action_env=ASAN_OPTIONS=detect_leaks=0
+common:asan --@rules_ml_toolchain//common:asan_options=detect_leaks=0
+
+common:asan_shared --config=asan
+common:asan_shared --copt=-shared-libasan
+common:asan_shared --linkopt=-shared-libasan
 
 common:rocm_base --copt=-Wno-gnu-offsetof-extensions
 common:rocm_base --define=using_rocm_hipcc=true
