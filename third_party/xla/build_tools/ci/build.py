@@ -118,11 +118,7 @@ class BuildType(enum.Enum):
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
 
   XLA_MACOS_X86_CPU_KOKORO = enum.auto()
@@ -668,26 +664,6 @@ Build(
 )
 
 Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
-    test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=nvidia_single_gpu_build_filters,
-    options={
-        "run_under": "//build_tools/ci:parallel_gpu_execute",
-        "//xla/tsl:ci_build": True,
-        **_DEFAULT_BAZEL_OPTIONS,
-    },
-    repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
-    },
-    extra_setup_commands=(["nvidia-smi"],),
-    subcommand="build",
-)
-
-Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
@@ -698,7 +674,7 @@ Build(
         "cuda_libraries_from_stubs",
     ),
     test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=75),
+    + _tag_filters_for_compute_capability(compute_capability=89),
     build_tag_filters=nvidia_single_gpu_build_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
@@ -706,73 +682,7 @@ Build(
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
-    },
-    extra_setup_commands=(["nvidia-smi"],),
-    subcommand="build",
-)
-
-Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
-    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=nvidia_single_gpu_build_filters,
-    options={
-        "run_under": "//build_tools/ci:parallel_gpu_execute",
-        "//xla/tsl:ci_build": True,
-        **_DEFAULT_BAZEL_OPTIONS,
-    },
-    repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
-    },
-    extra_setup_commands=(["nvidia-smi"],),
-    subcommand="build",
-)
-
-Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    configs=(
-        "warnings",
-        "rbe_linux_cuda_nvcc",
-        "hermetic_cuda_umd",
-        "cuda_libraries_from_stubs",
-    ),
-    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=nvidia_single_gpu_build_filters,
-    options={
-        "run_under": "//build_tools/ci:parallel_gpu_execute",
-        "//xla/tsl:ci_build": True,
-        **_DEFAULT_BAZEL_OPTIONS,
-    },
-    repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
-    },
-    extra_setup_commands=(["nvidia-smi"],),
-    subcommand="build",
-)
-
-Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    configs=(),
-    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=100),
-    build_tag_filters=nvidia_single_gpu_build_filters,
-    options={
-        "run_under": "//build_tools/ci:parallel_gpu_execute",
-        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
-        "//xla/tsl:ci_build": True,
-        **_DEFAULT_BAZEL_OPTIONS,
-    },
-    repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "10",
+        "TF_CUDA_COMPUTE_CAPABILITIES": "8.9",
     },
     extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
