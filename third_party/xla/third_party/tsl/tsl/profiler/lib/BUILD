@@ -412,7 +412,6 @@ cc_library(
         "//tsl/platform",
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:macros",
-        "@xla//xla/tsl/platform:types",
     ] + if_not_android([
         "@xla//xla/tsl/profiler/backends/cpu:annotation_stack",
     ]),
