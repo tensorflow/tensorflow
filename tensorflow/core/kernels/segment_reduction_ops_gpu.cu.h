@@ -362,13 +362,12 @@ __global__ void SegmentReduceVectorKernel(
       for (Toffsets y_offset = begin; y_offset < end; y_offset += blockDim.y) {
         const bool y_ok = (y_offset + y) < end;
         // Perform indirect lookup if required.
-        const Toffsets y_idx =
-            indices && y_ok ? indices[y_offset + y] : y_offset + y;
+        const int64_t y_idx = indices && y_ok
+                                  ? static_cast<int64_t>(indices[y_offset + y])
+                                  : static_cast<int64_t>(y_offset + y);
         // Skip rows whose index is out of range.
-        const bool idx_ok =
-            !indices ||
-            (y_idx >= 0 && static_cast<int64_t>(y_idx) < input_nrows);
-        const int64_t input_idx = static_cast<int64_t>(y_idx) * ninner_vec + x;
+        const bool idx_ok = !indices || FastBoundsCheck(y_idx, input_nrows);
+        const int64_t input_idx = y_idx * ninner_vec + x;
         // Load the input row from global mem.
         Treducevec block_result =
             x_ok && y_ok && idx_ok ? input_vec[input_idx] : Tvec(initial_value);
@@ -531,15 +530,16 @@ struct LookupAndScaleAndCastInputsFunctor {
 
   template <typename Toffsets>
   __device__ Treducevec operator()(Toffsets idx) const {
+    int64_t row_idx = idx;
     if (indices_) {
-      idx = indices_[idx];
+      row_idx = static_cast<int64_t>(indices_[idx]);
       // Skip rows whose index is out of range.
-      if (idx < 0 || static_cast<int64_t>(idx) >= input_nrows_) {
+      if (!FastBoundsCheck(row_idx, input_nrows_)) {
         return skipped_value_;
       }
     }
-    Treducevec result = static_cast<Treducevec>(input_vec_[idx]);
-    if (weights_) result = result * Tvec(weights_[idx]);
+    Treducevec result = static_cast<Treducevec>(input_vec_[row_idx]);
+    if (weights_) result = result * Tvec(weights_[row_idx]);
     return result;
   }
 
@@ -1357,8 +1357,12 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                                  TensorShape({nouter}), &tmp_indices_internal),
           done);
       auto indices_vec_internal = tmp_indices_internal.flat<TindicesCompact>();
+      const Tindices min_idx = -1;
+      const Tindices max_idx = dense_output_shape.dim_size(0);
       indices_vec_internal.device(device) =
-          indices_vec.template cast<TindicesCompact>();
+          indices_vec.cwiseMin(max_idx)
+              .cwiseMax(min_idx)
+              .template cast<TindicesCompact>();
       indices_internal_ptr = indices_vec_internal.data();
     }
 
@@ -1403,8 +1407,12 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
         done);
     auto segment_vec_internal =
         tmp_segment_internal.flat<Tsegmentids_internal>();
+    const Tsegmentids min_seg = -1;
+    const Tsegmentids max_seg = nsegments;
     segment_vec_internal.device(device) =
-        segment_vec.template cast<Tsegmentids_internal>();
+        segment_vec.cwiseMin(max_seg)
+            .cwiseMax(min_seg)
+            .template cast<Tsegmentids_internal>();
 
     Impl<Toffsets, TindicesCompact, Tsegmentids_internal>(
         context, operation, nouter, ninner, nsegments, input, indices_tensor,
