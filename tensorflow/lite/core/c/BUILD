@@ -90,11 +90,12 @@ filegroup(
     ],
 )
 
+# This target provides c_api.h and pulls in the builtin CreateOpResolver().
+# The definitions are provided by :c_api_without_op_resolver and
+# //third_party/tensorflow/lite:create_op_resolver_with_builtin_ops.
 tflite_cc_library_with_c_headers_test(
     name = "c_api",
-    hdrs = [
-        "c_api.h",
-    ],
+    hdrs = ["c_api.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
@@ -111,9 +112,13 @@ tflite_cc_library_with_c_headers_test(
     ],
 )
 
+# This private target provides c_api.h but leaves CreateOpResolver() undefined.
+# Binaries that depend on this will need to also depend on another target
+# that defines CreateOpResolver().
+# The definitions are provided by c_api_create.cc and :c_api_nocreate.
 tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver",
-    srcs = ["c_api.cc"],
+    srcs = ["c_api_create.cc"],
     hdrs = ["c_api.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
@@ -122,29 +127,22 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
+        ":c_api_nocreate",
         ":c_api_types",
         ":operator",
-        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:create_op_resolver_header",
-        "//tensorflow/lite/core:framework_stable",
-        "//tensorflow/lite/core:signature_runner",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/async/c:types",
-        "//tensorflow/lite/delegates:interpreter_utils",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/profiling/telemetry:profiler",
-        "//tensorflow/lite/schema:schema_fbs",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
+# This is a private target, its visibility is set to public only to be
+# used by "tflite_custom_c_library".
+# Do not use this target directly and don't consider it as a part of the public API.
+# This is effectively an alias for c_api_without_op_resolver.
 tflite_cc_library_with_c_headers_test(
     name = "private_c_api_without_op_resolver",
     hdrs = ["c_api.h"],
@@ -164,14 +162,54 @@ tflite_cc_library_with_c_headers_test(
     ],
 )
 
-# Same as ":c_api_without_op_resolver", but without alwayslink=1.
+# This target provides c_api.h but does not define `TfLiteInterpreterCreate`.
+# Targets that call `TfLiteInterpreterCreate` should depend on
+# :c_api or :c_api_without_op_resolver rather than on this target.
+# The definitions for this target are provided in c_api.cc.
 tflite_cc_library_with_c_headers_test(
-    name = "c_api_without_op_resolver_without_alwayslink",
+    name = "c_api_nocreate",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ] + c_api_visibility_allowlist(),
+    deps = [
+        ":c_api_types",
+        ":operator",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core:signature_runner",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/async/c:types",
+        "//tensorflow/lite/delegates:interpreter_utils",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/profiling/telemetry:profiler",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+# This is the same as :c_api_nocreate, but without the alwayslink declaration.
+# This target provides c_api.h but does not define `TfLiteInterpreterCreate`.
+# Targets that call `TfLiteInterpreterCreate` should depend on
+# :c_api or :c_api_without_op_resolver_without_alwayslink rather than on this target.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_nocreate_without_alwayslink",
+    srcs = ["c_api.cc"],
+    hdrs = ["c_api.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
     deps = [
         ":c_api_types",
         ":operator_without_alwayslink",
@@ -181,17 +219,35 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:common_internal",
-        "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling/telemetry:profiler",
         "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+# Same as ":c_api_without_op_resolver", but without alwayslink=1.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_without_op_resolver_without_alwayslink",
+    srcs = ["c_api_create.cc"],
+    hdrs = ["c_api.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    deps = [
+        ":c_api_nocreate_without_alwayslink",
+        ":c_api_types",
+        ":operator_without_alwayslink",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core:create_op_resolver_header",
+        "//tensorflow/lite/core/async/c:types",
     ],
 )
 
@@ -546,8 +602,15 @@ alias(
     ],
 )
 
+# Note: This target depends on ":c_api_nocreate" and does not provide
+# TfLiteInterpreterCreate() or link in the default CreateOpResolver()
+# implementation. Targets that call TfLiteInterpreterCreate() should also
+# depend on ":c_api" (or ":c_api_without_op_resolver").
 tflite_cc_library_with_c_headers_test(
     name = "c_api_opaque",
+    srcs = [
+        "c_api_opaque.cc",
+    ],
     hdrs = [
         "c_api_opaque.h",
     ],
@@ -557,29 +620,8 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:__subpackages__",
     ] + c_api_experimental_visibility_allowlist(),
     deps = [
-        ":c_api",
-        ":c_api_opaque_without_op_resolver",
+        ":c_api_nocreate",
         ":c_api_types",
-        ":common",
-        ":operator",
-        "//tensorflow/lite/core:framework",
-    ],
-)
-
-tflite_cc_library_with_c_headers_test(
-    name = "c_api_opaque_without_op_resolver",
-    srcs = [
-        "c_api_opaque.cc",
-    ],
-    hdrs = [
-        "c_api_opaque.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
-    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
-    deps = [
-        ":c_api_types",
-        ":c_api_without_op_resolver",
         ":common",
         ":operator",
         "//tensorflow/lite:string_util",
@@ -588,6 +630,18 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:kernel_util",
     ],
+)
+
+# DEPRECATED: use ":c_api_opaque" instead.
+# ":c_api_opaque" depends on ":c_api_nocreate", so it never takes any
+# dependency on CreateOpResolver(); a separate "_without_op_resolver" variant
+# is therefore unnecessary. Unlike before, this target no longer provides
+# TfLiteInterpreterCreate(); depend on ":c_api_without_op_resolver" directly
+# if you need it.
+alias(
+    name = "c_api_opaque_without_op_resolver",
+    actual = ":c_api_opaque",
+    compatible_with = get_compatible_with_portable(),
 )
 
 # This is a private target, its visibility is set to public only to be
@@ -613,10 +667,9 @@ tflite_cc_library_with_c_headers_test(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
+        ":c_api_nocreate_without_alwayslink",
         ":c_api_types",
-        ":c_api_without_op_resolver_without_alwayslink",
         ":common",
         ":operator_without_alwayslink",
         "//tensorflow/lite:string_util",
