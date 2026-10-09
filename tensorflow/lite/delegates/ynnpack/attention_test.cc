@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <limits>
 #include <string>
 #include <vector>
