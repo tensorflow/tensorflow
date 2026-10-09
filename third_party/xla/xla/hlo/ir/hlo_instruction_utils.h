@@ -56,12 +56,13 @@ int32_t NestingDepth(const HloInstruction* hlo);
 // Checks if CustomCall TopK instruction is stable. Defaults to true.
 bool IsTopKStable(const HloCustomCallInstruction* inst);
 
-// Extracts the ComparisonOrder from a TopK custom-call comparator computation
-// (whose structure has already been validated by TopkRewriter::IsNanSafeGt:
-// either a root kCompare or Select(const_true, kCompare, const_true)).
-// Returns std::nullopt if the computation does not match either form.
-std::optional<ComparisonOrder> GetTopKComparatorOrder(
-    const HloCustomCallInstruction* inst);
+// Sets the is_stable attribute in the backend_config of a CustomCall TopK
+// instruction, preserving any other backend_config attributes.
+void SetTopKStability(HloCustomCallInstruction* inst, bool is_stable);
+
+// Returns the ComparisonOrder of a CustomCall TopK instruction. Defaults to
+// ComparisonOrder::kTotal.
+ComparisonOrder GetTopKOrder(const HloCustomCallInstruction* inst);
 
 namespace async {
 

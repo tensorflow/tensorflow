@@ -179,8 +179,7 @@ HloInstruction* BuildUnpackU64ToF32(HloInstruction* u64_values,
 // Checks if we can safely route stable TopK to RAFT using the Uint64 adapter.
 bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
   // The Uint64 bit-packing adapter implements TOTAL ordering.
-  if (hlo_instruction_utils::GetTopKComparatorOrder(topk) !=
-      ComparisonOrder::kTotal) {
+  if (hlo_instruction_utils::GetTopKOrder(topk) != ComparisonOrder::kTotal) {
     return false;
   }
   if (!hlo_instruction_utils::IsTopKStable(topk)) {
@@ -259,16 +258,17 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
   Shape new_cc_shape =
       ShapeUtil::MakeTupleShape({k_shape, idx_shape, scratch_shape});
 
-  HloInstruction* new_topk =
+  HloCustomCallInstruction* new_topk = Cast<HloCustomCallInstruction>(
       comp->AddInstruction(HloInstruction::CreateCustomCall(
           new_cc_shape, {packed_u64}, "__gpu$TopK", "",
-          CustomCallApiVersion::API_VERSION_TYPED_FFI));
+          CustomCallApiVersion::API_VERSION_TYPED_FFI)));
+  new_topk->set_raw_backend_config_string(topk->raw_backend_config_string());
 
   // The packed U64 keys guarantee uniqueness, making ties impossible.
   // Therefore, the inner TopK operation no longer requires stability to
   // produce a stable overall result. We clear the is_stable flag so the
   // backend can freely route this to the fast unstable topk kernel (RAFT lib).
-  new_topk->set_raw_backend_config_string("{is_stable = false}");
+  hlo_instruction_utils::SetTopKStability(new_topk, false);
 
   // 3. Unpack values and retain indices
   HloInstruction* u64_vals = comp->AddInstruction(
@@ -298,8 +298,7 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   // TODO(b/473829358): Enable PARTIAL order in SmallBufferOptimization once
   // TopKPartialOrderKernel is rolled out to the runtime and wired up in
   // ThunkEmitter.
-  if (hlo_instruction_utils::GetTopKComparatorOrder(topk) !=
-      ComparisonOrder::kTotal) {
+  if (hlo_instruction_utils::GetTopKOrder(topk) != ComparisonOrder::kTotal) {
     return InvalidArgument(
         "Unsupported comparator order: only TOTAL order is currently "
         "supported.");
