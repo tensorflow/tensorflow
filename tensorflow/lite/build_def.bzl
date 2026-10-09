@@ -401,6 +401,7 @@ def json_to_tflite(name, src, out):
 def _gen_selected_ops_impl(ctx):
     args = ctx.actions.args()
     args.add(ctx.attr.namespace, format = "--namespace=%s")
+    args.add(ctx.attr.registration_header, format = "--registration_header=%s")
     args.add(ctx.outputs.output, format = "--output_registration=%s")
     tflite_path = "//tensorflow/lite"
     args.add("--tflite_path=%s" % tflite_path[2:])
@@ -425,6 +426,7 @@ gen_selected_ops_rule = rule(
     attrs = {
         "models": attr.label_list(default = [], allow_files = True),
         "namespace": attr.string(default = ""),
+        "registration_header": attr.string(default = ""),
         "output": attr.output(),
         "_generate_op_registrations": attr.label(
             executable = True,
@@ -436,13 +438,14 @@ gen_selected_ops_rule = rule(
     },
 )
 
-def gen_selected_ops(name, model, namespace = "", **kwargs):
+def gen_selected_ops(name, model, namespace = "", registration_header = "", **kwargs):
     """Generate the source file that includes only used ops.
 
     Args:
       name: Prefix of the generated source file.
       model: TFLite models to interpret, expect a list in case of multiple models.
       namespace: Namespace in which to put RegisterSelectedOps.
+      registration_header: Optional facade header replacing the default includes.
       **kwargs: Additional kwargs to pass to genrule.
     """
 
@@ -454,6 +457,7 @@ def gen_selected_ops(name, model, namespace = "", **kwargs):
         name = name,
         models = model,
         namespace = namespace,
+        registration_header = registration_header,
         output = name + "_registration.cc",
         **kwargs
     )

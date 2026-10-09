@@ -30,11 +30,12 @@ const char kNamespace[] = "namespace";
 const char kOutputRegistrationFlag[] = "output_registration";
 const char kTfLitePathFlag[] = "tflite_path";
 const char kForMicro[] = "for_micro";
+const char kRegistrationHeader[] = "registration_header";
 
 void ParseFlagAndInit(int* argc, char** argv, std::string* input_models,
                       std::string* output_registration,
                       std::string* tflite_path, std::string* namespace_flag,
-                      bool* for_micro) {
+                      bool* for_micro, std::string* registration_header) {
   std::vector<tflite::Flag> flag_list = {
       tflite::Flag::CreateFlag(kInputModelFlag, input_models,
                                "path to the tflite models, separated by comma"),
@@ -42,6 +43,8 @@ void ParseFlagAndInit(int* argc, char** argv, std::string* input_models,
                                "filename for generated registration code"),
       tflite::Flag::CreateFlag(kTfLitePathFlag, tflite_path,
                                "Path to tensorflow lite dir"),
+      tflite::Flag::CreateFlag(kRegistrationHeader, registration_header,
+                               "Optional facade header for registration types"),
       tflite::Flag::CreateFlag(
           kNamespace, namespace_flag,
           "Namespace in which to put RegisterSelectedOps."),
@@ -61,10 +64,13 @@ void GenerateFileContent(const std::string& tflite_path,
                          const std::string& namespace_flag,
                          const tflite::RegisteredOpMap& builtin_ops,
                          const tflite::RegisteredOpMap& custom_ops,
-                         const bool for_micro) {
+                         const bool for_micro,
+                         const std::string& registration_header) {
   std::ofstream fout(filename);
 
-  if (for_micro) {
+  if (!registration_header.empty()) {
+    fout << "#include \"" << registration_header << "\"\n";
+  } else if (for_micro) {
     if (!builtin_ops.empty()) {
       fout << "#include \"" << tflite_path << "/micro/kernels/micro_ops.h\"\n";
     }
@@ -154,9 +160,11 @@ int main(int argc, char** argv) {
   std::string output_registration;
   std::string tflite_path;
   std::string namespace_flag;
+  std::string registration_header;
   bool for_micro = false;
   ParseFlagAndInit(&argc, argv, &input_models, &output_registration,
-                   &tflite_path, &namespace_flag, &for_micro);
+                   &tflite_path, &namespace_flag, &for_micro,
+                   &registration_header);
 
   tflite::RegisteredOpMap builtin_ops;
   tflite::RegisteredOpMap custom_ops;
@@ -171,6 +179,6 @@ int main(int argc, char** argv) {
   }
 
   GenerateFileContent(tflite_path, output_registration, namespace_flag,
-                      builtin_ops, custom_ops, for_micro);
+                      builtin_ops, custom_ops, for_micro, registration_header);
   return 0;
 }
