@@ -3918,10 +3918,16 @@ absl::Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
     }
     Shape induction_var_shape =
         ShapeUtil::GetSubshape(while_hlo->shape(), visitor_shape_index_);
-    int64_t trip_count = parsed_while_loop->static_while_loop->trip_count;
-    ABSL_ASSIGN_OR_RETURN(
-        Literal induction_var_val,
-        CreateScalarLiteral(trip_count, induction_var_shape.element_type()));
+    int64_t induction_var_value = static_cast<int64_t>(
+        static_cast<uint64_t>(
+            parsed_while_loop->static_while_loop->induction_var_init_value) +
+        static_cast<uint64_t>(
+            parsed_while_loop->static_while_loop->trip_count) *
+            static_cast<uint64_t>(
+                parsed_while_loop->static_while_loop->step_size));
+    ABSL_ASSIGN_OR_RETURN(Literal induction_var_val,
+                     CreateScalarLiteral(induction_var_value,
+                                         induction_var_shape.element_type()));
     ABSL_RETURN_IF_ERROR(literal.CopyFrom(induction_var_val,
                                      /*dest_shape_index=*/visitor_shape_index_,
                                      /*src_shape_index=*/{}));
