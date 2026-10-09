@@ -28,7 +28,7 @@ using errors::InvalidArgument;
 // Where double_multiplier >= 0 and TFLITE_EMULATE_FLOAT is not defined.
 absl::Status QuantizeMultiplier(double double_multiplier,
                                 int32_t& quantized_multiplier, int32_t& shift) {
-  if (!isfinite(double_multiplier) || double_multiplier <= 0) {
+  if (!std::isfinite(double_multiplier) || double_multiplier <= 0) {
     return absl::InvalidArgumentError(absl::StrCat(
         "double_multiplier must be a poisitive finite number. Given ",
         double_multiplier));
