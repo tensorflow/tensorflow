@@ -157,6 +157,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
     expected_std = np.std(x_np.astype(np.float64))
 
     std = self.evaluate(math_ops.reduce_std(x_f16))
+    self.assertEqual(std.dtype, np.float16)
     self.assertTrue(np.isfinite(std), f"Expected a finite result, got {std}")
     self.assertAllClose(std, expected_std, rtol=0.02)
 
@@ -164,7 +165,30 @@ class ReduceTest(test_util.TensorFlowTestCase):
     # unlike the standard deviation, it should consistently overflow to Inf
     # rather than landing on NaN on some platforms.
     variance = self.evaluate(math_ops.reduce_variance(x_f16))
+    self.assertEqual(variance.dtype, np.float16)
     self.assertTrue(np.isposinf(variance), f"Expected Inf, got {variance}")
+
+  def testReduceStdFloat16ModerateMagnitude(self):
+    # Companion to testReduceStdFloat16LargeMagnitude: covers the path where
+    # neither the squared deviations nor the variance overflow float16, so
+    # the float32-promoted computation should still closely match a float64
+    # reference, same as before the promotion was added.
+    rs = np.random.RandomState(0)
+    x_np = rs.randn(1000).astype(np.float32)
+    x_f16 = constant_op.constant(x_np.astype(np.float16))
+    expected_std = np.std(x_np.astype(np.float64))
+    expected_variance = np.var(x_np.astype(np.float64))
+
+    std = self.evaluate(math_ops.reduce_std(x_f16))
+    variance = self.evaluate(math_ops.reduce_variance(x_f16))
+    self.assertEqual(std.dtype, np.float16)
+    self.assertEqual(variance.dtype, np.float16)
+    self.assertTrue(np.isfinite(std), f"Expected a finite result, got {std}")
+    self.assertTrue(
+        np.isfinite(variance), f"Expected a finite result, got {variance}"
+    )
+    self.assertAllClose(std, expected_std, rtol=0.05)
+    self.assertAllClose(variance, expected_variance, rtol=0.05)
 
   def testReduceStdComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
