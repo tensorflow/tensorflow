@@ -54,8 +54,6 @@ namespace xla {
   V(kAddDependency, "add-dependency", 2)                                       \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                              \
   V(kAllGather, "all-gather", kHloOpcodeIsVariadic)                            \
-  V(kAllGatherDone, "all-gather-done", 1)                                      \
-  V(kAllGatherStart, "all-gather-start", kHloOpcodeIsVariadic)                 \
   V(kAllReduce, "all-reduce", kHloOpcodeIsVariadic)                            \
   V(kAllReduceDone, "all-reduce-done", 1)                                      \
   V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
