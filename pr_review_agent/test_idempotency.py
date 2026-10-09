@@ -1740,6 +1740,235 @@ class TestSecurityHardening(unittest.TestCase):
         self.assertIn(2, group_ids)
         self.assertIn(3, group_ids)
 
+    @patch("agent.utils.requests.get")
+    def test_engineer_review_centralized_get_request_pagination_and_idempotency(
+        self, mock_http_get
+    ):
+        """Finding 1: get_request follows pagination links for list responses and preserves idempotency across >100 reviews."""
+        reviews_url = "https://api.github.com/repos/tensorflow/tensorflow/pulls/128063/reviews"
+        commit_sha = "45e821c3df6e49c0ac3db3c06c62ff3f6469ce7e"
+        marker = utils.format_commit_review_marker(commit_sha)
+
+        # 1. Multi-page response where existing agent review is on page 2
+        page1 = MagicMock()
+        page1.status_code = 200
+        page1.links = {}
+        page1.headers = {
+            "Link": (
+                '<https://api.github.com/repositories/45717250/pulls/128063/reviews?per_page=100&page=2>; rel="next", '
+                '<https://api.github.com/repositories/45717250/pulls/128063/reviews?per_page=100&page=2>; rel="last"'
+            )
+        }
+        page1.json.return_value = [
+            {
+                "id": i,
+                "user": {"login": f"reviewer-{i}"},
+                "commit_id": commit_sha,
+                "body": "Human review comment",
+            }
+            for i in range(1, 101)
+        ]
+
+        page2 = MagicMock()
+        page2.status_code = 200
+        page2.links = {}
+        page2.headers = {}
+        page2.json.return_value = [
+            {
+                "id": 101,
+                "user": {"login": "github-actions[bot]"},
+                "commit_id": commit_sha,
+                "body": f"### Summary\nAutomated review.{marker}",
+            }
+        ]
+
+        mock_http_get.side_effect = [page1, page2]
+        self.assertTrue(
+            utils.has_agent_reviewed_commit(reviews_url, commit_sha)
+        )
+        self.assertEqual(mock_http_get.call_count, 2)
+        self.assertEqual(mock_http_get.call_args_list[0].args[0], reviews_url)
+        self.assertEqual(
+            mock_http_get.call_args_list[0].kwargs.get("params"),
+            {"per_page": 100},
+        )
+        self.assertEqual(
+            mock_http_get.call_args_list[0].kwargs.get("timeout"), 60
+        )
+        self.assertEqual(
+            mock_http_get.call_args_list[1].args[0],
+            "https://api.github.com/repositories/45717250/pulls/128063/reviews?per_page=100&page=2",
+        )
+        self.assertIsNone(mock_http_get.call_args_list[1].kwargs.get("params"))
+
+        # 2. Single-page list response with no Link header and 401 auth fallback
+        mock_http_get.reset_mock()
+        unauth_resp = MagicMock()
+        unauth_resp.status_code = 401
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.links = {}
+        ok_resp.headers = {}
+        ok_resp.json.return_value = [{"filename": "tensorflow/python/foo.py"}]
+        mock_http_get.side_effect = [unauth_resp, ok_resp]
+
+        single_page_res = utils.get_request(
+            "https://api.github.com/repos/tensorflow/tensorflow/pulls/128063/files",
+            params={"per_page": 100},
+        )
+        self.assertEqual(
+            single_page_res, [{"filename": "tensorflow/python/foo.py"}]
+        )
+        self.assertEqual(mock_http_get.call_count, 2)
+        self.assertNotIn(
+            "Authorization", mock_http_get.call_args_list[1].kwargs["headers"]
+        )
+
+        # 3. Non-list JSON response (dict) returned unchanged even if Link header is present
+        mock_http_get.reset_mock()
+        dict_resp = MagicMock()
+        dict_resp.status_code = 200
+        dict_resp.headers = {
+            "Link": '<https://api.github.com/repos/tensorflow/tensorflow/pulls/128063?page=2>; rel="next"'
+        }
+        dict_resp.json.return_value = {"id": 128063, "state": "open"}
+        mock_http_get.side_effect = [dict_resp]
+
+        dict_data = utils.get_request(
+            "https://api.github.com/repos/tensorflow/tensorflow/pulls/128063"
+        )
+        self.assertEqual(dict_data, {"id": 128063, "state": "open"})
+        mock_http_get.assert_called_once()
+
+        # 4. Malformed / untrusted Link headers and pagination loop protection
+        mock_http_get.reset_mock()
+        loop_page1 = MagicMock()
+        loop_page1.status_code = 200
+        loop_page1.links = {}
+        loop_page1.headers = {
+            "Link": f'<{reviews_url}>; rel="next"'
+        }
+        loop_page1.json.return_value = [{"id": 1}]
+        mock_http_get.side_effect = [loop_page1]
+
+        loop_res = utils.get_request(reviews_url)
+        self.assertEqual(loop_res, [{"id": 1}])
+        mock_http_get.assert_called_once()
+
+        mock_http_get.reset_mock()
+        bad_link_page = MagicMock()
+        bad_link_page.status_code = 200
+        bad_link_page.links = {}
+        bad_link_page.headers = {
+            "Link": '<https://evil.example.com/reviews?page=2>; rel="next"'
+        }
+        bad_link_page.json.return_value = [{"id": 2}]
+        mock_http_get.side_effect = [bad_link_page]
+
+        bad_link_res = utils.get_request(reviews_url)
+        self.assertEqual(bad_link_res, [{"id": 2}])
+        mock_http_get.assert_called_once()
+
+        # 5. API / HTTP error on later page raises RequestException in get_request and is handled safely by has_agent_reviewed_commit
+        mock_http_get.reset_mock()
+        err_page2 = MagicMock()
+        err_page2.status_code = 500
+        err_page2.raise_for_status.side_effect = (
+            requests.exceptions.HTTPError("500 Server Error")
+        )
+        mock_http_get.side_effect = [page1, err_page2]
+        with self.assertRaisesRegex(
+            requests.exceptions.HTTPError, r"500 Server Error"
+        ):
+            utils.get_request(reviews_url, params={"per_page": 100})
+
+        mock_http_get.reset_mock()
+        mock_http_get.side_effect = [page1, err_page2]
+        self.assertFalse(
+            utils.has_agent_reviewed_commit(reviews_url, commit_sha)
+        )
+
+    @patch("agent.utils._fetch_file_content_at_commit")
+    @patch("agent.utils.subprocess.run")
+    def test_engineer_review_pylint_diagnostic_truncation_line_boundaries(
+        self, mock_subproc_run, mock_fetch_content
+    ):
+        """Finding 2: Pylint diagnostic truncation respects the 5,000-char limit and cuts only on complete line boundaries."""
+        mock_fetch_content.return_value = "x = 1\n"
+        files = [{"path": "tensorflow/python/foo.py", "changeType": "MODIFIED"}]
+        raw_diff = (
+            "--- a/tensorflow/python/foo.py\n"
+            "+++ b/tensorflow/python/foo.py\n"
+            "@@ -1,0 +1,50 @@\n"
+            + "".join(f"+x_{i} = {i}\n" for i in range(1, 51))
+        )
+
+        # 1. Output below the 5,000-character limit -> preserved unchanged
+        short_diags = [
+            f"tensorflow/python/foo.py:{i}:0: W0311 (bad-indentation): Bad indentation"
+            for i in range(1, 6)
+        ]
+        mock_proc = MagicMock(returncode=4, stdout="\n".join(short_diags) + "\n")
+        mock_subproc_run.return_value = mock_proc
+        out_short = utils.run_pylint_on_changed_files(
+            files, raw_diff=raw_diff, head_sha="deadbeef"
+        )
+        self.assertEqual(out_short, "\n".join(short_diags))
+
+        # 2. Output exceeding the 5,000-character limit -> cut at the last newline within 5,000 chars
+        many_diags = [
+            f"tensorflow/python/foo.py:{i}:0: C0301 (line-too-long): Line too long ({120 + i}/80) "
+            + ("x" * 60)
+            for i in range(1, 51)
+        ]
+        full_joined = "\n".join(many_diags)
+        self.assertGreater(len(full_joined), 5000)
+        mock_proc.stdout = full_joined + "\n"
+        out_exceeding = utils.run_pylint_on_changed_files(
+            files, raw_diff=raw_diff, head_sha="deadbeef"
+        )
+        self.assertLessEqual(len(out_exceeding), 5000)
+        self.assertGreater(len(out_exceeding), 0)
+        out_lines = out_exceeding.split("\n")
+        self.assertEqual(out_lines, many_diags[: len(out_lines)])
+        # Adding the next diagnostic line would exceed 5,000 characters
+        self.assertGreater(
+            len(out_exceeding) + 1 + len(many_diags[len(out_lines)]), 5000
+        )
+
+        # 3. Newline near / right at the 5,000-character boundary (newline at index 4999 and at index 5000)
+        prefix_4999 = "tensorflow/python/foo.py:1:0: C0301 (line-too-long): "
+        line_4999 = prefix_4999 + ("a" * (4999 - len(prefix_4999)))
+        self.assertEqual(len(line_4999), 4999)
+        line2 = "tensorflow/python/foo.py:2:0: W0311 (bad-indentation): Bad indentation"
+        mock_proc.stdout = f"{line_4999}\n{line2}\n"
+        out_boundary_4999 = utils.run_pylint_on_changed_files(
+            files, raw_diff=raw_diff, head_sha="deadbeef"
+        )
+        self.assertEqual(out_boundary_4999, line_4999)
+
+        prefix_5000 = "tensorflow/python/foo.py:1:0: C0301 (line-too-long): "
+        line_5000 = prefix_5000 + ("b" * (5000 - len(prefix_5000)))
+        self.assertEqual(len(line_5000), 5000)
+        mock_proc.stdout = f"{line_5000}\n{line2}\n"
+        out_boundary_5000 = utils.run_pylint_on_changed_files(
+            files, raw_diff=raw_diff, head_sha="deadbeef"
+        )
+        self.assertEqual(out_boundary_5000, line_5000)
+
+        # 4. Single long line with no newline within the 5,000-character limit -> does not return partial diagnostic line
+        long_single_line = (
+            "tensorflow/python/foo.py:1:0: C0301 (line-too-long): "
+            + ("z" * 5200)
+        )
+        self.assertGreater(len(long_single_line), 5000)
+        mock_proc.stdout = long_single_line + "\n"
+        out_no_newline = utils.run_pylint_on_changed_files(
+            files, raw_diff=raw_diff, head_sha="deadbeef"
+        )
+        self.assertEqual(out_no_newline, "")
+        self.assertLessEqual(len(out_no_newline), 5000)
+
 
 if __name__ == "__main__":
     unittest.main()

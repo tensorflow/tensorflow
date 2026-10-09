@@ -60,25 +60,66 @@ def run_graphql_query(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     return response.json()
 
 
+def get_next_page_url(response: Any) -> str | None:
+    """Extracts the next pagination URL from a GitHub API response if present."""
+    links = getattr(response, "links", None)
+    if isinstance(links, dict):
+        next_entry = links.get("next")
+        if isinstance(next_entry, dict):
+            candidate = next_entry.get("url")
+            if isinstance(candidate, str) and candidate.startswith(GITHUB_BASE_URL):
+                return candidate
+
+    resp_headers = getattr(response, "headers", None)
+    if resp_headers is not None and hasattr(resp_headers, "get"):
+        link_header = resp_headers.get("Link") or resp_headers.get("link")
+        if isinstance(link_header, str):
+            m = re.search(r'<([^>]+)>;\s*rel="next"', link_header)
+            if m and m.group(1).startswith(GITHUB_BASE_URL):
+                return m.group(1)
+    return None
+
+
 def get_request(
     url: str,
     params: dict[str, Any] | None = None,
 ) -> Any:
-    """Executes a GitHub GET request."""
+    """Executes a GitHub GET request, following pagination links if the response is a list."""
     if params is None:
         params = {}
 
-    response = requests.get(
-        url,
-        headers=headers,
-        params=params,
-        timeout=60,
-    )
-    if response.status_code == 401:
-        unauth_headers = {"Accept": "application/vnd.github.v3+json"}
-        response = requests.get(url, headers=unauth_headers, params=params, timeout=60)
-    response.raise_for_status()
-    return response.json()
+    results: list[Any] = []
+    next_url: str | None = url
+    current_params: dict[str, Any] | None = params
+    visited_urls: set[str] = set()
+
+    while next_url and next_url not in visited_urls:
+        visited_urls.add(next_url)
+        response = requests.get(
+            next_url,
+            headers=headers,
+            params=current_params,
+            timeout=60,
+        )
+        if response.status_code == 401:
+            unauth_headers = {"Accept": "application/vnd.github.v3+json"}
+            response = requests.get(
+                next_url,
+                headers=unauth_headers,
+                params=current_params,
+                timeout=60,
+            )
+        response.raise_for_status()
+
+        data = response.json()
+        if not isinstance(data, list):
+            return data if len(visited_urls) == 1 else results
+
+        results.extend(data)
+        next_url = get_next_page_url(response)
+        current_params = None
+
+    return results
 
 
 def get_diff(url: str) -> str:
@@ -596,7 +637,16 @@ def run_pylint_on_changed_files(
             if not retained:
                 return "No Pylint issues detected on modified lines."
 
-            return "\n".join(retained[:50])[:5000]
+            output = "\n".join(retained[:50])
+            if len(output) <= 5000:
+                return output
+            if output[5000] == "\n":
+                return output[:5000]
+            truncated = output[:5000]
+            last_newline = truncated.rfind("\n")
+            if last_newline != -1:
+                return truncated[:last_newline]
+            return ""
 
     except subprocess.TimeoutExpired:
         print("Warning: Pylint execution timed out after 120 seconds.")

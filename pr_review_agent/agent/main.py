@@ -28,6 +28,7 @@ from agent import settings as settings_mod
 from agent.settings import OWNER, REPO, PULL_REQUEST_NUMBER, PR_HEAD_SHA, GITHUB_BASE_URL
 from agent.utils import (
     call_agent_async,
+    get_next_page_url,
     has_agent_reviewed_commit,
     parse_number_string,
     run_pylint_on_changed_files,
@@ -100,22 +101,7 @@ def is_fallback_eligible_error(err: Exception) -> bool:
 
 def _get_next_reaction_page_url(response) -> str | None:
     """Extracts the next pagination URL from a GitHub reactions response if present."""
-    links = getattr(response, "links", None)
-    if isinstance(links, dict):
-        next_entry = links.get("next")
-        if isinstance(next_entry, dict):
-            candidate = next_entry.get("url")
-            if isinstance(candidate, str) and candidate.startswith(GITHUB_BASE_URL):
-                return candidate
-
-    resp_headers = getattr(response, "headers", None)
-    if isinstance(resp_headers, dict):
-        link_header = resp_headers.get("Link") or resp_headers.get("link")
-        if isinstance(link_header, str):
-            m = re.search(r'<([^>]+)>;\s*rel="next"', link_header)
-            if m and m.group(1).startswith(GITHUB_BASE_URL):
-                return m.group(1)
-    return None
+    return get_next_page_url(response)
 
 
 def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
