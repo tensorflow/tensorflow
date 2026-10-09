@@ -1350,11 +1350,29 @@ class ArrayMethodsTest(test.TestCase):
 
   def testPadBroadcastPadWidth(self):
     t = np.arange(12).reshape(3, 4)
-    for pad_width in [1, [1], [1, 2], [[1, 2]]]:
+    for pad_width in [1, [1], [1, 2], [[1, 2]], [[1, 2], [2, 1]]]:
       for mode in ['constant', 'reflect', 'symmetric']:
         self.assertAllEqual(
             np_array_ops.pad(t, pad_width, mode),
             np.pad(t, pad_width, mode))
+
+  def testPadBroadcastPadWidthEdgeCases(self):
+    self.assertAllEqual(
+        np_array_ops.pad(5, 1, 'constant'), np.pad(5, 1, 'constant'))
+    t = np.arange(6)
+    self.assertAllEqual(
+        np_array_ops.pad(t, [1, 2], 'reflect'), np.pad(t, [1, 2], 'reflect'))
+    empty = np.zeros((0, 3))
+    self.assertAllEqual(
+        np_array_ops.pad(empty, 1, 'constant'), np.pad(empty, 1, 'constant'))
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      np_array_ops.pad(np.arange(12).reshape(3, 4), [1, 2, 3], 'constant')
+
+  def testPadBroadcastPadWidthStaticShape(self):
+    pad = def_function.function(
+        lambda x: np_array_ops.pad(x, 2, 'constant'),
+        input_signature=[tensor_spec.TensorSpec([3, 4], dtypes.float32)])
+    self.assertEqual(pad.get_concrete_function().output_shapes, [7, 8])
 
   def testPadBroadcastPadWidthUnknownShape(self):
     t = np.arange(12, dtype=np.float32).reshape(3, 4)
