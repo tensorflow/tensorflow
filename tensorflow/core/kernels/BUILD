@@ -1354,7 +1354,6 @@ tf_kernel_library(
     ]) + [
         ":gpu_prim_hdrs",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
     ] + ARRAY_DEPS,
 )
 

@@ -22,7 +22,6 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -265,27 +264,54 @@ class WhereOpTest(test.TestCase):
     self.assertAllEqual(tf_val, np_val)
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.disable_xla("Tests the TF GPU Where kernel element-count guard")
-  def testGpuRejectsInt32MaxElements(self):
-    # The GPU kernel passes the element count to CUB as an int. Past INT32_MAX
-    # elements the count truncated and the op returned uninitialized memory.
+  @test_util.disable_xla(
+      "Tests the TF GPU Where kernel with INT32_MAX or more elements"
+  )
+  def testGpuAcceptsInt32MaxElements(self):
     if not test_util.is_gpu_available():
       self.skipTest("Requires a GPU.")
     for shape in ([2**31 - 1], [2**16, 2**15]):
       with self.subTest(shape=shape), test_util.device(use_gpu=True):
         x = array_ops.zeros(shape, dtype=dtypes.bool)
-        with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    "fewer than 2147483647 input elements"):
-          self.evaluate(array_ops.where(x))
+        self.assertAllEqual(
+            self.evaluate(array_ops.where(x)).shape, [0, len(shape)]
+        )
         del x
 
+  def _boolWithTrueAt(self, n, positions):
+    # Builds a flat bool tensor of n elements on the current device, True only
+    # at the sorted flat positions.
+    pieces = []
+    prev = 0
+    for p in positions:
+      if p > prev:
+        pieces.append(array_ops.zeros([p - prev], dtype=dtypes.bool))
+      pieces.append(array_ops.ones([1], dtype=dtypes.bool))
+      prev = p + 1
+    if n > prev:
+      pieces.append(array_ops.zeros([n - prev], dtype=dtypes.bool))
+    return array_ops.concat(pieces, 0)
+
   @test_util.run_in_graph_and_eager_modes
-  def testGpuAcceptsInputBelowInt32MaxElements(self):
+  @test_util.disable_xla(
+      "Tests the TF GPU Where kernel with INT32_MAX or more elements"
+  )
+  def testGpuWhereIndicesPastInt32Max(self):
+    # An all-False input has no true elements to select, so it cannot show a
+    # truncated count. This input has true elements at flat indices above
+    # INT32_MAX.
     if not test_util.is_gpu_available():
       self.skipTest("Requires a GPU.")
-    with test_util.device(use_gpu=True):
-      x = array_ops.zeros([2**31 - 2], dtype=dtypes.bool)
-      self.assertAllEqual(self.evaluate(array_ops.where(x)).shape, [0, 1])
+    for shape in ([2**31 - 1], [2**31 + 2**16], [2**16, 2**15 + 1]):
+      n = int(np.prod(shape))
+      positions = sorted(
+          {p for p in (0, 12345, n // 2, 2**31 - 1, 2**31, n - 1) if p < n}
+      )
+      expected = np.array(np.unravel_index(positions, shape)).T.astype(np.int64)
+      with self.subTest(shape=shape), test_util.device(use_gpu=True):
+        x = array_ops.reshape(self._boolWithTrueAt(n, positions), shape)
+        self.assertAllEqual(self.evaluate(array_ops.where(x)), expected)
+        del x
 
 
 class WhereBenchmark(test.Benchmark):

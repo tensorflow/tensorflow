@@ -23,12 +23,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/where_op.h"
 
-#include <limits>
 #include <memory>
 #include <numeric>
-
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -39,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -262,16 +258,6 @@ class WhereGPUOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     const Tensor& input = context->input(0);
     const int input_dims = input.dims();
-
-    // The CUB count and select calls take an int item count. Larger inputs
-    // truncate it, and the select then leaves the output unwritten.
-    OP_REQUIRES_ASYNC(context,
-                      input.NumElements() < std::numeric_limits<int32_t>::max(),
-                      absl::InvalidArgumentError(absl::StrCat(
-                          "WhereOp: the GPU kernel supports fewer than ",
-                          std::numeric_limits<int32_t>::max(),
-                          " input elements, got ", input.NumElements(), ".")),
-                      done);
 
     if (input.NumElements() < std::numeric_limits<int32_t>::max()) {
       ComputeAsyncType<int32_t>(input, input_dims, context, done);
