@@ -8392,22 +8392,39 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   //   ds(x, clamp(0, id, inner_size - outer_size) +
   //         clamp(0, inner_id, operand_size - inner_size))
   if (operand->opcode() == HloOpcode::kDynamicSlice) {
+    const int64_t first_index = Cast<HloDynamicSliceInstruction>(dynamic_slice)
+                                    ->first_index_operand_number();
+    for (int64_t i = first_index; i < dynamic_slice->operand_count(); ++i) {
+      int64_t operand_size =
+          operand->operand(0)->shape().dimensions(i - first_index);
+      if (!primitive_util::FitsInIntegralType(
+              operand_size - operand->dynamic_slice_sizes()[i - first_index],
+              operand->operand(i)->shape().element_type()) ||
+          !primitive_util::FitsInIntegralType(
+              operand_size -
+                  dynamic_slice->dynamic_slice_sizes()[i - first_index],
+              dynamic_slice->operand(i)->shape().element_type())) {
+        return absl::OkStatus();
+      }
+    }
     ABSL_RETURN_IF_ERROR(dynamic_slice->ReplaceOperandWithDifferentShape(
         0, operand->mutable_operand(0)));
-    for (int64_t i = 1; i < dynamic_slice->operand_count(); ++i) {
+    for (int64_t i = first_index; i < dynamic_slice->operand_count(); ++i) {
       HloInstruction* index = dynamic_slice->mutable_operand(i);
       index = index->AddInstruction(HloInstruction::CreateTernary(
           index->shape(), HloOpcode::kClamp, MakeScalarLike(index, 0), index,
-          MakeScalarLike(index,
-                         operand->dynamic_slice_sizes()[i - 1] -
-                             dynamic_slice->dynamic_slice_sizes()[i - 1])));
+          MakeScalarLike(
+              index,
+              operand->dynamic_slice_sizes()[i - first_index] -
+                  dynamic_slice->dynamic_slice_sizes()[i - first_index])));
       HloInstruction* inner_index = operand->mutable_operand(i);
       inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
           inner_index->shape(), HloOpcode::kClamp,
           MakeScalarLike(inner_index, 0), inner_index,
-          MakeScalarLike(inner_index,
-                         operand->operand(0)->shape().dimensions(i - 1) -
-                             operand->dynamic_slice_sizes()[i - 1])));
+          MakeScalarLike(
+              inner_index,
+              operand->operand(0)->shape().dimensions(i - first_index) -
+                  operand->dynamic_slice_sizes()[i - first_index])));
       if (inner_index->shape().element_type() !=
           index->shape().element_type()) {
         inner_index = inner_index->AddInstruction(
