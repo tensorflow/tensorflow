@@ -38,7 +38,7 @@ compatible `operator()` signature. Constructed handler decodes XLA FFI call
 frame (defined by the stable C API), type check all parameters, and forward
 decoded results to the user-defined callback.
 
-XLA FFI binding heavily relies on template metaprogramming to be be able to
+XLA FFI binding heavily relies on template metaprogramming to be able to
 compile constructed handler to the most efficient machine code. Run time
 overheads are in order of a couple of nanoseconds for each custom call
 parameter.
