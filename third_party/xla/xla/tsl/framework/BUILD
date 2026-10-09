@@ -256,6 +256,7 @@ tsl_cc_test(
         ":allocator",
         ":bfc_allocator",
         ":scoped_allocation_trace",
+        ":shared_counter",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
@@ -264,6 +265,7 @@ tsl_cc_test(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/synchronization",
     ],
