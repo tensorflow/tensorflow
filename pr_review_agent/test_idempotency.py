@@ -1869,7 +1869,7 @@ class TestSecurityHardening(unittest.TestCase):
         self.assertEqual(bad_link_res, [{"id": 2}])
         mock_http_get.assert_called_once()
 
-        # 5. API / HTTP error on later page raises RequestException in get_request and is handled safely by has_agent_reviewed_commit
+        # 5. API / HTTP error on later page raises RequestException in get_request and returns None from has_agent_reviewed_commit
         mock_http_get.reset_mock()
         err_page2 = MagicMock()
         err_page2.status_code = 500
@@ -1884,7 +1884,7 @@ class TestSecurityHardening(unittest.TestCase):
 
         mock_http_get.reset_mock()
         mock_http_get.side_effect = [page1, err_page2]
-        self.assertFalse(
+        self.assertIsNone(
             utils.has_agent_reviewed_commit(reviews_url, commit_sha)
         )
 
@@ -1892,7 +1892,7 @@ class TestSecurityHardening(unittest.TestCase):
     def test_engineer_review_get_request_later_page_non_list_raises_error(
         self, mock_http_get
     ):
-        """Later paginated page returning non-list JSON raises RequestException instead of returning partial results."""
+        """Later paginated page returning non-list JSON raises RequestException and returns None from has_agent_reviewed_commit."""
         reviews_url = "https://api.github.com/repos/tensorflow/tensorflow/pulls/128063/reviews"
         commit_sha = "45e821c3df6e49c0ac3db3c06c62ff3f6469ce7e"
         marker = utils.format_commit_review_marker(commit_sha)
@@ -1946,12 +1946,11 @@ class TestSecurityHardening(unittest.TestCase):
             utils.get_request(reviews_url, params={"per_page": 100})
 
         # 2. When page 1 has no match and page 2 is non-list, has_agent_reviewed_commit
-        # explicitly catches RequestException and logs a warning instead of silently
-        # iterating over partial results.
+        # returns None (unable to verify) rather than False (confirmed not reviewed).
         mock_http_get.reset_mock()
         mock_http_get.side_effect = [page1_without_match, non_list_page2]
         with patch("builtins.print") as mock_print:
-            self.assertFalse(
+            self.assertIsNone(
                 utils.has_agent_reviewed_commit(reviews_url, commit_sha)
             )
             mock_print.assert_called_once()
@@ -1960,12 +1959,13 @@ class TestSecurityHardening(unittest.TestCase):
                 mock_print.call_args.args[0],
             )
 
-        # 3. Even if page 1 contained a matching review, an incomplete paginated history
-        # must fail explicitly and not pass has_agent_reviewed_commit.
+        # 3. When page 1 already contains a matching review and page 2 is non-list,
+        # has_agent_reviewed_commit also returns None (unable to verify) so the caller
+        # will not treat it as confirmed negative (False) and post a duplicate review.
         mock_http_get.reset_mock()
         mock_http_get.side_effect = [page1_with_match, non_list_page2]
         with patch("builtins.print") as mock_print:
-            self.assertFalse(
+            self.assertIsNone(
                 utils.has_agent_reviewed_commit(reviews_url, commit_sha)
             )
             mock_print.assert_called_once()
@@ -1973,6 +1973,141 @@ class TestSecurityHardening(unittest.TestCase):
                 "Warning: Failed to check PR reviews for commit",
                 mock_print.call_args.args[0],
             )
+
+    @patch("agent.main.clear_and_set_reaction")
+    @patch("agent.main.run_pylint_on_changed_files")
+    @patch("agent.agent.get_pull_request_details")
+    @patch("agent.agent.run_pr_review", new_callable=AsyncMock)
+    @patch("agent.utils.requests.get")
+    def test_engineer_review_caller_distinguishes_unreviewed_from_verification_failure(
+        self,
+        mock_http_get,
+        mock_run_pr_review,
+        mock_get_details,
+        mock_run_pylint,
+        mock_react,
+    ):
+        """main() proceeds on confirmed not reviewed (False) but skips review and reports error on verification failure (None)."""
+        sha = "45e821c3df6e49c0ac3db3c06c62ff3f6469ce7e"
+        marker = utils.format_commit_review_marker(sha)
+        mock_get_details.return_value = {
+            "status": "success",
+            "pull_request": {
+                "headRefOid": sha,
+                "title": "Fix bug",
+                "body": "Body",
+                "diff": "@@ -1,1 +1,1 @@\n+x = 1",
+                "files": {
+                    "nodes": [
+                        {
+                            "path": "tensorflow/python/foo.py",
+                            "changeType": "MODIFIED",
+                        }
+                    ]
+                },
+            },
+        }
+        mock_run_pylint.return_value = "No Pylint issues detected on modified lines."
+        mock_run_pr_review.return_value = "Review submitted successfully"
+
+        page1_with_match = MagicMock()
+        page1_with_match.status_code = 200
+        page1_with_match.links = {}
+        page1_with_match.headers = {
+            "Link": (
+                '<https://api.github.com/repositories/45717250/pulls/12345/reviews?per_page=100&page=2>; rel="next"'
+            )
+        }
+        page1_with_match.json.return_value = [
+            {
+                "id": 1,
+                "user": {"login": "github-actions[bot]"},
+                "commit_id": sha,
+                "body": f"### Summary\nAutomated review.{marker}",
+            }
+        ]
+
+        non_list_page2 = MagicMock()
+        non_list_page2.status_code = 200
+        non_list_page2.links = {}
+        non_list_page2.headers = {}
+        non_list_page2.json.return_value = {"message": "Malformed page 2"}
+
+        # Case 1: Pagination/API failure (page 1 has matching review, page 2 is non-list) ->
+        # has_agent_reviewed_commit returns None; main() reports verification failure and
+        # skips Pylint and LLM review without posting a duplicate review.
+        mock_http_get.side_effect = [page1_with_match, non_list_page2]
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            with patch("builtins.print") as mock_print:
+                asyncio.run(main.main())
+                printed_messages = "\n".join(
+                    str(call.args[0]) for call in mock_print.call_args_list if call.args
+                )
+                self.assertIn(
+                    f"Error: Unable to verify PR review history for commit {sha}. "
+                    f"Skipping review for this run.",
+                    printed_messages,
+                )
+
+        mock_run_pylint.assert_not_called()
+        mock_run_pr_review.assert_not_called()
+        mock_react.assert_called_once_with(12345, add_content="eyes")
+
+        # Case 2: Confirmed not reviewed (multi-page list with no matching review) ->
+        # has_agent_reviewed_commit returns False at startup, main() runs Pylint and
+        # run_pr_review, and then confirms review on post-check.
+        mock_http_get.reset_mock()
+        mock_run_pylint.reset_mock()
+        mock_run_pr_review.reset_mock()
+        mock_react.reset_mock()
+
+        page1_unreviewed = MagicMock()
+        page1_unreviewed.status_code = 200
+        page1_unreviewed.links = {}
+        page1_unreviewed.headers = {
+            "Link": (
+                '<https://api.github.com/repositories/45717250/pulls/12345/reviews?per_page=100&page=2>; rel="next"'
+            )
+        }
+        page1_unreviewed.json.return_value = [
+            {
+                "id": 10,
+                "user": {"login": "human-reviewer"},
+                "commit_id": sha,
+                "body": "Looks good",
+            }
+        ]
+
+        page2_unreviewed = MagicMock()
+        page2_unreviewed.status_code = 200
+        page2_unreviewed.links = {}
+        page2_unreviewed.headers = {}
+        page2_unreviewed.json.return_value = []
+
+        post_review_page = MagicMock()
+        post_review_page.status_code = 200
+        post_review_page.links = {}
+        post_review_page.headers = {}
+        post_review_page.json.return_value = [
+            {
+                "id": 11,
+                "user": {"login": "github-actions[bot]"},
+                "commit_id": sha,
+                "body": f"### Summary\nNew review.{marker}",
+            }
+        ]
+
+        mock_http_get.side_effect = [
+            page1_unreviewed,
+            page2_unreviewed,
+            post_review_page,
+        ]
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
+
+        mock_run_pylint.assert_called_once()
+        mock_run_pr_review.assert_called_once()
+        mock_react.assert_called_with(12345, add_content="rocket")
 
     @patch("agent.utils._fetch_file_content_at_commit")
     @patch("agent.utils.subprocess.run")

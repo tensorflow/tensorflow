@@ -212,7 +212,14 @@ async def main():
     reviews_url = (
         f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/pulls/{pr_number}/reviews"
     )
-    if has_agent_reviewed_commit(reviews_url, verified_head_sha):
+    review_status = has_agent_reviewed_commit(reviews_url, verified_head_sha)
+    if review_status is None:
+        print(
+            f"Error: Unable to verify PR review history for commit "
+            f"{verified_head_sha}. Skipping review for this run."
+        )
+        return
+    if review_status:
         print(
             f"Commit {verified_head_sha} has already been reviewed by TensorFlow "
             f"PR Review Agent. Skipping duplicate review."
@@ -257,9 +264,17 @@ async def main():
                 commit_sha=verified_head_sha
             )
             print(f"<<<< Agent Final Output: {response}\n")
-            if not has_agent_reviewed_commit(
+            post_review_status = has_agent_reviewed_commit(
                 reviews_url, verified_head_sha
-            ):
+            )
+            if post_review_status is None:
+                print(
+                    f"Error: Unable to verify PR review history for commit "
+                    f"{verified_head_sha} after running {model_name}. "
+                    f"Skipping further review attempts for this run."
+                )
+                return
+            if not post_review_status:
                 print(
                     f"⚠️ Review submission for commit {verified_head_sha} was not "
                     f"confirmed on GitHub with {model_name}. "
@@ -276,7 +291,17 @@ async def main():
             return 
 
         except (APIError, ClientError, ServerError) as e:
-            if has_agent_reviewed_commit(reviews_url, verified_head_sha):
+            recovery_status = has_agent_reviewed_commit(
+                reviews_url, verified_head_sha
+            )
+            if recovery_status is None:
+                print(
+                    f"Error: Unable to verify PR review history for commit "
+                    f"{verified_head_sha} after API error ({e}). "
+                    f"Skipping further review attempts for this run."
+                )
+                return
+            if recovery_status:
                 print(
                     f"Review for commit {verified_head_sha} was already submitted "
                     f"before API error. Completing successfully."

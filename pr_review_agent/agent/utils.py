@@ -192,16 +192,27 @@ def format_commit_review_marker(commit_sha: str) -> str:
     )
 
 
-def has_agent_reviewed_commit(reviews_url: str, commit_sha: str) -> bool:
-    """Checks PR reviews to see if this agent already reviewed commit_sha."""
+def has_agent_reviewed_commit(reviews_url: str, commit_sha: str) -> bool | None:
+    """Checks PR reviews to see if this agent already reviewed commit_sha.
+
+    Returns:
+        True if a matching agent review is found, False if confirmed not
+        reviewed, or None if the review history could not be verified.
+    """
     if not commit_sha:
         return False
     marker = f"<!-- tensorflow-pr-review-agent: commit_sha={commit_sha} -->"
     try:
         reviews = get_request(reviews_url, params={"per_page": 100})
         if not isinstance(reviews, list):
-            return False
+            print(
+                f"Warning: Unexpected non-list PR reviews response for commit "
+                f"{commit_sha}: {type(reviews).__name__}"
+            )
+            return None
         for review in reviews:
+            if not isinstance(review, dict):
+                continue
             author_login = (review.get("user") or {}).get("login") or ""
             body = review.get("body") or ""
             review_commit_id = review.get("commit_id") or ""
@@ -215,6 +226,7 @@ def has_agent_reviewed_commit(reviews_url: str, commit_sha: str) -> bool:
         print(
             f"Warning: Failed to check PR reviews for commit {commit_sha}: {e}"
         )
+        return None
     return False
 
 
