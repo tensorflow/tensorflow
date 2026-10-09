@@ -18,6 +18,7 @@ import functools
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -211,6 +212,10 @@ class RNNGradTest(test.TestCase):
     while the graph is built, so the check under test is the kernel's.
     """
     value = kwargs.pop(name)
+    if not context.executing_eagerly():
+      # In graph mode the function call is inlined and shape inference sees
+      # the argument's static shape, so hide it behind a placeholder as well.
+      value = array_ops.placeholder_with_default(value, shape=None)
 
     @def_function.function(
         autograph=False,
