@@ -732,6 +732,10 @@ class Conv3DTest(parameterized.TestCase, test.TestCase):
     # The 3-D backprop ops require at least 5 strides. Check that the oneDNN
     # eager path, which rewrites these ops on CPU, enforces that as well. Only
     # `strides` is invalid; the other arguments describe a valid 3-D conv.
+    # Note: only the eager half reaches the _MklNative ops, and only when
+    # oneDNN is enabled (e.g. TF_ENABLE_ONEDNN_OPTS=1). In graph mode, and in
+    # eager mode without oneDNN, the public op defs, which already require 5
+    # strides, reject the call first.
     x = constant_op.constant(np.zeros([1, 4, 4, 4, 3], np.float32))
     dy = constant_op.constant(np.zeros([1, 3, 3, 3, 5], np.float32))
     w = constant_op.constant(np.zeros([2, 2, 2, 3, 5], np.float32))
