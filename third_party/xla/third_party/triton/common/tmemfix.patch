@@ -3,7 +3,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/lib/Analysis/Utility.cpp
 +++ b/lib/Analysis/Utility.cpp
-@@ -1142,7 +1142,7 @@ bool supportMMA(triton::DotOp op, int version) {
+@@ -1046,7 +1046,7 @@ bool supportMMA(triton::DotOp op, int version) {
      if (k < 256 / aElemTy.getIntOrFloatBitWidth())
        return false;
      if (!(retShapePerCTA[rank - 2] % 64 == 0 &&
@@ -12,7 +12,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
        return false;
      if (aElemTy.isF64() || bElemTy.isF64() ||
          retType.getElementType().isF64()) {
-@@ -1167,7 +1167,7 @@ bool supportMMA(triton::DotOp op, int version) {
+@@ -1071,7 +1071,7 @@ bool supportMMA(triton::DotOp op, int version) {
      if (rank == 3)
        return false;
      if (!(numWarps % 4 == 0 && retShapePerCTA[rank - 2] % 64 == 0 &&
@@ -24,7 +24,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
-@@ -289,10 +289,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -294,10 +294,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
  
    auto nColsTile = tile.getOutDimSize(rowColDims[1]);
    auto nColsLL = ll.getInDimSize(rowColDims[1]);
@@ -36,7 +36,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    auto kReg = StringAttr::get(ctx, "register");
    auto kLane = StringAttr::get(ctx, "lane");
    auto kWarp = StringAttr::get(ctx, "warp");
-@@ -309,7 +306,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -314,7 +311,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
    // basis as that would disallow the resulting layout to be left-divisible by
    // the tile
    auto trivialBlock = LinearLayout::identity1D(1, kBlock, kBlock);
@@ -47,7 +47,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
                    .compose(ll)
                    .sublayout({kReg, kLane}, to_vector(ll.getOutDimNames()));
    if (instr32Rows) {
-@@ -317,7 +316,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -322,7 +321,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
      // basis
      comp = comp.resizeInDim(kLane, comp.getInDimSize(kLane) / 2);
    }
@@ -56,7 +56,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      return std::nullopt;
  
    // Fit the warp bases either tiling on the RHS or in row=16
-@@ -372,9 +371,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
+@@ -377,9 +376,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
    // Add CTAs as a trivial map
    auto nCTAs = ll.getInDimSize(kBlock);
    tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
@@ -68,7 +68,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    return ret;
  }
  
-@@ -397,6 +395,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
+@@ -402,6 +400,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
    auto *ctx = memType.getContext();
    auto layout = getDistributedLayoutForTmemLdSt(
        memType, TMemAccessAtom::I32x32b, numWarps);
@@ -87,12 +87,14 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    assert(layout);
    return LinearEncodingAttr::get(ctx, std::move(*layout));
  }
-@@ -470,6 +480,10 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
+@@ -475,6 +485,12 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
  bool isDistributedLayoutTMemCompatible(Operation *op,
                                         RankedTensorType tensorType,
                                         gpu::MemDescType memType) {
++  auto kReg = StringAttr::get(op->getContext(), "register");
 +  for (auto l : getTmemCompatibleLayouts(op, tensorType, memType)) {
-+    if (l == tensorType.getEncoding())
++    if (toLinearLayout(tensorType.getShape(), l).removeZeroBasesAlongDim(kReg) ==
++        toLinearLayout(tensorType).removeZeroBasesAlongDim(kReg))
 +      return true;
 +  }
    auto maxnreg = getContextualMaxNReg(op);
@@ -129,21 +131,21 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      if (failed(info))
        return failure();
      if (bestContig > 1) {
-@@ -305,8 +306,9 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
-   cvt = LinearLayout(std::move(bases), cvt.getOutDims(),
-                      /*isSurjective=*/cvt.isSurjective());
- 
+@@ -313,8 +314,9 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
+   auto layout = computeTMemLdStLayout(regTy, memTy, emitError);
+   if (failed(layout))
+     return failure();
 +  bool isScales = isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding());
    int bitwidth = memTy.getElementTypeBitWidth();
--  return lowerTMemLdSt(cvt, maxnreg, bitwidth, emitError);
-+  return lowerTMemLdSt(cvt, maxnreg, bitwidth, isScales, emitError);
+-  return lowerTMemLdSt(*layout, maxnreg, bitwidth, emitError);
++  return lowerTMemLdSt(*layout, maxnreg, bitwidth, isScales, emitError);
  }
  
  bool supportsTMemLoadReduce(RankedTensorType regTy, MemDescType memTy,
 
 --- a/python/test/gluon/test_fpsan.py
 +++ b/python/test/gluon/test_fpsan.py
-@@ -1909,6 +1909,8 @@ _WMMA_DOT_CASES = [
+@@ -1933,6 +1933,8 @@ _WMMA_DOT_CASES = [
  
  
  def _native_mma_k(type_a: str) -> int:
@@ -155,7 +157,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/unit/language/test_compile_only.py
 +++ b/python/test/unit/language/test_compile_only.py
-@@ -341,7 +341,7 @@ def test_compile_only_dot_mxfp() -> None:
+@@ -413,7 +413,7 @@ def test_compile_only_dot_mxfp() -> None:
      assert re.search(pattern, str(ttgir)), "The TTGIR does not match the expected pattern."
  
      ptx = k.asm["ptx"]
@@ -167,7 +169,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -3981,10 +3981,7 @@ def get_test_small_dots_cases():
+@@ -4388,10 +4388,7 @@ def get_test_small_dots_cases():
      if not is_cuda():
          return []
      return [(2, 4, 32, 1, False, False, 'None', 'ieee', 'float16', 'float32', 1, None),
@@ -179,7 +181,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
  
  
  @pytest.mark.interpreter
-@@ -4223,21 +4220,19 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
+@@ -4630,21 +4627,19 @@ def test_dot(M, N, K, num_warps, col_a, col_b, epilogue, input_precision, in_dty
      # make sure ld/st are vectorized
      ptx = pgm.asm['ptx']
  
@@ -217,7 +219,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/python/test/unit/language/test_matmul.py
 +++ b/python/test/unit/language/test_matmul.py
-@@ -408,6 +408,8 @@ def test_mxfp(BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS, device)
+@@ -400,6 +400,8 @@ def test_mxfp(BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES, nonKDim, NUM_WARPS, device)
              pytest.skip(f"CDNA4 does not support {BLOCK_K=} for scaled mfma {nonKDim=} variants")
          if (BLOCK_M == 256 or BLOCK_N == 256) and BLOCK_K == 256:
              pytest.skip("Config requires too much shared memory")
@@ -226,6 +228,15 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
  
      if not is_rubin() and BLOCK_N == 256 and BLOCK_K == 256:
          NUM_STAGES = min(NUM_STAGES, 2)
+@@ -1436,6 +1438,8 @@ def test_batched_mxfp(BATCH_SIZE, BLOCK_BATCH_SIZE, BLOCK_M, BLOCK_N, BLOCK_K, N
+     kernel_kwargs = {}
+     if is_hip():
+         kernel_kwargs["matrix_instr_nonkdim"] = nonKDim
++    if is_cuda() and BLOCK_BATCH_SIZE == 4 and BLOCK_M == 128 and BLOCK_N == 128 and NUM_STAGES == 1 and NUM_WARPS == 8:
++        kernel_kwargs["maxnreg"] = 255
+ 
+     out = batched_mxfp_matmul[grid](
+         a,
 
 --- a/python/tutorials/09-persistent-matmul.py
 +++ b/python/tutorials/09-persistent-matmul.py
@@ -241,7 +252,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/test/Conversion/tritongpu_to_llvm_blackwell.mlir
 +++ b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
-@@ -342,10 +342,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -341,10 +341,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
    // CHECK-LABEL: @tc_gen5_mma_scaled_a_tmem
    // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
    // CHECK: %[[A_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
@@ -256,41 +267,36 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    tt.func @tc_gen5_mma_scaled_a_tmem(
        %a: !ttg.memdesc<128x256xf8E5M2, #tmem, #ttng.tensor_memory>,
        %b: !ttg.memdesc<256x128xf8E5M2, #shared, #ttg.shared_memory>,
-@@ -380,10 +380,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -381,8 +381,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK: %[[P0:.+]] = llvm.icmp "eq" %[[WID]], %[[C0]] : i32
    // CHECK: %[[P1:.+]] = llvm.and %{{.*}}, %[[P0]]  : i1
    // CHECK: llvm.cond_br %[[P1]]
-   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(144708608 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]], %{{.+}}, %{{.+}}, %arg5
-+  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]], %{{.+}}, %{{.+}}, %arg5
-   // CHECK: %[[TRUE:.+]] = llvm.mlir.constant(true) : i1
-   // CHECK: %[[DESC1:.+]] = llvm.mlir.constant(681579536 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]], %{{.+}}, %{{.+}}, %[[TRUE]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]], %{{.+}}, %{{.+}}, %arg5
 +  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]], %{{.+}}, %{{.+}}, %[[TRUE]]
    tt.func @tc_gen5_mma_block_scale(%a: !ttg.memdesc<128x64xf8E4M3FN, #shared, #ttg.shared_memory>,
                         %b: !ttg.memdesc<32x128xi8, #shared1, #ttg.shared_memory>,
                         %c: !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>,
-@@ -414,13 +414,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
- module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
-   // CHECK-LABEL: @tc_gen5_mma_block_scale_fp4_a
-   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(144769664 : i32) : i32
+@@ -416,10 +416,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK-DAG: %[[DESC1:.+]] = llvm.mlir.constant(681640592 : i32) : i32
+   // CHECK-DAG: %[[DESC2:.+]] = llvm.mlir.constant(1218511520 : i32) : i32
+   // CHECK-DAG: %[[DESC3:.+]] = llvm.mlir.constant(1755382448 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC0]]
-+  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC0]]
-   // CHECK: %[[DESC1:.+]] = llvm.mlir.constant(681640592 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC1]]
-+  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC1]]
-   // CHECK: %[[DESC2:.+]] = llvm.mlir.constant(1218511520 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC2]]
-+  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC2]]
-   // CHECK: %[[DESC3:.+]] = llvm.mlir.constant(1755382448 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC3]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC0]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC1]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC2]]
 +  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %[[DESC3]]
    tt.func @tc_gen5_mma_block_scale_fp4_a(%a: !ttg.memdesc<128x64xi8, #shared1, #ttg.shared_memory>,
                         %b: !ttg.memdesc<128x128xi8, #shared, #ttg.shared_memory>,
                         %c: !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>,
-@@ -583,8 +583,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -582,8 +582,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
    // CHECK-LABEL: @tc_gen5_mma_block_scale_nvfp4
+   // CHECK-DAG: %[[DESC0:.+]] = llvm.mlir.constant(138413184 : i32) : i32
    // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
-   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(138413184 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.block16 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.block16 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
 +  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
@@ -298,19 +304,18 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    tt.func @tc_gen5_mma_block_scale_nvfp4(%a: !ttg.memdesc<128x64xi8, #shared, #ttg.shared_memory>,
                         %b: !ttg.memdesc<64x256xi8, #shared1, #ttg.shared_memory>,
                         %c: !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable>,
-@@ -616,9 +616,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
-   // CHECK-LABEL: @tc_gen5_mma_block_scale_mxfp4
+@@ -616,8 +616,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK-DAG: %[[DESC0:.+]] = llvm.mlir.constant(146801792 : i32) : i32
+   // CHECK-DAG: %[[DESC1:.+]] = llvm.mlir.constant(1220543648 : i32) : i32
    // CHECK-DAG: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
-   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(146801792 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
-+  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
-   // CHECK: %[[DESC1:.+]] = llvm.mlir.constant(1220543648 : i32) : i32
 -  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32 [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]]
++  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
 +  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC1]]
    tt.func @tc_gen5_mma_block_scale_mxfp4(%a: !ttg.memdesc<128x64xi8, #shared, #ttg.shared_memory>,
                         %b: !ttg.memdesc<64x256xi8, #shared1, #ttg.shared_memory>,
                         %c: !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable>,
-@@ -1178,7 +1178,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
+@@ -1237,7 +1237,7 @@ module attributes {"ttg.num-warps" = 8 : i32} {
  // CHECK-LABEL: @load_store_16x32bx1_broadcast
  tt.func private @load_store_16x32bx1_broadcast(%arg0: !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x8xi8, #linear>) {
    %true = arith.constant true
@@ -319,7 +324,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    ttng.tmem_store %arg1, %arg0, %true : tensor<16x8xi8, #linear> -> !ttg.memdesc<16x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>
    tt.return
  }
-@@ -1193,7 +1193,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
+@@ -1252,7 +1252,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
  // CHECK-LABEL: @load_store_16x2_scales_uses_zero_second_half
  tt.func private @load_store_16x2_scales_uses_zero_second_half(%arg0: !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>, %arg1: tensor<16x2xi8, #linear>) {
    %true = arith.constant true
@@ -328,7 +333,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // CHECK: llvm.return
    ttng.tmem_store %arg1, %arg0, %true : tensor<16x2xi8, #linear> -> !ttg.memdesc<16x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>
    tt.return
-@@ -1257,22 +1257,22 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -1316,22 +1316,22 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
        %pred: i1) {
      // CHECK: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg4 : !llvm.ptr<3> to i32
      // CHECK: %[[A_E4M3_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
@@ -359,7 +364,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      // CHECK-SAME: %[[ACC_BASE]], %[[A_E5M2_BASE]]
      ttng.tc_gen5_mma_scaled %a_e4m3, %b_e5m2, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e4m3 rhs = e5m2 :
         !ttg.memdesc<128x128xf8E4M3FN, #tmem_fp8_lhs, #ttng.tensor_memory>,
-@@ -1300,13 +1300,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -1359,13 +1359,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
        %pred: i1) {
      // CHECK-DAG: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
      // CHECK-DAG: %[[A_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
@@ -377,7 +382,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
      ttng.tc_gen5_mma_scaled %a, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e2m1 rhs = e5m2 :
         !ttg.memdesc<128x64xi8, #tmem_fp4_padded_lhs, #ttng.tensor_memory>,
-@@ -1336,13 +1336,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+@@ -1395,13 +1395,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
        %pred: i1) {
      // CHECK-DAG: %[[ACC_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
      // CHECK-DAG: %[[A_BASE:.+]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
@@ -395,69 +400,56 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      // CHECK-SAME: %[[ACC_BASE]], %[[A_BASE]]
      ttng.tc_gen5_mma_scaled %a, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e2m1 rhs = e2m1 :
         !ttg.memdesc<128x128xi8, #tmem_fp4_dense_lhs, #ttng.tensor_memory>,
-@@ -1589,16 +1589,16 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.t
- #sb = #ttng.tensor_memory_scales_encoding<CGALayout = [[0, 0]]>
- module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.two-ctas" = true} {
-   // CHECK-LABEL: @tc_gen5_mma_mxfp4_k256
+@@ -1651,13 +1651,13 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
+   // SM103-DAG: %[[K96_0:.+]] = llvm.mlir.constant(-1868561280 : i32)
+   // SM103-DAG: %[[K96_96:.+]] = llvm.mlir.constant(-257948496 : i32)
+   // SM103-DAG: %[[K64_192:.+]] = llvm.mlir.constant(1352664224 : i32)
 -  // SM100-COUNT-4: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.block32
 +  // SM100-COUNT-4: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.scale_vec::2X
    // SM100-NOT: tcgen05.mma
    // K96 at K=0 selects scale bytes 0..2; at K=96 it selects bytes 3..5.
-   // SM103: %[[K96_0:.+]] = llvm.mlir.constant(-1868561280 : i32)
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.block32 {{.*}} %[[K96_0]],
-+  // SM103: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.scale_vec::2X {{.*}} %[[K96_0]],
-   // SM103: %[[K96_96:.+]] = llvm.mlir.constant(-257948496 : i32)
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.block32 {{.*}} %[[K96_96]],
++  // SM103: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.scale_vec::2X {{.*}} %[[K96_0]],
 +  // SM103: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.scale_vec::2X {{.*}} %[[K96_96]],
    // K64 at K=192 selects bytes 2..3 of the next scale word.
--  // SM103: %[[K64_192:.+]] = llvm.mlir.constant(1352664224 : i32)
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.block32 {{.*}} %[[K64_192]],
-+  // SM103: %[[K64_192:.+]] = llvm.mlir.constant(278922368 : i32)
 +  // SM103: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.scale_vec::2X {{.*}} %[[K64_192]],
    // SM103-NOT: tcgen05.mma
    // CHECK: llvm.return
    tt.func @tc_gen5_mma_mxfp4_k256(
-@@ -1617,25 +1617,25 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.t
-   }
- 
-   // CHECK-LABEL: @tc_gen5_mma_nvfp4_k512
+@@ -1681,20 +1681,20 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
+   // SM103-DAG: %[[K64_192:.+]] = llvm.mlir.constant(272630912 : i32)
+   // SM103-DAG: %[[C16:.+]] = llvm.mlir.constant(16 : i32)
+   // SM103-DAG: %[[C32:.+]] = llvm.mlir.constant(32 : i32)
 -  // SM100-COUNT-8: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.block16
 +  // SM100-COUNT-8: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X
    // SM100-NOT: tcgen05.mma
    // SM103: %[[SCALE_A:.+]] = llvm.ptrtoint %arg3
    // SM103: %[[SCALE_B:.+]] = llvm.ptrtoint %arg4
-   // SM103: %[[K96_0:.+]] = llvm.mlir.constant(-1874852736 : i32)
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.block16 {{.*}} %[[K96_0]],
-+  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X {{.*}} %[[K96_0]],
-   // SM103: %[[K96_96:.+]] = llvm.mlir.constant(-801110880 : i32)
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.block16 {{.*}} %[[K96_96]],
-+  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X {{.*}} %[[K96_96]],
-   // SM103: %[[K64_192:.+]] = llvm.mlir.constant(272630912 : i32)
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.block16 {{.*}} %[[K64_192]],
++  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X {{.*}} %[[K96_0]],
++  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X {{.*}} %[[K96_96]],
 +  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X {{.*}} %[[K64_192]],
    // The second sector begins at scale word 4: four columns per A word,
    // eight per B word for N=256.
--  // SM103: %[[C16:.+]] = llvm.mlir.constant(16 : i32)
--  // SM103: %[[A256:.+]] = llvm.add %[[SCALE_A]], %[[C16]]
--  // SM103: %[[C32:.+]] = llvm.mlir.constant(32 : i32)
--  // SM103: %[[B256:.+]] = llvm.add %[[SCALE_B]], %[[C32]]
+   // SM103: %[[A256:.+]] = llvm.add %[[SCALE_A]], %[[C16]]
+   // SM103: %[[B256:.+]] = llvm.add %[[SCALE_B]], %[[C32]]
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.block16 {{.*}} %[[K96_0]], %[[A256]], %[[B256]],
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.block16 {{.*}} %[[K96_96]],
 -  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.block16 {{.*}} %[[K64_192]],
-+  // SM103: %[[C12:.+]] = llvm.mlir.constant(12 : i32)
-+  // SM103: %[[A256:.+]] = llvm.add %[[SCALE_A]], %[[C12]]
-+  // SM103: %[[C24:.+]] = llvm.mlir.constant(24 : i32)
-+  // SM103: %[[B256:.+]] = llvm.add %[[SCALE_B]], %[[C24]]
 +  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X {{.*}} %[[K96_0]], %[[A256]], %[[B256]],
 +  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X {{.*}} %[[K96_96]],
 +  // SM103: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X {{.*}} %[[K64_192]],
    // SM103-NOT: tcgen05.mma
    // CHECK: llvm.return
    tt.func @tc_gen5_mma_nvfp4_k512(
-@@ -1654,11 +1654,11 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.t
-   }
- 
-   // CHECK-LABEL: @tc_gen5_mma_mxfp4_k1024_subslice
+@@ -1716,11 +1716,11 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
+   // SM103-DAG: %[[ABS_HIGH:.+]] = llvm.mlir.constant(1074806848 : i32)
+   // SM103-DAG: %[[ADDR_MASK:.+]] = llvm.mlir.constant(16383 : i64)
+   // SM103-DAG: %[[SHIFT:.+]] = llvm.mlir.constant(16 : i64)
 -  // SM100-COUNT-16: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.block32
 +  // SM100-COUNT-16: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.scale_vec::2X
    // SM100-NOT: tcgen05.mma
@@ -465,10 +457,10 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // The high word sets absolute mode (bit 52) and matrix base offset zero.
 -  // SM103-COUNT-2: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.block32
 +  // SM103-COUNT-2: tcgen05.mma.cta_group::2.kind::mxf4.block_scale.scale_vec::2X
-   // SM103: %[[ABS_HIGH:.+]] = llvm.mlir.constant(1074806848 : i32)
    // SM103: %[[ADESC:.+]] = llvm.bitcast
    // SM103: %[[ANEXT:.+]] = llvm.bitcast
-@@ -1673,8 +1673,8 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.t
+   // SM103: %[[AADDR:.+]] = llvm.and %[[ANEXT]], %[[ADDR_MASK]]
+@@ -1732,8 +1732,8 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, "ttng.tw
    // SM103: %[[BADDR:.+]] = llvm.and %[[BNEXT]], %[[ADDR_MASK]]
    // SM103: %[[BLEAD:.+]] = llvm.shl %[[BADDR]], %[[SHIFT]]
    // SM103: %[[BABS:.+]] = llvm.or %[[BDESC]], %[[BLEAD]]
@@ -494,7 +486,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 @@ -42,7 +42,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107"} {
    // CHECK-LABEL: @tc_gen5_mma_block_scale_nvfp4_sm107_m256
-   // CHECK: %[[DESC:.+]] = llvm.mlir.constant(136316040 : i32) : i32
+   // CHECK-DAG: %[[DESC:.+]] = llvm.mlir.constant(136316040 : i32) : i32
 -  // CHECK-COUNT-4: tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.block32
 +  // CHECK-COUNT-4: tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::2X
    // CHECK-NOT: tcgen05.mma
@@ -509,7 +501,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // CHECK-NOT: tcgen05.mma
    tt.func @tc_gen5_mma_scaled_fp4_padded_shared_linear_a(
        %a: !ttg.memdesc<256x64xi8, #shared_fp4_padded_sl, #smem, mutable>,
-@@ -275,13 +275,13 @@ module attributes {"ttg.num-ctas" = 8 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
+@@ -333,13 +333,13 @@ module attributes {"ttg.num-ctas" = 8 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:107"} {
    // CHECK-LABEL: @tc_gen5_mma_block_scale_ab_reuse
    // FP8 A takes twice the bytes of packed FP4 B, despite equal M/N tile sizes.
@@ -527,10 +519,10 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
    // CHECK-SAME: "r,l,l,r,r,r,b,b" %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %[[SC_ID]], %[[SC_A1]], %[[SC_B0]],
    // CHECK-NOT: tcgen05.mma
    tt.func @tc_gen5_mma_block_scale_ab_reuse(%a: !ttg.memdesc<256x64xf8E4M3FN, #shared, #ttg.shared_memory>,
-@@ -319,7 +319,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
+@@ -377,7 +377,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
+   // UE5M3 uses i8 block16 scales, so split-K lowering must keep the UE5M3
    // scale kind in the descriptor for both K=128 sub-instructions of a
    // logical BLOCK_K=256 tile.
-   // CHECK: %[[DESC:.+]] = llvm.mlir.constant(153093256 : i32) : i32
 -  // CHECK-COUNT-2: tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.block16
 +  // CHECK-COUNT-2: tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
    // CHECK-NOT: tcgen05.mma
@@ -539,7 +531,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/test/TritonGPU/accelerate-matmul.mlir
 +++ b/test/TritonGPU/accelerate-matmul.mlir
-@@ -1118,40 +1118,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
+@@ -1166,40 +1166,6 @@ module attributes {"ttg.target" = "cuda:80", "ttg.num-warps" = 4 : i32} {
  
  // -----
  
@@ -583,7 +575,7 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
-@@ -847,14 +847,14 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
+@@ -810,14 +810,14 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
    DotConversion dot;
    switch (mxfpInstKind) {
    case mxfpKind::mxf8f6f4:
@@ -602,14 +594,10 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
      break;
    }
  
-@@ -921,19 +921,23 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
-   dot.getInstOperands = [&](const DotConversion::InstDesc &desc, int m, int n,
+@@ -879,15 +879,18 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                              int k) -> MMAInstOperands {
      auto [numRepM, numRepN, numRepK] = desc.repShape;
--    int numRepKWords = ceil<int>(blockK, dot.mmaSizeK * mmasPerScaleWord);
-+    int scaleFactorColsPerSet =
-+        getScaleFactorColsPerSet(mxfpInstKind, op, dot.mmaSizeK);
-+    int numRepKWords = ceil<int>(numRepK, 4 / scaleFactorColsPerSet);
+     int numRepKWords = ceil<int>(blockK, dot.mmaSizeK * mmasPerScaleWord);
 +    int aMultibuffers = cast<MemDescType>(op.getAScale().getType()).getRank() > 2 ? cast<MemDescType>(op.getAScale().getType()).getDimSize(0) : 1;
 +    int bMultibuffers = cast<MemDescType>(op.getBScale().getType()).getRank() > 2 ? cast<MemDescType>(op.getBScale().getType()).getDimSize(0) : 1;
      int numColPerScaleBlockA = ceil<int>(
@@ -623,13 +611,11 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
 +            .numCols / bMultibuffers,
          numRepN * numRepKWords);
 -    numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
--    int baseK = dot.getKOffset(k) / dot.mmaSizeK;
--    int subWordIdx = baseK % mmasPerScaleWord;
--    int wordIdx = baseK / mmasPerScaleWord;
 +    if (desc.mmaSizeN >= 32)
 +      numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
-+    int subWordIdx = k % (4 / scaleFactorColsPerSet);
-+    int wordIdx = k / (4 / scaleFactorColsPerSet);
+     int baseK = dot.getKOffset(k) / dot.mmaSizeK;
+     int subWordIdx = baseK % mmasPerScaleWord;
+     int wordIdx = baseK / mmasPerScaleWord;
      int scaleIdxA = linearizeScaleBlockIdx(op.getAScale(), m, wordIdx, numRepM,
                                             numRepKWords);
      int scaleIdxB = linearizeScaleBlockIdx(op.getBScale(), n, wordIdx, numRepN,

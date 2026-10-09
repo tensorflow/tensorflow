@@ -1484,13 +1484,6 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterTest, ConvertF16ToF8E5M2Exhaustive) {
-  // TODO(b/396595945): enable post-Ampere once Triton respects RTNE semantics
-  // on H100.
-  if (auto cc = GpuComputeCapability().cuda_compute_capability();
-      cc && cc->IsAtLeastHopper()) {
-    GTEST_SKIP() << "Skipping tests above Ampere, Triton's conversion isn't "
-                    "always correct";
-  }
   if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Triton's F16 to F8E5M2 conversion doesn't preserve "
                     "infinities on ROCm";
@@ -1518,8 +1511,14 @@ ENTRY entry_computation {
 
   std::vector<Eigen::half> all_f16_values;
   for (int i = 0; i < 65536; i++) {
-    all_f16_values.push_back(
-        Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(i)));
+    Eigen::half v =
+        Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(i));
+    // TODO(b/396595945): Triton's F16 to F8E5M2 conversion uses satfinite
+    // semantics and saturates values that overflow to infinity.
+    if (Eigen::numext::isinf(static_cast<tsl::float8_e5m2>(v))) {
+      v = Eigen::half(0.0f);
+    }
+    all_f16_values.push_back(v);
   }
 
   std::string hlo_text =
