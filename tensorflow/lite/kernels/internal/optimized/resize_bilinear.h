@@ -24,7 +24,6 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
-#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
