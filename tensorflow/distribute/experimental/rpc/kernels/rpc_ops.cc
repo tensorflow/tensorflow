@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -552,11 +553,13 @@ RpcClientOp::RpcClientOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
 }
 
 void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  auto cleanup = gtl::MakeCleanup([&done]() { done(); });
   std::string address = "";
-  OP_REQUIRES_OK_ASYNC(ctx, ExtractServerAddressFromInput(ctx, &address), done);
+  OP_REQUIRES_OK_ASYNC(ctx, ExtractServerAddressFromInput(ctx, &address),
+                       []() {});
 
   const Tensor* timeout;
-  OP_REQUIRES_OK_ASYNC(ctx, ctx->input("timeout_in_ms", &timeout), done);
+  OP_REQUIRES_OK_ASYNC(ctx, ctx->input("timeout_in_ms", &timeout), []() {});
   auto timeout_in_ms = timeout->scalar<int64_t>()();
 
   // Create resource handle
@@ -569,7 +572,7 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   Tensor handle;
   OP_REQUIRES_OK_ASYNC(
       ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr),
-      done);
+      []() {});
   handle.scalar<ResourceHandle>()() = resource_handle;
 
   // Delete old client handle if exists, to clear old client resource state.
@@ -585,20 +588,22 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(
       ctx,
       LookupOrCreateResource<RpcClient>(ctx, resource_handle, &client, creator),
-      done);
+      []() {});
   ctx->set_output(0, handle);
 
   if (!list_registered_methods_) {
     Tensor* method_output_t;
     OP_REQUIRES_OK_ASYNC(
-        ctx, ctx->allocate_output(1, TensorShape({}), &method_output_t), done);
+        ctx, ctx->allocate_output(1, TensorShape({}), &method_output_t),
+        []() {});
     method_output_t->scalar<tstring>()() = "";
-    done();
     return;
   }
   auto* response = new ListResponse();
+  cleanup.release();
   client->ListAsync(response, [ctx, response,
                                done](const absl::Status& status) {
+    auto async_cleanup = gtl::MakeCleanup([&done]() { done(); });
     std::unique_ptr<ListResponse> safe_response(response);
     if (!status.ok()) {
       ctx->SetStatus(status);
@@ -609,7 +614,7 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       OP_REQUIRES_OK_ASYNC(ctx,
                            ctx->allocate_output(1, method_output_shape,
                                                 &method_output_signatures_t),
-                           done);
+                           []() {});
       auto method_output_signatures =
           method_output_signatures_t->vec<tstring>();
       for (int i = 0; i < response->registered_methods_size(); ++i) {
@@ -617,7 +622,6 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
             response->registered_methods(i).SerializeAsString();
       }
     }
-    done();
   });
 }
 
@@ -770,6 +774,7 @@ RpcCheckStatusOp::RpcCheckStatusOp(OpKernelConstruction* ctx)
     : AsyncOpKernel(ctx) {}
 
 void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  auto cleanup = gtl::MakeCleanup([&done]() { done(); });
   core::RefCountPtr<RpcFutureResource> future_resource;
   auto handle = HandleFromInput(ctx, 0);
   {
@@ -779,14 +784,14 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         ctx->SetStatus(absl::NotFoundError(
             "Future resource no longer exists. Please make sure "
             "resource is not already deleted."));
-        done();
-        return;
       } else {
         ctx->SetStatus(status);
       }
+      return;
     }
   }
 
+  cleanup.release();
   future_resource->AddDoneCallback(
       [ctx, done, handle](const absl::Status& status,
                           const CallResponse& response) {
@@ -805,6 +810,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 RpcGetValueOp::RpcGetValueOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {}
 
 void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  auto cleanup = gtl::MakeCleanup([&done]() { done(); });
   core::RefCountPtr<RpcFutureResource> future_resource;
   auto handle = HandleFromInput(ctx, 0);
   {
@@ -814,17 +820,18 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         ctx->SetStatus(absl::NotFoundError(
             "Future resource no longer exists. Please ensure "
             "resource is not already deleted."));
-        done();
-        return;
       } else {
         ctx->SetStatus(status);
       }
+      return;
     }
   }
 
+  cleanup.release();
   future_resource->AddDoneCallback([ctx, done, handle](
                                        const absl::Status& status,
                                        const CallResponse& response) {
+    auto async_cleanup = gtl::MakeCleanup([&done]() { done(); });
     if (!status.ok()) {
       ctx->SetStatus(status);
     } else {
@@ -839,18 +846,17 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           OP_REQUIRES_ASYNC(
               ctx, t.FromProto(t_proto),
               absl::InternalError("Invalid Tensor Proto response returned."),
-              done);
+              []() {});
           OP_REQUIRES_ASYNC(ctx, t.dtype() == ctx->expected_output_dtype(i),
                             absl::InvalidArgumentError(absl::StrCat(
                                 "Type mismatch for output tensor. Expected: ",
                                 DataTypeString(ctx->expected_output_dtype(i)),
                                 " but got: ", DataTypeString(t.dtype()))),
-                            done);
+                            []() {});
           ctx->set_output(i++, std::move(t));
         }
       }
     }
-    done();
   });
 }
 

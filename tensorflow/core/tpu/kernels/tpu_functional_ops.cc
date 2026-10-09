@@ -80,6 +80,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/hash.h"
@@ -1230,6 +1231,16 @@ absl::Status InsertReshapeNodePairs(Graph* graph,
 
 void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                                         DoneCallback done) {
+  int64_t ordinal_selector_req_id = -1;
+  int32_t device_ordinal = 0;
+  auto cleanup = gtl::MakeCleanup(
+      [this, &done, &device_ordinal, &ordinal_selector_req_id]() {
+        done();
+        if (ordinal_selector_req_id >= 0) {
+          ordinal_selector_->DequeueFromCoreSelector(device_ordinal,
+                                                     ordinal_selector_req_id);
+        }
+      });
   absl::Status init_status;
   absl::call_once(once_, [&]() {
     library_runtime_ = ctx->function_library();
@@ -1250,7 +1261,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     std::vector<Device*> tpu_devices;
     device_set_.FindMatchingDevices(tpu_device_name, &tpu_devices_);
   });
-  OP_REQUIRES_OK_ASYNC(ctx, init_status, done);
+  OP_REQUIRES_OK_ASYNC(ctx, init_status, []() {});
 
   // Initialize the ordinal selector with information from the graph if it is
   // the first time we are running this op.
@@ -1285,17 +1296,15 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                     absl::InternalError(absl::StrCat(
                         "The TPUOrdinalSelector is not initialized: ",
                         init_status.message())),
-                    done);
+                    []() {});
 
   uint64_t input_hash = GetInputHash(ctx);
-  int64_t ordinal_selector_req_id = -1;
   // Select a TPU core.
-  int32_t device_ordinal = 0;
   OP_REQUIRES_OK_ASYNC(
       ctx,
       GetTpuCoreOrdinal(ctx, input_hash, &ordinal_selector_req_id,
                         &device_ordinal),
-      done);
+      []() {});
   uint64_t cache_hash = Hash64Combine(input_hash, device_ordinal);
   absl::ReleasableMutexLock lock(mu_);
 
@@ -1316,7 +1325,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
         ctx,
         GetGraphFromFunction(graph.get(), device_ordinal,
                              &enable_spmd_xla_partitioning, &tpu_metadata),
-        done);
+        []() {});
 
     VLOG(1) << DumpGraphToFile("before_input_output_optimizations", *graph,
                                flib_def_.get());
@@ -1327,7 +1336,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
         OptimizeTpuInputOutputTensors(graph.get(), enable_spmd_xla_partitioning,
                                       tpu_metadata.num_cores_per_replica,
                                       named_input_shapes, ctx),
-        done);
+        []() {});
 
     VLOG(1) << DumpGraphToFile(
         "before_replace_resource_args_with_var_handle_ops", *graph,
@@ -1336,7 +1345,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                          ReplaceResourceArgsWithVarHandleOps(
                              graph.get(), ctx, device_ordinal,
                              enable_spmd_xla_partitioning, tpu_metadata),
-                         done);
+                         []() {});
 
     VLOG(1) << DumpGraphToFile(
         "after_replace_resource_args_with_var_handle_ops", *graph,
@@ -1358,14 +1367,14 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     optimization_options.device_set = &device_set_;
     OP_REQUIRES_OK_ASYNC(
         ctx, PlacementHelper(device_set_, optimization_options, func_.name()),
-        done);
+        []() {});
 
     if (!enable_spmd_xla_partitioning ||
         tpu_metadata.num_cores_per_replica == 1) {
       OP_REQUIRES_OK_ASYNC(
           ctx,
           MaybeRegisterFingerprint(graph.get(), named_input_shapes, input_hash),
-          done);
+          []() {});
     }
     // `subgraphs` maps from device names to functions.
     std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs;
@@ -1377,17 +1386,18 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     OP_REQUIRES_OK_ASYNC(ctx,
                          PartitionHelper(device_set_, optimization_options,
                                          graph.get(), &subgraphs),
-                         done);
+                         []() {});
     OP_REQUIRES_OK_ASYNC(
         ctx,
         InstantiateFunctionsFromSubgraphs(
             device_set_, device_ordinal, cache_hash,
             tpu_metadata.num_cores_per_replica, std::move(subgraphs)),
-        done);
+        []() {});
   }
   functions = &partition_cache_[cache_hash];
   lock.Release();
 
+  cleanup.release();
   ExecuteFunctions(*functions, ctx, device_ordinal, ordinal_selector_req_id,
                    std::move(done));
 }
@@ -2747,6 +2757,14 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
 void TPUPartitionedCallOp::ExecuteFunctions(
     const std::vector<DeviceAndFHandle>& functions, OpKernelContext* ctx,
     int device_ordinal, int64_t ordinal_selector_req_id, DoneCallback done) {
+  auto cleanup = gtl::MakeCleanup(
+      [this, &done, device_ordinal, ordinal_selector_req_id]() {
+        done();
+        if (ordinal_selector_req_id >= 0) {
+          ordinal_selector_->DequeueFromCoreSelector(device_ordinal,
+                                                     ordinal_selector_req_id);
+        }
+      });
   tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
   FunctionLibraryRuntime::Options opts(ctx->step_id());
   opts.step_container = ctx->step_container();
@@ -2758,13 +2776,14 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
 
   OpInputList arguments;
-  OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
+  OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), []() {});
 
   auto* local_cm = new CancellationManager(ctx->cancellation_manager());
   auto* rendez = new RefCountedIntraProcessRendezvous(device_mgr_);
   opts.cancellation_manager = local_cm;
   opts.rendezvous = rendez;
 
+  cleanup.release();
   StatusCallback callback(
       [rendez = rendez, local_cm, done = std::move(done),
        device_ordinal = device_ordinal, req_id = ordinal_selector_req_id, ctx,
@@ -2779,7 +2798,8 @@ void TPUPartitionedCallOp::ExecuteFunctions(
       });
 
   auto* refcounted_done = new ReffedStatusCallback(std::move(callback));
-  for (int i = 1; i < functions.size(); ++i) {
+  core::ScopedUnref unref_done(refcounted_done);
+  for (int i = 0; i < functions.size(); ++i) {
     refcounted_done->Ref();
   }
   for (const DeviceAndFHandle& entry : functions) {

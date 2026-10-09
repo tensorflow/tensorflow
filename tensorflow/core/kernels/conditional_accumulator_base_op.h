@@ -18,15 +18,15 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/conditional_accumulator_base.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/conditional_accumulator_base.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -237,21 +237,24 @@ class ConditionalAccumulatorBaseTakeGradientOp
   void ComputeAsync(OpKernelContext* ctx,
                     ConditionalAccumulatorBase* accumulator,
                     DoneCallback callback) override {
+    auto cleanup = gtl::MakeCleanup([&callback]() { callback(); });
     // Check signature
-    CheckSignature(ctx, accumulator, callback);
+    CheckSignature(ctx, accumulator, []() {});
+    if (!ctx->status().ok()) return;
 
     // Get input num_required
     const Tensor* num_required_tensor;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("num_required", &num_required_tensor),
-                         callback);
+                         []() {});
     if (!TensorShapeUtils::IsScalar(num_required_tensor->shape())) {
       ctx->CtxFailureWithWarning(absl::InvalidArgumentError(absl::StrCat(
           "Argument num_required must be scalar, but had bad shape ",
           num_required_tensor->shape().DebugString())));
-      callback();
+      return;
     }
 
     // Actually try to take gradient now
+    cleanup.release();
     accumulator->TryTakeGrad(num_required_tensor->scalar<int32_t>()(), ctx,
                              callback);
   }
