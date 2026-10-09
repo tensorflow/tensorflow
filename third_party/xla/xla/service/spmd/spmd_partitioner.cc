@@ -5327,12 +5327,10 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
               }
             }
             if (is_communication_free) {
-              for (int64_t i = 0;
-                   i < rep_sharding.tile_assignment().dimensions().size();
-                   ++i) {
+              for (int64_t i = 0; i < rep_sharding.TiledDataRank(); ++i) {
                 if (std::find(post_to_pre.begin(), post_to_pre.end(), i) ==
                     post_to_pre.end()) {
-                  if (rep_sharding.tile_assignment().dimensions()[i] > 1) {
+                  if (rep_sharding.dimension(i) > 1) {
                     is_communication_free = false;
                     break;
                   }
