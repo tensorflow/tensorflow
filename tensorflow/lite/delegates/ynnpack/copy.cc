@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <numeric>
 #include <vector>
 
@@ -418,11 +419,13 @@ TfLiteStatus IsPadSupported(const TfLiteRegistration* registration,
       }
     }
   } else if (paddings.type == kTfLiteInt64) {
-    const int64_t* paddings_data =
-        reinterpret_cast<const int64_t*>(paddings.data.raw);
     for (int i = 0; i < input.dims->size; ++i) {
-      int64_t pre_pad = paddings_data[i * 2];
-      int64_t post_pad = paddings_data[i * 2 + 1];
+      int64_t pre_pad;
+      int64_t post_pad;
+      std::memcpy(&pre_pad, paddings.data.raw + (i * 2) * sizeof(int64_t),
+                  sizeof(int64_t));
+      std::memcpy(&post_pad, paddings.data.raw + (i * 2 + 1) * sizeof(int64_t),
+                  sizeof(int64_t));
       TF_LITE_ENSURE_MSG(context, pre_pad >= 0 && post_pad >= 0,
                          "Negative paddings are not supported");
       if (input.dims->data[i] == 1) {
@@ -826,12 +829,14 @@ TfLiteStatus DefinePadNode(TfLiteContext* context, ynn_subgraph_t subgraph,
       post_paddings[i] = paddings_data[i * 2 + 1];
     }
   } else if (paddings_tensor.type == kTfLiteInt64) {
-    const int64_t* paddings_data =
-        reinterpret_cast<const int64_t*>(paddings_tensor.data.raw);
     for (int i = 0; i < rank; ++i) {
       axes[i] = i;
-      pre_paddings[i] = paddings_data[i * 2];
-      post_paddings[i] = paddings_data[i * 2 + 1];
+      std::memcpy(&pre_paddings[i],
+                  paddings_tensor.data.raw + (i * 2) * sizeof(int64_t),
+                  sizeof(int64_t));
+      std::memcpy(&post_paddings[i],
+                  paddings_tensor.data.raw + (i * 2 + 1) * sizeof(int64_t),
+                  sizeof(int64_t));
     }
   } else {
     TF_LITE_ENSURE_MSG(context, false, "Unsupported paddings type %d",
