@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
@@ -31,7 +30,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "Eigen/ThreadPool"
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
@@ -100,13 +98,10 @@ OneDnnOpThunk::OneDnnRuntime::Invoke(
   threadpool->set_thread_pool(thread_pool);
 
   // TODO(intel-tf): Add support for more oneDNN operations as needed.
-  static absl::once_flag log_once_flag;
-  absl::call_once(log_once_flag, [&] {
-    VLOG(0) << absl::StreamFormat(
-        "Executing oneDNN thunk with target `%s`: num_args=%d, num_results=%d",
-        target, base_resources->arg_memrefs.size(),
-        base_resources->result_memrefs.size());
-  });
+  VLOG_FIRST_N(0, 1) << absl::StreamFormat(
+      "Executing oneDNN thunk with target `%s`: num_args=%d, num_results=%d",
+      target, base_resources->arg_memrefs.size(),
+      base_resources->result_memrefs.size());
 
   if (target == "__onednn$matmul") {
     const auto& matmul_config = std::get<OneDnnMatMulConfig>(config);
@@ -167,8 +162,8 @@ OneDnnOpThunk::BufferUses OneDnnOpThunk::buffer_uses() const {
 tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
     const ExecuteParams& params) {
   Eigen::ThreadPoolInterface* thread_pool =
-      params.intra_op_threadpool->getPool();
-  DCHECK(thread_pool != nullptr) << "Thread pool must not be null";
+      params.intra_op_threadpool ? params.intra_op_threadpool->getPool()
+                                 : GetFallbackThreadPoolForOneDnn();
 
   // Create oneDNN runtime for the operation.
   auto runtime = std::make_unique<OneDnnRuntime>(thread_pool, target_);
