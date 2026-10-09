@@ -22,6 +22,10 @@ from pathlib import Path
 import re
 from typing import Any
 
+import requests
+from google.adk.agents import LlmAgent
+from google.adk.runners import InMemoryRunner
+
 from agent import settings as settings_mod
 from agent import utils
 from agent.settings import GITHUB_BASE_URL
@@ -35,10 +39,6 @@ from agent.utils import get_diff
 from agent.utils import parse_number_string
 from agent.utils import read_file
 from agent.utils import run_graphql_query
-
-from google.adk.agents import LlmAgent
-from google.adk.runners import InMemoryRunner
-import requests
 
 STYLE_GUIDE = read_file(
     Path(__file__).resolve().parents[1]

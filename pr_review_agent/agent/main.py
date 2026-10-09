@@ -98,6 +98,26 @@ def is_fallback_eligible_error(err: Exception) -> bool:
     return False
 
 
+def _get_next_reaction_page_url(response) -> str | None:
+    """Extracts the next pagination URL from a GitHub reactions response if present."""
+    links = getattr(response, "links", None)
+    if isinstance(links, dict):
+        next_entry = links.get("next")
+        if isinstance(next_entry, dict):
+            candidate = next_entry.get("url")
+            if isinstance(candidate, str) and candidate.startswith(GITHUB_BASE_URL):
+                return candidate
+
+    resp_headers = getattr(response, "headers", None)
+    if isinstance(resp_headers, dict):
+        link_header = resp_headers.get("Link") or resp_headers.get("link")
+        if isinstance(link_header, str):
+            m = re.search(r'<([^>]+)>;\s*rel="next"', link_header)
+            if m and m.group(1).startswith(GITHUB_BASE_URL):
+                return m.group(1)
+    return None
+
+
 def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
     """Cleans up previous runtime reactions and establishes the new active emoji."""
     token = environ.get("GITHUB_TOKEN")
@@ -112,10 +132,26 @@ def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
     }
 
     try:
-        # Step 1: Read all existing reactions on this thread
-        existing_res = requests.get(url, headers=headers, timeout=10)
-        if existing_res.status_code == 200:
+        # Step 1: Read all existing reactions on this thread across pages
+        next_url: str | None = url
+        next_params: dict[str, int] | None = {"per_page": 100}
+        visited_urls: set[str] = set()
+
+        while next_url and next_url not in visited_urls:
+            visited_urls.add(next_url)
+            if next_params is not None:
+                existing_res = requests.get(
+                    next_url, headers=headers, params=next_params, timeout=10
+                )
+            else:
+                existing_res = requests.get(
+                    next_url, headers=headers, timeout=10
+                )
+            if existing_res.status_code != 200:
+                break
             reactions_list = existing_res.json()
+            if not isinstance(reactions_list, list):
+                break
             # Loop through and remove any active 'eyes' reactions posted by this agent integration
             for reaction in reactions_list:
                 author_login = (reaction.get("user") or {}).get("login") or ""
@@ -127,6 +163,8 @@ def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
                     delete_url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/issues/reactions/{reaction_id}"
                     requests.delete(delete_url, headers=headers, timeout=10)
                     print(f"Cleared stale 'eyes' reaction ID: {reaction_id}")
+            next_url = _get_next_reaction_page_url(existing_res)
+            next_params = None
 
         # Step 2: Post the fresh structural reaction status
         requests.post(url, headers=headers, json={"content": add_content}, timeout=10)

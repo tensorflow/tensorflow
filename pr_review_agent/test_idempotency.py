@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import importlib
 import inspect
@@ -1324,6 +1325,8 @@ class TestSecurityHardening(unittest.TestCase):
 
         main.clear_and_set_reaction(12345, add_content="rocket")
 
+        mock_get.assert_called_once()
+        self.assertEqual(mock_get.call_args.kwargs.get("params"), {"per_page": 100})
         mock_delete.assert_called_once()
         deleted_url = mock_delete.call_args[0][0]
         self.assertTrue(deleted_url.endswith("/issues/reactions/102"))
@@ -1475,6 +1478,267 @@ class TestSecurityHardening(unittest.TestCase):
             md_docs_files, title="Update guide", body="", diff=""
         )
         self.assertEqual(cat_doc, "Documentation")
+
+    def test_engineer_review_crlf_diff_line_synchronization(self):
+        """Finding 1: CRLF and bare \\r context lines in diffs keep left/right line counters synchronized."""
+        # 1. Pure LF vs CRLF diff with blank context lines, added lines, deleted lines, and post-blank context
+        lf_diff = (
+            "--- a/tensorflow/python/foo.py\n"
+            "+++ b/tensorflow/python/foo.py\n"
+            "@@ -10,5 +10,5 @@\n"
+            " def alpha():\n"
+            "\n"
+            "-  old_call()\n"
+            "+  new_call()\n"
+            "   return 1\n"
+            "+\n"
+            "+  unreachable = 2\n"
+        )
+        crlf_diff = lf_diff.replace("\n", "\r\n")
+        # Mixed line endings with bare '\r' context line before an addition
+        mixed_diff = (
+            "--- a/tensorflow/python/foo.py\r\n"
+            "+++ b/tensorflow/python/foo.py\n"
+            "@@ -10,5 +10,5 @@\r\n"
+            " def alpha():\r\n"
+            "\r\n"
+            "-  old_call()\n"
+            "+  new_call()\r\n"
+            "   return 1\n"
+            "+\r\n"
+            "+  unreachable = 2\r\n"
+        )
+
+        ann_lf = utils.annotate_diff_with_line_numbers(lf_diff)
+        ann_crlf = utils.annotate_diff_with_line_numbers(crlf_diff)
+        ann_mixed = utils.annotate_diff_with_line_numbers(mixed_diff)
+
+        # Stripping \r from annotated output must yield identical line-number tags
+        self.assertEqual(ann_crlf.replace("\r", ""), ann_lf)
+        self.assertEqual(ann_mixed.replace("\r", ""), ann_lf)
+        self.assertIn("[LEFT L12] -  old_call()", ann_crlf)
+        self.assertIn("[L12] +  new_call()", ann_crlf)
+        self.assertIn("[L13]    return 1", ann_crlf)
+        self.assertIn("[L14] +", ann_crlf)
+        self.assertIn("[L15] +  unreachable = 2", ann_crlf)
+
+        # Verify extract_modified_lines_by_file matches between raw and annotated diffs across LF, CRLF, and mixed
+        expected_mod = {"tensorflow/python/foo.py": {12, 14, 15}}
+        self.assertEqual(utils.extract_modified_lines_by_file(lf_diff), expected_mod)
+        self.assertEqual(utils.extract_modified_lines_by_file(crlf_diff), expected_mod)
+        self.assertEqual(utils.extract_modified_lines_by_file(mixed_diff), expected_mod)
+        self.assertEqual(utils.extract_modified_lines_by_file(ann_crlf), expected_mod)
+        self.assertEqual(utils.extract_modified_lines_by_file(ann_mixed), expected_mod)
+
+        # Verify Pylint filtering retains diagnostics on modified lines after CRLF blank context lines
+        pylint_out = (
+            "tensorflow/python/foo.py:11:0: C0303 (trailing-whitespace): Trailing whitespace\n"
+            "tensorflow/python/foo.py:12:0: W0311 (bad-indentation): Bad indentation\n"
+            "tensorflow/python/foo.py:15:0: W0101 (unreachable): Unreachable code\n"
+        )
+        retained = utils.filter_pylint_output_by_diff(
+            pylint_out,
+            utils.extract_modified_lines_by_file(ann_crlf),
+            raw_diff=ann_crlf,
+        )
+        self.assertEqual(
+            retained,
+            [
+                "tensorflow/python/foo.py:12:0: W0311 (bad-indentation): Bad indentation",
+                "tensorflow/python/foo.py:15:0: W0101 (unreachable): Unreachable code",
+            ],
+        )
+
+    @patch("agent.utils.requests.get")
+    @patch("agent.utils.subprocess.run")
+    def test_engineer_review_path_normalization_blocks_agent_dir_variants(
+        self, mock_subproc_run, mock_http_get
+    ):
+        """Finding 2: Normalized path checks block ./pr_review_agent/... and related variants while allowing legitimate files."""
+        blocked_paths = [
+            "pr_review_agent/agent/utils.py",
+            "./pr_review_agent/agent/utils.py",
+            "././pr_review_agent/agent/main.py",
+            "pr_review_agent/../pr_review_agent/agent/utils.py",
+            "foo/pr_review_agent/bar.py",
+            ".",
+            "./",
+            "",
+        ]
+        for bad_path in blocked_paths:
+            self.assertFalse(
+                utils._is_safe_relative_path(bad_path),
+                f"Expected {bad_path!r} to be rejected by _is_safe_relative_path",
+            )
+
+        allowed_paths = [
+            "tensorflow/python/foo.py",
+            "./tensorflow/python/foo.py",
+            ".hidden.py",
+            "./.hidden.py",
+            "tensorflow/python/pr_review_agent_helper.py",
+        ]
+        for good_path in allowed_paths:
+            self.assertTrue(
+                utils._is_safe_relative_path(good_path),
+                f"Expected {good_path!r} to be allowed by _is_safe_relative_path",
+            )
+
+        # Ensure _fetch_file_content_at_commit refuses ./pr_review_agent/... without making git or HTTP calls
+        self.assertIsNone(
+            utils._fetch_file_content_at_commit(
+                "/tmp/repo",
+                "17f28d8fb7e47177e0d340b7908144e9a98fe939",
+                "./pr_review_agent/agent/utils.py",
+            )
+        )
+        mock_http_get.assert_not_called()
+        mock_subproc_run.assert_not_called()
+
+        # Ensure run_pylint_on_changed_files skips ./pr_review_agent/... even if present in diff
+        bypass_diff = (
+            "--- a/./pr_review_agent/agent/utils.py\n"
+            "+++ b/./pr_review_agent/agent/utils.py\n"
+            "@@ -1,1 +1,2 @@\n"
+            " import os\n"
+            "+import sys\n"
+        )
+        res = utils.run_pylint_on_changed_files(
+            [{"path": "./pr_review_agent/agent/utils.py", "changeType": "MODIFIED"}],
+            raw_diff=bypass_diff,
+            head_sha="17f28d8fb7e47177e0d340b7908144e9a98fe939",
+        )
+        self.assertEqual(res, "No Python files were modified in this pull request.")
+        mock_http_get.assert_not_called()
+        mock_subproc_run.assert_not_called()
+
+    @patch("agent.main.requests.post")
+    @patch("agent.main.requests.delete")
+    @patch("agent.main.requests.get")
+    def test_engineer_review_reactions_pagination_and_error_handling(
+        self, mock_get, mock_delete, mock_post
+    ):
+        """Finding 3: clear_and_set_reaction paginates through all reaction pages and handles API errors safely."""
+        # 1. Multi-page pagination: page 1 via Link header -> page 2 via response.links -> page 3 (last)
+        page1 = MagicMock()
+        page1.status_code = 200
+        page1.links = {}
+        page1.headers = {
+            "Link": (
+                '<https://api.github.com/repositories/1/issues/99/reactions?per_page=100&page=2>; rel="next", '
+                '<https://api.github.com/repositories/1/issues/99/reactions?per_page=100&page=3>; rel="last"'
+            )
+        }
+        page1.json.return_value = [
+            {"id": 1, "content": "+1", "user": {"login": "user-a"}},
+            {"id": 2, "content": "eyes", "user": {"login": "human-reviewer"}},
+        ]
+
+        page2 = MagicMock()
+        page2.status_code = 200
+        page2.links = {
+            "next": {
+                "url": "https://api.github.com/repositories/1/issues/99/reactions?per_page=100&page=3"
+            }
+        }
+        page2.headers = {}
+        page2.json.return_value = [
+            {"id": 105, "content": "eyes", "user": {"login": "github-actions[bot]"}},
+            {"id": 106, "content": "heart", "user": {"login": "user-b"}},
+        ]
+
+        page3 = MagicMock()
+        page3.status_code = 200
+        page3.links = {}
+        page3.headers = {}
+        page3.json.return_value = [
+            {"id": 205, "content": "eyes", "user": {"login": "github-actions[bot]"}},
+        ]
+
+        mock_get.side_effect = [page1, page2, page3]
+
+        main.clear_and_set_reaction(99, add_content="rocket")
+
+        self.assertEqual(mock_get.call_count, 3)
+        # First page passes params={'per_page': 100}; subsequent Link URLs already include query params
+        self.assertEqual(
+            mock_get.call_args_list[0].kwargs.get("params"), {"per_page": 100}
+        )
+        self.assertIsNone(mock_get.call_args_list[1].kwargs.get("params"))
+        self.assertIsNone(mock_get.call_args_list[2].kwargs.get("params"))
+
+        # Both bot eyes reactions from page 2 (id 105) and page 3 (id 205) are deleted; human eyes (id 2) is preserved
+        deleted_urls = [c.args[0] for c in mock_delete.call_args_list]
+        self.assertEqual(
+            deleted_urls,
+            [
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/reactions/105",
+                "https://api.github.com/repos/tensorflow/tensorflow/issues/reactions/205",
+            ],
+        )
+        mock_post.assert_called_once()
+
+        # 2. Non-200 response or RequestException stops pagination gracefully and still posts new reaction if requested
+        mock_get.reset_mock()
+        mock_delete.reset_mock()
+        mock_post.reset_mock()
+
+        err_page = MagicMock()
+        err_page.status_code = 502
+        mock_get.side_effect = [err_page]
+        main.clear_and_set_reaction(99, add_content="eyes")
+        mock_get.assert_called_once()
+        mock_delete.assert_not_called()
+        mock_post.assert_called_once()
+
+    def test_engineer_review_agent_import_grouping_order(self):
+        """Finding 4: pr_review_agent/agent/agent.py groups stdlib, third-party, and local imports in standard order."""
+        agent_py_path = Path(__file__).resolve().parent / "agent" / "agent.py"
+        source = agent_py_path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(agent_py_path))
+
+        stdlib_modules = {"__future__", "os", "pathlib", "re", "typing"}
+        third_party_roots = {"requests", "google"}
+        local_roots = {"agent"}
+
+        group_sequence = []
+        seen_imports = set()
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    root_pkg = alias.name.split(".")[0]
+                    key = f"import:{alias.name}"
+                    self.assertNotIn(key, seen_imports, f"Duplicate import {key}")
+                    seen_imports.add(key)
+                    if root_pkg in stdlib_modules:
+                        group_sequence.append((1, alias.name, node.lineno))
+                    elif root_pkg in third_party_roots:
+                        group_sequence.append((2, alias.name, node.lineno))
+                    elif root_pkg in local_roots:
+                        group_sequence.append((3, alias.name, node.lineno))
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                root_pkg = node.module.split(".")[0]
+                for alias in node.names:
+                    key = f"from:{node.module}:{alias.name}"
+                    self.assertNotIn(key, seen_imports, f"Duplicate import {key}")
+                    seen_imports.add(key)
+                if root_pkg in stdlib_modules:
+                    group_sequence.append((1, node.module, node.lineno))
+                elif root_pkg in third_party_roots:
+                    group_sequence.append((2, node.module, node.lineno))
+                elif root_pkg in local_roots:
+                    group_sequence.append((3, node.module, node.lineno))
+
+        group_ids = [g[0] for g in group_sequence]
+        self.assertEqual(
+            group_ids,
+            sorted(group_ids),
+            f"Expected stdlib (1) -> third-party (2) -> local (3) import order, got {group_sequence}",
+        )
+        # Ensure all three groups are present and requests is grouped with third-party before local agent imports
+        self.assertIn(1, group_ids)
+        self.assertIn(2, group_ids)
+        self.assertIn(3, group_ids)
 
 
 if __name__ == "__main__":

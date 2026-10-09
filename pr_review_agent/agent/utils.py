@@ -116,7 +116,7 @@ def annotate_diff_with_line_numbers(raw_diff: str) -> str:
             elif line.startswith('-') and not line.startswith('---'):
                 annotated.append(f'[LEFT L{current_left}] {line}')
                 current_left += 1
-            elif line.startswith(' ') or line == '':
+            elif line.startswith(' ') or line in ('', '\r'):
                 annotated.append(f'[L{current_right}] {line}')
                 current_right += 1
                 current_left += 1
@@ -285,12 +285,15 @@ def extract_modified_lines_by_file(raw_diff: str) -> dict[str, set[int]]:
     annotated_add_pattern = re.compile(r"^\[L(\d+)\]\s*\+(?!\+\+)")
     annotated_ctx_pattern = re.compile(r"^\[L(\d+)\]\s*(?: |$)")
 
-    for line in raw_diff.splitlines():
+    for raw_line in raw_diff.split("\n"):
+        line = raw_line.rstrip("\r")
         clean_line = re.sub(r"^\[(?:LEFT )?L\d+\]\s*", "", line)
         if clean_line.startswith("+++ "):
             m_file = file_header_pattern.match(clean_line)
             if m_file:
                 path = m_file.group(1).strip()
+                while path.startswith("./"):
+                    path = path[2:]
                 if path == "/dev/null":
                     current_file = None
                 else:
@@ -329,7 +332,7 @@ def extract_modified_lines_by_file(raw_diff: str) -> dict[str, set[int]]:
                 current_right += 1
             elif line.startswith("-") and not line.startswith("---"):
                 pass
-            elif line.startswith(" ") or line == "":
+            elif line.startswith(" ") or line in ("", "\r"):
                 current_right += 1
 
     return modified_lines
@@ -345,12 +348,15 @@ def _extract_deleted_text_by_file(raw_diff: str) -> dict[str, str]:
     file_header_pattern = re.compile(r"^\+\+\+\s+(?:b/)?(.+)$")
     annotated_del_pattern = re.compile(r"^\[LEFT L\d+\]\s*-(?!---)(.*)$")
 
-    for line in raw_diff.splitlines():
+    for raw_line in raw_diff.split("\n"):
+        line = raw_line.rstrip("\r")
         clean_line = re.sub(r"^\[(?:LEFT )?L\d+\]\s*", "", line)
         if clean_line.startswith("+++ "):
             m_file = file_header_pattern.match(clean_line)
             if m_file:
                 path = m_file.group(1).strip()
+                while path.startswith("./"):
+                    path = path[2:]
                 current_file = None if path == "/dev/null" else path
             continue
 
@@ -373,12 +379,13 @@ def _is_safe_relative_path(rel_path: str) -> bool:
     norm = rel_path.replace("\\", "/")
     path_obj = Path(norm)
     if (
-        path_obj.is_absolute()
+        not path_obj.parts
+        or path_obj.is_absolute()
         or ".." in path_obj.parts
         or any(part.startswith("-") for part in path_obj.parts)
     ):
         return False
-    if norm.startswith("pr_review_agent/"):
+    if "pr_review_agent" in path_obj.parts:
         return False
     return True
 
@@ -391,6 +398,7 @@ def _fetch_file_content_at_commit(
     """Safely fetches a single file's content at head_sha without checking out untrusted PR code."""
     if not _is_safe_relative_path(rel_path):
         return None
+    norm_rel_path = Path(rel_path.replace("\\", "/")).as_posix()
 
     if head_sha:
         if not re.match(r"^[0-9a-fA-F]{7,40}$", head_sha):
@@ -401,7 +409,7 @@ def _fetch_file_content_at_commit(
                 "HOME": os.environ.get("HOME", ""),
             }
             res = subprocess.run(
-                ["git", "show", f"{head_sha}:{rel_path}"],
+                ["git", "show", f"{head_sha}:{norm_rel_path}"],
                 cwd=str(repo_root),
                 env=git_env,
                 capture_output=True,
@@ -412,11 +420,11 @@ def _fetch_file_content_at_commit(
             if res.returncode == 0:
                 return res.stdout
         except Exception as e:  # pylint: disable=broad-except
-            print(f"Warning: git show failed for {head_sha}:{rel_path}: {e}")
+            print(f"Warning: git show failed for {head_sha}:{norm_rel_path}: {e}")
 
         if OWNER and REPO:
             try:
-                url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/contents/{rel_path}"
+                url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/contents/{norm_rel_path}"
                 data = get_request(url, params={"ref": head_sha})
                 if (
                     isinstance(data, dict)
@@ -428,12 +436,12 @@ def _fetch_file_content_at_commit(
                     )
             except Exception as e:  # pylint: disable=broad-except
                 print(
-                    f"Warning: GitHub API content fetch failed for {rel_path} at {head_sha}: {e}"
+                    f"Warning: GitHub API content fetch failed for {norm_rel_path} at {head_sha}: {e}"
                 )
         return None
 
     try:
-        local_path = (repo_root / rel_path).resolve()
+        local_path = (repo_root / norm_rel_path).resolve()
         if local_path.is_relative_to(repo_root.resolve()) and local_path.is_file():
             return local_path.read_text(encoding="utf-8", errors="replace")
     except Exception:  # pylint: disable=broad-except
@@ -511,7 +519,7 @@ def run_pylint_on_changed_files(
             and change_type != "DELETED"
             and _is_safe_relative_path(path)
         ):
-            changed_py_files.append(path)
+            changed_py_files.append(Path(path.replace("\\", "/")).as_posix())
 
     if not changed_py_files:
         return "No Python files were modified in this pull request."
