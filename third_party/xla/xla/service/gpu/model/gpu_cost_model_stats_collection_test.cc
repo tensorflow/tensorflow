@@ -40,35 +40,23 @@ using ::mlir::MLIRContext;
 using ::testing::Contains;
 using ::testing::Truly;
 
-class GpuCostModelStatsCollectionTest
-    : public HloHardwareIndependentTestBase,
-      public ::testing::WithParamInterface</*use_experimental_tiling=*/bool> {
+class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
  public:
   GpuCostModelStatsCollectionTest() {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
-  bool use_experimental_tiling() const { return GetParam(); }
-
  protected:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        use_experimental_tiling());
-    return debug_options;
-  }
-
   // Must be declared before `cost_model_stats_`, which uses it on construction.
   mlir::MLIRContext mlir_context_;
   GpuCostModelStatsCollection cost_model_stats_{
       TestGpuDeviceInfo::H100SXMDeviceInfo(),
       GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
-      &mlir_context_, use_experimental_tiling(),
+      &mlir_context_, /*use_experimental_tiling=*/true,
       /*enable_same_shape_multi_output_fusion=*/false};
 };
 
-TEST_P(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {
+TEST_F(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
     HloModule test_module
 
@@ -93,7 +81,7 @@ TEST_P(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {
   EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
-TEST_P(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
+TEST_F(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
     HloModule test_module
 
@@ -130,7 +118,7 @@ TEST_P(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
   EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
-TEST_P(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
+TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
   HloModule test_module
 
@@ -173,13 +161,6 @@ TEST_P(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
                        cost.end_to_end_cycles() > 0;
               })));
 }
-
-INSTANTIATE_TEST_SUITE_P(GpuCostModelStatsCollectionTestSuite,
-                         GpuCostModelStatsCollectionTest, ::testing::Bool(),
-                         [](const ::testing::TestParamInfo<bool>& info) {
-                           return info.param ? "ExperimentalTiling"
-                                             : "SymbolicTiling";
-                         });
 
 }  // namespace
 }  // namespace gpu

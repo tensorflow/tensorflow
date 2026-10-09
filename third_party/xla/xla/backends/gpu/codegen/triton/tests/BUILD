@@ -66,12 +66,18 @@ xla_cc_binary(
 )
 
 deviceless_tests = [
+    "bitcast/bitcast_reduce_stride1.hlo",
     "collectives/all_reduce.hlo",
     "collectives/all_gather.hlo",
     "concat/concat_active_scalar_constant.hlo",
     "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
+    "concat/concat_prune_inactive.hlo",
     "constraints/max_tensor_elements_violation.hlo",
     "dot/duplicate_dot_operand.hlo",
+    "reduce/reduce_minor_extra_out.hlo",
+    "reduce/reduce_to_scalar_extra_out.hlo",
+    "slice/slice_extra_out_padding.hlo",
+    "slice/slice_padding.hlo",
 ]
 
 lit_test_suite(

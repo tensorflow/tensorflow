@@ -75,8 +75,6 @@ xla_cc_test(
         ":xtile_config_proto_cc",
         "//xla:status_macros",
         "//xla:xla_proto_cc",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",

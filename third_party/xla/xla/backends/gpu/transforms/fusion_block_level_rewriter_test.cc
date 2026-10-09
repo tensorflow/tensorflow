@@ -70,16 +70,13 @@ bool HasTritonBlockLevelFusionConfig(const HloInstruction* fusion) {
 
 class FusionBlockLevelRewriterTestBase
     : public HloHardwareIndependentTestBase,
-      public testing::WithParamInterface<std::tuple<bool, bool>> {
+      public testing::WithParamInterface<bool> {
  public:
   FusionBlockLevelRewriterTestBase() {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
-  bool EnableTilingPropagation() const { return std::get<0>(GetParam()); }
-  bool EnableSameShapeMultiOutputFusion() const {
-    return std::get<1>(GetParam());
-  }
+  bool EnableSameShapeMultiOutputFusion() const { return GetParam(); }
 
  protected:
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo(
@@ -95,8 +92,6 @@ class FusionBlockLevelRewriterTest : public FusionBlockLevelRewriterTestBase {
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(
         true);
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        EnableTilingPropagation());
     debug_options
         .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(
             EnableSameShapeMultiOutputFusion());
@@ -104,22 +99,12 @@ class FusionBlockLevelRewriterTest : public FusionBlockLevelRewriterTestBase {
   }
 };
 
-INSTANTIATE_TEST_SUITE_P(
-    FusionBlockLevelRewriterTest, FusionBlockLevelRewriterTest,
-    testing::Combine(testing::Bool(), testing::Bool()),
-    [](const testing::TestParamInfo<std::tuple<bool, bool>>& info) {
-      std::vector<std::string> parts;
-      if (std::get<0>(info.param)) {
-        parts.push_back("TilingPropagation");
-      }
-      if (std::get<1>(info.param)) {
-        parts.push_back("SameShapeMultiOutputFusion");
-      }
-      if (parts.empty()) {
-        return std::string("Default");
-      }
-      return absl::StrJoin(parts, "_");
-    });
+INSTANTIATE_TEST_SUITE_P(FusionBlockLevelRewriterTest,
+                         FusionBlockLevelRewriterTest, testing::Bool(),
+                         [](const testing::TestParamInfo<bool>& info) {
+                           return info.param ? "SameShapeMultiOutputFusion"
+                                             : "Default";
+                         });
 
 TEST_P(FusionBlockLevelRewriterTest,
        DoesNotRewriteFusionThatIsAlreadyBlockLevel) {
@@ -224,9 +209,7 @@ ENTRY entry {
                                &mlir_context_)
           .Run(module.get());
 
-  const bool should_rewrite =
-      EnableSameShapeMultiOutputFusion() && EnableTilingPropagation();
-  if (should_rewrite) {
+  if (EnableSameShapeMultiOutputFusion()) {
     EXPECT_THAT(result, IsOkAndHolds(true));
     const HloInstruction* root =
         module->entry_computation()->root_instruction();
@@ -424,10 +407,10 @@ ENTRY entry {
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
                                &mlir_context_)
           .Run(module.get()),
-      absl_testing::IsOkAndHolds(EnableTilingPropagation()));
+      absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(HasTritonBlockLevelFusionConfig(root), EnableTilingPropagation());
+  EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
 TEST_P(FusionBlockLevelRewriterTest, DoesNotRewriteScanFusionWithCarryOutput) {
@@ -510,7 +493,6 @@ ENTRY entry {
       HloHardwareIndependentTestBase::GetDebugOptionsForTest();
   debug_options.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(
       false);
-  debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
   debug_options.set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(
       true);
 
