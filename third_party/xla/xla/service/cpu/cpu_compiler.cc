@@ -98,6 +98,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
+#include "xla/backends/cpu/transforms/embedded_while_loop_unroller.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/comparison_util.h"
@@ -212,6 +213,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
@@ -526,11 +528,10 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     // - Improving numerical properties by hierarchically performing reductions.
     // - Improving performance by allowing parallelism.
     // YNNPACK doesn't need TreeReductionRewriter to do either of these.
-    pipeline->AddPass<TreeReductionRewriter>(
-        [](const HloInstruction* hlo) {
-          return !(IsInstructionPreferredByYnn(hlo) &&
-                   IsReduceLikeOpSupportedByYnn(hlo));
-        });
+    pipeline->AddPass<TreeReductionRewriter>([](const HloInstruction* hlo) {
+      return !(IsInstructionPreferredByYnn(hlo) &&
+               IsReduceLikeOpSupportedByYnn(hlo));
+    });
   } else {
     pipeline->AddPass<TreeReductionRewriter>();
   }
@@ -965,8 +966,24 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<SelectAndScatterExpander>();
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateSimpleScatters);
   pipeline.AddPass<ScatterSimplifier>();
-  if (!kFusionEmitterScatterEnabled) {
+  // The nested IR emitter cannot emit while loops (e.g. the ones the scatter
+  // expansion produces) inside embedded computations, so unroll them.
+  if (kFusionEmitterScatterEnabled) {
+    // Fusions are never formed inside embedded computations (e.g. sort
+    // comparators), so scatters there cannot use the fusion emitter. Unrolling
+    // a loop can move a scatter from its body into an embedded computation, so
+    // expand and unroll to a fixed point.
+    auto& embedded_pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+        "embedded_scatter_expansion");
+    embedded_pipeline.AddPass<ScatterExpander>(
+        ScatterExpander::kEliminateAllScatters,
+        [](const HloInstruction* instr) {
+          return InstructionFusion::IsEmbeddedComputation(instr->parent());
+        });
+    embedded_pipeline.AddPass<EmbeddedWhileLoopUnroller>();
+  } else {
     pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+    pipeline.AddPass<EmbeddedWhileLoopUnroller>();
   }
 
   pipeline.AddPass(CreateSimplificationPipeline(
@@ -2337,8 +2354,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                    target_machine_builder());
 
-  ThunkEmitter::Options thunk_emitter_options = {
-      /*is_aot_compilation=*/true};
+  ThunkEmitter::Options thunk_emitter_options = {/*is_aot_compilation=*/true};
 
   TargetMachineOptions target_machine_options(
       triple.normalize(), target_machine->getTargetCPU(),

@@ -34,6 +34,40 @@ package_group(
 )
 
 cc_library(
+    name = "embedded_while_loop_unroller",
+    srcs = ["embedded_while_loop_unroller.cc"],
+    hdrs = ["embedded_while_loop_unroller.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:instruction_fusion",
+        "//xla/service:while_loop_unroller",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "embedded_while_loop_unroller_test",
+    srcs = ["embedded_while_loop_unroller_test.cc"],
+    deps = [
+        ":embedded_while_loop_unroller",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "library_rewriter",
     srcs = ["library_rewriter.cc"],
     hdrs = ["library_rewriter.h"],
