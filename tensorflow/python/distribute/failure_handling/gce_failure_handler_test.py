@@ -478,7 +478,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
     termination_config = failure_handling.TerminationConfig(
         grace_period=grace_period)
 
-    if strategy_option == 'multi_worker':
+    if strategy_option == 'MWMS_multi_worker':
       has_chief = False
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
