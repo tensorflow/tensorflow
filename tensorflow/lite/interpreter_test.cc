@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -1312,6 +1313,149 @@ TEST_F(InterpreterTest,
                 &delegate, /*active_subgraph_indices=*/{0, 3}),
             kTfLiteOk);
   EXPECT_THAT(prepared_subgraphs, IsEmpty());
+}
+
+// Tests for Interpreter::GetReachableSubgraphIndices.
+class SubgraphReachabilityTest : public InterpreterTest {
+ protected:
+  // Returns a delegate that replaces every node of each prepared subgraph with
+  // a single delegate kernel.
+  static TfLiteDelegate CreateReplaceAllDelegate() {
+    TfLiteDelegate delegate = TfLiteDelegateCreate();
+    delegate.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+    delegate.Prepare = [](TfLiteContext* context,
+                          TfLiteDelegate* delegate) -> TfLiteStatus {
+      TfLiteIntArray* execution_plan = nullptr;
+      TF_LITE_ENSURE_STATUS(
+          context->GetExecutionPlan(context, &execution_plan));
+      TfLiteRegistration kernel{};
+      kernel.custom_name = "ReplaceAllDelegateKernel";
+      return context->ReplaceNodeSubsetsWithDelegateKernels(
+          context, kernel, execution_plan, delegate);
+    };
+    return delegate;
+  }
+
+  // Adds a node for builtin `op` with a copy of `params` as its builtin data.
+  template <typename Params>
+  void AddNode(int subgraph_index, TfLiteBuiltinOperator op,
+               const Params& params) {
+    auto* builtin_data = static_cast<Params*>(malloc(sizeof(Params)));
+    *builtin_data = params;
+    TfLiteRegistration registration{};
+    registration.builtin_code = op;
+    // The subgraph takes ownership of `builtin_data`.
+    ASSERT_EQ(interpreter_->subgraph(subgraph_index)
+                  ->AddNodeWithParameters({}, {}, {}, nullptr, 0, builtin_data,
+                                          &registration),
+              kTfLiteOk);
+  }
+
+  // Adds nodes that do not reference any other subgraph.
+  void AddLeafNode(int subgraph_index) {
+    AddNode(subgraph_index, kTfLiteBuiltinAdd, TfLiteAddParams{});
+    TfLiteRegistration registration{};
+    registration.builtin_code = kTfLiteBuiltinNeg;
+    ASSERT_EQ(interpreter_->subgraph(subgraph_index)
+                  ->AddNodeWithParameters({}, {}, {}, nullptr, 0, nullptr,
+                                          &registration),
+              kTfLiteOk);
+  }
+
+  void AddIf(int subgraph_index, int then_index, int else_index) {
+    TfLiteIfParams params{};
+    params.then_subgraph_index = then_index;
+    params.else_subgraph_index = else_index;
+    AddNode(subgraph_index, kTfLiteBuiltinIf, params);
+  }
+
+  void AddWhile(int subgraph_index, int cond_index, int body_index) {
+    TfLiteWhileParams params{};
+    params.cond_subgraph_index = cond_index;
+    params.body_subgraph_index = body_index;
+    AddNode(subgraph_index, kTfLiteBuiltinWhile, params);
+  }
+
+  void AddCallOnce(int subgraph_index, int init_index) {
+    TfLiteCallOnceParams params{};
+    params.init_subgraph_index = init_index;
+    AddNode(subgraph_index, kTfLiteBuiltinCallOnce, params);
+  }
+
+  std::vector<int> GetReachable(const std::vector<int>& roots) {
+    std::vector<int> reachable;
+    EXPECT_EQ(interpreter_->GetReachableSubgraphIndices(roots, &reachable),
+              kTfLiteOk);
+    return reachable;
+  }
+};
+
+TEST_F(SubgraphReachabilityTest, FollowsAllCalleeOps) {
+  AddSubgraphs(11);  // Subgraphs 0..11.
+  AddLeafNode(0);
+  AddIf(0, 1, 2);
+  AddWhile(1, 3, 4);
+  AddCallOnce(2, 5);
+  TfLiteStablehloCompositeParams composite{};
+  composite.subgraph_index = 6;
+  AddNode(3, kTfLiteBuiltinStablehloComposite, composite);
+  TfLiteStablehloCaseParams case_params{};
+  case_params.num_branches = 2;
+  case_params.branch_subgraph_indices[0] = 7;
+  case_params.branch_subgraph_indices[1] = 8;
+  AddNode(4, kTfLiteBuiltinStablehloCase, case_params);
+  TfLiteStablehloReduceWindowParams reduce_window{};
+  reduce_window.body_subgraph_index = 9;
+  AddNode(5, kTfLiteBuiltinStablehloReduceWindow, reduce_window);
+  TfLiteStablehloScatterParams scatter{};
+  scatter.update_computation_subgraph_index = 10;
+  AddNode(6, kTfLiteBuiltinStablehloScatter, scatter);
+  // Subgraph 11 is not referenced by anything.
+
+  EXPECT_THAT(GetReachable({0}), ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+  EXPECT_THAT(GetReachable({4}), ElementsAre(4, 7, 8));
+  EXPECT_THAT(GetReachable({11}), ElementsAre(11));
+}
+
+TEST_F(SubgraphReachabilityTest, HandlesCyclesDuplicatesAndOrder) {
+  AddSubgraphs(2);
+  AddWhile(0, 1, 1);
+  AddIf(1, 0, 1);  // Recursive reference back to the caller and itself.
+
+  EXPECT_THAT(GetReachable({1, 0, 1}), ElementsAre(0, 1));
+  EXPECT_THAT(GetReachable({2, 2}), ElementsAre(2));
+}
+
+TEST_F(SubgraphReachabilityTest, RejectsInvalidInput) {
+  AddSubgraphs(2);
+  AddCallOnce(1, 7);  // Invalid callee, reachable only from subgraph 1.
+  std::vector<int> reachable = {42};
+
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({0}, nullptr),
+            kTfLiteApplicationError);
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({}, &reachable),
+            kTfLiteApplicationError);
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({0, 3}, &reachable),
+            kTfLiteApplicationError);
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({-1}, &reachable),
+            kTfLiteApplicationError);
+  EXPECT_EQ(interpreter_->GetReachableSubgraphIndices({1}, &reachable),
+            kTfLiteError);
+  EXPECT_THAT(reachable, ElementsAre(42));
+
+  EXPECT_THAT(GetReachable({0, 2}), ElementsAre(0, 2));
+}
+
+TEST_F(SubgraphReachabilityTest, IgnoresAppliedDelegates) {
+  AddSubgraphs(1);
+  AddIf(0, 1, 1);
+  TfLiteDelegate delegate = CreateReplaceAllDelegate();
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate, {0}), kTfLiteOk);
+  ASSERT_TRUE(interpreter_->subgraph(0)->IsFullyDelegated());
+
+  // The IF node is no longer in the execution plan, but its callee is still
+  // reachable through the pre-delegation plan.
+  EXPECT_THAT(GetReachable({0}), ElementsAre(0, 1));
 }
 
 struct TestExternalContext : public TfLiteExternalContext {
