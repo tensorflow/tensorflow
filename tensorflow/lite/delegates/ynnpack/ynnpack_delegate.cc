@@ -401,9 +401,9 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
           } else if (param_tensor.type == kTfLiteInt64 &&
                      param_tensor.data.raw != nullptr &&
                      param_tensor.bytes >= (index + 1) * sizeof(int64_t)) {
-            const int64_t* i64_data =
-                reinterpret_cast<const int64_t*>(param_tensor.data.raw);
-            active_tokens = i64_data[index];
+            std::memcpy(&active_tokens,
+                        param_tensor.data.raw + index * sizeof(int64_t),
+                        sizeof(int64_t));
           }
           if (active_tokens > 0) {
             dims[dummy.seq_axis] =

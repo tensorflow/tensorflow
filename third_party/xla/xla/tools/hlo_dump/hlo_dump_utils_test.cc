@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla::numerics::debug_info {
 namespace {
@@ -1256,6 +1257,104 @@ ENTRY main {
   EXPECT_TRUE(absl::StrContains(html, "\"mismatch_count\": 15"));
 }
 
+TEST(HloDumpUtilsTest, PopulateTensorVisualizationsDefaultsToSingleElement) {
+  // Guards existing producers: without a bounding box, the historical fallback
+  // of a single mismatching element is preserved.
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  ROOT %p0 = f32[4] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  MismatchDetails mismatch;
+  mismatch.target_instruction_name = "p0";
+
+  auto vis_map = PopulateTensorVisualizations(*module, {mismatch});
+  ASSERT_TRUE(vis_map.contains("p0"));
+  EXPECT_TRUE(vis_map["p0"].has_mismatch);
+  EXPECT_EQ(vis_map["p0"].shape, (std::vector<int64_t>{4}));
+  EXPECT_EQ(vis_map["p0"].mismatch_count, 1);
+  EXPECT_EQ(vis_map["p0"].total_elements, 4);
+}
+
+TEST(HloDumpUtilsTest, PopulateTensorVisualizationsWithoutElementLevelData) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  ROOT %p0 = f32[10,20] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails in_module;
+  in_module.target_instruction_name = "p0";
+  in_module.has_element_level_data = false;
+  // Even a supplied bounding box must not be rendered: the flag wins. Populate
+  // every element-level field so each assertion below can actually fail.
+  in_module.bounding_box = MakeBoundingBox({10, 20}, {1, 2}, {5, 8}, 15, 200,
+                                           "block", {{1, 2}, {5, 8}});
+  in_module.bounding_box->mismatched_slices = {1, 3};
+  in_module.bounding_box->slice_boxes["1"] = SliceBoundingBox{};
+
+  MismatchDetails not_in_module;
+  not_in_module.target_instruction_name = "absent";
+  not_in_module.has_element_level_data = false;
+
+  auto vis_map =
+      PopulateTensorVisualizations(*module, {in_module, not_in_module});
+  for (absl::string_view name : {"p0", "absent"}) {
+    SCOPED_TRACE(name);
+    ASSERT_TRUE(vis_map.contains(name));
+    const auto& item = vis_map[name];
+    // The mismatch is still reported, so HLO/graph highlighting keep working,
+    // but the tensor is non-inspectable so the inspector stays closed.
+    EXPECT_TRUE(item.has_mismatch);
+    EXPECT_TRUE(item.shape.empty());
+    EXPECT_TRUE(item.box_min.empty());
+    EXPECT_TRUE(item.box_max.empty());
+    EXPECT_TRUE(item.top_mismatches.empty());
+    EXPECT_TRUE(item.mismatched_slices.empty());
+    EXPECT_TRUE(item.slice_boxes.empty());
+    EXPECT_EQ(item.mismatch_count, 0);
+    EXPECT_EQ(item.total_elements, 0);
+  }
+}
+
+TEST(HloDumpUtilsTest,
+     PopulateTensorVisualizationsWithoutElementLevelDataTupleOutput) {
+  // A tuple target takes the tuple-element branch of the shape lookup, which
+  // must not re-populate the shape once element-level data is disabled.
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  p0 = f32[10,20] parameter(0)
+  p1 = s32[7] parameter(1)
+  ROOT t = (f32[10,20], s32[7]) tuple(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails mismatch;
+  mismatch.target_instruction_name = "t";
+  mismatch.output_shape_index = 1;
+  mismatch.has_element_level_data = false;
+
+  absl::flat_hash_map<std::string, TensorVisualizationInfo> vis_map =
+      PopulateTensorVisualizations(*module, {mismatch});
+  ASSERT_TRUE(vis_map.contains("t"));
+  const auto& item = vis_map["t"];
+  EXPECT_TRUE(item.has_mismatch);
+  EXPECT_TRUE(item.shape.empty());
+  EXPECT_TRUE(item.box_min.empty());
+  EXPECT_TRUE(item.box_max.empty());
+  EXPECT_EQ(item.mismatch_count, 0);
+  EXPECT_EQ(item.total_elements, 0);
+}
+
 TEST(HloDumpUtilsTest, SerializeTensorVisualizationsJsSpecialFloats) {
   absl::flat_hash_map<std::string, TensorVisualizationInfo> vis_map;
   TensorVisualizationInfo item;
@@ -1692,6 +1791,36 @@ ENTRY main {
     ofs << file_content;
     ofs.close();
   }
+}
+
+TEST(HloDumpUtilsTest, DumpHloModuleMismatchWithGraphDataHonorsOutputDir) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule out_dir_module
+ENTRY main {
+  ROOT p0 = f32[4] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  MismatchDetails mismatch;
+  mismatch.target_instruction_name = "p0";
+
+  // A nested, not-yet-existing directory must be created, and the filename
+  // must be used verbatim rather than as a temp-file suffix.
+  const std::string dir =
+      tsl::io::JoinPath(::testing::TempDir(), "hlo_dump_out_dir", "nested");
+  ASSERT_OK_AND_ASSIGN(const std::string path,
+                       DumpHloModuleMismatchWithGraphData(*module, {mismatch},
+                                                          "page.html", dir));
+  EXPECT_EQ(path, tsl::io::JoinPath(dir, "page.html"));
+  EXPECT_TRUE(tsl::Env::Default()->FileExists(path).ok());
+
+  // Writing into the now-existing directory must also succeed.
+  ASSERT_OK_AND_ASSIGN(const std::string second,
+                       DumpHloModuleMismatchWithGraphData(*module, {mismatch},
+                                                          "page2.html", dir));
+  EXPECT_EQ(second, tsl::io::JoinPath(dir, "page2.html"));
+  EXPECT_TRUE(tsl::Env::Default()->FileExists(second).ok());
 }
 
 }  // namespace
