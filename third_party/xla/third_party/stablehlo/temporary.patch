@@ -788,6 +788,19 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 diff --ruN a/stablehlo/WORKSPACE.bazel b/stablehlo/WORKSPACE.bazel
 --- stablehlo/WORKSPACE.bazel
 +++ stablehlo/WORKSPACE.bazel
+@@ -56,9 +56,9 @@
+ 
+ http_archive(
+     name = "rules_python",
+-    sha256 = "8964aa1e7525fea5244ba737458694a057ada1be96a92998a41caa1983562d00",
+-    strip_prefix = "rules_python-1.8.5",
+-    url = "https://github.com/bazel-contrib/rules_python/releases/download/1.8.5/rules_python-1.8.5.tar.gz",
++    sha256 = "e11d2e1efce1589e5bdfa93986712c74fc7467a0f093143d489d2ef5ebb1ed2a",
++    strip_prefix = "rules_python-2.2.0",
++    url = "https://github.com/bazel-contrib/rules_python/releases/download/2.2.0/rules_python-2.2.0.tar.gz",
+ )
+ 
+ load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
 @@ -119,6 +119,18 @@
      ],
  )
