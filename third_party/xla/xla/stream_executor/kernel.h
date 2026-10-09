@@ -156,6 +156,14 @@ class Kernel {
                               const std::optional<ClusterDim>& cluster_dims,
                               Stream* stream, const KernelArgs& args) = 0;
 
+  struct PlatformSpecificHandle {
+    void* kernel = nullptr;
+  };
+
+  virtual PlatformSpecificHandle platform_specific_handle() const {
+    return PlatformSpecificHandle{};
+  }
+
   void set_use_pdl(bool use_pdl) { use_pdl_ = use_pdl; }
   bool use_pdl() const { return use_pdl_; }
 
