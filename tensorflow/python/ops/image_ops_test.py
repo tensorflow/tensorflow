@@ -6043,6 +6043,20 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase,
           self.assertAllClose(selected_indices, [0, 2, 4])
           self.assertEqual(self.evaluate(num_valid), 3)
 
+  @test_util.disable_xla(
+      "b/141236442: "
+      "non_max_suppression with dynamic output shape unsupported.")
+  def testNumpyInput(self):
+    boxes_np = np.array([[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                         [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]],
+                        dtype=np.float32)
+    scores_np = np.array([0.9, 0.75, 0.6, 0.95, 0.5, 0.3], dtype=np.float32)
+    with self.cached_session():
+      selected_indices, num_valid = image_ops.non_max_suppression_padded(
+          boxes_np, scores_np, 5, 0.5)
+      self.assertAllClose(self.evaluate(selected_indices), [3, 0, 5])
+      self.assertEqual(self.evaluate(num_valid), 3)
+
   def testInvalidDtype(self):
     boxes_np = [[4.0, 6.0, 3.0, 6.0],
                 [2.0, 1.0, 5.0, 4.0],
@@ -6643,8 +6657,8 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
     img = np.reshape([[1, 3, 4, 2], [8, 7, 5, 6]], [1, 2, 4, 1])
     expected_dy = np.reshape([[7, 4, 1, 4], [0, 0, 0, 0]], [1, 2, 4, 1])
     expected_dx = np.reshape([[2, 1, -2, 0], [-1, -2, 1, 0]], [1, 2, 4, 1])
-    dy, dx = image_ops.image_gradients(img)
     with self.cached_session():
+      dy, dx = image_ops.image_gradients(img)
       self.assertAllClose(expected_dy, self.evaluate(dy))
       self.assertAllClose(expected_dx, self.evaluate(dx))
 

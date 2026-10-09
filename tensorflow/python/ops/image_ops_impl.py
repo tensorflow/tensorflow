@@ -5593,6 +5593,8 @@ def non_max_suppression_padded(boxes,
     ValueError: When set pad_to_max_output_size to False for batched input.
   """
   with ops.name_scope(name, 'non_max_suppression_padded'):
+    boxes = ops.convert_to_tensor(boxes, name='boxes')
+    scores = ops.convert_to_tensor(scores, name='scores')
     if not pad_to_max_output_size:
       # pad_to_max_output_size may be set to False only when the shape of
       # boxes is [num_boxes, 4], i.e., a single image. We make best effort to
