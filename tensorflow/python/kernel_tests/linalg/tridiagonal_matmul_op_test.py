@@ -135,6 +135,29 @@ class TridiagonalMulOpTest(test.TestCase):
                            [[3, 3], [12, 12], [5, 5]],
                            dtype=dtype)
 
+  def testArrayLikeDiagonals(self):
+    # The compact and matrix paths indexed and read .shape on the argument
+    # before converting it, so a Python list failed where the equivalent
+    # tensor or numpy array worked.
+    diags_compact = [[0., 1., 1.], [1., 1., 1.], [1., 1., 0.]]
+    diags_matrix = [[1., 1., 0.], [1., 1., 1.], [0., 1., 1.]]
+    rhs = [[1.], [2.], [3.]]
+
+    for diags, diagonals_format in ((diags_compact, 'compact'),
+                                    (diags_matrix, 'matrix')):
+      expected = self.evaluate(
+          linalg_impl.tridiagonal_matmul(
+              constant_op.constant(diags, dtypes.float64),
+              constant_op.constant(rhs, dtypes.float64),
+              diagonals_format=diagonals_format))
+      for arg in (diags,
+                  tuple(tuple(row) for row in diags),
+                  np.array(diags, dtype=np.float64)):
+        actual = self.evaluate(
+            linalg_impl.tridiagonal_matmul(
+                arg, rhs, diagonals_format=diagonals_format))
+        self.assertAllClose(expected, actual)
+
   def testComplex(self):
     for dtype in [dtypes.complex64, dtypes.complex128]:
       self._testAllFormats([1j, 1j], [1, -1, 0], [1j, 1j],
