@@ -2577,6 +2577,9 @@ mlir::LogicalResult ExportXlaOp(mlir::stablehlo::CompareOp op,
       case mlir::stablehlo::ComparisonType::UNSIGNED:
         order = xla::ComparisonOrder::kTotal;
         break;
+      case mlir::stablehlo::ComparisonType::WEAKORDER:
+        order = xla::ComparisonOrder::kWeak;
+        break;
       case mlir::stablehlo::ComparisonType::NOTYPE:
         LOG(FATAL) << "Unreachable";
     }
