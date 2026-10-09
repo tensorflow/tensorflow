@@ -670,7 +670,7 @@ class LSTMBlockCellGradOp : public OpKernel {
                     " vs. ", batch_size)));
     OP_REQUIRES(ctx, f_tensor->dim_size(1) == cell_size,
                 absl::InvalidArgumentError(absl::StrCat(
-                    "i.dim_size(1) != cell_size: ", f_tensor->dim_size(1),
+                    "f.dim_size(1) != cell_size: ", f_tensor->dim_size(1),
                     " vs. ", cell_size)));
 
     OP_REQUIRES(ctx, o_tensor->dim_size(0) == batch_size,
@@ -1236,18 +1236,30 @@ class BlockLSTMGradOp : public OpKernel {
     OP_REQUIRES(ctx, wci_tensor->dims() == 1,
                 absl::InvalidArgumentError(absl::StrCat(
                     "wci must be rank 1 but is rank ", wci_tensor->dims())));
+    OP_REQUIRES(ctx, wci_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wci.dim_size(0) != cell_size: ", wci_tensor->dim_size(0),
+                    " vs. ", cell_size)));
 
     const Tensor* wcf_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wcf", &wcf_tensor));
     OP_REQUIRES(ctx, wcf_tensor->dims() == 1,
                 absl::InvalidArgumentError(absl::StrCat(
                     "wcf must be rank 1 but is rank ", wcf_tensor->dims())));
+    OP_REQUIRES(ctx, wcf_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wcf.dim_size(0) != cell_size: ", wcf_tensor->dim_size(0),
+                    " vs. ", cell_size)));
 
     const Tensor* wco_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wco", &wco_tensor));
     OP_REQUIRES(ctx, wco_tensor->dims() == 1,
                 absl::InvalidArgumentError(absl::StrCat(
                     "wco must be rank 1 but is rank ", wco_tensor->dims())));
+    OP_REQUIRES(ctx, wco_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wco.dim_size(0) != cell_size: ", wco_tensor->dim_size(0),
+                    " vs. ", cell_size)));
 
     const Tensor* b_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("b", &b_tensor));
