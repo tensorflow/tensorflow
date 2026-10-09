@@ -272,6 +272,27 @@ class RNNGradTest(test.TestCase):
           gen_rnn_ops.lstm_block_cell_grad, "wci", use_peephole=False,
           **kwargs)
 
+  def testLSTMBlockCellInvalidPeepholeSize(self):
+    # A peephole weight whose length differs from cell_size is broadcast
+    # against [batch_size, cell_size] tensors and read out of bounds.
+    kwargs = self._lstm_block_cell_inputs()
+    kwargs["wci"] = deterministic_random_uniform([3])
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"wci.dim_size\(0\) != cell_size"):
+      self._run_with_unknown_shape(
+          gen_rnn_ops.lstm_block_cell, "wci", use_peephole=True, **kwargs)
+
+  def testLSTMBlockCellGradInvalidPeepholeSize(self):
+    # wci_grad is allocated with the shape of wci but written with cell_size
+    # elements.
+    kwargs = self._lstm_block_cell_grad_inputs()
+    kwargs["wci"] = deterministic_random_uniform([3])
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"wci.dim_size\(0\) != cell_size"):
+      self._run_with_unknown_shape(
+          gen_rnn_ops.lstm_block_cell_grad, "wci", use_peephole=False,
+          **kwargs)
+
   def testLSTMBlockCellGradEmptyCsPrev(self):
     # An empty cs_prev gives LSTMBlockCellBpropWithCUDA a zero-sized launch
     # configuration, which aborts the process. The forward op already rejects

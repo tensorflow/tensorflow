@@ -399,6 +399,19 @@ class LSTMBlockCellOp : public OpKernel {
                     "b.dim_size(0) != cell_size * 4: ", b_tensor->dim_size(0),
                     " vs. ", cell_size * 4)));
 
+    OP_REQUIRES(ctx, wci_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wci.dim_size(0) != cell_size: ", wci_tensor->dim_size(0),
+                    " vs. ", cell_size)));
+    OP_REQUIRES(ctx, wcf_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wcf.dim_size(0) != cell_size: ", wcf_tensor->dim_size(0),
+                    " vs. ", cell_size)));
+    OP_REQUIRES(ctx, wco_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wco.dim_size(0) != cell_size: ", wco_tensor->dim_size(0),
+                    " vs. ", cell_size)));
+
     // Allocate our output tensors.
     Tensor* i_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
@@ -449,44 +462,6 @@ class LSTMBlockCellOp : public OpKernel {
                                       &gates_tensor));
 
     const Device& device = ctx->eigen_device<Device>();
-
-    // Sanity check that each of the tensors have the required NDIMS.
-    OP_REQUIRES(
-        ctx, xh_tensor.dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "xh_tensor must be rank 2 but is rank ", xh_tensor.dims(), ".")));
-    OP_REQUIRES(
-        ctx, i_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "i_tensor must be rank 2 but is rank ", i_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, cs_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "cs_tensor must be rank 2 but is rank ", cs_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, f_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "f_tensor must be rank 2 but is rank ", f_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, o_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "o_tensor must be rank 2 but is rank ", o_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, ci_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "ci_tensor must be rank 2 but is rank ", ci_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, co_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "co_tensor must be rank 2 but is rank ", co_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, gates_tensor.dims() == 2,
-                absl::InvalidArgumentError(
-                    absl::StrCat("gates_tensor must be rank 2 but is rank ",
-                                 gates_tensor.dims(), ".")));
-    OP_REQUIRES(
-        ctx, h_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "h_tensor must be rank 2 but is rank ", h_tensor->dims(), ".")));
 
     functor::LSTMBlockCellFprop<Device, T, USE_CUBLAS, gate_layout>(
         batch_size, input_size, cell_size)(
@@ -657,6 +632,19 @@ class LSTMBlockCellGradOp : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "b.dim_size(0) != cell_size * 4: ", b_tensor->dim_size(0),
                     " vs. ", cell_size * 4)));
+
+    OP_REQUIRES(ctx, wci_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wci.dim_size(0) != cell_size: ", wci_tensor->dim_size(0),
+                    " vs. ", cell_size)));
+    OP_REQUIRES(ctx, wcf_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wcf.dim_size(0) != cell_size: ", wcf_tensor->dim_size(0),
+                    " vs. ", cell_size)));
+    OP_REQUIRES(ctx, wco_tensor->dim_size(0) == cell_size,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "wco.dim_size(0) != cell_size: ", wco_tensor->dim_size(0),
+                    " vs. ", cell_size)));
 
     OP_REQUIRES(ctx, i_tensor->dim_size(0) == batch_size,
                 absl::InvalidArgumentError(absl::StrCat(
