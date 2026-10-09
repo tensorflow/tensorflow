@@ -4588,6 +4588,74 @@ ENTRY main {
   }
 }
 
+TEST_F(HloDataflowAnalysisTest,
+       DisablePropagateThroughCallsAndControlFlowMixedCallContexts) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+shared_callee {
+  param = f32[] parameter(0)
+  ROOT neg = f32[] negate(param)
+}
+
+false_branch {
+  param = f32[] parameter(0)
+  ROOT id = f32[] copy(param)
+}
+
+async_comp {
+  param = f32[] parameter(0)
+  ROOT neg = f32[] negate(param)
+}
+
+ENTRY main {
+  const0 = f32[] constant(1.0)
+  pred0 = pred[] constant(true)
+  tup = (f32[]) tuple(const0)
+  gte = f32[] get-tuple-element(tup), index=0
+  mapped = f32[] map(gte), to_apply=shared_callee
+  called = f32[] call(gte), to_apply=shared_callee
+  cond = f32[] conditional(pred0, gte, called), true_computation=shared_callee, false_computation=false_branch
+  async_start = ((f32[]), f32[], u32[]) async-start(cond), calls=async_comp
+  async_update = ((f32[]), f32[], u32[]) async-update(async_start)
+  ROOT async_done = f32[] async-done(async_update)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* const0 = FindInstruction(module_.get(), "const0");
+  HloInstruction* gte = FindInstruction(module_.get(), "gte");
+  HloInstruction* called = FindInstruction(module_.get(), "called");
+  HloInstruction* cond = FindInstruction(module_.get(), "cond");
+  HloInstruction* async_start = FindInstruction(module_.get(), "async_start");
+  HloInstruction* async_done = FindInstruction(module_.get(), "async_done");
+  HloInstruction* shared_param =
+      module_->GetComputationWithName("shared_callee")
+          ->parameter_instruction(0);
+  HloInstruction* false_param =
+      module_->GetComputationWithName("false_branch")->parameter_instruction(0);
+  HloInstruction* async_param =
+      module_->GetComputationWithName("async_comp")->parameter_instruction(0);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto analysis,
+      HloDataflowAnalysis::Run(
+          *module_, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/false,
+          /*precompute_uses=*/std::nullopt,
+          /*propagate_through_control_flow=*/false));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(gte),
+            &analysis->GetValueDefinedAt(const0));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(shared_param));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(false_param));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(async_param));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(called));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(cond));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(async_start, {1}));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(async_done),
+            &analysis->GetValueDefinedAt(async_start, {1}));
+}
+
 TEST_F(HloDataflowAnalysisTest, CallMarkerCustomCalls) {
   const char* hlo_text = R"hlo(
 HloModule module
