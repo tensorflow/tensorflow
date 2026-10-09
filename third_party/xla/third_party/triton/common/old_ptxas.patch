@@ -34,7 +34,7 @@ On Blackwell architectures with PTX 8.8+, upstream Triton generates 256-bit glob
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
-@@ -189,12 +189,9 @@ struct LoadStoreConversionBase {
+@@ -186,12 +186,9 @@ struct LoadStoreConversionBase {
      auto pointeeBitWidth = triton::getPointeeBitWidth(tensorTy);
      LDBG("getVectorSize contiguity = " << contiguity << " pointeeBitWidth = "
                                         << pointeeBitWidth);
