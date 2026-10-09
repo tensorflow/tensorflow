@@ -1651,13 +1651,16 @@ class SparseSegmentReductionInvalidIndicesGpuTest(
         )
         self.assertAllEqual([num_segments or 1, 4], result.shape)
         # Segment 0 reads only valid rows; segment 1 reads only invalid rows.
+        test_indices = [1, 2**30, -(2**30)]
+        test_segment_ids = [0, 1, 1]
+        if index_dtype == dtypes_lib.int64:
+          test_indices.append(2**33 + 1)
+          test_segment_ids.append(1)
         result = self.evaluate(
             tf_op(
                 data=data,
-                indices=constant_op.constant(
-                    [1, 2**30, -(2**30)], dtype=index_dtype
-                ),
-                segment_ids=constant_op.constant([0, 1, 1]),
+                indices=constant_op.constant(test_indices, dtype=index_dtype),
+                segment_ids=constant_op.constant(test_segment_ids),
                 num_segments=num_segments,
             )
         )
@@ -1684,6 +1687,8 @@ class SparseSegmentReductionInvalidIndicesGpuTest(
     indices[0] = 1
     indices[1::2] = 2**30
     indices[2::4] = -(2**30)
+    if index_dtype == dtypes_lib.int64:
+      indices[3::4] = 2**33 + 1
     segment_ids = constant_op.constant([0] + [1] * 1199)
     for tf_op in self._OPS:
       for num_segments in (None, 2):
@@ -1707,16 +1712,19 @@ class SparseSegmentReductionInvalidIndicesGpuTest(
         self.assertAllEqual([2, 1], result.shape)
         self.assertAllEqual(np.ones([1], dtype=np_dtype), result[0])
 
-  @parameterized.parameters(
-      dtypes_lib.float16,
-      dtypes_lib.bfloat16,
-      dtypes_lib.float32,
-      dtypes_lib.float64,
+  @parameterized.product(
+      dtype=(
+          dtypes_lib.float16,
+          dtypes_lib.bfloat16,
+          dtypes_lib.float32,
+          dtypes_lib.float64,
+      ),
+      segment_id_dtype=(dtypes_lib.int32, dtypes_lib.int64),
   )
   @test_util.disable_xla("Tests TF GPU kernel handling of invalid segment ids")
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
-  def testGradV2SegmentIdsOutOfRange(self, dtype):
+  def testGradV2SegmentIdsOutOfRange(self, dtype, segment_id_dtype):
     # The segment ids index rows of grad. Use more rows than int16 can count,
     # so that the GPU kernel keeps the segment ids as int32.
     np_dtype = dtype.as_numpy_dtype
@@ -1726,12 +1734,22 @@ class SparseSegmentReductionInvalidIndicesGpuTest(
         math_ops.sparse_segment_mean_grad_v2,
         math_ops.sparse_segment_sqrt_n_grad_v2,
     ]
+    seg_ids = [0, 2**30, -(2**30)]
+    if segment_id_dtype == dtypes_lib.int64:
+      seg_ids.append(2**33 + 1)
     for tf_op in ops_list:
       xgrad, unique_indices = self.evaluate(
-          tf_op(grad, [0, 1, 2], [0, 2**30, 2**31 - 1], 3)
+          tf_op(
+              grad,
+              constant_op.constant(
+                  list(range(len(seg_ids))), dtype=dtypes_lib.int32
+              ),
+              constant_op.constant(seg_ids, dtype=segment_id_dtype),
+              len(seg_ids),
+          )
       )
-      self.assertAllEqual([3, 4], xgrad.shape)
-      self.assertAllEqual([0, 1, 2], unique_indices)
+      self.assertAllEqual([len(seg_ids), 4], xgrad.shape)
+      self.assertAllEqual(list(range(len(seg_ids))), unique_indices)
       self.assertAllEqual(np.ones([4], dtype=np_dtype), xgrad[0])
 
 
