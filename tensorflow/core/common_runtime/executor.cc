@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
@@ -1255,6 +1256,11 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     // Some error happened. This thread of computation is done.
     {
       mutex_lock l(mu_);
+      const bool is_derived = StatusGroup::IsDerived(s) ||
+                              ((absl::IsCancelled(s) || absl::IsAborted(s)) &&
+                               cancellation_manager_ &&
+                               (cancellation_manager_->IsCancelled() ||
+                                cancellation_manager_->IsCancelling()));
       if (status_.ok()) {
         // If this is the first node to fail in this run, we are responsible for
         // aborting all other execution in the step.
@@ -1264,13 +1270,18 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         // being derived. Note that the original node that fails might also
         // trigger cancellation, and here we make sure the original error is
         // exposed to users and not buried as a derived error.
-        if (cancellation_manager_ && cancellation_manager_->IsCancelled() &&
-            (absl::IsCancelled(s) || absl::IsAborted(s))) {
+        if (is_derived && !StatusGroup::IsDerived(s)) {
           status_ = StatusGroup::MakeDerived(s);
           maybe_derived_s = status_;
         } else {
           status_ = s;
         }
+      } else if (StatusGroup::IsDerived(status_) && !is_derived) {
+        // If a previous node in this executor reported a derived cancellation
+        // error (for example, a sibling _Recv cancelled via a shared
+        // CancellationManager before a nested function finished reporting its
+        // original error), prefer the non-derived root-cause error.
+        status_ = s;
       }
     }
 
