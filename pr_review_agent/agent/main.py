@@ -24,6 +24,7 @@ import requests
 from os import environ
 
 from agent import agent
+from agent import settings as settings_mod
 from agent.settings import OWNER, REPO, PULL_REQUEST_NUMBER, PR_HEAD_SHA, GITHUB_BASE_URL
 from agent.utils import (
     call_agent_async,
@@ -139,8 +140,6 @@ _INITIAL_ENV_HEAD_SHA = environ.get("PR_HEAD_SHA")
 
 def _get_expected_head_sha() -> str:
     """Resolves the expected labeled commit SHA from trusted runtime configuration."""
-    import agent.settings as settings_mod
-
     if PR_HEAD_SHA != _INITIAL_ENV_HEAD_SHA and PR_HEAD_SHA is not None:
         return PR_HEAD_SHA.strip()
     if settings_mod.PR_HEAD_SHA != _INITIAL_ENV_HEAD_SHA and settings_mod.PR_HEAD_SHA is not None:

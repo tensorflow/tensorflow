@@ -18,7 +18,12 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
+import inspect
+import logging
 import os
+from pathlib import Path
+import subprocess
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -327,12 +332,10 @@ class TestPylintIntegration(unittest.TestCase):
         self, mock_subproc_run, mock_fetch_content
     ):
         """4. graceful handling of Pylint timeout and execution failure"""
-        import subprocess as sp
-
         files = [{"path": "tensorflow/python/ops/math_ops.py", "changeType": "MODIFIED"}]
         mock_fetch_content.return_value = "x = 1\n"
 
-        mock_subproc_run.side_effect = sp.TimeoutExpired(cmd="pylint", timeout=120)
+        mock_subproc_run.side_effect = subprocess.TimeoutExpired(cmd="pylint", timeout=120)
         timeout_out = utils.run_pylint_on_changed_files(
             files, raw_diff="", head_sha="a1b2c3d4"
         )
@@ -621,10 +624,11 @@ class TestModelFallback(unittest.TestCase):
         ]
 
         with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
-            with self.assertRaises(RuntimeError) as ctx:
+            with self.assertRaisesRegex(
+                RuntimeError, "All models in MODELS_POOL failed"
+            ):
                 asyncio.run(main.main())
 
-        self.assertIn("All models in MODELS_POOL failed", str(ctx.exception))
         self.assertEqual(mock_run_pylint.call_count, 1)
         self.assertEqual(mock_run_pr_review.call_count, len(agent.MODELS_POOL))
 
@@ -739,8 +743,6 @@ class TestSecurityHardening(unittest.TestCase):
         self, mock_get_diff, mock_graphql
     ):
         """Finding 2: LLM-facing tools do not accept pr_number and bind to PULL_REQUEST_NUMBER."""
-        import inspect
-
         self.assertNotIn(
             "pr_number",
             inspect.signature(agent.get_pull_request_details).parameters,
@@ -997,8 +999,6 @@ class TestSecurityHardening(unittest.TestCase):
         self, mock_subproc_run, mock_get_request
     ):
         """Finding 5: when head_sha is supplied and git/API fail, _fetch_file_content_at_commit returns None."""
-        from pathlib import Path
-
         mock_proc = MagicMock()
         mock_proc.returncode = 128
         mock_subproc_run.return_value = mock_proc
@@ -1018,8 +1018,6 @@ class TestSecurityHardening(unittest.TestCase):
         self, mock_subproc_run
     ):
         """LOW-1: git show subprocess in _fetch_file_content_at_commit receives only PATH and HOME."""
-        from pathlib import Path
-
         mock_proc = MagicMock()
         mock_proc.returncode = 0
         mock_proc.stdout = "x = 1\n"
@@ -1059,23 +1057,20 @@ class TestSecurityHardening(unittest.TestCase):
 
     def test_low_2_adk_logger_not_configured_at_debug_level(self):
         """LOW-2: ADK logger is configured at logging.WARNING in both mock and real google-adk environments."""
-        import importlib
-        import logging
-
         if hasattr(main.logs.setup_adk_logger, "assert_called_with"):
             main.logs.setup_adk_logger.assert_called_with(level=logging.WARNING)
         else:
-            adk_logger = logging.getLogger("google_adk")
+            adk_logger = logging.getLogger("google.adk")
             self.assertEqual(adk_logger.getEffectiveLevel(), logging.WARNING)
 
         # Also verify the real-function path when setup_adk_logger is not a MagicMock
         def _real_setup_adk_logger(level=logging.INFO):
-            logging.getLogger("google_adk").setLevel(level)
+            logging.getLogger("google.adk").setLevel(level)
 
         with patch.object(main.logs, "setup_adk_logger", side_effect=_real_setup_adk_logger):
             main.logs.setup_adk_logger(level=logging.WARNING)
             self.assertEqual(
-                logging.getLogger("google_adk").getEffectiveLevel(),
+                logging.getLogger("google.adk").getEffectiveLevel(),
                 logging.WARNING,
             )
         # Restore mock call state if running under MagicMock
@@ -1096,7 +1091,7 @@ class TestSecurityHardening(unittest.TestCase):
         mock_subproc_run,
         mock_fetch_content,
     ):
-        """Finding 2: Full diff >30,000 chars is preserved for Pylint in GraphQL & REST paths while LLM diff is capped at 30,000."""
+        """Finding 2: Full diff >30,000 chars is preserved for Pylint in GraphQL & REST paths while LLM diff is capped at <=30,000 on a complete line boundary."""
         padding_lines = "\n".join(
             f"+// padding line {i} " + ("x" * 60) for i in range(450)
         )
@@ -1158,10 +1153,17 @@ class TestSecurityHardening(unittest.TestCase):
         self.assertGreater(len(full_diff_gql), 30000)
         self.assertIn("tensorflow/python/ops/late_file.py", full_diff_gql)
 
-        # Verify LLM-facing prefetched return is capped at 30,000 chars without mutating stored full diff
+        # Verify LLM-facing prefetched return is capped at <=30,000 chars at a complete line boundary without mutating stored full diff
         agent._PREFETCHED_PR_DETAILS = gql_details
         llm_details = agent.get_pull_request_details()
-        self.assertEqual(len(llm_details["pull_request"]["diff"]), 30000)
+        llm_diff = llm_details["pull_request"]["diff"]
+        self.assertLessEqual(len(llm_diff), agent.MAX_LLM_DIFF_CHARS)
+        self.assertGreater(len(llm_diff), 0)
+        self.assertTrue(full_diff_gql.startswith(llm_diff + "\n"))
+        self.assertEqual(
+            llm_diff.splitlines()[-1],
+            full_diff_gql.splitlines()[len(llm_diff.splitlines()) - 1],
+        )
         self.assertGreater(len(gql_details["pull_request"]["diff"]), 30000)
 
         # Verify Pylint retains diagnostic on the Python file after the 30,000-char boundary
@@ -1367,6 +1369,112 @@ class TestSecurityHardening(unittest.TestCase):
             "https://api.github.com/repos/tensorflow/tensorflow/pulls/12345/files",
         )
         self.assertEqual(files_call.kwargs.get("params"), {"per_page": 100})
+
+    def test_engineer_review_pylint_preserves_hidden_filenames(self):
+        """Hidden filenames like .hidden.py and ./.hidden.py are preserved during Pylint diagnostic filtering."""
+        raw_diff = (
+            "--- a/.hidden.py\n"
+            "+++ b/.hidden.py\n"
+            "@@ -1,2 +1,2 @@\n"
+            " def f():\n"
+            "+   return 1\n"
+            "--- a/tensorflow/python/.hidden_mod.py\n"
+            "+++ b/tensorflow/python/.hidden_mod.py\n"
+            "@@ -1,2 +1,2 @@\n"
+            " def g():\n"
+            "+   return 2\n"
+        )
+        mod_lines = utils.extract_modified_lines_by_file(raw_diff)
+        self.assertEqual(
+            mod_lines,
+            {
+                ".hidden.py": {2},
+                "tensorflow/python/.hidden_mod.py": {2},
+            },
+        )
+        pylint_stdout = (
+            ".hidden.py:2:0: W0311 (bad-indentation): Bad indentation\n"
+            "./.hidden.py:2:0: C0116 (missing-function-docstring): Missing docstring\n"
+            "./tensorflow/python/.hidden_mod.py:2:0: W0311 (bad-indentation): Bad indentation\n"
+        )
+        retained = utils.filter_pylint_output_by_diff(
+            pylint_stdout, mod_lines, raw_diff=raw_diff
+        )
+        self.assertEqual(
+            retained,
+            [
+                ".hidden.py:2:0: W0311 (bad-indentation): Bad indentation",
+                ".hidden.py:2:0: C0116 (missing-function-docstring): Missing docstring",
+                "tensorflow/python/.hidden_mod.py:2:0: W0311 (bad-indentation): Bad indentation",
+            ],
+        )
+
+    def test_engineer_review_docs_dir_source_files_receive_code_focus_areas(self):
+        """Source files under /docs/ are categorized as code rather than Documentation and receive code-review focus areas."""
+        # 1. Python source file under /docs/ -> not classified as Documentation
+        py_docs_files = [
+            {
+                "path": "tensorflow/tools/docs/generate_lib.py",
+                "additions": 10,
+                "deletions": 2,
+                "changeType": "MODIFIED",
+            }
+        ]
+        cat_py, _ = agent.classify_pr_with_scoring(
+            py_docs_files,
+            title="Fix crash in doc parser",
+            body="",
+            diff="@@ -10,2 +10,3 @@\n+  return val\n",
+        )
+        self.assertEqual(cat_py, "Bug fix")
+        focus_py, skip_py = agent.get_focus_skip_areas(cat_py)
+        self.assertIn("Correctness", focus_py)
+        self.assertNotIn("Testing requirements", skip_py)
+
+        # 2. Python source file under /docs/ with neutral title -> General TensorFlow (not Documentation)
+        cat_general, _ = agent.classify_pr_with_scoring(
+            py_docs_files,
+            title="Update generate_lib",
+            body="",
+            diff="@@ -10,2 +10,3 @@\n+  return val\n",
+        )
+        self.assertEqual(cat_general, "General TensorFlow")
+        focus_gen, _ = agent.get_focus_skip_areas(cat_general)
+        self.assertIn("code quality", focus_gen)
+
+        # 3. Test file under /docs/ -> Test-only (not Documentation)
+        test_docs_files = [
+            {
+                "path": "tensorflow/tools/docs/generate_lib_test.py",
+                "additions": 8,
+                "deletions": 1,
+                "changeType": "MODIFIED",
+            }
+        ]
+        cat_test, _ = agent.classify_pr_with_scoring(
+            test_docs_files, title="Add unit test", body="", diff=""
+        )
+        self.assertEqual(cat_test, "Test-only")
+
+        # 4. Pure documentation files (.md, .rst) under /docs/ still classify as Documentation
+        md_docs_files = [
+            {
+                "path": "tensorflow/docs/guide.md",
+                "additions": 5,
+                "deletions": 1,
+                "changeType": "MODIFIED",
+            },
+            {
+                "path": "tensorflow/docs/overview.rst",
+                "additions": 3,
+                "deletions": 0,
+                "changeType": "MODIFIED",
+            },
+        ]
+        cat_doc, _ = agent.classify_pr_with_scoring(
+            md_docs_files, title="Update guide", body="", diff=""
+        )
+        self.assertEqual(cat_doc, "Documentation")
 
 
 if __name__ == "__main__":

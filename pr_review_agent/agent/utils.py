@@ -464,7 +464,9 @@ def filter_pylint_output_by_diff(
         m = diag_pattern.match(line.strip())
         if not m:
             continue
-        path = m.group(1).strip().lstrip("./")
+        path = m.group(1).strip()
+        while path.startswith("./"):
+            path = path[2:]
         line_num = int(m.group(2))
         col_num = int(m.group(3))
         msg_id = m.group(4)

@@ -17,19 +17,27 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 from typing import Any
 
+from agent import settings as settings_mod
+from agent import utils
 from agent.settings import GITHUB_BASE_URL
 from agent.settings import OWNER
 from agent.settings import REPO
+from agent.utils import annotate_diff_with_line_numbers
+from agent.utils import call_agent_async
 from agent.utils import error_response
+from agent.utils import format_commit_review_marker
 from agent.utils import get_diff
+from agent.utils import parse_number_string
 from agent.utils import read_file
 from agent.utils import run_graphql_query
 
 from google.adk.agents import LlmAgent
+from google.adk.runners import InMemoryRunner
 import requests
 
 STYLE_GUIDE = read_file(
@@ -50,20 +58,31 @@ MAX_LLM_DIFF_CHARS = 30000
 
 _PREFETCHED_PR_DETAILS = None
 _VERIFIED_HEAD_SHA: str | None = None
-_INITIAL_ENV_PR = __import__("os").getenv("PULL_REQUEST_NUMBER")
+_INITIAL_ENV_PR = os.getenv("PULL_REQUEST_NUMBER")
 
 
 def _get_trusted_pr_number() -> int:
     """Resolves the authoritative PR number from trusted runtime configuration."""
-    import os
-    import agent.settings as settings_mod
-    from agent.utils import parse_number_string
-
     if settings_mod.PULL_REQUEST_NUMBER != _INITIAL_ENV_PR and settings_mod.PULL_REQUEST_NUMBER is not None:
         raw_pr = settings_mod.PULL_REQUEST_NUMBER
     else:
         raw_pr = os.getenv("PULL_REQUEST_NUMBER") or settings_mod.PULL_REQUEST_NUMBER
     return parse_number_string(raw_pr)
+
+
+def _truncate_diff_for_llm(
+    diff: str, max_chars: int = MAX_LLM_DIFF_CHARS
+) -> str:
+    """Truncates diff to at most max_chars while ending at a complete line boundary."""
+    if len(diff) <= max_chars:
+        return diff
+    truncated = diff[:max_chars]
+    if diff[max_chars] == "\n":
+        return truncated
+    last_newline = truncated.rfind("\n")
+    if last_newline != -1:
+        return truncated[:last_newline]
+    return truncated
 
 
 def get_pull_request_details() -> dict[str, Any]:
@@ -75,7 +94,7 @@ def get_pull_request_details() -> dict[str, Any]:
         ):
             pr_copy = dict(_PREFETCHED_PR_DETAILS["pull_request"])
             if isinstance(pr_copy.get("diff"), str):
-                pr_copy["diff"] = pr_copy["diff"][:MAX_LLM_DIFF_CHARS]
+                pr_copy["diff"] = _truncate_diff_for_llm(pr_copy["diff"])
             return {**_PREFETCHED_PR_DETAILS, "pull_request": pr_copy}
         return _PREFETCHED_PR_DETAILS
 
@@ -112,7 +131,6 @@ def get_pull_request_details() -> dict[str, Any]:
     url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/pulls/{pr_number}"
 
     try:
-        from agent.utils import annotate_diff_with_line_numbers
         response = run_graphql_query(query, variables)
         if "errors" in response:
             raise requests.exceptions.RequestException(str(response["errors"]))
@@ -123,9 +141,8 @@ def get_pull_request_details() -> dict[str, Any]:
         return {"status": "success", "pull_request": pr}
     except Exception as e:
         try:
-            from agent.utils import get_request, annotate_diff_with_line_numbers
-            pr_data = get_request(url)
-            files_data = get_request(f"{url}/files", params={"per_page": 100})
+            pr_data = utils.get_request(url)
+            files_data = utils.get_request(f"{url}/files", params={"per_page": 100})
             files_nodes = [
                 {
                     "path": f.get("filename", ""),
@@ -186,7 +203,6 @@ def submit_pr_code_review(
         .get("headRefOid", "")
     )
     if head_sha:
-        from agent.utils import format_commit_review_marker
         marker = format_commit_review_marker(head_sha)
         if marker.strip() not in summary_comment:
             summary_comment = summary_comment.rstrip() + marker
@@ -199,8 +215,7 @@ def submit_pr_code_review(
     if head_sha:
         payload["commit_id"] = head_sha
     try:
-        from agent.utils import post_pull_request_review
-        response = post_pull_request_review(url, payload)
+        response = utils.post_pull_request_review(url, payload)
         return {"status": "success", "response": response}
     except Exception as e:
         return error_response(str(e))
@@ -336,7 +351,14 @@ def classify_pr_with_scoring(files: list[dict[str, Any]], title: str, body: str,
 
     num_files = len(files)
     if num_files > 0:
-        is_md_file = lambda f: f.endswith('.md') or '/docs/' in f
+        doc_extensions = ('.md', '.mdx', '.rst', '.txt', '.html')
+        is_md_file = lambda f: (
+            f.lower().endswith(('.md', '.mdx', '.rst'))
+            or (
+                ('/docs/' in f or f.startswith('docs/'))
+                and f.lower().endswith(doc_extensions)
+            )
+        )
         is_test_file = lambda f: '_test.' in f or 'test_' in f or f.endswith('test.py') or f.endswith('test.cc') or f.endswith('test.h') or '/testdata/' in f
         is_build_ci_file = lambda f: f.startswith('.github/') or f.endswith('.yml') or f.endswith('.yaml') or f.endswith('BUILD') or f.endswith('WORKSPACE') or f.endswith('MODULE.bazel') or f.endswith('.bazelrc') or f.endswith('.bazelversion') or f.endswith('.bzl') or 'ci/' in f
 
@@ -770,9 +792,6 @@ async def run_pr_review(
         pylint_output=pylint_output,
         commit_sha=commit_sha
     )
-    
-    from google.adk.runners import InMemoryRunner
-    from agent.utils import call_agent_async
     
     APP_NAME = "tensorflow_pr_review_app"
     USER_ID = "tensorflow_pr_review_user"
