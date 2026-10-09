@@ -151,8 +151,8 @@ class ReduceTest(test_util.TensorFlowTestCase):
     # does not, so reduce_std/reduce_variance need to compute internally in
     # a wider dtype. Previously this produced NaN on CPU and Inf on GPU for
     # reduce_std, instead of a finite, correct result on both.
-    np.random.seed(0)
-    x_np = np.random.randn(1000).astype(np.float32) * 1e4
+    rs = np.random.RandomState(0)
+    x_np = rs.randn(1000).astype(np.float32) * 1e4
     x_f16 = constant_op.constant(x_np.astype(np.float16))
     expected_std = np.std(x_np.astype(np.float64))
 

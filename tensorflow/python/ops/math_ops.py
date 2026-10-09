@@ -2742,13 +2742,15 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
     is_float16 = input_tensor.dtype == dtypes.float16
-    variance = _reduce_variance_in_stable_dtype(input_tensor, axis, keepdims)
+    variance = _reduce_variance_in_stable_dtype(
+        input_tensor, is_float16, axis, keepdims)
     if is_float16:
       variance = cast(variance, dtypes.float16)
     return variance
 
 
-def _reduce_variance_in_stable_dtype(input_tensor, axis, keepdims):
+def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis,
+                                     keepdims):
   """Computes variance, promoting float16 to float32 first.
 
   The dynamic range of float16 is too limited for the squared deviations
@@ -2758,7 +2760,7 @@ def _reduce_variance_in_stable_dtype(input_tensor, axis, keepdims):
   original dtype, so that `reduce_std` can take the square root while still
   in the wider dtype.
   """
-  if input_tensor.dtype == dtypes.float16:
+  if is_float16:
     input_tensor = cast(input_tensor, dtypes.float32)
   means = reduce_mean(input_tensor, axis=axis, keepdims=True)
   if means.dtype.is_integer:
@@ -2824,7 +2826,11 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
     is_float16 = input_tensor.dtype == dtypes.float16
-    variance = _reduce_variance_in_stable_dtype(input_tensor, axis, keepdims)
+    # Preserve the `reduce_variance` sub-scope reduce_std has always had,
+    # rather than calling the private helper directly at this scope level.
+    with ops.name_scope("reduce_variance"):
+      variance = _reduce_variance_in_stable_dtype(
+          input_tensor, is_float16, axis, keepdims)
     std = gen_math_ops.sqrt(variance)
     if is_float16:
       std = cast(std, dtypes.float16)
