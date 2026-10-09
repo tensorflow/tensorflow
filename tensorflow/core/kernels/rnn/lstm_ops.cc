@@ -335,6 +335,33 @@ class LSTMBlockCellOp : public OpKernel {
     const Tensor* b_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("b", &b_tensor));
 
+    // The dimensions read below index dimension 1 of x and cs_prev, and the
+    // peephole weights reach the functor as vec<T>() whether or not
+    // use_peephole is set. Both are fatal checks rather than errors on a
+    // tensor of the wrong rank, so validate the ranks first.
+    const auto check_rank = [](const Tensor* t, const char* name,
+                               int expected) -> absl::Status {
+      if (t->dims() != expected) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            name, " must be rank ", expected, " but is rank ", t->dims()));
+      }
+      return absl::OkStatus();
+    };
+    OP_REQUIRES_OK(ctx, check_rank(x_tensor, "x", 2));
+    OP_REQUIRES_OK(ctx, check_rank(cs_prev_tensor, "cs_prev", 2));
+    OP_REQUIRES_OK(ctx, check_rank(h_prev_tensor, "h_prev", 2));
+    OP_REQUIRES_OK(ctx, check_rank(w_tensor, "w", 2));
+    OP_REQUIRES_OK(ctx, check_rank(wci_tensor, "wci", 1));
+    OP_REQUIRES_OK(ctx, check_rank(wcf_tensor, "wcf", 1));
+    OP_REQUIRES_OK(ctx, check_rank(wco_tensor, "wco", 1));
+    OP_REQUIRES_OK(ctx, check_rank(b_tensor, "b", 1));
+    OP_REQUIRES(
+        ctx, cs_prev_tensor->dim_size(0) > 0 && cs_prev_tensor->dim_size(1) > 0,
+        absl::InvalidArgumentError(
+            absl::StrCat("cs_prev_tensor is empty, has shape: (",
+                         cs_prev_tensor->dim_size(0), ",",
+                         cs_prev_tensor->dim_size(1), ").")));
+
     const int64_t batch_size = x_tensor->dim_size(0);
     const int64_t input_size = x_tensor->dim_size(1);
     const int64_t cell_size = cs_prev_tensor->dim_size(1);
@@ -424,44 +451,6 @@ class LSTMBlockCellOp : public OpKernel {
     const Device& device = ctx->eigen_device<Device>();
 
     // Sanity check that each of the tensors have the required NDIMS.
-    OP_REQUIRES(
-        ctx, x_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "x_tensor must be rank 2 but is rank ", x_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, cs_prev_tensor->dims() == 2,
-                absl::InvalidArgumentError(
-                    absl::StrCat("cs_prev_tensor must be rank 2 but is rank ",
-                                 cs_prev_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, cs_prev_tensor->dim_size(0) > 0 && cs_prev_tensor->dim_size(1) > 0,
-        absl::InvalidArgumentError(
-            absl::StrCat("cs_prev_tensor is empty, has shape: (",
-                         cs_prev_tensor->dim_size(0), ",",
-                         cs_prev_tensor->dim_size(1), ").")));
-    OP_REQUIRES(ctx, h_prev_tensor->dims() == 2,
-                absl::InvalidArgumentError(
-                    absl::StrCat("h_prev_tensor must be rank 2 but is rank ",
-                                 h_prev_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, w_tensor->dims() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "w_tensor must be rank 2 but is rank ", w_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, wci_tensor->dims() == 1,
-                absl::InvalidArgumentError(
-                    absl::StrCat("wci_tensor must be rank 1 but is rank ",
-                                 wci_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, wcf_tensor->dims() == 1,
-                absl::InvalidArgumentError(
-                    absl::StrCat("wcf_tensor must be rank 1 but is rank ",
-                                 wcf_tensor->dims(), ".")));
-    OP_REQUIRES(ctx, wco_tensor->dims() == 1,
-                absl::InvalidArgumentError(
-                    absl::StrCat("wco_tensor must be rank 1 but is rank ",
-                                 wco_tensor->dims(), ".")));
-    OP_REQUIRES(
-        ctx, b_tensor->dims() == 1,
-        absl::InvalidArgumentError(absl::StrCat(
-            "b_tensor must be rank 1 but is rank ", b_tensor->dims(), ".")));
     OP_REQUIRES(
         ctx, xh_tensor.dims() == 2,
         absl::InvalidArgumentError(absl::StrCat(
@@ -621,6 +610,16 @@ class LSTMBlockCellGradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, check_rank(co_tensor, "co", 2));
     OP_REQUIRES_OK(ctx, check_rank(cs_grad_tensor, "cs_grad", 2));
     OP_REQUIRES_OK(ctx, check_rank(h_grad_tensor, "h_grad", 2));
+
+    // An empty cs_prev yields a zero-sized GPU launch configuration in
+    // LSTMBlockCellBpropWithCUDA, which aborts via TF_CHECK_OK. The forward
+    // op rejects this for the same reason; see #58270.
+    OP_REQUIRES(
+        ctx, cs_prev_tensor->dim_size(0) > 0 && cs_prev_tensor->dim_size(1) > 0,
+        absl::InvalidArgumentError(
+            absl::StrCat("cs_prev_tensor is empty, has shape: (",
+                         cs_prev_tensor->dim_size(0), ",",
+                         cs_prev_tensor->dim_size(1), ").")));
 
     const int64_t batch_size = x_tensor->dim_size(0);
     const int64_t input_size = x_tensor->dim_size(1);
