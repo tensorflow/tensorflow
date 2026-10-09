@@ -3770,6 +3770,9 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
             MakeReverseHlo(reorder_from->mutable_operand(0), unreordered_dims));
       }
     } else if (opcode == HloOpcode::kPad) {
+      if (!IsScalarConstantZero(reorder_from->operand(1))) {
+        return nullptr;
+      }
       // Padding of dot contracting dimensions can be reordered to slices of
       // the corresponding contracting dimensions in the other dot operand
       DimensionVector start_indices, limit_indices, strides;
@@ -3791,9 +3794,11 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
 
           // Edge padding can be negative which acts as a slice. If this is
           // the case, we don't want to reorder
-          if (padding_dimension.edge_padding_low() > 0 ||
-              padding_dimension.edge_padding_high() > 0 ||
-              padding_dimension.interior_padding() > 0) {
+          if (padding_dimension.edge_padding_low() >= 0 &&
+              padding_dimension.edge_padding_high() >= 0 &&
+              (padding_dimension.edge_padding_low() > 0 ||
+               padding_dimension.edge_padding_high() > 0 ||
+               padding_dimension.interior_padding() > 0)) {
             make_hlo = true;
             start_index += padding_dimension.edge_padding_low();
             limit_index -= padding_dimension.edge_padding_high();
@@ -3822,7 +3827,8 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
 
       // Check if we still need a padding instruction, and create Hlo if so
       for (auto& dim : new_padding_config.dimensions()) {
-        if (dim.edge_padding_low() != 0 || dim.edge_padding_high() != 0) {
+        if (dim.edge_padding_low() != 0 || dim.edge_padding_high() != 0 ||
+            dim.interior_padding() != 0) {
           // Want to use a greater threshold if reordering means increasing
           // the number of Hlos
           threshold_multiplier = 2.0;

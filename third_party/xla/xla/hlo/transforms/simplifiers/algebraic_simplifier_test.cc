@@ -8205,6 +8205,74 @@ TEST_F(AlgebraicSimplifierTest, DotPadRightReorder) {
                                 m::Pad(m::Parameter(1), m::Constant()))));
 }
 
+TEST_F(AlgebraicSimplifierTest, AssociativeReorderDotPadNonZeroOrInteriorPad) {
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(1.1);
+  options.set_enable_negative_padding_replacement(false);
+  AlgebraicSimplifier simplifier(options);
+
+  // Nonzero pad value on a contracting dimension must not be dropped.
+  constexpr absl::string_view kNonZeroPadHlo = R"(
+    HloModule nonzero_pad
+    ENTRY test {
+      one = f32[] constant(1.0)
+      a = f32[8,5] parameter(0)
+      b = f32[10,6] parameter(1)
+      pad = f32[8,10] pad(a, one), padding=0_0x0_5
+      ROOT dot = f32[8,6] dot(pad, b),
+                 lhs_contracting_dims={1},
+                 rhs_contracting_dims={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto nonzero_module,
+                       ParseAndReturnVerifiedModule(kNonZeroPadHlo));
+  EXPECT_THAT(simplifier.Run(nonzero_module.get()),
+              absl_testing::IsOkAndHolds(false));
+
+  // Negative edge padding combined with positive padding on a contracting
+  // dimension must not be reordered into an invalid slice.
+  constexpr absl::string_view kNegativeEdgePadHlo = R"(
+    HloModule negative_edge_pad
+    ENTRY test {
+      zero = f32[] constant(0.0)
+      a = f32[8,5] parameter(0)
+      b = f32[10,6] parameter(1)
+      pad = f32[8,10] pad(a, zero), padding=0_0x-1_6
+      ROOT dot = f32[8,6] dot(pad, b),
+                 lhs_contracting_dims={1},
+                 rhs_contracting_dims={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto neg_edge_module,
+                       ParseAndReturnVerifiedModule(kNegativeEdgePadHlo));
+  EXPECT_THAT(simplifier.Run(neg_edge_module.get()),
+              absl_testing::IsOkAndHolds(false));
+
+  // Interior padding on a noncontracting dimension must be preserved in the
+  // residual pad when contracting dimension padding is reordered to a slice.
+  constexpr absl::string_view kInteriorPadNonContractingHlo = R"(
+    HloModule interior_pad_non_contracting
+    ENTRY test {
+      zero = f32[] constant(0.0)
+      a = f32[4,5] parameter(0)
+      b = f32[20,6] parameter(1)
+      pad = f32[7,20] pad(a, zero), padding=0_0_1x0_15_0
+      ROOT dot = f32[7,6] dot(pad, b),
+                 lhs_contracting_dims={1},
+                 rhs_contracting_dims={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      auto interior_module,
+      ParseAndReturnVerifiedModule(kInteriorPadNonContractingHlo));
+  ASSERT_THAT(simplifier.Run(interior_module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(interior_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Pad(m::Parameter(0), m::Constant()),
+                                m::Slice(m::Parameter(1)))));
+}
+
 // This pattern appears in translate_inference_bnmt_v15_vf_lite_execution_test
 TEST_F(AlgebraicSimplifierTest, DotBroadcastLeftReorder) {
   constexpr absl::string_view hlo_string = R"(
