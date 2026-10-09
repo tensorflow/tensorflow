@@ -14,9 +14,11 @@
 // ==============================================================================
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
@@ -223,5 +225,26 @@ RUN_BM_NearestNeighbors(kTop10);
 
 #undef RUN_BM_NearestNeighbors
 #undef BENCHMARK_NEAREST_NEIGHBORS
+
+class NearestNeighborsOpTest : public OpsTestBase {
+ protected:
+  void MakeOp() {
+    TF_ASSERT_OK(NodeDefBuilder("nearest_centers_op", "NearestNeighbors")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT64))
+                     .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+  }
+};
+
+TEST_F(NearestNeighborsOpTest, NegativeKReturnsInvalidArgument) {
+  MakeOp();
+  AddInputFromArray<float>(TensorShape({2, 2}), {1.0f, 2.0f, 3.0f, 4.0f});
+  AddInputFromArray<float>(TensorShape({2, 2}), {1.0f, 2.0f, 3.0f, 4.0f});
+  AddInputFromArray<int64_t>(TensorShape({}), {-1});
+  EXPECT_FALSE(RunOpKernel().ok());
+}
+
 }  // namespace
 }  // namespace tensorflow
