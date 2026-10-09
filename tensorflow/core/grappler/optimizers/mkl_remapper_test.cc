@@ -1398,7 +1398,10 @@ class MklFuseInstanceNormTest : public GrapplerTest {
   }
 
   template <DataType DTYPE>
-  void FuseMklInstanceNorm4D_Runner(string FORMAT, string activation) {
+  // With `scalar_params` gamma and beta have one element instead of one per
+  // channel, so the pattern must not be fused.
+  void FuseMklInstanceNorm4D_Runner(string FORMAT, string activation,
+                                    bool scalar_params = false) {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1414,6 +1417,7 @@ class MklFuseInstanceNormTest : public GrapplerTest {
       scale_shift_shape = TensorShape({1, 1, 1, 3});
     }
     filter_shape = TensorShape({2, 2, 3, 3});
+    if (scalar_params) scale_shift_shape = TensorShape({});
 
     auto input_t = GenerateTensorWithSetRandom<DTYPE>(input_shape);
     auto filter_t = GenerateTensorWithSetRandom<DTYPE>(filter_shape);
@@ -1494,7 +1498,9 @@ class MklFuseInstanceNormTest : public GrapplerTest {
     string fused_node_name = (activation == "None") ? "add_2" : "activation";
     int found = 0;
     for (const NodeDef& node : output.node()) {
-      if (node.name() == fused_node_name) {
+      if (scalar_params) {
+        EXPECT_NE(node.op(), "_MklFusedInstanceNorm");
+      } else if (node.name() == fused_node_name) {
         EXPECT_EQ(node.op(), "_MklFusedInstanceNorm");
         ASSERT_EQ(node.input_size(), 3);
         EXPECT_EQ(node.input(0), "conv_add");
@@ -1504,7 +1510,7 @@ class MklFuseInstanceNormTest : public GrapplerTest {
       }
     }
 
-    EXPECT_EQ(found, 1);
+    EXPECT_EQ(found, scalar_params ? 0 : 1);
 
     auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
     ASSERT_EQ(tensors_expected.size(), 1);
@@ -1551,6 +1557,12 @@ TEST_F(MklFuseInstanceNormTest, FuseMklInstanceNorm4D_FP32_NHWC) {
 }
 TEST_F(MklFuseInstanceNormTest, FuseMklInstanceNorm4D_FP32_NCHW) {
   FuseMklInstanceNorm4D<DT_FLOAT>("NCHW");
+}
+TEST_F(MklFuseInstanceNormTest, ScalarScaleShift4D_FP32_NHWC_NotFused) {
+  FuseMklInstanceNorm4D_Runner<DT_FLOAT>("NHWC", "None", /*scalar_params=*/true);
+}
+TEST_F(MklFuseInstanceNormTest, ScalarScaleShift4D_FP32_NCHW_NotFused) {
+  FuseMklInstanceNorm4D_Runner<DT_FLOAT>("NCHW", "None", /*scalar_params=*/true);
 }
 TEST_F(MklFuseInstanceNormTest,
        FuseMklInstanceNormWithActivation5D_FP32_NDHWC) {
