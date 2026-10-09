@@ -437,10 +437,10 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopUnrollNeedPrepare) {
     ROOT result = s32[3]{0} get-tuple-element(while), index=1
   }
   )";
-  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
-                   false);
-  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
-                   true);
+  ASSERT_OK_AND_ASSIGN(auto m1, ParseAndReturnVerifiedModule(hlo_string));
+  UnrollAndCompare(std::move(m1), {}, -1, false);
+  ASSERT_OK_AND_ASSIGN(auto m2, ParseAndReturnVerifiedModule(hlo_string));
+  UnrollAndCompare(std::move(m2), {}, -1, true);
 }
 
 // This test passes because we run TupleSimplifier before unrolling.
@@ -708,6 +708,40 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopNonZeroInit) {
                    false);
   UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
                    true);
+}
+
+TEST_F(WhileLoopUnrollerTest, SimpleLoopNonUnitStep) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(loop_var.1), index=0
+    step = s32[] constant(2)
+    next_i = s32[] add(i, step)
+    sum = s32[] get-tuple-element(loop_var.1), index=1
+    next_sum = s32[] add(sum, i)
+    ROOT tuple = (s32[], s32[]) tuple(next_i, next_sum)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(loop_var.2), index=0
+    bound = s32[] constant(6)
+    ROOT less-than = pred[] compare(i, bound), direction=LT
+  }
+  ENTRY SimpleLoop {
+    init_i = s32[] constant(0)
+    init_sum = s32[] constant(0)
+    tuple.1 = (s32[], s32[]) tuple(init_i, init_sum)
+    ROOT while = (s32[], s32[]) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_direct,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  UnrollAndCompare(std::move(module_direct), {}, -1, false);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_wrapped,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  UnrollAndCompare(std::move(module_wrapped), {}, -1, true);
 }
 
 TEST_F(WhileLoopUnrollerTest, SimpleLoopS16IndVar) {
