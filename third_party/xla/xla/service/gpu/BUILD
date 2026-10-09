@@ -1846,6 +1846,7 @@ cc_library(
         "//xla/backends/gpu/transforms:double_buffer_loop_unrolling",
         "//xla/backends/gpu/transforms:dus_accumulator_zero_init_elimination",
         "//xla/backends/gpu/transforms:dynamic_slice_annotator",
+        "//xla/backends/gpu/transforms:dynamic_slice_copy",
         "//xla/backends/gpu/transforms:dynamic_slice_copy_fusion_async_wrapper",
         "//xla/backends/gpu/transforms:dynamic_slice_fusion_rewriter_v2",
         "//xla/backends/gpu/transforms:estimate_cub_scan_scratch_size",

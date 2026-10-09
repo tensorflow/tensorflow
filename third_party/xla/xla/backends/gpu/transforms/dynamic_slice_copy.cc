@@ -33,6 +33,8 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 namespace {
@@ -308,6 +310,12 @@ bool IsDynamicSliceCopyFusion(const HloInstruction* instr) {
       AnalyzeDynamicSliceCopyFusion(instr);
   return (analysis.ok() && analysis->has_value()) ||
          IsCopyHeroDynamicSliceFusion(instr);
+}
+
+bool SupportsDynamicSliceCopyThunks(const se::DeviceDescription& device_info) {
+  const se::CudaComputeCapability* cuda_cc =
+      device_info.gpu_compute_capability().cuda_compute_capability();
+  return cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
 }
 
 }  // namespace xla::gpu

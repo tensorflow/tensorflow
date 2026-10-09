@@ -1783,10 +1783,12 @@ Future<ThunkSequence> ThunkEmitter::EmitFusion(
     return EmitStaticSliceCopyFusion(instr, *static_copy);
   }
 
-  ABSL_ASSIGN_OR_RETURN(std::optional<DynamicSliceCopyFusion> dynamic_copy,
-                   AnalyzeDynamicSliceCopyFusion(instr));
-  if (dynamic_copy.has_value()) {
-    return EmitDynamicSliceCopyFusion(instr, std::move(*dynamic_copy));
+  if (SupportsDynamicSliceCopyThunks(ir_emitter_context_->gpu_device_info())) {
+    ABSL_ASSIGN_OR_RETURN(std::optional<DynamicSliceCopyFusion> dynamic_copy,
+                     AnalyzeDynamicSliceCopyFusion(instr));
+    if (dynamic_copy.has_value()) {
+      return EmitDynamicSliceCopyFusion(instr, std::move(*dynamic_copy));
+    }
   }
 
   analysis_garbage_collector_.push_back(
