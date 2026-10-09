@@ -47,8 +47,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util.compat import collections_abc
 
-raw_ops = gen_nn_ops
-
 
 def GetShrunkInceptionShapes(shrink=10):
   """Iterator for smaller versions of convolution shapes in 2015 Inception.
@@ -3135,82 +3133,34 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     #           padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
     # Invalid input or filter rank (< 4) in eager/graph execution.
-    with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
-    ):
-      self.evaluate(
-          nn_ops.conv2d(
-              np.ones([1, 1, 3], dtype=np.float32),
-              np.ones([1, 2, 2, 1], dtype=np.float32),
-              strides=[1, 1, 1, 1],
-              padding="VALID",
+    invalid_shapes = [(), (1,), (1, 1), (1, 1, 3)]
+    valid_shape = [1, 1, 1, 1]
+    for op in (nn_ops.conv2d, gen_nn_ops.Conv2D):
+      for bad_shape in invalid_shapes:
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError),
+            r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
+        ):
+          self.evaluate(
+              op(
+                  input=np.ones(bad_shape, dtype=np.float32),
+                  filter=np.ones(valid_shape, dtype=np.float32),
+                  strides=[1, 1, 1, 1],
+                  padding="VALID",
+              )
           )
-      )
-    with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
-    ):
-      self.evaluate(
-          nn_ops.conv2d(
-              np.ones([1, 1, 3, 3], dtype=np.float32),
-              np.ones([1, 2, 2], dtype=np.float32),
-              strides=[1, 1, 1, 1],
-              padding="VALID",
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError),
+            r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
+        ):
+          self.evaluate(
+              op(
+                  input=np.ones(valid_shape, dtype=np.float32),
+                  filter=np.ones(bad_shape, dtype=np.float32),
+                  strides=[1, 1, 1, 1],
+                  padding="VALID",
+              )
           )
-      )
-
-    # Ensure raw ops are protected by the C++ kernel boundary.
-    with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
-    ):
-      self.evaluate(
-          raw_ops.Conv2D(
-              input=np.ones([1, 1, 3], dtype=np.float32),
-              filter=np.ones([1, 2, 2, 1], dtype=np.float32),
-              strides=[1, 1, 1, 1],
-              padding="VALID",
-          )
-      )
-    with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
-    ):
-      self.evaluate(
-          raw_ops.Conv2D(
-              input=np.ones([1, 1, 3, 3], dtype=np.float32),
-              filter=np.ones([1, 2, 2], dtype=np.float32),
-              strides=[1, 1, 1, 1],
-              padding="VALID",
-          )
-      )
-
-    # Ensure scalar and rank-1 inputs fail safely.
-    with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
-    ):
-      self.evaluate(
-          raw_ops.Conv2D(
-              input=np.ones([1], dtype=np.float32),
-              filter=np.ones([1, 2, 2, 1], dtype=np.float32),
-              strides=[1, 1, 1, 1],
-              padding="VALID",
-          )
-      )
-    with self.assertRaisesRegex(
-        (ValueError, errors_impl.InvalidArgumentError),
-        r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
-    ):
-      self.evaluate(
-          raw_ops.Conv2D(
-              input=np.ones([1, 1, 3, 3], dtype=np.float32),
-              filter=np.ones([], dtype=np.float32),
-              strides=[1, 1, 1, 1],
-              padding="VALID",
-          )
-      )
 
     # Filter dimensions must be greater than 0.
     with self.assertRaisesRegex(
