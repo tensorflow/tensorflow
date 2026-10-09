@@ -146,7 +146,7 @@ bool BufferLayoutConstraint::UpdateLayout(int64_t priority,
   }
   mandatory_ = mandatory;
   dfs_ = dfs;
-  priority_ = priority;
+  priority_ = std::max(priority_, priority);
   from_user_ = user;
   layout_.push_back(layout());
   layout_[0] = new_layout;
@@ -175,6 +175,9 @@ bool OperandLayoutConstraint::UpdateLayout(int64_t new_priority,
                                            LayoutAssignment* assignment) {
   if (shape_layout().MatchesLayoutInShape(new_shape,
                                           /*minor_to_major_only=*/true)) {
+    if (priority_ < new_priority) {
+      priority_ = new_priority;
+    }
     VLOG(3) << "SUCC b/c the new layout matches the existing one.";
     // New constraint matches existing constraint. Nothing to do.
     return false;
@@ -209,7 +212,7 @@ bool OperandLayoutConstraint::UpdateLayout(int64_t new_priority,
   VLOG(3) << "Updating existing Operand layout:" << ToString();
   mandatory_ = mandatory;
   dfs_ = dfs;
-  priority_ = new_priority;
+  priority_ = std::max(priority_, new_priority);
   shape_layout_.push_back(shape_layout_[0]);
   shape_layout_[0] = ShapeLayout(new_shape);
   return true;
@@ -391,6 +394,7 @@ absl::Status LayoutAssignment::SetOperandLayout(
                                          dfs, this)) {
       return absl::OkStatus();
     }
+    priority = curr_shape_layout->priority();
   }
   if (curr_shape_layout == nullptr) {
     curr_shape_layout = std::make_unique<OperandLayoutConstraint>(
@@ -1486,6 +1490,24 @@ absl::Status LayoutAssignment::CheckLayouts(
         default:
           break;
       }
+      if (!InstructionCanChangeLayoutInstance(instruction) &&
+          instruction->shape().IsArray() &&
+          instruction->shape().dimensions().size() > 1) {
+        for (int64_t operand_no = 0; operand_no < instruction->operand_count();
+             ++operand_no) {
+          const HloInstruction* operand = instruction->operand(operand_no);
+          if (operand->shape().IsArray() &&
+              operand->shape().dimensions().size() ==
+                  instruction->shape().dimensions().size()) {
+            TF_RET_CHECK(
+                LayoutsInShapesEqual(operand->shape(), instruction->shape()))
+                << "Operand " << operand_no << " of " << instruction->ToString()
+                << " has different layout from output: "
+                << ShapeUtil::HumanStringWithLayout(operand->shape()) << " vs "
+                << ShapeUtil::HumanStringWithLayout(instruction->shape());
+          }
+        }
+      }
     }
   }
   // Finally verify the result layout, if set, matches the layout of the entry
@@ -1986,7 +2008,7 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
         new_layout, buffer,
         preserve_non_mandatory_if_same_layout(buffer, new_layout,
                                               /*default_mandatory=*/true),
-        /*dfs=*/true));
+        /*dfs=*/true, operand_constraint.priority()));
   }
 
   if (InstructionCanChangeLayoutInstance(user) && !user->shape().IsArray() &&
@@ -2025,7 +2047,7 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
     // Make sure all siblings have the same layout as the operand.
     for (int64_t operand_no = 0; operand_no < user->operand_count();
          ++operand_no) {
-      if (user->operand(operand_no) == operand) {
+      if (operand_no == operand_constraint.operand_no()) {
         continue;
       }
       const HloInstruction* sibling = user->operand(operand_no);
@@ -2039,9 +2061,16 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
       if (operand_rank != sibling_rank) {
         continue;
       }
+      const OperandLayoutConstraint* existing_sibling_constraint =
+          constraints->GetOperandLayoutConstraint(user, operand_no);
+      const int64_t sibling_priority =
+          existing_sibling_constraint != nullptr
+              ? std::max(operand_constraint.priority(),
+                         existing_sibling_constraint->priority())
+              : operand_constraint.priority();
       ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
           operand_constraint.shape_layout().layout(), user, operand_no,
-          /*mandatory=*/true, /*dfs=*/true, operand_constraint.priority()));
+          /*mandatory=*/true, /*dfs=*/true, sibling_priority));
     }
     ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         user->shape(),
@@ -2068,16 +2097,18 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
           const HloValue& buffer =
               dataflow_analysis_->GetValueDefinedAt(user, shape_index);
           const Layout& new_layout = operand_constraint.shape_layout().layout();
-          // If we already have a constraint for the buffer it was assigned but
-          // hasn't propagated yet. This can happen with diamond-shaped graphs
-          // where one path is first evaluated in depth-first order (we're here)
-          // and the other path is propagated later. We don't set the layout
-          // here as it will always be overwritten later.
+          const BufferLayoutConstraint* existing_buffer_constraint =
+              GetBufferLayoutConstraint(buffer);
+          const int64_t buffer_priority =
+              existing_buffer_constraint != nullptr
+                  ? std::max(operand_constraint.priority(),
+                             existing_buffer_constraint->priority())
+                  : operand_constraint.priority();
           ABSL_RETURN_IF_ERROR(SetBufferLayout(
               new_layout, buffer,
               preserve_non_mandatory_if_same_layout(buffer, new_layout,
                                                     /*default_mandatory=*/true),
-              /*dfs=*/true, operand_constraint.priority()));
+              /*dfs=*/true, buffer_priority));
           return absl::OkStatus();
         }));
     return absl::OkStatus();
@@ -2125,11 +2156,21 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
   VLOG(5) << "PropagateBufferConstraintToOperands: "
           << buffer_constraint.ToString();
 
+  const int64_t priority =
+      std::max(current_priority_, buffer_constraint.priority());
+  auto priority_for_operand = [&](int64_t op_no) {
+    const OperandLayoutConstraint* existing_op_constraint =
+        constraints->GetOperandLayoutConstraint(instruction, op_no);
+    return existing_op_constraint != nullptr
+               ? std::max(priority, existing_op_constraint->priority())
+               : priority;
+  };
   if (instruction->opcode() == HloOpcode::kAllReduce) {
+    const int64_t op_no =
+        instruction->operand_count() == 1 ? 0 : buffer.index()[0];
     ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
-        buffer_constraint.layout(), instruction,
-        instruction->operand_count() == 1 ? 0 : buffer.index()[0],
-        /*mandatory=*/true, /*dfs=*/true, buffer_constraint.priority()));
+        buffer_constraint.layout(), instruction, op_no,
+        /*mandatory=*/true, /*dfs=*/true, priority_for_operand(op_no)));
     return absl::OkStatus();
   }
   for (int64_t operand_no = 0; operand_no < instruction->operand_count();
@@ -2145,7 +2186,8 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
             LayoutUtil::MinorToMajor(buffer_constraint.layout()).size()) {
           ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
               buffer_constraint.layout(), instruction, operand_no,
-              /*mandatory=*/true, /*dfs=*/true, current_priority_));
+              /*mandatory=*/true,
+              /*dfs=*/true, priority_for_operand(operand_no)));
         } else if (instruction->opcode() == HloOpcode::kBitcastConvert) {
           Shape shape = instruction->shape();
           if (operand->shape().dimensions().size() <
@@ -2156,9 +2198,10 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
             ShapeUtil::AppendMinorDimension(
                 operand->shape().dimensions().back(), &shape);
           }
-          ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
-              shape.layout(), instruction, operand_no,
-              /*mandatory=*/true, /*dfs=*/true, current_priority_));
+          ABSL_RETURN_IF_ERROR(
+              SetArrayOperandLayout(shape.layout(), instruction, operand_no,
+                                    /*mandatory=*/true, /*dfs=*/true,
+                                    priority_for_operand(operand_no)));
         }
       }
 
@@ -2168,8 +2211,7 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
       ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
           layout, instruction, operand_no, /*mandatory=*/true,
           /*dfs=*/
-          InstructionShouldPropagateDepthFirst(*instruction),
-          current_priority_));
+          InstructionShouldPropagateDepthFirst(*instruction), priority));
     } else {
       if (!buffer.IsTopLevel() ||
           !instruction->operand(operand_no)->shape().IsArray()) {
@@ -2185,8 +2227,7 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
             *operand_layout, instruction, operand_no,
             /*mandatory=*/OutputLayoutAlwaysPropagateToOperands(instruction),
             /*dfs=*/
-            InstructionShouldPropagateDepthFirst(*instruction),
-            current_priority_));
+            InstructionShouldPropagateDepthFirst(*instruction), priority));
       }
     }
   }

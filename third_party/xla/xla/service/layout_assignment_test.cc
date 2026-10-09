@@ -3525,5 +3525,86 @@ ENTRY %main (x: f32[256,3,1], y: f32[256,3,1,3]) -> f32[256,3,1,4] {
   ExpectLayoutIs(concat->operand(1)->shape(), {3, 2, 1, 0});
 }
 
+class NegotiatingLayoutAssignment : public LayoutAssignment {
+ public:
+  explicit NegotiatingLayoutAssignment(
+      ComputationLayout* entry_computation_layout)
+      : LayoutAssignment(entry_computation_layout) {}
+
+  bool NegotiateLayout(const HloInstruction* instruction,
+                       const Layout& new_layout, const Layout& existing_layout,
+                       const HloInstruction* user,
+                       const HloInstruction* from_user) override {
+    if (instruction->opcode() == HloOpcode::kAdd &&
+        Layout::Equal().MinorToMajorOnly()(new_layout,
+                                           LayoutUtil::MakeLayout({0, 1}))) {
+      return true;
+    }
+    return false;
+  }
+
+  Layout GetUnconstrainedLayout(const HloValue& buffer) override {
+    if (buffer.shape().dimensions().size() == 2) {
+      return LayoutUtil::MakeLayout({0, 1});
+    }
+    return LayoutAssignment::GetUnconstrainedLayout(buffer);
+  }
+};
+
+TEST_F(LayoutAssignmentTest,
+       NegotiatedOutputLayoutUpdatesHigherPriorityElementwiseOperands) {
+  const char* module_str = R"hlo(
+HloModule NegotiatedOutputLayoutUpdatesHigherPriorityElementwiseOperands
+
+%callee (p0: f32[1024,32], p1: f32[1024,32], v: f32[1024]) -> (f32[1024,96], f32[1024,32], f32[1024,32]) {
+  %p0 = f32[1024,32] parameter(0)
+  %p1 = f32[1024,32] parameter(1)
+  %v = f32[1024] parameter(2)
+  %neg0 = f32[1024,32] negate(%p0)
+  %neg1 = f32[1024,32] negate(%p1)
+  %hint0 = f32[1024,32]{0,1} custom-call(%neg0), custom_call_target="Hint",
+    operand_layout_constraints={f32[1024,32]{0,1}}
+  %hint1 = f32[1024,32]{0,1} custom-call(%neg1), custom_call_target="Hint",
+    operand_layout_constraints={f32[1024,32]{0,1}}
+  %add = f32[1024,32] add(%p0, %p1)
+  %big = f32[1024,64] broadcast(%v), dimensions={0}
+  %concat = f32[1024,96] concatenate(%add, %big), dimensions={1}
+  ROOT %out = (f32[1024,96], f32[1024,32], f32[1024,32]) tuple(%concat, %hint0, %hint1)
+}
+
+ENTRY %main (x: f32[1024,32], y: f32[1024,32], v: f32[1024]) -> (f32[1024,96], f32[1024,32], f32[1024,32]) {
+  %x = f32[1024,32]{1,0} parameter(0)
+  %y = f32[1024,32]{1,0} parameter(1)
+  %v = f32[1024]{0} parameter(2)
+  %pinned_x = f32[1024,32]{1,0} custom-call(%x), custom_call_target="Pinned",
+    operand_layout_constraints={f32[1024,32]{1,0}}
+  %pinned_y = f32[1024,32]{1,0} custom-call(%y), custom_call_target="Pinned",
+    operand_layout_constraints={f32[1024,32]{1,0}}
+  ROOT %call = (f32[1024,96], f32[1024,32], f32[1024,32]) call(%pinned_x, %pinned_y, %v), to_apply=%callee
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/true);
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {1024, 32}, {1, 0}));
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {1024, 32}, {1, 0}));
+  *computation_layout.mutable_parameter_layout(2) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {1024}, {0}));
+
+  NegotiatingLayoutAssignment layout_assignment(&computation_layout);
+  EXPECT_THAT(
+      layout_assignment.Run(m.get(), {HloInstruction::kMainExecutionThread}),
+      absl_testing::IsOk());
+  const HloInstruction* add = FindInstruction(m.get(), "add");
+  ASSERT_NE(add, nullptr);
+  ExpectLayoutIs(add->shape(), {0, 1});
+  ExpectLayoutIs(add->operand(0)->shape(), {0, 1});
+  ExpectLayoutIs(add->operand(1)->shape(), {0, 1});
+}
+
 }  // namespace
 }  // namespace xla
