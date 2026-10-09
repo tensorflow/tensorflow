@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -39,8 +40,10 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/testlib.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -496,6 +499,123 @@ TEST_F(ExecutorTest, NoInputTensors) {
   test::graph::Constant(g.get(), V(1.0));
   Create(std::move(g));
   TF_ASSERT_OK(Run(rendez_));
+}
+
+namespace {
+
+// A test Rendezvous that waits until all three _Recv nodes are in-flight,
+// cancels the shared CancellationManager (simulating a nested function
+// cancelling the shared manager when an op inside it fails), and then completes
+// the _Recv callbacks in deterministic order:
+//   1. "derived_cancelled": CancelledError while CancellationManager is
+//      cancelled (marked derived by ExecutorState::NodeDone).
+//   2. "root_cause_error": non-derived InvalidArgumentError (simulating the
+//      nested function completing with its original root-cause error).
+//   3. "later_derived_cancelled": derived CancelledError arriving after the
+//      non-derived error has already been recorded.
+class OrderedFailureRendezvous : public Rendezvous {
+ public:
+  absl::Status Send(const ParsedKey& key, const Args& send_args,
+                    const Tensor& val, const bool is_dead) override {
+    return absl::OkStatus();
+  }
+
+  void RecvAsync(const ParsedKey& key, const Args& recv_args,
+                 DoneCallback done) override {
+    Args derived_args;
+    DoneCallback derived_done;
+    Args root_cause_args;
+    DoneCallback root_cause_done;
+    Args later_derived_args;
+    DoneCallback later_derived_done;
+    {
+      mutex_lock l(mu_);
+      if (key.edge_name == "derived_cancelled") {
+        derived_args_ = recv_args;
+        derived_done_ = std::move(done);
+      } else if (key.edge_name == "root_cause_error") {
+        root_cause_args_ = recv_args;
+        root_cause_done_ = std::move(done);
+      } else if (key.edge_name == "later_derived_cancelled") {
+        later_derived_args_ = recv_args;
+        later_derived_done_ = std::move(done);
+      }
+      if (!derived_done_ || !root_cause_done_ || !later_derived_done_) {
+        return;
+      }
+      derived_args = derived_args_;
+      derived_done = std::move(derived_done_);
+      root_cause_args = root_cause_args_;
+      root_cause_done = std::move(root_cause_done_);
+      later_derived_args = later_derived_args_;
+      later_derived_done = std::move(later_derived_done_);
+    }
+
+    if (derived_args.cancellation_manager != nullptr) {
+      CancellationManager* cm = derived_args.cancellation_manager;
+      CancellationToken token = cm->get_cancellation_token();
+      bool registered = cm->RegisterCallback(token, [&]() {
+        derived_done(absl::CancelledError("RecvFromRemoteAsync is cancelled."),
+                     Rendezvous::Args(), derived_args, Tensor(),
+                     /*is_dead=*/false);
+      });
+      CHECK(registered);
+      cm->StartCancel();
+    } else {
+      derived_done(absl::CancelledError("RecvFromRemoteAsync is cancelled."),
+                   Rendezvous::Args(), derived_args, Tensor(),
+                   /*is_dead=*/false);
+    }
+    root_cause_done(
+        absl::InvalidArgumentError("Nan in summary histogram for: tag"),
+        Rendezvous::Args(), root_cause_args, Tensor(), /*is_dead=*/false);
+    later_derived_done(
+        StatusGroup::MakeDerived(absl::CancelledError("Later recv cancelled.")),
+        Rendezvous::Args(), later_derived_args, Tensor(), /*is_dead=*/false);
+  }
+
+  void StartAbort(const absl::Status& status) override {}
+
+ private:
+  mutex mu_;
+  Args derived_args_ TF_GUARDED_BY(mu_);
+  DoneCallback derived_done_ TF_GUARDED_BY(mu_);
+  Args root_cause_args_ TF_GUARDED_BY(mu_);
+  DoneCallback root_cause_done_ TF_GUARDED_BY(mu_);
+  Args later_derived_args_ TF_GUARDED_BY(mu_);
+  DoneCallback later_derived_done_ TF_GUARDED_BY(mu_);
+};
+
+}  // namespace
+
+TEST_F(ExecutorTest, NonDerivedErrorOverridesDerivedCancellationError) {
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
+  auto in0 =
+      test::graph::Recv(g.get(), "derived_cancelled", "float", ALICE, 1, BOB);
+  auto in1 =
+      test::graph::Recv(g.get(), "root_cause_error", "float", ALICE, 1, BOB);
+  auto in2 = test::graph::Recv(g.get(), "later_derived_cancelled", "float",
+                               ALICE, 1, BOB);
+  auto add0 = test::graph::Add(g.get(), in0, in1);
+  auto add1 = test::graph::Add(g.get(), add0, in2);
+  test::graph::Send(g.get(), add1, "out", BOB, 1, ALICE);
+  Create(std::move(g));
+
+  CancellationManager cm;
+  auto* rendez = new OrderedFailureRendezvous();
+  Executor::Args args;
+  args.rendezvous = rendez;
+  args.cancellation_manager = &cm;
+  args.stats_collector = &step_stats_collector_;
+  args.runner = runner_;
+
+  absl::Status s = exec_->Run(args);
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  EXPECT_FALSE(StatusGroup::IsDerived(s)) << s;
+  EXPECT_TRUE(
+      absl::StrContains(s.message(), "Nan in summary histogram for: tag"))
+      << s;
+  rendez->Unref();
 }
 
 // Create a graph that is 'depth' deep. At each level, fan-in and fan-out a
