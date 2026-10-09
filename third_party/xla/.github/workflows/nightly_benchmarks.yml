@@ -35,3 +35,4 @@ jobs:
       registry_file: "xla/tools/benchmarks/benchmark_registry.pbtxt"
       tag_filter: "scheduled"
       bap_ref: "aabe067ccf0612e9fe5dfb280176df43b12babf9"
+      runner: "linux-x86-n4-16"
