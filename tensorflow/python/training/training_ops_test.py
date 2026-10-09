@@ -697,6 +697,57 @@ class TrainingOpsTest(TensorFlowTestCase):
             )
         )
 
+  @test_util.run_v2_only
+  def testResourceVariableDtypeMismatch(self):
+    # A resource variable whose dtype differs from optimizer dtype T
+    # previously caused a fatal CHECK failure in CheckTypeAndIsAligned
+    # instead of raising an InvalidArgumentError (see GitHub issue #113145).
+    var = variables.Variable([[0.0, 0.0]], dtype=dtypes.float32)
+    accum = variables.Variable([[0.0, 0.0]], dtype=dtypes.float32)
+    var_f16 = variables.Variable([[0.0, 0.0]], dtype=dtypes.float16)
+    self.evaluate(variables.global_variables_initializer())
+
+    lr = constant_op.constant(0.1, dtype=dtypes.float16)
+    grad = constant_op.constant([[0.1, 0.2]], dtype=dtypes.float16)
+    indices = constant_op.constant([0], dtype=dtypes.int32)
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "dtype mismatch"
+    ):
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_adagrad(
+              var=var.handle,
+              accum=accum.handle,
+              lr=lr,
+              grad=grad,
+              indices=indices,
+          )
+      )
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "dtype mismatch"
+    ):
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_adagrad(
+              var=var_f16.handle,
+              accum=accum.handle,
+              lr=lr,
+              grad=grad,
+              indices=indices,
+          )
+      )
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "dtype mismatch"
+    ):
+      self.evaluate(
+          gen_training_ops.resource_apply_gradient_descent(
+              var=var.handle,
+              alpha=lr,
+              delta=grad,
+          )
+      )
+
 
 if __name__ == '__main__':
   googletest.main()
