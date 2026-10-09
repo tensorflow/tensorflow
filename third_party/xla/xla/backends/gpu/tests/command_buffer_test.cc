@@ -247,6 +247,7 @@ ENTRY Test {
 
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_autotune_level(4);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONVOLUTION);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
