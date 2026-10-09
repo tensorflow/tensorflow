@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/tools/proto_text/gen_proto_text_functions_lib.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
