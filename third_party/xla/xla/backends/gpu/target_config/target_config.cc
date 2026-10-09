@@ -89,8 +89,14 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
     case GpuModel::MI200:
       filename = "mi200.txtpb";
       break;
+    case GpuModel::MI300:
+      filename = "mi300.txtpb";
+      break;
     case GpuModel::MI350:
       filename = "mi350.txtpb";
+      break;
+    case GpuModel::MI450:
+      filename = "mi450.txtpb";
       break;
     case GpuModel::P100:
       filename = "p100.txtpb";
@@ -112,9 +118,6 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
       break;
     case GpuModel::RTX6000PRO:
       filename = "rtx6000pro.txtpb";
-      break;
-    case GpuModel::GFX1250:
-      filename = "gfx1250.txtpb";
       break;
     default:
       return absl::NotFoundError(

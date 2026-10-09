@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/base/thread_annotations.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/target_config/target_config.h"
@@ -92,21 +91,24 @@ NB_MODULE(_gpu_spec, m) {
       .value("A100_SXM_80", gpu::GpuModel::A100_SXM_80)
       .value("A6000", gpu::GpuModel::A6000)
       .value("B200", gpu::GpuModel::B200)
+      .value("B200_MIG", gpu::GpuModel::B200_MIG)
       .value("B300", gpu::GpuModel::B300)
       .value("BMG_G21", gpu::GpuModel::BMG_G21)
       .value("H100_PCIE", gpu::GpuModel::H100_PCIE)
       .value("H100_SXM", gpu::GpuModel::H100_SXM)
+      .value("H100_SXM_MIG", gpu::GpuModel::H100_SXM_MIG)
       .value("H200", gpu::GpuModel::H200)
       .value("MI200", gpu::GpuModel::MI200)
+      .value("MI300", gpu::GpuModel::MI300)
+      .value("MI350", gpu::GpuModel::MI350)
+      .value("MI450", gpu::GpuModel::MI450)
       .value("P100", gpu::GpuModel::P100)
       .value("PVC", gpu::GpuModel::PVC)
       .value("VR_NVL72", gpu::GpuModel::VR_NVL72)
       .value("V100", gpu::GpuModel::V100)
       .value("GB200", gpu::GpuModel::GB200)
       .value("GB300", gpu::GpuModel::GB300)
-      .value("RTX6000PRO", gpu::GpuModel::RTX6000PRO)
-      .value("GFX1250", gpu::GpuModel::GFX1250)
-      .value("MI350", gpu::GpuModel::MI350);
+      .value("RTX6000PRO", gpu::GpuModel::RTX6000PRO);
 
   m.def(
       "get_gpu_spec",
