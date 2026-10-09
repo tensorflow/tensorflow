@@ -323,6 +323,9 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
       OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
       OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
       mutex_lock m(*v->mu());
+      // EnsureSparseVariableAccess returns early, without checking the dtype,
+      // once the variable is in copy-on-read mode.
+      OP_REQUIRES_OK(c, ValidateVariableDtype<T>(v.get()));
       DoCompute(c);
     } else if (use_exclusive_lock_) {
       // If we're here, it means the input type is a ref.

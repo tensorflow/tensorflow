@@ -591,6 +591,42 @@ class TrainingOpsTest(TensorFlowTestCase):
             )
         )
 
+  def testResourceApplyOpsRejectVariableOfAnotherDtype(self):
+    # Regression test for #113074 and #113145: these ops take their type from
+    # the learning rate and gradient, so they could be given a variable of
+    # another dtype and aborted the process reading it as their type. A
+    # variable in copy-on-read mode, which a gather puts it in, is copied
+    # before a dense update, which aborted the same way.
+    with ops.device("/CPU:0"):
+      for copy_on_read in (False, True):
+        with self.subTest(copy_on_read=copy_on_read):
+          var, accum = [
+              resource_variable_ops.ResourceVariable(
+                  np.zeros((4, 2)), dtype=dtypes.bfloat16) for _ in range(2)
+          ]
+          self.evaluate(variables.global_variables_initializer())
+          if copy_on_read:
+            for v in (var, accum):
+              self.evaluate(
+                  resource_variable_ops.resource_gather(
+                      v.handle, [0], dtype=dtypes.bfloat16))
+          lr = constant_op.constant(0.1)
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "dtype mismatch: expected float but got bfloat16"):
+            self.evaluate(
+                gen_training_ops.resource_apply_gradient_descent(
+                    var.handle, lr, constant_op.constant(np.ones((4, 2)),
+                                                         dtypes.float32)))
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "dtype mismatch: expected float but got bfloat16"):
+            self.evaluate(
+                gen_training_ops.resource_sparse_apply_adagrad(
+                    var.handle, accum.handle, lr,
+                    constant_op.constant(np.ones((1, 2)), dtypes.float32),
+                    constant_op.constant([0])))
+
   def testSparseApplyOpsRejectLowerRankGrad(self):
     # Regression test for #94131: a grad of lower rank than var made the
     # per-dimension shape check read past grad's rank and crash the process.

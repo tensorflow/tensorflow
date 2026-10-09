@@ -39,6 +39,21 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Returns an error if the variable's dtype isn't `T`. A kernel that updates a
+// resource variable takes `T` from its other inputs, which need not match the
+// variable, and reading the variable's tensor as another type aborts.
+// REQUIRES: *var->mu() must be held, shared or exclusive.
+template <typename T>
+absl::Status ValidateVariableDtype(Var* var) {
+  if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+        " but got ", DataTypeString(var->tensor()->dtype()),
+        " (resource variable dtype)"));
+  }
+  return absl::OkStatus();
+}
+
 // Must be called before performing a sparse operation on a variable. Ensures
 // that no concurrent dense operations can happen while holding the variable's
 // lock.
@@ -69,12 +84,7 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
     return absl::OkStatus();
   }
 
-  if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
-        " but got ", DataTypeString(var->tensor()->dtype()),
-        " (resource variable dtype)"));
-  }
+  TF_RETURN_IF_ERROR(ValidateVariableDtype<T>(var));
 
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
   // also happen if there are no concurrent reads of the variable and
@@ -295,10 +305,12 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
     if (sparse) {
       var->mu()->assert_held_shared();
+      TF_RETURN_IF_ERROR(ValidateVariableDtype<T>(var.get()));
       *out = *var->tensor();
       return absl::OkStatus();
     }
     var->mu()->assert_held();
+    TF_RETURN_IF_ERROR(ValidateVariableDtype<T>(var.get()));
     TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, T>(
         ctx, var->tensor(), var->copy_on_read_mode.load()));
     *out = *var->tensor();
