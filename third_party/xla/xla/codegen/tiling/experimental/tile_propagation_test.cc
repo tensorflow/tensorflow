@@ -1235,8 +1235,182 @@ TEST_F(TilePropagationTest,
       PropagateTileToInput(*tiling_space, *concat, concat_tile, 0).status(),
       StatusIs(absl::StatusCode::kFailedPrecondition,
                ::testing::HasSubstr(
-                   "The remaining dimension size 17 in the concatenate operand "
-                   "1 must be a clean multiple of its tile size 5")));
+                   "The remaining operand size 2 (in concatenate operand 1) is "
+                   "not divisible by the selected tile size 5")));
+}
+
+// Regression test for b/491092362. A concatenate nested below an op whose tile
+// propagation substracts a constant from the offset (e.g. a pad's
+// `edge_padding_low`, or an outer concat) produces a concat-dim offset
+// expression of the form `tid_0 * ts_0 - C`. Evaluated at tid_0 = 0 this gives
+// the constant part `-C`, which is a legitimate (negative) base_offset: it only
+// means the first tile(s) reach before the concatenated tensor begins, which is
+// masked when the tile is materialized.
+//
+// Here the offset is `tid_0 * 16 - 16`. The constant part is -16 (a multiple of
+// the tile size 16), and the non-last operand sizes (16, 32) are multiples of
+// 16, so no tile straddles an operand boundary. This tiling is valid and must
+// be accepted.
+TEST_F(TilePropagationTest, ConcatenateAcceptsNegativeAlignedOperandZero) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[96] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 16;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  ASSERT_OK(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status());
+}
+
+// A negative base_offset spanning several whole tiles below zero is still
+// accepted, as long as operand 0's start lands on a tile boundary: the entire
+// out-of-range prefix (here two full tiles) is masked tile-by-tile. Operand
+// sizes [16, 32, 48], tile_size = 16, offset `tid_0 * 16 - 32` (base_offset =
+// -32, a multiple of 16).
+TEST_F(TilePropagationTest, ConcatenateAcceptsNegativeMultiTileAlignedOffset) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[96] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 32;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  ASSERT_OK(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status());
+}
+
+// A negative base_offset that does not align operand 0's start with a tile
+// boundary is REJECTED: it would need an unsupported low-side (left) mask on
+// operand 0. Here tile_size = 16 and the offset is `tid_0 * 16 - 4`, so
+// base_offset = -4 and base_offset mod tile_size = 12 != 0.
+TEST_F(TilePropagationTest, ConcatenateRejectsNegativeMisalignedOffset) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[96] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 4;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status(),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               ::testing::HasSubstr(
+                   "The negative base offset -4 is not aligned to the tile "
+                   "size 16 ; operand 0 would require an unsupported low-side "
+                   "(left) mask.")));
+}
+
+// The verdict for a negative base_offset is invariant under shifting it by a
+// multiple of the tile size: `tid_0 * 16 - 20` has the same verdict as
+// `tid_0 * 16 - 4` (both -4 and -20 give base_offset mod tile_size = 12, so
+// both are rejected as unaligned to operand 0's start), even though the -20
+// anchor's first tile is fully masked. This documents that the anchor choice is
+// immaterial.
+TEST_F(TilePropagationTest, ConcatenateNegativeOffsetVerdictIsPeriodic) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[32] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[96] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 20;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status(),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               ::testing::HasSubstr(
+                   "The negative base offset -20 is not aligned to the tile "
+                   "size 16 ; operand 0 would require an unsupported low-side "
+                   "(left) mask.")));
+}
+
+// A negative, tile-aligned base_offset is still rejected if an interior
+// (non-last) operand size is not a multiple of the tile size, since a tile
+// would then straddle that operand's boundary. Here operand sizes are
+// [16, 20, 48], tile_size = 16, offset `tid_0 * 16 - 16` (aligned). Operand 1
+// size 20 is not a multiple of 16 -> reject.
+TEST_F(TilePropagationTest, ConcatenateRejectsNegativeAlignedBadInteriorSize) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[16] parameter(0)
+      p1 = f32[20] parameter(1)
+      p2 = f32[48] parameter(2)
+      ROOT concatenate = f32[84] concatenate(p0, p1, p2), dimensions={0}
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  EXPECT_OK(tiling_space->AssignTileSizes({16}));
+
+  const Tile& root_tile = tiling_space->tiled_roots()[0];
+  SymbolicExpr shifted_offset = CreateDimExpr(0, &mlir_context_) * 16 - 16;
+  llvm::SmallVector<SymbolicExpr, 1> offsets{shifted_offset};
+  Tile shifted_tile{*tiling_space, offsets, root_tile.sizes(),
+                    root_tile.strides(), root_tile.upper_bounds()};
+
+  EXPECT_THAT(
+      PropagateTileToInput(*tiling_space, *root, shifted_tile, 0).status(),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               ::testing::HasSubstr("must be a multiple of the tile size 16")));
 }
 
 TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp) {
