@@ -975,11 +975,12 @@ def angle(z, deg=False):  # pylint: disable=missing-function-docstring
       # Workaround for b/147515503
       # `np.pi` and `0` are Python scalars, which would make the result
       # float32 whatever `x` is, so build them in `x`'s dtype instead.
-      return array_ops.where_v2(
+      pi_or_zero = array_ops.where_v2(
           _signbit(x),
           constant_op.constant(np.pi, dtype=x.dtype),
           constant_op.constant(0, dtype=x.dtype),
       )
+      return array_ops.where_v2(math_ops.is_nan(x), x, pi_or_zero)
     else:
       return math_ops.angle(x)
 

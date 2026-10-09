@@ -38,8 +38,6 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(MathTest, self).setUp()
-    ops.set_dtype_conversion_mode('legacy')
-    np_math_ops.enable_numpy_methods_on_tensor()
     self.array_transforms = [
         lambda x: x,  # Identity,
         ops.convert_to_tensor,
@@ -176,7 +174,10 @@ class MathTest(test.TestCase, parameterized.TestCase):
     # branch out of Python scalars made it float32 for every real dtype, which
     # for float64 also cost precision.
     for dtype in [np.float16, np.float32, np.float64]:
-      arg = np.array([-2.0, -0.5, -0.0, 0.0, 0.5, 2.0], dtype=dtype)
+      arg = np.array(
+          [-2.0, -0.5, -0.0, 0.0, 0.5, 2.0, np.nan, np.inf, -np.inf],
+          dtype=dtype,
+      )
       self.match(
           np_math_ops.angle(arg), np.angle(arg), msg='angle({})'.format(arg)
       )
