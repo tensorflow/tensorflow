@@ -14,10 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
 
-#include <csignal>
 #include <iostream>
 #include <string>
-#include <utility>
 
 #include <gtest/gtest.h>
 
