@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/bfloat16_propagation.h"
 
-#include <array>
 #include <cstdint>
 #include <utility>
 #include <vector>
