@@ -23,6 +23,7 @@ the functions below are called, in a thread or not.
 """
 
 import atexit
+import os
 import threading
 import time
 
@@ -39,6 +40,19 @@ from tensorflow.python.platform import tf_logging as logging
 _CONSECUTIVE_FAILURES_LIMIT = 3
 _failure_count = 0
 _heartbeat_timer = None
+
+
+def _fatal(msg, *args):
+  """Logs `msg` at FATAL level and unconditionally crashes the process.
+
+  `logging.fatal` (tf_logging -> the stdlib `logging` module) only logs at
+  CRITICAL level and returns normally; it does not terminate the process.
+  Since this can be called from the background heartbeat thread, raising
+  or calling `sys.exit` would only end that thread, not the process. Use
+  `os._exit` to guarantee a hard process crash regardless of caller.
+  """
+  logging.fatal(msg, *args)
+  os._exit(1)  # pylint: disable=protected-access
 
 
 def _heartbeat(
@@ -87,13 +101,13 @@ def _heartbeat(
                         _CONSECUTIVE_FAILURES_LIMIT - _failure_count, e)
         continue
       else:
-        logging.fatal('Heartbeat failure %d, limit of %d reached: %s',
-                      _failure_count, _CONSECUTIVE_FAILURES_LIMIT, e)
+        _fatal('Heartbeat failure %d, limit of %d reached: %s',
+               _failure_count, _CONSECUTIVE_FAILURES_LIMIT, e)
     logging.vlog(2, 'Received heartbeat signal %s', signal)
 
     # Out of sync workers will cause this, crash immediately.
     if not np.all(signal == token):
-      logging.fatal('Unexpected heartbeat signal received: %s', signal)
+      _fatal('Unexpected heartbeat signal received: %s', signal)
 
     # Any success resets the failure counter.
     _failure_count = 0
@@ -152,10 +166,10 @@ def start(period: int) -> threading.Event:
   # out of sync, and we should terminate all workers.
   if task_id == 0:
     if not np.all(signal == token):  # pyrefly: ignore[unbound-name]
-      logging.fatal('Merged heartbeat signal has value != %d', token)
+      _fatal('Merged heartbeat signal has value != %d', token)
   else:
     if len(set(signal)) != 1:
-      logging.fatal('Merged heartbeat signal has unequal elements')
+      _fatal('Merged heartbeat signal has unequal elements')
     token = signal[0]
 
   # On normal main process exit, set the timer to stop the heartbeat thread.
