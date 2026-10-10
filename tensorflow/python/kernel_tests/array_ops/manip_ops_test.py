@@ -100,6 +100,21 @@ class RollTest(test_util.TensorFlowTestCase):
     self._testAll(np.zeros([0, 1]), 1, 1)
     self._testAll(np.zeros([1, 0]), 1, 1)
 
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testMultipleAxesOnGpu(self):
+    np_input = np.arange(24, dtype=np.int32).reshape([2, 3, 1, 2, 2])
+    shift = [0, -1, 2, 1, -3]
+    axis = [0, -1, 1, 2, 1]
+    expected = np.roll(np_input, shift, axis)
+    for shift_dtype in (dtypes.int32, dtypes.int64):
+      for axis_dtype in (dtypes.int32, dtypes.int64):
+        result = manip_ops.roll(
+            np_input,
+            constant_op.constant(shift, dtype=shift_dtype),
+            constant_op.constant(axis, dtype=axis_dtype))
+        self.assertAllEqual(expected, self.evaluate(result))
+
   @test_util.run_v2_only
   def testLargeInput(self):
     with test_util.force_cpu():
