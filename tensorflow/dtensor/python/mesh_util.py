@@ -176,17 +176,21 @@ def create_distributed_mesh(
     raise ValueError('Accelerators are uninitialized, please run '
                      'dtensor.initialize_accelerator_system() first.')
 
+  device_specs, device_type = _make_device_specs(local_devices, device_type)
+
   if device_type and device_type.upper() == 'TPU':
     # TODO(b/185940495): Allow multi-mesh and partial on TPU.
     # TPU meshes can only be configured through environment variables that
     # reflect the actual TPU topology. Do not let users specify custom args.
+    # Checked here (after type inference) rather than against the original
+    # `device_type` argument, so a caller who passes `local_devices` full of
+    # TPU specs without also passing `device_type='TPU'` still gets this
+    # error instead of silently having `local_devices` ignored below.
     if local_devices is not None:
       raise ValueError(
           f'Do not specify devices for {device_type.upper()} meshes. '
           f'Using a partial list of devices for {device_type.upper()} '
           f'is not supported.')
-
-  device_specs, device_type = _make_device_specs(local_devices, device_type)
 
   if device_type.upper() in ['CPU', 'GPU']:
     # For CPU and GPU meshes, user-specified args take precedence over env vars.
