@@ -26,6 +26,17 @@ limitations under the License.
 #define MADV_PAGEOUT 21
 #endif
 
+#if defined(__linux__) || defined(__ANDROID__)
+#include <sys/prctl.h>
+// Older sysroots don't define these (added to the Linux UAPI in 5.17).
+#ifndef PR_SET_VMA
+#define PR_SET_VMA 0x53564d41
+#endif
+#ifndef PR_SET_VMA_ANON_NAME
+#define PR_SET_VMA_ANON_NAME 0
+#endif
+#endif
+
 #include <fcntl.h>
 #include <sys/stat.h>
 
@@ -35,12 +46,32 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <new>
 
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/macros.h"
 #include "tensorflow/lite/delegates/xnnpack/windows_util.h"
 
 namespace tflite::xnnpack {
+
+namespace {
+
+// Rounds `size` (at least 1) up to a multiple of the page size. Returns 0 on
+// overflow.
+size_t RoundUpToPageSize(size_t size) {
+  size = std::max<size_t>(size, 1);
+#if defined(_WIN32) || defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  return size;
+#else
+  const size_t page_size = getpagesize();
+  if (size > SIZE_MAX - (page_size - 1)) {
+    return 0;
+  }
+  return (size + page_size - 1) / page_size * page_size;
+#endif
+}
+
+}  // namespace
 
 // NOLINTBEGIN(whitespace/line_length)
 #ifdef XNNPACK_CACHE_NO_MMAP_FOR_TEST
@@ -74,6 +105,9 @@ void swap(MMapHandle& a, MMapHandle& b) {
   swap(a.offset_, b.offset_);
   swap(a.offset_page_adjustment_, b.offset_page_adjustment_);
   swap(a.data_, b.data_);
+#if defined(_WIN32)
+  swap(a.file_mapping_, b.file_mapping_);
+#endif
 }
 
 MMapHandle::~MMapHandle() { UnMap(); }
@@ -181,6 +215,96 @@ bool MMapHandle::Resize(size_t new_size) {
   // that a memory allocation will not be moved when reallocating
   return false;
 #endif
+}
+
+bool MMapHandle::CanMapAnonymous() {
+#if defined(_WIN32) && !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  return false;
+#else
+  return true;
+#endif
+}
+
+bool MMapHandle::MapAnonymous(size_t size, const char* vma_name) {
+  this->UnMap();
+  XNNPACK_RETURN_CHECK(
+      CanMapAnonymous(),
+      "anonymous mappings are not supported on this platform.");
+  const size_t mapped_size = RoundUpToPageSize(size);
+  XNNPACK_RETURN_CHECK(mapped_size != 0,
+                       "anonymous mapping size overflow: %zu.", size);
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  // This allocation is freed in UnMap and in the destructor.
+  data_ = new (std::nothrow) uint8_t[mapped_size];
+  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not allocate %zu bytes.",
+                       mapped_size);
+#elif !defined(_WIN32)
+  void* const data = mmap(/*addr=*/nullptr, mapped_size, PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANONYMOUS, /*fd=*/-1, /*offset=*/0);
+  XNNPACK_RETURN_CHECK(data != MAP_FAILED,
+                       "could not map %zu anonymous bytes: %s.", mapped_size,
+                       strerror(errno));
+  data_ = static_cast<uint8_t*>(data);
+#if defined(__linux__) || defined(__ANDROID__)
+  if (vma_name != nullptr) {
+    // Best effort: this fails on kernels built without anonymous VMA names.
+    prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, reinterpret_cast<uintptr_t>(data_),
+          mapped_size, vma_name);
+  }
+#endif
+#endif
+  (void)vma_name;
+  size_ = mapped_size;
+  return true;
+}
+
+bool MMapHandle::GrowAnonymous(size_t min_size, size_t used_size) {
+  XNNPACK_RETURN_CHECK(IsMapped(), "cannot grow an unmapped handle.");
+  if (min_size <= size_) {
+    return true;
+  }
+  // Untouched anonymous pages don't use memory, and FinalizeAnonymous unmaps
+  // the unused tail.
+  const size_t doubled_size = size_ <= SIZE_MAX / 2 ? 2 * size_ : min_size;
+  const size_t new_size = RoundUpToPageSize(std::max(min_size, doubled_size));
+  XNNPACK_RETURN_CHECK(new_size != 0, "anonymous mapping size overflow: %zu.",
+                       min_size);
+#if (defined(__linux__) || defined(__ANDROID__)) && \
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  (void)used_size;
+  void* const data = mremap(data_, size_, new_size, MREMAP_MAYMOVE);
+  XNNPACK_RETURN_CHECK(data != MAP_FAILED,
+                       "could not grow anonymous mapping to %zu bytes: %s.",
+                       new_size, strerror(errno));
+  data_ = static_cast<uint8_t*>(data);
+  size_ = new_size;
+#else
+  MMapHandle grown;
+  XNNPACK_RETURN_CHECK(grown.MapAnonymous(new_size));
+  std::memcpy(grown.data_, data_, std::min(used_size, size_));
+  swap(*this, grown);
+#endif
+  return true;
+}
+
+bool MMapHandle::FinalizeAnonymous(size_t used_size) {
+  XNNPACK_RETURN_CHECK(IsMapped(), "cannot finalize an unmapped handle.");
+#if !defined(_WIN32) && !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  const size_t used_mapped_size = RoundUpToPageSize(used_size);
+  if (used_mapped_size != 0 && used_mapped_size < size_) {
+    XNNPACK_RETURN_CHECK(
+        munmap(data_ + used_mapped_size, size_ - used_mapped_size) == 0,
+        "could not unmap the unused tail of an anonymous mapping: %s.",
+        strerror(errno));
+    size_ = used_mapped_size;
+  }
+  XNNPACK_RETURN_CHECK(mprotect(data_, size_, PROT_READ) == 0,
+                       "could not make an anonymous mapping read-only: %s.",
+                       strerror(errno));
+#else
+  (void)used_size;
+#endif
+  return true;
 }
 
 void MMapHandle::UnMap() {

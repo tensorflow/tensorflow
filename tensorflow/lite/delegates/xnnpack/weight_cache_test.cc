@@ -235,27 +235,32 @@ TEST_F(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
   }
 
   EXPECT_FALSE(builder.StartBuildStep());
+  EXPECT_FALSE(builder.IsBuilding());
+}
+
+TEST_F(WeightCacheBuilderTest, EmptyBuildStepEndsTheStep) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  // A step that writes nothing, e.g. a subgraph whose weights are all cache
+  // hits, takes the early return in `StopBuildStep()`.
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_NE(builder.Reserve(1024), nullptr);
+  ASSERT_TRUE(builder.StopBuildStep());
+  EXPECT_FALSE(builder.IsBuilding());
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
+
+  EXPECT_TRUE(builder.StartBuildStep());
 }
 
 TEST_F(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
   WeightCacheBuilder builder;
   EXPECT_FALSE(builder.Start("", FileDescriptor()));
   EXPECT_FALSE(builder.Start("/seldf/sedsft", FileDescriptor()));
-}
-
-TEST_F(WeightCacheBuilderTest, InMemoryCacheCanBeBuilt) {
-  if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
-    GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
-                    "isn't supported by the current system, skipping test.";
-  }
-  WeightCacheBuilder builder;
-  EXPECT_TRUE(
-      builder.Start(kInMemoryCachePath, CreateInMemoryFileDescriptor(nullptr)));
-  EXPECT_TRUE(builder.IsStarted());
-  const FileDescriptor file_fd =
-      FileDescriptor::Open(kInMemoryCachePath, O_RDONLY);
-  EXPECT_FALSE(file_fd.IsValid());
-  EXPECT_EQ(errno, ENOENT);
 }
 
 TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
@@ -296,6 +301,8 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
   }
 
   ASSERT_TRUE(builder.StopBuildStep());
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
 
   MMapHandle handle;
   ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
@@ -1326,6 +1333,152 @@ TEST_F(MaliciousCacheTest, BufferOffsetPlusSizeOverflowsInt64) {
 
   MMapWeightCacheProvider cache_provider;
   EXPECT_FALSE(cache_provider.Load(fd_.GetCPath()));
+}
+
+class InMemoryWeightCacheTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+      GTEST_SKIP() << "In-memory weight caches aren't supported.";
+    }
+    ASSERT_TRUE(provider_.LoadOrStartBuild(kInMemoryCachePath));
+    ASSERT_TRUE(provider_.IsActive());
+    // No `:memory` file should be created.
+    EXPECT_FALSE(FileDescriptor::Open(kInMemoryCachePath, O_RDONLY).IsValid());
+    EXPECT_EQ(errno, ENOENT);
+  }
+
+  static xnn_weights_cache_look_up_key Key(
+      uint32_t seed, const std::string& weights,
+      uint32_t fingerprint_id = kDefaultFingerprint.id) {
+    return {.seed = seed,
+            .kernel = weights.data(),
+            .bias = nullptr,
+            .fingerprint_id = fingerprint_id};
+  }
+
+  // Packs `weights` the way XNNPack does and returns the cache offset.
+  size_t Insert(const xnn_weights_cache_look_up_key& key,
+                const std::string& weights) {
+    void* const reserved = provider_.ReserveSpace(weights.size());
+    if (reserved == nullptr) {
+      return SIZE_MAX;
+    }
+    std::memcpy(reserved, weights.data(), weights.size());
+    return provider_.LookUpOrInsert(&key, reserved, weights.size());
+  }
+
+  std::string ReadAt(size_t offset, size_t size) {
+    return std::string(static_cast<const char*>(provider_.OffsetToAddr(offset)),
+                       size);
+  }
+
+  MMapWeightCacheProvider provider_;
+};
+
+TEST_F(InMemoryWeightCacheTest, DeduplicatesAcrossBuildSteps) {
+  const std::string weights = GenerateRandomString(10000);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+
+  ASSERT_TRUE(provider_.StartBuildStep());
+  const size_t offset = Insert(key, weights);
+  ASSERT_NE(offset, SIZE_MAX);
+  EXPECT_EQ(ReadAt(offset, weights.size()), weights);
+  ASSERT_TRUE(provider_.StopBuildStep());
+  EXPECT_EQ(ReadAt(offset, weights.size()), weights);
+
+  // The next subgraph only has cache hits.
+  ASSERT_TRUE(provider_.StartBuildStep());
+  EXPECT_EQ(provider_.LookUp(&key), offset);
+  EXPECT_EQ(Insert(key, weights), offset);
+  ASSERT_TRUE(provider_.StopBuildStep());
+
+  // The next subgraph packs the weights differently.
+  const xnn_weights_cache_look_up_key other_key = Key(/*seed=*/2, weights);
+  ASSERT_TRUE(provider_.StartBuildStep());
+  const size_t other_offset = Insert(other_key, weights);
+  ASSERT_NE(other_offset, SIZE_MAX);
+  EXPECT_NE(other_offset, offset);
+  ASSERT_TRUE(provider_.StopBuildStep());
+
+  EXPECT_EQ(ReadAt(offset, weights.size()), weights);
+  EXPECT_EQ(ReadAt(other_offset, weights.size()), weights);
+}
+
+TEST_F(InMemoryWeightCacheTest, GrowsWithinABuildStep) {
+  std::vector<std::string> weights;
+  std::vector<size_t> offsets;
+  ASSERT_TRUE(provider_.StartBuildStep());
+  for (int i = 0; i < 16; ++i) {
+    weights.push_back(GenerateRandomString(100000 + i));
+    ASSERT_TRUE(provider_.MapBufferIdentifier(
+        weights.back().data(), weights.back().size(), /*identifier=*/i));
+    offsets.push_back(Insert(Key(/*seed=*/1, weights.back()), weights.back()));
+    ASSERT_NE(offsets.back(), SIZE_MAX);
+    // Growing may move the mapping. Earlier buffers stay reachable.
+    EXPECT_EQ(ReadAt(offsets.front(), weights.front().size()), weights.front());
+  }
+  ASSERT_TRUE(provider_.StopBuildStep());
+  for (size_t i = 0; i < weights.size(); ++i) {
+    EXPECT_EQ(ReadAt(offsets[i], weights[i].size()), weights[i]);
+  }
+}
+
+TEST_F(InMemoryWeightCacheTest, IdentifiesConstantTensorsByAddress) {
+  // Tensors set up programmatically have no buffer identifier.
+  std::string weights = GenerateRandomString(4096);
+  TfLiteTensor tensor{};
+  tensor.allocation_type = kTfLiteMmapRo;
+  tensor.data.data = weights.data();
+  tensor.bytes = weights.size();
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+
+  ASSERT_TRUE(provider_.MapTensorIdentifiers(&tensor, /*size=*/1, {}));
+  ASSERT_TRUE(provider_.StartBuildStep());
+  const size_t offset = Insert(key, weights);
+  ASSERT_NE(offset, SIZE_MAX);
+  ASSERT_TRUE(provider_.StopBuildStep());
+
+  ASSERT_TRUE(provider_.MapTensorIdentifiers(&tensor, /*size=*/1, {}));
+  ASSERT_TRUE(provider_.StartBuildStep());
+  EXPECT_EQ(provider_.LookUp(&key), offset);
+  ASSERT_TRUE(provider_.StopBuildStep());
+}
+
+TEST_F(InMemoryWeightCacheTest, DoesNotRequireFingerprints) {
+  const std::string weights = GenerateRandomString(64);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  ASSERT_TRUE(provider_.StartBuildStep());
+  EXPECT_NE(Insert(Key(/*seed=*/1, weights, /*fingerprint_id=*/0), weights),
+            SIZE_MAX);
+  ASSERT_TRUE(provider_.StopBuildStep());
+}
+
+TEST_F(InMemoryWeightCacheTest, ReleaseClearsTheCache) {
+  const std::string weights = GenerateRandomString(64);
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  ASSERT_TRUE(provider_.StartBuildStep());
+  const size_t offset = Insert(key, weights);
+  ASSERT_TRUE(provider_.StopBuildStep());
+
+  provider_.Release();
+  EXPECT_FALSE(provider_.IsActive());
+
+  const std::string other_weights = GenerateRandomString(64);
+  ASSERT_TRUE(provider_.StartBuild(kInMemoryCachePath));
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  ASSERT_TRUE(provider_.StartBuildStep());
+  EXPECT_EQ(provider_.LookUp(&key), SIZE_MAX);
+  // Offsets restart from scratch and must point to the new data.
+  EXPECT_EQ(Insert(key, other_weights), offset);
+  ASSERT_TRUE(provider_.StopBuildStep());
+  EXPECT_EQ(ReadAt(offset, other_weights.size()), other_weights);
 }
 
 }  // namespace

@@ -90,6 +90,28 @@ class MMapHandle {
   bool Map(const FileDescriptorView& fd, size_t offset = 0,
            const char* debug_path = nullptr);
 
+  // Returns true if `MapAnonymous` is supported on this platform.
+  static bool CanMapAnonymous();
+
+  // Maps a private read-write anonymous region of at least `size` bytes.
+  //
+  // On Linux and Android, the region is named `[anon:<vma_name>]`. Some
+  // kernels keep a pointer to `vma_name`: it must outlive the mapping.
+  [[nodiscard /*Mapping anonymous memory can fail.*/]]
+  bool MapAnonymous(size_t size, const char* vma_name = nullptr);
+
+  // Grows an anonymous mapping to at least `min_size` bytes.
+  //
+  // The size is at least doubled to amortize repeated growth. The mapping may
+  // move. Its first `used_size` bytes are preserved.
+  [[nodiscard /*Growing anonymous memory can fail.*/]]
+  bool GrowAnonymous(size_t min_size, size_t used_size);
+
+  // Unmaps the pages past `used_size` and makes an anonymous mapping
+  // read-only.
+  [[nodiscard /*Finalizing anonymous memory can fail.*/]]
+  bool FinalizeAnonymous(size_t used_size);
+
   // Tries to resize the current mapping.
   //
   // Only succeeds if the mapping could be resized without being moved.

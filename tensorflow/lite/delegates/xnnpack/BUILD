@@ -241,6 +241,7 @@ cc_library(
     deps = [
         ":file_util",
         ":flexbuffers_util",
+        ":mmap_handle",
         ":moe_delegate_kernel",
         ":quantization_util",
         ":tflite_with_xnnpack_dynamic_fully_connected",  # buildcleaner: keep
@@ -293,6 +294,7 @@ cc_library(
     deps = [
         ":file_util",
         ":flexbuffers_util",
+        ":mmap_handle",
         ":moe_delegate_kernel",
         ":quantization_util",
         ":weight_cache",
@@ -2857,6 +2859,7 @@ cc_test(
     name = "delegate_weight_cache_test",
     srcs = ["delegate_weight_cache_test.cc"],
     deps = [
+        ":mmap_handle",
         ":weight_cache",
         ":xnnpack_delegate_hdrs_only",
         "//tensorflow/lite:framework_experimental",

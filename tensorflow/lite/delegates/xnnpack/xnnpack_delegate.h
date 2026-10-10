@@ -59,6 +59,9 @@ extern "C" {
 // Disable delegation of dynamically quantized ops.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DYNAMICALLY_QUANTIZED_OPS \
   0x00000800
+// Disable the in-memory weight cache that is enabled by default for models
+// with more than one subgraph when no weight cache is configured.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DEFAULT_WEIGHT_CACHE 0x00001000
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -80,6 +83,7 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DYNAMICALLY_QUANTIZED_OPS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING
   // - TFLITE_XNNPACK_DELEGATE_FLAG_SLOW_CONSISTENT_ARITHMETIC
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DEFAULT_WEIGHT_CACHE
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
