@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -320,10 +321,18 @@ class NegTrainOp : public OpKernel {
     random::SimplePhilox srnd(&rnd);
 
     for (int64_t i = 0; i < batch_size; ++i) {
-      const int32_t example = Texamples(i);
-      DCHECK(0 <= example && example < vocab_size) << example;
-      const int32_t label = Tlabels(i);
-      DCHECK(0 <= label && label < vocab_size) << label;
+      const int32_t example =
+          ::tensorflow::internal::SubtleMustCopy(Texamples(i));
+      OP_REQUIRES(ctx, FastBoundsCheck(example, vocab_size),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "examples value ", example, " out of range [0, ",
+                      vocab_size, ")")));
+      const int32_t label =
+          ::tensorflow::internal::SubtleMustCopy(Tlabels(i));
+      OP_REQUIRES(ctx, FastBoundsCheck(label, vocab_size),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "labels value ", label, " out of range [0, ", vocab_size,
+                      ")")));
       auto v_in = Tw_in.chip<0>(example);
 
       // Positive: example predicts label.
@@ -336,8 +345,9 @@ class NegTrainOp : public OpKernel {
         auto v_out = Tw_out.chip<0>(label);
         auto dot = (v_in * v_out).sum();
         g = (dot.exp() + 1.f).inverse();
-        Tbuf = v_out * (g() * lr);
-        v_out += v_in * (g() * lr);
+        const float g_lr = g() * lr;
+        Tbuf = v_out * g_lr;
+        v_out += v_in * g_lr;
       }
 
       // Negative samples:
@@ -352,8 +362,9 @@ class NegTrainOp : public OpKernel {
         auto v_sample = Tw_out.chip<0>(sample);
         auto dot = (v_in * v_sample).sum();
         g = -((-dot).exp() + 1.f).inverse();
-        Tbuf += v_sample * (g() * lr);
-        v_sample += v_in * (g() * lr);
+        const float g_lr = g() * lr;
+        Tbuf += v_sample * g_lr;
+        v_sample += v_in * g_lr;
       }
 
       // Applies the gradient on v_in.
