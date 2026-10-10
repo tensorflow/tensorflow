@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific Slice Op.
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
-#include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
@@ -203,6 +203,16 @@ class SliceOp : public XlaOpKernel {
         for (int i = 0; i < input_dims; i++) {
           xla::XlaOp dynamic_size =
               xla::Reshape(xla::Slice(ctx->Input(2), {i}, {i + 1}, {1}), {});
+          // SetDimensionSize takes an S32 size, and the sizes and bounds
+          // inferred below are read as int32. Clamp in the original width
+          // first, so that sizes above INT32_MAX don't wrap when narrowed.
+          if (ctx->input_xla_type(2) != xla::S32) {
+            dynamic_size = xla::ConvertElementType(
+                xla::Clamp(
+                    xla::ScalarLike(dynamic_size, 0), dynamic_size,
+                    xla::ScalarLike(dynamic_size, input_shape.dim_size(i))),
+                xla::S32);
+          }
           if (constant_size_is_minus_one && size[i] == -1) {
             // size = input_.dim_size(i) - begin[i]
             dynamic_size = xla::ConstantR0<int32_t>(ctx->builder(),
@@ -221,10 +231,28 @@ class SliceOp : public XlaOpKernel {
           } else {
             // We gave a generous bound (same as input) to the output, try reset
             // the bound if a tighter one can be found.
-            auto status = xla::SetDimensionSizeWithRebound(
-                &ctx->value_inference(), sliced, dynamic_size, i);
-            OP_REQUIRES_OK(ctx, status.status());
-            sliced = status.value();
+            auto inferred_bound = ctx->value_inference().AnalyzeConstant(
+                dynamic_size, xla::ValueInferenceMode::kUpperBound);
+            OP_REQUIRES_OK(ctx, inferred_bound.status());
+            int64_t bound = input_shape.dim_size(i);
+            if (inferred_bound->AllValid()) {
+              // The size is clamped at 0 below, so don't slice to a
+              // negative bound either.
+              const int64_t tighter_bound = std::max<int64_t>(
+                  0, inferred_bound->Get<int32_t>({}).value());
+              if (tighter_bound < bound) {
+                sliced = xla::SliceInDim(sliced, 0, tighter_bound, 1, i);
+                bound = tighter_bound;
+              }
+            }
+            // Clamp the size to the bound. A size beyond the input, which
+            // eager rejects as out of range, would otherwise make the output
+            // claim more elements than its buffer holds.
+            sliced = xla::SetDimensionSize(
+                sliced,
+                xla::Clamp(xla::ScalarLike(dynamic_size, 0), dynamic_size,
+                           xla::ScalarLike(dynamic_size, bound)),
+                i);
           }
         }
         ctx->SetOutput(0, sliced);

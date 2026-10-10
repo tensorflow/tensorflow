@@ -15,11 +15,23 @@
 """Tests for slicing."""
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
+
+
+def _runtime_size(m, w):
+  # XLA compiles a size that is passed in, or computed with a reduction, as a
+  # constant, but not one computed with a matrix product. TPUs have no 64-bit
+  # integer dot, so compute the product in int32.
+  return math_ops.cast(
+      math_ops.matvec(
+          math_ops.cast(m, dtypes.int32), math_ops.cast(w, dtypes.int32)),
+      m.dtype)
 
 
 class SliceTest(xla_test.XLATestCase):
@@ -71,6 +83,45 @@ class SliceTest(xla_test.XLATestCase):
       # (0, 0, 2), so the slice holds the first coordinate of each.
       self.assertAllEqual([[0], [0]], sliced.eval(feed_dict=params))
       self.assertAllEqual((0, 1), empty.eval(feed_dict=params).shape)
+
+  def testSliceWithRuntimeSizeBeyondInput(self):
+    # Regression test for GitHub issue 128405. When `size` is only known at
+    # run time, a size beyond the input, which eager rejects as out of range,
+    # was set as the dimension size of an output that holds at most one
+    # element, which corrupted the heap on some platforms.
+
+    @def_function.function(jit_compile=True)
+    def slice_size(m, w):
+      v = _runtime_size(m, w)  # [19]
+      return array_ops.shape(array_ops.slice(v, v, v))
+
+    for dtype in (dtypes.int32, dtypes.int64):
+      with self.subTest(dtype=dtype.name), self.session():
+        with self.test_scope():
+          m = constant_op.constant([[1, 5]], dtype=dtype)
+          w = constant_op.constant([4, 3], dtype=dtypes.uint8)
+          self.assertAllEqual([1], self.evaluate(slice_size(m, w)))
+
+  def testSliceWithRuntimeSizeWithinInput(self):
+    # A valid size known only at run time keeps its value, and a negative one
+    # is clamped to an empty slice. The inputs are fed through placeholders so
+    # that graph shape inference can't reject the negative size first.
+
+    @def_function.function(jit_compile=True)
+    def slice_from_one(x, m, w):
+      v = _runtime_size(m, w)
+      return array_ops.slice(x, constant_op.constant([1], dtype=m.dtype), v)
+
+    for dtype in (dtypes.int32, dtypes.int64):
+      with self.subTest(dtype=dtype.name), self.session() as sess:
+        with self.test_scope():
+          x = constant_op.constant([10., 20., 30., 40., 50.])
+          m = array_ops.placeholder(dtype, shape=[1, 2])
+          w = array_ops.placeholder(dtypes.uint8, shape=[2])
+          out = slice_from_one(x, m, w)
+        self.assertAllEqual([20., 30.], sess.run(out, {m: [[1, 1]], w: [1, 1]}))
+        self.assertEqual((0,),
+                         sess.run(out, {m: [[-5, 0]], w: [1, 1]}).shape)
 
   def test3D(self):
     for dtype in self.numeric_types:
