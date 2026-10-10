@@ -110,9 +110,9 @@ absl::Status ReplaceReduce(Graph* graph, Node* node) {
 
 TensorProto TensorFromShape(const TensorShapeProto& shape) {
   TensorProto result;
-  result.set_dtype(DT_INT32);
+  result.set_dtype(DT_INT64);
   for (const auto& dim : shape.dim()) {
-    result.add_int_val(dim.size());
+    result.add_int64_val(dim.size());
   }
   result.mutable_tensor_shape()->add_dim()->set_size(shape.dim_size());
   return result;
@@ -213,7 +213,7 @@ absl::Status ReplaceBroadcast(Graph* graph, Node* node) {
   Node* shape_node = nullptr;
   if (!is_fully_defined) {
     NodeBuilder shape_builder(shape_name, "Shape");
-    shape_builder.Input(in_node).Attr("out_type", DT_INT32).Attr("T", dtype);
+    shape_builder.Input(in_node).Attr("out_type", DT_INT64).Attr("T", dtype);
     TF_RETURN_IF_ERROR(shape_builder.Finalize(graph, &shape_node));
     shape_node->set_assigned_device_name_index(send_dev);
   }
@@ -226,14 +226,18 @@ absl::Status ReplaceBroadcast(Graph* graph, Node* node) {
     int recv_index = recv_index_map[recv_dev];
     if (is_fully_defined) {
       // If the shape is fully defined, define one const node per device.
-      NodeBuilder shape_builder(absl::StrCat(shape_name, recv_index), "Const");
-      shape_builder.Attr("value", tensor_proto).Attr("dtype", DT_INT32);
+      // HostConst keeps the int64 shape in host memory, which is where
+      // _NcclBroadcastRecv reads it from.
+      NodeBuilder shape_builder(absl::StrCat(shape_name, recv_index),
+                                "HostConst");
+      shape_builder.Attr("value", tensor_proto).Attr("dtype", DT_INT64);
       TF_RETURN_IF_ERROR(shape_builder.Finalize(graph, &shape_node));
       shape_node->set_assigned_device_name_index(recv_dev);
     }
     Node* recv_node;
     TF_RETURN_IF_ERROR(
         make_builder("_NcclBroadcastRecv", absl::StrCat("Recv_", recv_index))
+            .Attr("Tshape", DT_INT64)
             .Input(shape_node)
             .Finalize(graph, &recv_node));
     recv_node->set_assigned_device_name_index(recv_dev);

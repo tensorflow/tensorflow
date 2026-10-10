@@ -557,6 +557,7 @@ tf_cc_test(
         "linalg_ops_test.cc",
         "lookup_ops_test.cc",
         "math_ops_test.cc",
+        "nccl_ops_test.cc",
         "nn_ops_test.cc",
         "parsing_ops_test.cc",
         "random_ops_test.cc",
