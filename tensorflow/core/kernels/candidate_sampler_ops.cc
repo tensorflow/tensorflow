@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -133,6 +134,16 @@ class SimpleCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
+    if constexpr (std::is_same_v<RangeSamplerType, UnigramSampler> ||
+                  std::is_same_v<RangeSamplerType, ThreadUnsafeUnigramSampler>) {
+      // WeightedPicker's largest representable power-of-two level is 1 << 30.
+      constexpr int64_t kMaxUnigramRange = int64_t{1} << 30;
+      OP_REQUIRES(
+          context, range_max <= kMaxUnigramRange,
+          absl::InvalidArgumentError(absl::StrCat(
+              "range_max must be at most ", kMaxUnigramRange,
+              " for unigram samplers, got ", range_max)));
+    }
     set_sampler(new RangeSamplerType(range_max));
   }
 };
