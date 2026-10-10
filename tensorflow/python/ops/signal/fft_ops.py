@@ -53,6 +53,8 @@ def _process_empty_axes(input_tensor, axes):
     axes = _infer_axes_for_fftn(input_tensor)
   else:
     axes = _ops.convert_to_tensor(axes, _dtypes.int32)
+    if axes.shape.ndims is not None and axes.shape.ndims != 1:
+      raise ValueError(f"axes must be 1D, but got shape: {axes.shape}")
   return axes
 
 
