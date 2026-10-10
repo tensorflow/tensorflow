@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -65,13 +66,14 @@ HloModule module
 $0
 ENTRY cluster {
   %arg.1 = f32[1,1073741824] parameter(0)
-  ROOT %cc.2 = (f32[1,5], s32[1,5]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
+  ROOT %cc.2 = (f32[1,5], s32[1,5]) custom-call(%arg.1), custom_call_target="TopK", to_apply=%compare, backend_config="{is_stable = false, order = \"PARTIAL\"}"
 })",
                                                   kComparator);
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()),
               absl_testing::IsOkAndHolds(true));
-  auto first_topk = m::CustomCall(m::Reshape(m::Parameter(0)));
+  const HloInstruction* batch_topk = nullptr;
+  auto first_topk = m::CustomCall(&batch_topk, m::Reshape(m::Parameter(0)));
   auto slice_result = [&](auto input, size_t i) {
     return m::Reshape(m::Slice(m::GetTupleElement(input, i)));
   };
@@ -80,9 +82,12 @@ ENTRY cluster {
   auto sorted = m::Sort(
       m::Reshape(m::GetTupleElement(first_topk, 0)),
       m::Reshape(m::Add(m::GetTupleElement(first_topk, 1), index_correction)));
-  EXPECT_TRUE(
+  ASSERT_TRUE(
       Match(module->entry_computation()->root_instruction(),
             m::Tuple(slice_result(sorted, 0), slice_result(sorted, 1))));
+  ASSERT_NE(batch_topk, nullptr);
+  EXPECT_EQ(batch_topk->raw_backend_config_string(),
+            "{is_stable = false, order = \"PARTIAL\"}");
 }
 
 TEST_F(HardwareIndependentTopkSplitterTest, SplitsTopKNoBatchDimension) {

@@ -1,7 +1,5 @@
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation=false | FileCheck %s
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation=true | FileCheck %s
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=false
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=true
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 fusion {
   p = f32[1,1,1] parameter(0)

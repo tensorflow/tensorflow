@@ -1,7 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 max_computation {
   x = f32[] parameter(0)
@@ -19,10 +17,8 @@ fusion {
   broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
   ROOT _ = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 }
-// CHECK-OLD:   #xla.indexing_map<"(pid_0) -> (pid_0 / 32), domain: pid_0 in [0, 2047]">
-// CHECK-OLD:   #xla.indexing_map<"(pid_0) -> (pid_0 mod 32), domain: pid_0 in [0, 2047]">
-// CHECK-NEW:   #xla.indexing_map<"(pid) -> (pid / 32), domain: pid in [0, 2047]">
-// CHECK-NEW:   #xla.indexing_map<"(pid) -> (pid mod 32), domain: pid in [0, 2047]">
+// CHECK:   #xla.indexing_map<"(pid) -> (pid / 32), domain: pid in [0, 2047]">
+// CHECK:   #xla.indexing_map<"(pid) -> (pid mod 32), domain: pid in [0, 2047]">
 // CHECK-LABEL: xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[P0:[A-Za-z0-9_]*]]: memref<64x32x16xf32>
 // CHECK-SAME:      %[[P1:[A-Za-z0-9_]*]]: memref<f32>

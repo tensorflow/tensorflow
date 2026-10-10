@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -41,11 +40,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -106,12 +104,13 @@ WhileThunk::WhileThunk(
     ThunkInfo thunk_info,
     const BufferAllocation::Slice& condition_result_buffer_index,
     ThunkSequence condition_thunks, ThunkSequence body_thunks,
-    std::optional<int64_t> trip_count)
+    std::optional<int64_t> trip_count, int devices_per_host)
     : Command(Kind::kWhile, std::move(thunk_info)),
       condition_result_buffer_index_(condition_result_buffer_index),
       condition_executor_(std::move(condition_thunks)),
       body_executor_(std::move(body_thunks)),
-      trip_count_(trip_count) {}
+      trip_count_(trip_count),
+      host_memory_pools_(devices_per_host) {}
 
 absl::Status WhileThunk::Prepare(const PrepareParams& params) {
   ABSL_RETURN_IF_ERROR(condition_executor_.Prepare(params));
@@ -155,14 +154,13 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
           << ", trip_count=" << trip_count_.value_or(-1)
           << ", is_unrolled_loop_=" << is_unrolled_loop_;
 
-  absl::MutexLock lock(mutex_);
-  if (!host_memory_pools_.contains(params.executor)) {
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<HostMemoryPool> pool,
-        HostMemoryPool::Create(params.executor, PrimitiveType::PRED));
-    host_memory_pools_[params.executor] = std::move(pool);
-  }
-  return absl::OkStatus();
+  return host_memory_pools_.GetOrCreateAndInitialize(
+      params.executor->device_ordinal(), [&](PoolState* state) -> absl::Status {
+        ABSL_ASSIGN_OR_RETURN(
+            state->pool,
+            HostMemoryPool::Create(params.executor, PrimitiveType::PRED));
+        return absl::OkStatus();
+      });
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*> WhileThunk::Record(
@@ -295,11 +293,9 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     return absl::OkStatus();
   }
 
-  HostMemoryPool* pool;
-  {
-    absl::MutexLock lock(mutex_);
-    pool = host_memory_pools_.at(stream.parent()).get();
-  }
+  PoolState* state = host_memory_pools_.Find(device_ordinal);
+  TF_RET_CHECK(state != nullptr && state->pool != nullptr);
+  HostMemoryPool* pool = state->pool.get();
   ABSL_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
   bool* condition_result = handle.get<bool>();
   se::DeviceAddressBase condition_result_data =
@@ -407,7 +403,7 @@ absl::StatusOr<ThunkProto> WhileThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunk::FromProto(
     ThunkInfo thunk_info, const WhileThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    const Deserializer& deserializer) {
+    const Deserializer& deserializer, int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(
       BufferAllocation::Slice condition_result_buffer_index,
       BufferAllocation::Slice::FromProto(
@@ -428,7 +424,8 @@ absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunk::FromProto(
   }
   return std::make_unique<WhileThunk>(
       std::move(thunk_info), condition_result_buffer_index,
-      std::move(condition_thunks), std::move(body_thunks), trip_count);
+      std::move(condition_thunks), std::move(body_thunks), trip_count,
+      devices_per_host);
 }
 
 }  // namespace xla::gpu

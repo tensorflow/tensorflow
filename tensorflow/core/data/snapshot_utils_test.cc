@@ -15,19 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/data/snapshot_utils.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/compression.h"
+#include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -36,6 +40,7 @@ namespace {
 
 using ::tensorflow::data::testing::EqualsProto;
 using ::tensorflow::data::testing::LocalTempFilename;
+using ::testing::HasSubstr;
 
 void GenerateTensorVector(tensorflow::DataTypeVector& dtypes,
                           std::vector<Tensor>& tensors) {
@@ -146,6 +151,156 @@ TEST(SnapshotUtilTest, SnappyTensorSizeMismatch) {
 
   std::vector<Tensor> read_tensors;
   EXPECT_TRUE(absl::IsDataLoss(reader->ReadTensors(&read_tensors)));
+
+  TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
+}
+
+// Writes a snappy snapshot of two int64 tensors, then rewrites the dimensions
+// of the first tensor's metadata to `patched_dim_sizes`.
+//
+// int64 is memcpy-able, so the tensors take the simple-tensor path in
+// CustomReader::SnappyUncompress, which is where the shape is built. Records
+// are an 8-byte little-endian length followed by the payload, and the metadata
+// is the first record written for a snappy snapshot, so it can be rewritten
+// without disturbing the compressed block that follows. The tensor count is
+// left unchanged so the read reaches the shape instead of failing the earlier
+// count check.
+void WriteSnapshotWithPatchedDims(const std::vector<int64_t>& patched_dim_sizes,
+                                  tensorflow::DataTypeVector* dtypes,
+                                  std::string* filename) {
+  std::vector<Tensor> tensors;
+  for (int i = 0; i < 2; ++i) {
+    Tensor t(DT_INT64, TensorShape({4}));
+    t.flat<int64_t>().setZero();
+    dtypes->push_back(DT_INT64);
+    tensors.push_back(t);
+  }
+
+  ASSERT_TRUE(Env::Default()->LocalTempFilename(filename));
+
+  std::unique_ptr<Writer> writer;
+  TF_ASSERT_OK(Writer::Create(Env::Default(), *filename,
+                              io::compression::kSnappy, /*version=*/1, *dtypes,
+                              &writer));
+  TF_ASSERT_OK(writer->WriteTensors(tensors));
+  TF_ASSERT_OK(writer->Close());
+
+  constexpr size_t kHeaderSize = sizeof(uint64_t);
+  std::string contents;
+  TF_ASSERT_OK(ReadFileToString(Env::Default(), *filename, &contents));
+  ASSERT_GT(contents.size(), kHeaderSize);
+  const uint64_t metadata_size = core::DecodeFixed64(contents.data());
+  ASSERT_GE(contents.size(), kHeaderSize + metadata_size);
+
+  experimental::SnapshotTensorMetadata metadata;
+  ASSERT_TRUE(
+      metadata.ParseFromString(contents.substr(kHeaderSize, metadata_size)));
+  ASSERT_GT(metadata.tensor_metadata_size(), 0);
+  auto* shape = metadata.mutable_tensor_metadata(0)->mutable_tensor_shape();
+  shape->clear_dim();
+  for (int64_t dim_size : patched_dim_sizes) {
+    shape->add_dim()->set_size(dim_size);
+  }
+
+  const std::string patched = metadata.SerializeAsString();
+  char header[kHeaderSize];
+  core::EncodeFixed64(header, patched.size());
+  TF_ASSERT_OK(
+      WriteStringToFile(Env::Default(), *filename,
+                        std::string(header, kHeaderSize) + patched +
+                            contents.substr(kHeaderSize + metadata_size)));
+}
+
+TEST(SnapshotUtilTest, SnappyInvalidTensorShapeIsAnError) {
+  // A corrupt snapshot whose metadata carries a negative dimension must be
+  // reported as an error. Building a TensorShape directly from the proto
+  // CHECK-fails instead, which aborts the process.
+  std::string filename;
+  tensorflow::DataTypeVector dtypes;
+  ASSERT_NO_FATAL_FAILURE(WriteSnapshotWithPatchedDims(
+      /*patched_dim_sizes=*/{-1}, &dtypes, &filename));
+
+  std::unique_ptr<Reader> reader;
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &reader));
+  std::vector<Tensor> read_tensors;
+  absl::Status status = reader->ReadTensors(&read_tensors);
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_THAT(status.message(), HasSubstr("Expected a non-negative size"));
+
+  TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
+}
+
+TEST(SnapshotUtilTest, SnappyZeroTensorDimensionIsAnError) {
+  // Zero is a valid dimension, so the shape is built successfully, but the
+  // tensor then holds no buffer. The read must report the resulting mismatch
+  // between the metadata and the compressed payload rather than dereference
+  // that null buffer.
+  std::string filename;
+  tensorflow::DataTypeVector dtypes;
+  ASSERT_NO_FATAL_FAILURE(WriteSnapshotWithPatchedDims(
+      /*patched_dim_sizes=*/{0}, &dtypes, &filename));
+
+  std::unique_ptr<Reader> reader;
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &reader));
+  std::vector<Tensor> read_tensors;
+  absl::Status status = reader->ReadTensors(&read_tensors);
+  EXPECT_TRUE(absl::IsInternal(status));
+  EXPECT_THAT(status.message(), HasSubstr("Uncompressed size mismatch"));
+
+  TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
+}
+
+TEST(SnapshotUtilTest, SnappyOverflowingTensorShapeIsAnError) {
+  // The other branch of BuildTensorShape: each dimension is non-negative, but
+  // their product does not fit in int64, which the TensorShape proto
+  // constructor would CHECK-fail on.
+  std::string filename;
+  tensorflow::DataTypeVector dtypes;
+  ASSERT_NO_FATAL_FAILURE(WriteSnapshotWithPatchedDims(
+      /*patched_dim_sizes=*/{1LL << 32, 1LL << 32}, &dtypes, &filename));
+
+  std::unique_ptr<Reader> reader;
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &reader));
+  std::vector<Tensor> read_tensors;
+  absl::Status status = reader->ReadTensors(&read_tensors);
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_THAT(status.message(),
+              HasSubstr("Encountered overflow when multiplying"));
+
+  TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
+}
+
+TEST(SnapshotUtilTest, SnappyZeroTensorDimensionRoundTrip) {
+  // An empty tensor is legitimate rather than corrupt, so it must survive a
+  // write and a read. Both sides hold a null buffer for it.
+  std::string filename;
+  ASSERT_TRUE(Env::Default()->LocalTempFilename(&filename));
+
+  tensorflow::DataTypeVector dtypes = {DT_INT64};
+  std::vector<Tensor> tensors;
+  tensors.emplace_back(DT_INT64, TensorShape({0}));
+
+  std::unique_ptr<Writer> writer;
+  TF_ASSERT_OK(Writer::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &writer));
+  TF_ASSERT_OK(writer->WriteTensors(tensors));
+  TF_ASSERT_OK(writer->Close());
+
+  std::unique_ptr<Reader> reader;
+  TF_ASSERT_OK(Reader::Create(Env::Default(), filename,
+                              io::compression::kSnappy, /*version=*/1, dtypes,
+                              &reader));
+  std::vector<Tensor> read_tensors;
+  TF_ASSERT_OK(reader->ReadTensors(&read_tensors));
+  ASSERT_EQ(read_tensors.size(), 1);
+  EXPECT_EQ(read_tensors[0].NumElements(), 0);
 
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }

@@ -33,9 +33,13 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 namespace {
+
+using OffsetResolution = DynamicSliceFusion::OffsetResolution;
 
 bool IsBitcastOrReshape(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kBitcast ||
@@ -103,15 +107,6 @@ bool IsSlicingInstructionCompatible(const HloInstruction* instr) {
   return HasDynamicSliceConfig(instr);
 }
 
-bool AllSlicingInstructionsCompatible(const HloComputation* body) {
-  for (const HloInstruction* instr : body->instructions()) {
-    if (IsSlicingInstruction(instr) && !IsSlicingInstructionCompatible(instr)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 std::optional<int64_t> StaticSliceByteOffset(const HloSliceInstruction* slice) {
   auto byte_strides = ShapeUtil::ByteStrides(slice->operand(0)->shape());
   if (!byte_strides.has_value()) {
@@ -160,6 +155,19 @@ std::optional<DynamicSliceCopyCandidate> FindDynamicSliceCopyCandidate(
   return std::nullopt;
 }
 
+// Returns true if slicing instructions on the copy data path are compatible.
+// The candidate DS/DUS always has a DynamicSliceConfig, so we only check the
+// copy operand. Slicing instructions in the offset subgraph (e.g. a table
+// lookup) are not checked, because the copy thunk never executes them and
+// computes offsets from the DynamicSliceConfig.
+bool DataPathSlicingInstructionsCompatible(
+    const DynamicSliceCopyCandidate& candidate) {
+  const HloInstruction* source =
+      WalkThroughBitcastsAndReshapes(candidate.copy_operand);
+  return !IsSlicingInstruction(source) ||
+         IsSlicingInstructionCompatible(source);
+}
+
 bool CanUseAsUnslicedParameter(const DynamicSliceFusion::Parameter& parameter) {
   if (parameter.slice_config.has_value()) {
     return true;
@@ -194,13 +202,18 @@ AnalyzeDynamicSliceCopyFusion(const HloInstruction* instr) {
     return std::nullopt;
   }
 
-  const HloComputation* body = instr->fused_instructions_computation();
-  if (!AllSlicingInstructionsCompatible(body)) {
+  if (!DataPathSlicingInstructionsCompatible(*candidate)) {
     return std::nullopt;
   }
 
+  // Copy fusions are created by generic fusion passes that can fuse offset
+  // producers that are not representable as Offset::Expr. Copy fusions are
+  // emitted as a copy thunk addressed only by the DynamicSliceConfig, and
+  // offset expressions are used only for verification, so they are optional
+  // here.
   absl::StatusOr<DynamicSliceFusion::Parameter> parameter =
-      DynamicSliceFusion::ResolveParameter(candidate->copy_operand);
+      DynamicSliceFusion::ResolveParameter(candidate->copy_operand,
+                                           OffsetResolution::kOptional);
   if (!parameter.ok() || !CanUseAsUnslicedParameter(*parameter)) {
     return std::nullopt;
   }
@@ -212,7 +225,8 @@ AnalyzeDynamicSliceCopyFusion(const HloInstruction* instr) {
                                                  std::nullopt, std::nullopt});
   } else {
     absl::StatusOr<std::vector<DynamicSliceFusion::Result>> resolved_results =
-        DynamicSliceFusion::ResolveResults(candidate->copy_operand);
+        DynamicSliceFusion::ResolveResults(candidate->copy_operand,
+                                           OffsetResolution::kOptional);
     if (!resolved_results.ok()) {
       return std::nullopt;
     }
@@ -296,6 +310,12 @@ bool IsDynamicSliceCopyFusion(const HloInstruction* instr) {
       AnalyzeDynamicSliceCopyFusion(instr);
   return (analysis.ok() && analysis->has_value()) ||
          IsCopyHeroDynamicSliceFusion(instr);
+}
+
+bool SupportsDynamicSliceCopyThunks(const se::DeviceDescription& device_info) {
+  const se::CudaComputeCapability* cuda_cc =
+      device_info.gpu_compute_capability().cuda_compute_capability();
+  return cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
 }
 
 }  // namespace xla::gpu

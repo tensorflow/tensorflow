@@ -43,7 +43,6 @@ namespace {
 
 class TritonTestBase : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
-  virtual bool EnableTilingPropagation() const = 0;
   virtual bool EnableGemmFusionV2() const { return false; }
 
   DebugOptions GetDebugOptionsForTest() const override {
@@ -55,46 +54,21 @@ class TritonTestBase : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     debug_options
         .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        EnableTilingPropagation());
     debug_options.set_xla_gpu_experimental_gemm_fusion_v2(EnableGemmFusionV2());
     return debug_options;
   }
 };
 
-struct TritonTestParams {
-  bool enable_gemm_fusion_v2;
-  bool enable_tiling_propagation;
-};
-
 class TritonTest : public TritonTestBase,
-                   public ::testing::WithParamInterface<TritonTestParams> {
+                   public ::testing::WithParamInterface<bool> {
  public:
-  bool EnableGemmFusionV2() const override {
-    return GetParam().enable_gemm_fusion_v2;
-  }
-  bool EnableTilingPropagation() const override {
-    return GetParam().enable_tiling_propagation;
-  }
+  bool EnableGemmFusionV2() const override { return GetParam(); }
 };
 
-INSTANTIATE_TEST_SUITE_P(
-    TritonTest, TritonTest,
-    ::testing::Values(TritonTestParams{/*enable_gemm_fusion_v2=*/false,
-                                       /*enable_tiling_propagation=*/false},
-                      TritonTestParams{/*enable_gemm_fusion_v2=*/false,
-                                       /*enable_tiling_propagation=*/true},
-                      TritonTestParams{/*enable_gemm_fusion_v2=*/true,
-                                       /*enable_tiling_propagation=*/false},
-                      TritonTestParams{/*enable_gemm_fusion_v2=*/true,
-                                       /*enable_tiling_propagation=*/true}),
-    [](const ::testing::TestParamInfo<TritonTestParams>& info) {
-      return absl::StrCat(
-          info.param.enable_gemm_fusion_v2 ? "GemmFusionV2" : "GemmFusionV1",
-          "_",
-          info.param.enable_tiling_propagation ? "ExperimentalTiling"
-                                               : "SymbolicTiling");
-    });
+INSTANTIATE_TEST_SUITE_P(TritonTest, TritonTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "GemmFusionV2" : "GemmFusionV1";
+                         });
 
 // The following tests are for the channel and subchannel dequantization
 // fusions. We run the fused version to avoid the HLO passes and prove that
@@ -498,15 +472,10 @@ struct I4TestParams {
 
 class ParametrizedTritonTest
     : public TritonTestBase,
-      public ::testing::WithParamInterface<std::tuple<I4TestParams, bool>> {
- public:
-  bool EnableTilingPropagation() const override {
-    return std::get<1>(GetParam());
-  }
-};
+      public ::testing::WithParamInterface<I4TestParams> {};
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
-  const I4TestParams& i4_params = std::get<0>(GetParam());
+  const I4TestParams& i4_params = GetParam();
   if (i4_params.HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -544,7 +513,7 @@ ENTRY entry_computation {
 }
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
-  const I4TestParams& i4_params = std::get<0>(GetParam());
+  const I4TestParams& i4_params = GetParam();
   if (!i4_params.HasBatchDim()) {
     GTEST_SKIP() << "3d test ignores 2d case.";
   }
@@ -581,7 +550,7 @@ ENTRY entry_computation {
 }
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheRhs) {
-  const I4TestParams& i4_params = std::get<0>(GetParam());
+  const I4TestParams& i4_params = GetParam();
   if (i4_params.HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -657,14 +626,9 @@ std::vector<I4TestParams> Int4TestCases() {
   };
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    ParametrizedTritonTest, ParametrizedTritonTest,
-    ::testing::Combine(::testing::ValuesIn(Int4TestCases()), ::testing::Bool()),
-    [](const ::testing::TestParamInfo<std::tuple<I4TestParams, bool>>& info) {
-      return absl::StrCat(
-          std::get<0>(info.param).name,
-          std::get<1>(info.param) ? "ExperimentalTiling" : "SymbolicTiling");
-    });
+INSTANTIATE_TEST_SUITE_P(ParametrizedTritonTest, ParametrizedTritonTest,
+                         ::testing::ValuesIn(Int4TestCases()),
+                         I4TestParams::ToString);
 
 TEST_P(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
   constexpr absl::string_view kHloText = R"(

@@ -135,6 +135,7 @@ cc_library(
     srcs = ["float_support.cc"],
     hdrs = ["float_support.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
     ],
@@ -2331,6 +2332,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/expanders:op_expander_pass",
         "//xla/tsl/platform:statusor",
@@ -2644,6 +2646,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
@@ -2797,7 +2800,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
@@ -2858,12 +2861,15 @@ xla_cc_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -3901,6 +3907,7 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -5290,6 +5297,7 @@ cc_library(
     deps = [
         ":hlo_creation_utils",
         ":pattern_matcher",
+        "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
@@ -5899,6 +5907,7 @@ xla_aot_compile_gpu(
     gpu_targets = [
         "h100",
         "b200",
+        "vr_nvl72",
     ],
     module = "xla_aot_compile_test.mlir",
     xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
@@ -5945,7 +5954,7 @@ xla_aot_compile_gpu(
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
-    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true --xla_gpu_experimental_enable_conv_fusion=true",
 )
 
 xla_aot_compile_gpu(
@@ -5956,7 +5965,22 @@ xla_aot_compile_gpu(
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
-    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
+    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false --xla_gpu_experimental_enable_conv_fusion=true",
+)
+
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_convolution_deviceless_cudnn",
+    # H100 only: deviceless conv graphs on Blackwell require cuDNN >= 9.19.
+    gpu_targets = [
+        "h100",
+        "h100_mig",
+    ],
+    module = "xla_aot_compile_test_convolution.mlir",
+    xla_flags = " ".join([
+        "--xla_gpu_experimental_enable_conv_fusion=true",
+        "--xla_gpu_cudnn_deviceless_compilation_mode=CUDNN_DEVICELESS_COMPILATION_AUTO",
+        "--xla_gpu_experimental_autotune_backends=cudnn",
+    ]),
 )
 
 xla_aot_compile_gpu_runtime_autotuning(
@@ -6040,6 +6064,7 @@ xla_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_convolution",
+        ":xla_aot_compile_test_gpu_executable_convolution_deviceless_cudnn",
         ":xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
         ":xla_aot_compile_test_gpu_executable_hlo",
         ":xla_aot_compile_test_gpu_executable_hlo_legacy_cache",
@@ -6055,7 +6080,8 @@ xla_test(
         ":hlo_runner_pjrt",
         "//xla:literal",
         "//xla:literal_util",
-        "//xla/tests:hlo_test_base",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/stream_executor/cuda:cudnn_plugin",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_macros",
@@ -6465,30 +6491,36 @@ cc_library(
     ]),
     deps = [
         ":gpu_topology_proto_cc",
+        "//xla:status_macros",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/target_config",
-        "@com_google_absl//absl/log:check",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
 xla_cc_test(
     name = "gpu_topology_test",
     srcs = ["gpu_topology_test.cc"],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
     deps = [
         ":gpu_topology",
         ":gpu_topology_proto_cc",
         "//xla/backends/cpu:target_machine_options",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/stream_executor/cuda:cuda_compute_capability_proto_cc",
+        "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
     ],
 )
 

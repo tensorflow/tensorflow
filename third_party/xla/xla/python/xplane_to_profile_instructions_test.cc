@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/xplane_to_profile_instructions.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -42,6 +43,9 @@ using tsl::profiler::StatType;
 using tsl::profiler::XEventBuilder;
 using tsl::profiler::XLineBuilder;
 using tsl::profiler::XPlaneBuilder;
+
+std::atomic<int64_t> next_unique_id;
+int64_t GetUniqueId() { return next_unique_id.fetch_add(1); }
 
 void CreateXSpace(XSpace* space, int first_device_latency,
                   int second_device_latency) {
@@ -83,25 +87,35 @@ void CreateXSpace(XSpace* space, int first_device_latency,
   event3.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                           GetStatTypeStr(StatType::kProgramId)),
                       program_id);
-
+  event3.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                          GetStatTypeStr(StatType::kScopeRangeId)),
+                      GetUniqueId());
   XPlaneBuilder device_plane_2(space->add_planes());
   device_plane_2.SetName(GpuPlaneName(1));
   device_plane_2.SetId(0);
   XLineBuilder stream2 = device_plane.GetOrCreateLine(30);
   stream2.SetName("gpu stream 1");
-  XEventBuilder event5 =
-      stream1.AddEvent(*device_plane.GetOrCreateEventMetadata("kernel1"));
-  event5.SetTimestampNs(180000);
-  event5.SetDurationNs(second_device_latency);
-  event5.AddStatValue(
-      *device_plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kHloOp)),
-      *device_plane.GetOrCreateStatMetadata("custom-call"));
-  event5.AddStatValue(*device_plane.GetOrCreateStatMetadata(
-                          GetStatTypeStr(StatType::kHloModule)),
-                      *device_plane.GetOrCreateStatMetadata("test_module"));
-  event5.AddStatValue(*device_plane.GetOrCreateStatMetadata(
-                          GetStatTypeStr(StatType::kProgramId)),
-                      program_id);
+  // model second_device_latency as being made up of two kernels back to back
+  int64_t scope_range_id = GetUniqueId();
+  const int kNumKernels = 2;
+  for (int i = 0; i < kNumKernels; ++i) {
+    XEventBuilder event5 =
+        stream1.AddEvent(*device_plane.GetOrCreateEventMetadata("kernel1"));
+    event5.SetTimestampNs(180000 + i * second_device_latency / kNumKernels);
+    event5.SetDurationNs(second_device_latency / kNumKernels);
+    event5.AddStatValue(
+        *device_plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kHloOp)),
+        *device_plane.GetOrCreateStatMetadata("custom-call"));
+    event5.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                            GetStatTypeStr(StatType::kHloModule)),
+                        *device_plane.GetOrCreateStatMetadata("test_module"));
+    event5.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                            GetStatTypeStr(StatType::kProgramId)),
+                        program_id);
+    event5.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                            GetStatTypeStr(StatType::kScopeRangeId)),
+                        scope_range_id);
+  }
 }
 
 void CreateXSpaceWithFingerprint(XSpace* space, int first_device_latency,

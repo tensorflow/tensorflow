@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -72,6 +73,11 @@ class UntypedPerDeviceState::Impl {
     return cow_storage_.GetOrCreate(device_ordinal, factory);
   }
 
+  void ForEach(absl::FunctionRef<void(DeviceSlot&)> fn) const {
+    vector_storage_.ForEach(fn);
+    cow_storage_.ForEach(fn);
+  }
+
  private:
   VectorStorage vector_storage_;
   CowStorage cow_storage_;
@@ -94,6 +100,11 @@ DeviceSlot* UntypedPerDeviceState::Find(int device_ordinal) const {
 absl::StatusOr<DeviceSlot*> UntypedPerDeviceState::GetOrCreate(
     int device_ordinal, DeviceSlotFactoryRef factory) {
   return impl_->GetOrCreate(device_ordinal, factory);
+}
+
+void UntypedPerDeviceState::ForEach(
+    absl::FunctionRef<void(DeviceSlot&)> fn) const {
+  impl_->ForEach(fn);
 }
 
 }  // namespace xla::gpu

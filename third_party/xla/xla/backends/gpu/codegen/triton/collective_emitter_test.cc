@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
@@ -56,12 +57,14 @@ limitations under the License.
 #include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -70,6 +73,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::AllOf;
 using ::testing::ElementsAre;
@@ -375,10 +379,9 @@ TEST_P(CollectiveEmitterParameterizedTest,
   };
   DebugOptions debug_options;
   CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
-                                            debug_options);
+                                            debug_options, *gpu_topology_);
 
-  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
-      []() { return CreateMlirContext(); });
+  MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
   ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
                        mlir_context_pool.GetOrCreate());
 
@@ -399,7 +402,11 @@ INSTANTIATE_TEST_SUITE_P(
         {{ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(BF16, {200, 100}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(PRED, {200, 64}), HloOpcode::kAllReduce},
-         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllReduce}}),
+         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kReduceScatter},
+         {ShapeUtil::MakeShape(BF16, {200, 100}), HloOpcode::kReduceScatter},
+         {ShapeUtil::MakeShape(PRED, {200, 64}), HloOpcode::kReduceScatter},
+         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kReduceScatter}}),
     [](const ::testing::TestParamInfo<
         CollectiveEmitterParameterizedTest::ParamType>& info) {
       std::string op_prefix =
@@ -680,6 +687,228 @@ TEST_F(CollectiveEmitterTest,
   ASSERT_EQ(unmanaged_arguments[1].dimensions().size(), 2);
   EXPECT_EQ(unmanaged_arguments[1].dimensions()[0], 2);
   EXPECT_THAT(unmanaged_arguments[2].dimensions(), ElementsAre(2, 4, 16384));
+}
+
+GpuTopology MakeGpuTopology(int32_t num_partitions,
+                            int32_t num_hosts_per_partition,
+                            int32_t num_devices_per_host,
+                            int32_t num_devices_per_process,
+                            bool is_cuda = true) {
+  se::DeviceDescription device_info =
+      is_cuda ? TestGpuDeviceInfo::H100SXMDeviceInfo()
+              : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+  target_config_proto.set_platform_name(is_cuda ? "CUDA" : "ROCM");
+  absl::StatusOr<GpuTargetConfig> target_config =
+      GpuTargetConfig::FromProto(target_config_proto);
+  CHECK_OK(target_config);
+  return GpuTopology(
+      /*platform_version=*/"", num_partitions, num_hosts_per_partition,
+      num_devices_per_host, *target_config,
+      /*host_target_machine_options=*/std::nullopt, num_devices_per_process);
+}
+
+class GetSymmetricMemoryTypeTest : public HloHardwareIndependentTestBase {
+ protected:
+  // Returns a module with an all-reduce over 8 replicas wrapped in a fusion.
+  // The cross-host one-shot kernel flag is set to ALLCOLLECTIVES iff
+  // `cross_host_kernel_enabled`.
+  absl::StatusOr<ModuleWithFusion> BuildAllReduceFusion(
+      bool cross_host_kernel_enabled) {
+    constexpr absl::string_view kHlo = R"(
+      HloModule test
+      add {
+        x = f32[] parameter(0)
+        y = f32[] parameter(1)
+        ROOT add = f32[] add(x, y)
+      }
+      ENTRY e {
+        p = f32[1024] parameter(0)
+        ROOT all-reduce = f32[1024] all-reduce(p),
+            replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=add
+      }
+    )";
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(kHlo, /*replica_count=*/8));
+    DebugOptions& debug_options =
+        module->mutable_config().mutable_debug_options();
+    debug_options.clear_xla_gpu_unsupported_use_cross_host_one_shot_kernel();
+    if (cross_host_kernel_enabled) {
+      debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+          DebugOptions::ALLCOLLECTIVES);
+    }
+    return ModuleWithFusion{
+        NewModuleWithFusion(module->entry_computation()->root_instruction(),
+                            HloInstruction::FusionKind::kLoop)};
+  }
+};
+
+TEST_F(GetSymmetricMemoryTypeTest, SingleProcessNvidiaIsLoadStoreAccessible) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/false));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/2,
+                                             /*num_hosts_per_partition=*/1,
+                                             /*num_devices_per_host=*/8,
+                                             /*num_devices_per_process=*/8,
+                                             /*is_cuda=*/true),
+                             *module_with_fusion.FusionInstr()),
+      IsOkAndHolds(SymmetricMemoryType::kLoadStoreAccessible));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest, SingleProcessRocmIsXlaRendezvous) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/false));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/2,
+                                             /*num_hosts_per_partition=*/1,
+                                             /*num_devices_per_host=*/8,
+                                             /*num_devices_per_process=*/8,
+                                             /*is_cuda=*/false),
+                             *module_with_fusion.FusionInstr()),
+      IsOkAndHolds(SymmetricMemoryType::kXlaRendezvous));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest,
+       CrossProcessNvidiaSharedSliceWithFlagIsLoadStoreAccessible) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/true));
+  const GpuTopology topology = MakeGpuTopology(/*num_partitions=*/1,
+                                               /*num_hosts_per_partition=*/2,
+                                               /*num_devices_per_host=*/4,
+                                               /*num_devices_per_process=*/4,
+                                               /*is_cuda=*/true);
+  const HloFusionInstruction& fusion = *module_with_fusion.FusionInstr();
+  EXPECT_THAT(GetSymmetricMemoryType(topology, fusion),
+              IsOkAndHolds(SymmetricMemoryType::kLoadStoreAccessible));
+  EXPECT_THAT(GetSymmetricMemoryType(topology, *fusion.fused_expression_root()),
+              IsOkAndHolds(SymmetricMemoryType::kLoadStoreAccessible));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest,
+       CrossProcessNvidiaSharedSliceWithoutFlagReturnsError) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/false));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/1,
+                                             /*num_hosts_per_partition=*/2,
+                                             /*num_devices_per_host=*/4,
+                                             /*num_devices_per_process=*/4,
+                                             /*is_cuda=*/true),
+                             *module_with_fusion.FusionInstr()),
+      StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest,
+       CrossProcessNvidiaSeparateSlicesReturnsError) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/true));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/2,
+                                             /*num_hosts_per_partition=*/1,
+                                             /*num_devices_per_host=*/4,
+                                             /*num_devices_per_process=*/4,
+                                             /*is_cuda=*/true),
+                             *module_with_fusion.FusionInstr()),
+      StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(GetSymmetricMemoryTypeTest, CrossProcessRocmSharedSliceReturnsError) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildAllReduceFusion(/*cross_host_kernel_enabled=*/true));
+  EXPECT_THAT(
+      GetSymmetricMemoryType(MakeGpuTopology(/*num_partitions=*/1,
+                                             /*num_hosts_per_partition=*/2,
+                                             /*num_devices_per_host=*/4,
+                                             /*num_devices_per_process=*/4,
+                                             /*is_cuda=*/false),
+                             *module_with_fusion.FusionInstr()),
+      StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(CollectiveEmitterTest,
+       ReduceScatterBlockLevelConfigUses64BlocksForNonPowerOfTwoShape) {
+  constexpr absl::string_view kReduceScatterHloStr = R"(
+    HloModule test
+    add {
+      x = bf16[] parameter(0)
+      y = bf16[] parameter(1)
+      ROOT add = bf16[] add(x, y)
+    }
+    ENTRY test_computation {
+      param_0 = bf16[128,24576] parameter(0)
+      ROOT rs = bf16[8,24576] reduce-scatter(param_0),
+        replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}},
+        dimensions={0}, to_apply=add,
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kReduceScatterHloStr, /*replica_count=*/16,
+                                   /*num_partitions=*/1));
+  const HloInstruction* rs = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kReduceScatter);
+  ASSERT_NE(rs, nullptr);
+  std::unique_ptr<HloModule> fused_module =
+      NewModuleWithFusion(rs, HloInstruction::FusionKind::kCustom);
+  HloFusionInstruction* fusion_instr = Cast<HloFusionInstruction>(
+      fused_module->entry_computation()->root_instruction());
+  ASSERT_OK(FlattenReduceScatterFusion(fusion_instr));
+
+  // Root is now a bitcast back to bf16[8,24576]; operand(0) is the 3D fusion
+  // with shape bf16[16,4,3072].
+  HloInstruction* root = fused_module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kBitcast);
+  HloFusionInstruction* flat_fusion =
+      Cast<HloFusionInstruction>(root->mutable_operand(0));
+  EXPECT_EQ(flat_fusion->shape(), ShapeUtil::MakeShape(BF16, {16, 4, 3072}));
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology topology_16,
+                       GetGpuTopologyForPlatform("nvidia_h100", 1, 1, 16));
+  ASSERT_OK(TrySetGpuBackendConfigForCollective(topology_16, flat_fusion));
+  ASSERT_OK_AND_ASSIGN(
+      BlockLevelFusionConfig block_level_config,
+      GetCollectiveBlockLevelFusionConfig(topology_16, flat_fusion));
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(),
+              ElementsAre(1, 1, 4096));
+
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(*flat_fusion, device_info_);
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      TritonFusion::GetLaunchConfig(&analysis);
+  ASSERT_TRUE(launch_config.has_value());
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 64);
+  EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
+
+  auto llvm_compiler =
+      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+          const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
+    return std::vector<uint8_t>{1};
+  };
+  DebugOptions debug_options;
+  CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
+                                            debug_options, topology_16);
+  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
+      []() { return CreateMlirContext(); });
+  ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                       mlir_context_pool.GetOrCreate());
+  TritonFusion emitter(analysis);
+  ASSERT_OK_AND_ASSIGN(
+      TritonWrapperResult triton_kernel,
+      emitter
+          .GenerateTritonKernelAndWrapper(
+              *flat_fusion, "test-reduce-scatter", device_info_,
+              llvm::Triple(""), /*data_layout=*/"", std::move(borrowed_context),
+              &kernel_compiler)
+          .Await());
 }
 
 }  // namespace

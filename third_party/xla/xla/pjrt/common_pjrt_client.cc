@@ -951,6 +951,48 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
   return event.value();
 }
 
+bool CommonPjRtClient::ShouldDoDirectTransfer(
+    const MutableLiteralBase& literal, const Shape& shape,
+    PjRtMemorySpace* memory_space) const {
+  if (shape.IsTuple()) {
+    return false;
+  }
+  if (!IsGpuId(platform_id()) && should_stage_host_to_device_transfers() &&
+      !raw_client()->IsDmaMapped(literal.untyped_data(),
+                                 literal.size_bytes())) {
+    return false;
+  }
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    return false;
+  }
+  if (!shape.layout().tiles().empty()) {
+    if (primitive_util::ByteWidth(shape.element_type()) > 4) {
+      return false;
+    }
+    if (shape.layout().tiles()[0].dimensions() !=
+        absl::Span<const int64_t>({1})) {
+      return false;
+    }
+  }
+  auto kind = GetDynamicShapeKind(memory_space->kind_id());
+  auto requirements =
+      PjRtShapeAndMetadataTransferRequirements::Get(shape, kind);
+  if (requirements.size != ShapeUtil::ByteSizeOf(shape)) {
+    return false;
+  }
+  if (literal.shape().has_layout()) {
+    return Layout::Equal()
+        .IgnoreTiles()
+        .IgnoreTailPaddingAlignmentInElements()
+        .IgnoreMemorySpace()(shape.layout(), literal.shape().layout());
+  }
+  return Layout::Equal()
+      .IgnoreTiles()
+      .IgnoreTailPaddingAlignmentInElements()
+      .IgnoreMemorySpace()(shape.layout(), LayoutUtil::MakeDescendingLayout(
+                                               shape.dimensions().size()));
+}
+
 absl::Status CommonPjRtClient::Delinearize(absl::Span<const uint8_t> input_data,
                                            const Shape& shape,
                                            MutableLiteralBase* literal,
@@ -2623,32 +2665,33 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
   return res;
 }
 
-absl::StatusOr<CommonPjRtLoadedExecutable::DeviceAndAssignment>
-CommonPjRtLoadedExecutable::LookupDeviceAndAssignment(
+absl::StatusOr<PjRtExecutableLoadState::DeviceAndAssignment>
+CommonPjRtClient::LookupDeviceAndAssignment(
     const ExecuteOptions& options, int replica, int partition,
-    PjRtDevice* device) const {
-  DeviceAndAssignment result;
+    PjRtDevice* device,
+    const std::shared_ptr<DeviceAssignment>& device_assignment,
+    PjRtExecutableLoadState* load_state) const {
+  PjRtExecutableLoadState::DeviceAndAssignment result;
   if (device == nullptr) {
-    if (device_assignment_ == nullptr) {
+    if (device_assignment == nullptr) {
       return InvalidArgument(
           "device_assignment_ must be set if device is not provided.");
     }
-    const int64_t device_id = (*device_assignment_)(replica, partition);
+    const int64_t device_id = (*device_assignment)(replica, partition);
     GlobalDeviceId global_device_id(device_id);
-    ABSL_ASSIGN_OR_RETURN(device, client()->LookupDevice(global_device_id));
-    result.device_assignment = device_assignment_;
+    ABSL_ASSIGN_OR_RETURN(device, LookupDevice(global_device_id));
+    result.device_assignment = device_assignment;
   } else {
-    if (device_assignment_ != nullptr) {
+    if (device_assignment != nullptr) {
       return InvalidArgument(
           "device_assignment_ must not be set if device is provided.");
     }
     CHECK_EQ(replica, 0);
     CHECK_EQ(partition, 0);
-    CHECK(addressable_devices_.empty());
     result.device_assignment = std::make_shared<DeviceAssignment>(1, 1);
     (*result.device_assignment)(0, 0) = device->id();
   }
-  CHECK_EQ(device->process_index(), client()->process_index());
+  CHECK_EQ(device->process_index(), process_index());
   result.device = device;
   result.local_device_id = device->local_device_id();
   result.global_device_id = device->global_device_id();
@@ -2664,9 +2707,10 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
     int replica, int partition, const ExecuteOptions& options,
     size_t host_callback_idx, PjRtDevice* device, int attempt) const {
   tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecutePrepare");
-  ABSL_ASSIGN_OR_RETURN(
-      DeviceAndAssignment device_and_assign,
-      LookupDeviceAndAssignment(options, replica, partition, device));
+  ABSL_ASSIGN_OR_RETURN(DeviceAndAssignment device_and_assign,
+                   client()->LookupDeviceAndAssignment(
+                       options, replica, partition, device, device_assignment_,
+                       load_state_.get()));
   device = device_and_assign.device;
   // Fill in device to launch_args so it will be present even if ExecutePrepare
   // fails with OOM.
@@ -2779,21 +2823,54 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
       for (int d = 0; d < expected_shape.dimensions().size(); ++d) {
         int64_t expected_dim = expected_shape.dimensions(d);
         int64_t actual_dim = actual_shape.dimensions(d);
-        if (expected_dim != Shape::kUnboundedSize &&
-            (actual_dim == Shape::kUnboundedSize ||
-             actual_dim > expected_dim)) {
+        bool expected_dim_is_static = expected_shape.is_static_dimension(d);
+        bool actual_dim_is_static = actual_shape.is_static_dimension(d);
+        if (actual_dim_is_static && expected_dim_is_static &&
+            actual_dim != expected_dim) {
+          // If both dimensions are static, the actual and expected dimensions
+          // must match.
+          return error::RuntimeProgramInputMismatch(
+              "Executable(%s) expected parameter %d dimension %d static "
+              "size %lld, but got buffer with size %lld",
+              name(), i, d, expected_dim, actual_dim);
+        }
+        if (actual_dim_is_static &&
+            expected_shape.is_bounded_dynamic_dimension(d) &&
+            actual_dim > expected_dim) {
+          // If actual dimension is static and expected dimension is bounded
+          // dynamic, the actual dimension must be less than or equal to the
+          // bounded dimension.
+          return error::RuntimeProgramInputMismatch(
+              "Executable(%s) expected parameter %d dimension %d runtime "
+              "size <= %lld, but got buffer with size %lld",
+              name(), i, d, expected_dim, actual_dim);
+        }
+        if (!actual_dim_is_static &&
+            expected_shape.is_bounded_dynamic_dimension(d) &&
+            actual_dim > expected_dim) {
+          // If expected dimension is bounded dynamic and actual dimension is
+          // dynamic, we need to check the size at runtime if bounded dimension
+          // of actual exceeds the bounded dimension of expected.
           needs_runtime_bounds_check = true;
-          break;
         }
       }
-      if (needs_runtime_bounds_check) {
+      // When we compile a module that feeds into PadRealToStatic (converts
+      // dynamic shape into static shape), the
+      // dynamic_shape_metadata_prefix_bytes gets overwritten to 0. A dynamic
+      // shape whose prefix bytes are zero requires the framework to keep track
+      // of and enforce the expected shape constraints.
+      const bool dynamic_shape_checks_are_external =
+          expected_shape.layout().dynamic_shape_metadata_prefix_bytes() == 0;
+      if (needs_runtime_bounds_check && !dynamic_shape_checks_are_external) {
         ABSL_ASSIGN_OR_RETURN(Shape actual_logical_shape,
                          argument_handles[i]->logical_on_device_shape());
         for (int d = 0; d < expected_shape.dimensions().size(); ++d) {
+          if (!expected_shape.is_bounded_dynamic_dimension(d)) {
+            continue;
+          }
           int64_t expected_dim = expected_shape.dimensions(d);
           int64_t actual_logical_dim = actual_logical_shape.dimensions(d);
-          if (expected_dim != Shape::kUnboundedSize &&
-              actual_logical_dim > expected_dim) {
+          if (actual_logical_dim > expected_dim) {
             return error::RuntimeProgramInputMismatch(
                 "Executable(%s) expected parameter %d dimension %d runtime "
                 "size <= %lld, but got buffer with size %lld",
@@ -2936,6 +3013,10 @@ CommonPjRtLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<tsl::Future<void>>& returned_future, bool fill_future) const {
+  if (options.multi_slice_config != nullptr) {
+    ABSL_RETURN_IF_ERROR(load_state_->SetupMultiSliceConfig(
+        GetExecutable(), options.multi_slice_config));
+  }
   RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
                                         : RunId::CreateUniqueId();
   tsl::profiler::TraceMe traceme([&]() {
@@ -3071,6 +3152,10 @@ CommonPjRtLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<tsl::Future<void>>>& returned_futures) const {
+  if (options.multi_slice_config != nullptr) {
+    ABSL_RETURN_IF_ERROR(load_state_->SetupMultiSliceConfig(
+        GetExecutable(), options.multi_slice_config));
+  }
   if (addressable_devices_.size() == 1 && argument_handles.size() == 1 &&
       IsCpuId(client()->platform_id())) {
     std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(1);
@@ -4115,7 +4200,8 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                 return;
               }
               raw_buffer = *status_or_buffer;
-              if (common_client->ShouldDoDirectTransfer(
+              if (raw_buffer->GetHostPointer() == nullptr &&
+                  common_client->ShouldDoDirectTransfer(
                       *literal, shape, raw_buffer->memory_space())) {
                 tsl::profiler::TraceMe traceme([&] {
                   return tsl::profiler::TraceMeEncode(

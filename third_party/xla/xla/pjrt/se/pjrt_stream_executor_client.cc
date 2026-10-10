@@ -71,6 +71,7 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -174,6 +175,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/util/split_proto/split_proto_reader.h"
@@ -185,6 +187,30 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
+
+namespace {
+
+constexpr int64_t kDefaultStagingChunkSizeMb = 16;
+
+// Returns the chunk size, in bytes, used for chunked staging of host<->device
+// transfers. Overridable via the XLA_PJRT_GPU_CC_STAGING_CHUNK_MB environment
+// variable.
+int64_t GetStagingChunkSizeFromEnv() {
+  constexpr absl::string_view kEnvVar = "XLA_PJRT_GPU_CC_STAGING_CHUNK_MB";
+  int64_t chunk_size_mb;
+  absl::Status status = tsl::ReadInt64FromEnvVar(
+      kEnvVar, kDefaultStagingChunkSizeMb, &chunk_size_mb);
+  if (!status.ok() || chunk_size_mb <= 0 ||
+      chunk_size_mb > (std::numeric_limits<int64_t>::max() >> 20)) {
+    LOG(WARNING) << "Ignoring invalid " << kEnvVar
+                 << " (must be a positive integer number of MiB); using the "
+                 << "default of " << kDefaultStagingChunkSizeMb << " MiB.";
+    chunk_size_mb = kDefaultStagingChunkSizeMb;
+  }
+  return chunk_size_mb << 20;
+}
+
+}  // namespace
 
 template <typename MemorySpaceKind>
 static bool IsMemorySpaceKind(const PjRtMemorySpace* memory_space) {
@@ -286,7 +312,8 @@ PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<AsyncWorkRunner> async_work_runner,
     se::StreamExecutor* executor,
-    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    bool confidential_computing_enabled)
     : owned_allocator_(std::move(allocator)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
@@ -295,6 +322,10 @@ PjRtStreamExecutorRawClient::PjRtStreamExecutorRawClient(
                                         nullptr),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
+      confidential_computing_enabled_(confidential_computing_enabled),
+      staging_chunk_size_(confidential_computing_enabled
+                              ? GetStagingChunkSizeFromEnv()
+                              : kDefaultStagingChunkSizeMb << 20),
       executor_(executor),
       gpu_run_options_(std::move(gpu_run_options)),
       compile_thread_pool_(
@@ -361,42 +392,6 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
       // way to synchronize.
       CHECK_OK(stream->BlockHostUntilDone());
       break;
-  }
-}
-
-// Adds necessary synchronization after a copy has been enqueued to a buffer.
-// definition_event was added when the buffer was allocated, but has not yet
-// had an event recorded.
-absl::Status AddDestinationBufferSynchronization(
-    PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
-    BufferSequencingEventRef definition_event, se::Stream* copy_stream) {
-  absl::Status status = client->raw_client()->AllocateAndRecordEvent(
-      definition_event, local_device, copy_stream,
-      "AddDestinationBufferSynchronization");
-  if (!status.ok()) {
-    StallStreamOnError(local_device, copy_stream);
-  }
-  return status;
-}
-
-// We wait for events that the compute stream didn't already wait for. Based on
-// our heuristics, for usage events, this rare case should only occur when a
-// buffer was copied to a device and then never used there. In that case we get
-// a new stream and use it to hold onto a reference to the buffer until the
-// events are complete.
-void MaybeWaitForEventOnStream(const BufferSequencingEventRef& event,
-                               LocalDeviceState* local_device_state,
-                               se::Stream*& stream) {
-  if (!event->IsPredeterminedErrorOrDefinedOn(
-          local_device_state->compute_stream()) &&
-      !event->IsComplete()) {
-    if (stream == nullptr) {
-      stream = local_device_state->GetFixedSizePoolUsageStream();
-    }
-    VLOG(2) << "Waiting for event: " << &*event
-            << "; is_predetermined_error: " << event->IsPredeterminedError()
-            << "; on stream: " << stream;
-    event->WaitForEventOnStream(stream);
   }
 }
 
@@ -529,6 +524,23 @@ absl::Status PjRtStreamExecutorRawClient::WaitForAllocation(
   return absl::OkStatus();
 }
 
+void PjRtStreamExecutorRawClient::MaterializeAllocationEvent(
+    const PjRtRawBufferInterface& raw_buffer) {
+  auto* cpp_buf = raw_buffer.down_cast<const PjRtStreamExecutorRawBuffer>();
+  if (cpp_buf == nullptr || !cpp_buf->device_buffer().IsConcrete()) {
+    return;
+  }
+  // A later `WaitForAllocation` reuses the event recorded here. If recording
+  // fails, no event is stored for the sync point, so the deferred
+  // `WaitForAllocation` records it again (still after the allocation, i.e. safe
+  // to reuse the memory) and reports the error if it fails again.
+  absl::Status status =
+      cpp_buf->device_buffer()->MaterializeDefinitionEvent(async_work_runner());
+  if (!status.ok()) {
+    VLOG(1) << "Failed to materialize allocation event: " << status;
+  }
+}
+
 bool PjRtStreamExecutorRawClient::IsOnCpu(PjRtMemorySpace* memory_space) {
   return memory_space->kind() == PinnedHostMemorySpace::kKind;
 }
@@ -578,6 +590,13 @@ PjRtStreamExecutorRawClient::CreateDeviceEvent(LocalDeviceId local_device_id,
 
 absl::Status PjRtStreamExecutorRawClient::DmaMap(void* data,
                                                  size_t buffer_size) {
+  if (confidential_computing_enabled_) {
+    // In Confidential Computing VMs, memory registration (cuMemHostRegister) is
+    // not supported because userspace host memory is private by default and
+    // inaccessible by the GPU. In this mode, transfers are always staged
+    // through host memory allocated via cuMemHostAlloc, so DmaMap is a no-op.
+    return absl::OkStatus();
+  }
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorRawClient::DmaMap");
   if (executor_ == nullptr) {
     return absl::InternalError(
@@ -594,6 +613,9 @@ absl::Status PjRtStreamExecutorRawClient::DmaMap(void* data,
 }
 
 absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
+  if (confidential_computing_enabled_) {
+    return absl::OkStatus();
+  }
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorRawClient::DmaUnmap");
   if (executor_ == nullptr) {
     return absl::InternalError(
@@ -2060,24 +2082,6 @@ absl::Status PjRtStreamExecutorRawClient::WaitOnStream(
     std::intptr_t stream) {
   return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(
       stream);
-}
-
-bool PjRtStreamExecutorClient::ShouldDoDirectTransfer(
-    const MutableLiteralBase& literal, const Shape& shape,
-    PjRtMemorySpace* memory_space) const {
-  if (shape.IsTuple()) {
-    return false;
-  }
-  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
-    return false;
-  }
-
-  if (literal.shape().has_layout()) {
-    return Layout::Equal().IgnoreMemorySpace()(shape.layout(),
-                                               literal.shape().layout());
-  }
-
-  return LayoutUtil::HasDescendingLayout(shape.layout());
 }
 
 void PjRtStreamExecutorRawClient::ScheduleRemoteSend(

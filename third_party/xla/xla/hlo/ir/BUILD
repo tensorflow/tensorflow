@@ -27,6 +27,7 @@ cc_library(
         "hlo_computation.cc",
         "hlo_input_output_alias_config.cc",
         "hlo_instruction.cc",
+        "hlo_instruction_utils.cc",
         "hlo_instructions.cc",
         "hlo_module.cc",
         "hlo_module_metadata.cc",
@@ -48,6 +49,7 @@ cc_library(
         "hlo_domain_metadata.h",
         "hlo_input_output_alias_config.h",
         "hlo_instruction.h",
+        "hlo_instruction_utils.h",
         "hlo_instructions.h",
         "hlo_module.h",
         "hlo_module_metadata.h",
@@ -138,6 +140,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf_lite",
+        "@com_googlesource_code_re2//:re2",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:protobuf",
@@ -391,24 +394,15 @@ xla_cc_test(
 
 cc_library(
     name = "hlo_instruction_utils",
-    srcs = ["hlo_instruction_utils.cc"],
     hdrs = ["hlo_instruction_utils.h"],
     deps = [
         ":hlo",
+        "//xla:comparison_util",
         "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@com_googlesource_code_re2//:re2",
     ],
 )
 
@@ -418,6 +412,7 @@ xla_cc_test(
     deps = [
         ":hlo",
         ":hlo_instruction_utils",
+        "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",

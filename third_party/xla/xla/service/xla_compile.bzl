@@ -32,10 +32,16 @@ xla_aot_compile(
 load("//xla:xla.default.bzl", "xla_compile_target_cpu")
 load("//xla/backends/gpu/target_config:target_config_map.bzl", gpu_target_config_map = "target_config_map")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_newer_than")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
 xla_compile_tool = "//xla/service:xla_compile"
+
+_MIN_CUDA_VERSION = {
+    # SM107a requires PTX 9.4, available starting with CUDA 13.4.
+    "vr_nvl72": "13_4",
+}
 
 def target_llvm_triple():
     """Returns the target LLVM triple to be used for compiling the target."""
@@ -97,7 +103,7 @@ def xla_aot_compile_gpu(
         name,
         module,
         gpu_targets,
-        autotune_results,
+        autotune_results = None,
         xla_flags = ""):
     """Runs xla_compile to compile an MHLO, StableHLO or HLO module into an AotCompilationResult for GPU
 
@@ -105,7 +111,7 @@ def xla_aot_compile_gpu(
         name: The name of the build rule.
         module: The MHLO or StableHLO file to compile.
         gpu_targets: The list of gpu targets.
-        autotune_results: AOT AutotuneResults or AutotuneCache file.
+        autotune_results: Optional AOT AutotuneResults or AutotuneCache file.
         xla_flags: Additional XLA_FLAGS to set during compilation.
     """
 
@@ -120,15 +126,28 @@ def xla_aot_compile_gpu(
             " --platform=gpu" +
             " --gpu_target_config=$(location " + gpu_target_config_map[target] + ")"
         )
-        flags = "--xla_gpu_load_autotune_results_from=$(location " + autotune_results + ")"
+        srcs = [module, gpu_target_config_map[target]]
+        flags = []
+        if autotune_results:
+            srcs.append(autotune_results)
+            flags.append("--xla_gpu_load_autotune_results_from=$(location " + autotune_results + ")")
         if xla_flags:
-            flags = flags + " " + xla_flags
-        cmd = "XLA_FLAGS=\"" + flags + "\" " + cmd
+            flags.append(xla_flags)
+        if flags:
+            cmd = "XLA_FLAGS=\"" + " ".join(flags) + "\" " + cmd
+        cmd = (
+            "if ! err=`" + cmd + " 2>&1`; then " +
+            "echo \"$$err\" >&2; " +
+            "if echo \"$$err\" | grep -q \"Deviceless cuDNN compilation requires cuDNN >=\"; then " +
+            "touch $(location " + compiled_binary + "); " +
+            "else exit 1; fi; fi"
+        )
         native.genrule(
             name = "gen_" + name + "_" + target,
-            srcs = [module, gpu_target_config_map[target], autotune_results],
+            srcs = srcs,
             outs = [name + "_" + target],
             cmd = cmd,
+            tags = ["manual"] if target in _MIN_CUDA_VERSION else [],
             tools = [xla_compile_tool],
             # copybara:comment_begin(oss-only)
             target_compatible_with = select({
@@ -137,7 +156,10 @@ def xla_aot_compile_gpu(
             }),
             # copybara:comment_end
         )
-        res.append(compiled_binary)
+        if target in _MIN_CUDA_VERSION:
+            res = res + if_cuda_newer_than(_MIN_CUDA_VERSION[target], [compiled_binary])
+        else:
+            res = res + [compiled_binary]
     native.filegroup(
         name = name,
         data = res,

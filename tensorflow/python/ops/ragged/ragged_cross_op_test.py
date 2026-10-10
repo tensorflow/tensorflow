@@ -529,6 +529,54 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           )
       )
 
+  def test_cross_count_overflow(self):
+    # 64 ragged columns x 2 features: Cartesian product (2^64) overflows int64.
+    col = ragged_factory_ops.constant([['a', 'b']])
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r'RaggedCross: feature count is negative or the Cartesian product '
+        r'of all feature counts exceeds the maximum supported value\.',
+    ):
+      self.evaluate(ragged_array_ops.cross([col] * 64))
+
+  def test_cross_count_overflow_int32_splits(self):
+    # 7 columns x 32 features = 32^7 = 2^35 > INT32_MAX, triggers SplitsType cap.
+    col = ragged_factory_ops.constant(
+        [['f'] * 32], row_splits_dtype=dtypes.int32
+    )
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r'RaggedCross: feature count is negative or the Cartesian product '
+        r'of all feature counts exceeds the maximum supported value\.',
+    ):
+      self.evaluate(
+          gen_ragged_array_ops.RaggedCross(
+              ragged_values=[col.flat_values] * 7,
+              ragged_row_splits=[col.row_splits] * 7,
+              sparse_indices=[],
+              sparse_values=[],
+              sparse_shape=[],
+              dense_inputs=[],
+              input_order='R' * 7,
+              hashed_output=False,
+              num_buckets=0,
+              hash_key=0,
+              out_values_type=dtypes.string,
+              out_row_splits_type=dtypes.int32,
+          )
+      )
+
+  def test_cross_count_total_overflow(self):
+    # 61 cols x 2 features x 2 batches: per-batch = 2^61 <= INT64_MAX/2,
+    # total = 2 * 2^61 = 2^62 > INT64_MAX/2, triggers accumulation guard.
+    col = ragged_factory_ops.constant([['a', 'b'], ['c', 'd']])
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r'RaggedCross: the total number of crosses across all batches '
+        r'exceeds the maximum supported value\.',
+    ):
+      self.evaluate(ragged_array_ops.cross([col] * 61))
+
 
 if __name__ == '__main__':
   googletest.main()

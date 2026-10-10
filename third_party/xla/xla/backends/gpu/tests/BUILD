@@ -293,7 +293,6 @@ xla_test(
     deps = [
         ":hlo_pjrt_gpu_test_base",
         "//xla:error_spec",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/stream_executor:device_description",
@@ -371,6 +370,7 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms:dynamic_slice_copy",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
@@ -1708,6 +1708,36 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "reduce_scatter_e2e_test",
+    srcs = ["reduce_scatter_e2e_test.cc"],
+    args = ["--heap_check="],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":collective_ops_e2e_test_base",
+        "//xla:array2d",
+        "//xla:array3d",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tests:literal_test_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

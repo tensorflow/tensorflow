@@ -146,6 +146,8 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   bool grad_y;
   ScaleMode scale_mode = ScaleMode::kNone;
   std::optional<blas::ComputationType> compute_type;
+  // Whether a D scale is passed (hipBLASLt only).
+  bool has_d_scale = false;
 
   static absl::StatusOr<GemmConfig> FromProto(
       const xla::GemmConfigProto& proto);

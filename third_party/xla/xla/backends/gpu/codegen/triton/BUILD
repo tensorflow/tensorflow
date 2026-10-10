@@ -87,9 +87,9 @@ xla_cc_test(
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/runtime:object_pool",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:mlir_context_pool",
         "//xla/service/gpu:target_constants",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
@@ -606,9 +606,8 @@ cc_library(
 
 xla_cc_test(
     name = "support_test",
-    timeout = "long",  # TODO: b/514293537 - remove after disabling symbolic analysis.
     srcs = ["support_test.cc"],
-    shard_count = 50,  # TODO: b/514293537 - change to 25 after disabling symbolic analysis.
+    shard_count = 25,
     deps = [
         ":support",
         ":support_test_base",
@@ -770,6 +769,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
         "//xla/mlir/utils:type_util",
+        "//xla/service:device_assignment",
         "//xla/service:gpu_topology",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_constants",
@@ -842,6 +842,7 @@ xla_cc_test(
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen:kernel_compiler",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
+        "//xla/backends/gpu/runtime:collective_params",
         "//xla/backends/gpu/target_config",
         "//xla/backends/gpu/transforms/collectives:collective_kernel_strategy_annotator",
         "//xla/codegen/xtile:xtile_config_proto_cc",
@@ -853,7 +854,9 @@ xla_cc_test(
         "//xla/service:hlo_creation_utils",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:mlir_context_pool",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",

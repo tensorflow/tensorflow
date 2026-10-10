@@ -25,8 +25,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
+
+// Returns true if the platform emits DS/DUS copy fusions as
+// DynamicSliceFusionV2Thunk copies. GpuCompiler (for
+// DynamicSliceCopyFusionAsyncWrapper) and ThunkEmitter both use this so the
+// HLO passes and thunk emission agree. Limited to CUDA Ampere+, the platforms
+// the replaced FusionDynamicMemcpyRewriter ran on. This is not the
+// command-buffer limit: converting the thunk into a command buffer also needs
+// CUDA 12.9+ (SupportsMovedChildCommands), so Ampere+ with an older CUDA still
+// splits the enclosing command buffer.
+bool SupportsDynamicSliceCopyThunks(const se::DeviceDescription& device_info);
 
 // Analysis result for a fusion that can be lowered as a DeviceToDeviceCopyThunk
 // wrapped by DynamicSliceFusionV2Thunk. The source and destination slices are

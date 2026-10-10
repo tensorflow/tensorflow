@@ -41,8 +41,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
-#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
@@ -184,22 +182,11 @@ struct CollectiveKernelThunkMetadata {
   std::vector<CollectiveThunk::Buffer> buffers;
 };
 
-DebugOptions DefaultDebugOptions() {
-  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
-  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
-      DebugOptions::ALLCOLLECTIVES);
-  return debug_options;
-}
-
 CollectiveKernelSpec CreateCollectiveKernelSpec(
     int64_t num_elements, int64_t signal_size, int64_t remote_size,
     bool is_multimem_enabled,
-    const DebugOptions& debug_options = DefaultDebugOptions()) {
-  const SymmetricMemoryType sym_mem_type =
-      IsCrossHostOneShotKernelEnabled(debug_options,
-                                      DebugOptions::ALLCOLLECTIVES)
-          ? SymmetricMemoryType::kLoadStoreAccessible
-          : SymmetricMemoryType::kXlaRendezvous;
+    SymmetricMemoryType scratch_memory_type =
+        SymmetricMemoryType::kLoadStoreAccessible) {
   return {
       /*codegen_config=*/{
           /*copy_input_to_scratch=*/false,
@@ -215,11 +202,11 @@ CollectiveKernelSpec CreateCollectiveKernelSpec(
            {KernelArgType::kScratchBuffer, 1}},
       },
       /*scratch_buffers=*/
-      {{signal_size, /*requires_multimem=*/false, sym_mem_type,
+      {{signal_size, /*requires_multimem=*/false, scratch_memory_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
        {remote_size,
-        /*requires_multimem=*/is_multimem_enabled, sym_mem_type,
+        /*requires_multimem=*/is_multimem_enabled, scratch_memory_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/true}},
   };
@@ -227,7 +214,8 @@ CollectiveKernelSpec CreateCollectiveKernelSpec(
 
 CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
     int num_devices, int num_elements, bool is_multimem_enabled, bool use_ptx,
-    const DebugOptions& debug_options = DefaultDebugOptions()) {
+    SymmetricMemoryType scratch_memory_type =
+        SymmetricMemoryType::kLoadStoreAccessible) {
   const int64_t input_size_bytes = num_elements * sizeof(uint64_t);
   Shape input_shape = ShapeUtil::MakeShape(U64, {num_elements});
   ReplicaGroup replica_group;
@@ -268,10 +256,11 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
   result.thunk = std::make_unique<CollectiveKernelThunk>(
       std::move(thunk_info), collective_config,
       CreateCollectiveKernelSpec(num_elements, signal_size, remote_size,
-                                 is_multimem_enabled, debug_options),
+                                 is_multimem_enabled, scratch_memory_type),
       result.buffers, /*is_collective_kernel_enabled=*/true,
       /*kernel_name=*/kKernelName,
       /*launch_dimensions=*/launch_dimensions,
+      /*devices_in_process=*/num_devices,
       /*shmem_bytes=*/0);
   result.total_buffer_size = total_buffer_size;
   result.num_devices = num_devices;
@@ -505,7 +494,7 @@ TEST(CollectiveKernelThunkTest, MultiprocessTest) {
   CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
       /*num_devices=*/kDevicesCount, /*num_elements=*/kNumElements,
       /*is_multimem_enabled=*/false, /*use_ptx=*/true,
-      /*debug_options=*/DebugOptions());
+      /*scratch_memory_type=*/SymmetricMemoryType::kXlaRendezvous);
   EXPECT_THAT(RunCollectiveKernelThunkOnDevices(metadata,
                                                 /*emulate_multiprocess=*/true),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -603,7 +592,7 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
       CreateCollectiveKernelSpec(num_elements, signal_size, remote_size,
                                  is_multimem_enabled),
       buffers, /*is_collective_kernel_enabled=*/true, std::string(kKernelName),
-      launch_dimensions);
+      launch_dimensions, /*devices_in_process=*/1);
 
   DeviceAssignment device_assignment(/*replica_count=*/1,
                                      /*computation_count=*/1);
@@ -700,6 +689,100 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
                            Command::RecordUpdate{cmd}, command_buffer.get()));
   EXPECT_EQ(updated_cmd, cmd);
   ASSERT_OK(command_buffer->Finalize());
+}
+
+TEST(CollectiveKernelThunkTest, ReinitializesSymmetricMemoryAfterCliqueSplit) {
+  static constexpr uint32_t kExpectedSignalValue = 1;
+
+  std::vector<uint64_t> input_data(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
+    input_data[i] = i;
+  }
+  std::vector<uint64_t> expected_output_data(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
+    expected_output_data[i] = input_data[i] + kExpectedSignalValue;
+  }
+
+  CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
+      /*num_devices=*/1, /*num_elements=*/kNumElements,
+      /*is_multimem_enabled=*/false, /*use_ptx=*/true,
+      /*scratch_memory_type=*/SymmetricMemoryType::kLoadStoreAccessible);
+
+  se::StreamExecutor* executor0 = GetGpuExecutor(0);
+  // First execution initializes the 1-device clique [0] as a root clique and
+  // ties scratch SymmetricMemory to it.
+  ASSERT_OK_AND_ASSIGN(
+      se::DeviceAddressBase result_buffer1,
+      RunCollectiveKernelThunk(metadata, executor0, input_data));
+  (void)result_buffer1;
+
+  // Now acquire a 2-device parent clique [0, 1] and split [0] and [1] from it.
+  // AcquireClique abandons the root clique [0], expiring the thunk's TiedRef.
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "split_threads",
+                                        /*num_threads=*/2);
+    std::vector<tsl::Future<>> futures(2);
+    for (int d = 0; d < 2; ++d) {
+      futures[d] =
+          tsl::MakeFutureOn<>(*thread_pool.AsExecutor(), [d]() -> absl::Status {
+            se::StreamExecutor* executor = GetGpuExecutor(d);
+            ABSL_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+            GpuExecutableRunOptions gpu_options;
+            gpu_options.set_gpu_global_device_ids(
+                GpuExecutableRunOptions::DeviceIdMap{
+                    {LocalDeviceId(0), GlobalDeviceId(0)},
+                    {LocalDeviceId(1), GlobalDeviceId(1)}});
+            DeviceAssignment device_assignment(/*replica_count=*/2,
+                                               /*computation_count=*/1);
+            device_assignment(0, 0) = 0;
+            device_assignment(1, 0) = 1;
+            ServiceExecutableRunOptions run_options;
+            run_options.mutable_run_options()->set_stream(stream.get());
+            run_options.mutable_run_options()->set_device_assignment(
+                &device_assignment);
+            run_options.mutable_run_options()->set_gpu_executable_run_options(
+                &gpu_options);
+            ABSL_ASSIGN_OR_RETURN(CollectiveParams collective_params,
+                             CollectiveParams::Create(
+                                 run_options, /*async_streams=*/{},
+                                 LocalDeviceId(executor->device_ordinal())));
+
+            CollectiveCliqueRequests clique_requests;
+            GpuCliqueKey parent_key({GlobalDeviceId(0), GlobalDeviceId(1)},
+                                    /*num_local_participants=*/2);
+            GpuCliqueKey child_key({GlobalDeviceId(d)},
+                                   /*num_local_participants=*/1);
+            ABSL_RETURN_IF_ERROR(clique_requests.RequestClique(
+                parent_key,
+                /*device_groups=*/{{GlobalDeviceId(0), GlobalDeviceId(1)}}));
+            ABSL_RETURN_IF_ERROR(clique_requests.RequestClique(
+                child_key,
+                /*device_groups=*/{{GlobalDeviceId(0)}, {GlobalDeviceId(1)}}));
+            ABSL_ASSIGN_OR_RETURN(
+                CollectiveCliques cliques,
+                AcquireCollectiveCliques(collective_params, clique_requests));
+            return absl::OkStatus();
+          });
+    }
+    ASSERT_OK(JoinFutures(futures).Await());
+  }
+
+  // Second execution on the same thunk must detect the expired TiedRef,
+  // re-create SymmetricMemory on the newly split clique [0], and update device
+  // metadata.
+  ASSERT_OK_AND_ASSIGN(
+      se::DeviceAddressBase result_buffer2,
+      RunCollectiveKernelThunk(metadata, executor0, input_data));
+
+  std::vector<uint64_t> output_data(kNumElements);
+  ASSERT_OK_AND_ASSIGN(auto stream, executor0->CreateStream());
+  ASSERT_OK(stream->Memcpy(output_data.data(), result_buffer2,
+                           metadata.input_data_size_bytes));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  for (int i = 0; i < kNumElements; ++i) {
+    ASSERT_EQ(expected_output_data[i], output_data[i])
+        << "comparison failed at i = " << i;
+  }
 }
 
 }  // namespace

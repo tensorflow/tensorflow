@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
@@ -322,6 +323,10 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
 }
 
 TEST_F(CudnnBackendTest, GetDefaultConfigSucceedsWithNullStreamExecutor) {
+  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                 << se::gpu::kMinDevicelessCudnnVersion;
+  }
   ASSERT_OK_AND_ASSIGN(stream_executor::GpuTargetConfigProto proto,
                        GetGpuTargetConfig(GpuModel::H100_SXM));
   ASSERT_OK_AND_ASSIGN(Compiler::GpuTargetConfig target_config,

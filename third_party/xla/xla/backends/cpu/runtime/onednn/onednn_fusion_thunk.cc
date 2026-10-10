@@ -207,7 +207,8 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
   }
 
   Eigen::ThreadPoolInterface* thread_pool =
-      params.intra_op_threadpool->getPool();
+      params.intra_op_threadpool ? params.intra_op_threadpool->getPool()
+                                 : GetFallbackThreadPoolForOneDnn();
 
   // Borrow oneDNN runtime from the pool.
   ABSL_ASSIGN_OR_RETURN(auto runtime, onednn_runtime_pool_.GetOrCreate(thread_pool));

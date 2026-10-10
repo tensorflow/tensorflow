@@ -1098,6 +1098,85 @@ TEST_P(KernelTest, IfrtRestoreVariableOpInValidInput) {
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_P(KernelTest, IfrtRestoreVariableOpWaitsForAsyncShardsBeforeDestruction) {
+  std::string checkpoint_prefix =
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/core/tfrt/mlrt/kernel/testdata/"
+          "gen_checkpoint_data/variables") +
+      "/variables";
+
+  auto buffer = CreateExecutableForIfrtRestoreVariableOp();
+  mlrt::bc::Executable executable(buffer.data());
+  mlrt::LoadedExecutable loaded_executable(executable, registry_);
+
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(execution_work_queue_.get());
+  execution_context.AddUserContext(std::move(tf_context_));
+
+  // Block all 4 worker threads of restore_work_queue_ so async RunShardHelper
+  // tasks remain in-flight when CheckpointLoader is destroyed.
+  absl::Notification unblock_restore;
+  if (GetParam()) {
+    for (int i = 0; i < 4; ++i) {
+      restore_work_queue_->AddTask(
+          [&unblock_restore]() { unblock_restore.WaitForNotification(); });
+    }
+  }
+
+  std::vector<mlrt::Value> args(3);
+  args.at(0).Set(tfrt_stub::FallbackTensor(
+      AsTensor<tsl::tstring>({tsl::tstring(checkpoint_prefix)})));
+  args.at(1).Set(tfrt_stub::FallbackTensor(
+      AsTensor<tsl::tstring>({tsl::tstring("w/.ATTRIBUTES/VARIABLE_VALUE")})));
+  args.at(2).Set(
+      tfrt_stub::FallbackTensor(AsTensor<tsl::tstring>({tsl::tstring("")})));
+
+  std::vector<uint8_t> last_uses = {true, true, true};
+  std::vector<mlrt::Value> results;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(results));
+  mlrt::Execute(execution_context);
+  notification.WaitForNotification();
+  TF_ASSERT_OK(execution_context.status());
+
+  tsl::Future<tensorflow::Tensor> restored_future =
+      ifrt_model_context_->GetRestoreTensorRegistry().GetRestoredTensor(
+          absl::StrCat(kVariableRuntimeName, 0));
+
+  if (GetParam()) {
+    // Destroy per-request state before async restore shards run, simulating
+    // request completion while RunShardHelper is still queued.
+    fallback_request_state_.reset();
+    GetThreadPool().Schedule([&unblock_restore]() {
+      tsl::Env::Default()->SleepForMicroseconds(50 * 1000);
+      unblock_restore.Notify();
+    });
+  }
+
+  // In GraphExecutor/SavedModel teardown, resource_context_ (owning
+  // IfrtModelRestoreContext -> CheckpointLoader) is destroyed right before
+  // fallback_state_ (owning HostCPU()->resource_manager()).
+  // ~CheckpointLoader() must block until all in-flight RunShardHelper tasks
+  // finish so they do not access a destroyed ResourceMgr (b/565199051).
+  resource_context_.DeleteResource(ifrt_serving::kIfrtModelRestoreContextName);
+  EXPECT_TRUE(restored_future.IsReady());
+  fallback_state_.reset();
+
+  if (!unblock_restore.HasBeenNotified()) {
+    unblock_restore.Notify();
+  }
+  restore_work_queue_->Quiesce();
+
+  absl::StatusOr<tensorflow::Tensor> restored_tensor = restored_future.Await();
+  TF_ASSERT_OK(restored_tensor.status());
+  EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int16_t>({1, 2, 3}, {3})));
+}
+
 INSTANTIATE_TEST_SUITE_P(KernelTest, KernelTest, ::testing::Bool());
 
 }  // namespace

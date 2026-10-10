@@ -556,6 +556,14 @@ static OffsetExprProto::Kind OffsetExprKindToProto(const Offset::Expr& expr) {
           return OffsetExprProto::SUBTRACT;
         } else if constexpr (std::is_same_v<T, Offset::Expr::Multiply>) {
           return OffsetExprProto::MULTIPLY;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Divide>) {
+          return OffsetExprProto::DIVIDE;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Remainder>) {
+          return OffsetExprProto::REMAINDER;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Minimum>) {
+          return OffsetExprProto::MINIMUM;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Maximum>) {
+          return OffsetExprProto::MAXIMUM;
         } else if constexpr (std::is_same_v<T, Offset::Expr::Compare>) {
           return OffsetExprProto::COMPARE;
         } else if constexpr (std::is_same_v<T, Offset::Expr::Select>) {
@@ -667,6 +675,18 @@ static absl::StatusOr<Offset::Expr> OffsetExprFromProto(
     case OffsetExprProto::MULTIPLY:
       ABSL_RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
       return Offset::Multiply(std::move(args[0]), std::move(args[1]));
+    case OffsetExprProto::DIVIDE:
+      ABSL_RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
+      return Offset::Divide(std::move(args[0]), std::move(args[1]));
+    case OffsetExprProto::REMAINDER:
+      ABSL_RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
+      return Offset::Remainder(std::move(args[0]), std::move(args[1]));
+    case OffsetExprProto::MINIMUM:
+      ABSL_RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
+      return Offset::Minimum(std::move(args[0]), std::move(args[1]));
+    case OffsetExprProto::MAXIMUM:
+      ABSL_RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
+      return Offset::Maximum(std::move(args[0]), std::move(args[1]));
     case OffsetExprProto::COMPARE: {
       ABSL_RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
       ABSL_ASSIGN_OR_RETURN(ComparisonDirection direction,

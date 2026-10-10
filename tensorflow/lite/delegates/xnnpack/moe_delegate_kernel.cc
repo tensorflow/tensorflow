@@ -774,19 +774,10 @@ class MoeExpertsDelegateKernel::Impl {
                                       size_t input_channels,
                                       const float* input) {
     float sum = 0.0f;
-    // See moe_block_scale.h: instrumented builds may be unable to honor the
-    // vectorize hint, which must not fail the build.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wpass-failed"
-#pragma clang loop vectorize(enable) interleave(enable)
-#endif
+    TFLITE_XNNPACK_MOE_VECTORIZE_LOOP
     for (size_t in = 0; in < input_channels; ++in) {
       sum += src_row[in] * input[in];
     }
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
     return sum;
   }
 

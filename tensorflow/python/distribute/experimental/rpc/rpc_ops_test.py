@@ -93,6 +93,22 @@ class RpcOpsTest(test.TestCase):
 
     rpc_ops.gen_rpc_ops.delete_rpc_future_resource(future_resource, deleter)
 
+    with self.assertRaisesRegex(
+        errors.NotFoundError, "Future resource no longer exists"
+    ):
+      rpc_ops.gen_rpc_ops.rpc_check_status(future_resource)
+
+    with self.assertRaisesRegex(
+        errors.NotFoundError, "Future resource no longer exists"
+    ):
+      rpc_ops.gen_rpc_ops.rpc_get_value(future_resource, Tout=[dtypes.int32])
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      rpc_ops.gen_rpc_ops.rpc_check_status(server_resource)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      rpc_ops.gen_rpc_ops.rpc_get_value(server_resource, Tout=[dtypes.int32])
+
   def test_exported_rpc_api_static_factory(self):
 
     @eager_def_function.function(input_signature=[

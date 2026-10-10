@@ -148,7 +148,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<AsyncWorkRunner> async_work_runner,
       se::StreamExecutor* absl_nonnull executor,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
+      bool confidential_computing_enabled = false);
   ~PjRtStreamExecutorRawClient() override;
 
   LocalDeviceState* device_state(LocalDeviceId local_device_id) const {
@@ -191,6 +192,14 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
     return should_stage_host_to_device_transfers_;
   }
 
+  bool confidential_computing_enabled() const {
+    return confidential_computing_enabled_;
+  }
+
+  bool has_custom_host_memory_allocator() const {
+    return has_custom_host_memory_allocator_;
+  }
+
   void RecordMemoryStats() override;
 
   se::StreamExecutor* executor() const { return executor_; }
@@ -204,11 +213,41 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   }
 
   bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) const {
-    // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
-    // using a staging buffer is probably worse than not using one.
-    // TODO(phawkins): add chunking for transfers.
+    // In Confidential Computing VMs, transfers must always be staged onto
+    // host memory allocated via cuMemHostAlloc.
+    if (confidential_computing_enabled_) {
+      return true;
+    }
+    // Allocating a multi-gigabyte pinned staging buffer can be very slow, in
+    // which case staging is probably worse than not staging. This cap does not
+    // apply to chunked staging, which only uses staging_chunk_size() buffers.
+    // TODO(phawkins): add chunking for transfers when chunked staging is off.
     return should_stage_host_to_device_transfers_ &&
-           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
+           (size < (int64_t{1} << 30) || ShouldUseChunkedStaging()) &&
+           !IsDmaMapped(data, size);
+  }
+
+  // Returns true if staged transfers should be split into at most
+  // `staging_chunk_size()`-byte chunks that are pipelined through a bounded
+  // number of staging buffers, with host copies done on the transfer's work
+  // thread instead of in stream host callbacks. Applies to staged transfers of
+  // every size (a transfer no larger than a chunk is a single chunk). Only
+  // enabled in Confidential Computing mode (where every transfer is staged),
+  // or when forced for testing.
+  bool ShouldUseChunkedStaging() const {
+    return confidential_computing_enabled_ ||
+           force_staging_chunking_for_testing_;
+  }
+
+  int64_t staging_chunk_size() const { return staging_chunk_size_; }
+
+  // Test-only: enables chunked staging (when `force` is true) even when
+  // Confidential Computing is disabled, using `chunk_size`-byte chunks. Must be
+  // called before any transfer is issued on this client.
+  void SetStagingChunkingForTesting(bool force, int64_t chunk_size) {
+    CHECK_GT(chunk_size, 0);
+    force_staging_chunking_for_testing_ = force;
+    staging_chunk_size_ = chunk_size;
   }
 
   tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
@@ -227,6 +266,14 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   absl::Status WaitForAllocation(se::Stream* stream,
                                  const PjRtRawBufferInterface& raw_buffer);
+
+  // Records the compute stream event for `raw_buffer`'s allocation now if its
+  // memory is already available. The event is otherwise recorded lazily at the
+  // tail of the compute stream when `WaitForAllocation` runs, so callers that
+  // defer `WaitForAllocation` must call this before deferring to avoid a false
+  // dependency on executions enqueued in the meantime. Errors are ignored here
+  // and reported by `WaitForAllocation` instead.
+  void MaterializeAllocationEvent(const PjRtRawBufferInterface& raw_buffer);
 
   static bool IsOnCpu(PjRtMemorySpace* memory_space);
 
@@ -351,6 +398,10 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   // allocated on host_memory_allocator_? True only on GPU, where we prefer to
   // transfer via pinned memory.
   bool should_stage_host_to_device_transfers_;
+  bool confidential_computing_enabled_ = false;
+  // Chunk size for chunked staging; see ShouldUseChunkedStaging().
+  int64_t staging_chunk_size_;
+  bool force_staging_chunking_for_testing_ = false;
 
   se::StreamExecutor* absl_nonnull executor_;
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
@@ -386,25 +437,6 @@ class PjRtStreamExecutorExecutableLoadState : public PjRtExecutableLoadState {
  private:
   PjRtStreamExecutorRawClient* raw_client_;
   std::atomic<bool> is_deleted_{false};
-};
-
-class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
- public:
-  using CommonPjRtClientImpl::CommonPjRtClientImpl;
-  ~PjRtStreamExecutorClient() override = default;
-
-  PjRtStreamExecutorRawClient* raw_client() const override {
-    return absl::down_cast<PjRtStreamExecutorRawClient*>(
-        CommonPjRtClientImpl::raw_client());
-  }
-
-  bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
-                              const Shape& shape,
-                              PjRtMemorySpace* memory_space) const override;
-
- protected:
-  friend class PjRtStreamExecutorRawBuffer;
-  friend class PjRtStreamExecutorRawLoadedExecutable;
 };
 
 struct PjRtStreamExecutorExecutionOutput {

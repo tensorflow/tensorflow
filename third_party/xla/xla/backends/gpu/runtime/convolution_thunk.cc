@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -24,8 +25,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -54,14 +57,15 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
     ThunkInfo thunk_info, GpuConvDescriptor descriptor,
     std::vector<ShapedSlice> operand_slices,
     std::vector<ShapedSlice> result_slices,
-    BufferAllocation::Slice scratch_slice) {
+    BufferAllocation::Slice scratch_slice, int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(GpuConvConfig config,
                    GetGpuConvConfig(descriptor, /*inst_as_string=*/""));
 
   // Can't use std::make_unique because the constructor is private.
-  return absl::WrapUnique(new ConvolutionThunk(
-      thunk_info, std::move(descriptor), std::move(config),
-      std::move(operand_slices), std::move(result_slices), scratch_slice));
+  return absl::WrapUnique(
+      new ConvolutionThunk(thunk_info, std::move(descriptor), std::move(config),
+                           std::move(operand_slices), std::move(result_slices),
+                           scratch_slice, devices_per_host));
 }
 
 ConvolutionThunk::ConvolutionThunk(ThunkInfo thunk_info,
@@ -69,23 +73,25 @@ ConvolutionThunk::ConvolutionThunk(ThunkInfo thunk_info,
                                    GpuConvConfig config,
                                    std::vector<ShapedSlice> operand_slices,
                                    std::vector<ShapedSlice> result_slices,
-                                   BufferAllocation::Slice scratch_slice)
+                                   BufferAllocation::Slice scratch_slice,
+                                   int devices_per_host)
     : TracedCommand(Kind::kConvolution, std::move(thunk_info)),
+      runner_states_(devices_per_host),
       operand_buffers_(std::move(operand_slices)),
       result_buffers_(std::move(result_slices)),
       scratch_buffer_(scratch_slice),
       descriptor_(std::move(descriptor)),
       config_(std::move(config)) {}
 
-RunConvOptions ConvolutionThunk::GetOrCreate(const GpuConvConfig& config,
-                                             const se::Stream* stream) {
-  absl::MutexLock lock(mu_);
-  auto [it, inserted] =
-      cache_.emplace(stream->parent(), std::unique_ptr<GenericConvRunner>{});
-  if (inserted) {
-    it->second = std::make_unique<GenericConvRunner>(config);
-  }
-  return RunConvOptions{nullptr, it->second.get()};
+absl::StatusOr<RunConvOptions> ConvolutionThunk::GetOrCreate(
+    const GpuConvConfig& config, const se::Stream* stream) {
+  int device_ordinal = stream->parent()->device_ordinal();
+  ABSL_RETURN_IF_ERROR(runner_states_.GetOrCreateAndInitialize(
+      device_ordinal, [&](std::optional<GenericConvRunner>* state) {
+        state->emplace(config);
+        return absl::OkStatus();
+      }));
+  return RunConvOptions{nullptr, &**runner_states_.Find(device_ordinal)};
 }
 
 absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -115,7 +121,7 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(5) << "scratch buffer: " << scratch_buffer_
           << " addr: " << scratch.opaque();
 
-  auto opts = GetOrCreate(config_, params.stream);
+  ABSL_ASSIGN_OR_RETURN(RunConvOptions opts, GetOrCreate(config_, params.stream));
   ABSL_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
                              absl::MakeSpan(result_se_buffers), scratch,
                              params.stream, opts));
@@ -145,7 +151,8 @@ Thunk::BufferUses ConvolutionThunk::buffer_uses() const {
 
 absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::FromProto(
     ThunkInfo thunk_info, const ConvolutionThunkProto& proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
+    absl::Span<const BufferAllocation> buffer_allocations,
+    int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(GpuConvDescriptor descriptor,
                    GpuConvDescriptor::FromProto(proto.conv_descriptor()));
 
@@ -169,7 +176,7 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::FromProto(
 
   return Create(std::move(thunk_info), std::move(descriptor),
                 std::move(operand_slices), std::move(result_slices),
-                scratch_slice);
+                scratch_slice, devices_per_host);
 }
 
 absl::StatusOr<ThunkProto> ConvolutionThunk::ToProto() const {

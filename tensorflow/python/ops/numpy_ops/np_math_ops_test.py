@@ -571,6 +571,24 @@ class MathTest(test.TestCase, parameterized.TestCase):
     ):
       np_math_ops.diff(x, n=-1)
 
+  def testAverageAxisOutOfBounds(self):
+    x = np_array_ops.array(np.ones([2, 3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2, weights=np.ones([2, 3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2, returned=True)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=2, weights=np.ones([3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=-3, weights=np.ones([2, 3]))
+    scalar = np_array_ops.array(5.0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(scalar, axis=0)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
@@ -835,6 +853,32 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.diff(a, axis=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.diff(a, axis=-3)
+
+  def testTrace(self):
+    a = np.arange(6).reshape(2, 3)
+    self.match(np_math_ops.trace(a), np.trace(a))
+    self.match(np_math_ops.trace(a, offset=1), np.trace(a, offset=1))
+    self.match(
+        np_math_ops.trace(a, axis1=0, axis2=-1), np.trace(a, axis1=0, axis2=-1)
+    )
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(a, axis1=0, axis2=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(a, axis1=-3, axis2=1)
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_math_ops.trace(a, axis1=1, axis2=1)
+    # Mixed-sign duplicates normalize to the same axis.
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_math_ops.trace(a, axis1=1, axis2=-1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array([1, 2, 3]))
+    # A rank-1 input has no valid trace axes: the out-of-bounds default
+    # axes (axis1=-2, axis2=-1) must raise, not silently route the input
+    # to the rank>=2-only `math_ops.trace` fast path.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array([1.0, 2.0, 3.0]), axis1=-2, axis2=-1)
 
   def testIsInf(self):
     x1 = ops.convert_to_tensor(-2147483648)

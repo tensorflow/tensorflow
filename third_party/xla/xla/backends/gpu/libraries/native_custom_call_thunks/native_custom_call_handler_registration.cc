@@ -30,5 +30,11 @@ Registrar::Registrar(absl::string_view target,
       target, std::move(handler)));
 }
 
+Registrar::Registrar(absl::string_view target,
+                     NativeCustomCallHandlerBundle bundle) {
+  CHECK_OK(NativeCustomCallHandlerRegistry::GetGlobal().Register(
+      target, std::move(bundle)));
+}
+
 }  // namespace native_custom_call_internal
 }  // namespace xla::gpu

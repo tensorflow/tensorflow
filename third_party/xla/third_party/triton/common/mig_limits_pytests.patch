@@ -1,23 +1,10 @@
-# Copyright 2026 The OpenXLA Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
 --- a/python/test/conftest.py
 +++ b/python/test/conftest.py
-@@ -2,6 +2,18 @@ import pytest
+@@ -2,7 +2,18 @@ import pytest
  
  
  def pytest_configure(config):
+-    config.addinivalue_line("markers", "gsan_fine_granularity(reason): requires sub-16-byte GSan tracking")
 +    # In internal hermetic GPU test environments (e.g. a100, h100, b200 test targets), Forge enforces go/forge-accel-or-fail
 +    # to verify that GPU test binaries actively utilize the GPU. For pure AST/compiler tests (e.g. test_cache_determinism),
 +    # lazy CUDA initialization causes 0 GPU usage and fails the runner. We actively guarantee GPU utilization during pytest setup.
@@ -36,7 +23,7 @@
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -1989,7 +1989,13 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
+@@ -2351,7 +2351,13 @@ def test_atomic_cas(sem, num_ctas, dtype_str, device):
  
  @pytest.mark.skipif(not is_cuda() or torch.cuda.get_device_capability()[0] < 9,
                      reason="num_ctas > 1 requires NVIDIA SM90+ (Hopper)")
@@ -51,7 +38,7 @@
  def test_scalar_atomic_cas_multicta_result(device):
  
      @triton.jit
-@@ -2005,8 +2011,8 @@ def test_scalar_atomic_cas_multicta_result(device):
+@@ -2367,8 +2373,8 @@ def test_scalar_atomic_cas_multicta_result(device):
      torch.testing.assert_close(output, torch.full_like(output, 7))
  
  
@@ -62,7 +49,7 @@
  @pytest.mark.parametrize("size", [1, 4, 16, 128, 512])
  def test_tensor_atomic_cas_multicta_result(size, device):
  
-@@ -2057,8 +2063,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
+@@ -2419,8 +2425,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
  
  
  @pytest.mark.interpreter
@@ -101,7 +88,7 @@
 
 --- a/python/triton/_test_runner.py
 +++ b/python/triton/_test_runner.py
-@@ -211,9 +211,17 @@
+@@ -211,9 +211,17 @@ def _gsan(args):
  
  
  def _suite(args):

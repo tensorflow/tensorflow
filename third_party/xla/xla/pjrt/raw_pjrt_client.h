@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -133,6 +135,12 @@ class PjRtExecutableLoadState
   virtual bool IsDeleted() const = 0;
 
   virtual absl::Status Preload(PjRtExecutable* executable) {
+    return absl::OkStatus();
+  }
+
+  virtual absl::Status SetupMultiSliceConfig(
+      PjRtExecutable* executable,
+      const MultiSliceConfig* multi_slice_config) const {
     return absl::OkStatus();
   }
 

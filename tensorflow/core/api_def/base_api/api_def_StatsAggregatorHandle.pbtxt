@@ -1,5 +1,13 @@
 op {
   graph_op_name: "StatsAggregatorHandle"
+  attr {
+    name: "container"
+    description: <<END
+The name of `container` specifies the container in which the resource is placed.
+If empty, the default container is used.
+A non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.
+END
+  }
   visibility: HIDDEN
   summary: "Creates a statistics manager resource."
 }

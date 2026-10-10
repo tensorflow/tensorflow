@@ -148,6 +148,7 @@ cuda_py_strict_test(
     shard_count = 8,
     tags = ["no_windows_gpu"],
     deps = [
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -432,7 +433,7 @@ cuda_py_strict_test(
     name = "linear_operator_low_rank_update_test",
     size = "medium",
     srcs = ["linear_operator_low_rank_update_test.py"],
-    shard_count = 15,
+    shard_count = 30,
     tags = ["optonly"],
     deps = [
         "//tensorflow/python/framework:config",

@@ -12366,5 +12366,141 @@ ENTRY %main.6 (Arg_0.1: s32[8,2]) -> s32[8,2] {
   EXPECT_THAT(sharded_custom_call, op::Sharding("{devices=[4,2]<=[8]}"));
 }
 
+TEST_F(ShardingPropagationTest, ConvolutionWithNamedSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY conv {
+  %lhs = f32[8,16,512] parameter(0), sharding={mesh['a'=2] [{}, {'a'}, {}]}
+  %rhs = f32[8,2,512] parameter(1)
+  %conv = f32[3,512,512] convolution(%lhs, %rhs),
+    window={size=2 stride=5},
+    dim_labels=f0b_i0o->0bf
+  ROOT %tuple = (f32[3,512,512]) tuple(%conv)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/false)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* conv = FindInstruction(module.get(), "conv");
+  ASSERT_NE(conv, nullptr);
+  EXPECT_THAT(conv, op::Sharding("{mesh['a'=2] [{'a'}, {}, {}]}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       ConvolutionWithNamedShardingShardedInputFeature) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY conv {
+  %lhs = f32[8,16,512] parameter(0), sharding={mesh['a'=2,'b'=2] [{'a'}, {'b'}, {}]}
+  %rhs = f32[8,2,512] parameter(1)
+  %conv = f32[3,512,512] convolution(%lhs, %rhs),
+    window={size=2 stride=5},
+    dim_labels=f0b_i0o->0bf
+  ROOT %tuple = (f32[3,512,512]) tuple(%conv)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/false)
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
+  auto* conv = FindInstruction(module.get(), "conv");
+  ASSERT_NE(conv, nullptr);
+  EXPECT_THAT(conv, op::NoSharding());
+}
+
+TEST_F(ShardingPropagationTest, ConcatenateForwardWithNamedSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY concat {
+  %param.0 = f32[5,7] parameter(0), sharding={mesh['a'=2] [{'a'}, {}]}
+  %param.1 = f32[5,9] parameter(1), sharding={mesh['a'=2] [{'a'}, {}]}
+  %concat = f32[5,16] concatenate(%param.0, %param.1), dimensions={1}
+  ROOT %tuple = (f32[5,16]) tuple(%concat)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/false)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* concat = FindInstruction(module.get(), "concat");
+  ASSERT_NE(concat, nullptr);
+  EXPECT_THAT(concat, op::Sharding("{mesh['a'=2] [{'a'}, {}]}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       ConcatenateBackwardWithNamedShardingNonShardedConcatDim) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY concat {
+  %param.0 = f32[4,7] parameter(0)
+  %copy.0 = f32[4,7] copy(%param.0)
+  %param.1 = f32[4,9] parameter(1)
+  %copy.1 = f32[4,9] copy(%param.1)
+  %concat = f32[4,16] concatenate(%copy.0, %copy.1),
+    dimensions={1}, sharding={mesh['a'=2] [{'a'}, {}]}
+  ROOT %tuple = (f32[4,16]) tuple(%concat)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, /*propagate_metadata=*/false)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "copy.0"),
+              op::Sharding("{mesh['a'=2] [{'a'}, {}]}"));
+  EXPECT_THAT(FindInstruction(module.get(), "copy.1"),
+              op::Sharding("{mesh['a'=2] [{'a'}, {}]}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       ConcatenateBackwardWithNamedShardingShardedConcatDim) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY concat {
+  %param.0 = f32[4,7] parameter(0)
+  %copy.0 = f32[4,7] copy(%param.0)
+  %param.1 = f32[4,7] parameter(1)
+  %copy.1 = f32[4,7] copy(%param.1)
+  %concat = f32[8,7] concatenate(%copy.0, %copy.1),
+    dimensions={0}, sharding={mesh['a'=4] [{'a'}, {}]}
+  ROOT %tuple = (f32[8,7]) tuple(%concat)
+})";
+  {
+    ASSERT_OK_AND_ASSIGN(auto spmd_module,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/false)
+            .Run(spmd_module.get()));
+    EXPECT_TRUE(changed);
+    EXPECT_THAT(FindInstruction(spmd_module.get(), "copy.0"),
+                op::Sharding("{mesh['a'=4] [{'a'}, {}]}"));
+    EXPECT_THAT(FindInstruction(spmd_module.get(), "copy.1"),
+                op::Sharding("{mesh['a'=4] [{'a'}, {}]}"));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(auto non_spmd_module,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(/*is_spmd=*/false, /*propagate_metadata=*/false)
+            .Run(non_spmd_module.get()));
+    EXPECT_TRUE(changed);
+    EXPECT_THAT(FindInstruction(non_spmd_module.get(), "copy.0"),
+                op::Sharding("{devices=[2,1]0,1}"));
+    EXPECT_THAT(FindInstruction(non_spmd_module.get(), "copy.1"),
+                op::Sharding("{devices=[2,1]2,3}"));
+  }
+}
+
 }  // namespace
 }  // namespace xla

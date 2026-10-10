@@ -213,8 +213,10 @@ TEST(ParsingDebugOptionsTest, ParsingRepeatedFields) {
 
 TEST(ParsingDebugOptionsTest, ParsingCrossHostOneShotKernel) {
   DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
-  EXPECT_TRUE(debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel()
-                  .empty());
+  EXPECT_THAT(
+      debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(),
+      ElementsAre(DebugOptions::ALLCOLLECTIVES));
+  debug_options.clear_xla_gpu_unsupported_use_cross_host_one_shot_kernel();
   debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
       DebugOptions::ALLGATHER);
   debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(

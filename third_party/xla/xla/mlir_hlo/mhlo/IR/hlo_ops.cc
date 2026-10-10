@@ -6353,7 +6353,10 @@ LogicalResult CompareOp::inferReturnTypeComponents(
     mlir::PropertyRef properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   CompareOp::Adaptor adaptor(operands, attributes, properties, regions);
-  return hlo::inferCompareOp(context, location, adaptor.getLhs(),
+  std::optional<StringRef> compareType;
+  if (auto attr = adaptor.getCompareType())
+    compareType = stringifyComparisonType(*attr);
+  return hlo::inferCompareOp(context, location, adaptor.getLhs(), compareType,
                              inferredReturnShapes);
 }
 
@@ -6450,6 +6453,12 @@ OpFoldResult CompareOp::fold(FoldAdaptor adaptor) {
   }
 
   if (!operands[0] || !operands[1]) {
+    return {};
+  }
+
+  if (isa<FloatType>(opElType) && getCompareType() &&
+      *getCompareType() != ComparisonType::NOTYPE &&
+      *getCompareType() != ComparisonType::FLOAT) {
     return {};
   }
 

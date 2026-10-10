@@ -1,0 +1,91 @@
+--- a/test/Conversion/tritongpu_to_ptx_mmav3.mlir
++++ b/test/Conversion/tritongpu_to_ptx_mmav3.mlir
+@@ -63,7 +63,8 @@
+     // CHECK-DAG: and.b32 [[LANEID_FIXED_BITS:%.*]], [[TID]], 28;
+     // CHECK-DAG: shl.b32 [[L0_TEMP:%.*]], [[L0_VAL]], 1;
+     // CHECK-DAG: or.b32  [[LANEID_PART_PERM:%.*]], [[L0_TEMP]], [[LANEID_FIXED_BITS]];
+-    // CHECK-DAG: bfe.u32 [[L1_TEMP:%.*]], [[TID]], 1, 1;
++    // CHECK-DAG: and.b32 [[L1_VAL:%.*]], [[TID]], 2;
++    // CHECK-DAG: shr.u32 [[L1_TEMP:%.*]], [[L1_VAL]], 1;
+     // CHECK-DAG: or.b32  [[LANEID_PERM:%.*]], [[LANEID_PART_PERM]], [[L1_TEMP]];
+ 
+     // The index shuffles have source lane dependent on the value of the r2 bit.
+@@ -97,7 +98,6 @@
+     // on, we have selectors 0x7632 and 0x3276. These are 21520, 4180, 30258,
+     // and 12918 in decimal, respectively.
+ 
+-    // CHECK-DAG: and.b32           [[L1_VAL:%.*]], [[TID]], 2;
+     // CHECK-DAG: setp.eq.b32       [[L1_OFF:%.*]], [[L1_VAL]], 0;
+     // CHECK:     selp.b32          [[SEL1:%.*]], 21520, 4180, [[L1_OFF]];
+     // CHECK:     selp.b32          [[SEL2:%.*]], 30258, 12918, [[L1_OFF]];
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp
+@@ -10,10 +10,10 @@
+ #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+ #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+ #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
+-#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+ #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+ #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
++#include "mlir/Dialect/LLVMIR/ROCDLTargetInfo.h"
+ #include "mlir/Pass/Pass.h"
+ #include "third_party/amd/include/Analysis/AMDGPUAllocation.h"
+ #include "third_party/amd/include/Analysis/AxisInfoExt.h"
+@@ -213,16 +213,16 @@
+     mlir::triton::AMD::populateWarpIdOpToLLVMPattern(typeConverter, targetInfo,
+                                                      patterns, commonBenefit);
+ 
+-    FailureOr<mlir::amdgpu::Chipset> maybeChipset =
+-        mlir::amdgpu::Chipset::parse(targetInfo.getBaseArch());
+-    if (failed(maybeChipset)) {
++    FailureOr<mlir::ROCDL::TargetInfo> maybeTargetInfo =
++        mlir::ROCDL::TargetInfo::get(targetInfo.getBaseArch());
++    if (failed(maybeTargetInfo)) {
+       emitError(UnknownLoc::get(&getContext()),
+                 "Invalid AMDGPU chipset name: " + this->gfxArch);
+       return signalPassFailure();
+     }
+     // Native lowering patterns
+     mlir::populateGpuToROCDLConversionPatterns(
+-        typeConverter, patterns, mlir::gpu::amd::HIP, *maybeChipset);
++        typeConverter, patterns, mlir::gpu::amd::HIP, *maybeTargetInfo);
+ 
+     mlir::cf::populateControlFlowToLLVMConversionPatterns(typeConverter,
+                                                           patterns);
+
+--- a/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/ConvertProtonGPUToLLVM.cpp
++++ b/third_party/proton/Dialect/lib/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/ConvertProtonGPUToLLVM.cpp
+@@ -7,9 +7,9 @@
+ #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+ #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
+ #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
+-#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+ #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
++#include "mlir/Dialect/LLVMIR/ROCDLTargetInfo.h"
+ #include "mlir/Pass/Pass.h"
+ #include "third_party/amd/lib/TritonAMDGPUToLLVM/PatternTritonGPUOpToLLVM.h"
+ #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
+@@ -65,15 +65,15 @@
+                                                        tritonTargetInfo);
+     mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
+ 
+-    FailureOr<mlir::amdgpu::Chipset> maybeChipset =
+-        mlir::amdgpu::Chipset::parse(this->gfxArch);
+-    if (failed(maybeChipset)) {
++    FailureOr<mlir::ROCDL::TargetInfo> maybeTargetInfo =
++        mlir::ROCDL::TargetInfo::get(this->gfxArch);
++    if (failed(maybeTargetInfo)) {
+       emitError(UnknownLoc::get(&getContext()),
+                 "Invalid AMDGPU chipset name: " + this->gfxArch);
+       return signalPassFailure();
+     }
+     mlir::populateGpuToROCDLConversionPatterns(
+-        typeConverter, patterns, mlir::gpu::amd::HIP, *maybeChipset);
++        typeConverter, patterns, mlir::gpu::amd::HIP, *maybeTargetInfo);
+     mlir::cf::populateControlFlowToLLVMConversionPatterns(typeConverter,
+                                                           patterns);
+     auto convTarget = ProtonLLVMConversionTarget(*context);
+

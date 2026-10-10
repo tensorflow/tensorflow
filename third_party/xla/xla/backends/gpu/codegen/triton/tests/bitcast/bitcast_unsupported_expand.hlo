@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --xla_gpu_target_config_filename=%S/../../../../target_config/specs/h100_sxm.txtpb --xla_gpu_experimental_enable_tiling_propagation=true --logtostderr --vmodule=tile_propagation=2 2>&1 | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --xla_gpu_target_config_filename=%S/../../../../target_config/specs/h100_sxm.txtpb --logtostderr --vmodule=tile_propagation=2 2>&1 | FileCheck %s
 
 // CHECK: Skipping reshape contiguity check as tile sizes are not assigned yet.
 // CHECK: ROOT {{.*}} = bf16[4096,16,4096]{{.*}} fusion({{.*}}), kind=kCustom, calls=%{{.*}}gemm_fusion_tmp_11_computation, backend_config={{{.*}}"kind":"__triton_nested_gemm_fusion"

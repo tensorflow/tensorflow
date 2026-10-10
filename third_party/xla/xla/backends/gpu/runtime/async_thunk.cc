@@ -46,11 +46,12 @@ namespace xla::gpu {
 
 AsyncStartThunk::AsyncStartThunk(ThunkInfo thunk_info,
                                  ExecutionStreamId execution_stream_id,
-                                 ThunkSequence thunks)
+                                 ThunkSequence thunks, int devices_per_host)
     : Thunk(Thunk::kAsyncStart, std::move(thunk_info)),
       execution_stream_id_(execution_stream_id),
       executor_(std::move(thunks)),
-      async_execution_(std::make_shared<AsyncExecution>(this->thunk_info())) {}
+      async_execution_(std::make_shared<AsyncExecution>(this->thunk_info(),
+                                                        devices_per_host)) {}
 
 AsyncStartThunk::AsyncStartThunk(
     ThunkInfo thunk_info, ExecutionStreamId execution_stream_id,
@@ -209,7 +210,8 @@ absl::StatusOr<ThunkProto> AsyncStartThunk::ToProto() const {
 
 absl::StatusOr<std::unique_ptr<AsyncStartThunk>> AsyncStartThunk::FromProto(
     ThunkInfo thunk_info, const AsyncStartThunkProto& proto,
-    const Deserializer& deserializer, AsyncExecutionMap& async_executions) {
+    const Deserializer& deserializer, AsyncExecutionMap& async_executions,
+    int devices_per_host) {
   auto make_stream_id = [&]() -> absl::StatusOr<ExecutionStreamId> {
     switch (proto.execution_stream_id_case()) {
       case AsyncStartThunkProto::kComputationStreamId:
@@ -237,7 +239,8 @@ absl::StatusOr<std::unique_ptr<AsyncStartThunk>> AsyncStartThunk::FromProto(
   }
 
   auto start_thunk = std::make_unique<AsyncStartThunk>(
-      std::move(thunk_info), execution_stream_id, std::move(nested));
+      std::move(thunk_info), execution_stream_id, std::move(nested),
+      devices_per_host);
 
   AsyncExecutionId id(proto.async_execution_id());
   async_executions[id] = start_thunk->async_execution();

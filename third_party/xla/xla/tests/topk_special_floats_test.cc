@@ -20,12 +20,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "xla/array2d.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
@@ -34,7 +33,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using TopkTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using TopkTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(TopkTest, TopKWithSpecialFloats) {
   // Regression test for TopK TotalOrder with special float values
@@ -149,7 +148,7 @@ TEST_F(TopkTest, TopKWithSpecialFloats) {
 
 bfloat16 ToBfloat16(uint16_t x) { return absl::bit_cast<bfloat16>(x); }
 
-TEST_F(TopkTest, TopKWithSpecialBfloat16) {
+TEST_F(TopkTest, TopKWithSpecialBFloat16) {
   // Regression test for TopK TotalOrder with special float values
   // (NaN, +-Inf, +-0).
   bfloat16 neg_qnan0 = ToBfloat16(0xFFC0u);

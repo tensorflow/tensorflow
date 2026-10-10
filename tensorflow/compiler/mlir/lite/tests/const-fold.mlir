@@ -1147,6 +1147,59 @@ func.func @gather_nd_scalars() -> tensor<4xf32> {
   // CHECK: return [[CST]]
 }
 
+// The attention-mask pattern from HF decoder models: params is a runtime
+// value and the indices enumerate every [0, i] in order.
+// CHECK-LABEL: func @gather_nd_identity_full_depth
+// CHECK-SAME: (%[[ARG:.*]]: tensor<1x4xi32>)
+func.func @gather_nd_identity_full_depth(%arg0: tensor<1x4xi32>) -> tensor<1x4xi32> {
+  %indices = arith.constant dense<[[[0, 0], [0, 1], [0, 2], [0, 3]]]> : tensor<1x4x2xi32>
+  %0 = "tfl.gather_nd"(%arg0, %indices) : (tensor<1x4xi32>, tensor<1x4x2xi32>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+
+  // CHECK-NOT: tfl.gather_nd
+  // CHECK: return %[[ARG]]
+}
+
+// Depth 1 over a rank-3 params: gathers all 3 slices along dim 0 in order.
+// CHECK-LABEL: func @gather_nd_identity_partial_depth
+// CHECK-SAME: (%[[ARG:.*]]: tensor<3x2x5xf32>)
+func.func @gather_nd_identity_partial_depth(%arg0: tensor<3x2x5xf32>) -> tensor<3x2x5xf32> {
+  %indices = arith.constant dense<[[0], [1], [2]]> : tensor<3x1xi64>
+  %0 = "tfl.gather_nd"(%arg0, %indices) : (tensor<3x2x5xf32>, tensor<3x1xi64>) -> tensor<3x2x5xf32>
+  return %0 : tensor<3x2x5xf32>
+
+  // CHECK-NOT: tfl.gather_nd
+  // CHECK: return %[[ARG]]
+}
+
+// CHECK-LABEL: func @gather_nd_permuted_not_identity
+func.func @gather_nd_permuted_not_identity(%arg0: tensor<1x4xi32>) -> tensor<1x4xi32> {
+  %indices = arith.constant dense<[[[0, 0], [0, 2], [0, 1], [0, 3]]]> : tensor<1x4x2xi32>
+  %0 = "tfl.gather_nd"(%arg0, %indices) : (tensor<1x4xi32>, tensor<1x4x2xi32>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+
+  // CHECK: tfl.gather_nd
+}
+
+// CHECK-LABEL: func @gather_nd_subset_not_identity
+func.func @gather_nd_subset_not_identity(%arg0: tensor<1x4xi32>) -> tensor<1x3xi32> {
+  %indices = arith.constant dense<[[[0, 0], [0, 1], [0, 2]]]> : tensor<1x3x2xi32>
+  %0 = "tfl.gather_nd"(%arg0, %indices) : (tensor<1x4xi32>, tensor<1x3x2xi32>) -> tensor<1x3xi32>
+  return %0 : tensor<1x3xi32>
+
+  // CHECK: tfl.gather_nd
+}
+
+// Same elements in order, but the result has an extra leading dim.
+// CHECK-LABEL: func @gather_nd_reshaping_not_identity
+func.func @gather_nd_reshaping_not_identity(%arg0: tensor<4xi32>) -> tensor<1x4xi32> {
+  %indices = arith.constant dense<[[[0], [1], [2], [3]]]> : tensor<1x4x1xi32>
+  %0 = "tfl.gather_nd"(%arg0, %indices) : (tensor<4xi32>, tensor<1x4x1xi32>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+
+  // CHECK: tfl.gather_nd
+}
+
 // CHECK-LABEL: reverse_2_dims
 func.func @reverse_2_dims() -> tensor<2x3x2xi32> {
   %input = "tfl.pseudo_const"() <{value = dense<[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]]> : tensor<2x3x2xi32>}> : () -> tensor<2x3x2xi32>

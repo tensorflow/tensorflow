@@ -362,7 +362,7 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
       GetAllReduceStrategy(byte_size, num_devices, is_multimem_enabled);
   ABSL_ASSIGN_OR_RETURN(
       const bool is_local,
-      IsAllReplicasLocal(gpu_topology, *all_reduce, device_assignment));
+      AreAllReplicasOnSameSlice(gpu_topology, *all_reduce, device_assignment));
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink/UALink "
@@ -442,7 +442,8 @@ absl::Status RunAllReduceKernel(
 }
 
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type) {
   int64_t group_size = instr->GetModule()->config().replica_count();
   if (!instr->replica_groups().empty() &&
       instr->replica_groups()[0].replica_ids_size() > 0) {
@@ -457,13 +458,6 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
       num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
   const int64_t remote_size =
       xla::RoundUpTo<uint64_t>(input_size_bytes, kXlaAllocatedBufferAlignBytes);
-
-  const DebugOptions& debug_options =
-      instr->GetModule()->config().debug_options();
-  const SymmetricMemoryType sym_mem_type =
-      IsCrossHostOneShotKernelEnabled(debug_options, DebugOptions::ALLREDUCE)
-          ? SymmetricMemoryType::kLoadStoreAccessible
-          : SymmetricMemoryType::kXlaRendezvous;
 
   CollectiveKernelSpec kernel_spec = {
       /* .codegen_config= */ {
@@ -484,11 +478,11 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
           /* .sync_count_increment = */ 1 + static_cast<uint32_t>(strategy)},
       /* .scratch_buffers= */
       {{signal_size, /*requires_multimem=*/false,  // Signal buffers
-        sym_mem_type,
+        scratch_memory_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
        {remote_size, /*requires_multimem=*/false,  // Remote buffers
-        sym_mem_type,
+        scratch_memory_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/true}}};
   return kernel_spec;

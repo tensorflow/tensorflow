@@ -85,11 +85,9 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool dump_on_deserialize() const { return false; }
   virtual bool should_stage_host_to_device_transfers() const { return false; }
   // Returns true if we should skip the staging buffer during ToLiteral.
-  virtual bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
-                                      const Shape& shape,
-                                      PjRtMemorySpace* memory_space) const {
-    return false;
-  }
+  bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
+                              const Shape& shape,
+                              PjRtMemorySpace* memory_space) const;
 
   tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space);
@@ -131,6 +129,13 @@ class CommonPjRtClient : public PjRtClient {
                                 absl::Status prepare_status) {
     return false;
   }
+
+  virtual absl::StatusOr<PjRtExecutableLoadState::DeviceAndAssignment>
+  LookupDeviceAndAssignment(
+      const ExecuteOptions& options, int replica, int partition,
+      PjRtDevice* device,
+      const std::shared_ptr<DeviceAssignment>& device_assignment,
+      PjRtExecutableLoadState* load_state) const;
 
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
@@ -637,6 +642,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
         executable_(std::move(executable)),
         load_state_(std::move(load_state)) {}
 
+  ~CommonPjRtLoadedExecutable() override { Delete(); }
+
   CommonPjRtClient* client() const override { return client_; }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
@@ -817,10 +824,6 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
 
   using DeviceAndAssignment = PjRtExecutableLoadState::DeviceAndAssignment;
 
-  virtual absl::StatusOr<DeviceAndAssignment> LookupDeviceAndAssignment(
-      const ExecuteOptions& options, int replica, int partition,
-      PjRtDevice* device) const;
-
   virtual absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
   LoadRawExecutable(const ExecuteOptions& options, size_t host_callback_idx,
                     xla::RunId run_id, DeviceAndAssignment device_and_assign,
@@ -835,6 +838,9 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   absl::Span<int const> ParametersThatMayBeDonated() const;
 
   virtual const HloInputOutputAliasConfig& input_output_alias_config() const {
+    if (extras_) {
+      return extras_->input_output_alias_config;
+    }
     auto hlo_module = GetExecutable()->GetHloModule();
     CHECK_OK(hlo_module.status());
     return (*hlo_module)->input_output_alias_config();

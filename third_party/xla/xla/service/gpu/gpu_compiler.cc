@@ -110,6 +110,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/backends/gpu/transforms/dus_accumulator_zero_init_elimination.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_annotator.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_copy_fusion_async_wrapper.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 #include "xla/backends/gpu/transforms/estimate_cub_scan_scratch_size.h"
@@ -485,8 +486,15 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
     cpu_target_options = options.cpu_target_config->cpu_target_machine_options;
   }
 
-  if (options.gpu_topology.has_value()) {
-    const GpuTopology& gpu_topology = *options.gpu_topology;
+  std::optional<GpuTopology> topology_from_options = options.gpu_topology;
+  if (!topology_from_options.has_value() &&
+      !debug_opts.xla_gpu_topology_filename().empty()) {
+    ABSL_ASSIGN_OR_RETURN(topology_from_options,
+                     ParseGpuTopology(debug_opts.xla_gpu_topology_filename()));
+  }
+
+  if (topology_from_options.has_value()) {
+    const GpuTopology& gpu_topology = *topology_from_options;
     if (gpu_topology.has_gpu_target_config()) {
       gpu_target_config = gpu_topology.gpu_target_config();
     }
@@ -529,7 +537,7 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
     }
   }
 
-  if (!gpu_target_config.has_value() &&
+  if ((!options.gpu_topology.has_value() || !gpu_target_config.has_value()) &&
       !debug_opts.xla_gpu_target_config_filename().empty()) {
     ABSL_ASSIGN_OR_RETURN(
         gpu_target_config,
@@ -556,7 +564,8 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
         "Couldn't determine the target compilation environment. Either stream "
         "executor (GPU) has to be attached for JIT compilation, or a target "
         "config has to be passed in as a parameter or provided via "
-        "--xla_gpu_target_config_filename for AOT compilation.");
+        "--xla_gpu_target_config_filename or --xla_gpu_topology_filename for "
+        "AOT compilation.");
   }
 
   // If the CPU target options are not set, we infer them from the host CPU
@@ -1403,10 +1412,9 @@ absl::Status RunLayoutAssignmentPasses(
   // Layout assignment uses alias analysis, which requires the call graph to
   // be flattened.
   pipeline.AddPass<FlattenCallGraph>();
-  ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(), gpu_version,
-      device_description, &layout_constraints);
+      device_description);
   // Run SubByteNormalization because GpuLayoutAssignment may modify a
   // Layout's element_size_in_bits field.
   pipeline.AddPass<SubByteNormalization>(
@@ -2933,7 +2941,8 @@ GpuCompiler::CompileToBackendResult(
     CubinCustomKernelCompiler kernel_compiler(
         std::move(llvm_compiler),
         gpu_topology.gpu_target_config().device_description,
-        module->config().debug_options(), thread_pool.get_mutable());
+        module->config().debug_options(), gpu_topology,
+        thread_pool.get_mutable());
     kernel_compiler.SetPreOptimizationHook([&](const llvm::Module& module) {
       CallUserPreOptimizationHook(module);
     });
@@ -3136,7 +3145,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
               : std::nullopt,
           /*buffer_assignment_proto=*/std::move(buffer_assignment_proto),
           /*buffer_allocations_debug_summary=*/
-          std::move(buffer_allocations_debug_summary)}));
+          std::move(buffer_allocations_debug_summary),
+          /*gpu_topology=*/gpu_topology}));
   IncrementCompiledProgramsCount();
 
   if (embed_debug_info && gpu_executable->has_module()) {
@@ -3229,9 +3239,7 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
   tsl::profiler::TraceMe traceme("RunPreSchedulingPasses");
   HloPassPipeline pipeline("pre-scheduling-passes");
   pipeline.AddPass<FusionWrapper>(gpu_device_info);
-  const auto* cuda_cc =
-      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
-  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
+  if (SupportsDynamicSliceCopyThunks(gpu_device_info)) {
     pipeline.AddPass<DynamicSliceCopyFusionAsyncWrapper>();
   }
   // GpuCopyAsyncWrapper is disabled when xla_gpu_async_copy_min_bytes is -1.

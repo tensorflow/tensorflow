@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/ffi/api/collectives_c_api.h"
 
@@ -25,12 +27,16 @@ namespace xla::gpu {
 
 // Per-invocation collective state read by the collectives FFI extension
 // callbacks via `XLA_FFI_Collectives_Extension::state`. Pointers are non-owning
-// and only valid for the stage they belong to: `collective_clique_requests` is
-// set in Prepare, `collective_cliques` once cliques are acquired.
+// and only valid for the stage they belong to:
+//   * `collective_clique_requests` / `collective_memory_requests` — Prepare.
+//   * `collective_cliques` / `collective_memory` — Initialize / Execute /
+//   Record.
 struct GpuCollectivesState {
   const CollectiveParams* collective_params = nullptr;
   CollectiveCliqueRequests* collective_clique_requests = nullptr;
+  CollectiveMemoryRequests* collective_memory_requests = nullptr;
   const CollectiveCliques* collective_cliques = nullptr;
+  const CollectiveMemory* collective_memory = nullptr;
 };
 
 // Builds a collectives FFI extension whose callbacks read `state`. Borrows

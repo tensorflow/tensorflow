@@ -56,6 +56,9 @@ class RocmKernel : public Kernel {
   void set_gpu_function(hipFunction_t rocm_function) {
     rocm_function_ = rocm_function;
   }
+  PlatformSpecificHandle platform_specific_handle() const override {
+    return PlatformSpecificHandle{rocm_function_};
+  }
 
   // Collects metadata for the specified kernel.
   absl::StatusOr<KernelMetadata> GetKernelMetadata();

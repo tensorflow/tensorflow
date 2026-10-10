@@ -881,6 +881,8 @@ cc_library(
     hdrs = ["fused_eigen_output_kernels.h"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
@@ -3688,7 +3690,10 @@ MATH_DEPS = [
 tf_kernel_library(
     name = "sparse_matmul_op",
     prefix = "sparse_matmul_op",
-    deps = MATH_DEPS + ["@xla//xla/tsl/framework/contraction:eigen_contraction_kernel"],
+    deps = MATH_DEPS + [
+        "@highway//:hwy",
+        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
+    ],
 )
 
 cc_library(
@@ -4229,6 +4234,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@highway//:hwy",
     ],
 )
 
@@ -5375,6 +5381,7 @@ tf_kernel_library(
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ] + if_cuda_or_rocm([
         ":gpu_device_array",
         ":gpu_prim_helpers",
@@ -5599,6 +5606,23 @@ tf_kernel_library(
     features = ["-layering_check"],
     prefix = "sparse_tensors_map_ops",
     deps = SPARSE_DEPS,
+)
+
+tf_cc_test(
+    name = "sparse_tensors_map_ops_test",
+    size = "small",
+    srcs = ["sparse_tensors_map_ops_test.cc"],
+    deps = [
+        ":sparse_tensors_map_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:sparse_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/public:version",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_cuda_cc_tests(
@@ -7443,6 +7467,7 @@ filegroup(
             "decode_proto_op.cc",
             "encode_proto_op.cc",
             "sobol_op.cc",
+            "sparse_matmul_op.*",
             # Excluded due to experimental status:
             "debug_ops.*",
             "mutex_ops.*",
@@ -8349,6 +8374,7 @@ cc_library(
     ] + LOOSE_HEADER_VISIBILITY,
     deps = [
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

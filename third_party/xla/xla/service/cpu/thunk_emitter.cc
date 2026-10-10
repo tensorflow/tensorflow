@@ -1166,11 +1166,52 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
                                  /*min_alignment=*/MinAlign());
 }
 
-// Parse the sort comparator to determine the sort direction.
+// Parse the sort instruction and comparator to determine the sort direction if
+// it is supported by SortThunk's SortDirection fast path.
 std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
-    const HloComputation* hlo_comparator) const {
-  if (hlo_comparator->num_parameters() < 2 ||
-      hlo_comparator->num_parameters() % 2 != 0) {
+    const HloSortInstruction* sort) {
+  if (sort->operand_count() != 1 && sort->operand_count() != 2) {
+    return std::nullopt;
+  }
+
+  PrimitiveType key_type = sort->operand(0)->shape().element_type();
+  if (!SortThunk::IsSupportedKeyType(key_type)) {
+    return std::nullopt;
+  }
+
+  if (sort->operand_count() == 2) {
+    PrimitiveType val_type = sort->operand(1)->shape().element_type();
+    if (!primitive_util::IsArrayType(val_type)) {
+      return std::nullopt;
+    }
+    int val_bit_width = primitive_util::BitWidth(val_type);
+    if (val_bit_width != 8 && val_bit_width != 16 && val_bit_width != 32 &&
+        val_bit_width != 64) {
+      return std::nullopt;
+    }
+
+    const Shape& shape = sort->operand(0)->shape();
+    int64_t rank = shape.dimensions().size();
+    int64_t sort_dimension = sort->sort_dimension() >= 0
+                                 ? sort->sort_dimension()
+                                 : rank + sort->sort_dimension();
+    if (sort_dimension < 0 || sort_dimension >= rank) {
+      return std::nullopt;
+    }
+    // CpuLayoutAssignment always assigns descending (row-major) layout to sort
+    // operands, so logical dimensions match physical dimensions.
+    absl::Span<const int64_t> dimensions = shape.dimensions();
+    int64_t sort_dim_size = dimensions[sort_dimension];
+    bool is_strided_sort =
+        absl::c_any_of(dimensions.subspan(sort_dimension + 1),
+                       [](int64_t dim) { return dim != 1; });
+    if (is_strided_sort && sort_dim_size > SortThunk::kMaxSortDimSize) {
+      return std::nullopt;
+    }
+  }
+
+  const HloComputation* hlo_comparator = sort->to_apply();
+  if (hlo_comparator->num_parameters() != sort->operand_count() * 2) {
     return std::nullopt;
   }
 
@@ -1237,7 +1278,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   HloComputation* hlocomparator = sort->to_apply();
 
   const std::optional<SortThunk::SortDirection> direction =
-      MatchSortDirection(hlocomparator);
+      MatchSortDirection(sort);
 
   ABSL_ASSIGN_OR_RETURN(auto comparator,
                    ir_emitter_.EmitSortComparator(hlocomparator));

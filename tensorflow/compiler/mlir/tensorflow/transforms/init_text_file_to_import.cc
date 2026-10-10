@@ -122,7 +122,7 @@ class ConvertInitializeTableFromTextFileV2
     line_nums.resize(lines.size());
     std::iota(line_nums.begin(), line_nums.end(), 0);
 
-    // Create constant ops for keys an values.
+    // Create constant ops for keys and values.
     Value key_constant_tensor = arith::ConstantOp::create(
         rewriter, op.getLoc(),
         DenseStringElementsAttr::get(

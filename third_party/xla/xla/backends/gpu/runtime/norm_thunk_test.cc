@@ -103,7 +103,8 @@ TEST(NormThunkTest, ProtoRoundTrip) {
                        Thunk::ThunkInfo::FromProto(proto.thunk_info()));
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<NormThunk> thunk,
-      NormThunk::FromProto(thunk_info, proto.norm_thunk(), buffer_allocations));
+      NormThunk::FromProto(thunk_info, proto.norm_thunk(), buffer_allocations,
+                           /*devices_per_host=*/1));
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }

@@ -26,10 +26,16 @@ limitations under the License.
 
 namespace xla::gpu::kernel::topk {
 
+// Specifies the ordering semantics for the TopK operation.
+enum class Order { kTotal, kPartial };
+
 // Creates a CustomKernel for TopK operation.
-absl::StatusOr<CustomKernel> GetTopKKernel(
-    std::string name, PrimitiveType dtype, size_t num_elements, size_t k,
-    size_t batch_size, absl::string_view platform_name, size_t wavefront_size);
+absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
+                                           PrimitiveType dtype,
+                                           size_t num_elements, size_t k,
+                                           size_t batch_size,
+                                           absl::string_view platform_name,
+                                           size_t wavefront_size, Order order);
 
 }  // namespace xla::gpu::kernel::topk
 

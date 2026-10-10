@@ -116,9 +116,8 @@ def is_xla_enabled() -> bool:
   return False
 
 
-# pytype: disable=import-error
 try:
-  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top, unused-import
+  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top, unused-import  # pyrefly: ignore[missing-import]
 except Exception:  # pylint: disable=broad-except
   pass
 
@@ -130,13 +129,12 @@ def is_mlir_bridge_enabled() -> Optional[bool]:
 
 
 try:
-  from tensorflow.python.framework.is_mlir_bridge_test_false import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+  from tensorflow.python.framework.is_mlir_bridge_test_false import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import  # pyrefly: ignore[missing-import]
 except ImportError:
   try:
-    from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+    from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import  # pyrefly: ignore[missing-import]
   except ImportError:
     pass
-# pytype: enable=import-error
 
 
 def is_asan_enabled() -> bool:
@@ -1322,7 +1320,7 @@ def with_eager_op_as_function(
   if cls is not None:
     return decorator(cls)
 
-  return decorator  # pytype: disable=bad-return-type
+  return decorator
 
 
 def enable_graph_building_optimization(fn: _F) -> _F:

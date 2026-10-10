@@ -559,7 +559,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
         xla::Shape xla_shape(element_type, output_shapes[i].dims());
         xla::Shape xla_shard_shape = xla::hlo_sharding_util::TileShape(
             (*output_hlo_shardings)[i], xla_shape);
-        shard_shape = Shape(xla_shape.dimensions());
+        shard_shape = Shape(xla_shard_shape.dimensions());
       }
     }
     *output_spec.mutable_shard_shape() = shard_shape->ToProto(serdes_version);

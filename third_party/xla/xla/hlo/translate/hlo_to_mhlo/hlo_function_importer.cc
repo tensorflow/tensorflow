@@ -2624,10 +2624,10 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonOrder(
                               builder_->getContext(),
                               mlir::stablehlo::ComparisonType::TOTALORDER));
     case ComparisonOrder::kWeak:
-      // TODO(b/565612124): Map to mlir::stablehlo::ComparisonType::WEAKORDER
-      // once added to StableHLO.
-      LOG(FATAL) << "Unsupported comparison order: "
-                 << ComparisonOrderToString(order);
+      return builder_->getNamedAttr(
+          "compare_type", mlir::stablehlo::ComparisonTypeAttr::get(
+                              builder_->getContext(),
+                              mlir::stablehlo::ComparisonType::WEAKORDER));
   }
   LOG(FATAL) << "Unhandled comparison order: " << static_cast<int>(order);
 }

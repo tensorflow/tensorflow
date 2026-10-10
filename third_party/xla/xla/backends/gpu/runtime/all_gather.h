@@ -100,8 +100,10 @@ LaunchDimensions AllGatherLaunchDimensions(
 //   [3] invocation count (kInvocationCount)
 //   [4] signal flags (kScratchBuffer, index 0)
 //   [5] remote scratch buffer pointer table (kScratchBuffer, index 1)
+// `scratch_memory_type` is used for both scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type);
 
 }  // namespace xla::gpu
 

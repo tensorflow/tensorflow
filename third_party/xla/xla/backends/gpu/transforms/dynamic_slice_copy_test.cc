@@ -31,7 +31,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -178,6 +181,82 @@ TEST_F(DynamicSliceCopyTest, AnalyzesComputedDusOffset) {
           Offsets{{0, Offset::Add(Offset::Parameter(2), Offset::Constant(1))},
                   {1, Offset::Constant(1)},
                   {2, Offset::Constant(1)}}}));
+}
+
+// Fusion passes can fuse DUS offset producers that are not representable as
+// offset expressions into the copy fusion. The DUS is still a copy, and offset
+// verification is skipped.
+TEST_F(DynamicSliceCopyTest, AnalyzesDusWithUnsupportedOffset) {
+  constexpr char kHlo[] = R"(
+    dynamic_update_slice {
+      p0 = s32[4,8,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      p2 = s32[] parameter(2)
+      c1 = s32[] constant(1)
+      c3 = s32[] constant(3)
+      offset = s32[] and(p2, c3)
+      ROOT upd = s32[4,8,8] dynamic-update-slice(p0, p1, offset, c1, c1),
+          backend_config={"dynamic_slice_config":{"loop_index":"0",
+              "linear":{"byte_offset":"32","byte_stride":"256"}}}
+    }
+
+    ENTRY main {
+      input = s32[4,8,8] parameter(0)
+      val = s32[1,1,8] parameter(1)
+      ivar = s32[] parameter(2)
+      ROOT updated = s32[4,8,8] fusion(input, val, ivar), kind=kLoop,
+          calls=dynamic_update_slice
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  ASSERT_OK_AND_ASSIGN(std::optional<DynamicSliceCopyFusion> copy,
+                       AnalyzeDynamicSliceCopyFusion(
+                           module->entry_computation()->root_instruction()));
+  ASSERT_TRUE(copy.has_value());
+  EXPECT_THAT(copy->results,
+              ElementsAre(Result{0, 0, ShapeUtil::MakeShape(S32, {4, 8, 8}),
+                                 ShapeUtil::MakeShape(S32, {1, 1, 8}),
+                                 MakeConfig(0, 32, 256), std::nullopt}));
+}
+
+// Fusion passes can fuse a table lookup DS into the copy fusion. It doesn't
+// prevent the DUS from being a copy, and offset verification is skipped.
+TEST_F(DynamicSliceCopyTest, AnalyzesDusWithTableLookupOffset) {
+  constexpr char kHlo[] = R"(
+    dynamic_update_slice {
+      p0 = s32[4,8,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      p2 = s32[] parameter(2)
+      c1 = s32[] constant(1)
+      table = s32[4] constant({3, 2, 1, 0})
+      entry = s32[1] dynamic-slice(table, p2), dynamic_slice_sizes={1}
+      offset = s32[] reshape(entry)
+      ROOT upd = s32[4,8,8] dynamic-update-slice(p0, p1, offset, c1, c1),
+          backend_config={"dynamic_slice_config":{"loop_index":"0",
+              "linear":{"byte_offset":"800","byte_stride":"-256"}}}
+    }
+
+    ENTRY main {
+      input = s32[4,8,8] parameter(0)
+      val = s32[1,1,8] parameter(1)
+      ivar = s32[] parameter(2)
+      ROOT updated = s32[4,8,8] fusion(input, val, ivar), kind=kLoop,
+          calls=dynamic_update_slice
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  ASSERT_OK_AND_ASSIGN(std::optional<DynamicSliceCopyFusion> copy,
+                       AnalyzeDynamicSliceCopyFusion(
+                           module->entry_computation()->root_instruction()));
+  ASSERT_TRUE(copy.has_value());
+  EXPECT_THAT(copy->results,
+              ElementsAre(Result{0, 0, ShapeUtil::MakeShape(S32, {4, 8, 8}),
+                                 ShapeUtil::MakeShape(S32, {1, 1, 8}),
+                                 MakeConfig(0, 800, -256), std::nullopt}));
 }
 
 TEST_F(DynamicSliceCopyTest, RejectsComputedDusUpdate) {
@@ -370,6 +449,26 @@ TEST_F(DynamicSliceCopyTest, DynamicVariableUsesPerVariableInitStep) {
                                     Offsets{{0, Offset::Parameter(1)},
                                             {1, Offset::Constant(0)},
                                             {2, Offset::Constant(0)}}}));
+}
+
+TEST(SupportsDynamicSliceCopyThunksTest, CudaAmpereAndNewer) {
+  EXPECT_TRUE(
+      SupportsDynamicSliceCopyThunks(TestGpuDeviceInfo::A100SXMDeviceInfo()));
+  EXPECT_TRUE(
+      SupportsDynamicSliceCopyThunks(TestGpuDeviceInfo::H100SXMDeviceInfo()));
+}
+
+TEST(SupportsDynamicSliceCopyThunksTest, CudaPreAmpere) {
+  EXPECT_FALSE(
+      SupportsDynamicSliceCopyThunks(TestGpuDeviceInfo::A100SXMDeviceInfo(
+          se::GpuComputeCapability{se::CudaComputeCapability(7, 0)})));
+}
+
+TEST(SupportsDynamicSliceCopyThunksTest, Rocm) {
+  EXPECT_FALSE(
+      SupportsDynamicSliceCopyThunks(TestGpuDeviceInfo::AMDMI210DeviceInfo()));
+  EXPECT_FALSE(
+      SupportsDynamicSliceCopyThunks(TestGpuDeviceInfo::AMDMI350DeviceInfo()));
 }
 
 }  // namespace

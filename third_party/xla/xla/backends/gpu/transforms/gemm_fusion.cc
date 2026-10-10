@@ -1226,6 +1226,24 @@ bool InstructionHasUntileableS4MinorDimension(
   return !tile_size.IsMultipleOf(2);
 }
 
+// Returns true if any instruction in `instructions`, or in any of their
+// (transitively) nested regions, has an untileable S4 minor dimension.
+bool AnyInstructionHasUntileableS4MinorDimension(
+    absl::Span<const experimental::TiledHloInstruction* const> instructions,
+    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacement_map) {
+  return absl::c_any_of(
+      instructions, [&](const experimental::TiledHloInstruction* inst) {
+        return InstructionHasUntileableS4MinorDimension(*inst,
+                                                        replacement_map) ||
+               absl::c_any_of(
+                   inst->hlo_regions(),
+                   [&](const experimental::TiledHloRegion& region) {
+                     return AnyInstructionHasUntileableS4MinorDimension(
+                         region.instructions(), replacement_map);
+                   });
+      });
+}
+
 // Most S4 parameters are okay, but there are cases where the tile size along
 // the minor-most physical dimension is not divisible by 2 (e.g. if it
 // corresponds to a batch dimension which we blindly tile to 1 at the moment, or
@@ -1257,15 +1275,13 @@ FusionDecision CanUnpackS4ParametersInFusion(
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
       BuildEvenBlockSizeReplacements(*tiled_dot, mlir_context);
 
-  // Parameters to the dot will be within its hlo_regions.
-  for (const auto& region : tiled_dot->hlo_regions()) {
-    for (const auto& inst : region.instructions()) {
-      if (InstructionHasUntileableS4MinorDimension(*inst, replacement_map)) {
-        return FusionDecision::Forbid(
-            "Cannot tile S4 parameter with minor dimension tile size not "
-            "divisible by 2.");
-      }
-    }
+  // Parameters may live at any nesting level: inside the dot's region, or
+  // hoisted out of it if their tile does not depend on the contracting loop.
+  if (AnyInstructionHasUntileableS4MinorDimension(
+          tiled_computation->instructions(), replacement_map)) {
+    return FusionDecision::Forbid(
+        "Cannot tile S4 parameter with minor dimension tile size not "
+        "divisible by 2.");
   }
   return FusionDecision::Allow();
 }
@@ -1435,7 +1451,25 @@ bool HasCoalescedMinorDimension(const ShapeTracker& inverted_tracker,
   return minor_bits >= 128 && minor_bits % 128 == 0;
 }
 
+// Returns true if the producer of `transpose` is going to be emitted by a
+// separate kernel that can absorb the transpose at no extra memory cost, i.e.
+// if it is an elementwise instruction (looking through bitcasts and reshapes)
+// whose only user is `transpose` and that `ShouldFuseOperand` would not fuse
+// into the GEMM. `transpose` must be an instruction of the original module, so
+// that all users of its producer are visible.
+bool ProducerCanAbsorbTranspose(const HloInstruction& transpose) {
+  const HloInstruction* producer = transpose.operand(0);
+  while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kReshape>(producer) &&
+         producer->user_count() == 1) {
+    producer = producer->operand(0);
+  }
+  return producer->user_count() == 1 && producer->IsElementwise() &&
+         !IsBinaryElementwiseOfBroadcastParamOrConst(*producer) &&
+         !triton_fusion::IsInputWorthFusing(*producer);
+}
+
 FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
+                                   const HloInstruction& original_transpose,
                                    const TrackerInfo& tracker) {
   const int64_t operand_index = tracker.dot_operand_index;
   ShapeTracker transpose_tracker = tracker.tracker;
@@ -1472,6 +1506,20 @@ FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
     return FusionDecision::Forbid(
         "Non-contracting RHS dimension has non-contiguous section.");
   }
+  // Fusing a transpose that makes a non-contracting dimension non-contiguous,
+  // without moving the minor-most dimension, saves no memory traffic if its
+  // producer is emitted by a separate kernel anyway: that kernel can write its
+  // output in the transposed order instead, at no extra cost. Fusing it,
+  // however, makes M or N multi-strided, which constrains the tiling of the
+  // GEMM and requires a separate transpose kernel if the GEMM ends up being
+  // lowered to cuBLAS. See b/571352199.
+  if (!inverted_tracker->MapsToOneStride(non_contracting) &&
+      !TransposesMinorDimension(&original_transpose) &&
+      ProducerCanAbsorbTranspose(original_transpose)) {
+    return FusionDecision::Forbid(
+        "Transpose within a non-contracting dimension can be fused into its "
+        "producer instead.");
+  }
   return FusionDecision::Allow();
 }
 
@@ -1488,7 +1536,7 @@ FusionDecision ShouldFuseOperand(HloInstruction* operand,
       if (!tracker.has_value()) {
         return FusionDecision::Forbid("No shape tracker found for transpose.");
       }
-      return ShouldFuseTranspose(*operand, *tracker);
+      return ShouldFuseTranspose(*operand, original_operand, *tracker);
     case HloOpcode::kConcatenate:
       if (!tracker.has_value()) {
         return FusionDecision::Forbid(

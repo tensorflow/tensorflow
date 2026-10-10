@@ -39,19 +39,18 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
-#include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
-#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -62,6 +61,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
@@ -292,7 +292,8 @@ std::unique_ptr<ConvolutionThunk> CreateConvolutionThunk(
       .feature_group_count = 1};
   auto thunk =
       ConvolutionThunk::Create(Thunk::ThunkInfo(), desc, operand_slices,
-                               result_slices, result_slices.back().slice);
+                               result_slices, result_slices.back().slice,
+                               /*devices_per_host=*/1);
   TF_CHECK_OK(thunk.status());
   return std::move(thunk).value();
 }
@@ -305,7 +306,8 @@ std::unique_ptr<AsyncStartThunk> WrapInAsyncStartThunk(
   Thunk::ThunkInfo thunk_info;
   thunk_info.thunk_id = ThunkId(next_id.fetch_add(1));
   return std::make_unique<AsyncStartThunk>(thunk_info, CommunicationStreamId(0),
-                                           std::move(sequence));
+                                           std::move(sequence),
+                                           /*devices_per_host=*/1);
 }
 
 std::unique_ptr<AsyncDoneThunk> CreateAllGatherDoneThunk(Thunk* start_thunk) {
@@ -321,9 +323,9 @@ std::unique_ptr<WhileThunk> CreateWhileThunk(
     std::optional<int64_t> trip_count = std::nullopt) {
   BufferAllocation::Slice slice(&alloc, 0, 1024);
 
-  return std::make_unique<WhileThunk>(Thunk::ThunkInfo(), slice,
-                                      std::move(condition_thunks),
-                                      std::move(body_thunks), trip_count);
+  return std::make_unique<WhileThunk>(
+      Thunk::ThunkInfo(), slice, std::move(condition_thunks),
+      std::move(body_thunks), trip_count, /*devices_per_host=*/1);
 }
 
 std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
@@ -333,7 +335,8 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
   Shape shape = ShapeUtil::MakeShape(S32, {});
 
   return std::make_unique<ConditionalThunk>(
-      Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks));
+      Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks),
+      /*devices_per_host=*/1);
 }
 
 std::unique_ptr<CuDnnThunk> CreateCuDnnThunk(const BufferAllocation& alloc0) {
@@ -351,7 +354,7 @@ std::unique_ptr<PartitionIdThunk> CreatePartitionIdThunk(
   return std::make_unique<PartitionIdThunk>(Thunk::ThunkInfo(), slice0);
 }
 
-std::unique_ptr<SelectKThunk> CreateSelectKThunk(
+std::unique_ptr<CustomCallThunk> CreateSelectKThunk(
     const BufferAllocation& alloc_in, const BufferAllocation& alloc_out_val,
     const BufferAllocation& alloc_out_idx,
     const BufferAllocation& alloc_scratch, int64_t batch_size = 1,
@@ -364,19 +367,23 @@ std::unique_ptr<SelectKThunk> CreateSelectKThunk(
   BufferAllocation::Slice slice_scratch(&alloc_scratch, 0,
                                         alloc_scratch.size());
 
-  emitters::KernelArgument arg0(
-      ShapeUtil::MakeShape(F32, {batch_size, num_elements}), slice_in);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {batch_size, k}),
-                                slice_out_val);
-  emitters::KernelArgument arg2(ShapeUtil::MakeShape(S32, {batch_size, k}),
-                                slice_out_idx);
-  emitters::KernelArgument arg3(
-      ShapeUtil::MakeShape(U8, {alloc_scratch.size()}), slice_scratch);
+  std::vector<NullableShapedSlice> operands = {
+      ShapedSlice{slice_in,
+                  ShapeUtil::MakeShape(F32, {batch_size, num_elements})},
+  };
+  std::vector<NullableShapedSlice> results = {
+      ShapedSlice{slice_out_val, ShapeUtil::MakeShape(F32, {batch_size, k})},
+      ShapedSlice{slice_out_idx, ShapeUtil::MakeShape(S32, {batch_size, k})},
+      ShapedSlice{slice_scratch,
+                  ShapeUtil::MakeShape(U8, {alloc_scratch.size()})},
+  };
 
-  emitters::KernelArguments kernel_arguments({arg0, arg1, arg2, arg3});
-
-  return std::make_unique<SelectKThunk>(Thunk::ThunkInfo(), batch_size,
-                                        num_elements, k, F32, kernel_arguments);
+  auto thunk = CustomCallThunk::Create(
+      Thunk::ThunkInfo(), std::string(kTopKCustomCallTarget),
+      std::move(operands), std::move(results), /*attributes=*/{},
+      /*called_computation=*/nullptr, "CUDA", se::GpuComputeCapability());
+  CHECK_OK(thunk.status());
+  return std::move(*thunk);
 }
 
 class FakeErrorAllocator : public ThunkPassBufferAllocator {
@@ -402,7 +409,7 @@ TEST(CommandBufferConversionPassTest, ConvertsToCommandBufferThunk) {
       CudaDeviceInfoWithVersion(se::SemanticVersion{12, 3, 0});
   FakeErrorAllocator allocator;
 
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   // CopyThunk should be converted to a CommandBufferThunk, because it is
   // supported in command buffers. The expected transformation is:
@@ -415,11 +422,10 @@ TEST(CommandBufferConversionPassTest, ConvertsToCommandBufferThunk) {
   EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
   EXPECT_THAT(thunks[0]->thunk_info().profile_annotation, "command_buffer_0");
 
-  const auto* command_buffer_thunk =
-      static_cast<const CommandBufferThunk*>(thunks[0].get());
-
   const auto& thunks_in_command_buffer =
-      command_buffer_thunk->thunks()->thunks();
+      static_cast<const CommandBufferThunk*>(thunks[0].get())
+          ->thunks()
+          ->thunks();
   EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kCopy));
 }
 
@@ -450,7 +456,7 @@ TEST(CommandBufferConversionPassTest, ChecksKnownCudaVersions) {
         CudaDeviceInfoWithVersion(test_case.runtime_version);
     device_info.set_driver_version(test_case.driver_version);
     FakeErrorAllocator allocator;
-    CommandBufferConversionPass pass{"test"};
+    CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
     ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                          device_info, allocator),
@@ -487,7 +493,7 @@ TEST(CommandBufferConversionPassTest,
   se::DeviceDescription device_info =
       CudaDeviceInfoWithVersion(se::SemanticVersion{12, 3, 0});
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
@@ -498,7 +504,7 @@ TEST(CommandBufferConversionPassTest,
       static_cast<const CommandBufferThunk*>(thunks[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
-  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kSelectK));
+  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kCustomCall));
 }
 
 TEST(CommandBufferConversionPassTest,
@@ -528,13 +534,13 @@ TEST(CommandBufferConversionPassTest,
   se::DeviceDescription device_info =
       CudaDeviceInfoWithVersion(se::SemanticVersion{12, 3, 0});
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(false));
 
-  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kSelectK));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCustomCall));
 }
 
 TEST(CommandBufferConversionPassTest,
@@ -558,7 +564,7 @@ TEST(CommandBufferConversionPassTest,
   se::DeviceDescription device_info =
       CudaDeviceInfoWithVersion(se::SemanticVersion{12, 9, 0});
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
@@ -592,7 +598,7 @@ TEST(CommandBufferConversionPassTest,
   se::DeviceDescription device_info =
       CudaDeviceInfoWithVersion(se::SemanticVersion{12, 8, 0});
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
@@ -622,7 +628,7 @@ TEST(CommandBufferConversionPassTest,
   se::DeviceDescription device_info =
       CudaDeviceInfoWithVersion(se::SemanticVersion{12, 9, 0});
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
@@ -631,7 +637,7 @@ TEST(CommandBufferConversionPassTest,
 }
 
 TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ThunkSequence thunks;
 
@@ -681,7 +687,7 @@ TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
 }
 
 TEST(CommandBufferConversionPassTest, ConvertConvolutionAndGemmThunks) {
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ThunkSequence thunks;
 
@@ -737,7 +743,7 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(true));
@@ -768,7 +774,8 @@ TEST(CommandBufferConversionPassTest,
   Thunk::ThunkInfo thunk_info;
   thunk_info.thunk_id = ThunkId(999);
   thunks.push_back(std::make_unique<AsyncStartThunk>(
-      thunk_info, ComputationStreamId(1), std::move(nested_sequence)));
+      thunk_info, ComputationStreamId(1), std::move(nested_sequence),
+      /*devices_per_host=*/1));
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
@@ -780,7 +787,7 @@ TEST(CommandBufferConversionPassTest,
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(true));
@@ -806,7 +813,8 @@ TEST(CommandBufferConversionPassTest,
   ThunkSequence async_seq;
   async_seq.push_back(std::move(group_thunk));
   thunks.push_back(std::make_unique<AsyncStartThunk>(
-      start_info, CommunicationStreamId(0), std::move(async_seq)));
+      start_info, CommunicationStreamId(0), std::move(async_seq),
+      /*devices_per_host=*/1));
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
@@ -816,7 +824,7 @@ TEST(CommandBufferConversionPassTest,
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(true));
@@ -842,7 +850,8 @@ TEST(CommandBufferConversionPassTest,
   ThunkSequence async_seq;
   async_seq.push_back(std::move(group_thunk));
   thunks.push_back(std::make_unique<AsyncStartThunk>(
-      start_info, CommunicationStreamId(0), std::move(async_seq)));
+      start_info, CommunicationStreamId(0), std::move(async_seq),
+      /*devices_per_host=*/1));
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
@@ -852,7 +861,7 @@ TEST(CommandBufferConversionPassTest,
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(false));
@@ -881,7 +890,7 @@ TEST(CommandBufferConversionPassTest,
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   // Expected no transformation, because there is a non-convertible thunk in
   // between the asyncs.
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
@@ -905,7 +914,7 @@ TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
   thunks.push_back(CreateAllGatherDoneThunk(thunks[1].get()));
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
@@ -945,7 +954,7 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
   thunks.push_back(CreateAllGatherDoneThunk(thunks[1].get()));
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
@@ -992,7 +1001,7 @@ TEST(CommandBufferConversionPassTest, DontConvertAsyncsIfUnpairedStart) {
   thunks.push_back(CreateCopyThunk(alloc0));
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
@@ -1052,7 +1061,7 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(true));
@@ -1090,7 +1099,7 @@ TEST(CommandBufferConversionPassTest, DontConvertIfNotMinGraphSize) {
 
   ASSERT_EQ(thunks.size(), 1);
 
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   // The size of the sequence is less than the min graph size, so it should not
   // be converted to a command buffer.
@@ -1104,7 +1113,7 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
   if (GetPlatformName() == "ROCM") {
     GTEST_SKIP() << "Not supported on ROCm";
   }
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ThunkSequence thunks;
 
@@ -1194,7 +1203,7 @@ TEST(CommandBufferConversionPassTest,
   se::DeviceDescription device_info =
       CudaDeviceInfoWithVersion(se::SemanticVersion{12, 9, 0});
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
@@ -1248,7 +1257,7 @@ TEST(CommandBufferConversionPassTest,
   se::DeviceDescription device_info =
       CudaDeviceInfoWithVersion(se::SemanticVersion{12, 9, 0});
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
@@ -1269,7 +1278,7 @@ TEST(CommandBufferConversionPassTest,
   // Check that if a branch of a conditional thunk is not convertible, the
   // conditional thunk is not convertible either, but the branches are attempted
   // to be converted independently.
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ThunkSequence thunks;
 
@@ -1324,7 +1333,7 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
   if (GetPlatformName() == "ROCM") {
     GTEST_SKIP() << "Not supported on ROCm";
   }
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ThunkSequence thunks;
 
@@ -1401,7 +1410,7 @@ TEST(CommandBufferConversionPassTest, ConvertsCuDnnThunkToCommandBufferThunk) {
 
   ASSERT_EQ(thunks.size(), 1);
 
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   // The expected transformation is: SequentialThunk(CuDnnThunk) ->
   // SequentialThunk(CommandBufferThunk(CuDnnThunk))
@@ -1419,7 +1428,7 @@ TEST(CommandBufferConversionPassTest, ConvertsCuDnnThunkToCommandBufferThunk) {
 }
 
 TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
-  CommandBufferConversionPass pass{"test"};
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
 
   ThunkSequence thunks;
 
@@ -1483,7 +1492,8 @@ TEST(CommandBufferConversionPassTest, ConvertAsyncStartDonePair) {
 
   // Create AsyncStartThunk with an empty nested sequence.
   auto start_thunk = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), ComputationStreamId(0), ThunkSequence{});
+      Thunk::ThunkInfo(), ComputationStreamId(0), ThunkSequence{},
+      /*devices_per_host=*/1);
   auto async_execution = start_thunk->async_execution();
   thunks.push_back(std::move(start_thunk));
 
@@ -1496,7 +1506,7 @@ TEST(CommandBufferConversionPassTest, ConvertAsyncStartDonePair) {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
 
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(true));
@@ -1509,7 +1519,8 @@ TEST(CommandBufferConversionPassTest,
 
   // Create AsyncStartThunk with an empty nested sequence.
   auto start_thunk = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), ComputationStreamId(0), ThunkSequence{});
+      Thunk::ThunkInfo(), ComputationStreamId(0), ThunkSequence{},
+      /*devices_per_host=*/1);
   auto async_execution = start_thunk->async_execution();
   thunks.push_back(std::move(start_thunk));
 
@@ -1525,7 +1536,7 @@ TEST(CommandBufferConversionPassTest,
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
 
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   // Expected no transformation, because there is a non-convertible thunk in
   // between the async start and done.
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
@@ -1553,7 +1564,7 @@ TEST(CommandBufferConversionPassTest,
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(true));
@@ -1579,7 +1590,7 @@ TEST(CommandBufferConversionPassTest,
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(false));
@@ -1601,7 +1612,7 @@ TEST(CommandBufferConversionPassTest, CollectivesFilterDefaultsToAll) {
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   FakeErrorAllocator allocator;
-  CommandBufferConversionPass pass("test");
+  CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(true));

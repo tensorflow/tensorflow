@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -770,6 +771,7 @@ RpcCheckStatusOp::RpcCheckStatusOp(OpKernelConstruction* ctx)
     : AsyncOpKernel(ctx) {}
 
 void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  auto cleanup = gtl::MakeCleanup([&done]() { done(); });
   core::RefCountPtr<RpcFutureResource> future_resource;
   auto handle = HandleFromInput(ctx, 0);
   {
@@ -779,14 +781,14 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         ctx->SetStatus(absl::NotFoundError(
             "Future resource no longer exists. Please make sure "
             "resource is not already deleted."));
-        done();
-        return;
       } else {
         ctx->SetStatus(status);
       }
+      return;
     }
   }
 
+  cleanup.release();
   future_resource->AddDoneCallback(
       [ctx, done, handle](const absl::Status& status,
                           const CallResponse& response) {
@@ -805,6 +807,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 RpcGetValueOp::RpcGetValueOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {}
 
 void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  auto cleanup = gtl::MakeCleanup([&done]() { done(); });
   core::RefCountPtr<RpcFutureResource> future_resource;
   auto handle = HandleFromInput(ctx, 0);
   {
@@ -814,14 +817,14 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         ctx->SetStatus(absl::NotFoundError(
             "Future resource no longer exists. Please ensure "
             "resource is not already deleted."));
-        done();
-        return;
       } else {
         ctx->SetStatus(status);
       }
+      return;
     }
   }
 
+  cleanup.release();
   future_resource->AddDoneCallback([ctx, done, handle](
                                        const absl::Status& status,
                                        const CallResponse& response) {

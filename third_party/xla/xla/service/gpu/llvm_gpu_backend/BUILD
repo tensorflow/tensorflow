@@ -81,7 +81,6 @@ cc_library(
         ":llvm_gpu_backend",
         ":load_ir_module",
         ":nvptx_libdevice_path",
-        ":ptx_version_util",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/service/gpu:metrics",
@@ -90,7 +89,6 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -112,7 +110,7 @@ cc_library(
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-        "@local_config_cuda//cuda:cuda_headers",
+        "@llvm-project//llvm:TargetParser",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:scoped_annotation",
         "@tsl//tsl/profiler/lib:traceme",
@@ -294,6 +292,8 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 

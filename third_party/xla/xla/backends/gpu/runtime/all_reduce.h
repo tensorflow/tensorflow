@@ -94,8 +94,10 @@ LaunchDimensions AllReduceLaunchDimensions(
     const se::DeviceDescription& device_info);
 
 // Creates a CollectiveKernelSpec for a given all-reduce instruction.
+// `scratch_memory_type` is used for both scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type);
 
 // Returns absl::OkStatus() if supported, or an error status detailing why
 // it is not supported.
