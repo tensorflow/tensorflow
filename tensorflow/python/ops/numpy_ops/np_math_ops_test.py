@@ -174,7 +174,10 @@ class MathTest(test.TestCase, parameterized.TestCase):
     # branch out of Python scalars made it float32 for every real dtype, which
     # for float64 also cost precision.
     for dtype in [np.float16, np.float32, np.float64]:
-      arg = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=dtype)
+      arg = np.array(
+          [-2.0, -0.5, -0.0, 0.0, 0.5, 2.0, np.nan, np.inf, -np.inf],
+          dtype=dtype,
+      )
       self.match(
           np_math_ops.angle(arg), np.angle(arg), msg='angle({})'.format(arg)
       )
@@ -901,6 +904,53 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testCbrt(self):
+    for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      x_np = np.array(
+          [-0.0, 0.0, -8.0, 8.0, -27.0, 27.0], dtype=dtype.as_numpy_dtype
+      )
+      x = constant_op.constant(x_np, dtype=dtype)
+      out = np_math_ops.cbrt(x)
+      self.assertAllClose(out, np.cbrt(x_np))
+      self.assertAllEqual(np_math_ops.signbit(out), np.signbit(np.cbrt(x_np)))
+
+    x_neg_zero = constant_op.constant(-0.0, dtype=dtypes.float64)
+    self.assertAllEqual(
+        math_ops.reciprocal(np_math_ops.cbrt(x_neg_zero)),
+        -np.inf,
+    )
+
+    x_bf16 = constant_op.constant([-0.0, 0.0, -8.0, 8.0], dtype=dtypes.bfloat16)
+    out_bf16 = np_math_ops.cbrt(x_bf16)
+    self.assertAllClose(out_bf16, [-0.0, 0.0, -2.0, 2.0])
+    self.assertAllEqual(
+        np_math_ops.signbit(out_bf16), [True, False, True, False]
+    )
+
+    for dtype in (
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.bfloat16,
+    ):
+      # Verify N=0 (empty tensor) fallback.
+      x_empty = constant_op.constant([], dtype=dtype)
+      out_empty = np_math_ops.cbrt(x_empty)
+      self.assertEqual(out_empty.shape.num_elements(), 0)
+
+      # Verify NaN, +Inf, -Inf
+      x_edge = constant_op.constant(
+          [-float('inf'), float('inf'), float('nan')], dtype=dtype
+      )
+      out_edge = np_math_ops.cbrt(x_edge)
+      # inf ** (1/3) == inf; NaN ** (1/3) == NaN
+      # Negative sign bit for -inf is preserved.
+      self.assertAllEqual(
+          out_edge[0:2], [-float('inf'), float('inf')]
+      )
+      self.assertAllEqual(np_math_ops.signbit(out_edge[0:2]), [True, False])
+      self.assertAllEqual(math_ops.is_nan(out_edge[2]), True)
 
   def testSinc(self):
     for dtype in (dtypes.float32, dtypes.float64):
