@@ -1604,6 +1604,155 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
           self.evaluate([s, j])
 
 
+class SparseSegmentReductionInvalidIndicesGpuTest(
+    test.TestCase, parameterized.TestCase
+):
+  """Out-of-range indices must not cause out-of-bounds reads on GPU.
+
+  The GPU kernels do not validate indices, and the output for a segment that
+  contains an out-of-range row is unspecified. These tests check that the op
+  runs, and only check the values of segments whose rows are all valid.
+  """
+
+  _OPS = (
+      math_ops.sparse_segment_sum,
+      math_ops.sparse_segment_mean,
+      math_ops.sparse_segment_sqrt_n,
+  )
+
+  @parameterized.product(
+      dtype=(
+          dtypes_lib.float16,
+          dtypes_lib.bfloat16,
+          dtypes_lib.float32,
+          dtypes_lib.float64,
+      ),
+      index_dtype=(dtypes_lib.int32, dtypes_lib.int64),
+  )
+  @test_util.disable_xla("Tests TF GPU kernel handling of invalid indices")
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testIndicesOutOfRange(self, dtype, index_dtype):
+    np_dtype = dtype.as_numpy_dtype
+    empty_data = constant_op.constant(np.zeros([0, 4], dtype=np_dtype))
+    data = constant_op.constant(np.ones([3, 4], dtype=np_dtype))
+    for tf_op in self._OPS:
+      for num_segments in (None, 3):
+        # Every index is out of range for empty data.
+        result = self.evaluate(
+            tf_op(
+                data=empty_data,
+                indices=constant_op.constant(
+                    [48, 0, 116, 0], dtype=index_dtype
+                ),
+                segment_ids=constant_op.constant([0, 0, 0, 0]),
+                num_segments=num_segments,
+            )
+        )
+        self.assertAllEqual([num_segments or 1, 4], result.shape)
+        # Segment 0 reads only valid rows; segment 1 reads only invalid rows.
+        test_indices = [1, 2**30, -(2**30)]
+        test_segment_ids = [0, 1, 1]
+        if index_dtype == dtypes_lib.int64:
+          test_indices.append(2**33 + 1)
+          test_segment_ids.append(1)
+        result = self.evaluate(
+            tf_op(
+                data=data,
+                indices=constant_op.constant(test_indices, dtype=index_dtype),
+                segment_ids=constant_op.constant(test_segment_ids),
+                num_segments=num_segments,
+            )
+        )
+        self.assertAllEqual([num_segments or 2, 4], result.shape)
+        self.assertAllEqual(np.ones([4], dtype=np_dtype), result[0])
+
+  @parameterized.product(
+      dtype=(
+          dtypes_lib.float16,
+          dtypes_lib.bfloat16,
+          dtypes_lib.float32,
+          dtypes_lib.float64,
+      ),
+      index_dtype=(dtypes_lib.int32, dtypes_lib.int64),
+  )
+  @test_util.disable_xla("Tests TF GPU kernel handling of invalid indices")
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testIndicesOutOfRangeNoInnerDim(self, dtype, index_dtype):
+    # An inner size of 1 and at least 512 rows per segment take the GPU path
+    # that has no inner dimension.
+    np_dtype = dtype.as_numpy_dtype
+    indices = np.zeros([1200], dtype=index_dtype.as_numpy_dtype)
+    indices[0] = 1
+    indices[1::2] = 2**30
+    indices[2::4] = -(2**30)
+    if index_dtype == dtypes_lib.int64:
+      indices[3::4] = 2**33 + 1
+    segment_ids = constant_op.constant([0] + [1] * 1199)
+    for tf_op in self._OPS:
+      for num_segments in (None, 2):
+        result = self.evaluate(
+            tf_op(
+                data=constant_op.constant(np.zeros([0, 1], dtype=np_dtype)),
+                indices=constant_op.constant(indices),
+                segment_ids=segment_ids,
+                num_segments=num_segments,
+            )
+        )
+        self.assertAllEqual([2, 1], result.shape)
+        result = self.evaluate(
+            tf_op(
+                data=constant_op.constant(np.ones([2, 1], dtype=np_dtype)),
+                indices=constant_op.constant(indices),
+                segment_ids=segment_ids,
+                num_segments=num_segments,
+            )
+        )
+        self.assertAllEqual([2, 1], result.shape)
+        self.assertAllEqual(np.ones([1], dtype=np_dtype), result[0])
+
+  @parameterized.product(
+      dtype=(
+          dtypes_lib.float16,
+          dtypes_lib.bfloat16,
+          dtypes_lib.float32,
+          dtypes_lib.float64,
+      ),
+      segment_id_dtype=(dtypes_lib.int32, dtypes_lib.int64),
+  )
+  @test_util.disable_xla("Tests TF GPU kernel handling of invalid segment ids")
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testGradV2SegmentIdsOutOfRange(self, dtype, segment_id_dtype):
+    # The segment ids index rows of grad. Use more rows than int16 can count,
+    # so that the GPU kernel keeps the segment ids as int32.
+    np_dtype = dtype.as_numpy_dtype
+    grad = constant_op.constant(np.ones([40000, 4], dtype=np_dtype))
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    seg_ids = [0, 2**30, -(2**30)]
+    if segment_id_dtype == dtypes_lib.int64:
+      seg_ids.append(2**33 + 1)
+    for tf_op in ops_list:
+      xgrad, unique_indices = self.evaluate(
+          tf_op(
+              grad,
+              constant_op.constant(
+                  list(range(len(seg_ids))), dtype=dtypes_lib.int32
+              ),
+              constant_op.constant(seg_ids, dtype=segment_id_dtype),
+              len(seg_ids),
+          )
+      )
+      self.assertAllEqual([len(seg_ids), 4], xgrad.shape)
+      self.assertAllEqual(list(range(len(seg_ids))), unique_indices)
+      self.assertAllEqual(np.ones([4], dtype=np_dtype), xgrad[0])
+
+
 class SegmentReductionOpBenchmark(test.Benchmark):
   outer_dim_options = [2**x for x in range(9, 14, 2)]
   ratio_options = [2**x for x in range(1, 6, 2)]
