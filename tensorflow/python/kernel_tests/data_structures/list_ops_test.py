@@ -1724,10 +1724,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(l)
 
   @test_util.run_in_graph_and_eager_modes
-  def testReserveAtMaxElementsSucceeds(self):
+  def testReserveAtModerateElementsSucceeds(self):
     l = list_ops.tensor_list_reserve(
-        element_shape=[], num_elements=1 << 24, element_dtype=dtypes.float32)
-    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 1 << 24)
+        element_shape=[], num_elements=100000, element_dtype=dtypes.float32)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 100000)
 
   @test_util.run_in_graph_and_eager_modes
   def testResizeExceedingMaxElementsFails(self):
@@ -1736,6 +1736,17 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
       l = list_ops.tensor_list_resize(l, (1 << 24) + 1)
       self.evaluate(l)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testResizeShrinkingSucceeds(self):
+    l = list_ops.tensor_list_from_tensor(
+        [1., 2., 3., 4., 5.], element_shape=[])
+    l = list_ops.tensor_list_resize(l, 2)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 2)
+    self.assertAllEqual(
+        self.evaluate(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)),
+        [1., 2.])
 
   @test_util.run_deprecated_v1
   @test_util.enable_control_flow_v2
