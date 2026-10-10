@@ -46,12 +46,24 @@ def cond_with_multiple_values(x):
   return x, y, z
 
 
+def side_effect_only_ifexp_with_imbalanced_structure(x):
+  traced_args = tf.unstack(x) if tf.size(x) > 0 else []
+  tf.autograph.trace(*traced_args)
+  return x * 2 + 1
+
+
 class ReferenceTest(reference_test_base.TestCase):
 
   def test_basic(self):
     for x in [-1, 1, 5, tf.constant(-1), tf.constant(1), tf.constant(5)]:
       self.assertFunctionMatchesEager(consecutive_conds, x)
       self.assertFunctionMatchesEager(cond_with_multiple_values, x)
+
+  def test_imbalanced_conditional_expression_raises_value_error(self):
+    with self.assertRaisesRegex(
+        ValueError, 'must return the same nested structure in both branches'):
+      self.function(side_effect_only_ifexp_with_imbalanced_structure)(
+          tf.constant([1.0]))
 
 
 if __name__ == '__main__':
