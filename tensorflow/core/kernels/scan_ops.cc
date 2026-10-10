@@ -13,14 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/scan_ops.h"
+
+#include <type_traits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
@@ -68,7 +71,6 @@ class ScanOp : public OpKernel {
     if (output_shape.num_elements() == 0) return;
 
     const Device& d = ctx->eigen_device<Device>();
-    Reducer reducer;
 
     // Dim reduction.
     int64_t reduced_shape[3] = {1, 1, 1};
@@ -80,6 +82,65 @@ class ScanOp : public OpKernel {
       reduced_shape[2] *= input.dim_size(i);
     }
 
+    // bfloat16 and float16 keep only ~8 / ~10 mantissa bits, so accumulating a
+    // long sequence directly in the 16-bit type rounds the running total at
+    // every step and drifts far from the exact result. Upcast to float32 for
+    // the accumulation and cast the result back; this achieves numerical
+    // accuracy comparable to the GPU CUB block scan, preserves the documented
+    // output dtype, and avoids committing the 16-bit rounding error on the CPU
+    // path.
+    //
+    // The upcast is fused into the reduction: `.cast<float>()` is chained into
+    // the scan expression, so no full-size float32 temporaries are allocated.
+    // The narrowing `.cast<T>()` must come *before* the trailing
+    // `.reverse(dims)`. Eigen's block-based evaluation hands the same
+    // destination block down the whole expression chain, so every node that
+    // receives it needs the destination's scalar type; with the narrow-cast
+    // last, a float32 `reverse` node sits directly over the 16-bit destination
+    // and writes 4-byte elements into a 2-byte-per-element buffer.
+    if constexpr (std::is_same_v<Device, CPUDevice> &&
+                  (std::is_same_v<Reducer,
+                                   Eigen::internal::SumReducer<T>> ||
+                   std::is_same_v<Reducer,
+                                   Eigen::internal::ProdReducer<T>> ||
+                   std::is_same_v<Reducer,
+                                   functor::LogSumExpReducer<T>>) &&
+                  (std::is_same_v<T, ::tensorflow::bfloat16> ||
+                   std::is_same_v<T, Eigen::half>)) {
+      Eigen::array<bool, 3> dims;
+      dims[0] = false;
+      dims[1] = reverse_;
+      dims[2] = false;
+
+      // Map the 16-bit reducer onto its float32 counterpart, so inputs,
+      // outputs and the reducer are all float32 inside the scan.
+      auto float_reducer = []() {
+        if constexpr (std::is_same_v<Reducer,
+                                     Eigen::internal::SumReducer<T>>) {
+          return Eigen::internal::SumReducer<float>();
+        } else if constexpr (std::is_same_v<Reducer,
+                                            Eigen::internal::ProdReducer<T>>) {
+          return Eigen::internal::ProdReducer<float>();
+        } else {
+          return functor::LogSumExpReducer<float>();
+        }
+      };
+
+      MaybeWith32BitIndexing<Device>(
+          [&](auto in32, auto out32) {
+            out32.device(d) =
+                in32.template cast<float>()
+                    .reverse(dims)
+                    .scan(1, float_reducer(), exclusive_)
+                    .template cast<T>()
+                    .reverse(dims);
+          },
+          input.shaped<T, 3>(reduced_shape),
+          output->shaped<T, 3>(reduced_shape));
+      return;
+    }
+
+    Reducer reducer;
     functor::Scan<Device, Reducer, T>()(d, input.shaped<T, 3>(reduced_shape),
                                         output->shaped<T, 3>(reduced_shape),
                                         reducer, reverse_, exclusive_);
