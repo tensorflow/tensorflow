@@ -40,8 +40,135 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
+class _ArrayProtocol:
+  """Minimal stand-in for a container exposing `__array__` (e.g. a Series)."""
+
+  def __init__(self, array):
+    self._array = array
+
+  def __array__(self, dtype=None, copy=None):  # pylint: disable=unused-argument
+    return np.asarray(self._array, dtype=dtype)
+
+
+class _ArrayInterfaceProtocol:
+  """Minimal stand-in for a container exposing `__array_interface__`."""
+
+  def __init__(self, array):
+    self._array = np.asarray(array)
+
+  @property
+  def __array_interface__(self):
+    return self._array.__array_interface__
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class TensorUtilTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ("Int32Float16", dtypes.int32, np.float16),
+      ("Int32Float32", dtypes.int32, np.float32),
+      ("Int32Float64", dtypes.int32, np.float64),
+      ("Int32Complex64", dtypes.int32, np.complex64),
+      ("Int32Complex128", dtypes.int32, np.complex128),
+      ("Int32Bfloat16", dtypes.int32, dtypes.bfloat16.as_numpy_dtype),
+      ("Int32Float8E4M3FN", dtypes.int32,
+       dtypes.float8_e4m3fn.as_numpy_dtype),
+      ("Int32Float8E5M2", dtypes.int32, dtypes.float8_e5m2.as_numpy_dtype),
+      ("Int64Float16", dtypes.int64, np.float16),
+      ("Int64Float32", dtypes.int64, np.float32),
+      ("Int64Float64", dtypes.int64, np.float64),
+      ("Int64Complex64", dtypes.int64, np.complex64),
+      ("Int64Complex128", dtypes.int64, np.complex128),
+      ("Int64Bfloat16", dtypes.int64, dtypes.bfloat16.as_numpy_dtype),
+      ("Int64Float8E4M3FN", dtypes.int64,
+       dtypes.float8_e4m3fn.as_numpy_dtype),
+      ("Int64Float8E5M2", dtypes.int64, dtypes.float8_e5m2.as_numpy_dtype),
+      ("Uint8Float16", dtypes.uint8, np.float16),
+      ("Uint8Float32", dtypes.uint8, np.float32),
+      ("Uint8Float64", dtypes.uint8, np.float64),
+      ("Uint8Complex64", dtypes.uint8, np.complex64),
+      ("Uint8Complex128", dtypes.uint8, np.complex128),
+      ("Uint8Bfloat16", dtypes.uint8, dtypes.bfloat16.as_numpy_dtype),
+      ("Uint8Float8E4M3FN", dtypes.uint8,
+       dtypes.float8_e4m3fn.as_numpy_dtype),
+      ("Uint8Float8E5M2", dtypes.uint8, dtypes.float8_e5m2.as_numpy_dtype),
+  )
+  def testNonFiniteToIntegerDtypeRaises(self, dtype, values_dtype):
+    # NumPy arrays holding NaN or Inf must be rejected instead of being
+    # silently mapped to the smallest representable integer, so that
+    # `make_tensor_proto` agrees with the Python-list conversion path. This is
+    # exercised across real, complex, and bfloat16 input dtypes.
+    expected_regex = r"NaN and Inf cannot be represented as an integer"
+    # Mirror `constant_op_test`: NumPy scalars and 0-D arrays (ndim == 0,
+    # size == 1) reach the guard by a different route than 1-D arrays, so they
+    # have to be rejected as well. `values_dtype` is a NumPy scalar type (or
+    # the bfloat16 scalar type) and is therefore callable.
+    for value in (values_dtype(np.nan),
+                  np.array(np.nan, dtype=values_dtype),
+                  np.array([np.nan], dtype=values_dtype),
+                  np.array([np.inf], dtype=values_dtype),
+                  np.array([-np.inf], dtype=values_dtype),
+                  np.array([1.0, np.nan], dtype=values_dtype),
+                  # NaN must be detected when it is not an extreme element of a
+                  # 2-D array either, mirroring `constant_op_test`.
+                  np.array([[1.0, np.nan], [3.0, 4.0]],
+                           dtype=values_dtype),
+                  # Array-like containers are normalized through `np_asarray`
+                  # before the guard runs, so `__array__` (pandas.Series)
+                  # objects have to be rejected too.
+                  _ArrayProtocol(np.array([np.nan], dtype=values_dtype))):
+      with self.assertRaisesRegex(TypeError, expected_regex):
+        tensor_util.make_tensor_proto(value, dtype=dtype)
+
+    # `__array_interface__` containers (e.g. a PIL image) are equally opaque to
+    # the Python wrappers. That protocol only round-trips plain NumPy dtypes, so
+    # it is checked with float32 rather than the 16/8-bit types above.
+    for value in (_ArrayInterfaceProtocol(np.array([np.nan], dtype=np.float32)),
+                  _ArrayInterfaceProtocol(
+                      np.array([1.0, np.inf], dtype=np.float32))):
+      with self.assertRaisesRegex(TypeError, expected_regex):
+        tensor_util.make_tensor_proto(value, dtype=dtype)
+
+    # `values_dtype(np.nan)` for a complex dtype produces `nan + 0j`, so the
+    # imaginary plane is never exercised above. Check it explicitly across
+    # scalars, 0-D, 1-D and 2-D containers, mirroring the complex cases in
+    # `constant_op_test`.
+    if values_dtype in (np.complex64, np.complex128):
+      for value in (values_dtype(complex(1.0, np.nan)),
+                    np.array(complex(1.0, np.nan), dtype=values_dtype),
+                    np.array([complex(1.0, np.nan)], dtype=values_dtype),
+                    np.array([complex(1.0, np.inf)], dtype=values_dtype),
+                    np.array([[complex(1.0, 0.0), complex(1.0, np.nan)],
+                              [complex(3.0, 0.0), complex(4.0, 0.0)]],
+                             dtype=values_dtype)):
+        with self.assertRaisesRegex(TypeError, expected_regex):
+          tensor_util.make_tensor_proto(value, dtype=dtype)
+
+    # Finite floats are still truncated as before. 1.25 is exactly representable
+    # in every dtype under test, including the float8 variants, so the
+    # truncating result is unambiguous.
+    proto = tensor_util.make_tensor_proto(
+        np.array([1.25], dtype=values_dtype), dtype=dtype)
+    self.assertAllEqual([1], tensor_util.MakeNdarray(proto))
+
+    # Empty inputs and NumPy scalars take their respective shortcuts.
+    self.assertAllEqual(
+        [],
+        tensor_util.MakeNdarray(
+            tensor_util.make_tensor_proto(np.array([], dtype=values_dtype),
+                                          dtype=dtype)))
+    self.assertAllEqual(
+        1,
+        tensor_util.MakeNdarray(
+            tensor_util.make_tensor_proto(np.array(1.25, dtype=values_dtype),
+                                          dtype=dtype)))
+
+    # Floating point dtypes still accept NaN and Inf.
+    self.assertAllEqual(
+        [np.nan],
+        tensor_util.MakeNdarray(
+            tensor_util.make_tensor_proto(np.array([np.nan]),
+                                          dtype=dtypes.float32)))
 
   def testFloat(self):
     value = 10.0

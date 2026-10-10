@@ -582,6 +582,7 @@ EXPORTS
  ?ProcessStepStats@StatSummarizer@tensorflow@@QEAAXAEBVStepStats@2@@Z
  ?Profile@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBV34@0@Z
  ?ProfilerFromFile@tfprof@tensorflow@@YAXPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+ ?PyArrayToIntegerArray@tensorflow@@YAPEAU_object@@PEAU2@0@Z
  ?PyBytesAsStringView@pybind11_protobuf@@YA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@Vbytes@pybind11@@@Z
  ?PyProtoGetCppMessagePointer@pybind11_protobuf@@YAPEBVMessage@protobuf@google@@Vhandle@pybind11@@@Z
  ?PyProtoHasMatchingFullName@pybind11_protobuf@@YA_NVhandle@pybind11@@PEBVDescriptor@protobuf@google@@@Z
