@@ -144,11 +144,16 @@ class TridiagonalMulOpTest(test.TestCase):
         subdiag, -1)
     rhs = np.array([[1., 1.], [2., 2.], [3., 3.]])
     expected = [[3., 3.], [12., 12.], [5., 5.]]
+    diags_sequence = (np.pad(superdiag, [0, 1]), np.array(maindiag),
+                      np.pad(subdiag, [1, 0]))
     with self.cached_session():
-      for diags, diags_format in ((diags_compact, 'compact'),
-                                  (diags_matrix, 'matrix')):
+      for diags, diags_list, diags_format in (
+          (diags_compact, diags_compact.tolist(), 'compact'),
+          (diags_matrix, diags_matrix.tolist(), 'matrix'),
+          (diags_sequence, [d.tolist() for d in diags_sequence], 'sequence')):
         for diags_input, rhs_input in ((diags, rhs),
-                                       (diags.tolist(), rhs.tolist())):
+                                       (diags_list, rhs.tolist()),
+                                       (diags, rhs.tolist())):
           result = linalg_impl.tridiagonal_matmul(
               diags_input, rhs_input, diagonals_format=diags_format)
           self.assertAllClose(self.evaluate(result), expected)

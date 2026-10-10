@@ -294,6 +294,16 @@ class TridiagonalSolveOpTest(test.TestCase):
     expected = np.array([-9., 5., -4., 4.])
     self._test(
         diags=np.array(_sample_diags, np.float64), rhs=rhs, expected=expected)
+    # Batch of systems.
+    self._test(
+        diags=np.array([_sample_diags, _sample_diags], np.float64),
+        rhs=np.array([rhs, rhs]),
+        expected=np.array([expected, expected]))
+    # Several right-hand sides.
+    self._test(
+        diags=np.array(_sample_diags, np.float64),
+        rhs=np.stack([rhs, -rhs], axis=-1),
+        expected=np.stack([expected, -expected], axis=-1))
     self._test(
         diags=(np.array([2., 1., 4.]), np.array([1., 3., 2., 2.]),
                np.array([1., -1., 1.])),
@@ -306,6 +316,28 @@ class TridiagonalSolveOpTest(test.TestCase):
         rhs=rhs,
         expected=expected,
         diags_format="matrix")
+
+  def testListInputs(self):
+    rhs = [1., 2., 3., 4.]
+    expected = [-9., 5., -4., 4.]
+    self._test(
+        diags=[[2., 1., 4., 0.], [1., 3., 2., 2.], [0., 1., -1., 1.]],
+        rhs=rhs,
+        expected=expected)
+    self._test(
+        diags=([2., 1., 4.], [1., 3., 2., 2.], [1., -1., 1.]),
+        rhs=rhs,
+        expected=expected,
+        diags_format="sequence")
+    self._test(
+        diags=[[1., 2., 0., 0.], [1., 3., 1., 0.], [0., -1., 2., 4.],
+               [0., 0., 1., 2.]],
+        rhs=rhs,
+        expected=expected,
+        diags_format="matrix")
+    # A list rhs takes the dtype of float64 diagonals.
+    self._test(
+        diags=np.array(_sample_diags, np.float64), rhs=rhs, expected=expected)
 
   def testMatrixFormat(self):
     self._testWithLists(

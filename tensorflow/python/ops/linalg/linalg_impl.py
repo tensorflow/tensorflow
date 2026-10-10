@@ -611,8 +611,10 @@ def tridiagonal_solve(diagonals,
       raise ValueError('Expected diagonals to be a sequence of length 3.')
 
     superdiag = ops.convert_to_tensor(diagonals[0], name='superdiag')
-    maindiag = ops.convert_to_tensor(diagonals[1], name='maindiag')
-    subdiag = ops.convert_to_tensor(diagonals[2], name='subdiag')
+    maindiag = ops.convert_to_tensor(
+        diagonals[1], dtype_hint=superdiag.dtype.base_dtype, name='maindiag')
+    subdiag = ops.convert_to_tensor(
+        diagonals[2], dtype_hint=superdiag.dtype.base_dtype, name='subdiag')
     if (not subdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1]) or
         not superdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1])):
       raise ValueError(
@@ -664,7 +666,8 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
                                       perturb_singular, name):
   """Helper function used after the input has been cast to compact form."""
   diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
-  rhs = ops.convert_to_tensor(rhs, name='rhs')
+  rhs = ops.convert_to_tensor(
+      rhs, dtype_hint=diagonals.dtype.base_dtype, name='rhs')
   diags_rank, rhs_rank = diagonals.shape.rank, rhs.shape.rank
 
   # If we know the rank of the diagonal tensor, do some static checking.
@@ -769,6 +772,11 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
     subdiag = diagonals[..., 2, :]
   elif diagonals_format == 'sequence':
     superdiag, maindiag, subdiag = diagonals
+    superdiag = ops.convert_to_tensor(superdiag, name='superdiag')
+    maindiag = ops.convert_to_tensor(
+        maindiag, dtype_hint=superdiag.dtype.base_dtype, name='maindiag')
+    subdiag = ops.convert_to_tensor(
+        subdiag, dtype_hint=superdiag.dtype.base_dtype, name='subdiag')
   elif diagonals_format == 'matrix':
     diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
@@ -790,6 +798,8 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   superdiag = array_ops.expand_dims(superdiag, -2)
   maindiag = array_ops.expand_dims(maindiag, -2)
   subdiag = array_ops.expand_dims(subdiag, -2)
+  rhs = ops.convert_to_tensor(
+      rhs, dtype_hint=superdiag.dtype.base_dtype, name='rhs')
 
   return linalg_ops.tridiagonal_mat_mul(superdiag, maindiag, subdiag, rhs, name)
 
