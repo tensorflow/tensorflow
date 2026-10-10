@@ -1005,9 +1005,11 @@ class ArrayMethodsTest(test.TestCase):
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
     self.assertRaises(ValueError, np_array_ops.var, np.ones([2, 2]), out=[])
-    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                'out of bounds'):
       np_array_ops.var(np.ones([2, 2]), axis=-3, ddof=1)
-    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                'out of bounds'):
       np_array_ops.var(np.ones([2, 2]), axis=(-3, 0), ddof=1)
 
   def testProd(self):
