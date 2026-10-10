@@ -59,21 +59,21 @@ class MultiplexSparseOp : public OpKernel {
                                              a_shape_tensor, "a"));
     OP_REQUIRES_OK(ctx, ValidateSparseTensor(b_indices_tensor, b_values_tensor,
                                              b_shape_tensor, "b"));
-    OP_REQUIRES(
-        ctx, cond_shape_tensor.shape() == a_shape_tensor.shape(),
-        InvalidArgument("Sparse tensors must be the same shape. cond_shape: ",
-                        cond_shape_tensor.shape().DebugString(),
-                        " vs a_shape: ", a_shape_tensor.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, a_shape_tensor.shape() == b_shape_tensor.shape(),
-        InvalidArgument("Sparse tensors must be the same shape. a_shape: ",
-                        a_shape_tensor.shape().DebugString(),
-                        " vs b_shape: ", b_shape_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx, cond_shape_tensor.shape() == a_shape_tensor.shape(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Sparse tensors must be the same shape. cond_shape: ",
+                    cond_shape_tensor.shape().DebugString(),
+                    " vs a_shape: ", a_shape_tensor.shape().DebugString())));
+    OP_REQUIRES(ctx, a_shape_tensor.shape() == b_shape_tensor.shape(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Sparse tensors must be the same shape. a_shape: ",
+                    a_shape_tensor.shape().DebugString(),
+                    " vs b_shape: ", b_shape_tensor.shape().DebugString())));
     const int rank = a_shape_tensor.dim_size(0);
-    OP_REQUIRES(
-        ctx, rank == 1,
-        InvalidArgument("Sorry, multiplex for sparse tensors only "
-                        "supports rank 1 tensors to simplify this example."));
+    OP_REQUIRES(ctx, rank == 1,
+                absl::InvalidArgumentError(
+                    "Sorry, multiplex for sparse tensors only "
+                    "supports rank 1 tensors to simplify this example."));
     const int cond_elements = cond_indices_tensor.dim_size(0);
     const int a_elements = a_indices_tensor.dim_size(0);
     const int b_elements = b_indices_tensor.dim_size(0);
@@ -182,33 +182,34 @@ class MultiplexSparseOp : public OpKernel {
   }
 
  private:
-  Status ValidateSparseTensor(const ::tensorflow::Tensor& indices_tensor,
-                              const ::tensorflow::Tensor& values_tensor,
-                              const ::tensorflow::Tensor& shape_tensor,
-                              const string label) {
+  absl::Status ValidateSparseTensor(const ::tensorflow::Tensor& indices_tensor,
+                                    const ::tensorflow::Tensor& values_tensor,
+                                    const ::tensorflow::Tensor& shape_tensor,
+                                    const std::string label) {
     if (!TensorShapeUtils::IsMatrix(indices_tensor.shape())) {
-      return InvalidArgument(
-          "Sparse indices for ", label,
-          " must be rank 2, not shape: ", indices_tensor.shape().DebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Sparse indices for ", label, " must be rank 2, not shape: ",
+          indices_tensor.shape().DebugString()));
     }
     if (!TensorShapeUtils::IsVector(values_tensor.shape())) {
-      return InvalidArgument("Sparse values for ", label,
-                             " must be a vector, not shape: ",
-                             values_tensor.shape().DebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Sparse values for ", label, " must be a vector, not shape: ",
+          values_tensor.shape().DebugString()));
     }
     if (!TensorShapeUtils::IsVector(shape_tensor.shape())) {
-      return InvalidArgument(
-          "Sparse shape for ", label,
-          " must be a vector, not shape: ", shape_tensor.shape().DebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Sparse shape for ", label, " must be a vector, not shape: ",
+          shape_tensor.shape().DebugString()));
     }
     if (indices_tensor.dim_size(0) != values_tensor.dim_size(0)) {
-      return InvalidArgument("Sparse indices and values for " + label +
-                                 " must have the same "
-                                 "number of rows. indices: ",
-                             indices_tensor.shape().DebugString(),
-                             " values: ", values_tensor.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Sparse indices and values for " + label +
+                           " must have the same "
+                           "number of rows. indices: ",
+                       indices_tensor.shape().DebugString(),
+                       " values: ", values_tensor.shape().DebugString()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
