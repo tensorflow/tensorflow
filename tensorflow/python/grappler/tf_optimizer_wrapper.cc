@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "tensorflow/core/common_runtime/device.h"
@@ -92,8 +93,9 @@ tensorflow::GraphDef TF_OptimizeGraph(
     tensorflow::DeviceBase* cpu_device = nullptr;
     tensorflow::grappler::MetaOptimizer optimizer(cpu_device, config_proto);
 
-    tsl::MaybeRaiseRegisteredFromStatusWithGIL(
-        optimizer.Optimize(cluster, *grappler_item, &out_graph));
+    absl::Status optimize_status =
+        optimizer.Optimize(cluster, *grappler_item, &out_graph);
+    tsl::MaybeRaiseRegisteredFromStatusWithGIL(optimize_status);
     if (strip_default_attributes) {
       tensorflow::StripDefaultAttributes(*tensorflow::OpRegistry::Global(),
                                          out_graph.mutable_node());
@@ -114,7 +116,8 @@ tensorflow::GraphDef TF_OptimizeGraph(
 // larger than 2GiB.
 // At the moment, the open source python API defaults to the serialized
 // implementation.
-PYBIND11_MODULE(_pywrap_tf_optimizer, m) {
+PYBIND11_MODULE(
+    _pywrap_tf_optimizer, m, pybind11::mod_gil_not_used()) {
   pybind11_protobuf::ImportNativeProtoCasters();
   m.def("TF_OptimizeGraphSerialized",
         [](tensorflow::grappler::Cluster* cluster,

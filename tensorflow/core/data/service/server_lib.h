@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
@@ -79,6 +80,8 @@ class GrpcDataServerBase {
   const std::string server_type_;
 
  private:
+  mutable mutex lifecycle_mu_;
+
   int bound_port_;
   bool started_ = false;
   bool stopped_ = false;
