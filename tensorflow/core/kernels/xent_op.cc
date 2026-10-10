@@ -15,15 +15,16 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
-#include <type_traits>
-
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/xent_op.h"
 
+#include <type_traits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -66,7 +67,7 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                    "2-dimensional, or broadcasted to be "
                                    "2-dimensional"));
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(context, !OpDeterminismRequired(),
                   absl::UnimplementedError(
                       "The GPU implementation of SoftmaxCrossEntropyWithLogits"
@@ -78,11 +79,15 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
 
     // loss is 1-D (one per example), and size is batch_size.
 
+    // The second half holds float64 tail sums without a separate allocation.
+    const int scratch_multiplier = std::is_same_v<T, double> ? 2 : 1;
     Tensor scratch;
     OP_REQUIRES_OK(
-        context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                        TensorShape({shape_in.dim_size(0), 1}),
-                                        &scratch));
+        context,
+        context->allocate_temp(
+            DataTypeToEnum<T>::value,
+            TensorShape({scratch_multiplier * shape_in.dim_size(0), 1}),
+            &scratch));
 
     Tensor* loss_out = nullptr;
     OP_REQUIRES_OK(context,
