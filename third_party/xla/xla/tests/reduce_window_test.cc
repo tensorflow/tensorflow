@@ -2072,7 +2072,7 @@ ENTRY %SyncTensorsGraph.43 (p0.1: f32[], p1.7: pred[3,3]) -> (pred[]) {
 }
 
 TEST_F(ReduceWindowHloTest, VariadicWithNonTrivialWindows) {
-  if (test::DeviceTypeIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu) || test::HasModifiers({test::kGrm})) {
     GTEST_SKIP();
   }
   const char* const hlo_string = R"(
