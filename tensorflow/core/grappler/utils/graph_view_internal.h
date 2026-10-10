@@ -370,7 +370,7 @@ struct NodeViewDiff {
   int node_index;
   string name;
   bool update_name = false;
-  string op;
+  std::string op;
   bool update_op = false;
   string device;
   bool update_device = false;
