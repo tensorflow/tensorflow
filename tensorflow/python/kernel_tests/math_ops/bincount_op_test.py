@@ -479,8 +479,103 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               input=[0], size=[1, 1], weights=[3], binary_output=False))
 
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_bincount_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Encountered overflow"):
+      # Large enough size to overflow int64 when multiplied by num_rows
+      self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=constant_op.constant([[0, 0], [0, 0]], dtype=dtypes.int64),
+              size=constant_op.constant(2**62, dtype=dtypes.int64),
+              weights=[]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_bincount_1d_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError,
+         errors.ResourceExhaustedError),
+        r"Encountered overflow|OOM|Resource exhausted|allocate",
+    ):
+      self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=constant_op.constant([0], dtype=dtypes.int64),
+              size=constant_op.constant(2**62, dtype=dtypes.int64),
+              weights=[]))
+
 class SparseBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_bincount_rank_greater_than_2_fails(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Shape must be at most rank 2 but is rank 3"):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0, 0, 0]],
+              values=[0],
+              dense_shape=[1, 1, 1],
+              size=10,
+              weights=[]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_bincount_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Encountered overflow"):
+      # Large enough size to overflow int64 when multiplied by num_rows
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0, 0], [0, 0]],
+              values=[0, 0],
+              dense_shape=[2**62, 2**62],
+              size=2**20,
+              weights=[]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_bincount_negative_batch(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"Index out of bounds.*|"
+        r"Sparse index tuple indices.* is out of bounds",
+    ):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[-1, 0]],
+              values=[0],
+              dense_shape=[2, 5],
+              size=10,
+              weights=[]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_bincount_1d_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError,
+         errors.ResourceExhaustedError),
+        r"Encountered overflow|OOM|Resource exhausted|allocate",
+    ):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0]],
+              values=constant_op.constant([0], dtype=dtypes.int64),
+              dense_shape=[1],
+              size=constant_op.constant(2**62, dtype=dtypes.int64),
+              weights=[]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_bincount_negative_value(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Input must be non-negative"):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=[[0, 0]],
+              values=[-1],
+              dense_shape=[1, 1],
+              size=10,
+              weights=[]))
 
   @parameterized.parameters([
       {
@@ -763,8 +858,8 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
     # the input first, so both messages are accepted.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "Input must be less than rank 2|"
-        "dense_shape must have at least 1 dimension",
+        r"Shape must be at most rank 2|Input must be less than rank 2|"
+        r"dense_shape must have at least 1 dimension",
     ):
       self.evaluate(
           gen_math_ops.sparse_bincount(
@@ -783,6 +878,19 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
 
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_bincount_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Encountered overflow"):
+      # Large enough size to overflow int64 when multiplied by num_rows
+      self.evaluate(
+          gen_math_ops.ragged_bincount(
+              splits=constant_op.constant([0, 1, 2], dtype=dtypes.int64),
+              values=constant_op.constant([0, 0], dtype=dtypes.int64),
+              size=constant_op.constant(2**62, dtype=dtypes.int64),
+              weights=[]))
 
   @parameterized.parameters([{
       "dtype": np.int32,

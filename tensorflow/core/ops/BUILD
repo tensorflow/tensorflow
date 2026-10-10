@@ -111,9 +111,10 @@ tf_gen_op_libs(
     ],
     sub_directory = "",
     deps = [
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/util:overflow",
     ],
 )
 

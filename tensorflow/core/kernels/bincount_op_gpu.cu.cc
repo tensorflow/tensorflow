@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <limits>
 #include <type_traits>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -65,10 +66,14 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
     size_t temp_storage_bytes = 0;
     const Tidx* d_samples = arr.data();
     T* d_histogram = output.data();
-    int num_levels = output.size() + 1;
+    int64_t num_levels_64 = output.size() + 1;
+    if (num_levels_64 > std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError("num_bins is too large for GPU");
+    }
+    int num_levels = static_cast<int>(num_levels_64);
     Tidx lower_level = Tidx(0);
     Tidx upper_level = num_bins;
-    int num_samples = arr.size();
+    int64_t num_samples = arr.size();
     const gpuStream_t& stream = GetGpuStream(context);
 
     // The first HistogramEven is to obtain the temp storage size required
@@ -116,9 +121,10 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
 };
 
 template <typename Tidx, typename T>
-__global__ void BincountReduceKernel(const Tidx* in, T* out, const int nthreads,
+__global__ void BincountReduceKernel(const Tidx* in, T* out,
+                                     const int64_t nthreads,
                                      const Tidx num_bins) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
+  for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
     Tidx bin = ldg(in + index);
     if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
         static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
@@ -134,10 +140,11 @@ struct BincountFunctor<GPUDevice, Tidx, T, true> {
                               const typename TTypes<T, 1>::ConstTensor& weights,
                               typename TTypes<T, 1>::Tensor& output,
                               const Tidx num_bins) {
-    const int nthreads = arr.dimension(0);
+    const int64_t nthreads = arr.dimension(0);
 
     auto d = context->eigen_gpu_device();
-    GpuLaunchConfig config = GetGpuLaunchConfig(nthreads, d);
+    TF_ASSIGN_OR_RETURN(GpuLaunchConfig64 config,
+                        GetGpuLaunchConfig64(nthreads, d));
     return GpuLaunchKernel(BincountReduceKernel<Tidx, T>, config.block_count,
                            config.thread_per_block, 0, d.stream(), arr.data(),
                            output.data(), nthreads, num_bins);
@@ -146,16 +153,17 @@ struct BincountFunctor<GPUDevice, Tidx, T, true> {
 
 template <typename Tidx, typename T, bool binary_count>
 __global__ void BincountColReduceKernel(const Tidx* in, const T* weights,
-                                        const int weights_size, T* out,
-                                        const int num_rows, const int num_cols,
+                                        const int64_t weights_size, T* out,
+                                        const int64_t num_rows,
+                                        const int64_t num_cols,
                                         const Tidx num_bins) {
-  const int nthreads = num_rows * num_cols;
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
+  const int64_t nthreads = num_rows * num_cols;
+  for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
     Tidx bin = ldg(in + index);
     if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
         static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
-      int row = index / num_cols;
-      int offset = row * num_bins + bin;
+      int64_t row = index / num_cols;
+      int64_t offset = row * num_bins + bin;
       if (binary_count) {
         out[offset] = T(1);
       } else {
@@ -168,25 +176,25 @@ __global__ void BincountColReduceKernel(const Tidx* in, const T* weights,
 
 template <typename Tidx, typename T, bool binary_count>
 __global__ void BincountColReduceSharedKernel(const Tidx* in, const T* weights,
-                                              const int weights_size, T* out,
-                                              const int num_rows,
-                                              const int num_cols,
+                                              const int64_t weights_size,
+                                              T* out, const int64_t num_rows,
+                                              const int64_t num_cols,
                                               const Tidx num_bins) {
-  const int out_size = num_rows * num_bins;
+  const int64_t out_size = num_rows * num_bins;
   GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, shared_col_mem);
   T* shared_col_bins = reinterpret_cast<T*>(shared_col_mem);
-  for (unsigned int binIdx = threadIdx.x; binIdx < out_size;
+  for (int64_t binIdx = threadIdx.x; binIdx < out_size;
        binIdx += blockDim.x) {
     shared_col_bins[binIdx] = T(0);
   }
   __syncthreads();
-  const int nthreads = num_rows * num_cols;
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
+  const int64_t nthreads = num_rows * num_cols;
+  for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
     Tidx bin = ldg(in + index);
     if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
         static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
-      int row = index / num_cols;
-      int offset = row * num_bins + bin;
+      int64_t row = index / num_cols;
+      int64_t offset = row * num_bins + bin;
       if (binary_count) {
         shared_col_bins[offset] = T(1);
       } else {
@@ -196,7 +204,7 @@ __global__ void BincountColReduceSharedKernel(const Tidx* in, const T* weights,
     }
   }
   __syncthreads();
-  for (unsigned int binIdx = threadIdx.x; binIdx < out_size;
+  for (int64_t binIdx = threadIdx.x; binIdx < out_size;
        binIdx += blockDim.x) {
     if (binary_count) {
       // out[binIdx] = out[binIdx] & shared_col_bins[binIdx];
@@ -216,15 +224,16 @@ struct BincountReduceFunctor<GPUDevice, Tidx, T, binary_count> {
                               const typename TTypes<T, 2>::ConstTensor& weights,
                               typename TTypes<T, 2>::Tensor& out,
                               const Tidx num_bins) {
-    const int num_rows = in.dimension(0);
-    const int num_cols = in.dimension(1);
+    const int64_t num_rows = in.dimension(0);
+    const int64_t num_cols = in.dimension(1);
 
     auto d = context->eigen_gpu_device();
-    GpuLaunchConfig config = GetGpuLaunchConfig(num_rows * num_cols, d);
+    TF_ASSIGN_OR_RETURN(GpuLaunchConfig64 config,
+                        GetGpuLaunchConfig64(num_rows * num_cols, d));
 
     // Use half of maximum shared memory, approximately 6 * 1024 inputs.
     int smem_max = d.sharedMemPerBlock() / 2;
-    int smem_usage = out.size() * sizeof(T);
+    int64_t smem_usage = out.size() * sizeof(T);
     if (smem_usage < smem_max) {
       return GpuLaunchKernel(
           BincountColReduceSharedKernel<Tidx, T, binary_count>,
