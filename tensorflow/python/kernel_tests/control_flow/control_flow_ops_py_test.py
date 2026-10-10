@@ -5201,6 +5201,25 @@ class EagerTest(test.TestCase):
           isum(tensor, maximum_iterations=3).numpy(),
           [1 + 3, 2 + 3, 3 + 3, 4 + 3, 5 + 3])
 
+  def testWhileLoopWithNumpyLoopVars(self):
+    with context.eager_mode():
+      i0 = np.array(0, dtype=np.int32)
+
+      def cond(i, acc):
+        return i < 3
+
+      def body(i, acc):
+        self.assertIsInstance(i, tensor_lib.Tensor)
+        return i + 1, acc + math_ops.cast(i, dtypes.float32)
+
+      def run_loop():
+        return while_loop_tf.while_loop(
+            cond, body, [i0, constant_op.constant(0.0)]
+        )[1]
+
+      self.assertEqual(run_loop().numpy(), 3.0)
+      self.assertEqual(eager_def_function.function(run_loop)().numpy(), 3.0)
+
   @test_util.run_v1_only("b/120545219")
   def testWhileWithMaximumIterationsAndSingleArgument(self):
     with context.eager_mode():

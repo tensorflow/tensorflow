@@ -451,6 +451,15 @@ def while_loop(cond,
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
       raise ValueError("'loop_vars' must be provided.")
+    if executing_eagerly:
+      def _convert_to_tensor(x):
+        if isinstance(x, tensor_array_ops.TensorArray):
+          return x
+        return ops.convert_to_tensor(x)
+
+      loop_vars = nest.map_structure(
+          _convert_to_tensor, loop_vars, expand_composites=True
+      )
     try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
     if (
         executing_eagerly
@@ -513,12 +522,9 @@ def while_loop(cond,
             loop_var_structure, loop_vars, check_types=False
         )
 
-      def convert(x):
-        if isinstance(x, tensor_array_ops.TensorArray):
-          return x
-        return ops.convert_to_tensor(x)
-
-      loop_vars = nest.map_structure(convert, loop_vars, expand_composites=True)
+      loop_vars = nest.map_structure(
+          _convert_to_tensor, loop_vars, expand_composites=True
+      )
       if maximum_iterations is not None:
         return loop_vars[1]
       else:
