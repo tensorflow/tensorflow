@@ -852,6 +852,24 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         op_name=op_name,
     )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DEmptyDifferentChannels(
+      self, data_format, dtype, use_gpu, op_name
+  ):
+    expected_output = []
+    self._VerifyValuesParameters(
+        tensor_in_sizes=[0, 3, 3, 4],
+        filter_in_sizes=[1, 1, 4, 2],
+        strides=[1, 1],
+        padding="VALID",
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
+
   @parameterized.named_parameters(*DILATED_PARAMS)
   @test_util.run_in_graph_and_eager_modes
   def testConv2DEmptyDilation(self, data_format, use_gpu, op_name):
