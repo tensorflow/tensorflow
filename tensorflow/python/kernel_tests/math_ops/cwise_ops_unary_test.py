@@ -804,64 +804,72 @@ class UnaryOpTest(test.TestCase):
               np.all(np.isnan(neg.imag)),
               msg=f"{dtype.__name__} n={n} op={op.__name__}: {neg}")
 
-      finite = np.array([0.5 + 0.25j], dtype=dtype)
-      finite_ref = (np.array(1.0, dtype=real_dtype) / finite).astype(dtype)
-      # 1e-40 is subnormal for float32 only. float64's subnormals start near
-      # 1e-308, so complex128 needs its own value.
-      if dtype == np.complex64:
-        subnormal = np.array([1e-40j], dtype=dtype)
-      else:
-        subnormal = np.array([1e-310j], dtype=dtype)
-      subnormal_ref = reciprocal_of(subnormal, math_ops.reciprocal)
-      inf_ref = reciprocal_of(
-          filled(1, np.inf, 0.0, dtype), math_ops.reciprocal)
-      for n in lengths:
-        if n == 0:
-          continue
-        got_finite = reciprocal_of(np.repeat(finite, n), math_ops.reciprocal)
-        self.assertTrue(
-            matches_reference(got_finite, finite_ref, tol),
-            msg=f"finite {dtype.__name__} n={n}: {got_finite}")
-        got_subnormal = reciprocal_of(
-            np.repeat(subnormal, n), math_ops.reciprocal)
-        self.assertTrue(
-            matches_reference(got_subnormal, subnormal_ref, tol),
-            msg=f"subnormal {dtype.__name__} n={n}: {got_subnormal}")
-        got_nan = reciprocal_of(
-            filled(n, np.nan, 0.0, dtype), math_ops.reciprocal)
-        self.assertTrue(
-            np.all(np.isnan(got_nan.real)),
-            msg=f"nan real {dtype.__name__} n={n}: {got_nan}")
-        self.assertTrue(
-            np.all(np.isnan(got_nan.imag)),
-            msg=f"nan imag {dtype.__name__} n={n}: {got_nan}")
-        got_inf = reciprocal_of(
-            filled(n, np.inf, 0.0, dtype), math_ops.reciprocal)
-        # Scalar and packet division already agree on 1/(inf+0j).
-        self.assertTrue(
-            np.all(got_inf.real == 0),
-            msg=f"inf real {dtype.__name__} n={n}: {got_inf}")
-        self.assertTrue(
-            np.all(got_inf.imag == 0),
-            msg=f"inf imag {dtype.__name__} n={n}: {got_inf}")
-        self.assertTrue(
-            matches_reference(got_inf, inf_ref, tol),
-            msg=f"inf {dtype.__name__} n={n}: {got_inf}")
+      for op in (math_ops.reciprocal, gen_math_ops.inv):
+        finite = np.array([0.5 + 0.25j], dtype=dtype)
+        finite_ref = (np.array(1.0, dtype=real_dtype) / finite).astype(dtype)
+        # 1e-40 is subnormal for float32 only. float64's subnormals start near
+        # 1e-308, so complex128 needs its own value.
+        if dtype == np.complex64:
+          subnormal = np.array([1e-40j], dtype=dtype)
+        else:
+          subnormal = np.array([1e-310j], dtype=dtype)
+        subnormal_ref = reciprocal_of(subnormal, op)
+        inf_ref = reciprocal_of(filled(1, np.inf, 0.0, dtype), op)
+        for n in lengths:
+          if n == 0:
+            continue
+          got_finite = reciprocal_of(np.repeat(finite, n), op)
+          self.assertTrue(
+              matches_reference(got_finite, finite_ref, tol),
+              msg=(f"finite {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_finite}"))
+          got_subnormal = reciprocal_of(np.repeat(subnormal, n), op)
+          self.assertTrue(
+              matches_reference(got_subnormal, subnormal_ref, tol),
+              msg=(f"subnormal {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_subnormal}"))
+          got_nan = reciprocal_of(filled(n, np.nan, 0.0, dtype), op)
+          self.assertTrue(
+              np.all(np.isnan(got_nan.real)),
+              msg=(f"nan real {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_nan}"))
+          self.assertTrue(
+              np.all(np.isnan(got_nan.imag)),
+              msg=(f"nan imag {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_nan}"))
+          got_inf = reciprocal_of(filled(n, np.inf, 0.0, dtype), op)
+          # Scalar and packet division already agree on 1/(inf+0j).
+          self.assertTrue(
+              np.all(got_inf.real == 0),
+              msg=(f"inf real {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_inf}"))
+          self.assertTrue(
+              np.all(got_inf.imag == 0),
+              msg=(f"inf imag {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_inf}"))
+          self.assertTrue(
+              matches_reference(got_inf, inf_ref, tol),
+              msg=(f"inf {dtype.__name__} n={n} op={op.__name__}: {got_inf}"))
 
-      mixed = np.array(
-          [0.0 + 0.0j, 0.5 + 0.25j, 0.0 + 0.0j, -1.0 + 2.0j, 0.0 + 0.0j],
-          dtype=dtype)
-      got_mixed = reciprocal_of(mixed, math_ops.reciprocal)
-      self.assertTrue(
-          np.all(np.isposinf(got_mixed.real[0::2])),
-          msg=f"mixed real {dtype.__name__}: {got_mixed}")
-      self.assertTrue(
-          np.all(np.isnan(got_mixed.imag[0::2])),
-          msg=f"mixed imag {dtype.__name__}: {got_mixed}")
-      self.assertAllClose(got_mixed[1:2], finite_ref, rtol=tol, atol=tol)
-      expected_last = (np.array(1.0, dtype=real_dtype) /
-                       np.array([-1.0 + 2.0j], dtype=dtype))
-      self.assertAllClose(got_mixed[3:4], expected_last, rtol=tol, atol=tol)
+        # Length 20 holds two AVX-512 packets plus a remainder, and every
+        # packet contains a zero, so packetOp's scalar fallback runs.
+        mixed = np.zeros(20, dtype=dtype)
+        mixed[1::4] = 0.5 + 0.25j
+        mixed[3::4] = -1.0 + 2.0j
+        got_mixed = reciprocal_of(mixed, op)
+        self.assertTrue(
+            np.all(np.isposinf(got_mixed.real[0::2])),
+            msg=f"mixed real {dtype.__name__} op={op.__name__}: {got_mixed}")
+        self.assertTrue(
+            np.all(np.isnan(got_mixed.imag[0::2])),
+            msg=f"mixed imag {dtype.__name__} op={op.__name__}: {got_mixed}")
+        self.assertAllClose(
+            got_mixed[1::4], np.tile(finite_ref, 5), rtol=tol, atol=tol)
+        expected_last = (
+            np.array(1.0, dtype=real_dtype) /
+            np.array([-1.0 + 2.0j], dtype=dtype))
+        self.assertAllClose(
+            got_mixed[3::4], np.tile(expected_last, 5), rtol=tol, atol=tol)
 
   @test_util.run_in_graph_and_eager_modes
   def testDigamma(self):

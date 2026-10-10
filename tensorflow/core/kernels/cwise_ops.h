@@ -980,6 +980,9 @@ struct functor_traits<igamma_op<Scalar>> {
 // agree. Finite normal values stay on the packet path; any other lane
 // recomputes the whole packet with scalar division. This functor is
 // TensorFlow-owned and is not a specialization of scalar_inverse_op.
+// Complex Div still uses scalar_quotient_op, which vectorizes with the same
+// pdiv_complex path, so exact zeros and FTZ/DAZ-flushed subnormals can still
+// change with tensor length.
 template <typename RealType>
 struct scalar_inverse_complex_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
