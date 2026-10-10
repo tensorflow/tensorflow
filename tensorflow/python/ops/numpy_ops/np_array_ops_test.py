@@ -995,6 +995,11 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
     run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(0, 2), ddof=1)
     run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(-1, 0), ddof=1)
+    # A range of axes is static too.
+    self.match(
+        np_array_ops.var(np.arange(8.0).reshape((2, 2, 2)), axis=range(2),
+                         ddof=1),
+        np.var(np.arange(8.0).reshape((2, 2, 2)), axis=(0, 1), ddof=1))
     run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(), ddof=1)
     run_test(5.0, ddof=1)
     run_test(5.0, axis=(), ddof=1)
@@ -1017,9 +1022,17 @@ class ArrayMethodsTest(test.TestCase):
     def var_fn(a):
       return np_array_ops.var(a, axis=-3, ddof=1)
 
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    def var_fn_tuple(a):
+      return np_array_ops.var(a, axis=(-3, 0), ddof=1)
+
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError), out_of_bounds):
       var_fn(np.ones([2, 2], dtype=np.float32))
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), out_of_bounds):
+      var_fn_tuple(np.ones([2, 2], dtype=np.float32))
 
   def testProd(self):
 

@@ -836,10 +836,12 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
         # axis can be an int or a sequence of ints.
         if isinstance(axis, (int, np.integer)):
           axis = [axis]
+        elif isinstance(axis, np.ndarray) and axis.ndim == 0:
+          axis = [axis.item()]
         rank = input_tensor.shape.rank
         if (
             rank is not None
-            and isinstance(axis, (list, tuple))
+            and isinstance(axis, (list, tuple, range, np.ndarray))
             and builtins.all(isinstance(ax, (int, np.integer)) for ax in axis)
         ):
           # Known rank and axes: normalize them without adding ops.
