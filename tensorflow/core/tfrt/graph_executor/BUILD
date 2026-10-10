@@ -28,6 +28,7 @@ package_group(
     name = "friends",
     # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
     packages = [
+        # copybara:uncomment "//cloud/ml/api/translation/onprem/gdch/model_serving/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
     ],
