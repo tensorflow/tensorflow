@@ -488,6 +488,8 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:gradients",
