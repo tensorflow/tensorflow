@@ -288,6 +288,54 @@ TEST_F(XlaPlatformInfoTest,
       pjrt_device_compiler->persistor()->persistent_cache_directory().empty());
 }
 
+TEST_F(XlaPlatformInfoTest,
+       GetOrCreatePjRtDeviceCompilerAndProfilerClientSwap) {
+  DeviceType device_type = DeviceType(DEVICE_TPU);
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client1, xla::GetXlaPjrtCpuClient(options));
+  xla::PjRtClient* raw_client1 = pjrt_client1.get();
+  CHECK_OK(SetPjRtClientInTFGlobalResourceManager(device_type,
+                                                  std::move(pjrt_client1)));
+
+  XlaPlatformInfo platform_info(device_type, /*platform_id=*/nullptr,
+                                /*xla_device_metadata=*/nullptr,
+                                /*pjrt_device_metadata=*/nullptr,
+                                /*device_allocator=*/nullptr);
+
+  OpKernelContext::Params params;
+  StubDevice stub_device;
+  params.device = &stub_device;
+  OpKernelContext ctx(&params, 0);
+
+  PjRtDeviceCompiler* pjrt_device_compiler1 = nullptr;
+  DeviceCompilationProfiler* profiler1 = nullptr;
+  TF_EXPECT_OK(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      ctx, platform_info, nullptr, &pjrt_device_compiler1, &profiler1));
+  core::ScopedUnref pjrt_device_compiler_ref1(pjrt_device_compiler1);
+  core::ScopedUnref profiler_ref1(profiler1);
+
+  EXPECT_EQ(pjrt_device_compiler1->client(), raw_client1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client2, xla::GetXlaPjrtCpuClient(options));
+  xla::PjRtClient* raw_client2 = pjrt_client2.get();
+  CHECK_OK(SetPjRtClientInTFGlobalResourceManager(device_type,
+                                                  std::move(pjrt_client2)));
+
+  PjRtDeviceCompiler* pjrt_device_compiler2 = nullptr;
+  DeviceCompilationProfiler* profiler2 = nullptr;
+  TF_EXPECT_OK(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      ctx, platform_info, nullptr, &pjrt_device_compiler2, &profiler2));
+  core::ScopedUnref pjrt_device_compiler_ref2(pjrt_device_compiler2);
+  core::ScopedUnref profiler_ref2(profiler2);
+
+  EXPECT_NE(pjrt_device_compiler1, pjrt_device_compiler2);
+  EXPECT_EQ(pjrt_device_compiler2->client(), raw_client2);
+  EXPECT_EQ(pjrt_device_compiler1->RefCount(), 1);
+}
+
 TEST_F(XlaPlatformInfoTest, GetPersistentCacheDirectoryMultiple) {
   tensorflow::GetMarkForCompilationPassFlags()
       ->tf_xla_persistent_cache_directory = "/tmp/xla_cache";
