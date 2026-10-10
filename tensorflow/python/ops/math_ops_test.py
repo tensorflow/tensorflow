@@ -1446,6 +1446,131 @@ class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
       self.assertAllClose(y, x)
       self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
 
+  def testComplexInfinity(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      zero = constant_op.constant(complex(0.0, 0.0), dtype=dtype)
+
+      # 1. Edge shapes: empty tensor (shape=[0]) and scalars (shape=[])
+      empty = constant_op.constant([], dtype=dtype)
+      self.assertAllEqual(math_ops.reciprocal_no_nan(empty), empty)
+      self.assertAllEqual(math_ops.div_no_nan(empty, empty), empty)
+
+      inf_scalar = constant_op.constant(complex(float("inf"), 0.0), dtype=dtype)
+      neg_inf_real = constant_op.constant(
+          complex(float("-inf"), 0.0), dtype=dtype
+      )
+      pos_inf_imag = constant_op.constant(
+          complex(0.0, float("inf")), dtype=dtype
+      )
+      neg_inf_imag = constant_op.constant(
+          complex(0.0, float("-inf")), dtype=dtype
+      )
+      inf_both = constant_op.constant(
+          complex(float("inf"), float("inf")), dtype=dtype
+      )
+      neg_inf_both = constant_op.constant(
+          complex(float("-inf"), float("-inf")), dtype=dtype
+      )
+
+      # Verify scalar reciprocal_no_nan across all signs of infinity
+      for s in [
+          inf_scalar,
+          neg_inf_real,
+          pos_inf_imag,
+          neg_inf_imag,
+          inf_both,
+          neg_inf_both,
+      ]:
+        self.assertAllEqual(math_ops.reciprocal_no_nan(s), zero)
+
+      # 2. Direct tf.math.divide_no_nan coverage with general numerators
+      # Finite non-unit numerator (e.g. 2.0 + 3.0j)
+      finite_num = constant_op.constant(complex(2.0, 3.0), dtype=dtype)
+      for denom in [
+          inf_scalar,
+          neg_inf_real,
+          pos_inf_imag,
+          neg_inf_imag,
+          inf_both,
+          neg_inf_both,
+      ]:
+        self.assertAllEqual(math_ops.div_no_nan(finite_num, denom), zero)
+
+      # Zero numerator: 0j / inf == 0j
+      for denom in [
+          inf_scalar,
+          neg_inf_real,
+          pos_inf_imag,
+          neg_inf_imag,
+          inf_both,
+          neg_inf_both,
+      ]:
+        self.assertAllEqual(math_ops.div_no_nan(zero, denom), zero)
+
+      # Non-finite numerators: inf/inf and nan/inf assert NaN output
+      inf_div_inf = self.evaluate(math_ops.div_no_nan(inf_scalar, inf_scalar))
+      self.assertTrue(
+          np.isnan(inf_div_inf.real) or np.isnan(inf_div_inf.imag)
+      )
+
+      nan_scalar = constant_op.constant(complex(float("nan"), 0.0), dtype=dtype)
+      nan_div_inf = self.evaluate(math_ops.div_no_nan(nan_scalar, inf_scalar))
+      self.assertTrue(
+          np.isnan(nan_div_inf.real) or np.isnan(nan_div_inf.imag)
+      )
+
+      # 3. Large tensor SIMD vector packet coverage (N >= 64, here N = 100)
+      # Thoroughly verifies multiple full vector packets (e.g. 8 elements per
+      # packet on AVX-512, 4 on AVX2), alignment boundaries, and scalar
+      # remainder tails.
+      pattern_denoms = [
+          complex(float("inf"), 0.0),
+          complex(float("-inf"), 0.0),
+          complex(0.0, float("inf")),
+          complex(0.0, float("-inf")),
+          complex(float("inf"), float("inf")),
+          complex(float("-inf"), float("-inf")),
+          complex(2.0, 0.0),
+          complex(0.0, 0.0),
+      ]
+      n = 100
+      large_denoms = [pattern_denoms[i % len(pattern_denoms)] for i in range(n)]
+
+      expected_reciprocals = []
+      for z in large_denoms:
+        if np.isinf(z.real) or np.isinf(z.imag) or z == 0j:
+          expected_reciprocals.append(complex(0.0, 0.0))
+        else:
+          expected_reciprocals.append(1.0 / z)
+
+      denoms_tensor = constant_op.constant(large_denoms, dtype=dtype)
+      target_reciprocals = constant_op.constant(
+          expected_reciprocals, dtype=dtype
+      )
+
+      y_reciprocals = math_ops.reciprocal_no_nan(denoms_tensor)
+      self.assertAllEqual(y_reciprocals, target_reciprocals)
+      self.assertEqual(
+          y_reciprocals.dtype.base_dtype, target_reciprocals.dtype.base_dtype
+      )
+
+      # Also test vectorized divide_no_nan with finite non-unit numerators
+      finite_nums = [complex(2.0, 3.0) for _ in range(n)]
+      nums_tensor = constant_op.constant(finite_nums, dtype=dtype)
+      expected_divs = []
+      for z in large_denoms:
+        if np.isinf(z.real) or np.isinf(z.imag) or z == 0j:
+          expected_divs.append(complex(0.0, 0.0))
+        else:
+          expected_divs.append(complex(2.0, 3.0) / z)
+      target_divs = constant_op.constant(expected_divs, dtype=dtype)
+
+      y_divs = math_ops.div_no_nan(nums_tensor, denoms_tensor)
+      self.assertAllEqual(y_divs, target_divs)
+      self.assertEqual(
+          y_divs.dtype.base_dtype, target_divs.dtype.base_dtype
+      )
+
 
 class EqualityTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 

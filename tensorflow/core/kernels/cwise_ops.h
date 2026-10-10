@@ -191,22 +191,39 @@ struct div_no_nan_op<T, /*IsComplex=*/true> {
                                                      const T& b) const {
     if (b == T(0)) {
       return T(0);
-    } else {
-      // If the numerator is zero, then the result must be zero even if |b|^2
-      // underflows to zero.
-      const T numerator =
-          scalar_product_op<T>()(a, scalar_conjugate_op<T>()(b));
-      if (numerator == T(0)) {
+    }
+    // If a is finite and b has an infinite magnitude, the quotient is zero.
+    if ((Eigen::numext::isinf)(b.real()) || (Eigen::numext::isinf)(b.imag())) {
+      if ((Eigen::numext::isfinite)(a.real()) &&
+          (Eigen::numext::isfinite)(a.imag())) {
         return T(0);
       }
+    }
+    const T numerator =
+        scalar_product_op<T>()(a, scalar_conjugate_op<T>()(b));
+    if (numerator == T(0)) {
+      return T(0);
     }
     return scalar_quotient_op<T>()(a, b);
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
                                                         const Packet& b) const {
+    const Packet pzero_val = pzero(a);
     const Packet numerator = pmul(a, pconj(b));
-    const Packet mask = por(pcmp_eq(b, pzero(a)), pcmp_eq(numerator, pzero(a)));
+    // Under IEEE 754, `z == z` is true iff z contains no NaNs.
+    // Multiplying any finite value by zero yields zero, whereas multiplying an
+    // infinite or NaN value by zero produces NaN (which does not equal zero).
+    // Thus `pandnot(pcmp_eq(b, b), pcmp_eq(pmul(b, pzero_val), pzero_val))`
+    // identifies infinite elements in b. When combined with finite a,
+    // we mask the quotient to zero to prevent Eigen's complex pdiv from
+    // evaluating inf / inf to NaN.
+    const Packet b_is_inf =
+        pandnot(pcmp_eq(b, b), pcmp_eq(pmul(b, pzero_val), pzero_val));
+    const Packet a_is_finite = pcmp_eq(pmul(a, pzero_val), pzero_val);
+    const Packet inf_mask = pand(b_is_inf, a_is_finite);
+    const Packet mask = por(
+        por(pcmp_eq(b, pzero_val), pcmp_eq(numerator, pzero_val)), inf_mask);
     const Packet quotient = pdiv(a, b);
     return pandnot(quotient, mask);
   }
