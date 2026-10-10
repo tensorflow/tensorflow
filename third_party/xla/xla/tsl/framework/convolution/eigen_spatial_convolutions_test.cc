@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 
+#include <algorithm>
+
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
 namespace Eigen {
 
-#define EigenApprox(a, b) \
-  { ASSERT_TRUE(std::abs(a - b) <= std::min(std::abs(a), std::abs(b)) * 1e-3); }
+#define EigenApprox(a, b)                                   \
+  {                                                         \
+    ASSERT_TRUE(std::abs((a) - (b)) <=                      \
+                std::min(std::abs(a), std::abs(b)) * 1e-3); \
+  }
 static int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
 TEST(EigenSpatialConvolutionsTest, Simple) {
@@ -759,6 +764,112 @@ TEST(EigenSpatialConvolutionsTest, SpatialConvContractionMapper) {
   EigenApprox(4.0f, direct(0, 1, 1, 0));
   EigenApprox(4.0f, direct(0, 1, 2, 0));
   EigenApprox(8.0f, direct(0, 1, 3, 0));
+}
+
+TEST(EigenSpatialConvolutionsTest, NegativeLowPaddingSpatialConvolution) {
+  const int input_depth = 8;
+  const int input_rows = 15;
+  const int input_cols = 6;
+  const int num_batches = 1;
+  const int output_depth = 8;
+  const int patch_rows = 1;
+  const int patch_cols = 1;
+
+  // Negative low padding on columns: crop 5 columns on left, pad 1 on right.
+  // Effective input_cols = 6 + (-5) + 1 = 2.
+  const int padding_top = 0;
+  const int padding_bottom = 0;
+  const int padding_left = -5;
+  const int padding_right = 1;
+
+  const int output_rows = input_rows;
+  const int output_cols = input_cols + padding_left + padding_right;
+
+  Tensor<float, 4> input(input_depth, input_rows, input_cols, num_batches);
+  Tensor<float, 4> kernel(output_depth, input_depth, patch_rows, patch_cols);
+
+  // Initialize input: input(c, r, col, b)
+  for (int b = 0; b < num_batches; ++b) {
+    for (int col = 0; col < input_cols; ++col) {
+      for (int r = 0; r < input_rows; ++r) {
+        for (int c = 0; c < input_depth; ++c) {
+          input(c, r, col, b) = 100.0f * r + 10.0f * col + c;
+        }
+      }
+    }
+  }
+
+  // 1x1 identity kernel across channels
+  for (int od = 0; od < output_depth; ++od) {
+    for (int id = 0; id < input_depth; ++id) {
+      kernel(od, id, 0, 0) = (od == id) ? 1.0f : 0.0f;
+    }
+  }
+
+  Tensor<float, 4> result = SpatialConvolution(
+      input, kernel, /*row_stride=*/1, /*col_stride=*/1, PADDING_VALID,
+      /*row_in_stride=*/1, /*col_in_stride=*/1, NoOpOutputKernel(), padding_top,
+      padding_bottom, padding_left, padding_right);
+
+  EXPECT_EQ(result.dimension(0), output_depth);
+  EXPECT_EQ(result.dimension(1), output_rows);
+  EXPECT_EQ(result.dimension(2), output_cols);
+  EXPECT_EQ(result.dimension(3), num_batches);
+
+  for (int b = 0; b < num_batches; ++b) {
+    for (int r = 0; r < output_rows; ++r) {
+      for (int c = 0; c < output_depth; ++c) {
+        // First column should be cropped col 5: 100*r + 10*5 + c
+        EigenApprox(result(c, r, 0, b), 100.0f * r + 50.0f + c);
+        // Second column should be zero padding
+        EigenApprox(result(c, r, 1, b), 0.0f);
+      }
+    }
+  }
+}
+
+TEST(EigenSpatialConvolutionsTest, CropEntireDimensionSpatialConvolution) {
+  const int input_depth = 20;
+  const int input_rows = 15;
+  const int input_cols = 6;
+  const int num_batches = 1;
+  const int output_depth = 20;
+  const int patch_rows = 1;
+  const int patch_cols = 1;
+
+  // Crop all 15 rows from top, pad 1 on bottom
+  const int padding_top = -15;
+  const int padding_bottom = 1;
+  const int padding_left = 0;
+  const int padding_right = 0;
+
+  const int output_rows = input_rows + padding_top + padding_bottom;  // 1
+  const int output_cols = input_cols;
+
+  Tensor<float, 4> input(input_depth, input_rows, input_cols, num_batches);
+  Tensor<float, 4> kernel(output_depth, input_depth, patch_rows, patch_cols);
+
+  input.setRandom();
+  kernel.setRandom();
+
+  Tensor<float, 4> result = SpatialConvolution(
+      input, kernel, /*row_stride=*/1, /*col_stride=*/1, PADDING_VALID,
+      /*row_in_stride=*/1, /*col_in_stride=*/1, NoOpOutputKernel(), padding_top,
+      padding_bottom, padding_left, padding_right);
+
+  EXPECT_EQ(result.dimension(0), output_depth);
+  EXPECT_EQ(result.dimension(1), output_rows);
+  EXPECT_EQ(result.dimension(2), output_cols);
+  EXPECT_EQ(result.dimension(3), num_batches);
+
+  // The output row is entirely in the padded area, so all values must be 0
+  for (int b = 0; b < num_batches; ++b) {
+    for (int col = 0; col < output_cols; ++col) {
+      for (int c = 0; c < output_depth; ++c) {
+        EigenApprox(result(c, 0, col, b), 0.0f);
+      }
+    }
+  }
 }
 
 template <typename T>

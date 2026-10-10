@@ -21,11 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
@@ -49,20 +49,15 @@ struct FftPlan {
 
 class FftPlanCache {
  public:
+  explicit FftPlanCache(int devices_per_host) : fft_plans_(devices_per_host) {}
+
   // Returns Fft plan cached for the given device ordinal or creates a new one.
-  FftPlan* GetOrCreate(int device_ordinal) {
-    absl::MutexLock lock(mu_);
-    std::unique_ptr<FftPlan>& plan = fft_plans_[device_ordinal];
-    if (!plan) {
-      plan = std::make_unique<FftPlan>();
-    }
-    return plan.get();
+  absl::StatusOr<FftPlan*> GetOrCreate(int device_ordinal) {
+    return fft_plans_.GetOrCreate(device_ordinal);
   }
 
  private:
-  absl::Mutex mu_;
-  absl::flat_hash_map<int, std::unique_ptr<FftPlan>> fft_plans_
-      ABSL_GUARDED_BY(mu_);
+  PerDeviceState<FftPlan> fft_plans_;
 };
 
 // This class stores everything that StreamExecutor needs to launch an FFT.
@@ -77,7 +72,8 @@ class FftThunk : public Thunk {
            absl::Span<const int64_t> fft_length,
            const BufferAllocation::Slice& input_buffer,
            const BufferAllocation::Slice& output_buffer,
-           const Shape& input_shape, const Shape& output_shape);
+           const Shape& input_shape, const Shape& output_shape,
+           int devices_per_host);
 
   FftThunk(const FftThunk&) = delete;             // Cannot share fft_plan_
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_
@@ -94,7 +90,8 @@ class FftThunk : public Thunk {
 
   static absl::StatusOr<std::unique_ptr<FftThunk>> FromProto(
       ThunkInfo thunk_info, const FftThunkProto& proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_per_host);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

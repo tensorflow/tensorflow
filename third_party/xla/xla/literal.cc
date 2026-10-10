@@ -435,6 +435,59 @@ absl::StatusOr<std::string> LiteralBase::SerializeAsString(
   return result;
 }
 
+namespace {
+
+// Returns a typed Span view over a Literal or Piece buffer for byte-width
+// dispatched operations, preserving the same guardrails as `data<NativeT>()`
+// while checking byte-width equality instead of exact PrimitiveType identity.
+template <typename NativeT, typename HolderT>
+absl::Span<const NativeT> RawData(const HolderT& holder) {
+  const Shape& shape = [&]() -> const Shape& {
+    if constexpr (std::is_base_of_v<LiteralBase, HolderT>) {
+      return holder.shape();
+    } else {
+      return holder.subshape();
+    }
+  }();
+  DCHECK(shape.IsArray()) << __func__
+                          << " is only supported for dense arrays: " << shape;
+  DCHECK(!shape.has_layout() || shape.layout().element_size_in_bits() == 0)
+      << __func__
+      << " is not supported for layouts with custom bit size: " << shape;
+  DCHECK_EQ(primitive_util::ByteWidth(shape.element_type()), sizeof(NativeT))
+      << "Attempting to access " << sizeof(NativeT)
+      << "-byte type, but literal element type is "
+      << PrimitiveType_Name(shape.element_type());
+  return absl::Span<const NativeT>(
+      tsl::safe_reinterpret_cast<const NativeT*>(holder.untyped_data()),
+      holder.element_count());
+}
+
+template <typename NativeT, typename HolderT>
+absl::Span<NativeT> RawData(HolderT& holder) {
+  const Shape& shape = [&]() -> const Shape& {
+    if constexpr (std::is_base_of_v<LiteralBase, HolderT>) {
+      return holder.shape();
+    } else {
+      return holder.subshape();
+    }
+  }();
+  DCHECK(shape.IsArray()) << __func__
+                          << " is only supported for dense arrays: " << shape;
+  DCHECK(!shape.has_layout() || shape.layout().element_size_in_bits() == 0)
+      << __func__
+      << " is not supported for layouts with custom bit size: " << shape;
+  DCHECK_EQ(primitive_util::ByteWidth(shape.element_type()), sizeof(NativeT))
+      << "Attempting to access " << sizeof(NativeT)
+      << "-byte type, but literal element type is "
+      << PrimitiveType_Name(shape.element_type());
+  return absl::Span<NativeT>(
+      tsl::safe_reinterpret_cast<NativeT*>(holder.untyped_data()),
+      holder.element_count());
+}
+
+}  // namespace
+
 template <typename NativeT>
 absl::Status MutableLiteralBase::CopySliceFromInternal(
     const LiteralBase& src_literal, absl::Span<const int64_t> src_base,
@@ -444,9 +497,8 @@ absl::Status MutableLiteralBase::CopySliceFromInternal(
     return IndexUtil::MultidimensionalIndexToLinearIndex(shape, multi_index);
   };
 
-  // `this->` is needed to workaround MSVC bug: #16882
-  NativeT* dest_data = this->data<NativeT>().data();
-  const NativeT* src_data = src_literal.data<NativeT>().data();
+  NativeT* dest_data = RawData<NativeT>(*this).data();
+  const NativeT* src_data = RawData<NativeT>(src_literal).data();
   if (src_literal.shape().dimensions().size() == 0 ||
       shape().dimensions().size() == 0) {
     // If any of the two shapes are scalars, just assign the value once.
@@ -682,10 +734,12 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
   if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
+  absl::Span<NativeT> dest_data = RawData<NativeT>(*this);
+  absl::Span<const NativeT> src_data = RawData<NativeT>(src);
   if (dest_shape.dimensions().size() == 1) {
     // Fast path for rank 1 arrays.
     int64_t count = std::min(GetDynamicSize(0), src.GetDynamicSize(0));
-    std::copy_n(src.data<NativeT>().begin(), count, data<NativeT>().begin());
+    std::copy_n(src_data.begin(), count, dest_data.begin());
     return;
   }
   std::vector<int64_t> index(dest_shape.dimensions().size());
@@ -700,10 +754,10 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
     if (out_of_bound) {
       continue;
     }
-    data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape,
-                                                                  index)] =
-        src.data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
-            src_shape, index)];
+    dest_data[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape,
+                                                            index)] =
+        src_data[IndexUtil::MultidimensionalIndexToLinearIndex(src_shape,
+                                                               index)];
   } while (IndexUtil::BumpIndices(bound_shape, absl::MakeSpan(index)));
 }
 
@@ -738,15 +792,14 @@ absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     // If the layouts are equal it's faster just to memcpy.
     memcpy(buffer(), src.buffer(), src.size_bytes_dense());
   } else {
-    std::vector<int64_t> origin(subshape().dimensions().size(), 0);
-    primitive_util::ArrayTypeSwitch(
+    primitive_util::ByteWidthTypeSwitch(
         [&](auto primitive_type_constant) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
           if (only_dynamic_bound) {
             CopyElementsWithDynamicBound<NativeT>(src);
           } else {
-            CopyElementsBetween<NativeT>(this->data<NativeT>(),
-                                         src.data<NativeT>(), subshape(),
+            CopyElementsBetween<NativeT>(RawData<NativeT>(*this),
+                                         RawData<NativeT>(src), subshape(),
                                          src.subshape());
           }
         },
@@ -874,7 +927,7 @@ absl::Status MutableLiteralBase::CopySliceFrom(
   TF_RET_CHECK(src_literal.shape().dimensions().size() == src_base.size());
   TF_RET_CHECK(shape().dimensions().size() == dest_base.size());
 
-  return primitive_util::ArrayTypeSwitch(
+  return primitive_util::ByteWidthTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return CopySliceFromInternal<NativeT>(src_literal, src_base, dest_base,
@@ -1306,12 +1359,15 @@ void SliceInternal(const LiteralBase& src_literal,
                    Literal& result_literal) {
   const Shape& result_shape = result_literal.shape();
   DimensionVector new_indices(result_shape.dimensions().size());
-  CHECK_OK(
-      result_literal.Populate<NativeT>([&](absl::Span<const int64_t> indices) {
+  absl::Span<const NativeT> src_data = RawData<NativeT>(src_literal);
+  CHECK_OK(result_literal.PopulateInplace(
+      [&](void* dest, absl::Span<const int64_t> indices) {
         for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
           new_indices[i] = indices[i] + start_indices[i];
         }
-        return src_literal.Get<NativeT>(new_indices);
+        *static_cast<NativeT*>(dest) =
+            src_data[IndexUtil::MultidimensionalIndexToLinearIndex(
+                src_literal.shape(), new_indices)];
       }));
   for (int64_t dnum = 0; dnum < src_literal.shape().dimensions().size();
        ++dnum) {
@@ -1344,7 +1400,7 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
       LayoutUtil::MinorToMajor(shape()));
   ShapeUtil::CopyDynamicDimensions(&result_shape, shape());
   Literal result_literal(result_shape);
-  primitive_util::ArrayTypeSwitch(
+  primitive_util::ByteWidthTypeSwitch(
       [&](auto primitive_type_constant) -> void {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return SliceInternal<NativeT>(*this, start_indices, result_literal);
@@ -1988,8 +2044,17 @@ template <typename NativeT>
 bool LiteralBase::Piece::EqualElementsInternal(
     const LiteralBase::Piece& other, std::vector<int64_t>* multi_index) const {
   if (multi_index->size() == subshape().dimensions().size()) {
-    const NativeT value = Get<NativeT>(*multi_index);
-    const NativeT other_value = other.Get<NativeT>(*multi_index);
+    const NativeT& value =
+        RawData<NativeT>(*this)[IndexUtil::MultidimensionalIndexToLinearIndex(
+            subshape(), *multi_index)];
+    const NativeT& other_value =
+        RawData<NativeT>(other)[IndexUtil::MultidimensionalIndexToLinearIndex(
+            other.subshape(), *multi_index)];
+    if constexpr (sizeof(NativeT) == 1) {
+      if (subshape().element_type() == PRED) {
+        return (value != 0) == (other_value != 0);
+      }
+    }
     // The EqualElements function uses memcmp to compare two literals that have
     // the same shape (including the layout!). This can be seen as a "fast path"
     // comparison. This function on the other hand performs an elementwise
@@ -2077,7 +2142,7 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
   }
 
   std::vector<int64_t> multi_index;
-  return primitive_util::ArrayTypeSwitch(
+  return primitive_util::ByteWidthTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeSrcT = NativeTypeOf<primitive_type_constant>;
         return EqualElementsInternal<NativeSrcT>(other, &multi_index);
@@ -2249,11 +2314,11 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
   CHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
-  return primitive_util::ArrayTypeSwitch(
+  return primitive_util::ByteWidthTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeT = NativeTypeOf<primitive_type_constant>;
-        return AllElementsEqualValue(this->data<NativeT>(),
-                                     scalar.GetFirstElement<NativeT>());
+        return AllElementsEqualValue(RawData<NativeT>(*this),
+                                     RawData<NativeT>(scalar).at(0));
       },
       subshape().element_type());
 }
@@ -2957,20 +3022,44 @@ LiteralProto LiteralBase::ToProto() const {
   return proto;
 }
 
+const void* LiteralBase::untyped_data() const {
+  return root_piece().untyped_data();
+}
+
 const void* LiteralBase::untyped_data(const ShapeIndex& shape_index) const {
   return piece(shape_index).untyped_data();
+}
+
+void* MutableLiteralBase::untyped_data() {
+  return mutable_root_piece().untyped_data();
 }
 
 void* MutableLiteralBase::untyped_data(const ShapeIndex& shape_index) {
   return piece(shape_index).untyped_data();
 }
 
+int64_t LiteralBase::size_bytes() const {
+  return root_piece().size_bytes_dense();
+}
+
 int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).size_bytes_dense();
 }
 
+int64_t LiteralBase::total_size_bytes() const {
+  return root_piece().total_bytes_dense();
+}
+
 int64_t LiteralBase::total_size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).total_bytes_dense();
+}
+
+int64_t LiteralBase::element_count() const {
+  return root_piece().element_count();
+}
+
+int64_t LiteralBase::element_count(const ShapeIndex& index) const {
+  return piece(index).element_count();
 }
 
 std::string LiteralBase::GetR1U8AsString() const {

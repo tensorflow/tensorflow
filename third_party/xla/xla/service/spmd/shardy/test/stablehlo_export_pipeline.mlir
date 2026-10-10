@@ -470,6 +470,27 @@ func.func @maximal_sharding_no_results(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32
   return %arg0 : tensor<8x8xf32>
 }
 
+// CHECK-LABEL: func @reshard_maximal_sharding
+// CHECK-SAME:      (%arg0: tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>) {
+func.func @reshard_maximal_sharding(%arg0: tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>) {
+  // CHECK-V2-NEXT: %[[CALL:.*]] = stablehlo.custom_call @foo(%arg0) {has_side_effect = true, mhlo.sharding = "{maximal device=0}"} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-V2-NEXT: %[[COPY_0:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{devices=[8,1,4]<=[32] last_tile_dim_replicate}"} : tensor<8x8xf32>
+  // CHECK-V2-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"} : tensor<8x8xf32>
+  // CHECK-V2-NEXT: %[[COPY_2:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{maximal device=1}"} : tensor<8x8xf32>
+  // CHECK-V3-NEXT: %[[CALL:.*]] = stablehlo.custom_call @foo(%arg0) {has_side_effect = true, mhlo.sharding = "{maximal_mesh[device_id=0]}"} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-V3-NEXT: %[[COPY_0:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'x'}, {}]}"} : tensor<8x8xf32>
+  // CHECK-V3-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}]}"} : tensor<8x8xf32>
+  // CHECK-V3-NEXT: %[[COPY_2:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{maximal_mesh[device_id=1]}"} : tensor<8x8xf32>
+  // CHECK-NEXT: return %[[CALL]], %[[COPY_0]], %[[COPY_1]], %[[COPY_2]] : tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>
+  %0 = sdy.reshard %arg0 <@maximal_mesh_0, []> : tensor<8x8xf32>
+  %1 = stablehlo.custom_call @foo(%0) {has_side_effect = true, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  %2 = sdy.reshard %1 <@mesh_2, [{}, {}]> : tensor<8x8xf32>
+  %3 = sdy.reshard %2 <@mesh_2, [{"x"}, {}]> : tensor<8x8xf32>
+  %4 = sdy.reshard %1 <@mesh_2, [{"y"}, {}]> : tensor<8x8xf32>
+  %5 = sdy.reshard %1 <@maximal_mesh_1, []> : tensor<8x8xf32>
+  return %2, %3, %4, %5 : tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>
+}
+
 // CHECK-LABEL: func @while_with_sharding
 func.func @while_with_sharding(
     %arg0: tensor<32x96xf32>, %arg1: tensor<32x96xf32>)
@@ -931,3 +952,40 @@ func.func @preserve_mesh_in_replica_groups(%arg0: tensor<8xf32>) -> tensor<8xf32
   } : (tensor<8xf32>) -> tensor<8xf32>
   return %0 : tensor<8xf32>
 }
+
+// -----
+
+// CHECK-LABEL: module @single_output_metadata attributes
+// CHECK-V2-SAME: {mhlo.spmd_output_sharding = "{devices=[2,1,4]<=[8] last_tile_dims={unreduced} metadata={op_type=\22sdy::reduction_op\22 op_name=\22SUM\22}}", mhlo.spmd_parameters_shardings = ["{devices=[2,4]<=[8]}", "{replicated}"]}
+// CHECK-V3-SAME: {mhlo.spmd_output_sharding = "{mesh['x'=2,'y'=4], [{'x'}, {}], unreduced={'y'}}", mhlo.spmd_parameters_shardings = ["{mesh['x'=2,'y'=4], [{'x'}, {'y'}]}", "{mesh['x'=2,'y'=4], [{}, {}]}"]}
+// CHECK-NOT: sdy.output_shardings
+// CHECK-NOT: sdy.parameters_shardings
+module @single_output_metadata attributes {
+  sdy.output_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {}], unreduced={"y"}>]>,
+  sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {"y"}]>, <mesh<["x"=2, "y"=4]>, [{}, {}]>]>
+} {
+  // CHECK: func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<4x32xf32>) -> tensor<4x32xf32>
+  func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<4x32xf32>) -> tensor<4x32xf32> {
+    %0 = stablehlo.dot %arg0, %arg1 : (tensor<4x4xf32>, tensor<4x32xf32>) -> tensor<4x32xf32>
+    return %0 : tensor<4x32xf32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: module @multiple_outputs_tuple_metadata attributes
+// CHECK-V2-SAME{LITERAL}: {mhlo.spmd_output_sharding = "{{devices=[2,4]<=[8]}, {replicated}}", mhlo.spmd_parameters_shardings = ["{devices=[2,4]<=[8]}", "{replicated}"]}
+// CHECK-V3-SAME{LITERAL}: {mhlo.spmd_output_sharding = "{{mesh['x'=2,'y'=4], [{'x'}, {'y'}]}, {mesh['x'=2,'y'=4], [{}, {}]}}", mhlo.spmd_parameters_shardings = ["{mesh['x'=2,'y'=4], [{'x'}, {'y'}]}", "{mesh['x'=2,'y'=4], [{}, {}]}"]}
+// CHECK-NOT: sdy.output_shardings
+// CHECK-NOT: sdy.parameters_shardings
+module @multiple_outputs_tuple_metadata attributes {
+  sdy.output_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {"y"}]>, <mesh<["x"=2, "y"=4]>, [{}, {}]>]>,
+  sdy.parameters_shardings = #sdy.sharding_per_value<[<mesh<["x"=2, "y"=4]>, [{"x"}, {"y"}]>, <mesh<["x"=2, "y"=4]>, [{}, {}]>]>
+} {
+  // CHECK: func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<8x32xf32>) -> (tensor<4x4xf32>, tensor<8x32xf32>)
+  func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<8x32xf32>) -> (tensor<4x4xf32>, tensor<8x32xf32>) {
+    return %arg0, %arg1 : tensor<4x4xf32>, tensor<8x32xf32>
+  }
+}
+
+

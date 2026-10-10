@@ -135,7 +135,15 @@ class TilingSpace {
 
   // Creates an independent deep copy of the TilingSpace, with all internal
   // pointer maps and root tiles re-bound to the new instance.
-  std::unique_ptr<TilingSpace> Clone() const;
+  //
+  // If `target_context` is null or is this space's MLIRContext, the copy
+  // shares this space's context and symbolic expressions. Otherwise, the root
+  // tiles are rebuilt in `target_context`, so that the copy is fully
+  // independent of this space's context and can be tiled concurrently with it.
+  //
+  // REQUIRES: IsSymbolic() if `target_context` is a different context.
+  std::unique_ptr<TilingSpace> Clone(
+      mlir::MLIRContext* target_context = nullptr) const;
 
   std::string ToString() const;
 
@@ -194,9 +202,34 @@ class TilingSpace {
 
   bool IsSymbolic() const { return is_symbolic_; }
 
-  // Simplifies an expression using actual dimension and symbol bounds
+  // Returns true if `hlo` is a tuple-producing instruction tiled with one
+  // distinct tile per output (consumed through `get-tuple-element`), rather
+  // than a single shared tile for all outputs (such as variadic `reduce`).
+  bool HasPerOutputTiles(const HloInstructionAdaptor& hlo) const;
+
+  // Returns true if the tiling space contains a tuple-producing instruction
+  // tiled with one distinct tile per output.
+  bool HasPerOutputTiles() const;
+
+  // Result of `SimplifyExpressions`.
+  // TODO(b/565301234): follow up: we can also return simplified constraint
+  // intervals but that requires extracting them from IndexingMap properly,
+  // as it sometimes converts them to dimension constraints.
+  struct SimplificationResult {
+    // Simplified expressions. If `is_known_empty` is true, the expressions are
+    // returned as is.
+    llvm::SmallVector<SymbolicExpr> expressions;
+    // True if the constraints are infeasible for the current tiling space
+    // bounds, i.e. there is no assignment of the variables under which the
+    // expressions are evaluated.
+    bool is_known_empty = false;
+  };
+
+  // Simplifies expressions using actual dimension and symbol bounds
   // based on the assigned tile sizes and runtime variable bounds.
-  SymbolicExpr SimplifyExpression(const SymbolicExpr& expr) const;
+  SimplificationResult SimplifyExpressions(
+      const llvm::SmallVector<SymbolicExpr>& expressions,
+      llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {}) const;
 
   // Returns the list of valid tilings for the tiling space.
   absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
@@ -221,6 +254,10 @@ class TilingSpace {
   // Initializes cached indexing map variables. This is necessary to allow
   // building indexing maps during simplification.
   void InitSimplificationIndexing();
+
+  // Returns the default symbolic tile, in this space's context, for the root
+  // dimension `id` of size `dim_size`.
+  DimTile GetDefaultRootDimTile(TiledDimId id, int64_t dim_size) const;
 
   // Maps from (hlo, dim_position) to the dimension info.
   absl::flat_hash_map<std::pair<const HloInstruction*, int64_t>,
@@ -262,6 +299,12 @@ class TilingSpace {
 // If the shape is a tuple, return the shape at the given index.
 // Otherwise, return the shape itself.
 const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
+
+// Returns true if `hlo` is a tuple-producing instruction whose output `k`
+// depends only on operand `k`, with the same tile mapping for every `k`.
+//
+// Currently only multi-operand all-gather qualifies.
+bool IsIndexWiseVariadic(const HloInstruction& hlo);
 
 // Returns a symbol replacement map to set concrete tile sizes.
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(

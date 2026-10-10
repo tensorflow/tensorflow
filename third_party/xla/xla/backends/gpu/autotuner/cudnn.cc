@@ -269,11 +269,6 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
       break;
   }
   if (use_deviceless) {
-    if (target_config.device_description.dnn_version() <
-        se::SemanticVersion(9, 8, 0)) {
-      return absl::FailedPreconditionError(
-          "Deviceless cuDNN compilation requires cuDNN >= 9.8.");
-    }
     stream_executor = nullptr;
   } else if (stream_executor == nullptr) {
     return absl::InvalidArgumentError(

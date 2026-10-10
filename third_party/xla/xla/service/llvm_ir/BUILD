@@ -101,6 +101,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "llvm_util_test",
+    srcs = ["llvm_util_test.cc"],
+    deps = [
+        ":llvm_util",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
 cc_library(
     name = "llvm_type_conversion_util",
     hdrs = ["llvm_type_conversion_util.h"],
@@ -177,6 +189,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
+        "@tsl//tsl/platform",
     ],
 )
 

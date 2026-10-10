@@ -71,6 +71,30 @@ cc_library(
 )
 
 cc_library(
+    name = "dtype_core_info",
+    hdrs = ["dtype_core_info.h"],
+    deps = ["@com_google_absl//absl/types:span"],
+)
+
+cc_library(
+    name = "core_info",
+    srcs = ["core_info.cc"],
+    hdrs = ["core_info.h"],
+    deps = [
+        ":dtype_core_info",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/cuda:cuda_core_info_table",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "//xla/stream_executor/rocm:rocm_core_info_table",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "context_map",
     hdrs = ["context_map.h"],
     deps = [
@@ -89,56 +113,6 @@ xla_cc_test(
         ":context_map",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:test",
-    ],
-)
-
-cc_library(
-    name = "scoped_command_buffer_annotation",
-    srcs = ["scoped_command_buffer_annotation.cc"],
-    hdrs = ["scoped_command_buffer_annotation.h"],
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "gpu_command_buffer_listener",
-    srcs = ["gpu_command_buffer_listener.cc"],
-    hdrs = ["gpu_command_buffer_listener.h"],
-    deps = [
-        ":gpu_command_buffer",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "gpu_command_buffer_listener_test_helper",
-    testonly = True,
-    hdrs = ["gpu_command_buffer_listener_test_helper.h"],
-    deps = [
-        ":gpu_command_buffer_listener",
-    ],
-)
-
-xla_cc_test(
-    name = "gpu_command_buffer_listener_test",
-    srcs = ["gpu_command_buffer_listener_test.cc"],
-    deps = [
-        ":gpu_command_buffer",
-        ":gpu_command_buffer_listener",
-        ":gpu_command_buffer_listener_test_helper",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
-    name = "scoped_command_buffer_annotation_test",
-    srcs = ["scoped_command_buffer_annotation_test.cc"],
-    deps = [
-        ":scoped_command_buffer_annotation",
-        "//xla/tsl/platform:env",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -350,6 +324,31 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
+    name = "gpu_hsaco_bundle_test",
+    srcs = ["gpu_hsaco_bundle_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":asm_compiler",
+        "//xla:debug_options_flags",
+        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_platform",  # buildcleaner: keep
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:rocm_rocdl_path",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -482,7 +481,6 @@ cc_library(
     deps = [
         ":gpu_blas_lt_proto_cc",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -490,14 +488,11 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:platform",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -507,8 +502,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:tensor_float_32_hdr_lib",
     ] + if_static([
         "@tsl//tsl/platform:tensor_float_32_utils",
@@ -1162,5 +1155,24 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_library(
+    name = "scoped_command_buffer_annotation",
+    srcs = ["scoped_command_buffer_annotation.cc"],
+    hdrs = ["scoped_command_buffer_annotation.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "scoped_command_buffer_annotation_test",
+    srcs = ["scoped_command_buffer_annotation_test.cc"],
+    deps = [
+        ":scoped_command_buffer_annotation",
+        "//xla/tsl/platform:env",
+        "@com_google_googletest//:gtest_main",
     ],
 )

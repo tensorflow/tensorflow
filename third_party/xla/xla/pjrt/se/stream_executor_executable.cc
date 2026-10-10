@@ -262,6 +262,7 @@ absl::StatusOr<absl::string_view> MemoryKindFromLayout(
       return PinnedHostMemorySpace::kKind;
     case Layout::kGenericFastMemorySpace:
     case Layout::kDefaultMemorySpace:
+    case Layout::kCollectiveMemorySpace:
       return default_memory_kind;
     default:
       return InvalidArgument("Unexpected memory space %d in output layout",

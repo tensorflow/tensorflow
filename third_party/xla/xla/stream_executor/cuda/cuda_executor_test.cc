@@ -18,14 +18,17 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/strings/match.h"
+#include "xla/debug_options_flags.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -42,6 +45,8 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla.pb.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -307,6 +312,89 @@ TEST(CudaExecutorTest, MultipleExecutorsForSameDevice) {
         collective_allocator->Allocate(4096));
     EXPECT_NE(collective_allocation->address().opaque(), nullptr);
   }
+}
+
+TEST(CudaExecutorTest, DisabledVmmRejectsReservationAndPhysicalAllocation) {
+  const bool was_disabled =
+      xla::GetDebugOptionsFromFlags().xla_gpu_experimental_vmm_disabled();
+  std::vector<tsl::Flag> flags;
+  xla::AppendDebugOptionsFlags(&flags);
+  auto set_vmm_disabled = [&](bool disabled) {
+    std::vector<std::string> args = {
+        disabled ? "--xla_gpu_experimental_vmm_disabled=true"
+                 : "--xla_gpu_experimental_vmm_disabled=false"};
+    EXPECT_TRUE(tsl::Flags::Parse(args, flags));
+    EXPECT_TRUE(args.empty());
+  };
+  absl::Cleanup restore_flag = [&] { set_vmm_disabled(was_disabled); };
+  set_vmm_disabled(true);
+
+  // Use a fresh executor: cached executors retain the options from Init().
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_GT(platform->VisibleDeviceCount(), 0);
+  CudaExecutor executor(platform, /*device_ordinal=*/0);
+  ASSERT_OK(executor.Init());
+  EXPECT_THAT(executor.CreateMemoryReservation(4096),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+  EXPECT_THAT(executor.CreatePhysicalMemoryAllocation(4096),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+
+  // A caller falling back from reservation mode can still allocate normally.
+  DeviceAddressBase memory = executor.Allocate(4096, /*memory_space=*/0);
+  EXPECT_NE(memory.opaque(), nullptr);
+  executor.Deallocate(&memory);
+}
+
+// Reservations and physical allocations created through the executor use its
+// probed options, map together, and GetAllocationRange describes the mapping
+// backing a pointer rather than the whole reservation.
+TEST(CudaExecutorTest, ReservationMapsPhysicalMemoryAndReportsMappingRange) {
+  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_vmm_disabled()) {
+    GTEST_SKIP() << "CUDA VMM is disabled";
+  }
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+
+  // A one-byte reservation is padded to exactly one granule.
+  ASSERT_OK_AND_ASSIGN(auto one_granule, executor->CreateMemoryReservation(1));
+  const size_t granularity = one_granule->granularity();
+  ASSERT_GT(granularity, 0);
+  EXPECT_EQ(one_granule->address().size(), granularity);
+
+  // Reserve two granules and back only the first with physical memory.
+  ASSERT_OK_AND_ASSIGN(auto reservation,
+                       executor->CreateMemoryReservation(2 * granularity));
+  ASSERT_EQ(reservation->address().size(), 2 * granularity);
+  ASSERT_OK_AND_ASSIGN(auto physical,
+                       executor->CreatePhysicalMemoryAllocation(granularity));
+  ASSERT_EQ(physical->address().size(), granularity);
+  ASSERT_OK_AND_ASSIGN(
+      auto mapping,
+      reservation->MapTo(/*reservation_offset=*/0, /*allocation_offset=*/0,
+                         granularity, *physical));
+  DeviceAddressBase mapped = mapping.mapped_address();
+  EXPECT_EQ(mapped.opaque(), reservation->address().opaque());
+  EXPECT_EQ(mapped.size(), granularity);
+
+  // The mapped prefix is accessible from the device.
+  std::vector<uint8_t> pattern(granularity, 0xAB);
+  ASSERT_OK(
+      executor->SynchronousMemcpyH2D(pattern.data(), granularity, &mapped));
+  std::vector<uint8_t> readback(granularity);
+  ASSERT_OK(
+      executor->SynchronousMemcpyD2H(mapped, granularity, readback.data()));
+  EXPECT_EQ(readback, pattern);
+
+  // RANGE_* attributes would report the whole two-granule reservation.
+  ASSERT_OK_AND_ASSIGN(DeviceAddressBase range,
+                       cuda_executor->GetAllocationRange(mapped.opaque()));
+  EXPECT_EQ(range.opaque(), mapped.opaque());
+  EXPECT_EQ(range.size(), granularity);
 }
 
 TEST(CudaExecutorTest, RetainVmmMemoryHandleForDefaultDeviceMemory) {

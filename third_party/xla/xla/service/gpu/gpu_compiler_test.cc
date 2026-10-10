@@ -92,15 +92,12 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/gtl/value_or_die.h"
-#include "xla/tsl/lib/monitoring/collected_metrics.h"
-#include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
@@ -108,7 +105,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/platform.h"
 #include "tsl/platform/regexp.h"
 
 namespace xla {
@@ -1834,7 +1830,7 @@ ENTRY main {
       break;
 
     case TopKImpl::kSelectK:
-      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kSelectK));
+      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomCall));
       break;
 
     case TopKImpl::kSort: {
@@ -1860,9 +1856,9 @@ ENTRY main {
     }
 
     case TopKImpl::kSelectKWithU64Adapter:
-      EXPECT_THAT(kinds,
-                  ElementsAre(Thunk::Kind::kCustomKernel, Thunk::Kind::kSelectK,
-                              Thunk::Kind::kCustomKernel));
+      EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                     Thunk::Kind::kCustomCall,
+                                     Thunk::Kind::kCustomKernel));
       break;
 
     case TopKImpl::kSortWithS32Adapter: {
@@ -1909,7 +1905,7 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
       p_multimem = s32[1] parameter(0)
       p_non_coll = s32[1] parameter(1)
 
-      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", frontend_attributes={operands_memory_spaces="{0:1}",results_memory_spaces="{0:1}"}, api_version=API_VERSION_TYPED_FFI
+      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", frontend_attributes={operands_memory_spaces="{0:7}",results_memory_spaces="{0:7}"}, api_version=API_VERSION_TYPED_FFI
       res_multimem = s32[1] get-tuple-element(cc_multimem), index=0
 
       cc_non_coll = (s32[1]{0}) custom-call(p_non_coll), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
@@ -1931,16 +1927,16 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
     // CHECK-DAG: [[P_NON:%[^ ]+]] = s32[1]{0} parameter(1)
 
     // Multimem input parameters are copied to S1
-    // CHECK-DAG: [[COPY_MULTI_IN:%copy[^ ]*]] = s32[1]{0:S(1)} copy([[P_MULTI]])
+    // CHECK-DAG: [[COPY_MULTI_IN:%copy[^ ]*]] = s32[1]{0:S(7)} copy([[P_MULTI]])
 
-    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_MULTI_IN]]){{.*}}results_memory_spaces={0:1}
+    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(7)}) custom-call([[COPY_MULTI_IN]]){{.*}}results_memory_spaces={0:7}
     // CHECK-DAG: [[CC_NON:%[^ ]+]] = (s32[1]{0}) custom-call([[P_NON]])
 
     // Extracting from the 1-element tuples returned by custom calls (all index=0)
-    // CHECK-DAG: [[GTE_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[CC_MULTI]]), index=0
+    // CHECK-DAG: [[GTE_MULTI:%[^ ]+]] = s32[1]{0:S(7)} get-tuple-element([[CC_MULTI]]), index=0
     // CHECK-DAG: [[GTE_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[CC_NON]]), index=0
 
-    // The S1 -> S0 isolation copies
+    // The S7 -> S0 isolation copies
     // CHECK-DAG: [[COPY_OUT_MULTI:%copy[^ ]*]] = s32[1]{0} copy([[GTE_MULTI]])
 
     // The final ROOT is pure S0
@@ -1972,7 +1968,7 @@ TEST_F(GpuCompilerTest, MosaicCollectiveMetadataRequiresSymmetricMemoryCopies) {
     HloModule test
     ENTRY main {
       p = s32[1] parameter(0)
-      mosaic = (s32[1]{0}) custom-call(p), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={uses_xla_collective_metadata=true}, frontend_attributes={operands_memory_spaces="{0:1}", results_memory_spaces="{0:1}"}
+      mosaic = (s32[1]{0}) custom-call(p), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={uses_xla_collective_metadata=true}, frontend_attributes={operands_memory_spaces="{0:7}", results_memory_spaces="{0:7}"}
       ROOT res = s32[1]{0} get-tuple-element(mosaic), index=0
     }
   )";
@@ -1993,9 +1989,9 @@ TEST_F(GpuCompilerTest, MosaicCollectiveMetadataRequiresSymmetricMemoryCopies) {
 
   constexpr absl::string_view kExpected = R"(
     // CHECK: [[P:%[^ ]+]] = s32[1]{0} parameter(0)
-    // CHECK: [[COPY_IN:%copy[^ ]*]] = s32[1]{0:S(1)} copy([[P]])
-    // CHECK: [[MOSAIC:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_IN]]){{.*}}backend_config={uses_xla_collective_metadata=true}
-    // CHECK: [[GTE:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[MOSAIC]]), index=0
+    // CHECK: [[COPY_IN:%copy[^ ]*]] = s32[1]{0:S(7)} copy([[P]])
+    // CHECK: [[MOSAIC:%[^ ]+]] = (s32[1]{0:S(7)}) custom-call([[COPY_IN]]){{.*}}backend_config={uses_xla_collective_metadata=true}
+    // CHECK: [[GTE:%[^ ]+]] = s32[1]{0:S(7)} get-tuple-element([[MOSAIC]]), index=0
     // CHECK: ROOT [[COPY_OUT:%copy[^ ]*]] = s32[1]{0} copy([[GTE]])
   )";
   EXPECT_THAT(
@@ -2064,8 +2060,8 @@ TEST_P(OneShotRaggedAllToAllMemSpaceTest, DirectUsage) {
 
   constexpr absl::string_view kS1TwoCopies = R"(
     // CHECK:  %output = f32[16]{0} parameter(1)
-    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%output)
-    // CHECK:  [[RA2A:%[^ ]+]] = f32[16]{0:S(1)} ragged-all-to-all(%input, [[COPY1]],
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(7)} copy(%output)
+    // CHECK:  [[RA2A:%[^ ]+]] = f32[16]{0:S(7)} ragged-all-to-all(%input, [[COPY1]],
     // CHECK:  ROOT %copy.{{[0-9]+}} = f32[16]{0} copy([[RA2A]])
   )";
 
@@ -2140,10 +2136,10 @@ TEST_P(OneShotRaggedAllToAllMemSpaceTest, LoopUsage) {
 
   constexpr absl::string_view kS1TwoCopies = R"(
     // CHECK:  [[OUTPUT1:%output[0-9.]*]] = f32[16]{0} parameter(1)
-    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(1)} copy([[OUTPUT1]])
-    // CHECK:  %tuple = (s32[], f32[16]{0}, f32[16]{0:S(1)}) tuple(%copy{{.*}}, %input{{.*}}, [[COPY1]])
-    // CHECK:  %while = (s32[], f32[16]{0}, f32[16]{0:S(1)}) while(%tuple)
-    // CHECK:  [[RESULT:%result[0-9.]*]] = f32[16]{0:S(1)} get-tuple-element(%while), index=2
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(7)} copy([[OUTPUT1]])
+    // CHECK:  %tuple = (s32[], f32[16]{0}, f32[16]{0:S(7)}) tuple(%copy{{.*}}, %input{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], f32[16]{0}, f32[16]{0:S(7)}) while(%tuple)
+    // CHECK:  [[RESULT:%result[0-9.]*]] = f32[16]{0:S(7)} get-tuple-element(%while), index=2
     // CHECK:  ROOT %copy{{.*}} = f32[16]{0} copy([[RESULT]])
   )";
 
@@ -2212,8 +2208,8 @@ ENTRY test_computation {
   )";
 
   constexpr absl::string_view kS1TwoCopies = R"(
-    // CHECK:  [[COPY0:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%p)
-    // CHECK:  [[PERMUTE:%[^ ]+]] = u32[2]{0:S(1)} collective-permute([[COPY0]])
+    // CHECK:  [[COPY0:%copy[0-9.]*]] = u32[2]{0:S(7)} copy(%p)
+    // CHECK:  [[PERMUTE:%[^ ]+]] = u32[2]{0:S(7)} collective-permute([[COPY0]])
     // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy([[PERMUTE]])
   )";
 
@@ -2314,10 +2310,10 @@ TEST_P(RequiresCollectiveSymmetricMemorySpaceTest, LoopUsage) {
   constexpr absl::string_view kS1TwoCopies = R"(
     // CHECK:ENTRY %entry_computation (input: u32[2]) -> u32[2] {
     // CHECK:  %input = u32[2]{0} parameter(0)
-    // CHECK:  [[COPY1:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%input)
-    // CHECK:  %tuple = (s32[], u32[2]{0:S(1)}) tuple(%copy{{.*}}, [[COPY1]])
-    // CHECK:  %while = (s32[], u32[2]{0:S(1)}) while(%tuple)
-    // CHECK:  [[RESULT:%result[0-9.]*]] = u32[2]{0:S(1)} get-tuple-element(%while)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = u32[2]{0:S(7)} copy(%input)
+    // CHECK:  %tuple = (s32[], u32[2]{0:S(7)}) tuple(%copy{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], u32[2]{0:S(7)}) while(%tuple)
+    // CHECK:  [[RESULT:%result[0-9.]*]] = u32[2]{0:S(7)} get-tuple-element(%while)
     // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy([[RESULT]])
   )";
 
@@ -2428,8 +2424,8 @@ TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest, DirectUsage) {
   )";
 
   constexpr absl::string_view kS1TwoCopies = R"(
-    // CHECK:  [[COPY_IN:%copy[0-9.]*]] = s32[1]{0:S(1)} copy(%parameter_used_by_collective)
-    // CHECK:  [[ALL_REDUCE:%[^ ]+]] = s32[1]{0:S(1)} all-reduce([[COPY_IN]])
+    // CHECK:  [[COPY_IN:%copy[0-9.]*]] = s32[1]{0:S(7)} copy(%parameter_used_by_collective)
+    // CHECK:  [[ALL_REDUCE:%[^ ]+]] = s32[1]{0:S(7)} all-reduce([[COPY_IN]])
     // CHECK:  ROOT %copy.{{[0-9]+}} = s32[1]{0} copy([[ALL_REDUCE]])
   )";
 
@@ -2538,10 +2534,10 @@ TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest, LoopUsage) {
 
   constexpr absl::string_view kS1TwoCopies = R"(
     // CHECK:  %input = s32[1]{0} parameter(0)
-    // CHECK:  %copy.{{[0-9]+}} = s32[1]{0:S(1)} copy(%input)
-    // CHECK:  %tuple = (s32[], s32[1]{0:S(1)}) tuple({{.*}}, %copy.{{[0-9]+}})
-    // CHECK:  %while = (s32[], s32[1]{0:S(1)}) while(%tuple)
-    // CHECK:  %result.2.0 = s32[1]{0:S(1)} get-tuple-element(%while), index=1
+    // CHECK:  %copy.{{[0-9]+}} = s32[1]{0:S(7)} copy(%input)
+    // CHECK:  %tuple = (s32[], s32[1]{0:S(7)}) tuple({{.*}}, %copy.{{[0-9]+}})
+    // CHECK:  %while = (s32[], s32[1]{0:S(7)}) while(%tuple)
+    // CHECK:  %result.2.0 = s32[1]{0:S(7)} get-tuple-element(%while), index=1
     // CHECK:  ROOT %copy.{{[0-9]+}} = s32[1]{0} copy(%result.2.0)
   )";
 
@@ -2754,8 +2750,8 @@ TEST_P(FrontendAttributesMemorySpaceTest, DirectUsage) {
         custom_call_target="__xla_test_mock_custom_call_f32",
         api_version=API_VERSION_TYPED_FFI,
         frontend_attributes={
-          operands_memory_spaces="{0:1}",
-          results_memory_spaces="{0:1}"
+          operands_memory_spaces="{0:7}",
+          results_memory_spaces="{0:7}"
         }
     }
   )";
@@ -2779,8 +2775,8 @@ TEST_P(FrontendAttributesMemorySpaceTest, DirectUsage) {
   // Regardless of the input_output_alias it should be two copies
   constexpr absl::string_view expected_check = R"(
     // CHECK: %p = f32[16]{0} parameter(0)
-    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%p)
-    // CHECK: %cc = f32[16]{0:S(1)} custom-call([[COPY0]])
+    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(7)} copy(%p)
+    // CHECK: %cc = f32[16]{0:S(7)} custom-call([[COPY0]])
     // CHECK: ROOT %copy{{.*}} = f32[16]{0} copy(%cc)
   )";
 
@@ -2811,8 +2807,8 @@ TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
         custom_call_target="__xla_test_mock_custom_call_f32",
         api_version=API_VERSION_TYPED_FFI,
         frontend_attributes={
-          operands_memory_spaces="{0:1}",
-          results_memory_spaces="{0:1}"
+          operands_memory_spaces="{0:7}",
+          results_memory_spaces="{0:7}"
         }
       new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
       ROOT result = (s32[], f32[16]) tuple(new_loop_counter, cc)
@@ -2846,10 +2842,10 @@ TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
   // Regardless of the input_output_alias it should be two copies
   constexpr absl::string_view expected_check = R"(
     // CHECK: %input = f32[16]{0} parameter(0)
-    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%input)
-    // CHECK: %tuple = (s32[], f32[16]{0:S(1)}) tuple(%copy{{.*}}, [[COPY0]])
-    // CHECK: %while = (s32[], f32[16]{0:S(1)}) while(%tuple)
-    // CHECK: [[RESULT:%result[0-9.]*]] = f32[16]{0:S(1)} get-tuple-element(%while), index=1
+    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(7)} copy(%input)
+    // CHECK: %tuple = (s32[], f32[16]{0:S(7)}) tuple(%copy{{.*}}, [[COPY0]])
+    // CHECK: %while = (s32[], f32[16]{0:S(7)}) while(%tuple)
+    // CHECK: [[RESULT:%result[0-9.]*]] = f32[16]{0:S(7)} get-tuple-element(%while), index=1
     // CHECK: ROOT %copy{{.*}} = f32[16]{0} copy([[RESULT]])
   )";
 
@@ -2867,13 +2863,13 @@ TEST_F(GpuCompilerTest,
     HloModule test, input_output_alias={ {}: (0, {}) }
 
     ENTRY test_computation {
-      p = f32[16]{0:S(1)} parameter(0)
-      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+      p = f32[16]{0:S(7)} parameter(0)
+      ROOT cc = f32[16]{0:S(7)} custom-call(p),
         custom_call_target="__xla_test_mock_custom_call_f32",
         api_version=API_VERSION_TYPED_FFI,
         frontend_attributes={
-          operands_memory_spaces="{0:1}",
-          results_memory_spaces="{0:1}"
+          operands_memory_spaces="{0:7}",
+          results_memory_spaces="{0:7}"
         }
     }
   )";
@@ -2923,13 +2919,13 @@ TEST_F(GpuCompilerTest,
     HloModule test, input_output_alias={ {}: (0, {}) }
 
     ENTRY test_computation {
-      p = f32[16]{0:S(1)} parameter(0)
-      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+      p = f32[16]{0:S(7)} parameter(0)
+      ROOT cc = f32[16]{0:S(7)} custom-call(p),
         custom_call_target="__xla_test_mock_custom_call_f32",
         api_version=API_VERSION_TYPED_FFI,
         frontend_attributes={
-          operands_memory_spaces="{0:1}",
-          results_memory_spaces="{0:1}"
+          operands_memory_spaces="{0:7}",
+          results_memory_spaces="{0:7}"
         }
     }
   )";
@@ -2963,13 +2959,13 @@ TEST_F(GpuCompilerTest,
     HloModule test
 
     ENTRY test_computation {
-      p = f32[16]{0:S(1)} parameter(0)
-      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+      p = f32[16]{0:S(7)} parameter(0)
+      ROOT cc = f32[16]{0:S(7)} custom-call(p),
         custom_call_target="__xla_test_mock_custom_call_f32",
         api_version=API_VERSION_TYPED_FFI,
         frontend_attributes={
-          operands_memory_spaces="{0:1}",
-          results_memory_spaces="{0:1}"
+          operands_memory_spaces="{0:7}",
+          results_memory_spaces="{0:7}"
         }
     }
   )";
@@ -3004,8 +3000,8 @@ TEST_F(GpuCompilerTest,
         custom_call_target="__xla_test_mock_custom_call_f32",
         api_version=API_VERSION_TYPED_FFI,
         frontend_attributes={
-          operands_memory_spaces="{0:1}",
-          results_memory_spaces="{0:1}"
+          operands_memory_spaces="{0:7}",
+          results_memory_spaces="{0:7}"
         }
     }
   )";
@@ -3040,8 +3036,8 @@ TEST_F(GpuCompilerTest,
         custom_call_target="__xla_test_mock_custom_call_f32",
         api_version=API_VERSION_TYPED_FFI,
         frontend_attributes={
-          operands_memory_spaces="{0:1}",
-          results_memory_spaces="{0:1}"
+          operands_memory_spaces="{0:7}",
+          results_memory_spaces="{0:7}"
         }
     }
   )";
@@ -3071,16 +3067,16 @@ TEST_F(GpuCompilerTest,
     HloModule test, input_output_alias={ {0}: (0, {}) }
 
     ENTRY test_computation {
-      p0 = f32[16]{0:S(1)} parameter(0)
-      cc = (f32[16]{0:S(1)}, f32[16]{0:S(1)}) custom-call(p0),
+      p0 = f32[16]{0:S(7)} parameter(0)
+      cc = (f32[16]{0:S(7)}, f32[16]{0:S(7)}) custom-call(p0),
         custom_call_target="mock_call",
         frontend_attributes={
-          operands_memory_spaces="{0:1}",
-          results_memory_spaces="{0:1,1:1}"
+          operands_memory_spaces="{0:7}",
+          results_memory_spaces="{0:7,1:7}"
         }
-      elem0 = f32[16]{0:S(1)} get-tuple-element(cc), index=0
-      elem1 = f32[16]{0:S(1)} get-tuple-element(cc), index=1
-      ROOT out = (f32[16]{0:S(1)}, f32[16]{0:S(1)}) tuple(elem1, elem0)
+      elem0 = f32[16]{0:S(7)} get-tuple-element(cc), index=0
+      elem1 = f32[16]{0:S(7)} get-tuple-element(cc), index=1
+      ROOT out = (f32[16]{0:S(7)}, f32[16]{0:S(7)}) tuple(elem1, elem0)
     }
   )";
 
@@ -3243,7 +3239,7 @@ TEST_F(GpuCompilerTest, SymmetricBuffersFilter) {
   // - channel 3 does NOT have S(1) (f32, 8192 bytes - filtered out by size)
 
   constexpr absl::string_view expected_check = R"(
-    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=1
+    // CHECK-DAG: f32[1024]{0:S(7)}{{.*}}all-reduce{{.*}}channel_id=1
     // CHECK-DAG: s32[1024]{0}{{.*}}all-reduce{{.*}}channel_id=2
     // CHECK-DAG: f32[2048]{0}{{.*}}all-reduce{{.*}}channel_id=3
   )";
@@ -3300,8 +3296,8 @@ TEST_F(GpuCompilerTest, SymmetricBuffersMultipleCollectives) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view expected_check = R"(
-    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=1
-    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-gather{{.*}}channel_id=2
+    // CHECK-DAG: f32[1024]{0:S(7)}{{.*}}all-reduce{{.*}}channel_id=1
+    // CHECK-DAG: f32[1024]{0:S(7)}{{.*}}all-gather{{.*}}channel_id=2
     // CHECK-DAG: f32[2048]{0}{{.*}}all-reduce{{.*}}channel_id=3
   )";
 
@@ -3363,8 +3359,8 @@ TEST_F(GpuCompilerTest, SymmetricBuffersSeveralFilters) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view expected_check = R"(
-    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=1
-    // CHECK-DAG: s32[2048]{0:S(1)}{{.*}}all-gather{{.*}}channel_id=2
+    // CHECK-DAG: f32[1024]{0:S(7)}{{.*}}all-reduce{{.*}}channel_id=1
+    // CHECK-DAG: s32[2048]{0:S(7)}{{.*}}all-gather{{.*}}channel_id=2
   )";
 
   EXPECT_THAT(RunFileCheck(
@@ -3425,8 +3421,8 @@ TEST_F(GpuCompilerTest, SymmetricBuffersOverlappingFilters) {
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
   constexpr absl::string_view expected_check = R"(
-    // CHECK-DAG: f32[1024]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=1
-    // CHECK-DAG: f32[2048]{0:S(1)}{{.*}}all-reduce{{.*}}channel_id=2
+    // CHECK-DAG: f32[1024]{0:S(7)}{{.*}}all-reduce{{.*}}channel_id=1
+    // CHECK-DAG: f32[2048]{0:S(7)}{{.*}}all-reduce{{.*}}channel_id=2
   )";
 
   EXPECT_THAT(RunFileCheck(
@@ -3643,6 +3639,58 @@ TEST_F(GpuCompilerTest, EarlyExitAfterConfigAssignment) {
   EXPECT_THAT(optimized_module, HasExpectedPasses(std::vector<std::string>{
                                     "layout-assignment", "cublas-gemm-rewriter",
                                     "config-assigner"}));
+}
+
+TEST_F(GpuCompilerTest, DevicelessCollectiveFusionWithTopologyFlag) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Test requires CUDA backend.";
+  }
+
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule all_reduce_module, num_partitions=1, replica_count=8
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      p0 = f32[1024]{0} parameter(0)
+      ROOT ar = f32[1024]{0} all-reduce(p0),
+        channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}},
+        use_global_device_ids=true, to_apply=add
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  config.mutable_debug_options().set_xla_gpu_topology_filename(
+      "oberon_b200:1x2x4");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               Compiler::CompileOptions{}));
+
+  constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] ({{.*}}: f32[1024]) -> f32[1024] {
+    // CHECK:   %[[P0:.*]] = f32[1024]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[1024]{0} all-reduce(%[[P0]])
+    // CHECK: }
+    // CHECK: %[[ASYNC_COMPUTATION:.*]] ({{.*}}: f32[1024]) -> f32[1024] {
+    // CHECK:   %[[ASYNC_P0:.*]] = f32[1024]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[1024]{0} fusion(%[[ASYNC_P0]]), kind=kCustom, calls=%[[FUSION_COMPUTATION]], backend_config={{{.*}}"kind":"__triton_collective"
+    // CHECK: }
+    // CHECK: ENTRY %main ({{.*}}: f32[1024]) -> f32[1024] {
+    // CHECK:   %[[P0_ENTRY:.*]] = f32[1024]{0} parameter(0)
+    // CHECK:   %[[ASYNC_START:.*]] = ((f32[1024]{0}), f32[1024]{0}) async-start(%[[P0_ENTRY]]), calls=%[[ASYNC_COMPUTATION]]
+    // CHECK:   ROOT {{.*}} = f32[1024]{0} async-done(%[[ASYNC_START]])
+    // CHECK: }
+  )";
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), kExpected),
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace gpu

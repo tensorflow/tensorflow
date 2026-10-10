@@ -468,6 +468,12 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
       vector_name = "scatter_dims_to_operand_dims";
       vector_size = "num_scatter_dims_to_operand_dims";
       vector_type = "int64_t";
+    } else if (elem_name == "quant_spec") {
+      // Opaque flexbuffers blob; see FullyConnectedOptions.quant_spec.
+      is_vector = true;
+      vector_name = "quant_spec";
+      vector_size = "quant_spec_size";
+      vector_type = "uint8_t";
     }
 
     if (is_vector) {

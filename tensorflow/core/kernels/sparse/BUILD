@@ -22,6 +22,7 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
+    "if_not_windows",
     "tf_cc_test",
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
@@ -40,6 +41,9 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -72,6 +76,7 @@ tf_kernel_library(
         "transpose_op.h",
         "zeros_op.h",
     ],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_deps = [
         "//tensorflow/core/kernels:gpu_device_array",
     ],
@@ -125,6 +130,7 @@ tf_cc_test(
     ],
     deps = [
         ":kernels",
+        ":sparse_matrix",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",

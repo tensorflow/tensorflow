@@ -32,6 +32,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -77,6 +78,7 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -293,13 +295,35 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
   return mantissa == 0.5 || mantissa == -0.5;
 }
 
+bool HasCombineDimensionTile(const Shape& shape) {
+  if (!shape.has_layout()) {
+    return false;
+  }
+  for (const Tile& tile : shape.layout().tiles()) {
+    if (absl::c_linear_search(tile.dimensions(), Tile::kCombineDimension)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Returns whether the given transpose produces a result which is bit-wise
 // identical to its operand and thus may be replaced with a bitcast.
 bool TransposeIsBitcast(const HloInstruction* transpose) {
   CHECK_EQ(HloOpcode::kTranspose, transpose->opcode());
   const HloInstruction* operand = transpose->operand(0);
-  return ShapeUtil::TransposeIsBitcast(operand->shape(), transpose->shape(),
-                                       transpose->dimensions());
+  if (!ShapeUtil::TransposeIsBitcast(operand->shape(), transpose->shape(),
+                                     transpose->dimensions())) {
+    return false;
+  }
+  if (!HasCombineDimensionTile(operand->shape()) &&
+      !HasCombineDimensionTile(transpose->shape())) {
+    return true;
+  }
+  return absl::c_equal(operand->shape().layout().tiles(),
+                       transpose->shape().layout().tiles()) &&
+         ShapeUtil::ArraySize(operand->shape()) ==
+             ShapeUtil::ArraySize(transpose->shape());
 }
 
 // Recursive helper for method below.
@@ -531,6 +555,15 @@ int64_t GetReduceFlops(const HloInstruction* reduce) {
   }
   // Reduce along a dimension of size n requires n-1 reductions
   return ShapeUtil::ElementsIn(reduce->shape()) * (reduce_product - 1);
+}
+
+// Returns true if any edge padding is negative, i.e. the pad crops its operand.
+bool HasNegativePadding(const PaddingConfig& config) {
+  return absl::c_any_of(config.dimensions(),
+                        [](const PaddingConfig::PaddingConfigDimension& dim) {
+                          return dim.edge_padding_low() < 0 ||
+                                 dim.edge_padding_high() < 0;
+                        });
 }
 
 }  // namespace
@@ -901,6 +934,179 @@ absl::Status AlgebraicSimplifierVisitor::HandleAbs(HloInstruction* abs) {
   return absl::OkStatus();
 }
 
+namespace {
+
+// Returns the value of a constant integral scalar, looking through converts
+// (e.g. `convert(u32 constant)` left behind by X64 elimination) and applying
+// the conversions so type semantics are respected.
+std::optional<int64_t> GetConstantIntegralScalar(const HloInstruction* hlo) {
+  if (!ShapeUtil::IsScalar(hlo->shape()) ||
+      !primitive_util::IsIntegralType(hlo->shape().element_type())) {
+    return std::nullopt;
+  }
+  const HloInstruction* current = hlo;
+  absl::InlinedVector<PrimitiveType, 2> convert_types;
+  while (current->opcode() == HloOpcode::kConvert) {
+    convert_types.push_back(current->shape().element_type());
+    current = current->operand(0);
+  }
+  if (!Match(current, m::ConstantScalar())) {
+    return std::nullopt;
+  }
+  Literal lit = current->literal().Clone();
+  for (auto it = convert_types.rbegin(); it != convert_types.rend(); ++it) {
+    absl::StatusOr<Literal> converted = lit.Convert(*it);
+    if (!converted.ok()) {
+      return std::nullopt;
+    }
+    lit = *std::move(converted);
+  }
+  return lit.GetFirstInteger();
+}
+
+// Returns `pad(operand, zero, config)`, or `operand` if `config` is a no-op.
+absl::StatusOr<HloInstruction*> MakePadIfNeeded(
+    HloInstruction* operand, HloInstruction* zero, const PaddingConfig& config,
+    const OpMetadata* metadata = nullptr) {
+  if (absl::c_all_of(config.dimensions(), [](const auto& dim) {
+        return dim.edge_padding_low() == 0 && dim.edge_padding_high() == 0 &&
+               dim.interior_padding() == 0;
+      })) {
+    return operand;
+  }
+  return MakePadHlo(operand, zero, config, metadata);
+}
+
+// An array that is zero everywhere except for an axis-aligned box, which holds
+// `source`. `low(d)` / `high(d)` are the number of zeros before / after the box
+// in dimension `d`.
+class ZeroPaddedBox {
+ public:
+  ZeroPaddedBox(HloInstruction* source, std::vector<int64_t> low,
+                std::vector<int64_t> high)
+      : source_(source), low_(std::move(low)), high_(std::move(high)) {
+    CHECK_EQ(low_.size(), source_->shape().dimensions().size());
+    CHECK_EQ(high_.size(), source_->shape().dimensions().size());
+  }
+
+  HloInstruction* source() const { return source_; }
+  int64_t low(int64_t dim) const { return low_[dim]; }
+  int64_t high(int64_t dim) const { return high_[dim]; }
+  int64_t rank() const { return low_.size(); }
+
+ private:
+  HloInstruction* source_;
+  std::vector<int64_t> low_;
+  std::vector<int64_t> high_;
+};
+
+// Matches `pad(source, 0)` without interior or negative padding.
+std::optional<ZeroPaddedBox> MatchZeroPaddedBox(HloInstruction* hlo) {
+  if (!hlo->shape().IsArray() || hlo->opcode() != HloOpcode::kPad ||
+      !IsAll(hlo->operand(1), 0)) {
+    return std::nullopt;
+  }
+  std::vector<int64_t> low;
+  std::vector<int64_t> high;
+  for (const auto& dim : hlo->padding_config().dimensions()) {
+    if (dim.interior_padding() != 0 || dim.edge_padding_low() < 0 ||
+        dim.edge_padding_high() < 0) {
+      return std::nullopt;
+    }
+    low.push_back(dim.edge_padding_low());
+    high.push_back(dim.edge_padding_high());
+  }
+  return ZeroPaddedBox(hlo->mutable_operand(0), std::move(low),
+                       std::move(high));
+}
+
+// Returns the only dimension in which `a` and `b` are placed differently, or
+// std::nullopt if they are placed identically or differ in several dimensions.
+std::optional<int64_t> FindConcatDim(const ZeroPaddedBox& a,
+                                     const ZeroPaddedBox& b) {
+  std::optional<int64_t> concat_dim;
+  for (int64_t d = 0; d < a.rank(); ++d) {
+    if (a.low(d) == b.low(d) && a.high(d) == b.high(d)) {
+      continue;
+    }
+    // The boxes may be placed differently in only one dimension, the one we
+    // concatenate along.
+    if (concat_dim.has_value()) {
+      return std::nullopt;
+    }
+    concat_dim = d;
+  }
+  return concat_dim;
+}
+
+// Returns the operands of `concatenate(first.source, zeros, second.source)`
+// along `concat_dim`, where the zeros fill a gap of size `gap` (omitted if 0).
+std::vector<HloInstruction*> MakeConcatParts(const ZeroPaddedBox& first,
+                                             const ZeroPaddedBox& second,
+                                             int64_t concat_dim, int64_t gap,
+                                             HloInstruction* zero) {
+  std::vector<HloInstruction*> parts = {first.source()};
+  if (gap > 0) {
+    std::vector<int64_t> gap_dims(first.source()->shape().dimensions().begin(),
+                                  first.source()->shape().dimensions().end());
+    gap_dims[concat_dim] = gap;
+    parts.push_back(MakeBroadcastHlo(zero, {}, gap_dims));
+  }
+  parts.push_back(second.source());
+  return parts;
+}
+
+// Folds `add(A, B)` where A and B are zero-padded boxes that coincide in all
+// but one dimension and are disjoint in that one into
+// `pad(concatenate(A.source, zeros, B.source), 0)`.
+//
+// Autograd emits such sums for the gradient of a tensor that is split into
+// pieces, e.g. `q, k, v = x[0], x[1], x[2]`. The result is again a zero-padded
+// box, so n-ary sums collapse into nested concatenates, which HandleConcatenate
+// flattens.
+absl::StatusOr<HloInstruction*> TryFoldAddOfDisjointZeroPaddedBoxes(
+    HloInstruction* add) {
+  std::optional<ZeroPaddedBox> a = MatchZeroPaddedBox(add->mutable_operand(0));
+  if (!a.has_value()) {
+    return nullptr;
+  }
+  std::optional<ZeroPaddedBox> b = MatchZeroPaddedBox(add->mutable_operand(1));
+  if (!b.has_value()) {
+    return nullptr;
+  }
+  std::optional<int64_t> maybe_concat_dim = FindConcatDim(*a, *b);
+  if (!maybe_concat_dim.has_value()) {
+    return nullptr;
+  }
+  const int64_t concat_dim = *maybe_concat_dim;
+  if (a->low(concat_dim) > b->low(concat_dim)) {
+    std::swap(a, b);
+  }
+  // Both boxes lie inside the same array, so with `a` starting first they are
+  // disjoint iff `b` starts at or after the end of `a`. `b`'s end, and hence
+  // its high padding, is then determined by its size; it needs no check.
+  const int64_t a_end =
+      add->shape().dimensions(concat_dim) - a->high(concat_dim);
+  const int64_t gap = b->low(concat_dim) - a_end;
+  if (gap < 0) {
+    return nullptr;
+  }
+  HloInstruction* zero = add->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(add->shape().element_type())));
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * concat,
+                   MakeConcatHlo(MakeConcatParts(*a, *b, concat_dim, gap, zero),
+                                 concat_dim));
+  PaddingConfig padding_config = MakeNoPaddingConfig(a->rank());
+  for (int64_t d = 0; d < a->rank(); ++d) {
+    auto* pad_dim = padding_config.mutable_dimensions(d);
+    pad_dim->set_edge_padding_low(a->low(d));
+    pad_dim->set_edge_padding_high(d == concat_dim ? b->high(d) : a->high(d));
+  }
+  return MakePadIfNeeded(concat, zero, padding_config, &add->metadata());
+}
+
+}  // namespace
+
 absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(add, m::Add(m::Op(&lhs), m::Op(&rhs))));
@@ -979,6 +1185,15 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
     VLOG(10) << "trying transform [x + (y - x) => y]: " << add->ToString();
     if (ReplaceInstructionIfCompatible(add, y)) {
       return absl::OkStatus();
+    }
+  }
+
+  // Sum of zero-padded blocks that tile a dimension => pad(concatenate(...)).
+  if (!options_.is_layout_sensitive()) {
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * folded,
+                     TryFoldAddOfDisjointZeroPaddedBoxes(add));
+    if (folded != nullptr) {
+      return ReplaceInstruction(add, folded);
     }
   }
 
@@ -1861,7 +2076,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   // Replace Copy(Reshape()) with Reshape() if the Reshape is a logical bitcast.
   if (copy->operand(0)->opcode() == HloOpcode::kReshape &&
       copy->operand(0)->user_count() == 1 &&
-      ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape())) {
+      ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape()) &&
+      (!options_.is_layout_sensitive() ||
+       (!HasCombineDimensionTile(copy->operand(0)->shape()) &&
+        !HasCombineDimensionTile(copy->shape())) ||
+       absl::c_equal(copy->operand(0)->shape().layout().tiles(),
+                     copy->shape().layout().tiles()))) {
     return ReplaceWithNewInstruction(
         copy,
         copy->operand(0)->CloneWithNewOperands(
@@ -2503,8 +2723,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
                                              HloOpcode::kMultiply, a, new_exp));
   }
 
-  // A/pow(B,C) => A*pow(B,-C)
-  if (Match(divide, m::Divide(m::Op(&a), m::Power(m::Op(&b), m::Op(&c))))) {
+  // A/pow(B,C) => A*pow(B,-C), never for integers: there pow(B,-C) is 0 for
+  // |B| > 1 (or a wrapped exponent), not a reciprocal.
+  if (!ShapeUtil::ElementIsIntegral(divide->shape()) &&
+      Match(divide, m::Divide(m::Op(&a), m::Power(m::Op(&b), m::Op(&c))))) {
     VLOG(10) << "transform [A/pow(B,C) => A*pow(B,-C)]: " << divide->ToString();
     // The output shape of the created negate operator should be the same as the
     // input.
@@ -4190,6 +4412,9 @@ AlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
 
 absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   CHECK(computation_ == dot->parent());
+  if (dot->operand_count() > 2) {
+    return absl::OkStatus();
+  }
   HloDotInstruction* dot_cast = Cast<HloDotInstruction>(dot);
   const auto& dnums = dot->dot_dimension_numbers();
 
@@ -5889,21 +6114,30 @@ absl::Status AlgebraicSimplifierVisitor::HandleConvert(
 
 absl::Status AlgebraicSimplifierVisitor::HandleCustomCall(
     HloInstruction* custom_call) {
-  // Remove redundant slice to dynamic of pad to static
+  // Remove redundant SliceToDynamic of PadToStatic. The dynamic padder
+  // wraps the size operand in clamp(0, size, bound); looking through it is
+  // value-preserving since PadToStatic sizes are within bounds.
   HloInstruction *pad_to_static0, *pad_to_static1, *pad_to_static_operand;
-  if (Match(
-          custom_call,
-          m::CustomCall(
-              {"SliceToDynamic"},
-              m::GetTupleElement(m::CustomCall(&pad_to_static0, {"PadToStatic"},
-                                               m::Op(&pad_to_static_operand)),
-                                 0),
-              m::GetTupleElement(
-                  m::CustomCall(&pad_to_static1, {"PadToStatic"}, m::Op()),
-                  1))) &&
-      pad_to_static0 == pad_to_static1 &&
-      SameShape(custom_call->shape(), pad_to_static_operand->shape())) {
-    return ReplaceInstruction(custom_call, pad_to_static_operand);
+  if (custom_call->shape().IsArray() &&
+      custom_call->shape().dimensions().size() == 1) {
+    auto size_gte = m::GetTupleElement(
+        m::CustomCall(&pad_to_static1, {"PadToStatic"}, m::Op()), 1);
+    if (Match(custom_call,
+              m::CustomCall(
+                  {"SliceToDynamic"},
+                  m::GetTupleElement(
+                      m::CustomCall(&pad_to_static0, {"PadToStatic"},
+                                    m::Op(&pad_to_static_operand)),
+                      0),
+                  m::AnyOf<HloInstruction>(
+                      size_gte,
+                      m::Clamp(m::ConstantScalar(0), size_gte,
+                               m::ConstantScalar(
+                                   custom_call->shape().dimensions(0)))))) &&
+        pad_to_static0 == pad_to_static1 &&
+        SameShape(custom_call->shape(), pad_to_static_operand->shape())) {
+      return ReplaceInstruction(custom_call, pad_to_static_operand);
+    }
   }
   if (options_.is_layout_sensitive() &&
       custom_call->IsCustomCall("LayoutConstraint")) {
@@ -7098,6 +7332,84 @@ absl::Status AlgebraicSimplifierVisitor::HandleReverse(
   return absl::OkStatus();
 }
 
+absl::Status AlgebraicSimplifierVisitor::HandleShuffle(HloInstruction* hlo) {
+  auto* shuffle = Cast<HloShuffleInstruction>(hlo);
+
+  switch (shuffle->mode()) {
+    case ShuffleMode::kRotate: {
+      // Accumulate shifts per dimension (in ascending order of dim).
+      absl::btree_map<int64_t, int64_t> combined_shifts;
+      for (int64_t i = 0; i < shuffle->dimensions().size(); ++i) {
+        combined_shifts[shuffle->dimensions()[i]] +=
+            shuffle->rotate().shifts(i);
+      }
+
+      // rotate(rotate(x, {d}, {m}), {d}, {n}) ==> rotate(x, {d}, {m + n})
+      HloInstruction* base_operand = shuffle->mutable_operand(0);
+      while (base_operand->opcode() == HloOpcode::kShuffle &&
+             Cast<HloShuffleInstruction>(base_operand)->mode() ==
+                 ShuffleMode::kRotate) {
+        auto* inner_shuffle = Cast<HloShuffleInstruction>(base_operand);
+        for (int64_t i = 0; i < inner_shuffle->dimensions().size(); ++i) {
+          combined_shifts[inner_shuffle->dimensions()[i]] +=
+              inner_shuffle->rotate().shifts(i);
+        }
+        base_operand = inner_shuffle->mutable_operand(0);
+      }
+
+      // Helper to check if base_operand is a splat along dim.
+      auto is_dim_splat = [&](int64_t dim) -> bool {
+        if (base_operand->IsConstant() &&
+            base_operand->literal().IsAllFirst()) {
+          return true;
+        }
+        if (base_operand->opcode() == HloOpcode::kBroadcast) {
+          return !absl::c_linear_search(base_operand->dimensions(), dim);
+        }
+        return false;
+      };
+
+      // Canonicalize shifts & dimensions, remove no-op dims.
+      DimensionVector new_dimensions;
+      DimensionVector new_shifts;
+      for (const auto& [dim, total_shift] : combined_shifts) {
+        int64_t dim_size = shuffle->shape().dimensions(dim);
+        // No-op: size 1 dim
+        if (dim_size <= 1) {
+          continue;
+        }
+        // No-op: splat along dim
+        if (is_dim_splat(dim)) {
+          continue;
+        }
+        int64_t norm_shift = shuffle::NormalizeShift(total_shift, dim_size);
+        // No-op: shift == 0
+        if (norm_shift == 0) {
+          continue;
+        }
+        new_dimensions.push_back(dim);
+        new_shifts.push_back(norm_shift);
+      }
+
+      // Replace if changed.
+      if (new_dimensions.empty()) {
+        return ReplaceInstruction(shuffle, base_operand);
+      }
+      if (base_operand != shuffle->operand(0) ||
+          new_dimensions != shuffle->dimensions() ||
+          !absl::c_equal(new_shifts, shuffle->rotate().shifts())) {
+        auto new_shuffle = HloInstruction::CreateShuffle(
+            shuffle->shape(), base_operand, new_dimensions,
+            shuffle::Rotate(new_shifts));
+        return ReplaceWithNewInstruction(shuffle, std::move(new_shuffle));
+      }
+      return absl::OkStatus();
+    }
+    default:
+      return absl::OkStatus();
+  }
+}
+
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
     HloInstruction* slice) {
   // Only try to do this for effective scalars. We could do the same for slicing
@@ -8070,19 +8382,26 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     }
   }
 
-  // ds(ds(x,id),inner_id) -> ds(x, id + inner_id)
+  // ds(ds(x, inner_id), id) ->
+  //   ds(x, clamp(0, id, inner_size - outer_size) +
+  //         clamp(0, inner_id, operand_size - inner_size))
   if (operand->opcode() == HloOpcode::kDynamicSlice) {
     ABSL_RETURN_IF_ERROR(dynamic_slice->ReplaceOperandWithDifferentShape(
         0, operand->mutable_operand(0)));
     for (int64_t i = 1; i < dynamic_slice->operand_count(); ++i) {
       HloInstruction* index = dynamic_slice->mutable_operand(i);
+      index = index->AddInstruction(HloInstruction::CreateTernary(
+          index->shape(), HloOpcode::kClamp, MakeScalarLike(index, 0), index,
+          MakeScalarLike(index,
+                         operand->dynamic_slice_sizes()[i - 1] -
+                             dynamic_slice->dynamic_slice_sizes()[i - 1])));
       HloInstruction* inner_index = operand->mutable_operand(i);
       inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
           inner_index->shape(), HloOpcode::kClamp,
           MakeScalarLike(inner_index, 0), inner_index,
           MakeScalarLike(inner_index,
                          operand->operand(0)->shape().dimensions(i - 1) -
-                             dynamic_slice->dynamic_slice_sizes()[i - 1])));
+                             operand->dynamic_slice_sizes()[i - 1])));
       if (inner_index->shape().element_type() !=
           index->shape().element_type()) {
         inner_index = inner_index->AddInstruction(
@@ -8167,13 +8486,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
       for (int64_t dim = 0; dim < updated_shape.dimensions().size(); ++dim) {
         auto padding_config_dim = padding_config.add_dimensions();
         auto slice_dim_start = update_start_indx->operand(dim + offset);
-        if (!Match(slice_dim_start, m::ConstantScalar())) {
-          compatible = false;
-          break;
-        }
-        VLOG(2) << "slice: " << slice_dim_start->ToString();
         std::optional<int64_t> start =
-            slice_dim_start->literal().GetFirstInteger();
+            GetConstantIntegralScalar(slice_dim_start);
         if (!start) {
           compatible = false;
           break;
@@ -8336,7 +8650,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     return ReplaceInstruction(dynamic_update_slice, updated);
   }
 
-  // dus(a,dus(ds(a,id),c,inner_id)),id) is equivalent to dus(a,c,inner_id + id)
+  // dus(a,dus(ds(a,id),c,inner_id)),id) ->
+  //   dus(a, c, clamp(0, id, operand_size - inner_size) +
+  //             clamp(0, inner_id, inner_size - update_size))
   if (dus_update->opcode() == HloOpcode::kDynamicUpdateSlice &&
       (dus_update->operand(0)->opcode() == HloOpcode::kDynamicSlice &&
        dus_update->operand(0)->operand(0) == dynamic_update_slice->operand(0) &&
@@ -8348,6 +8664,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
         1, dus_update->mutable_operand(1)));
     for (int64_t i = 2; i < dynamic_update_slice->operand_count(); ++i) {
       HloInstruction* index = dynamic_update_slice->mutable_operand(i);
+      index = index->AddInstruction(HloInstruction::CreateTernary(
+          index->shape(), HloOpcode::kClamp, MakeScalarLike(index, 0), index,
+          MakeScalarLike(index,
+                         dynamic_update_slice->shape().dimensions(i - 2) -
+                             dus_update->shape().dimensions(i - 2))));
       HloInstruction* inner_index = dus_update->mutable_operand(i);
       inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
           inner_index->shape(), HloOpcode::kClamp,
@@ -9561,6 +9882,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return absl::OkStatus();
   }
 
+  // A cropping pad does not compose with the window padding by addition.
+  if (HasNegativePadding(pad_config)) {
+    VLOG(10) << "Not folding negative pad into reduce-window.";
+    return absl::OkStatus();
+  }
+
   // If reduce_window already has padding, the pad value of the pad op and the
   // init value of reduce_window must match to allow folding the pad.
   const HloInstruction* pad_value = pad->operand(1);
@@ -9927,6 +10254,14 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryFoldTransposeIntoScatter(
   }
 
   absl::Span<const int64_t> permutation = transpose->dimensions();
+  // Folding makes the scatter write through the transposed operand. Bail if
+  // that makes the written windows less contiguous than they are now:
+  // strided window writes do not coalesce and can cost far more than the
+  // transpose this rewrite saves.
+  if (ScatterSimplifier::WriteRunLength(scatter, permutation) <
+      ScatterSimplifier::WriteRunLength(scatter)) {
+    return false;
+  }
   std::vector<int64_t> inverse_permutation = InversePermutation(permutation);
 
   // Step 1 : Transpose base operand
@@ -10330,6 +10665,11 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
           p.interior_padding() != 0) {
         return false;
       }
+    }
+
+    // A cropping pad does not compose with the window padding by addition.
+    if (HasNegativePadding(padding)) {
+      return false;
     }
 
     // Compute the window which is the result of merging the kPad and the

@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tuple_tree.h"
 #include "xla/util.h"
@@ -3586,6 +3587,20 @@ TEST(XlaBuilderTest, UnboundedReverse) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedShuffle) {
+  XlaBuilder b(TestName());
+  ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+
+  Shuffle(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0, 1},
+          shuffle::Rotate(/*shifts=*/{1, 3}));
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       BuildHloModule(b));
+
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedRngBitGenerator) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape initial_state, ParseShape("u32[?, 10]"));
@@ -4210,6 +4225,34 @@ TEST(XlaBuilderTest, OriginalValue) {
       {original_array0, original_array1});
   EXPECT_NE(tuple_original_value, nullptr);
   EXPECT_THAT(*tuple_original_value, expected_tuple_original_value);
+}
+
+TEST(XlaBuilderTest, AsyncStartWithOutputOperandAliasing) {
+  XlaBuilder b("async_start_aliasing");
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  XlaOp p0 = Parameter(&b, 0, shape, "p0");
+
+  std::unique_ptr<XlaBuilder> sub_b = b.CreateSubBuilder("subcomp");
+  XlaOp sub_p0 = Parameter(sub_b.get(), 0, shape, "sub_p0");
+  XlaOp sub_neg = Neg(sub_p0);
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId sub_comp_id,
+                          sub_b->BuildSubComputation(sub_neg));
+
+  Shape start_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTupleShape({shape}), shape,
+                                 ShapeUtil::MakeShape(S32, {})});
+
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasing =
+      {{{1}, {0, {}}}};
+
+  internal::XlaBuilderFriend::BuildAsyncStart(
+      &b, {p0}, HloInstruction::kMainExecutionThread, sub_comp_id, start_shape,
+      aliasing);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, BuildHloModule(b));
+  HloInstruction* root = GetRoot(*module);
+  EXPECT_EQ(root->opcode(), HloOpcode::kAsyncStart);
+  EXPECT_EQ(root->output_operand_aliasing(), aliasing);
 }
 
 }  // namespace

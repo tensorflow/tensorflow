@@ -110,6 +110,10 @@ py_test(
     ],
 )
 
+#LINT.IfChange(combined_tests)
+# If you add a new tf_xla_py_strict_test please either add the test file to one of the combined test
+# targets that matches in all tags and other settings or add a new combined test target.
+
 tf_xla_combined_py_test(
     name = "combined_ops_test_a",
     size = "medium",
@@ -272,7 +276,9 @@ tf_xla_combined_py_test(
         # go/keep-sorted end
     ],
 )
+#LINT.ThenChange(:individual_tests)
 
+#LINT.IfChange(individual_tests)
 tf_xla_py_strict_test(
     name = "adadelta_test",
     size = "medium",
@@ -489,9 +495,9 @@ tf_xla_py_strict_test(
 
 tf_xla_py_strict_test(
     name = "cholesky_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["cholesky_op_test.py"],
-    disabled_backends = ["gpu_h100"],  # TODO: b/362907482 - Re-enable after fixing.
+    shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
@@ -522,6 +528,7 @@ tf_xla_py_strict_test(
         ":xla_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/compiler/xla",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -532,9 +539,12 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:control_flow_switch_case",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:tensor_array_ops",
+        "//tensorflow/python/ops/signal:fft_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -784,6 +794,7 @@ tf_xla_py_strict_test(
         ":xla_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:nn_grad",
@@ -1353,14 +1364,14 @@ tf_xla_py_strict_test(
 
 tf_xla_py_strict_test(
     name = "qr_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["qr_op_test.py"],
     disabled_backends = [
         # Test is very slow on CPU.
         "cpu",
         "cpu_ondemand",
     ],
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "nozapfhahn",
@@ -1373,6 +1384,33 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_strict_test(
+    name = "qr_op_large_test",
+    size = "large",
+    srcs = ["qr_op_large_test.py"],
+    disabled_backends = [
+        # Test is very slow on CPU.
+        "cpu",
+        "cpu_ondemand",
+    ],
+    # Keep shard_count = 2 so testLarge2000x2000 and testLarge17500x128 (if enabled) run in separate shards.
+    shard_count = 2,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "nozapfhahn",
+        "optonly",
+        "requires-mem:24g",
+    ],
+    deps = [
+        ":qr_op_test_lib",
+        ":xla_test",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -1436,6 +1474,7 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
@@ -1579,7 +1618,9 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/python/client:device_lib",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:test",
@@ -2583,12 +2624,13 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/mlir/stablehlo",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/core/protobuf:for_core_protos_py_proto",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
@@ -2613,12 +2655,13 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/mlir/stablehlo",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/core/protobuf:for_core_protos_py_proto",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
@@ -2642,12 +2685,13 @@ tf_xla_py_strict_test(
         "//tensorflow/compiler/mlir/stablehlo",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/core/protobuf:for_core_protos_py_proto",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
@@ -2738,21 +2782,23 @@ tf_xla_py_strict_test(
 )
 
 # copybara:uncomment_begin(google-only)
-tf_xla_py_strict_test(
-    name = "xla_dump_to_sponge_test",
-    size = "medium",
-    srcs = ["xla_dump_to_sponge_test.py"],
-    tags = [
-        "optonly",
-    ],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/platform:test",
-        "//third_party/py/numpy",
-    ],
-)
+# tf_xla_py_strict_test(
+#     name = "xla_dump_to_sponge_test",
+#     size = "medium",
+#     srcs = ["xla_dump_to_sponge_test.py"],
+#     tags = [
+#         "optonly",
+#     ],
+#     deps = [
+#         ":xla_test",
+#         "//third_party/py/numpy",
+#         "//tensorflow/python/ops:array_ops",
+#         "//tensorflow/python/ops:math_ops",
+#         "//tensorflow/python/platform:test",
+#     ],
+# )
+# copybara:uncomment_end
+#LINT.ThenChange(:combined_tests)
 
 cuda_py_strict_test(
     name = "xla_device_gpu_test",
@@ -2924,7 +2970,6 @@ tf_cuda_cc_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
-        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -2945,7 +2990,6 @@ tf_cuda_cc_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
-        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )

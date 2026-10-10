@@ -23,7 +23,7 @@ on:
 
 jobs:
   bazel-tags:
-    runs-on: "linux-x86-n2-16"
+    runs-on: "linux-x86-n4-16"
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest" # zizmor: ignore[unpinned-images]
     defaults:

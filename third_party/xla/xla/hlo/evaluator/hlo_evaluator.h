@@ -18,6 +18,7 @@ limitations under the License.
 
 #define _USE_MATH_DEFINES
 
+#include <cmath>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -29,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/array2d.h"
@@ -369,13 +372,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // See the description on SpecializationKey for more details.
   struct SpecializationCache {
     using EntryMap = absl::flat_hash_map<SpecializationKey, Literal>;
-    using iterator = EntryMap::iterator;
-    using const_iterator = EntryMap::const_iterator;
+
+    mutable absl::Mutex mu;
     // A deque never relocates existing elements. It means all existing pointers
     // and references to previously stored Literals remain valid for the
     // lifetime of the SpecializationCache.
-    std::deque<Literal> arg_storage;
-    EntryMap entries;
+    std::deque<Literal> arg_storage ABSL_GUARDED_BY(mu);
+    EntryMap entries ABSL_GUARDED_BY(mu);
 
     SpecializationCache() = default;
     SpecializationCache(const SpecializationCache&) = delete;
@@ -384,31 +387,39 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     SpecializationCache& operator=(SpecializationCache&&) = delete;
 
     void Clear() {
+      absl::MutexLock lock(&mu);
       entries.clear();
       arg_storage.clear();
     }
-    size_t size() const { return entries.size(); }
-    bool empty() const { return entries.empty(); }
-    iterator begin() { return entries.begin(); }
-    iterator end() { return entries.end(); }
-    const_iterator begin() const { return entries.begin(); }
-    const_iterator end() const { return entries.end(); }
-
-    const Literal* Find(const SpecializationKey& key) const {
-      auto it = entries.find(key);
-      if (it != entries.end()) {
-        return &it->second;
-      }
-      return nullptr;
+    size_t size() const {
+      absl::MutexLock lock(&mu);
+      return entries.size();
+    }
+    bool empty() const {
+      absl::MutexLock lock(&mu);
+      return entries.empty();
     }
 
-    const Literal* Find(const HloComputation* computation,
-                        absl::Span<const Literal* const> args) const {
+    std::optional<Literal> Find(const SpecializationKey& key) const {
+      absl::ReaderMutexLock lock(&mu);
+      auto it = entries.find(key);
+      if (it != entries.end()) {
+        return it->second.Clone();
+      }
+      return std::nullopt;
+    }
+
+    std::optional<Literal> Find(const HloComputation* computation,
+                                absl::Span<const Literal* const> args) const {
       return Find(SpecializationKey(computation, args));
     }
 
     void Insert(const HloComputation* computation,
                 absl::Span<const Literal* const> args, Literal result) {
+      absl::MutexLock lock(&mu);
+      if (entries.contains(SpecializationKey(computation, args))) {
+        return;
+      }
       std::vector<LiteralSlice> slices;
       slices.reserve(args.size());
       for (const Literal* arg : args) {
@@ -475,6 +486,39 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   //
   // This lets you calculate LI given the multidimensional indices in any order.
   static DimensionVector MakeDimMultipliers(const Shape& shape);
+
+  static absl::Status UnsupportedTypeError(const HloInstruction* instruction);
+
+  // Returns `shape`, if it has a layout, or a copy of `shape` with the default
+  // layout if it doesn't. Some functions require shapes to have layouts, so we
+  // simply always set one.
+  static Shape GetShapeWithLayout(const Shape& shape);
+
+  bool TryEvaluateDotFastPathF32(const HloInstruction* dot);
+
+  struct ShapeInfo {
+    static std::pair<DimensionVector, DimensionVector> dims(
+        const DimensionVector& dim_indexes, const Shape& literal_shape,
+        const Shape& scale_shape);
+
+    ShapeInfo(const Literal& literal, const Literal& scale_literal,
+              absl::Span<const int64_t> contracting_dims_field,
+              absl::Span<const int64_t> batch_dims_field);
+    ~ShapeInfo();
+
+    const int64_t rank;
+    DimensionVector batch_dim_indexes;
+    DimensionVector batch_dim_sizes;
+    DimensionVector batch_dim_scale_divisors;
+
+    DimensionVector non_contracting_dim_indexes;
+    DimensionVector non_contracting_dim_sizes;
+    DimensionVector non_contracting_dim_scale_divisors;
+
+    DimensionVector contracting_dim_indexes;
+    DimensionVector contracting_dim_sizes;
+    DimensionVector contracting_dim_scale_divisors;
+  };
 
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
@@ -758,9 +802,10 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     bool same_layout =
         LayoutUtil::Equal(operand->shape().layout(), shape.layout());
     if (same_layout) {
+      const NativeT* operand_data = operand_literal.data<NativeT>().data();
       ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
           [&](int64_t linear_index, int /*thread_id*/) {
-            return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
+            return unary_op(operand_data[linear_index]);
           }));
     } else {
       ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
@@ -801,7 +846,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
   // Optional handler exercised when evaluating literals.
   EvalLiteralHandler eval_literal_handler_;
-
 
   // Set by EvaluateInternal and opportunistically used by the HandleXXX
   // functions. When non-empty, the HandleXXX function may evaluate the

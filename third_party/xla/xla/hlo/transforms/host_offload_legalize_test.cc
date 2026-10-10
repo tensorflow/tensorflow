@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/host_offload_legalize.h"
 
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"

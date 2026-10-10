@@ -81,42 +81,63 @@ __device__ void RaggedAllToAllCopy(
   using T = DeviceVec<kVectorSize>;
 
   if (lsa_size > 0) {
-    const int grid = static_cast<int>(gridDim.x);
-    const int64_t total_lsa_updates =
+    // Work-proportional CTA assignment: CTA k copies the global element range
+    // [total*k/grid, total*(k+1)/grid), walking update boundaries as needed.
+    // This keeps CTA work balanced regardless of how transferred bytes are
+    // distributed across updates. Every CTA scans the update-size array,
+    // then walks updates in peer-major order to locate its range.
+    const int64_t grid = static_cast<int64_t>(gridDim.x);
+    const int64_t num_lsa_updates =
         static_cast<int64_t>(lsa_size) * num_updates_per_replica;
-    const int ctas_per_unit =
-        max(1, grid / static_cast<int>(total_lsa_updates));
-    const int unit_step = grid / ctas_per_unit;
-    const int my_unit_start = static_cast<int>(blockIdx.x) / ctas_per_unit;
-    const int my_cta_in_unit = static_cast<int>(blockIdx.x) % ctas_per_unit;
-    if (my_unit_start < total_lsa_updates) {
-      const int unit_tid = my_cta_in_unit * static_cast<int>(blockDim.x) +
-                           static_cast<int>(threadIdx.x);
-      const int unit_nthreads = ctas_per_unit * static_cast<int>(blockDim.x);
+    const int64_t meta_base =
+        static_cast<int64_t>(start_lsa) * num_updates_per_replica;
 
-      for (int unit = my_unit_start; unit < total_lsa_updates;
-           unit += unit_step) {
-        const int64_t flat_idx =
-            static_cast<int64_t>(start_lsa) * num_updates_per_replica + unit;
-        RaggedAllToAllUpdateMetadata<kVectorSize> meta;
-        if (!LoadRaggedAllToAllUpdateMetadata<kVectorSize>(
-                flat_idx, num_updates_per_replica, num_row_elements,
-                input_buffer_offset_bytes, output_buffer_offset_bytes,
-                input_offsets_ptr, send_sizes_ptr, output_offsets_ptr, &meta)) {
-          continue;
-        }
+    // Compute the CTA range once and publish it to all threads in the block.
+    __shared__ int64_t shared_cta_begin;
+    __shared__ int64_t shared_cta_end;
+    if (threadIdx.x == 0) {
+      int64_t total_elements = 0;
+      for (int64_t update = 0; update < num_lsa_updates; ++update) {
+        total_elements += send_sizes_ptr[meta_base + update] * num_row_elements;
+      }
+      shared_cta_begin =
+          total_elements * static_cast<int64_t>(blockIdx.x) / grid;
+      shared_cta_end =
+          total_elements * (static_cast<int64_t>(blockIdx.x) + 1) / grid;
+    }
+    __syncthreads();
+    const int64_t cta_begin = shared_cta_begin;
+    const int64_t cta_end = shared_cta_end;
 
-        const int lsa_peer = unit / num_updates_per_replica;
+    // Element offset of the current update within the concatenated element
+    // space that cta_begin/cta_end index into.
+    int64_t update_begin = 0;
+    for (int64_t update = 0; update < num_lsa_updates && update_begin < cta_end;
+         ++update) {
+      RaggedAllToAllUpdateMetadata<kVectorSize> meta;
+      if (!LoadRaggedAllToAllUpdateMetadata<kVectorSize>(
+              meta_base + update, num_updates_per_replica, num_row_elements,
+              input_buffer_offset_bytes, output_buffer_offset_bytes,
+              input_offsets_ptr, send_sizes_ptr, output_offsets_ptr, &meta)) {
+        continue;
+      }
+      const int64_t update_end = update_begin + meta.byte_count / kVectorSize;
+      if (update_end > cta_begin) {
+        const int64_t lo =
+            cta_begin > update_begin ? cta_begin - update_begin : 0;
+        const int64_t hi =
+            (cta_end < update_end ? cta_end : update_end) - update_begin;
+        const int lsa_peer = static_cast<int>(update / num_updates_per_replica);
         const T* src = static_cast<const T*>(
             ncclGetLocalPointer(send_win, meta.src_byte_offset));
         T* dst = static_cast<T*>(
             ncclGetLsaPointer(recv_win, meta.dst_byte_offset, lsa_peer));
-
-        const int64_t num_elements = meta.byte_count / kVectorSize;
-        for (int64_t i = unit_tid; i < num_elements; i += unit_nthreads) {
+        for (int64_t i = lo + static_cast<int64_t>(threadIdx.x); i < hi;
+             i += static_cast<int64_t>(blockDim.x)) {
           dst[i] = src[i];
         }
       }
+      update_begin = update_end;
     }
   }
 

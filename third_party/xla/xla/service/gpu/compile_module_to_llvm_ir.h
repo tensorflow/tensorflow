@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
@@ -71,7 +72,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     KernelCompiler* compiler,
     xla::cpu::TargetMachineOptions cpu_target_machine_options,
-    ObjectPool<std::unique_ptr<mlir::MLIRContext>>* mlir_context_pool);
+    MlirContextPool* mlir_context_pool);
 
 void LinkLlvmModulesInPlace(
     std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);

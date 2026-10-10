@@ -96,7 +96,7 @@ WhileThunk CreateWhileThunk(
     std::optional<int64_t> trip_count) {
   return WhileThunk(thunk_info, condition_result_buffer_index,
                     std::move(condition_thunks), std::move(body_thunks),
-                    trip_count);
+                    trip_count, /*devices_per_host=*/1);
 }
 
 struct CommandRecordCounts {
@@ -250,7 +250,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationKnownTripCountTest) {
                          /*condition_result_buffer_index=*/slice,
                          /*condition_thunks=*/ThunkSequence(),
                          /*body_thunks=*/std::move(body_thunks),
-                         /*trip_count=*/5);
+                         /*trip_count=*/5, /*devices_per_host=*/1);
 
   EXPECT_THAT(ExecuteThunk(while_thunk), absl_testing::IsOk());
   EXPECT_THAT(logger->logged_counters(), ElementsAre(0, 1, 2, 3, 4));
@@ -264,7 +264,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationNestedTest) {
                                    /*condition_result_buffer_index=*/slice,
                                    /*condition_thunks=*/ThunkSequence(),
                                    /*body_thunks=*/std::move(body_thunks),
-                                   /*trip_count=*/2);
+                                   /*trip_count=*/2, /*devices_per_host=*/1);
 
   ThunkSequence outer_body_sequence;
   outer_body_sequence.push_back(std::move(inner_while_thunk));
@@ -273,7 +273,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationNestedTest) {
                                /*condition_result_buffer_index=*/slice,
                                /*condition_thunks=*/ThunkSequence(),
                                /*body_thunks=*/std::move(outer_body_sequence),
-                               /*trip_count=*/3);
+                               /*trip_count=*/3, /*devices_per_host=*/1);
 
   EXPECT_THAT(ExecuteThunk(outer_while_thunk), absl_testing::IsOk());
   EXPECT_THAT(logger->logged_counters(), ElementsAre(0, 1, 0, 1, 0, 1));
@@ -285,7 +285,8 @@ TEST(WhileThunkTest, PreparePropagatesToCommandBufferExecutors) {
                                      /*size=*/sizeof(bool));
   WhileThunk thunk(Thunk::ThunkInfo(), pred_slice,
                    /*condition_thunks=*/ThunkSequence(),
-                   /*body_thunks=*/ThunkSequence());
+                   /*body_thunks=*/ThunkSequence(),
+                   /*trip_count=*/std::nullopt, /*devices_per_host=*/1);
 
   CommandRecordCounts cond_counts;
   CommandRecordCounts body_counts;
@@ -325,7 +326,8 @@ TEST(WhileThunkTest, RecordCreatesAndUpdatesCommandBufferWhile) {
                                      /*size=*/sizeof(bool));
   WhileThunk thunk(Thunk::ThunkInfo(), pred_slice,
                    /*condition_thunks=*/ThunkSequence(),
-                   /*body_thunks=*/ThunkSequence());
+                   /*body_thunks=*/ThunkSequence(),
+                   /*trip_count=*/std::nullopt, /*devices_per_host=*/1);
 
   CommandRecordCounts cond_counts;
   CommandRecordCounts body_counts;
@@ -515,14 +517,15 @@ TEST(WhileThunkTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<WhileThunk> thunk,
-      WhileThunk::FromProto(thunk_info, proto.while_thunk(), buffer_allocations,
-                            [](const ThunkProto& proto)
-                                -> absl::StatusOr<std::unique_ptr<DummyThunk>> {
-                              return DummyThunk::FromProto(proto,
-                                                           Kind::kCustomCall);
-                            }));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<WhileThunk> thunk,
+                       WhileThunk::FromProto(
+                           thunk_info, proto.while_thunk(), buffer_allocations,
+                           [](const ThunkProto& proto)
+                               -> absl::StatusOr<std::unique_ptr<DummyThunk>> {
+                             return DummyThunk::FromProto(proto,
+                                                          Kind::kCustomCall);
+                           },
+                           /*devices_per_host=*/1));
   ASSERT_NE(thunk, nullptr);
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
@@ -542,7 +545,7 @@ TEST(WhileThunkTest, TransformNested) {
       /*condition_result_buffer_index=*/slice,
       /*condition_thunks=*/std::move(condition_thunks),
       /*body_thunks=*/std::move(body_thunks),
-      /*trip_count=*/3);
+      /*trip_count=*/3, /*devices_per_host=*/1);
 
   EXPECT_OK(while_thunk->TransformNested([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());

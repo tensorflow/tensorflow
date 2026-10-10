@@ -58,12 +58,24 @@ def TFL_Control: Type<CPred<"llvm::isa<ControlType>($_self)">, "control">,
 // A type attribute containing the TensorType.
 def TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
 
+// The element type of the scale that a blockwise quantize op computes at
+// runtime. Only `f32` and `f8E8M0FNU` are meaningful today; the latter
+// constrains the scale to a power of two.
+def TFL_ScaleTypeAttr : TypeAttrBase<"mlir::Type", "scale element type attribute"> {
+  let constBuilderCall = "($0 ? ::mlir::TypeAttr::get($0) : ::mlir::TypeAttr())";
+}
+
 //===----------------------------------------------------------------------===//
 // Derived shape attribute class.
 //===----------------------------------------------------------------------===//
 class DerivedShapeAttr<code body> : DerivedAttr<"ArrayRef<int64_t>", body>;
 class DerivedTFLiteTypeAttr<code body, code convert> :
   DerivedAttr<"tflite::TensorType", body, convert>;
+
+// Reads the opaque quantization spec of an op; see
+// `FullyConnectedOptions.quant_spec` in schema.fbs. Null when the op uses
+// standard quantization semantics.
+class DerivedQuantSpecAttr<code body> : DerivedAttr<"::mlir::DictionaryAttr", body>;
 
 // TFL Runtime op trait predicate.
 class TFL_RuntimePredOpTrait<string desc, Pred pred> :
@@ -1139,6 +1151,21 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs
   );
+
+  // Names a non-standard quantization contract that the operand types cannot
+  // express on their own; see `FullyConnectedOptions.quant_spec` in schema.fbs.
+  // A runtime that does not recognize the named spec must reject the op rather
+  // than fall back to the standard behavior.
+  //
+  // This is a derived attribute reading the discardable `tfl.quant_spec`
+  // rather than an entry in `arguments`, because adding an argument would
+  // change the generated builders and break every pass, in this tree and out
+  // of it, that constructs a fully_connected positionally.
+  DerivedQuantSpecAttr quant_spec = DerivedQuantSpecAttr<[{
+    return (*this)->getAttrOfType<::mlir::DictionaryAttr>(
+        TFL::kQuantSpecAttrName);
+  }]>;
+
 
   // Depending on the weights format, this op can have one or two outputs.
   let results = (outs
@@ -4350,6 +4377,80 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
           UnrankedTensorType::get($_builder.getF32Type())));
     }]>
   ];
+}
+
+// The two ops below model blockwise (sub-channel) quantization, which
+// `!quant.uniform` cannot express. They are deliberately *not* part of the
+// TFLite schema: they only exist between `LowerQuantAnnotations` and
+// `FuseA4W2DynamicRangeFullyConnected`, which collapses the recognized
+// patterns back into a single `tfl.fully_connected`. An op that survives to
+// the exporter is a bug, and the exporter reports it as an unsupported op.
+//
+// Block layout follows the convention used throughout this dialect: the
+// tensor is tiled by `block_shape`, one element of the scale/zero-point grid
+// per tile, with the grid laid out in the same dimension order as the tensor.
+// A grid dimension of size 1 broadcasts across that axis.
+
+// These two ops exist only inside the MLIR pipeline: they are declared with the
+// raw `Op<TFL_Dialect, ...>` base rather than `TFL_Op` so that `converter_gen`
+// does not try to map them onto a `BuiltinOperator` that the schema does not
+// have. `FuseA4W2DynamicRangeFullyConnected` collapses them into a single
+// `tfl.fully_connected`; any that survive to export fail there.
+def TFL_BlockwiseQuantizeOp : Op<TFL_Dialect, "blockwise_quantize", [Pure]> {
+  let summary = "Blockwise dynamic quantize operator";
+
+  let description = [{
+    Computes a per-block scale (and, when asymmetric, zero point) from the
+    input at runtime and quantizes the input with them. The computed
+    parameters are returned alongside the quantized tensor so that a matching
+    `tfl.blockwise_dequantize` can undo the transformation.
+
+    The scale of a block is `max(abs(block)) / (q_max + range_dilation)`,
+    where `q_max` is the largest representable value of the output storage
+    type. `range_dilation` widens the denominator so that outliers clip
+    instead of stretching the whole block; it defaults to 0. When
+    `scale_type` is `f8E8M0FNU`, the scale is rounded up to the next power of
+    two.
+  }];
+
+  let arguments = (ins
+    TFL_FpTensor:$input,
+    I64ArrayAttr:$block_shape,
+    TFL_ScaleTypeAttr:$scale_type,
+    BoolAttr:$symmetric,
+    DefaultValuedAttr<F32Attr, "0.0f">:$range_dilation
+  );
+
+  let results = (outs
+    TensorOf<[TFL_I2, TFL_I4, I8, I16]>:$output,
+    TFL_TensorOf<[F8E8M0FNU, F16, BF16, F32]>:$scale,
+    TFL_TensorOfOrNone<[TFL_I2, TFL_I4, I8, I16, F32]>:$zero_point
+  );
+
+  let hasVerifier = 1;
+}
+
+def TFL_BlockwiseDequantizeOp
+    : Op<TFL_Dialect, "blockwise_dequantize", [Pure]> {
+  let summary = "Blockwise dequantize operator";
+
+  let description = [{
+    Reconstructs floating point values from a blockwise quantized tensor as
+    `scale * (input - zero_point)`. A missing `zero_points` operand means a
+    zero point of 0.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TFL_I2, TFL_I4, I8, I16]>:$input,
+    TFL_TensorOf<[F8E8M0FNU, F16, BF16, F32]>:$scales,
+    TFL_TensorOfOrNone<[TFL_I2, TFL_I4, I8, I16, F32]>:$zero_points,
+    I64ArrayAttr:$block_shape,
+    BoolAttr:$symmetric
+  );
+
+  let results = (outs TFL_FpTensor:$output);
+
+  let hasVerifier = 1;
 }
 
 def TFL_FakeQuantOp : TFL_Op<"fake_quant", [

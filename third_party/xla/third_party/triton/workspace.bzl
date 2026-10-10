@@ -15,37 +15,38 @@
 
 """Provides the repository macro to import Triton."""
 
+load("//third_party:quilt_repo.bzl", "read_patch_series")
 load("//third_party:repo.bzl", "tf_mirror_urls")
-load("//third_party/triton:common/series.bzl", "common_patch_list")
 load(
     "//third_party/triton:intel_xpu/workspace.bzl",
     "XPU_TRITON_COMMIT",
     "XPU_TRITON_SHA256",
     "use_xpu_triton",
 )
-load("//third_party/triton:oss_only/series.bzl", "oss_only_patch_list")
 
 # This is a custom repository rule (in place of the standard tf_http_archive)
 # so that the Intel XPU backend source can be used in place of the upstream
 # Triton when building XLA for the oneAPI backend (ENABLE_INTEL_XPU_TRITON=1).
 def _triton_archive_impl(repository_ctx):
     patch_files = repository_ctx.attr.patch_file
+    series = repository_ctx.attr.series
     sha256 = repository_ctx.attr.sha256
     strip_prefix = repository_ctx.attr.strip_prefix
     urls = repository_ctx.attr.urls
 
     if use_xpu_triton(repository_ctx):
+        patch_files = ["//third_party/triton:intel_xpu/intel_build.patch"]
+        series = ["//third_party/triton:oss_only/series"]
         sha256 = XPU_TRITON_SHA256
-        patch_files = oss_only_patch_list + [
-            "//third_party/triton:intel_xpu/intel_build.patch",
-        ]
         strip_prefix = "intel-xpu-backend-for-triton-" + XPU_TRITON_COMMIT
         urls = tf_mirror_urls("https://github.com/intel/intel-xpu-backend-for-triton/archive/{}.tar.gz".format(XPU_TRITON_COMMIT))
 
     # Resolve labels before download_and_extract to prevent
     # unnecessary re-downloads. Borrowed from tf_http_archive.
-    for patch_file in patch_files:
+    patch_files = read_patch_series(repository_ctx, series) + [
         repository_ctx.path(Label(patch_file))
+        for patch_file in patch_files
+    ]
 
     repository_ctx.download_and_extract(
         url = urls,
@@ -53,12 +54,13 @@ def _triton_archive_impl(repository_ctx):
         stripPrefix = strip_prefix,
     )
     for patch_file in patch_files:
-        repository_ctx.patch(repository_ctx.path(Label(patch_file)), strip = 1)
+        repository_ctx.patch(patch_file, strip = 1)
 
 triton_archive = repository_rule(
     implementation = _triton_archive_impl,
     attrs = {
         "patch_file": attr.string_list(),
+        "series": attr.string_list(),
         "sha256": attr.string(mandatory = True),
         "strip_prefix": attr.string(mandatory = True),
         "urls": attr.string_list(mandatory = True),
@@ -69,12 +71,15 @@ triton_archive = repository_rule(
 def repo():
     """Imports Triton."""
 
-    TRITON_COMMIT = "a77e7c793abc0d0c923a9afb275058e2fe57a198"
-    TRITON_SHA256 = "140be1b8eedcef0dd495b2d5a0dab413ce67894bfd251c455d2d601b242d3315"
+    TRITON_COMMIT = "2074a1b8a5cd283ce584f8ebca825c4f0b215fc1"
+    TRITON_SHA256 = "3cf7fb4bf850a1e06dd96704a8407046c028129ebc9469a338856e30646d3f4b"
     triton_archive(
         name = "triton",
         sha256 = TRITON_SHA256,
         strip_prefix = "triton-" + TRITON_COMMIT,
         urls = tf_mirror_urls("https://github.com/triton-lang/triton/archive/{}.tar.gz".format(TRITON_COMMIT)),
-        patch_file = common_patch_list + oss_only_patch_list,
+        series = [
+            "//third_party/triton:common/series",
+            "//third_party/triton:oss_only/series",
+        ],
     )

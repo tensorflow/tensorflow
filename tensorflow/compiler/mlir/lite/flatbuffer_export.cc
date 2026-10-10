@@ -1116,6 +1116,10 @@ class Translator {
   // deduplicate the buffers in the flatbuffer.
   llvm::DenseMap<mlir::ElementsAttr, int> const_attribute_to_buffer_map_;
   llvm::DenseMap<mlir::ElementsAttr, int> cast_attribute_to_buffer_map_;
+  // With `use_buffer_offset_`, maps the physical fingerprint of a constant's
+  // data and type to its buffer index, to dedupe distinct attributes holding
+  // identical data.
+  absl::flat_hash_map<uint64_t, int> physical_hash_to_buffer_map_;
 
   // Map subgraph name to its debug metadata index and all of its operations'
   // debug metadata indexes. It is built during debug metadata creation, and is
@@ -1307,12 +1311,39 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     return empty_buffer_;
   }
 
+  // Buffer fingerprint used to dedupe payloads written at buffer offsets. See
+  // the comment at its use below.
+  std::optional<uint64_t> physical_hash;
+  if (use_buffer_offset_) {
+    physical_hash = GetPhysicalBufferHash(attr);
+    if (is_streaming_cast) {
+      physical_hash = llvm::hash_combine(*physical_hash, 0xbf16f32);
+    }
+  }
+
+  auto type = mlir::cast<TensorType>(value.getType());
+
   if (can_be_deduplicated) {
     auto& dedup_map = is_streaming_cast ? cast_attribute_to_buffer_map_
                                         : const_attribute_to_buffer_map_;
     if (dedup_map.find(attr) != dedup_map.end()) {
       index = dedup_map[attr];
       return empty_buffer_;
+    }
+    if (physical_hash.has_value()) {
+      // Distinct attributes can hold identical data, e.g. the same weight
+      // materialized separately in each signature. Their payloads are written
+      // once at a shared offset (see AppendBufferData); also share the buffer
+      // index so that consumers keying on it (e.g. quantizers) see one weight
+      // rather than aliased copies.
+      uint64_t key = llvm::hash_combine(*physical_hash, mlir::hash_value(type));
+      auto [it, inserted] =
+          physical_hash_to_buffer_map_.try_emplace(key, index);
+      if (!inserted) {
+        index = it->second;
+        dedup_map[attr] = index;
+        return empty_buffer_;
+      }
     }
     dedup_map[attr] = index;
   }
@@ -1323,7 +1354,6 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   // trouble calling ConvertToTensor(). For now, extract the tensor data from
   // ElementsAttr directly in this and read type from tflite::TensorType instead
   // of tensorflow::DataType.
-  auto type = mlir::cast<TensorType>(value.getType());
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).value();
 
@@ -1542,13 +1572,9 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     // string and computing the hash of the string, but can be reliable in some
     // cases where the MLIR attributes are not deduped properly (e.g. when two
     // consts of the same value are held in different attribute types).
-    uint64_t h = GetPhysicalBufferHash(attr);
-    if (is_streaming_cast) {
-      h = llvm::hash_combine(h, 0xbf16f32);
-    }
     const_buffer_storage_.Insert(
         index, std::make_pair(attr, inst), std::move(applier),
-        /*hash=*/h,
+        /*hash=*/*physical_hash,
         /*byte_size_hint=*/mlir::TFL::GetSizeInBytes(type));
     return tflite::CreateBuffer(builder_, 0, 1, 1);
   } else {

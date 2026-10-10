@@ -66,7 +66,8 @@ HloPrintOptions CreateHloPrintOptions(
           .set_print_subcomputation_mode(
               HloPrintOptions::PrintSubcomputationMode::kOff)
           .set_print_parameter_number(false)
-          .set_print_only_essential_constants(false);
+          .set_print_only_essential_constants(false)
+          .set_print_large_constants(true);
   if (fingerprint_options.ignore_shape) {
     hlo_print_options.set_print_operand_shape(false);
     hlo_print_options.set_print_result_shape(false);

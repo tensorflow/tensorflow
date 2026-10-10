@@ -395,6 +395,35 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
+  @parameterized.parameters((1, 2, 1), (1, 4, 2), (0, 1, 1), (20, 21, 1))
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolValidEmptyOutput(self, rows, window, stride):
+    value = array_ops.zeros([1, rows, 10, 3])
+    output = nn_ops.avg_pool(
+        value,
+        ksize=[1, window, 2, 1],
+        strides=[1, stride, 1, 1],
+        padding="VALID",
+    )
+    self.assertEqual(output.shape.as_list(), [1, 0, 9, 3])
+    self.assertEqual(self.evaluate(output).shape, (1, 0, 9, 3))
+
+  @parameterized.parameters((1, 3), (0, 2))
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolNegativeOutput(self, rows, window):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Negative dimension size|Computed output size would be negative",
+    ):
+      self.evaluate(
+          nn_ops.avg_pool(
+              array_ops.zeros([1, rows, 10, 3]),
+              ksize=[1, window, 2, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+          )
+      )
+
   @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
   @test_util.run_deprecated_v1
   def testAvgPoolSamePadding(self, **kwargs):
@@ -1091,12 +1120,15 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
     tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
 
     Config = collections.namedtuple(
-        "Config", ["use_gpu", "include_batch_in_index", "argmax"])
+        "Config", ["use_gpu", "include_batch_in_index", "argmax", "Targmax"]
+    )
     configs = [
-        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8]),
-        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17]),
-        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8]),
-        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17])
+        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int64),
+        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int64),
+        Config(False, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int32),
+        Config(False, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int32),
+        Config(True, False, [0, 1, 3, 5, 0, 2, 6, 8], dtypes.int64),
+        Config(True, True, [0, 1, 3, 5, 9, 11, 15, 17], dtypes.int64),
     ]
 
     for config in configs:
@@ -1104,7 +1136,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
         t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
         argmax_t = constant_op.constant(
-            config.argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
+            config.argmax, shape=[2, 2, 2, 1], dtype=config.Targmax
+        )
         out_op = gen_nn_ops.max_pool_grad_with_argmax(
             orig_in,
             t,
@@ -2369,14 +2402,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def testAvgPoolGradOutputMemoryOutOfBounds(self):
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
-        (
-            # CPU error message
-            "(Output only has 3 elements but computation requested would use"
-            " element with index=6"
-            ")|("
-            # GPU error message
-            r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\])"
-        ),
+        r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\]",
     ):
       self.evaluate(
           gen_nn_ops.AvgPoolGrad(
@@ -2388,6 +2414,56 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
               ],
               ksize=[1, 1, 1, 1],
               strides=[1, 1, 1, 2],
+              padding="VALID",
+              data_format="NHWC",
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Xla does not raise error on out of bounds access")
+  def testAvgPoolGradMismatchedGradShapeRaisesError(self):
+    # Each grad has a different number of channels than the input. With more
+    # channels, the CPU kernel used to write past the end of its output buffer
+    # instead of raising an error.
+    for orig_input_shape, grad_shape, ksize, expected in (
+        (
+            [1, 28, 28, 3],
+            [1, 14, 14, 6],
+            2,
+            r"\[1,14,14,3\], but got " r"\[1,14,14,6\]",
+        ),
+        ([2, 2, 2, 2], [2, 3, 3, 3], 1, r"\[2,2,2,2\], but got \[2,3,3,3\]"),
+        ([1, 10, 10, 3], [1, 5, 5, 0], 2, r"\[1,5,5,3\], but got \[1,5,5,0\]"),
+    ):
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "Expected grad shape to be " + expected,
+      ):
+        self.evaluate(
+            gen_nn_ops.AvgPoolGrad(
+                orig_input_shape=orig_input_shape,
+                grad=array_ops.zeros(grad_shape),
+                ksize=[1, ksize, ksize, 1],
+                strides=[1, ksize, ksize, 1],
+                padding="VALID",
+                data_format="NHWC",
+            )
+        )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPoolGradEmptyTensorFastExit(self):
+    for empty_input_shape, empty_grad_shape in (
+        ([0, 10, 10, 3], [0, 5, 5, 3]),
+        ([1, 0, 10, 3], [1, 0, 5, 3]),
+        ([1, 10, 10, 0], [1, 5, 5, 0]),
+        ([1, 1, 10, 3], [1, 0, 5, 3]),
+    ):
+      self.evaluate(
+          gen_nn_ops.AvgPoolGrad(
+              orig_input_shape=empty_input_shape,
+              grad=array_ops.zeros(empty_grad_shape),
+              ksize=[1, 2, 2, 1],
+              strides=[1, 2, 2, 1],
               padding="VALID",
               data_format="NHWC",
           )
@@ -2442,6 +2518,9 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                     strides=[2, 1, 1, 1],
                     padding="SAME"))
 
+        # AvgPool accepts zero-sized outputs; MaxPool keeps its existing check.
+        if pool_func == nn_ops.avg_pool:
+          continue
         # Filter too large.
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           sess.run(

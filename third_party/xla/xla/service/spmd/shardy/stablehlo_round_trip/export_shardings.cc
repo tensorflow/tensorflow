@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -202,6 +203,57 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   });
 }
 
+void exportModuleShardingMetadata(ModuleOp moduleOp,
+                                  const SymbolTable& symbolTable,
+                                  OpBuilder& builder, bool enableHloShardingV3,
+                                  bool simplifyReplicatedShardings) {
+  auto getStringAttr = [&](const HloSharding& hloSharding) {
+    return builder.getStringAttr(
+        hloSharding.ToString(/*include_metadata=*/true));
+  };
+  auto toHloSharding = [&](TensorShardingAttr sdySharding) {
+    return convertToHloSharding(
+        sdySharding,
+        [&](TensorShardingAttr sharding) {
+          return sharding.getMesh(symbolTable);
+        },
+        /*manualAxes=*/{}, enableHloShardingV3, simplifyReplicatedShardings);
+  };
+
+  if (auto paramShardingsAttr =
+          moduleOp->getAttrOfType<mlir::sdy::TensorShardingPerValueAttr>(
+              mlir::sdy::kParametersShardingsAttr)) {
+    SmallVector<mlir::Attribute> paramShardingAttrs;
+    paramShardingAttrs.reserve(paramShardingsAttr.size());
+    for (TensorShardingAttr sdySharding : paramShardingsAttr.getShardings()) {
+      paramShardingAttrs.push_back(getStringAttr(toHloSharding(sdySharding)));
+    }
+    moduleOp->setAttr(xla::kMhloSpmdParametersShardings,
+                      builder.getArrayAttr(paramShardingAttrs));
+    moduleOp->removeAttr(mlir::sdy::kParametersShardingsAttr);
+  }
+
+  if (auto outputShardingsAttr =
+          moduleOp->getAttrOfType<mlir::sdy::TensorShardingPerValueAttr>(
+              mlir::sdy::kOutputShardingsAttr)) {
+    ArrayRef<TensorShardingAttr> sdyShardings =
+        outputShardingsAttr.getShardings();
+    HloSharding outputSharding = [&]() {
+      if (sdyShardings.size() == 1) {
+        return toHloSharding(sdyShardings.front());
+      }
+      std::vector<HloSharding> outputHloShardings;
+      outputHloShardings.reserve(sdyShardings.size());
+      llvm::transform(sdyShardings, std::back_inserter(outputHloShardings),
+                      toHloSharding);
+      return HloSharding::FlatTuple(std::move(outputHloShardings));
+    }();
+    moduleOp->setAttr(xla::kMhloSpmdOutputSharding,
+                      getStringAttr(outputSharding));
+    moduleOp->removeAttr(mlir::sdy::kOutputShardingsAttr);
+  }
+}
+
 class ExportStablehloShardingsPass
     : public PassWrapper<ExportStablehloShardingsPass,
                          OperationPass<ModuleOp>> {
@@ -238,6 +290,10 @@ class ExportStablehloShardingsPass
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
 
     auto builder = OpBuilder::atBlockBegin(&moduleOp.getBodyRegion().front());
+
+    exportModuleShardingMetadata(moduleOp, symbolTable, builder,
+                                 enableHloShardingV3,
+                                 simplifyReplicatedShardings);
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
       exportFunc(funcOp, symbolTable, builder, addMissingShardingToControlFlow,
@@ -365,6 +421,19 @@ NamedSharding convertToNamedSharding(
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
     ArrayRef<StringAttr> manualAxes, bool simplifyReplicatedShardings) {
   MeshAttr sdyMesh = getMeshAttr(sdySharding);
+  // If simplifyReplicatedShardings is enabled, we convert fully replicated,
+  // closed, non-manual, and non-unreduced shardings to
+  // NamedSharding::Replicate(), which is represented as "{mesh[], replicated}".
+  // We do this only during the final export at the end of ShardyXLA pass to
+  // make the final HLO strings much shorter and more human-readable. We must
+  // NOT do this during the initial MLIR-to-HLO export, because preserving the
+  // rank and open/closed dimension states is required for Shardy verification
+  // passes.
+  if (simplifyReplicatedShardings && sdySharding.isFullyReplicated() &&
+      sdySharding.isFullyClosed() && sdySharding.getUnreducedAxes().empty() &&
+      manualAxes.empty() && sdyMesh.getDeviceIds().empty()) {
+    return NamedSharding::Replicate();
+  }
   // If there are no axes, convert to:
   // - maximal sharding if the mesh has a device id
   // - else replicated sharding
@@ -381,20 +450,6 @@ NamedSharding convertToNamedSharding(
           NamedSharding::DimensionSharding({}, dimSharding.getIsClosed()));
     }
     return NamedSharding(Mesh(), dimShardings);
-  }
-
-  // If simplifyReplicatedShardings is enabled, we convert fully replicated,
-  // closed, non-manual, and non-unreduced shardings to
-  // NamedSharding::Replicate(), which is represented as "{mesh[], replicated}".
-  // We do this only during the final export at the end of ShardyXLA pass to
-  // make the final HLO strings much shorter and more human-readable. We must
-  // NOT do this during the initial MLIR-to-HLO export, because preserving the
-  // rank and open/closed dimension states is required for Shardy verification
-  // passes.
-  if (simplifyReplicatedShardings && sdySharding.isFullyReplicated() &&
-      sdySharding.isFullyClosed() && sdySharding.getUnreducedAxes().empty() &&
-      manualAxes.empty()) {
-    return NamedSharding::Replicate();
   }
 
   std::vector<int64_t> axisSizes;
@@ -502,11 +557,6 @@ HloSharding convertToHloSharding(
   if (mesh.getAxes().size() == manualAxes.size()) {
     return HloSharding::Manual();
   }
-  // TODO(b/438306205): Remove this check once we support both unreduced and
-  // manual axes in subgroup sharding.
-  CHECK(sdySharding.getUnreducedAxes().empty() || manualAxes.empty())
-      << "Only one of unreduced and manual axes can be present: "
-      << mlir::sdy::attributeToString(sdySharding);
 
   // Iterate the dim shardings.
   for (auto [index, dimSharding] :

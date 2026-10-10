@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -221,6 +223,35 @@ ENTRY entry {
       FindInstruction(module.get(), "all-reduce-same-operand-subgroup"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "all-reduce-different-operand"), {}));
+}
+
+TEST_F(HloReplicationAnalysisTest,
+       CrossPartitionSpmdWithModuleParameterShardings) {
+  const std::string module_str = R"(
+HloModule CrossPartitionSpmdWithModuleParameterShardings
+
+ENTRY entry {
+  param = (f32[4096,4096]{1,0}, f32[4096,4096]{1,0})
+    parameter(0), sharding={{maximal device=0}, {replicated}}
+  gte0 = f32[4096,4096]{1,0} get-tuple-element(param), index=0
+  gte1 = f32[4096,4096]{1,0} get-tuple-element(param), index=1
+  ROOT add = f32[4096,4096]{1,0} add(gte0, gte1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/4));
+  HloInstruction* param = module->entry_computation()->parameter_instruction(0);
+  module->set_spmd_parameters_shardings({param->sharding()});
+  param->clear_sharding();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> analysis,
+      HloReplicationAnalysis::Run(module.get(), /*cross_partition_spmd=*/true));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "gte0"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "gte1"), {}));
 }
 
 TEST_F(HloReplicationAnalysisTest, NestedCall) {
@@ -1046,6 +1077,449 @@ ENTRY entry {
       FindInstruction(module.get(), "gte.0"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "gte.1"), {}));
+}
+
+// Loop carried values that are partially replicated with two different
+// groupings, unique, and replicated, at their own tuple indices. The loop
+// needs a second iteration to settle: the partially replicated all-reduce
+// results only reach the parameter after the first pass over the body.
+TEST_F(HloReplicationAnalysisTest, WhileLoopPartialReplicationPerIndex) {
+  const std::string module_str = R"hlo(
+HloModule WhileLoopPartialReplicationPerIndex
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+cond {
+  cond_param = (f32[8], f32[8], f32[8], u32[]) parameter(0)
+  i = u32[] get-tuple-element(cond_param), index=3
+  limit = u32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+body {
+  body_param = (f32[8], f32[8], f32[8], u32[]) parameter(0)
+  x = f32[8] get-tuple-element(body_param), index=0
+  y = f32[8] get-tuple-element(body_param), index=1
+  u = f32[8] get-tuple-element(body_param), index=2
+  i = u32[] get-tuple-element(body_param), index=3
+  xu = f32[8] add(x, u)
+  yu = f32[8] add(y, u)
+  ar0 = f32[8] all-reduce(xu), to_apply=sum, replica_groups={{0,1},{2,3}}
+  ar1 = f32[8] all-reduce(yu), to_apply=sum, replica_groups={{0,2},{1,3}}
+  mixed = f32[8] add(ar0, ar1)
+  one = u32[] constant(1)
+  next_i = u32[] add(i, one)
+  ROOT tuple = (f32[8], f32[8], f32[8], u32[]) tuple(ar0, ar1, mixed, next_i)
+}
+
+ENTRY entry {
+  p0 = f32[8] parameter(0), parameter_replication={true}
+  p1 = f32[8] parameter(1), parameter_replication={true}
+  p2 = f32[8] parameter(2), parameter_replication={false}
+  zero = u32[] constant(0)
+  init = (f32[8], f32[8], f32[8], u32[]) tuple(p0, p1, p2, zero)
+  ROOT while = (f32[8], f32[8], f32[8], u32[]) while(init), condition=cond, body=body
+}
+)hlo";
+  const std::vector<ReplicaGroup> pairs01_23 =
+      CreateReplicaGroups({{0, 1}, {2, 3}});
+  const std::vector<ReplicaGroup> pairs02_13 =
+      CreateReplicaGroups({{0, 2}, {1, 3}});
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/4));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::RunWithPartialReplication(
+                           module.get(), /*cross_partition_spmd=*/false));
+
+  for (const char* name : {"while", "body_param", "tuple"}) {
+    const HloInstruction* inst = FindInstruction(module.get(), name);
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(inst, {0})) << name;
+    EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(inst, {0}, pairs01_23))
+        << name;
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(inst, {0}, pairs02_13))
+        << name;
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(inst, {1})) << name;
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(inst, {1}, pairs01_23))
+        << name;
+    EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(inst, {1}, pairs02_13))
+        << name;
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(inst, {2})) << name;
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(inst, {2}, pairs01_23))
+        << name;
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(inst, {2}, pairs02_13))
+        << name;
+    EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(inst, {3})) << name;
+    EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(inst, {3}, pairs01_23))
+        << name;
+  }
+  // u is unique, so the all-reduce operands are unique in every pass and each
+  // all-reduce result is replicated within its own groups only.
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "xu"), {}, pairs01_23));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "yu"), {}, pairs02_13));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "ar0"), {}, pairs01_23));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "ar1"), {}, pairs02_13));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "mixed"), {}, pairs01_23));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "mixed"), {}, pairs02_13));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "lt"), {}));
+}
+
+// The loop state enters through a tuple instruction, whose tree is replicated
+// at the tuple root as well as at the leaves. The condition turns
+// non replicated after the first pass, and the body parameter must then be
+// unique at every index, the tuple root included.
+TEST_F(HloReplicationAnalysisTest,
+       NonReplicatedConditionMarksBodyAtEveryIndex) {
+  const std::string module_str = R"hlo(
+HloModule NonReplicatedConditionMarksBodyAtEveryIndex
+
+cond {
+  cond_param = (f32[8], u32[]) parameter(0)
+  i = u32[] get-tuple-element(cond_param), index=1
+  limit = u32[] constant(5)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+body {
+  body_param = (f32[8], u32[]) parameter(0)
+  x = f32[8] get-tuple-element(body_param), index=0
+  i = u32[] get-tuple-element(body_param), index=1
+  replica-id = u32[] replica-id()
+  next_i = u32[] add(i, replica-id)
+  ROOT tuple = (f32[8], u32[]) tuple(x, next_i)
+}
+
+ENTRY entry {
+  p0 = f32[8] parameter(0), parameter_replication={true}
+  zero = u32[] constant(0)
+  init = (f32[8], u32[]) tuple(p0, zero)
+  ROOT while = (f32[8], u32[]) while(init), condition=cond, body=body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/2));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
+  const HloInstruction* body_param =
+      FindInstruction(module.get(), "body_param");
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(body_param, {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(body_param, {0}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(body_param, {1}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "x"), {}));
+  // The body root tuple is unique at its own index too, and so are the loop
+  // result and the condition parameter that merge it.
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "tuple"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "while"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "cond_param"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "cond_param"), {0}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "while"), {0}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "while"), {1}));
+  // The loop input is outside the body and keeps its replicated tuple root.
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "init"), {}));
+}
+
+// The trip count depends on the partition, so the partitions run the infeed in
+// the body a different number of times. Its data is unique although its
+// sharding is replicated, and so is the loop result that it feeds.
+TEST_F(HloReplicationAnalysisTest, InfeedInDivergentLoopIsNotReplicatedSPMD) {
+  const std::string module_str = R"hlo(
+HloModule InfeedInDivergentLoopIsNotReplicatedSPMD
+
+cond {
+  cond_param = (f32[8], u32[]) parameter(0)
+  i = u32[] get-tuple-element(cond_param), index=1
+  pid = u32[] partition-id()
+  cmp_val = u32[] add(i, pid)
+  limit = u32[] constant(4)
+  ROOT lt = pred[] compare(cmp_val, limit), direction=LT
+}
+
+body {
+  body_param = (f32[8], u32[]) parameter(0)
+  tok = token[] after-all()
+  infeed = (f32[8], token[]) infeed(tok),
+    sharding={{replicated}, {maximal device=0}}
+  infeed_data = f32[8] get-tuple-element(infeed), index=0
+  i = u32[] get-tuple-element(body_param), index=1
+  one = u32[] constant(1)
+  next_i = u32[] add(i, one)
+  ROOT tuple = (f32[8], u32[]) tuple(infeed_data, next_i)
+}
+
+ENTRY entry {
+  p0 = f32[8] parameter(0), sharding={replicated}
+  zero = u32[] constant(0)
+  init = (f32[8], u32[]) tuple(p0, zero)
+  ROOT while = (f32[8], u32[]) while(init), condition=cond, body=body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
+                                                /*num_partitions=*/2));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> analysis,
+      HloReplicationAnalysis::Run(module.get(), /*cross_partition_spmd=*/true));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "lt"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "infeed"), {0}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "infeed_data"), {}));
+  for (const char* name : {"tuple", "while"}) {
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+        FindInstruction(module.get(), name), {0}))
+        << name;
+  }
+  // The replicated parameter outside the loop stays replicated.
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "init"), {0}));
+}
+
+// Two loops in a called computation share their body. The second loop makes
+// the shared body unique at index 0 after the first loop took its result, and
+// nothing that feeds the call changes. The next pass of the outer loop still
+// has to visit the call and the first loop again for their results to become
+// unique.
+TEST_F(HloReplicationAnalysisTest, SharedLoopBodyChangesAfterItsFirstCaller) {
+  const std::string module_str = R"hlo(
+HloModule SharedLoopBodyChangesAfterItsFirstCaller
+
+cond {
+  cond_param = (f32[], u32[]) parameter(0)
+  i = u32[] get-tuple-element(cond_param), index=1
+  limit = u32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+body {
+  body_param = (f32[], u32[]) parameter(0)
+  x = f32[] get-tuple-element(body_param), index=0
+  i = u32[] get-tuple-element(body_param), index=1
+  one = u32[] constant(1)
+  next_i = u32[] add(i, one)
+  ROOT tuple = (f32[], u32[]) tuple(x, next_i)
+}
+
+callee {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  zero = u32[] constant(0)
+  init1 = (f32[], u32[]) tuple(a, zero)
+  while1 = (f32[], u32[]) while(init1), condition=cond, body=body
+  init2 = (f32[], u32[]) tuple(b, zero)
+  while2 = (f32[], u32[]) while(init2), condition=cond, body=body
+  r1 = f32[] get-tuple-element(while1), index=0
+  r2 = f32[] get-tuple-element(while2), index=0
+  ROOT out = (f32[], f32[]) tuple(r1, r2)
+}
+
+outer_cond {
+  outer_cond_param = (f32[], f32[], u32[]) parameter(0)
+  j = u32[] get-tuple-element(outer_cond_param), index=2
+  limit = u32[] constant(3)
+  ROOT lt = pred[] compare(j, limit), direction=LT
+}
+
+outer_body {
+  outer_param = (f32[], f32[], u32[]) parameter(0)
+  outer_a = f32[] get-tuple-element(outer_param), index=0
+  outer_b = f32[] get-tuple-element(outer_param), index=1
+  outer_j = u32[] get-tuple-element(outer_param), index=2
+  call = (f32[], f32[]) call(outer_a, outer_b), to_apply=callee
+  call_r1 = f32[] get-tuple-element(call), index=0
+  one = u32[] constant(1)
+  next_j = u32[] add(outer_j, one)
+  ROOT outer_tuple = (f32[], f32[], u32[]) tuple(call_r1, outer_b, next_j)
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0), parameter_replication={true}
+  p1 = f32[] parameter(1), parameter_replication={false}
+  zero = u32[] constant(0)
+  init = (f32[], f32[], u32[]) tuple(p0, p1, zero)
+  ROOT outer = (f32[], f32[], u32[]) while(init), condition=outer_cond,
+      body=outer_body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/2));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
+  for (const char* name : {"while1", "call", "outer"}) {
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+        FindInstruction(module.get(), name), {0}))
+        << name;
+  }
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "outer_a"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "while1"), {1}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "outer_j"), {}));
+}
+
+// Two loops in different called computations share a body that returns its
+// parameter, and nothing else. The second loop makes the body unique at index
+// 0 after the first loop took its result. Only the body root changes, so the
+// first loop and its call have to be visited again when the outer loop
+// repeats.
+TEST_F(HloReplicationAnalysisTest, IdentityLoopBodySharedAcrossCalls) {
+  const std::string module_str = R"hlo(
+HloModule IdentityLoopBodySharedAcrossCalls
+
+cond1 {
+  cond1_param = (f32[], u32[]) parameter(0)
+  i = u32[] get-tuple-element(cond1_param), index=1
+  limit = u32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+cond2 {
+  cond2_param = (f32[], u32[]) parameter(0)
+  i = u32[] get-tuple-element(cond2_param), index=1
+  limit = u32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+body {
+  ROOT body_param = (f32[], u32[]) parameter(0)
+}
+
+callee1 {
+  a = f32[] parameter(0)
+  zero = u32[] constant(0)
+  init1 = (f32[], u32[]) tuple(a, zero)
+  while1 = (f32[], u32[]) while(init1), condition=cond1, body=body
+  ROOT r1 = f32[] get-tuple-element(while1), index=0
+}
+
+callee2 {
+  b = f32[] parameter(0)
+  zero = u32[] constant(0)
+  init2 = (f32[], u32[]) tuple(b, zero)
+  while2 = (f32[], u32[]) while(init2), condition=cond2, body=body
+  ROOT r2 = f32[] get-tuple-element(while2), index=0
+}
+
+outer_cond {
+  outer_cond_param = (f32[], f32[], u32[], f32[]) parameter(0)
+  j = u32[] get-tuple-element(outer_cond_param), index=2
+  limit = u32[] constant(3)
+  ROOT lt = pred[] compare(j, limit), direction=LT
+}
+
+outer_body {
+  outer_param = (f32[], f32[], u32[], f32[]) parameter(0)
+  outer_a = f32[] get-tuple-element(outer_param), index=0
+  outer_b = f32[] get-tuple-element(outer_param), index=1
+  outer_j = u32[] get-tuple-element(outer_param), index=2
+  call1 = f32[] call(outer_a), to_apply=callee1
+  one = u32[] constant(1)
+  next_j = u32[] add(outer_j, one)
+  call2 = f32[] call(outer_b), to_apply=callee2
+  ROOT outer_tuple = (f32[], f32[], u32[], f32[]) tuple(call1, outer_b, next_j,
+      call2)
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0), parameter_replication={true}
+  p1 = f32[] parameter(1), parameter_replication={false}
+  zero = u32[] constant(0)
+  init = (f32[], f32[], u32[], f32[]) tuple(p0, p1, zero, p1)
+  ROOT outer = (f32[], f32[], u32[], f32[]) while(init), condition=outer_cond,
+      body=outer_body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/2));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
+  for (const char* name : {"while1", "outer"}) {
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+        FindInstruction(module.get(), name), {0}))
+        << name;
+  }
+  for (const char* name : {"call1", "outer_a"}) {
+    EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+        FindInstruction(module.get(), name), {}))
+        << name;
+  }
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "while1"), {1}));
+}
+
+// An all-reduce over groups of one device yields a partially replicated value
+// whose device sets are all singletons. Merging it with itself gives unique, so
+// in a loop body it turns unique when the body is visited again: with partial
+// replication every visit evaluates every instruction.
+TEST_F(HloReplicationAnalysisTest, SingletonGroupsInLoopBodyBecomeUnique) {
+  const std::string module_str = R"hlo(
+HloModule SingletonGroupsInLoopBodyBecomeUnique
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+cond {
+  cond_param = (f32[], u32[]) parameter(0)
+  i = u32[] get-tuple-element(cond_param), index=1
+  limit = u32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+body {
+  body_param = (f32[], u32[]) parameter(0)
+  x = f32[] get-tuple-element(body_param), index=0
+  i = u32[] get-tuple-element(body_param), index=1
+  all-reduce = f32[] all-reduce(x), replica_groups={{0},{1}}, to_apply=sum
+  one = u32[] constant(1)
+  next_i = u32[] add(i, one)
+  ROOT tuple = (f32[], u32[]) tuple(all-reduce, next_i)
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0), parameter_replication={false}
+  zero = u32[] constant(0)
+  init = (f32[], u32[]) tuple(p0, zero)
+  ROOT while = (f32[], u32[]) while(init), condition=cond, body=body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/2));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::RunWithPartialReplication(
+                           module.get(), /*cross_partition_spmd=*/false));
+  const std::vector<ReplicaGroup> singletons = CreateReplicaGroups({{0}, {1}});
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "all-reduce"), {}, singletons));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "tuple"), {0}, singletons));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "tuple"), {1}));
 }
 
 }  // namespace

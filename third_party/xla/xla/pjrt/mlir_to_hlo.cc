@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -321,6 +322,11 @@ absl::Status SerializeToRiegeli(mlir::ModuleOp mlir_module,
     return absl::InvalidArgumentError("Writer cannot be null.");
   }
 
+  // If we are already in a failed state, no need to do anything else.
+  if (!writer->ok()) {
+    return writer->status();
+  }
+
   mlir::MLIRContext* context = mlir_module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
 
@@ -338,9 +344,9 @@ absl::Status SerializeToRiegeli(mlir::ModuleOp mlir_module,
   mlir::PassManager pm(context);
   // Only enable verifier in debug builds.
   bool enableVerifier = false;
-#ifndef NDEBUG
-  enableVerifier = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    enableVerifier = true;
+  }
   pm.enableVerifier(enableVerifier);
   // Expand stablehlo complex math functions such as log_plus_one, etc.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -408,11 +414,23 @@ absl::Status SerializeToRiegeli(mlir::ModuleOp mlir_module,
   if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
           mlir_module, target, os,
           /*allowOtherDialects=*/allow_mixed_serialization))) {
+    // If we have an I/O error, return it specifically before we return the
+    // generic serialization error.
+    if (!writer->ok()) {
+      return writer->status();
+    }
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(
         absl::StrCat("Failed to serialize StableHLO to plugin version ", target,
                      ";\n\nDetailed error from MLIR: ", status.message()));
   }
+
+  // The raw_ostream APIs don't have support for reporting I/O errors, so we
+  // have to check them ourselves.
+  if (!writer->ok()) {
+    return writer->status();
+  }
+
   return absl::OkStatus();
 }
 

@@ -22,10 +22,6 @@ load(
     "if_google",
     "internal_visibility",
 )
-load(
-    "//xla/tsl:tsl.default.bzl",
-    "get_compatible_with_portable",
-)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured", "if_cuda_newer_than")
 
@@ -131,6 +127,10 @@ cc_library(
         ["cuda_version_12000_newer.cc"],
         ["cuda_version_12000_older.cc"],
     ) + if_cuda_newer_than(
+        "12_3",
+        ["cuda_version_12030_newer.cc"],
+        ["cuda_version_12030_older.cc"],
+    ) + if_cuda_newer_than(
         "12_8",
         ["cuda_version_12080_newer.cc"],
         ["cuda_version_12080_older.cc"],
@@ -144,8 +144,10 @@ cc_library(
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
 )
 
@@ -165,8 +167,7 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cuda_runtime",
-        "@tsl//tsl/platform:status_matchers",
-        "@tsl//tsl/platform:test",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
 )
 
@@ -764,6 +765,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":cuda_version_variants",
         ":cupti_interface",
         ":cupti_marker_data_parser",
         ":cupti_utils",
@@ -894,11 +896,13 @@ xla_cc_test(
         "no_mac",
     ],
     deps = [
+        ":cuda_version_variants",
         ":cupti_buffer_events",
         ":cupti_collector",  # buildcleaner: keep
         ":cupti_utils",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
 )
 
@@ -1015,26 +1019,5 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-    ],
-)
-
-cc_library(
-    name = "cuda_graph_topology_mapper",
-    srcs = ["cuda_graph_topology_mapper.cc"],
-    hdrs = ["cuda_graph_topology_mapper.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-xla_cc_test(
-    name = "cuda_graph_topology_mapper_test",
-    srcs = ["cuda_graph_topology_mapper_test.cc"],
-    deps = [
-        ":cuda_graph_topology_mapper",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal_util.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/value_range.h"
@@ -341,6 +342,55 @@ TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
   EXPECT_TRUE(RangeEqualIgnoreBitwidth(
       MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLe).value(), 0,
       40, 5));
+}
+
+TEST_F(WhileLoopAnalysisTest, TrivialLoopInductionStep) {
+  constexpr absl::string_view kHloTemplate = R"(
+  HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], {{TYPE}}[]) parameter(0)
+      val = f32[2] get-tuple-element(p_body), index=0
+      index = {{TYPE}}[] get-tuple-element(p_body), index=1
+      step = {{TYPE}}[] constant({{STEP}})
+      inc = {{TYPE}}[] {{UPDATE}}(index, step)
+      ROOT root = (f32[2], {{TYPE}}[]) tuple(val, inc)
+    }
+
+    condition {
+      p_cond = (f32[2], {{TYPE}}[]) parameter(0)
+      gte = {{TYPE}}[] get-tuple-element(p_cond), index=1
+      const = {{TYPE}}[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=LT
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = {{TYPE}}[] constant(0)
+      while_init = (f32[2], {{TYPE}}[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], {{TYPE}}[]) while(while_init), condition=condition, body=body
+    }
+  )";
+  auto step_of = [&](absl::string_view update, int step,
+                     absl::string_view type = "s32") {
+    std::string hlo_string =
+        absl::StrReplaceAll(kHloTemplate, {{"{{UPDATE}}", update},
+                                           {"{{STEP}}", absl::StrCat(step)},
+                                           {"{{TYPE}}", type}});
+    absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
+        ParseAndReturnVerifiedModule(hlo_string);
+    CHECK_OK(module.status());
+    return MatchTrivialLoopInductionStep(
+        (*module)->entry_computation()->root_instruction(),
+        /*indvar_tuple_idx=*/1);
+  };
+  EXPECT_EQ(step_of("add", 1), 1);
+  EXPECT_EQ(step_of("add", 7), 7);
+  EXPECT_EQ(step_of("add", 0), std::nullopt);
+  EXPECT_EQ(step_of("add", -2), std::nullopt);
+  EXPECT_EQ(step_of("multiply", 2), std::nullopt);
+  // A floating point counter has no integral step.
+  EXPECT_EQ(step_of("add", 1, "f32"), std::nullopt);
 }
 
 TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {

@@ -808,6 +808,7 @@ xla_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -1724,6 +1725,7 @@ xla_test(
         "b200",
     ],
     data = ["data/cudnn_reproducer.hlo"],
+    shard_count = 5,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         "//xla:error_spec",
@@ -2177,6 +2179,68 @@ xla_test(
         "//xla:error_spec",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
+    name = "approx_topk_special_floats_test",
+    srcs = ["approx_topk_special_floats_test.cc"],
+    backend_tags = {
+        "gpu": [
+            # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
+            "requires-gpu-sm80",
+        ],
+    },
+    backends = [
+        # Skip CPU because it still uses TOTAL order for approx_topk.
+        "gpu",
+    ],
+    disabled_backends = ["amdgpu_any"],
+    deps = [
+        ":hlo_interpreter_reference_mixin",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:array2d",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
+    name = "topk_special_floats_test",
+    srcs = ["topk_special_floats_test.cc"],
+    backend_tags = {
+        "gpu": [
+            # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
+            "requires-gpu-sm80",
+        ],
+    },
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    disabled_backends = ["amdgpu_any"],
+    deps = [
+        ":hlo_interpreter_reference_mixin",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:array2d",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -3008,7 +3072,7 @@ xla_test(
         "gpu",
         "interpreter",
     ],
-    shard_count = 30,
+    shard_count = 15,
     tags = ["optonly"],
     use_legacy_runtime = True,
     deps = [
@@ -3162,7 +3226,7 @@ xla_test(
         "gpu",
         "interpreter",
     ],
-    shard_count = 15,
+    shard_count = 8,
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
@@ -3532,6 +3596,8 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla/hlo/builder:xla_builder",
         "@com_google_googletest//:gtest_main",
     ],
@@ -3565,7 +3631,6 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -3662,6 +3727,7 @@ cc_library(
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/stream_executor:kernel_spec_proto_cc",
+        "//xla/stream_executor/abi:executable_abi_version_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/util/split_proto:human_readable_aot_executable_proto_cc",

@@ -15,7 +15,9 @@ limitations under the License.
 
 // XLA-specific sequence and range Ops.
 
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <type_traits>
 
 #include "absl/status/statusor.h"

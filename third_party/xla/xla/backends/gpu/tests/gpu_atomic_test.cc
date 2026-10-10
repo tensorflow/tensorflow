@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -46,7 +46,7 @@ TEST_F(GpuAtomicTest, TestStore) {
     }
 )";
 
-  TF_ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
+  ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
 CHECK: store atomic{{.*}}unordered, align 4
 )"));
 }
@@ -73,7 +73,7 @@ TEST_F(GpuAtomicTest, TestStoreNoAtomic) {
     }
 )";
 
-  TF_ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
+  ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
 CHECK-NOT: store atomic{{.*}}unordered, align 4
 )"));
 }
@@ -101,10 +101,10 @@ TEST_F(GpuAtomicTest, TestAddAtomicF32) {
     }
 )";
 
-  TF_ASSERT_OK(CompileAndVerifyIr(hlo_string, IsBuiltWithRocm() ? R"(
+  ASSERT_OK(CompileAndVerifyIr(hlo_string, IsBuiltWithRocm() ? R"(
 CHECK: atomicrmw fadd ptr %[[ADDR:.*]], float %[[VALUE:.*]] syncscope("agent-one-as") monotonic
 )"
-                                                                : R"(
+                                                             : R"(
 CHECK: atomicrmw fadd ptr %[[ADDR:.*]], float %[[VALUE:.*]] monotonic
 )"));
 }
@@ -138,7 +138,7 @@ TEST_F(GpuAtomicTest, TestAddAtomicF64) {
     }
 )";
 
-  TF_ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
+  ASSERT_OK(CompileAndVerifyIr(hlo_string, R"(
 CHECK: atomicrmw fadd ptr %[[ADDR:.*]], double %[[VALUE:.*]] monotonic
 )"));
 }

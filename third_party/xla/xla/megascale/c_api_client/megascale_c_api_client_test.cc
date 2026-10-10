@@ -42,7 +42,7 @@ using ::xla::megascale::c_api_client::RegisterMegascaleErrorHandler;
 using ::xla::megascale::c_api_client::UnregisterMegascaleErrorHandler;
 using ::xla::megascale::runtime::DCNTopology;
 using ::xla::megascale::runtime::EndpointAddresses;
-using ::xla::megascale::runtime::MegaScaleRuntimeErrorOverlay;
+using ::xla::megascale::runtime::external::MegaScaleRuntimeError;
 
 TEST(MegaScaleCApiClientTest, CreateDefaultMegaScaleClientContext) {
   TF_ASSERT_OK_AND_ASSIGN(auto client_context,
@@ -89,7 +89,7 @@ TEST(MegaScaleCApiClientTest, CreateMegascaleErrorAggregator) {
   TF_ASSERT_OK_AND_ASSIGN(auto aggregator,
                           CreateMegascaleErrorAggregator("test_app"));
   EXPECT_NE(aggregator, nullptr);
-  MegaScaleRuntimeErrorOverlay error;
+  MegaScaleRuntimeError error;
   aggregator->AddError("worker1", error);
   EXPECT_EQ(aggregator->size(), 1);
   EXPECT_TRUE(aggregator->active());
@@ -99,7 +99,7 @@ TEST(MegaScaleCApiClientTest, CreateMegascaleErrorAggregator) {
 }
 
 TEST(MegaScaleCApiClientTest, RegisterAndUnregisterMegascaleErrorHandler) {
-  auto handler = [](const MegaScaleRuntimeErrorOverlay& error) {};
+  auto handler = [](const MegaScaleRuntimeError& error) {};
   EXPECT_OK(RegisterMegascaleErrorHandler("test_handler", handler));
   EXPECT_OK(UnregisterMegascaleErrorHandler("test_handler"));
 }
@@ -115,16 +115,15 @@ TEST(MegaScaleCApiClientTest, GetInterfaceAddressesHelper) {
 
 TEST(MegaScaleCApiClientTest, GetOrCreateRuntimeError) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result, GetOrCreateRuntimeError(
-                       MegaScaleRuntimeErrorOverlay::UNRECOVERABLE_ERROR,
-                       absl::Now(), absl::OkStatus(), /*launch_id=*/0,
-                       MegaScaleRuntimeErrorOverlay::HOST_TO_DEVICE_ERROR));
+      auto result,
+      GetOrCreateRuntimeError(MegaScaleRuntimeError::UNRECOVERABLE_ERROR,
+                              absl::Now(), absl::OkStatus(), /*launch_id=*/0,
+                              MegaScaleRuntimeError::HOST_TO_DEVICE_ERROR));
 
   const auto& [error, is_new] = result;
-  EXPECT_EQ(error.error_type(),
-            MegaScaleRuntimeErrorOverlay::UNRECOVERABLE_ERROR);
+  EXPECT_EQ(error.error_type(), MegaScaleRuntimeError::UNRECOVERABLE_ERROR);
   EXPECT_EQ(error.unrecoverable_error_type(),
-            MegaScaleRuntimeErrorOverlay::HOST_TO_DEVICE_ERROR);
+            MegaScaleRuntimeError::HOST_TO_DEVICE_ERROR);
   EXPECT_TRUE(is_new);
 }
 

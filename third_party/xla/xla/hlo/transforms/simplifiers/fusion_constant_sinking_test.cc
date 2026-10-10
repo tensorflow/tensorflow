@@ -310,5 +310,43 @@ ENTRY %main.3 (x.1: bf16[1024,1024], w.1: bf16[1024,3072], out.1: bf16[1024,4096
       3);
 }
 
+// A FUSE_LIMIT constant is a fusion boundary, so it stays a fusion operand
+// while the unmarked constant is sunk.
+TEST_F(FusionConstantSinkingTest, FuseLimitConstantNoSink) {
+  std::string hlo_string = R"(
+  HloModule FuseLimitConstant
+
+    %fused_computation (param_0: f32[8,128], param_1: f32[], param_2: f32[]) -> f32[8,128] {
+      %param_0 = f32[8,128]{1,0} parameter(0)
+      %param_1 = f32[] parameter(1)
+      %broadcast.1 = f32[8,128]{1,0} broadcast(%param_1), dimensions={}
+      %multiply = f32[8,128]{1,0} multiply(%param_0, %broadcast.1)
+      %param_2 = f32[] parameter(2)
+      %broadcast.2 = f32[8,128]{1,0} broadcast(%param_2), dimensions={}
+      ROOT %add = f32[8,128]{1,0} add(%multiply, %broadcast.2)
+    }
+
+    ENTRY main {
+      p0 = f32[8,128]{1,0} parameter(0)
+      c0 = f32[] constant(8128), frontend_attributes={FUSE_LIMIT="true"}
+      c1 = f32[] constant(1)
+      ROOT out = f32[8,128]{1,0} fusion(p0, c0, c1), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  FusionConstantSinking constant_sinking;
+
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_sinking, module.get()));
+
+  EXPECT_TRUE(result);
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(fusion->operand_count(), 2);
+  EXPECT_EQ(fusion->operand(1)->name(), "c0");
+}
+
 }  // namespace
 }  // namespace xla

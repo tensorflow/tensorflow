@@ -101,13 +101,20 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
                                 fusion_instr, Thunk::Kind::kCollectiveKernel,
                                 /*has_dynamic_root=*/false));
 
+  ABSL_ASSIGN_OR_RETURN(
+      const SymmetricMemoryType scratch_memory_type,
+      GetSymmetricMemoryType(ir_emitter_context.gpu_topology(), *fusion_instr));
+  int devices_in_process =
+      ir_emitter_context.gpu_topology().num_devices_per_process();
   TritonFusion::EmitThunk make_thunk =
       [info = std::move(info), buffers = std::move(buffers), config,
-       fusion_instr](TritonFusion::EmitResult result) mutable
+       fusion_instr, scratch_memory_type,
+       devices_in_process](TritonFusion::EmitResult result) mutable
       -> absl::StatusOr<ThunkSequence> {
-    ABSL_ASSIGN_OR_RETURN(CollectiveKernelSpec kernel_spec,
-                     CreateCollectiveKernelSpec(
-                         fusion_instr, result.entry.launch_dimensions));
+    ABSL_ASSIGN_OR_RETURN(
+        CollectiveKernelSpec kernel_spec,
+        CreateCollectiveKernelSpec(fusion_instr, result.entry.launch_dimensions,
+                                   scratch_memory_type));
     // `CollectiveKernelThunk` owns its cubin, so we have to copy it out of the
     // shared buffer here.
     std::optional<std::vector<uint8_t>> cubin;
@@ -117,8 +124,8 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
     return ThunkSequence::Of<CollectiveKernelThunk>(
         std::move(info), config, std::move(kernel_spec), std::move(buffers),
         /*is_collective_kernel_enabled=*/true, result.entry.kernel_name,
-        result.entry.launch_dimensions, result.entry.shmem_bytes,
-        std::move(cubin), result.entry.use_pdl);
+        result.entry.launch_dimensions, devices_in_process,
+        result.entry.shmem_bytes, std::move(cubin), result.entry.use_pdl);
   };
   ABSL_ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
                    GetCollectiveUnmanagedKernelArguments(fusion_instr));
@@ -194,7 +201,9 @@ AsyncThunkSequence TritonFusion::Emit(
                                           ir_emitter_context, fusion));
   } else {
     EmitThunk make_thunk =
-        [thunk_info = std::move(thunk_info)](
+        [thunk_info = std::move(thunk_info),
+         devices_in_process =
+             ir_emitter_context.gpu_topology().num_devices_per_process()](
             EmitResult result) -> absl::StatusOr<ThunkSequence> {
       ABSL_ASSIGN_OR_RETURN(
           CustomKernel custom_kernel,
@@ -207,7 +216,7 @@ AsyncThunkSequence TritonFusion::Emit(
               result.entry.shmem_bytes));
       return ThunkSequence::Of<CustomKernelThunk>(
           thunk_info, std::move(custom_kernel), result.kernel_arguments,
-          result.entry.use_pdl, std::vector<int64_t>{},
+          devices_in_process, result.entry.use_pdl, std::vector<int64_t>{},
           std::move(result.entry.tma_metadata));
     };
     emit_args = {

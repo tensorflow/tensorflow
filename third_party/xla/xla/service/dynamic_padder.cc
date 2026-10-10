@@ -1974,6 +1974,18 @@ absl::StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
       if (dimension_size == nullptr) {
         dimension_size = inst->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::CreateR0<int32_t>(subshape.dimensions(i))));
+      } else {
+        // Clamp the size to [0, bound]: nothing validates the size operand
+        // of set-dimension-size, and SliceToDynamic uses it as an unchecked
+        // copy bound.
+        HloInstruction* zero = inst->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
+        HloInstruction* bound =
+            inst->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0<int32_t>(subshape.dimensions(i))));
+        dimension_size = inst->AddInstruction(HloInstruction::CreateTernary(
+            dimension_size->shape(), HloOpcode::kClamp, zero, dimension_size,
+            bound));
       }
       slice_operand.push_back(dimension_size);
     }

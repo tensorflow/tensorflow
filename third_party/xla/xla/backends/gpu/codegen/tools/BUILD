@@ -108,9 +108,9 @@ xla_cc_binary(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
+        "@tensor_ir//:NVTensorIRConversionOptions",
         "@tensor_ir//:NVTensorIRCudaTilePipelines",
         "@tensor_ir//:NVTensorIRDialect",
-        "@tensor_ir//:NVTensorIRToCudaTileConversion",
     ],
 )
 

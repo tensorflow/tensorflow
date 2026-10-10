@@ -130,7 +130,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/ragged_all_to_all_canonicalizer.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_decomposer.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_multi_host_decomposer.h"
-#include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/backends/gpu/transforms/reduction_degenerate_dim_remover.h"
 #include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
@@ -353,6 +352,7 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -485,8 +485,15 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
     cpu_target_options = options.cpu_target_config->cpu_target_machine_options;
   }
 
-  if (options.gpu_topology.has_value()) {
-    const GpuTopology& gpu_topology = *options.gpu_topology;
+  std::optional<GpuTopology> topology_from_options = options.gpu_topology;
+  if (!topology_from_options.has_value() &&
+      !debug_opts.xla_gpu_topology_filename().empty()) {
+    ABSL_ASSIGN_OR_RETURN(topology_from_options,
+                     ParseGpuTopology(debug_opts.xla_gpu_topology_filename()));
+  }
+
+  if (topology_from_options.has_value()) {
+    const GpuTopology& gpu_topology = *topology_from_options;
     if (gpu_topology.has_gpu_target_config()) {
       gpu_target_config = gpu_topology.gpu_target_config();
     }
@@ -529,7 +536,7 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
     }
   }
 
-  if (!gpu_target_config.has_value() &&
+  if ((!options.gpu_topology.has_value() || !gpu_target_config.has_value()) &&
       !debug_opts.xla_gpu_target_config_filename().empty()) {
     ABSL_ASSIGN_OR_RETURN(
         gpu_target_config,
@@ -556,7 +563,8 @@ absl::StatusOr<GpuTopology> InferGpuTopology(
         "Couldn't determine the target compilation environment. Either stream "
         "executor (GPU) has to be attached for JIT compilation, or a target "
         "config has to be passed in as a parameter or provided via "
-        "--xla_gpu_target_config_filename for AOT compilation.");
+        "--xla_gpu_target_config_filename or --xla_gpu_topology_filename for "
+        "AOT compilation.");
   }
 
   // If the CPU target options are not set, we infer them from the host CPU
@@ -924,6 +932,11 @@ absl::Status RunOptimizationPasses(
   }
   pipeline.AddPass<ScanExpander>();
 
+  // AssociativeScanRewriter generates call instructions for scan bodies and the
+  // emitter cannot compute indexing maps for the Call opcode. Inline the calls
+  // so the emitter can compute indexing maps.
+  pipeline.AddPass<CallInliner>();
+
   DynamicPadderOptions dynamic_padder_options;
 
   switch (debug_options.xla_gpu_shape_checks()) {
@@ -974,7 +987,8 @@ absl::Status RunOptimizationPasses(
 
     pipeline.AddPass<GatherSimplifier>();
     pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
-    pipeline.AddPass<ScatterSimplifier>();
+    pipeline.AddPass<ScatterSimplifier>(
+        /*reorder_operand_dims_for_coalescing=*/true);
     pipeline.AddPass<ScatterExpander>(
         ScatterExpander::kEliminateSimpleScatters);
     pipeline.AddPass<ScatterSliceSimplifier>();
@@ -1397,10 +1411,9 @@ absl::Status RunLayoutAssignmentPasses(
   // Layout assignment uses alias analysis, which requires the call graph to
   // be flattened.
   pipeline.AddPass<FlattenCallGraph>();
-  ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(), gpu_version,
-      device_description, &layout_constraints);
+      device_description);
   // Run SubByteNormalization because GpuLayoutAssignment may modify a
   // Layout's element_size_in_bits field.
   pipeline.AddPass<SubByteNormalization>(
@@ -1421,7 +1434,8 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                              HloCostAnalysis::ShapeSizeFunction shape_size_fn,
                              const GpuAliasInfo* alias_info,
                              mlir::MLIRContext* mlir_context,
-                             CompilationStats* compilation_stats) {
+                             CompilationStats* compilation_stats,
+                             MlirContextPool* mlir_context_pool) {
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
 
@@ -1431,7 +1445,8 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
 
   ABSL_RETURN_IF_ERROR(FusionPipeline(hlo_module->config().debug_options(),
                                  shape_size_fn, alias_info, thread_pool,
-                                 gpu_device_info, mlir_context)
+                                 gpu_device_info, mlir_context,
+                                 mlir_context_pool)
                       .Run(hlo_module, {HloInstruction::kMainExecutionThread})
                       .status());
 
@@ -1539,7 +1554,9 @@ void AddCollectiveCombinerPasses(
     // so that SolLatencyEstimator and the thunk emitter can consume it.
     pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
         gpu_topology, /*is_multimem_enabled=*/false);
-    pipeline.AddPass<CollectiveFusion>(gpu_topology);
+    if (!opts.xla_gpu_experimental_vmm_disabled()) {
+      pipeline.AddPass<CollectiveFusion>(gpu_topology);
+    }
   }
 }
 
@@ -1660,7 +1677,8 @@ absl::Status RunLayoutNormalizationPasses(
   layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
   // Layout normalization will create scatters that are not simplified and
   // also have unsorted update_window_dims.
-  layout_normalization_pipeline.AddPass<ScatterSimplifier>();
+  layout_normalization_pipeline.AddPass<ScatterSimplifier>(
+      /*reorder_operand_dims_for_coalescing=*/true);
   return layout_normalization_pipeline
       .Run(hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
@@ -1710,7 +1728,8 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
   // rely on these annotations when running fusion dispatch pipeline to optimize
   // DS/DUS fusions that can be replaced by a more efficient copy operation.
   HloPassPipeline pipeline("dynamic-slice", compilation_stats);
-  pipeline.AddPass<DynamicSliceAnnotator>();
+  pipeline.AddPass<DynamicSliceAnnotator>(
+      opts.xla_gpu_experimental_enable_dynamic_slice_table_offsets());
 
   if (opts.xla_gpu_enable_dynamic_slice_fusion()) {
     DynamicSliceFusionRewriterV2::Options opts;
@@ -1957,7 +1976,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   ABSL_RETURN_IF_ERROR(RunFusionPasses(
       hlo_module, gpu_topology.gpu_target_config(), thread_pool.get_mutable(),
-      ShapeSizeBytesFunction(), alias_info, mlir_context, compilation_stats));
+      ShapeSizeBytesFunction(), alias_info, mlir_context, compilation_stats,
+      &mlir_context_pool_));
   ABSL_RETURN_IF_ERROR(RunPostFusionPasses(
       hlo_module, device_description, alias_info, pointer_size_, options,
       gpu_topology, mlir_context, compilation_stats));
@@ -2148,7 +2168,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
               .xla_gpu_experimental_gemm_fusion_v2());
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
-      pipeline.AddPass<GemmFusion>(gpu_version);
+      pipeline.AddPass<GemmFusion>(gpu_target_config.device_description);
       pipeline.AddPass<HoistFusedBitcasts>();
       pipeline.AddPass<GemmFusionSwapOperands>();
     }
@@ -2174,7 +2194,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                                                          gpu_version);
     // Layout normalization will create scatters that are not simplified and
     // also have unsorted update_window_dims.
-    pipeline.AddPass<ScatterSimplifier>();
+    pipeline.AddPass<ScatterSimplifier>(
+        /*reorder_operand_dims_for_coalescing=*/true);
     pipeline.AddPass<BroadcastCanonicalizer>();
     pipeline.AddPass<ReductionDegenerateDimRemover>();
     pipeline.AddPass<ReductionLayoutNormalizer>();
@@ -2193,7 +2214,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           alias_info, mlir_context,
           /*only_fuse_if_profitable=*/true,
           /*use_experimental_tiling=*/
-          debug_options.xla_gpu_experimental_enable_tiling_propagation());
+          debug_options.xla_gpu_experimental_enable_tiling_propagation(),
+          thread_pool, &mlir_context_pool_);
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
@@ -2240,15 +2262,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  // RaggedDotFusionRewriter converts ragged dots into cuDNN fusions, which is
-  // only supported on NVIDIA/CUDA devices. On AMD ROCm, ragged dots are handled
-  // by hipBLASLt GroupedMatMul via GemmRewriter instead.
-  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
-      debug_options.xla_gpu_experimental_use_ragged_dot_fusion() &&
-      gpu_target_config.device_description.gpu_compute_capability().IsCuda()) {
-    pipeline.AddPass<RaggedDotFusionRewriter>();
-  }
-
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
@@ -2261,7 +2274,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Layout normalization will create scatters that are not simplified and
   // also have unsorted update_window_dims.
-  pipeline.AddPass<ScatterSimplifier>();
+  pipeline.AddPass<ScatterSimplifier>(
+      /*reorder_operand_dims_for_coalescing=*/true);
 
   // Verify the host memory space before the host offloader pass
   auto verifier_metadata = std::make_unique<CpuGpuVerifierMetadata>(
@@ -2311,19 +2325,19 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HostMemoryTransferAsyncifier>(
       static_cast<int64_t>(stream_executor::MemorySpace::kHost));
 
-#ifdef NDEBUG
-  // Verify the module in non-debug builds. For debug builds, the verifier
-  // already runs after every pass.
-  HloVerifierOpts opts = HloVerifierOpts{}
-                             .MakeLayoutSensitive()
-                             .WithInstructionCanChangeLayout(
-                                 LayoutAssignment::InstructionCanChangeLayout)
-                             .VerifyBroadcastDimensionsOrder()
-                             .VerifyReshapeIsBitcast();
-  pipeline.AddPass<HloVerifier>(
-      std::make_unique<DefaultVerifierMetadata>(std::move(opts)),
-      "end-of-post-layout_assignment");
-#endif  // NDEBUG
+  if constexpr (!tsl::kIsDebugBuild) {
+    // Verify the module in non-debug builds. For debug builds, the verifier
+    // already runs after every pass.
+    HloVerifierOpts opts = HloVerifierOpts{}
+                               .MakeLayoutSensitive()
+                               .WithInstructionCanChangeLayout(
+                                   LayoutAssignment::InstructionCanChangeLayout)
+                               .VerifyBroadcastDimensionsOrder()
+                               .VerifyReshapeIsBitcast();
+    pipeline.AddPass<HloVerifier>(
+        std::make_unique<DefaultVerifierMetadata>(std::move(opts)),
+        "end-of-post-layout_assignment");
+  }
 
   ABSL_RETURN_IF_ERROR(
       pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
@@ -2883,9 +2897,6 @@ GpuCompiler::CompileToBackendResult(
   HloPassPipeline pipeline("scheduled-gpu-module");
   AddHloVerifier(&pipeline);
   ABSL_RETURN_IF_ERROR(pipeline.Run(module).status());
-  ABSL_RETURN_IF_ERROR(
-      RunPostSchedulingPipelines(module, schedule_metadata.scheduler_mem_limit,
-                                 gpu_topology, alias_info.get(), mlir_context));
 
   MaybeOwningThreadPool thread_pool = CreateMaybeOwningThreadPool(
       /*parallelism=*/module->config()
@@ -2893,6 +2904,10 @@ GpuCompiler::CompileToBackendResult(
           .xla_gpu_force_compilation_parallelism(),
       /*default_thread_pool=*/options.thread_pool,
       /*default_parallelism=*/tsl::port::MaxParallelism());
+
+  ABSL_RETURN_IF_ERROR(RunPostSchedulingPipelines(
+      module, schedule_metadata.scheduler_mem_limit, gpu_topology,
+      alias_info.get(), mlir_context, thread_pool.get_mutable()));
 
   absl::Mutex module_stats_m_;
   ModuleStats module_stats;
@@ -2925,7 +2940,8 @@ GpuCompiler::CompileToBackendResult(
     CubinCustomKernelCompiler kernel_compiler(
         std::move(llvm_compiler),
         gpu_topology.gpu_target_config().device_description,
-        module->config().debug_options(), thread_pool.get_mutable());
+        module->config().debug_options(), gpu_topology,
+        thread_pool.get_mutable());
     kernel_compiler.SetPreOptimizationHook([&](const llvm::Module& module) {
       CallUserPreOptimizationHook(module);
     });
@@ -3128,7 +3144,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
               : std::nullopt,
           /*buffer_assignment_proto=*/std::move(buffer_assignment_proto),
           /*buffer_allocations_debug_summary=*/
-          std::move(buffer_allocations_debug_summary)}));
+          std::move(buffer_allocations_debug_summary),
+          /*gpu_topology=*/gpu_topology}));
   IncrementCompiledProgramsCount();
 
   if (embed_debug_info && gpu_executable->has_module()) {
@@ -3340,7 +3357,7 @@ HloRematerialization::Options CreateRematOpts(
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit,
     const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
-    mlir::MLIRContext* mlir_context) {
+    mlir::MLIRContext* mlir_context, tsl::thread::ThreadPool* thread_pool) {
   tsl::profiler::TraceMe traceme("RunPostSchedulingPipelines");
   ABSL_RETURN_IF_ERROR(
       RunPostSchedulingCopyInsertion(module, &gpu_topology, alias_info));
@@ -3404,8 +3421,9 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
     // This needs to run after every pass affecting fusions. The last passes
     // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
-    main_pipeline.AddPass<HloPassPipeline>(FusionDispatchPipeline(
-        gpu_device_info, ShapeSizeBytesFunction(), mlir_context));
+    main_pipeline.AddPass<HloPassPipeline>(
+        FusionDispatchPipeline(gpu_device_info, ShapeSizeBytesFunction(),
+                               mlir_context, thread_pool, &mlir_context_pool_));
   }
 
   // Sanitize constant names. This is in its own pipeline to ensure it always
@@ -3530,7 +3548,8 @@ absl::Status GpuCompiler::AddConfigAssignerPass(
       [&]() -> absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> {
     return ConfigAssignerPass::GetEnabledBackends(
         stream_exec, options.device_allocator, target_config, alias_info,
-        debug_options, mlir_context, shape_size_fn, this, PlatformId());
+        debug_options, mlir_context, shape_size_fn, this, PlatformId(),
+        thread_pool, &mlir_context_pool_);
   };
 
   ABSL_ASSIGN_OR_RETURN(

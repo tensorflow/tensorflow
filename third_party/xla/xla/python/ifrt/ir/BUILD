@@ -135,9 +135,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":sharding_param_proto_cc",
-        "//xla/python/ifrt:serdes_default_version_accessor",
-        "//xla/python/ifrt:serdes_version",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
@@ -150,9 +147,16 @@ cc_library(
     ],
 )
 
-tf_proto_library(
-    name = "sharding_param_proto",
-    srcs = ["sharding_param.proto"],
+xla_cc_test(
+    name = "sharding_param_test",
+    srcs = ["sharding_param_test.cc"],
+    deps = [
+        ":sharding_param",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 tf_proto_library(

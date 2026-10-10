@@ -485,7 +485,7 @@ cc_library(
     hdrs = ["launch_dim.h"],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":launch_dim_proto_cc",
@@ -701,6 +701,7 @@ cc_library(
         ":kernel_spec",
         ":memory_allocation",
         ":memory_allocator",
+        ":memory_reservation",
         ":memory_space",
         ":module_spec",
         ":platform",
@@ -874,7 +875,7 @@ cc_library(
     hdrs = ["kernel_spec.h"],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":kernel",
@@ -1093,7 +1094,7 @@ cc_library(
     name = "command_buffer",
     srcs = ["command_buffer.cc"],
     hdrs = ["command_buffer.h"],
-    visibility = [":internal"],
+    visibility = internal_visibility([":internal"]),
     deps = [
         ":bit_pattern",
         ":device_address",
@@ -1347,7 +1348,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1366,7 +1366,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1437,7 +1436,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

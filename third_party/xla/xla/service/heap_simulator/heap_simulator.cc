@@ -49,6 +49,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "tsl/platform/platform.h"  // For PLATFORM_GOOGLE.
+
+#if defined(PLATFORM_GOOGLE)
+#include "third_party/ortools/ortools/algorithms/multikey_radix_sort.h"
+#endif  // PLATFORM_GOOGLE
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -2055,6 +2060,70 @@ std::string RenderTimeByFreeChunks(
 
 }  // namespace
 
+#if defined(PLATFORM_GOOGLE)
+// Sorts `chunks` in ascending order of `Chunk::offset` using an adaptive sort
+// strategy.
+//
+// Optimizations:
+// 1. Tuned cutoff: For small arrays (N < 3000, ~48 kB for 16-byte Chunks),
+//    elements fit comfortably in L2 cache (typically 1+ MB, though spilling
+//    the 32-48 kB L1d cache). For this size, introsort (`absl::c_sort`) has
+//    lower constant factor overhead and is faster than radix sort.
+// 2. Single pass to check sortedness by counting inversions:
+//    - If nearly sorted (`inversions <= n / 10`), introsort does almost zero
+//      swaps and beats radix sort by >2x.
+// 3. AutoRadixSort:
+//    For high-entropy inputs with N >= 3000, dispatches to zero-allocation
+//    `operations_research::AutoRadixSort`, reusing the caller-provided scratch
+//    buffer without heap reallocations.
+void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
+                              std::vector<HeapSimulator::Chunk>& scratch) {
+  using Chunk = HeapSimulator::Chunk;
+  const size_t n = chunks.size();
+
+  // Small lists fit within L2 cache (~48 kB data spills 32-48 kB L1d, but is
+  // well within L2) where introsort has lower constant overhead than radix sort
+  if (n < 3000) {
+    absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+    return;
+  }
+
+  // Single pass for sortedness by local inversion count.
+  int64_t prev = chunks[0].offset;
+  size_t inversions = 0;
+  constexpr size_t kMaxInversionDivisor = 10;
+  const size_t max_inversions_for_stdsort = n / kMaxInversionDivisor;
+
+  for (size_t i = 1; i < n; ++i) {
+    const int64_t curr = chunks[i].offset;
+    if (curr < prev) {
+      ++inversions;
+    }
+    prev = curr;
+  }
+
+  // Immediate early exit for already-sorted or uniform arrays.
+  if (inversions == 0) {
+    return;
+  }
+
+  // For nearly-sorted data, introsort does almost no swaps and beats radix
+  // sort.
+  if (inversions <= max_inversions_for_stdsort) {
+    absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+    return;
+  }
+
+  // Use zero-allocation AutoRadixSort.
+  operations_research::AutoRadixSort(
+      chunks, scratch, [](const Chunk& chunk) { return chunk.offset; });
+}
+#endif  // PLATFORM_GOOGLE
+
 template <typename BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
     SlicedAllocationFinder(
@@ -2588,9 +2657,14 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunksList(
         });
   }
 
+#if defined(PLATFORM_GOOGLE)
+  // Sort used chunks by offset ascending using adaptive hybrid sort.
+  AdaptiveHybridSortChunks(used_chunks_, radix_scratch_);
+#else
   // Sort used chunks by offset ascending.
   std::sort(used_chunks_.begin(), used_chunks_.end(),
             [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
+#endif  // PLATFORM_GOOGLE
 
   free_chunks_list_.clear();
   if (used_chunks_.empty()) {
@@ -2849,13 +2923,9 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunkOnly(
       Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
 
   result_.heap_size = result_.UpdatedHeapSize(max_size_chunk);
+  // NOLINTNEXTLINE
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-    // Create a colocation chunk with the same offset and the maximum size of
-    // all colocated buffers.
-    Chunk colocation_chunk =
-        Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
-    result_.heap_size = result_.UpdatedHeapSize(colocation_chunk);
-    AddToChunkMap(colocation, colocation_chunk);
+    AddToChunkMap(colocation, max_size_chunk);
   }
 
   AddToChunkMap(buffer_interval.buffer, max_size_chunk);
@@ -2875,9 +2945,8 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunkAndInterval(
   // NOLINTNEXTLINE
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
-    interval_tree_.Add(
-        colocation_interval.start, colocation_interval.end,
-        Chunk::FromOffsetSize(chunk.offset, max_colocation_size));
+    interval_tree_.Add(colocation_interval.start, colocation_interval.end,
+                       max_size_chunk);
   }
 }
 

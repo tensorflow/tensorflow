@@ -15,22 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/flags.h"
 
-#include <atomic>
-#include <cstdint>
 #include <limits>
+#include <mutex>  // NOLINT
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 #include "xla/parse_flags_from_env.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_xla_flags_defaults.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -274,12 +270,6 @@ void AllocateAndParseFlags() {
   ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_ = true;
   ops_flags->tf_xla_use_device_api.enabled_for_all_ = false;
   ops_flags->tf_xla_use_device_api.enabled_for_gpu_ = true;
-  ops_flags->tf_xla_use_device_api.AllowForDeviceInXlaLaunch(
-      DeviceType(DEVICE_GPU));
-  ops_flags->tf_xla_use_device_api.AllowForDeviceInXlaCompileOnDemand(
-      DeviceType(DEVICE_GPU));
-  ops_flags->tf_xla_use_device_api.AllowForDeviceInXlaCompileAndRun(
-      DeviceType(DEVICE_GPU));
 
   call_module_flags = new XlaCallModuleFlags;
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
@@ -423,11 +413,6 @@ void AllocateAndParseFlags() {
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
-
-  if (!ops_flags->tf_xla_use_device_api.enabled_for_gpu_) {
-    LOG(WARNING)
-        << "tf_xla_enable_device_api_for_gpu is ignored; assuming true";
-  }
 
   mlir_flags = new MlirCommonFlags;
   if (!enable_mlir_bridge_is_explicit) {

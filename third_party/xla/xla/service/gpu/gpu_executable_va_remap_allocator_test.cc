@@ -114,6 +114,9 @@ class TestMemoryReservation final : public se::MemoryReservation {
     return se::DeviceAddressBase(storage_.data(), size_);
   }
 
+  // Matches the allocation granularity the test installs on the allocator.
+  size_t granularity() const override { return kGranularity; }
+
   int active_mapping_count() const { return active_mapping_count_; }
   const void* last_mapped_allocation_address() const {
     return last_mapped_allocation_address_;

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -177,6 +178,11 @@ HloInstruction* BuildUnpackU64ToF32(HloInstruction* u64_values,
 
 // Checks if we can safely route stable TopK to RAFT using the Uint64 adapter.
 bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
+  // The Uint64 bit-packing adapter implements TOTAL ordering.
+  if (hlo_instruction_utils::GetTopKComparatorOrder(topk) !=
+      ComparisonOrder::kTotal) {
+    return false;
+  }
   if (!hlo_instruction_utils::IsTopKStable(topk)) {
     return false;
   }
@@ -255,7 +261,7 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
 
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
-          new_cc_shape, {packed_u64}, topk->to_apply(), "__gpu$TopK", "",
+          new_cc_shape, {packed_u64}, "__gpu$TopK", "",
           CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   // The packed U64 keys guarantee uniqueness, making ties impossible.
@@ -286,6 +292,19 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
     HloCustomCallInstruction* topk, bool is_cuda) {
+  // __gpu$TopK currently only implements TOTAL ordering (+0.0 > -0.0).
+  // For non-TOTAL comparators (e.g., PARTIAL order in ApproxTopK), return an
+  // error to fall back to sort + slice.
+  // TODO(b/473829358): Enable PARTIAL order in SmallBufferOptimization once
+  // TopKPartialOrderKernel is rolled out to the runtime and wired up in
+  // ThunkEmitter.
+  if (hlo_instruction_utils::GetTopKComparatorOrder(topk) !=
+      ComparisonOrder::kTotal) {
+    return InvalidArgument(
+        "Unsupported comparator order: only TOTAL order is currently "
+        "supported.");
+  }
+
   Shape data_shape = topk->operand(0)->shape();
   auto dtype = data_shape.element_type();
   auto supported_dtypes = {F32, BF16};
@@ -353,10 +372,7 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   HloComputation* comp = topk->parent();
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
-          cc_shape, topk->operands(),
-          // We don't need the original to_apply, but keeping it around allows
-          // us to round-trip this CustomCall on tests.
-          topk->to_apply(), "__gpu$TopK",
+          cc_shape, topk->operands(), "__gpu$TopK",
           /*opaque=*/"", CustomCallApiVersion::API_VERSION_TYPED_FFI));
   new_topk->set_raw_backend_config_string(topk->raw_backend_config_string());
   return TupleUtil::ExtractPrefix(new_topk, 2);
@@ -383,6 +399,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
     // Route stable TopK to RAFT select_k via Uint64 adapter
     if (is_cuda && enable_raft_for_stable_topk &&
         ShouldRewriteStableTopKToUint64(topk)) {
+      VLOG(2) << "Rewriting stable TopK to RAFT select_k via Uint64 adapter";
       ABSL_ASSIGN_OR_RETURN(HloInstruction * new_topk,
                        RewriteStableTopKToUint64(topk));
       return ReplaceInstruction(topk, new_topk);

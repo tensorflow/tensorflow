@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/infer_dispatch_info.h"
+#include "xla/pjrt/linearize_throttler.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -65,13 +66,15 @@ namespace xla {
 // A common base class for Pjrt clients based on raw buffers.
 class CommonPjRtClient : public PjRtClient {
  public:
-  using PjRtClient::PjRtClient;
+  CommonPjRtClient();
 
   // A thread pool for dispatching background work.
   // TODO(parkers): make pure virtual and update all clients.
   virtual AsyncWorkRunner* async_work_runner() const { return nullptr; }
 
   virtual PjRtRawClient* raw_client() const { return nullptr; }
+
+  virtual LinearizeThrottler* linearize_throttler() const { return nullptr; }
 
   // Some clients do not support recursion eg: calling to_literal in host
   // callbacks. Those clients should return false here.
@@ -80,20 +83,21 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool allow_fallback_for_donation() const { return false; }
   virtual bool supports_two_phase_launch() const { return true; }
   virtual bool dump_on_deserialize() const { return false; }
+  virtual bool should_stage_host_to_device_transfers() const { return false; }
   // Returns true if we should skip the staging buffer during ToLiteral.
-  virtual bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
-                                      const Shape& shape,
-                                      PjRtMemorySpace* memory_space) const {
-    return false;
-  }
+  bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
+                              const Shape& shape,
+                              PjRtMemorySpace* memory_space) const;
 
-  virtual tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
+  tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space);
 
-  virtual void DelinearizeAsync(
-      tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer,
-      PjRtMemorySpace* memory_space, const Shape& shape,
-      MutableLiteralBase* literal, tsl::Promise<void> promise);
+  // Delinearizes `input_data`, which has the on-device layout of `shape`, into
+  // `literal`.
+  virtual absl::Status Delinearize(absl::Span<const uint8_t> input_data,
+                                   const Shape& shape,
+                                   MutableLiteralBase* literal,
+                                   PjRtMemorySpace* memory_space);
 
   // TODO(parkers): Properly support error buffers on GPU and CPU.
   virtual bool include_raw_buffer_in_ready_event() const { return false; }
@@ -136,6 +140,11 @@ class CommonPjRtClient : public PjRtClient {
                                                 const xla::Shape& shape) const {
     return GetOnDeviceBytesCount(memory_space->kind_id(), shape);
   }
+
+  // Computes the DMA transfer size for shape, omitting trailing 0-padding
+  // beyond the DMA granule boundary when supported.
+  virtual absl::StatusOr<int64_t> GetDmaByteCount(
+      const xla::Shape& shape) const;
 
   // Gets the memory_space_kind for a particular XLA layout.
   virtual absl::StatusOr<int> GetMemorySpaceKindForShape(
@@ -188,26 +197,22 @@ class CommonPjRtClient : public PjRtClient {
       HostBufferSemantics host_buffer_semantics, PjRtRawBufferRef raw_buffer);
 
   // Tests if a buffer is eligible for zero copy linearization.
-  virtual bool ShouldPerformZeroCopyLinearize(
+  bool ShouldPerformZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape, PrimitiveType type,
       absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
-      PjRtMemorySpace* memory_space) {
-    return false;
-  }
+      PjRtMemorySpace* memory_space);
 
   // Creates a staging buffer directly from host data for zero copy.
-  virtual tsl::AsyncValueRef<PjRtStagingBuffer>
-  CreateStagingForZeroCopyLinearize(
+  tsl::AsyncValueRef<PjRtStagingBuffer> CreateStagingForZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape,
       PjRtMemorySpace* memory_space,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer);
 
   // Allocates a destination buffer for linearizing into.
-  virtual absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
-  AllocateLinearizeDest(bool sync, const xla::Shape& device_shape,
-                        absl::Span<const int64_t> byte_strides,
-                        PjRtRawBufferRef dest_buffer);
+  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+      bool sync, const xla::Shape& device_shape,
+      absl::Span<const int64_t> byte_strides, PjRtRawBufferRef dest_buffer);
 
   // Linearizes data into dest.
   virtual absl::Status Linearize(absl::Span<uint8_t> dest, const void* data,
@@ -259,7 +264,9 @@ class CommonPjRtClient : public PjRtClient {
       std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) {
-    return raw_client()->CreateLinkedEventPromise(memory_space, debug_info);
+    return raw_client()->CreateLinkedEventPromise(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        debug_info);
   }
 
   // Track a user-provided future with attached debug_info (if
@@ -301,7 +308,9 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
       PjRtMemorySpace* memory_space, Future<> dependency) {
-    return raw_client()->CreateDeviceEvent(memory_space, std::move(dependency));
+    return raw_client()->CreateDeviceEvent(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        std::move(dependency));
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
@@ -314,7 +323,8 @@ class CommonPjRtClient : public PjRtClient {
   tsl::AsyncValueRef<bool> CreateAllocationEventForTransfers(
       PjRtMemorySpace* memory_space,
       const std::optional<std::string>& debug_info) {
-    if (raw_client()->ShouldCreateAsyncAllocationEvent(memory_space)) {
+    if (raw_client()->ShouldCreateAsyncAllocationEvent(
+            memory_space->kind_id())) {
       tsl::AsyncValueRef<bool> result =
           tsl::MakeConstructedAsyncValueRef<bool>();
       if (event_tracker()) {
@@ -585,10 +595,6 @@ class CommonPjRtClient : public PjRtClient {
         "GetDeviceAddressAlignment is not implemented.");
   }
 
-  absl::Status DelinearizeHostBuffer(absl::Span<const uint8_t> input_data,
-                                     const Shape& shape,
-                                     MutableLiteralBase* literal);
-
   // Does the provided shape require runtime shape metadata when being
   // linearized into the provided memory space?
   bool RequiresRuntimeShapeMetadata(
@@ -628,6 +634,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
         input_hlo_snapshot_bits_(std::move(info.input_hlo_snapshot_bits)),
         executable_(std::move(executable)),
         load_state_(std::move(load_state)) {}
+
+  ~CommonPjRtLoadedExecutable() override { Delete(); }
 
   CommonPjRtClient* client() const override { return client_; }
 
@@ -827,6 +835,9 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   absl::Span<int const> ParametersThatMayBeDonated() const;
 
   virtual const HloInputOutputAliasConfig& input_output_alias_config() const {
+    if (extras_) {
+      return extras_->input_output_alias_config;
+    }
     auto hlo_module = GetExecutable()->GetHloModule();
     CHECK_OK(hlo_module.status());
     return (*hlo_module)->input_output_alias_config();
@@ -1024,6 +1035,10 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
  public:
   PjRtRawClient* raw_client() const override { return raw_client_.get(); }
 
+  LinearizeThrottler* linearize_throttler() const override {
+    return linearize_throttler_.get();
+  }
+
   int process_index() const override { return process_index_; }
 
   int device_count() const override { return devices_.size(); }
@@ -1097,9 +1112,10 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
                           PjRtDeviceEventPromiseRef usage_event_promise,
                           Future<std::string> serialized_descriptor,
                           PjRtBuffer::RemoteSendCallback on_done) override {
-    raw_client()->ScheduleRemoteSend(memory_space, raw_buffer,
-                                     definition_events, usage_event_promise,
-                                     serialized_descriptor, std::move(on_done));
+    raw_client()->ScheduleRemoteSend(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        raw_buffer, definition_events, usage_event_promise,
+        serialized_descriptor, std::move(on_done));
   }
 
   absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
@@ -1133,8 +1149,8 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
       std::unique_ptr<PjRtRawClient> raw_client,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt,
-      std::unique_ptr<PjRtHostMemoryForDeviceManager>
-          host_memory_for_device_manager = nullptr);
+      std::optional<LinearizeThrottler::Options> throttler_options =
+          std::nullopt);
 
   bool allow_fallback_for_donation() const override {
     return allow_fallback_for_donation_;
@@ -1153,6 +1169,9 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
     return use_stream_based_compaction_;
   }
   bool dump_on_deserialize() const override { return dump_on_deserialize_; }
+  bool should_stage_host_to_device_transfers() const override {
+    return should_stage_host_to_device_transfers_;
+  }
 
  private:
   const PjRtPlatformId platform_id_;
@@ -1179,6 +1198,7 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   std::unique_ptr<PjRtRawClient> raw_client_;
+  std::unique_ptr<LinearizeThrottler> linearize_throttler_;
 
   bool allow_fallback_for_donation_ = false;
   bool supports_two_phase_launch_ = true;
@@ -1187,6 +1207,7 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   bool allows_execute_recursion_;
   bool use_stream_based_compaction_ = false;
   bool dump_on_deserialize_ = false;
+  bool should_stage_host_to_device_transfers_ = false;
 };
 
 // A common base class for PjRtDevice implementations that delegate to
@@ -1260,9 +1281,7 @@ class CommonPjRtDevice : public PjRtDevice {
   absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind_id(int id) const;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    return nullptr;
-  }
+      absl::string_view description) const override;
 
   absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                        absl::Status error) override;

@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -138,9 +138,7 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
         VLOG(1) << "async done = " << done->ToString();
       }
     }
-    ABSL_RETURN_IF_ERROR(
-        ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
-            computation, async_pairs));
+    ABSL_RETURN_IF_ERROR(computation->ReplaceAsyncInstructionsWithSync(async_pairs));
   }
   return changed;
 }

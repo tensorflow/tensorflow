@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -27,10 +28,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform.h"
@@ -38,7 +41,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -106,17 +108,19 @@ TEST_P(FactoryTest, GetCodegenBackends) {
       (GetParam().run_on_rocm && is_rocm)) {
     auto& registry =
         stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         const GetCodegenBackends::Type& get_codegen_backends,
         registry.FindObject<GetCodegenBackends>(platform_->id()));
     mlir::MLIRContext mlir_context;
     AliasInfo alias_info;
     xla::RegisterSymbolicExprStorage(&mlir_context);
+    MlirContextPool mlir_context_pool(CreateMlirContext);
     std::vector<std::unique_ptr<CodegenBackend>> backends =
         get_codegen_backends(
             stream_executor_, &allocator_, &debug_options_, compiler_.get(),
             &target_config_, &alias_info, &mlir_context,
-            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names);
+            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names,
+            /*thread_pool=*/nullptr, &mlir_context_pool);
     EXPECT_EQ(backends.size(), GetParam().expected_num_backends);
   } else {
     GTEST_SKIP() << "Skipping test for platform " << platform_->id();

@@ -209,6 +209,9 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleExp(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual absl::Status HandleExp2(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual absl::Status HandleExpm1(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -225,6 +228,9 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleLog1p(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual absl::Status HandleLog2(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleCos(HloInstructionPtr hlo) {
@@ -318,6 +324,7 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleScan(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleScatter(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleShuffle(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleSlice(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleSort(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleTranspose(HloInstructionPtr hlo) = 0;

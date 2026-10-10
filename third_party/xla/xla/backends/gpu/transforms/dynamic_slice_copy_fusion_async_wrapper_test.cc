@@ -34,7 +34,7 @@ TEST_F(DynamicSliceCopyFusionAsyncWrapperTest, WrapsDynamicMemcpyFusion) {
 
       ROOT slice = s32[1] dynamic-slice(p0, c1), dynamic_slice_sizes={1},
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
     }
 
     ENTRY main {
@@ -71,7 +71,7 @@ TEST_F(DynamicSliceCopyFusionAsyncWrapperTest,
 
       ROOT update = s32[4] dynamic-update-slice(p0, p1, c1),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
     }
 
     ENTRY main {
@@ -105,7 +105,7 @@ TEST_F(DynamicSliceCopyFusionAsyncWrapperTest, DoesNotWrapNonCopyHeroFusion) {
       c1 = s32[] constant(1)
       ds = s32[1] dynamic-slice(p0, c1), dynamic_slice_sizes={1},
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
       ROOT add = s32[1] add(ds, ds)
     }
 

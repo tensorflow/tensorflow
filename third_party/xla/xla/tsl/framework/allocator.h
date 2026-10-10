@@ -105,8 +105,8 @@ struct AllocatorStats {
   std::optional<int64_t> bytes_limit;
 
   // Stats for reserved memory usage.
-  int64_t bytes_reserved;       // Number of bytes reserved.
-  int64_t peak_bytes_reserved;  // The peak number of bytes reserved.
+  int64_t bytes_reserved;        // Number of bytes reserved.
+  int64_t peak_bytes_reserved;   // The peak number of bytes reserved.
   int64_t peak_allocated_bytes;  // Peak of reserved and in-use bytes.
   // The upper limit on the number bytes of reservable memory,
   // if such a limit is known.
@@ -323,27 +323,7 @@ class AllocatorWrapper : public Allocator {
     return wrapped_->AllocateRaw(alignment, num_bytes, allocation_attr);
   }
 
-  void* AllocateRawAlignedNew(size_t alignment, size_t num_bytes) override {
-    return wrapped_->AllocateRawAlignedNew(alignment, num_bytes);
-  }
-
-  void* AllocateRawAlignedNew(
-      size_t alignment, size_t num_bytes,
-      const AllocationAttributes& allocation_attr) override {
-    return wrapped_->AllocateRawAlignedNew(alignment, num_bytes,
-                                           allocation_attr);
-  }
-
   void DeallocateRaw(void* ptr) override { wrapped_->DeallocateRaw(ptr); }
-
-  void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) override {
-    wrapped_->DeallocateRaw(ptr, alignment, num_bytes);
-  }
-
-  void DeallocateRawAlignedDelete(void* ptr, size_t alignment,
-                                  size_t num_bytes) override {
-    wrapped_->DeallocateRawAlignedDelete(ptr, alignment, num_bytes);
-  }
 
   bool TracksAllocationSizes() const override {
     return wrapped_->TracksAllocationSizes();
@@ -367,20 +347,6 @@ class AllocatorWrapper : public Allocator {
 
   size_t AllocatedSizeSlow(const void* ptr) const override {
     return wrapped_->AllocatedSizeSlow(ptr);
-  }
-
-  std::optional<AllocatorStats> GetStats() override {
-    return wrapped_->GetStats();
-  }
-
-  bool ClearStats() override { return wrapped_->ClearStats(); }
-
-  void SetSafeFrontier(uint64_t count) override {
-    wrapped_->SetSafeFrontier(count);
-  }
-
-  void SetStreamAndPreallocateMemory(void* stream) override {
-    wrapped_->SetStreamAndPreallocateMemory(stream);
   }
 
   AllocatorMemoryType GetMemoryType() const override {
@@ -505,6 +471,17 @@ class SubAllocator {
   virtual AllocatorMemoryType GetMemoryType() const {
     return AllocatorMemoryType::kUnknown;
   }
+
+  // Returns a positive size multiple that Alloc() pads requests up to, for
+  // example a virtual memory mapping granularity. BFCAllocator sizes region
+  // extensions and backpedal retries in multiples of this value so that a
+  // shrunken retry is not padded back up to a size that just failed.
+  // Implementations whose granularity changes after suballocator construction
+  // (e.g. once an address range has been reserved) must return the current
+  // value on every call. Complete such configuration before passing the
+  // suballocator to BFCAllocator, whose constructor caches
+  // SupportsCoalescing().
+  virtual size_t GetAllocationGranularity() const { return 1; }
 
  protected:
   // Implementation of Alloc() method must call this on newly allocated

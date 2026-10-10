@@ -58,7 +58,7 @@ class CApiMegascaleErrorAggregator {
       delete;
 
   void AddError(absl::string_view worker_id,
-                const runtime::MegaScaleRuntimeErrorOverlay& error);
+                const runtime::external::MegaScaleRuntimeError& error);
 
   ErrorDigest ProcessAndShutdown();
 

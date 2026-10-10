@@ -922,6 +922,18 @@ absl::Status XlaCompiler::CompileFunction(
     return status;
   }
 
+  bool xla_deterministic = false;
+  if (!TryGetNodeAttr(AttrSlice(&fbody->record->fdef().attr()),
+                      kXlaDeterministicAttr, &xla_deterministic)) {
+    TryGetNodeAttr(AttrSlice(&fn_name_attrs.attr()), kXlaDeterministicAttr,
+                   &xla_deterministic);
+  }
+  if (xla_deterministic && result->computation != nullptr) {
+    (*result->computation->mutable_proto()
+          ->mutable_frontend_attributes()
+          ->mutable_map())[kXlaDeterministicAttr] = "true";
+  }
+
   tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
       tensorflow::metrics::Phase2XlaCompilerMetric::
           kCompileFunctionXlaBuilderSuccess);

@@ -24,25 +24,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/topk_rewriter.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -88,50 +81,6 @@ class TopkTest : public HloPjRtGpuTestBase, public ParameterizedInterface {
   }
 };
 
-class GeneralizeTopkVisitor : public DfsHloRewriteVisitor {
- public:
-  absl::Status HandleCustomCall(HloInstruction* inst) override {
-    HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
-    if (topk == nullptr || topk->custom_call_target() != "__gpu$TopK") {
-      return absl::OkStatus();
-    }
-    HloComputation* comp = topk->parent();
-    auto original_shape = ShapeUtil::SliceTuple(topk->shape(), 0, 2);
-    HloInstruction* original_topk =
-        comp->AddInstruction(HloInstruction::CreateCustomCall(
-            original_shape, topk->operands(), topk->to_apply(), "TopK"));
-    // TupleUtil::ExtractPrefix creates the following structure:
-    //      TopK
-    //   -------------
-    //   |     |     |
-    //  Get   Get   Get
-    //    \    |     /
-    //     CreateTuple
-    // Here we walk to Create Tuple and replace it with the original topk.
-    HloInstruction* new_tuple = topk->users()[0]->users()[0];
-    return ReplaceInstruction(new_tuple, original_topk);
-  }
-};
-
-class GeneralizeTopk : public HloModulePass {
- public:
-  absl::string_view name() const override { return "generalized-topk"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(HloModule* module,
-                               const absl::flat_hash_set<absl::string_view>&
-                                   execution_threads) override {
-    return GeneralizeTopkVisitor().RunOnModule(module, execution_threads);
-  }
-};
-
-void ToSortAndSlice(HloModule* module) {
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, GeneralizeTopk().Run(module));
-  ASSERT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(module));
-  ASSERT_TRUE(changed);
-}
-
 TEST_P(TopkTest, ProducesCorrectResult) {
   // TODO(intel-tf): Remove this check once specialization for SYCL/oneAPI
   // backend is added.
@@ -140,16 +89,17 @@ TEST_P(TopkTest, ProducesCorrectResult) {
   }
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
-                          TopkHlo(n, k, batch_size, dtype));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                       TopkHlo(n, k, batch_size, dtype));
+  std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       TopkSpecializer(device_description().gpu_compute_capability())
           .Run(topk_module.get()));
   ASSERT_TRUE(changed);
 
-  std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
-  ToSortAndSlice(reference_module.get());
+  ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
+  ASSERT_TRUE(changed);
   // Disable TopkRewriter, otherwise it will rewrite sort+slice back to TopK
   // custom call and make test and reference modules identical.
   reference_module->mutable_config()
@@ -270,7 +220,7 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,1024]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
 
 // 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, {{.*}} backend_config={is_stable = false}
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false}
 
 // 5. Unpack U64 -> U32
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -349,7 +299,7 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,65540]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
 
 // 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, {{.*}} backend_config={is_stable = false}
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false}
 
 // 5. Unpack U64 -> U32
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
