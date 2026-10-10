@@ -486,6 +486,30 @@ class BufferAssignment {
     buffer_assignment::BufferIsolationConfig config;
   };
 
+  struct LiveRangeInterferenceOptions {
+    // Unary predicate: returns true if this HloValue has custom interference
+    // rules and should bypass HeapSimulator interval packing.
+    // Bypassing HeapSimulator ensures that buffers subject to custom rules
+    // are assigned sequentially where pairwise interference overrides can be
+    // evaluated.
+    std::function<bool(const HloAliasAnalysis&, const HloValue&)>
+        has_custom_interference;
+
+    // Symmetric binary predicate: returns true/false to override interference
+    // between lhs and rhs, or std::nullopt to fall back to default analysis.
+    // Must be symmetric: interferes(alias_analysis, a, b) ==
+    // interferes(alias_analysis, b, a).
+    // Returning true forces interference (preventing allocation reuse), while
+    // returning false forces non-interference (enabling allocation reuse).
+    //
+    // Invariant: If interferes(alias_analysis, a, b) returns a non-nullopt
+    // value, has_custom_interference(alias_analysis, a) and
+    // has_custom_interference(alias_analysis, b) must both return true.
+    std::function<std::optional<bool>(const HloAliasAnalysis&, const HloValue&,
+                                      const HloValue&)>
+        interferes;
+  };
+
   // Returns the vector containing all buffer allocations in this assignment.
   const std::vector<BufferAllocation>& Allocations() const {
     return allocations_;
@@ -871,6 +895,8 @@ class BufferAssigner {
 
   using MustNotLiveOut = std::function<bool(
       const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
+  using LiveRangeInterferenceOptions =
+      BufferAssignment::LiveRangeInterferenceOptions;
 
   // The order in which to process buffers during buffer assignment.
   enum class BufferOrder {
@@ -895,6 +921,9 @@ class BufferAssigner {
     // live out of a computation.
     std::optional<MustNotLiveOut> must_not_live_out;
 
+    // Optional callbacks to override live-range interference analysis between
+    // two buffer values (e.g. for target-specific concurrency or barriers).
+    std::optional<LiveRangeInterferenceOptions> live_range_interference_options;
     // Description of any buffer offsets that are already set by an earlier
     // pass.
     std::unique_ptr<memory_space_assignment::PresetAssignments>
