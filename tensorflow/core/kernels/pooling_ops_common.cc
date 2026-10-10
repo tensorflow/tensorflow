@@ -156,7 +156,7 @@ PoolParameters::PoolParameters(OpKernelContext* context,
   OP_REQUIRES(context,
               (depth_window == 1 || (window_rows == 1 && window_cols == 1)),
               absl::UnimplementedError(
-                  "MaxPooling supports exactly one of pooling across depth "
+                  "Pooling supports exactly one of pooling across depth "
                   "or pooling across width/height."));
   if (padding == Padding::EXPLICIT) {
     OP_REQUIRES_OK(context, CheckValidPadding(padding, explicit_paddings,
