@@ -581,18 +581,6 @@ This patch allows to use CUDA 12.8 with PTXAS 8.7 instead of CUDA 13.2
  #blocked1 = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [16, 2], warpsPerCTA = [4, 1], order = [1, 0]}>
  #blocked2 = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [2, 16], warpsPerCTA = [4, 1], order = [1, 0]}>
 
---- a/third_party/nvidia/backend/compiler.py
-+++ b/third_party/nvidia/backend/compiler.py
-@@ -30,8 +30,6 @@ def min_dot_size(target: GPUTarget):
-             return (1, 1, 32)
-         elif lhs_bitwidth == 64:
-             return (1, 1, 4)
--        elif lhs_bitwidth == 32:
--            return (1, 1, 8)
-         else:
-             return (1, 1, 16)
- 
-
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp
 @@ -847,14 +847,14 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,

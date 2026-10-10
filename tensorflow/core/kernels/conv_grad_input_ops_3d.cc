@@ -875,10 +875,10 @@ void LaunchConvBackpropInputOpImpl(
                          dims.filter_size(1), dims.filter_size(2),
                          filter_shape.dim_size(3)});
   OP_REQUIRES(context,
-              filter.NumElements() <= std::numeric_limits<int32>::max(),
-              errors::InvalidArgument(
+              filter.NumElements() <= std::numeric_limits<int32_t>::max(),
+              absl::InvalidArgumentError(absl::StrCat(
                   "Filter tensor num elements (", filter.NumElements(),
-                  ") exceeds 32-bit limit for GPU transformation"));
+                  ") exceeds 32-bit limit for GPU transformation")));
 
   OP_REQUIRES_OK(context,
                  context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,

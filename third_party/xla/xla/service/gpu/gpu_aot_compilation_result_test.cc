@@ -109,13 +109,18 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     Thunk::ThunkInfo thunk_info;
     thunk_info.thunk_id = 123;
 
+    GpuTopology gpu_topology(/*platform_version=*/"", /*num_partitions=*/1,
+                             /*num_hosts_per_partition=*/1,
+                             /*num_devices_per_host=*/1);
+
     ThunkSequence thunk_sequence;
     thunk_sequence.Emplace<KernelThunk>(
         thunk_info,
         /*kernel_name=*/"test_kernel", emitters::KernelArguments({}),
         LaunchDimensions(),
         /*cluster_dim=*/std::nullopt,
-        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata());
+        /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata(),
+        gpu_topology.num_devices_per_host());
     CustomKernel custom_kernel{
         "custom_kernel_name",
         stream_executor::KernelLoaderSpec::
@@ -124,8 +129,9 @@ class GpuAotCompilationResultTest : public ::testing::Test {
                 /*arity=*/42),
         stream_executor::BlockDim(), stream_executor::ThreadDim(),
         /*shared_memory_bytes=*/23};
-    thunk_sequence.Emplace<CustomKernelThunk>(thunk_info, custom_kernel,
-                                              emitters::KernelArguments({}));
+    thunk_sequence.Emplace<CustomKernelThunk>(
+        thunk_info, custom_kernel, emitters::KernelArguments({}),
+        gpu_topology.num_devices_per_process());
 
     auto hlo_module = std::make_unique<HloModule>("test_module_with_shape",
                                                   HloModuleConfig());
@@ -143,13 +149,11 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.executable =
         std::make_unique<ThunkExecutor>(std::move(thunk_sequence));
     params.device_description = device_description_;
+    params.gpu_topology = gpu_topology;
 
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.allocations = {BufferAllocation(0, 1024, 0)};
-    params.gpu_topology =
-        GpuTopology(/*platform_version=*/"", /*num_partitions=*/1,
-                    /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/1);
     ABSL_ASSIGN_OR_RETURN(
         params.executable_abi_version,
         stream_executor::ExecutableAbiVersion::FromDeviceDescription(

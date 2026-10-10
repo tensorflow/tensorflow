@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_host_copy_thunk.h"
@@ -1309,7 +1310,7 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
   start_info.profile_annotation = "async_start";
 
   AsyncStartThunk start_thunk(start_info, ComputationStreamId(0),
-                              ThunkSequence{});
+                              ThunkSequence{}, /*devices_per_host=*/1);
 
   AsyncDoneThunk done_thunk(Thunk::ThunkInfo(), start_thunk.async_execution());
 
@@ -1356,7 +1357,8 @@ TEST(ThunkProtoDeserializationTest, AsyncStartThunkMemcpyStreamRoundTrip) {
     Thunk::ThunkInfo start_info;
     start_info.profile_annotation = "memcpy_async_start";
 
-    AsyncStartThunk start_thunk(start_info, stream_id, ThunkSequence{});
+    AsyncStartThunk start_thunk(start_info, stream_id, ThunkSequence{},
+                                /*devices_per_host=*/1);
     AsyncDoneThunk done_thunk(Thunk::ThunkInfo(),
                               start_thunk.async_execution());
 

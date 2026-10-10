@@ -43,8 +43,10 @@ namespace xla::gpu {
 // created by the dynamic-slice fusion rewriter when it can prove that DS/DUS
 // offsets can be represented in a tiny offset expression language over scalar
 // fusion parameters and constants. The language supports constants, parameter
-// reads, arithmetic, comparisons, and selects that can be evaluated at run
-// time.
+// reads, arithmetic, min/max, comparisons, and selects that can be evaluated
+// at run time. Expressions are evaluated in int64_t, so integer converts are
+// no-ops. Single-element integer arrays (e.g. `s32[1]`) are treated as scalars,
+// and bitcasts/reshapes between them are no-ops.
 //
 // A dynamic-slice fusion wraps a hero computation (e.g. a custom call or a
 // kernel fusion) with dynamic-slice (DS) inputs and dynamic-update-slice (DUS)
@@ -113,13 +115,18 @@ struct DynamicSliceFusion {
       struct Add       { std::vector<Expr> args;     };
       struct Subtract  { std::vector<Expr> args;     };
       struct Multiply  { std::vector<Expr> args;     };
+      struct Divide    { std::vector<Expr> args;     };
+      struct Remainder { std::vector<Expr> args;     };
+      struct Minimum   { std::vector<Expr> args;     };
+      struct Maximum   { std::vector<Expr> args;     };
       struct Select    { std::vector<Expr> args;     };
       struct Compare   { ComparisonDirection direction;
                          std::vector<Expr> args;     };
       // clang-format on
 
-      using Value = std::variant<Constant, Parameter, Add, Subtract, Multiply,
-                                 Compare, Select>;
+      using Value =
+          std::variant<Constant, Parameter, Add, Subtract, Multiply, Divide,
+                       Remainder, Minimum, Maximum, Compare, Select>;
       Value value;
     };
 
@@ -134,6 +141,10 @@ struct DynamicSliceFusion {
     static Expr Add(Expr lhs, Expr rhs);
     static Expr Subtract(Expr lhs, Expr rhs);
     static Expr Multiply(Expr lhs, Expr rhs);
+    static Expr Divide(Expr lhs, Expr rhs);
+    static Expr Remainder(Expr lhs, Expr rhs);
+    static Expr Minimum(Expr lhs, Expr rhs);
+    static Expr Maximum(Expr lhs, Expr rhs);
     static Expr Compare(ComparisonDirection direction, Expr lhs, Expr rhs);
     static Expr Select(Expr pred, Expr on_true, Expr on_false);
 
@@ -167,8 +178,11 @@ struct DynamicSliceFusion {
     // Absent when the operand is not sliced (direct parameter pass-through).
     std::optional<DynamicSliceConfig> slice_config;
 
-    // Per-dimension offset info from the DS index operands. Absent when the
-    // operand is not sliced (no DS between the parameter and the hero).
+    // Per-dimension offset expressions from the DS index operands, used only
+    // for offset verification (the runtime computes offsets from
+    // `slice_config`). Absent when the operand is not sliced by a DS, or when
+    // offsets are not representable as Offset::Expr in a dynamic-slice copy
+    // fusion (see OffsetResolution).
     std::optional<std::vector<Offset>> slice_offsets;
   };
 
@@ -196,9 +210,28 @@ struct DynamicSliceFusion {
     // result does not flow through a DUS.
     std::optional<DynamicSliceConfig> update_config;
 
-    // Per-dimension offset info from the DUS index operands. Absent when
-    // the result does not flow through a DUS.
+    // Per-dimension offset expressions from the DUS index operands, used only
+    // for offset verification (the runtime computes offsets from
+    // `update_config`). Absent when the result does not flow through a DUS, or
+    // when offsets are not representable as Offset::Expr in a dynamic-slice
+    // copy fusion (see OffsetResolution).
     std::optional<std::vector<Offset>> update_offsets;
+  };
+
+  // Controls how DS/DUS offsets that are not representable as Offset::Expr are
+  // handled when resolving parameters and results.
+  enum class OffsetResolution {
+    // Offsets must be representable as Offset::Expr, otherwise resolution
+    // fails. This is the default for all dynamic-slice fusions.
+    kRequired,
+
+    // Offsets that are not representable as Offset::Expr are left empty. Use
+    // only for dynamic-slice copy fusions (see dynamic_slice_copy.h): a DS/DUS
+    // copy is emitted as a single copy thunk addressed only by the
+    // DynamicSliceConfig, so offset expressions are needed only for offset
+    // verification, which is skipped. Not safe for fusions where the runtime
+    // depends on offset expressions.
+    kOptional,
   };
 
   // Finds the "hero" instruction inside a dynamic-slice fusion body.
@@ -214,12 +247,14 @@ struct DynamicSliceFusion {
   // to inspect a value as if it were copied by a trivial hero, without
   // materializing a temporary HLO instruction.
   static absl::StatusOr<Parameter> ResolveParameter(
-      const HloInstruction* operand);
+      const HloInstruction* operand,
+      OffsetResolution offset_resolution = OffsetResolution::kRequired);
 
   // Resolves results for the hero instruction. Returns an entry for all results
   // of the dynamic slice fusion (root of the hero, or for each tuple entry).
   static absl::StatusOr<std::vector<Result>> ResolveResults(
-      const HloInstruction* hero);
+      const HloInstruction* hero,
+      OffsetResolution offset_resolution = OffsetResolution::kRequired);
 
   // Evaluates an offset expression with parameter values represented as
   // (fusion parameter number, scalar value) pairs.
@@ -260,6 +295,26 @@ inline bool operator==(const DynamicSliceFusion::Offset::Expr::Subtract& a,
 
 inline bool operator==(const DynamicSliceFusion::Offset::Expr::Multiply& a,
                        const DynamicSliceFusion::Offset::Expr::Multiply& b) {
+  return a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Divide& a,
+                       const DynamicSliceFusion::Offset::Expr::Divide& b) {
+  return a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Remainder& a,
+                       const DynamicSliceFusion::Offset::Expr::Remainder& b) {
+  return a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Minimum& a,
+                       const DynamicSliceFusion::Offset::Expr::Minimum& b) {
+  return a.args == b.args;
+}
+
+inline bool operator==(const DynamicSliceFusion::Offset::Expr::Maximum& a,
+                       const DynamicSliceFusion::Offset::Expr::Maximum& b) {
   return a.args == b.args;
 }
 
@@ -332,6 +387,14 @@ void AbslStringify(Sink& sink, const DynamicSliceFusion::Offset::Expr& expr) {
           absl::Format(&sink, "sub(%v, %v)", e.args[0], e.args[1]);
         } else if constexpr (std::is_same_v<T, Expr::Multiply>) {
           absl::Format(&sink, "mul(%v, %v)", e.args[0], e.args[1]);
+        } else if constexpr (std::is_same_v<T, Expr::Divide>) {
+          absl::Format(&sink, "div(%v, %v)", e.args[0], e.args[1]);
+        } else if constexpr (std::is_same_v<T, Expr::Remainder>) {
+          absl::Format(&sink, "rem(%v, %v)", e.args[0], e.args[1]);
+        } else if constexpr (std::is_same_v<T, Expr::Minimum>) {
+          absl::Format(&sink, "min(%v, %v)", e.args[0], e.args[1]);
+        } else if constexpr (std::is_same_v<T, Expr::Maximum>) {
+          absl::Format(&sink, "max(%v, %v)", e.args[0], e.args[1]);
         } else if constexpr (std::is_same_v<T, Expr::Compare>) {
           absl::Format(&sink, "cmp(%s, %v, %v)",
                        ComparisonDirectionToString(e.direction), e.args[0],

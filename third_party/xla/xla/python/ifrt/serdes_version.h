@@ -70,7 +70,7 @@ class SerDesVersion {
 
   // Returns the minimum supported version.
   static SerDesVersion minimum() {
-    return SerDesVersion(SerDesVersionNumber(0));
+    return SerDesVersion(SerDesVersionNumber(2));
   }
 
   // Returns a version that was introduced at least 4 weeks ago.

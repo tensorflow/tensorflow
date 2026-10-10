@@ -60,6 +60,8 @@ toc:
     path: /xla/gpu_architecture
   - title: GPU Emitters
     path: /xla/emitters
+  - title: Tuning GPU command buffers
+    path: /xla/command_buffer_tutorial
   - title: Persisted autotuning
     path: /xla/persisted_autotuning
   - title: Determinism (GPU)

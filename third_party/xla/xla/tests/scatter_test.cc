@@ -768,6 +768,39 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+TEST_F(ScatterTest, U8IndexWithBoundOutsideIndexType) {
+  // The valid index bound (299) does not fit into u8; index 200 must still
+  // be applied.
+  const std::string hlo_text = R"(
+HloModule U8IndexWithBoundOutsideIndexType
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  operand = s32[300]{0} parameter(0)
+  indices = u8[1,1]{1,0} parameter(1)
+  updates = s32[1]{0} parameter(2)
+  ROOT scatter = s32[300]{0} scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateRandomLiteral<S32>(ShapeUtil::MakeShape(S32, {300}),
+                                            /*mean=*/500, /*stddev=*/100)
+          .value();
+  Literal scatter_indices = LiteralUtil::CreateR2<uint8_t>({{200}});
+  Literal updates = LiteralUtil::CreateR1<int32_t>({1000});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
 TEST_F(ScatterTest, NegativeIndex) {
   const std::string hlo_text = R"(
 HloModule BatchDynamicSlice

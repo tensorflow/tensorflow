@@ -19,12 +19,13 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -51,14 +53,15 @@ absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::Create(
     std::optional<BufferAllocation::Slice> dy_slice,
     std::optional<BufferAllocation::Slice> dscale_slice,
     std::optional<BufferAllocation::Slice> dbias_slice,
-    BufferAllocation::Slice scratch_slice) {
+    BufferAllocation::Slice scratch_slice, int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(GpuNormConfig config, GpuNormConfig::For(descriptor));
 
   // Can't use make_unique because the constructor is private. go/totw/134
   return absl::WrapUnique(new NormThunk(
       thunk_info, std::move(config), std::move(descriptor), x_slice,
       scale_slice, y_or_dx_slice, bias_slice, expectation_slice,
-      norm_factor_slice, dy_slice, dscale_slice, dbias_slice, scratch_slice));
+      norm_factor_slice, dy_slice, dscale_slice, dbias_slice, scratch_slice,
+      devices_per_host));
 }
 
 NormThunk::NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
@@ -72,7 +75,8 @@ NormThunk::NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
                      std::optional<BufferAllocation::Slice> dy_slice,
                      std::optional<BufferAllocation::Slice> dscale_slice,
                      std::optional<BufferAllocation::Slice> dbias_slice,
-                     BufferAllocation::Slice scratch_slice)
+                     BufferAllocation::Slice scratch_slice,
+                     int devices_per_host)
     : Thunk(Kind::kNorm, thunk_info),
       x_buffer_(x_slice),
       scale_buffer_(scale_slice),
@@ -85,17 +89,18 @@ NormThunk::NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
       dbias_buffer_(dbias_slice),
       scratch_buffer_(scratch_slice),
       descriptor_(descriptor),
-      config_(config) {}
+      config_(config),
+      runner_states_(devices_per_host) {}
 
-NormRunner& NormThunk::GetOrCreateRunner(
-    const stream_executor::Stream* stream) {
-  absl::MutexLock lock(mu_);
-  auto it = runner_cache_.find(stream);
-  if (it == runner_cache_.end()) {
-    it = runner_cache_.insert({stream, std::make_unique<NormRunner>(config_)})
-             .first;
-  }
-  return *it->second;
+absl::StatusOr<NormRunner*> NormThunk::GetOrCreateRunner(
+    const stream_executor::Stream* absl_nonnull stream) {
+  int device_ordinal = stream->parent()->device_ordinal();
+  ABSL_RETURN_IF_ERROR(runner_states_.GetOrCreateAndInitialize(
+      device_ordinal, [&](std::optional<NormRunner>* state) {
+        state->emplace(config_);
+        return absl::OkStatus();
+      }));
+  return &**runner_states_.Find(device_ordinal);
 }
 
 absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -131,7 +136,7 @@ absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
   RunNormOptions opts;
-  opts.norm_runner = &GetOrCreateRunner(params.stream);
+  ABSL_ASSIGN_OR_RETURN(opts.norm_runner, GetOrCreateRunner(params.stream));
 
   ABSL_RETURN_IF_ERROR(RunGpuNorm(
       config_, x_se_buffer, scale_se_buffer, y_or_dx_se_buffer, bias_se_buffer,
@@ -147,8 +152,8 @@ absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
 absl::Status NormThunk::Initialize(const InitializeParams& params) {
   // Create the runner at initialization time to avoid hangs if we try to build
   // the execution plan while a NCCL collective is running.
-  se::dnn::LazyOpRunner<se::dnn::NormOp>* lazy_runner =
-      GetOrCreateRunner(params.stream).AsNormRunner();
+  ABSL_ASSIGN_OR_RETURN(NormRunner * runner, GetOrCreateRunner(params.stream));
+  se::dnn::LazyOpRunner<se::dnn::NormOp>* lazy_runner = runner->AsNormRunner();
   ABSL_ASSIGN_OR_RETURN(auto ln_config, config_.AsDnnNormOpConfig());
   return lazy_runner->GetOrCreateRunner(ln_config, params.stream).status();
 }
@@ -185,7 +190,8 @@ Thunk::BufferUses NormThunk::buffer_uses() const {
 
 absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::FromProto(
     ThunkInfo thunk_info, const NormThunkProto& proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
+    absl::Span<const BufferAllocation> buffer_allocations,
+    int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(GpuNormDescriptor descriptor,
                    GpuNormDescriptor::FromProto(proto.norm_descriptor()));
 
@@ -229,7 +235,8 @@ absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::FromProto(
                                      proto.scratch(), buffer_allocations));
 
   return Create(std::move(thunk_info), descriptor, x, scale, y_or_dx, bias,
-                expectation, norm_factor, dy, dscale, dbias, scratch);
+                expectation, norm_factor, dy, dscale, dbias, scratch,
+                devices_per_host);
 }
 
 absl::StatusOr<ThunkProto> NormThunk::ToProto() const {

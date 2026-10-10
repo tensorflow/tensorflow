@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/device_slot.h"
 
@@ -50,6 +51,11 @@ class CowStorage {
   // negative.
   DeviceSlot* GetOrCreate(int device_ordinal, DeviceSlotFactoryRef factory)
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Lock-free. Calls `fn` for every slot present in the current snapshot.
+  // Slots built concurrently by `GetOrCreate` after the snapshot is loaded
+  // are not visited. Order of iteration over slots is not guaranteed.
+  void ForEach(absl::FunctionRef<void(DeviceSlot&)> fn) const;
 
  private:
   struct Entry {

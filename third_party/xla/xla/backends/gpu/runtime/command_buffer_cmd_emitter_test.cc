@@ -70,6 +70,7 @@ class FakeKernelThunk : public KernelThunk {
                     /*cluster_dim=*/se::ClusterDim(),
                     /*shmem_bytes=*/0,
                     /*tma_metadata=*/se::gpu::TmaMetadata(),
+                    /*devices_per_host=*/1,
                     /*zeroed_output_buffer_indices=*/std::vector<int64_t>{}) {}
 
  private:
@@ -423,7 +424,7 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkToCommand) {
   auto conditional = std::make_unique<ConditionalThunk>(
       NextThunkInfo("conditional"),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
-      std::move(branches));
+      std::move(branches), /*devices_per_host=*/1);
   ConditionalThunk* conditional_ptr = conditional.get();
 
   ThunkSequence thunks;
@@ -461,7 +462,8 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsWhileThunkToCommand) {
 
   auto while_thunk = std::make_unique<WhileThunk>(
       NextThunkInfo("while"), pred_slice, std::move(cond_thunks),
-      std::move(body_thunks));
+      std::move(body_thunks), /*trip_count=*/std::nullopt,
+      /*devices_per_host=*/1);
   WhileThunk* while_ptr = while_thunk.get();
 
   ThunkSequence thunks;
@@ -499,7 +501,8 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsWhileThunkRepeatedly) {
 
   ThunkSequence thunks = ThunkSequence::Of<WhileThunk>(
       NextThunkInfo("while"), pred_slice, std::move(cond_thunks),
-      std::move(body_thunks));
+      std::move(body_thunks), /*trip_count=*/std::nullopt,
+      /*devices_per_host=*/1);
 
   auto collect_command_names = [](CommandExecutor& commands) {
     std::vector<std::string> command_names;
@@ -550,7 +553,7 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkRepeatedly) {
   ThunkSequence thunks = ThunkSequence::Of<ConditionalThunk>(
       NextThunkInfo("conditional"),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
-      std::move(branches));
+      std::move(branches), /*devices_per_host=*/1);
 
   auto collect_command_names = [](CommandExecutor& commands) {
     std::vector<std::string> command_names;
@@ -601,7 +604,7 @@ TEST_F(CommandBufferCmdEmitterTest,
   ThunkSequence thunks = ThunkSequence::Of<ConditionalThunk>(
       NextThunkInfo("conditional"),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(PRED, {})},
-      std::move(branches));
+      std::move(branches), /*devices_per_host=*/1);
 
   ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
                        ConvertToCommands(thunks, ConvertToCommandsOptions()));
@@ -872,7 +875,8 @@ class AsyncCommandBufferCmdEmitterTest : public CommandBufferCmdEmitterTest {
   AsyncStartThunk* Start(ThunkSequence& thunks, ExecutionStreamId stream,
                          ThunkSequence body) {
     auto start = std::make_unique<AsyncStartThunk>(NextThunkInfo("start"),
-                                                   stream, std::move(body));
+                                                   stream, std::move(body),
+                                                   /*devices_per_host=*/1);
     AsyncStartThunk* result = start.get();
     thunks.push_back(std::move(start));
     return result;

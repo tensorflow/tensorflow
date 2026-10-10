@@ -1,1398 +1,1857 @@
+diff --git a/shardy/dialect/sdy/ir/canonicalization.cc b/shardy/dialect/sdy/ir/canonicalization.cc
+index 9af43e32..f4cda6da 100644
+--- a/shardy/dialect/sdy/ir/canonicalization.cc
++++ b/shardy/dialect/sdy/ir/canonicalization.cc
+@@ -108,7 +108,7 @@ class RedundantManualComputationPattern
+     if (!inShardings.empty() || !outShardings.empty()) {
+       MeshAttr mesh =
+           getCommonMesh(inShardings, outShardings, manualComputationOp);
+-      SDY_CHECK(mesh) << "expected inputs and outputs to have a common mesh";
++      assert(mesh && "expected inputs and outputs to have a common mesh");
+       for (StringAttr manualAxis : manualComputationOp.getManualAxes()) {
+         manualAxesProduct *= mesh.getAxisSize(manualAxis);
+       }
+diff --git a/shardy/dialect/sdy/ir/test/manual_computation_verification.mlir b/shardy/dialect/sdy/ir/test/manual_computation_verification.mlir
+index c2c24800..5853611e 100644
+--- a/shardy/dialect/sdy/ir/test/manual_computation_verification.mlir
++++ b/shardy/dialect/sdy/ir/test/manual_computation_verification.mlir
+@@ -294,28 +294,3 @@ func.func @ranked_sharding_on_token(%arg0: !stablehlo.token) -> !stablehlo.token
+   } : (!stablehlo.token) -> !stablehlo.token
+   return %0 : !stablehlo.token
+ }
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2]>
+-
+-func.func @scalar_region_arg(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
+-  // expected-error @+1 {{op operand shape, corresponding sharding, and region operand shape at index 0 must match. Expected local shape 'tensor<8x32xf32>', actual local shape 'f32'}}
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{"a"}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>] manual_axes={"a"} (%arg1: f32) {
+-    %c = stablehlo.constant dense<0.000000e+00> : tensor<8x32xf32>
+-    sdy.return %c : tensor<8x32xf32>
+-  } : (tensor<16x32xf32>) -> tensor<16x32xf32>
+-  func.return %0: tensor<16x32xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2]>
+-
+-func.func @token_region_result(%arg0: tensor<16x32xf32>, %arg1: !stablehlo.token) -> tensor<16x32xf32> {
+-  // expected-error @+1 {{op result shape, corresponding sharding, and region result shape at index 0 must match. Expected local shape 'tensor<8x32xf32>', actual local shape '!stablehlo.token'}}
+-  %0 = sdy.manual_computation(%arg0, %arg1) in_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, []>] out_shardings=[<@mesh, [{"a"}, {}]>] manual_axes={"a"} (%arg2: tensor<8x32xf32>, %arg3: !stablehlo.token) {
+-    sdy.return %arg3 : !stablehlo.token
+-  } : (tensor<16x32xf32>, !stablehlo.token) -> tensor<16x32xf32>
+-  func.return %0: tensor<16x32xf32>
+-}
+diff --git a/shardy/dialect/sdy/ir/utils.cc b/shardy/dialect/sdy/ir/utils.cc
+index ca77dca8..4a639a80 100644
+--- a/shardy/dialect/sdy/ir/utils.cc
++++ b/shardy/dialect/sdy/ir/utils.cc
+@@ -25,7 +25,6 @@ limitations under the License.
+ #include <numeric>
+ #include <optional>
+ #include <string>
+-#include <string_view>
+ #include <utility>
+ #include <vector>
+ 
+@@ -223,7 +222,7 @@ TensorShardingAttr inlineMesh(const SymbolTable& symbolTable,
+                               TensorShardingAttr sharding) {
+   if (auto name = dyn_cast<FlatSymbolRefAttr>(sharding.getMeshOrRef())) {
+     MeshAttr mesh = getMeshAttr(symbolTable, name);
+-    SDY_CHECK(mesh) << "unknown mesh: " << std::string_view(name.getValue());
++    assert(mesh && "unknown mesh");
+     return TensorShardingAttr::get(
+         sharding.getContext(), mesh, sharding.getDimShardings(),
+         sharding.getReplicatedAxes(), sharding.getUnreducedAxes(),
+@@ -264,7 +263,7 @@ Attribute getCommonMeshOrRef(ArrayRef<TensorShardingAttr> operandShardings,
+       meshOrRef = sharding.getMeshOrRef();
+       continue;
+     }
+-    if (!otherMesh || otherMesh.empty()) {
++    if (otherMesh.empty()) {
+       continue;
+     }
+     if (!otherMesh.equals(mesh, ignoreDeviceIds)) {
+@@ -964,13 +963,9 @@ mlir::Attribute getMeshOrRef(
+     int64_t numElements, const SymbolTable& symbolTable,
+     std::function<TensorShardingAttr(int64_t)> getSharding) {
+   for (int64_t i = 0; i < numElements; ++i) {
+-    if (TensorShardingAttr sdySharding = getSharding(i); sdySharding) {
+-      MeshAttr mesh = sdySharding.getMesh(symbolTable);
+-      SDY_CHECK(mesh) << "unknown mesh: "
+-                      << std::string_view(sdySharding.getMeshName());
+-      if (!mesh.isSingleDevice()) {
+-        return sdySharding.getMeshOrRef();
+-      }
++    if (TensorShardingAttr sdySharding = getSharding(i);
++        sdySharding && !sdySharding.getMesh(symbolTable).isSingleDevice()) {
++      return sdySharding.getMeshOrRef();
+     }
+   }
+   return nullptr;
+diff --git a/shardy/dialect/sdy/ir/verifiers.cc b/shardy/dialect/sdy/ir/verifiers.cc
+index 65c6212b..3d90562f 100644
+--- a/shardy/dialect/sdy/ir/verifiers.cc
++++ b/shardy/dialect/sdy/ir/verifiers.cc
+@@ -1021,12 +1021,13 @@ LogicalResult verifyManualComputationValue(
+     //    arguments/results match.
+     auto expectedLocalRankedType =
+         RankedTensorType::get(newDimSizes, globalShapedType.getElementType());
+-    if (expectedLocalRankedType != localType) {
++    auto localRankedType = cast<RankedTensorType>(localType);
++    if (expectedLocalRankedType != localRankedType) {
+       return op->emitOpError(valueKindStr)
+              << " shape, corresponding sharding, and region " << valueKindStr
+              << " shape at index " << valueIndex
+              << " must match. Expected local shape " << expectedLocalRankedType
+-             << ", actual local shape " << localType;
++             << ", actual local shape " << localRankedType;
+     }
+   }
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+index 756b46ae..6b86b36e 100644
+--- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
++++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+@@ -19,7 +19,6 @@ limitations under the License.
+ #include <cstdint>
+ #include <memory>  // IWYU pragma: keep
+ #include <optional>
+-#include <string_view>
+ #include <utility>
+ 
+ #include "llvm/ADT/DenseMap.h"
+@@ -351,7 +350,7 @@ std::optional<MeshOp> getMesh(ArrayRef<TensorShardingAttr> inShardings,
+     return std::nullopt;
+   }
+   MeshOp meshOp = getMeshOp(symbolTable, *meshName);
+-  SDY_CHECK(meshOp) << "unknown mesh: " << std::string_view(*meshName);
++  assert(meshOp && "unknown mesh");
+   if (meshOp.getMesh().isSingleDevice()) {
+     return std::nullopt;
+   }
+diff --git a/shardy/dialect/sdy/transforms/export/pad_for_divisibility.cc b/shardy/dialect/sdy/transforms/export/pad_for_divisibility.cc
+index 4cef1c10..111e882e 100644
+--- a/shardy/dialect/sdy/transforms/export/pad_for_divisibility.cc
++++ b/shardy/dialect/sdy/transforms/export/pad_for_divisibility.cc
+@@ -557,8 +557,7 @@ class GenericOpPattern : public ConversionPattern {
+     Dialect* dialect = op->getDialect();
+     if ((dialect && dialect->getNamespace() != "stablehlo" &&
+          !isa<func::CallOp, func::ReturnOp, sdy::ReturnOp, sdy::AllReduceOp,
+-              sdy::CollectivePermuteOp, sdy::ShardedToUnreducedOp,
+-              sdy::ReplicatedToUnreducedOp>(op)) ||
++              sdy::ShardedToUnreducedOp, sdy::ReplicatedToUnreducedOp>(op)) ||
+         hasCustomPadHandling(op)) {
+       return failure();
+     }
+diff --git a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+index 3b01769d..5554918b 100644
+--- a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
++++ b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+@@ -29,7 +29,6 @@ limitations under the License.
+ #include "llvm/ADT/DenseSet.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+-#include "llvm/Support/MathExtras.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+@@ -97,16 +96,10 @@ AxisList concatAxisLists(MutableArrayRef<AxisList> axisLists) {
+   return result;
+ }
+ 
+-// Remove the common prefix of `inAxesPerDim` and `outAxesPerDim` for dimensions
+-// that do not need to be unsharded first.
++// Remove the common prefix of `inAxesPerDim` and `outAxesPerDim`.
+ void removeCommonPrefix(SmallVector<AxisList>& inAxesPerDim,
+-                        SmallVector<AxisList>& outAxesPerDim,
+-                        ArrayRef<bool> dimsToUnshard) {
+-  for (auto [inAxes, outAxes, unshardDim] :
+-       llvm::zip_equal(inAxesPerDim, outAxesPerDim, dimsToUnshard)) {
+-    if (unshardDim) {
+-      continue;
+-    }
++                        SmallVector<AxisList>& outAxesPerDim) {
++  for (auto [inAxes, outAxes] : llvm::zip_equal(inAxesPerDim, outAxesPerDim)) {
+     while (!inAxes.empty() && !outAxes.empty() &&
+            inAxes.front() == outAxes.front()) {
+       inAxes.pop_front();
+@@ -202,16 +195,11 @@ struct AllToAllInfo {
+ // We define the current state of the transformation as follows:
+ //
+ // - `inAxesPerDim` - the axes in the current sharding per dimension, such that
+-//   the common prefix with the output sharding is removed (unless the
+-//   dimension is in `dimsToUnshard`).
++//   the common prefix with the output sharding is removed.
+ // - `outAxesPerDim` - the axes in the output sharding per dimension, such that
+-//   the common prefix with the current sharding is removed (unless the
+-//   dimension is in `dimsToUnshard`).
++//   the common prefix with the current sharding is removed.
+ // - `currentAxesPerDim` - the axes in the current sharding, including the
+ //   common prefix with the output sharding.
+-// - `dimsToUnshard` - per-dimension boolean indicating whether a dimension has
+-//   different padded sizes in the input and output shardings and must first be
+-//   completely unsharded before acquiring its output sharding.
+ //
+ // These invariants are maintained throughout the algorithm, and specifically
+ // after each collective insertion.
+@@ -245,39 +233,21 @@ class CollectiveInserter {
+         outAxesPerDim(getAxesPerDim<AxisList>(outSharding)),
+         currentAxesPerDim(getAxesPerDim<SmallVector<AxisRefAttr>>(inSharding)),
+         capacityPerDim(inSharding.getRank(), 1),
+-        collectiveAxesPerDim(inSharding.getRank()),
+-        dimsToUnshard(inSharding.getRank(), false) {
++        collectiveAxesPerDim(inSharding.getRank()) {
+     // Unreduced axes in the input and output sharding must match, given we
+     // insert an all-reduce if an unreduced axis becomes replicated/sharded, and
+     // never insert a reshard that goes from replicated/sharded to unreduced.
+     assert(inSharding.getUnreducedAxes() == outSharding.getUnreducedAxes());
+ 
+-    // If a dimension is sharded in both the input and output shardings with
+-    // different padded sizes, it must first be unsharded so that downstream
+-    // passes can pad or trim the dimension while it is unsharded.
+-    ArrayRef<int64_t> shape = getTensorShape(result);
+-    for (int64_t dim = 0; dim < getRank(); ++dim) {
+-      int64_t dimSize = shape[dim];
+-      int64_t inShardedSize =
+-          inSharding.getDimSharding(dim).getShardedSize(mesh);
+-      int64_t outShardedSize =
+-          outSharding.getDimSharding(dim).getShardedSize(mesh);
+-      if (dimSize > 0 && inShardedSize > 1 && outShardedSize > 1 &&
+-          llvm::alignTo(dimSize, inShardedSize) !=
+-              llvm::alignTo(dimSize, outShardedSize)) {
+-        dimsToUnshard[dim] = true;
+-      }
+-    }
+-
+     // We align sub-axes between the input and output axes, so that we can treat
+     // sub-axes like full axes and assume any two sub-axes that overlap are also
+     // equal, which allows using them as keys in a hash map.
+     alignSubAxesByDecomposition(inAxesPerDim, outAxesPerDim, mesh);
+-    // We remove the common prefix of `inAxesPerDim` and `outAxesPerDim` (except
+-    // on dimensions in `dimsToUnshard`), since those axes stay exactly the same
+-    // during the reshard. We are left with `inAxesPerDim` and `outAxesPerDim`
+-    // that need to become empty, via a sequence of collectives.
+-    removeCommonPrefix(inAxesPerDim, outAxesPerDim, dimsToUnshard);
++    // We remove the common prefix of `inAxesPerDim` and `outAxesPerDim`, since
++    // those axes stay exactly the same during the reshard. We are left with
++    // `inAxesPerDim` and `outAxesPerDim` that need to become empty, via a
++    // sequence of collectives.
++    removeCommonPrefix(inAxesPerDim, outAxesPerDim);
+ 
+     inAxisSet = getAxisSet(inAxesPerDim);
+     outAxisToDimAndIndex = getAxisToDimAndIndex(outAxesPerDim);
+@@ -297,12 +267,11 @@ class CollectiveInserter {
+     // can be handled by the previous collectives, so we are left with
+     // all-gathering all axes in `inAxesPerDim` and we're done.
+     //
+-    // Otherwise, we need at most 2 iterations (or 3 if a dimension must first
+-    // be unsharded due to a padded dimension size mismatch).
++    // Otherwise, we need at most 2 iterations.
+ 
+     // TODO(tomnatan): consider looping only over all-to-all and collective
+     // permute as long as one of them was inserted.
+-    for (int i = 0; i < 3 && !isDone(); ++i) {
++    for (int i = 0; i < 2 && !isDone(); ++i) {
+       // 1. Try to insert an all-slice, that decreases the size of the tensor.
+       tryAllSlice();
+ 
+@@ -351,10 +320,9 @@ class CollectiveInserter {
+   // that dimension.
+   //
+   // We gather the suffix of axes (`gatheringAxes`) in `inAxesPerDim[dim]` that
+-  // aren't present in `outAxesPerDim` (or whose target dimension in
+-  // `outAxesPerDim` is in `dimsToUnshard`, or all axes if `dimsToUnshard[dim]`
+-  // is true), and update the internal state as follows: `gatheringAxes` are
+-  // popped from the back of `inAxesPerDim[dim]` and `currentAxesPerDim[dim]`.
++  // aren't present in `outAxesPerDim`, and update the internal state as
++  // follows: `gatheringAxes` are popped from the back of `inAxesPerDim[dim]`
++  // and `currentAxesPerDim[dim]`.
+   //
+   // For example:
+   //
+@@ -376,18 +344,11 @@ class CollectiveInserter {
+     SmallVector<AxisRefAttr>& currentAxes = currentAxesPerDim[dim];
+     SmallVector<AxisRefAttr> gatheringAxes;
+     gatheringAxes.reserve(inAxes.size());
+-    bool gatherAll = dimsToUnshard[dim];
+-    auto shouldGatherAxis = [&](AxisRefAttr axis) {
+-      if (gatherAll) {
+-        return true;
+-      }
+-      auto it = outAxisToDimAndIndex.find(axis);
+-      return it == outAxisToDimAndIndex.end() || dimsToUnshard[it->second.dim];
+-    };
+     auto axisRevIt = inAxes.rbegin();
+-    while (axisRevIt != inAxes.rend() && shouldGatherAxis(*axisRevIt)) {
++    while (axisRevIt != inAxes.rend() &&
++           !outAxisToDimAndIndex.contains(*axisRevIt)) {
+       inAxisSet.erase(*axisRevIt);
+-      ++axisRevIt;
++      --axisRevIt;
+     }
+     auto inAxisIt = axisRevIt.base();
+     popBackFromCurrentAxes(currentAxes, inAxes, inAxisIt);
+@@ -408,12 +369,6 @@ class CollectiveInserter {
+       }
+       collectiveAxes = AxisRefListAttr::get(getContext(), gatheringAxes);
+     }
+-    for (auto [currentAxes, unshardDim] :
+-         llvm::zip_equal(currentAxesPerDim, dimsToUnshard)) {
+-      if (currentAxes.empty()) {
+-        unshardDim = false;
+-      }
+-    }
+     if (hasGatheringAxes) {
+       result = AllGatherOp::create(rewriter, loc, result, collectiveAxesPerDim,
+                                    getCurrentSharding());
+@@ -620,10 +575,9 @@ class CollectiveInserter {
+   // We define the term capacity per dimension for all-slice - the product of
+   // axis sizes in `outAxesPerDim[d]` divided by the product of axis sizes in
+   // `inAxesPerDim[d]` for each dimension d, or the former divided by their GCD,
+-  // if the former is not divisible by the latter (or 1 if `dimsToUnshard[d]` is
+-  // true, since dimension d must be unsharded before slicing). In other words,
+-  // the capacity represents how much the output is sharded more than the input
+-  // along a specific dimension.
++  // if the former is not divisible by the latter (as the dimension size needs
++  // to be a multiplier of both). In other words, the capacity represents how
++  // much the output is sharded more than the input along a specific dimension.
+   //
+   // Constraint: we can only slice dimension d along axes whose product of
+   // sizes doesn't exceed the capacity for that dimension, otherwise we will
+@@ -715,12 +669,8 @@ class CollectiveInserter {
+     bool hasSlicingAxes = false;
+ 
+     // Initialize capacity per dimension.
+-    for (auto [inAxes, outAxes, dimCapacity, unshardDim] : llvm::zip_equal(
+-             inAxesPerDim, outAxesPerDim, capacityPerDim, dimsToUnshard)) {
+-      if (unshardDim) {
+-        dimCapacity = 1;
+-        continue;
+-      }
++    for (auto [inAxes, outAxes, dimCapacity] :
++         llvm::zip_equal(inAxesPerDim, outAxesPerDim, capacityPerDim)) {
+       int64_t inShardedSize = getShardedSize(inAxes, mesh);
+       int64_t outShardedSize = getShardedSize(outAxes, mesh);
+       dimCapacity = outShardedSize / std::gcd(inShardedSize, outShardedSize);
+@@ -748,13 +698,9 @@ class CollectiveInserter {
+     // 2. Slice axes in the dimension they appear in `outAxesPerDim`, i.e. the
+     // desired dimension, as long as the per-dim capacity allows.
+     AxisList availableOutAxes;
+-    for (auto [inAxes, outAxes, currentAxes, slicingAxes, dimCapacity,
+-               unshardDim] :
++    for (auto [inAxes, outAxes, currentAxes, slicingAxes, dimCapacity] :
+          llvm::zip_equal(inAxesPerDim, outAxesPerDim, currentAxesPerDim,
+-                         slicingAxesPerDim, capacityPerDim, dimsToUnshard)) {
+-      if (unshardDim) {
+-        continue;
+-      }
++                         slicingAxesPerDim, capacityPerDim)) {
+       auto outIt = outAxes.begin();
+       while (outIt != outAxes.end()) {
+         AxisRefAttr outAxis = *outIt;
+@@ -822,8 +768,7 @@ class CollectiveInserter {
+     }
+   }
+ 
+-  // We should insert a collective permute (assuming no dimension in
+-  // `dimsToUnshard` still needs to be unsharded) if one of the following holds:
++  // We should insert a collective permute if one of the following holds:
+   //
+   // 1. Both `inAxesPerDim[d]` and `outAxesPerDim[d]` aren't empty for a certain
+   //    dimension d and their front axes are divisible. This means we can
+@@ -856,9 +801,6 @@ class CollectiveInserter {
+   //    that B is before A, and A can be moved to d2 via an all-to-all before B
+   //    is all-gathered.
+   bool shouldCollectivePermute() {
+-    if (llvm::any_of(dimsToUnshard, [](bool b) { return b; })) {
+-      return false;
+-    }
+     OptionalAxisRef availableInAxis;
+     OptionalAxisRef availableOutAxis;
+     for (auto [dim, inOutAxes] :
+@@ -1123,15 +1065,12 @@ class CollectiveInserter {
+   // The suffix of axes in `inAxesPerDim[srcDim]`, such that all axes within the
+   // suffix are mapped to the same dimension in `outAxisToDimAndIndex`
+   // (`allToAllAxes`), are all-to-all-ed with the mapped dimension as the target
+-  // (`tgtDim`), provided `dimsToUnshard[tgtDim]` is false and (if
+-  // `dimsToUnshard[srcDim]` is true) `allToAllAxes` includes all axes on
+-  // `srcDim` so that `srcDim` becomes completely unsharded.
++  // (`tgtDim`).
+   //
+   // The internal state is updated as follows for `allToAllAxes` and `tgtDim`:
+   //
+   // - `allToAllAxes` are popped from the back of `inAxesPerDim[srcDim]` and
+-  //   `currentAxesPerDim[srcDim]` (and `dimsToUnshard[srcDim]` is cleared if
+-  //   `currentAxesPerDim[srcDim]` becomes empty).
++  //   `currentAxesPerDim[srcDim]`.
+   // - `allToAllAxes` are appended to `inAxesPerDim[tgtDim]` and
+   //   `currentAxesPerDim[tgtDim]`.
+   // - The common prefix between `inAxesPerDim[tgtDim]` and
+@@ -1198,8 +1137,7 @@ class CollectiveInserter {
+         break;
+       }
+       int64_t outAxisDim = outAxisEntryIt->second.dim;
+-      if (outAxisDim == srcDim || dimsToUnshard[outAxisDim] ||
+-          (tgtDim && outAxisDim != *tgtDim)) {
++      if (outAxisDim == srcDim || (tgtDim && outAxisDim != *tgtDim)) {
+         break;
+       }
+       tgtDim = outAxisDim;
+@@ -1212,9 +1150,6 @@ class CollectiveInserter {
+     }
+ 
+     auto startInAxisIt = axisRevIt.base();
+-    if (dimsToUnshard[srcDim] && startInAxisIt != srcInAxes.begin()) {
+-      return std::nullopt;
+-    }
+ 
+     AxisList& tgtOutAxes = outAxesPerDim[*tgtDim];
+     if (!allowOutOfOrderTarget &&
+@@ -1231,9 +1166,6 @@ class CollectiveInserter {
+     SmallVector<AxisRefAttr>& tgtCurrentAxes = currentAxesPerDim[*tgtDim];
+ 
+     popBackFromCurrentAxes(srcCurrentAxes, srcInAxes, startInAxisIt);
+-    if (srcCurrentAxes.empty()) {
+-      dimsToUnshard[srcDim] = false;
+-    }
+ 
+     AxisList& tgtInAxes = inAxesPerDim[*tgtDim];
+     auto srcInAxisIt = startInAxisIt;
+@@ -1280,7 +1212,6 @@ class CollectiveInserter {
+   AxesPerDim currentAxesPerDim;
+   SmallVector<int64_t> capacityPerDim;
+   SmallVector<AxisRefListAttr> collectiveAxesPerDim;
+-  SmallVector<bool> dimsToUnshard;
+   AxisSet inAxisSet;
+   AxisToDimAndIndex outAxisToDimAndIndex;
+ };
+diff --git a/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/generic_ops.mlir b/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/generic_ops.mlir
+index 9bd4e0a8..4d4faae8 100644
+--- a/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/generic_ops.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/generic_ops.mlir
+@@ -12,45 +12,3 @@ func.func @no_pad(
+   %0 = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{"x"}, {}]>]>} : tensor<4x8xf32>
+   return %0 : tensor<4x8xf32>
+ }
+-
+-sdy.mesh @mesh_4_2_4 = <["x"=4, "y"=2, "z"=4]>
+-
+-// CHECK-LABEL: func private @pad_all_reduce
+-func.func private @pad_all_reduce(
+-  %arg0: tensor<7x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4_2, [{"x"}, {}], unreduced={"y"}>})
+-  -> (tensor<7x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4_2, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[AR:.*]] = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh_4_2, [{"x"}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[AR]] : tensor<8x8xf32>
+-  %0 = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh_4_2, [{"x"}, {}]> : tensor<7x8xf32>
+-  return %0 : tensor<7x8xf32>
+-}
+-
+-// CHECK-LABEL: func private @pad_collective_permute
+-func.func private @pad_collective_permute(
+-  %arg0: tensor<7x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4_2_4, [{"x"}, {}]>})
+-  -> (tensor<7x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4_2_4, [{"z"}, {}]>}) {
+-  // CHECK-NEXT: %[[CP:.*]] = sdy.collective_permute %arg0 out_sharding=<@mesh_4_2_4, [{"z"}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[CP]] : tensor<8x8xf32>
+-  %0 = sdy.collective_permute %arg0 out_sharding=<@mesh_4_2_4, [{"z"}, {}]> : tensor<7x8xf32>
+-  return %0 : tensor<7x8xf32>
+-}
+-
+-// CHECK-LABEL: func private @pad_sharded_to_unreduced
+-func.func private @pad_sharded_to_unreduced(
+-  %arg0: tensor<7x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4_2, [{"x"}, {"y"}]>})
+-  -> (tensor<7x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4_2, [{"x"}, {}], unreduced={"y"}>}) {
+-  // CHECK-NEXT: %[[S2U:.*]] = sdy.sharded_to_unreduced [{}, {"y"}] %arg0 out_sharding=<@mesh_4_2, [{"x"}, {}], unreduced={"y"}> : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[S2U]] : tensor<8x8xf32>
+-  %0 = sdy.sharded_to_unreduced [{}, {"y"}] %arg0 out_sharding=<@mesh_4_2, [{"x"}, {}], unreduced={"y"}> : tensor<7x8xf32>
+-  return %0 : tensor<7x8xf32>
+-}
+-
+-// CHECK-LABEL: func private @pad_replicated_to_unreduced
+-func.func private @pad_replicated_to_unreduced(
+-  %arg0: tensor<7x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4_2, [{"x"}, {}]>})
+-  -> (tensor<7x8xf32> {sdy.sharding = #sdy.sharding<@mesh_4_2, [{"x"}, {}], unreduced={"y"}>}) {
+-  // CHECK-NEXT: %[[R2U:.*]] = sdy.replicated_to_unreduced {"y"} %arg0 out_sharding=<@mesh_4_2, [{"x"}, {}], unreduced={"y"}> : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[R2U]] : tensor<8x8xf32>
+-  %0 = sdy.replicated_to_unreduced {"y"} %arg0 out_sharding=<@mesh_4_2, [{"x"}, {}], unreduced={"y"}> : tensor<7x8xf32>
+-  return %0 : tensor<7x8xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+index a63c54d1..f185669a 100644
+--- a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+@@ -644,12 +644,12 @@ func.func @all_to_all_axes_at_src_out_of_order(%arg0 : tensor<16x8x8xf32> {sdy.s
+ }
+ 
+ // CHECK-LABEL: func @all_to_all_axes_at_src_and_tgt_out_of_order
+-func.func @all_to_all_axes_at_src_and_tgt_out_of_order(%arg0 : tensor<32x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d_4x2x4, [{"z"}, {"y", "x"}, {}]>}) -> tensor<32x8x8xf32> {
++func.func @all_to_all_axes_at_src_and_tgt_out_of_order(%arg0 : tensor<16x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d_4x2x4, [{"z"}, {"y", "x"}, {}]>}) -> tensor<16x8x8xf32> {
+   // CHECK-NEXT: %[[COLLECTIVE_PERMUTE:.*]] = sdy.collective_permute %arg0 out_sharding=<@mesh3d_4x2x4, [{"x"}, {"y", "z"}, {}]>
+   // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all [{"y", "z"}: 1->0] %[[COLLECTIVE_PERMUTE]] out_sharding=<@mesh3d_4x2x4, [{"x", "y", "z"}, {}, {}]>
+   // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "y", "z"}, {}, {}]> : tensor<32x8x8xf32>
+-  return %0 : tensor<32x8x8xf32>
++  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "y", "z"}, {}, {}]> : tensor<16x8x8xf32>
++  return %0 : tensor<16x8x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_to_all_two_tgt_dims_src_out_of_order
+@@ -935,60 +935,6 @@ func.func @reshard_with_propagation_barrier(
+   return %1 : tensor<8x8x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @reshard_uneven_padded_size_mismatch_common_prefix
+-func.func @reshard_uneven_padded_size_mismatch_common_prefix(%arg0 : tensor<6x3xf32> {sdy.sharding = #sdy.sharding<@mesh2d_4x2, [{"x":(1)2}, {}]>}) -> tensor<6x3xf32> {
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"x":(1)2}, {}] %arg0 out_sharding=<@mesh2d_4x2, [{}, {}]> : tensor<6x3xf32>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x"}, {}] %[[ALL_GATHER]] out_sharding=<@mesh2d_4x2, [{"x"}, {}]> : tensor<6x3xf32>
+-  // CHECK-NEXT: return %[[ALL_SLICE]] : tensor<6x3xf32>
+-  %0 = sdy.reshard %arg0 <@mesh2d_4x2, [{"x"}, {}]> : tensor<6x3xf32>
+-  return %0 : tensor<6x3xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_uneven_padded_size_mismatch_subaxis
+-func.func @reshard_uneven_padded_size_mismatch_subaxis(%arg0 : tensor<6x3xf32> {sdy.sharding = #sdy.sharding<@mesh2d_2x8, [{"y":(1)2}, {}]>}) -> tensor<6x3xf32> {
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"y":(1)2}, {}] %arg0 out_sharding=<@mesh2d_2x8, [{}, {}]> : tensor<6x3xf32>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"y":(2)4}, {}] %[[ALL_GATHER]] out_sharding=<@mesh2d_2x8, [{"y":(2)4}, {}]> : tensor<6x3xf32>
+-  // CHECK-NEXT: return %[[ALL_SLICE]] : tensor<6x3xf32>
+-  %0 = sdy.reshard %arg0 <@mesh2d_2x8, [{"y":(2)4}, {}]> : tensor<6x3xf32>
+-  return %0 : tensor<6x3xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_uneven_padded_size_mismatch_all_to_all
+-func.func @reshard_uneven_padded_size_mismatch_all_to_all(%arg0 : tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1d_6, [{}, {"x":(1)2}]>}) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all [{"x":(1)2}: 1->0] %arg0 out_sharding=<@mesh1d_6, [{"x":(1)2}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"x":(2)3}] %[[ALL_TO_ALL]] out_sharding=<@mesh1d_6, [{"x":(1)2}, {"x":(2)3}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ALL_SLICE]] : tensor<8x8xf32>
+-  %0 = sdy.reshard %arg0 <@mesh1d_6, [{"x":(1)2}, {"x":(2)3}]> : tensor<8x8xf32>
+-  return %0 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_uneven_padded_size_mismatch_all_to_all_src_and_tgt_out_of_order
+-func.func @reshard_uneven_padded_size_mismatch_all_to_all_src_and_tgt_out_of_order(%arg0 : tensor<16x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh3d_4x2x4, [{"z"}, {"y", "x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z"}, {"y", "x"}, {}] %arg0 out_sharding=<@mesh3d_4x2x4, [{}, {}, {}]> : tensor<16x8x8xf32>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x", "y", "z"}, {}, {}] %[[ALL_GATHER]] out_sharding=<@mesh3d_4x2x4, [{"x", "y", "z"}, {}, {}]> : tensor<16x8x8xf32>
+-  // CHECK-NEXT: return %[[ALL_SLICE]] : tensor<16x8x8xf32>
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "y", "z"}, {}, {}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_uneven_padded_size_mismatch_swap_axes
+-func.func @reshard_uneven_padded_size_mismatch_swap_axes(%arg0 : tensor<5x5xf32> {sdy.sharding = #sdy.sharding<@mesh2d_4x2, [{"x"}, {"y"}]>}) -> tensor<5x5xf32> {
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"x"}, {"y"}] %arg0 out_sharding=<@mesh2d_4x2, [{}, {}]> : tensor<5x5xf32>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"y"}, {"x"}] %[[ALL_GATHER]] out_sharding=<@mesh2d_4x2, [{"y"}, {"x"}]> : tensor<5x5xf32>
+-  // CHECK-NEXT: return %[[ALL_SLICE]] : tensor<5x5xf32>
+-  %0 = sdy.reshard %arg0 <@mesh2d_4x2, [{"y"}, {"x"}]> : tensor<5x5xf32>
+-  return %0 : tensor<5x5xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_uneven_padded_size_match_swap_axes
+-func.func @reshard_uneven_padded_size_match_swap_axes(%arg0 : tensor<19x19xf32> {sdy.sharding = #sdy.sharding<@mesh2d_4x2, [{"x"}, {"y"}]>}) -> tensor<19x19xf32> {
+-  // CHECK-NEXT: %[[CP:.*]] = sdy.collective_permute %arg0 out_sharding=<@mesh2d_4x2, [{"y", "x":(2)2}, {"x":(1)2}]> : tensor<19x19xf32>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all [{"x":(2)2}: 0->1] %[[CP]] out_sharding=<@mesh2d_4x2, [{"y"}, {"x"}]> : tensor<19x19xf32>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL]] : tensor<19x19xf32>
+-  %0 = sdy.reshard %arg0 <@mesh2d_4x2, [{"y"}, {"x"}]> : tensor<19x19xf32>
+-  return %0 : tensor<19x19xf32>
+-}
+-
+ //===----------------------------------------------------------------------===//
+ // Single-Device Reshard Tests (Preserved as sdy.reshard)
+ //===----------------------------------------------------------------------===//
+@@ -1010,3 +956,5 @@ func.func @single_device_out_sharding(%arg0 : tensor<16x8xf32> {sdy.sharding = #
+   %0 = sdy.reshard %arg0 <@single_dev_0, []> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
++
++
+diff --git a/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc b/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
+index 97c93fbf..90bcb8d5 100644
+--- a/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
++++ b/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
+@@ -17,7 +17,6 @@ limitations under the License.
+ #include <cstdint>
+ #include <functional>
+ #include <numeric>
+-#include <string_view>
+ 
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/STLExtras.h"
+@@ -35,7 +34,6 @@ limitations under the License.
+ #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Transforms/DialectConversion.h"
+-#include "shardy/common/logging.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
+ 
+@@ -67,8 +65,7 @@ TensorShardingAttr getEvenlySharded(TensorShardingAttr sharding,
+                                     ShapedType type,
+                                     const SymbolTable& symbolTable) {
+   MeshAttr mesh = sharding.getMesh(symbolTable);
+-  SDY_CHECK(mesh) << "unknown mesh: "
+-                  << std::string_view(sharding.getMeshName());
++  assert(mesh && "unknown mesh");
+   MLIRContext* ctx = sharding.getContext();
+   llvm::SmallVector<DimensionShardingAttr> newDimShardings;
+   newDimShardings.reserve(sharding.getRank());
+diff --git a/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc b/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
+index 6b368f91..f71266a5 100644
+--- a/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
++++ b/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
+@@ -29,7 +29,6 @@ limitations under the License.
+ #include "mlir/IR/SymbolTable.h"
+ #include "mlir/IR/TypeRange.h"
+ #include "mlir/Support/LLVM.h"
+-#include "shardy/common/logging.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
+ #include "shardy/dialect/sdy/transforms/import/passes.h"  // IWYU pragma: keep
+@@ -163,7 +162,7 @@ struct ManualAxesCleanupPass
+           getCommonMeshOrRef(inShardings, outShardings, symbolTable);
+       MeshAttr mesh =
+           meshOrRef ? getMeshOrLookup(symbolTable, meshOrRef) : nullptr;
+-      SDY_CHECK(mesh) << "expected inputs and outputs to have a common mesh";
++      assert(mesh && "expected inputs and outputs to have a common mesh");
+       sortManualAxes(op, mesh);
+       addUnusedManualAxesToReplicatedAxes(op, mesh, meshOrRef, symbolTable);
+     });
+diff --git a/shardy/dialect/sdy/transforms/import/remove_size_one_axes.cc b/shardy/dialect/sdy/transforms/import/remove_size_one_axes.cc
+index ce2abb40..99a47092 100644
+--- a/shardy/dialect/sdy/transforms/import/remove_size_one_axes.cc
++++ b/shardy/dialect/sdy/transforms/import/remove_size_one_axes.cc
+@@ -17,14 +17,12 @@ limitations under the License.
+ #include <cstdint>
+ #include <iterator>
+ #include <optional>
+-#include <string_view>
+ 
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/SymbolTable.h"
+ #include "mlir/Support/LLVM.h"
+-#include "shardy/common/logging.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
+ #include "shardy/dialect/sdy/transforms/import/passes.h"  // IWYU pragma: keep
+@@ -45,8 +43,7 @@ bool hasSizeOneAxes(MeshOp meshOp) {
+ TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
+                                      const SymbolTable& symbolTable) {
+   MeshAttr mesh = sharding.getMesh(symbolTable);
+-  SDY_CHECK(mesh) << "unknown mesh: "
+-                  << std::string_view(sharding.getMeshName());
++  assert(mesh && "unknown mesh");
+ 
+   auto isNotSizeOne = [&](AxisRefAttr axis) { return axis.getSize(mesh) != 1; };
+ 
+diff --git a/shardy/dialect/sdy/transforms/import/test/sharding_group_constraints.mlir b/shardy/dialect/sdy/transforms/import/test/sharding_group_constraints.mlir
+index 34db7665..a3518d30 100644
+--- a/shardy/dialect/sdy/transforms/import/test/sharding_group_constraints.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/sharding_group_constraints.mlir
+@@ -310,189 +310,3 @@ func.func private @bar(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+   func.return %arg0 : tensor<8x8xf32>
+ }
+ 
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// Allows sharding groups within ManualComputationOp when group members are
+-// across multiple functions called from the same ManualComputationOp.
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    sdy.sharding_group %arg1 group_id = 1234 : tensor<8x8xf32>
+-    %1 = func.call @foo(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    %2 = func.call @bar(%1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    sdy.return %2 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %0: tensor<8x8xf32>
+-}
+-
+-func.func private @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  sdy.sharding_group %arg0 group_id = 1234 : tensor<8x8xf32>
+-  func.return %arg0 : tensor<8x8xf32>
+-}
+-
+-func.func private @bar(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  sdy.sharding_group %arg0 group_id = 1234 : tensor<8x8xf32>
+-  func.return %arg0 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// Allows sharding groups within ManualComputationOp when a function with group
+-// members is called multiple times from the same ManualComputationOp.
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    sdy.sharding_group %arg1 group_id = 1234 : tensor<8x8xf32>
+-    %1 = func.call @foo(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    %2 = func.call @foo(%1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    sdy.return %2 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %0: tensor<8x8xf32>
+-}
+-
+-func.func private @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  sdy.sharding_group %arg0 group_id = 1234 : tensor<8x8xf32>
+-  func.return %arg0 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// TODO(b/569928811): Disallow sharding groups which cross the barrier of a
+-// ManualComputationOp when the function is called inside and then outside the
+-// ManualComputationOp.
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    %1 = func.call @foo(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    sdy.return %1 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-
+-  %2 = func.call @foo(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %2: tensor<8x8xf32>
+-}
+-
+-func.func private @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  sdy.sharding_group %arg0 group_id = 1234 : tensor<8x8xf32>
+-  func.return %arg0 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// TODO(b/569928811): Disallow sharding groups which cross the barrier of a
+-// ManualComputationOp when the function is called inside and then outside the
+-// ManualComputationOp.
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    %1 = func.call @foo(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    sdy.return %1 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-
+-  %2 = func.call @foo(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  sdy.sharding_group %2 group_id = 1234 : tensor<8x8xf32>
+-  func.return %2: tensor<8x8xf32>
+-}
+-
+-func.func private @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  sdy.sharding_group %arg0 group_id = 1234 : tensor<8x8xf32>
+-  func.return %arg0 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// TODO(b/569928811): Disallow sharding groups which cross the barrier of a
+-// ManualComputationOp when the function is called outside and then inside the
+-// ManualComputationOp.
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = func.call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = sdy.manual_computation(%0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    sdy.sharding_group %arg1 group_id = 1234 : tensor<8x8xf32>
+-    %2 = func.call @foo(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    sdy.return %2 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %1: tensor<8x8xf32>
+-}
+-
+-func.func private @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  sdy.sharding_group %arg0 group_id = 1234 : tensor<8x8xf32>
+-  func.return %arg0 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// Allows sharding groups inside a function that is called from different
+-// ManualComputationOps.
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    %1 = func.call @foo(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    sdy.return %1 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-
+-  %2 = sdy.manual_computation(%0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    %3 = func.call @foo(%arg1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-    sdy.return %3 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %2: tensor<8x8xf32>
+-}
+-
+-func.func private @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  sdy.sharding_group %arg0 group_id = 1234 : tensor<8x8xf32>
+-  func.return %arg0 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// Allows sharding groups inside a ManualComputationOp within a function that
+-// is called multiple times.
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = func.call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = func.call @foo(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %1: tensor<8x8xf32>
+-}
+-
+-func.func private @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    sdy.sharding_group %arg1 group_id = 1234 : tensor<8x8xf32>
+-    sdy.return %arg1 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %0 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// Disallows sharding groups which have different ManualComputationOp parents
+-// across different functions.
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = func.call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = func.call @bar(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %1: tensor<8x8xf32>
+-}
+-
+-func.func private @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    sdy.sharding_group %arg1 group_id = 1234 : tensor<8x8xf32>
+-    sdy.return %arg1 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %0 : tensor<8x8xf32>
+-}
+-
+-func.func private @bar(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{?}, {?}]>] out_shardings=[<@mesh, [{?}, {?}]>] manual_axes={} (%arg1: tensor<8x8xf32>) {
+-    // expected-error@below {{ShardingGroupOps values cannot cross ManualComputationOp boundaries for groupId: 1234}}
+-    sdy.sharding_group %arg1 group_id = 1234 : tensor<8x8xf32>
+-    sdy.return %arg1 : tensor<8x8xf32>
+-  } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  func.return %0 : tensor<8x8xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+index 8417874d..2c6b451f 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+@@ -20,7 +20,6 @@ limitations under the License.
+ #include <functional>
+ #include <memory>
+ #include <optional>
+-#include <string_view>
+ #include <utility>
+ 
+ #include "llvm/ADT/STLExtras.h"
+@@ -246,11 +245,6 @@ bool updateTensorSharding(Value modifiedValue, const SymbolTable& symbolTable,
+     if (groupValue == modifiedValue) {
+       continue;
+     }
+-    TensorShardingAttr oldGroupSharding = getSharding(groupValue);
+-    if ((!oldGroupSharding && newSharding.emptyAxes()) ||
+-        newSharding == oldGroupSharding) {
+-      continue;
+-    }
+     setSharding(groupValue, newSharding);
+     if (params.notifyOpModified) {
+       notifyShardingModified(groupValue, symbolTable, userMap,
+@@ -319,7 +313,7 @@ LogicalResult propagateTensorShardings(
+     PropagationDirectionAlongFactor directionAlongFactor,
+     const FactorPropagation& factorPropagation, bool conservativePropagation,
+     Operation* op, const SymbolTable& symbolTable, PatternRewriter* rewriter,
+-    const ShardingGroupMap& shardingGroupMap) {
++    ShardingGroupMap shardingGroupMap) {
+   std::optional<StringRef> meshName =
+       getCommonMeshName(operandsParams.shardings, resultsParams.shardings,
+                         symbolTable, /*ignoreDeviceIds=*/false);
+@@ -333,8 +327,8 @@ LogicalResult propagateTensorShardings(
+     }
+     return failure();
+   }
+-  MeshAttr mesh = getMeshAttr(symbolTable, meshName.value());
+-  SDY_CHECK(mesh) << "unknown mesh: " << std::string_view(meshName.value());
++  MeshAttr mesh = getMeshAttr(op, meshName.value());
++  assert(mesh && "unknown mesh");
+   if (mesh.isSingleDevice()) {
+     // Single-device meshes and shardings are usually a placeholder for special
+     // operations, such as send and recv. We do not propagate single-device
+diff --git a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
+index f3eb2fc8..34e741d0 100644
+--- a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
+@@ -19,7 +19,6 @@ limitations under the License.
+ #include <cstdint>
+ #include <iterator>
+ #include <memory>
+-#include <string_view>
+ #include <utility>
+ #include <variant>
+ 
+@@ -37,7 +36,6 @@ limitations under the License.
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "shardy/common/file_utils.h"
+-#include "shardy/common/logging.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+ #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
+@@ -142,8 +140,7 @@ TensorShardingAttr getInitializedSharding(TensorShardingAttr originalSharding,
+     }
+   }
+   MeshAttr mesh = originalSharding.getMesh(symbolTable);
+-  SDY_CHECK(mesh) << "unknown mesh: "
+-                  << std::string_view(originalSharding.getMeshName());
++  assert(mesh && "unknown mesh");
+   llvm::sort(newReplicatedAxes, AxisRefAttr::getMeshComparator(mesh));
+   // TODO(tomnatan): we need to merge split axes and split them again when
+   // updating? or can we assume we won't see split axes?
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index a839b843..875e6c8a 100644
+index e2237d49..509398da 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,232 +1,19 @@
+@@ -1,459 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/lib/Analysis/LifetimeSafety/FactsGenerator.cpp b/clang/lib/Analysis/LifetimeSafety/FactsGenerator.cpp
----- a/clang/lib/Analysis/LifetimeSafety/FactsGenerator.cpp
--+++ b/clang/lib/Analysis/LifetimeSafety/FactsGenerator.cpp
--@@ -1044,11 +1044,12 @@
--           CapturingArgIdx == LifetimeCaptureByAttr::Unknown ||
--           CapturingArgIdx == LifetimeCaptureByAttr::Invalid)
--         continue;
---      ArrayRef<const Expr *> CallArgs = IsInstance ? Args.drop_front() : Args;
---      const Expr *CapturedByArg =
---          (CapturingArgIdx == LifetimeCaptureByAttr::This)
---              ? Args[0]
---              : CallArgs[CapturingArgIdx];
--+      // FIXME: Diagnose bad CapturingArgIdx.
--+      if (CapturingArgIdx != LifetimeCaptureByAttr::This &&
--+          (CapturingArgIdx < 0 ||
--+           static_cast<size_t>(CapturingArgIdx) >= Args.size()))
--+        continue;
--+      const Expr *CapturedByArg = Args[CapturingArgIdx];
--       assert(CapturedByArg && "Capturer expression must be valid");
-+diff -ruN --strip-trailing-cr a/llvm/docs/WritingAnLLVMPass.md b/llvm/docs/WritingAnLLVMPass.md
-+--- a/llvm/docs/WritingAnLLVMPass.md
-++++ b/llvm/docs/WritingAnLLVMPass.md
-+@@ -794,14 +794,6 @@
-  
--       OriginList *Dest = readValue(CapturedByArg);
--diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateDeduction.cpp b/clang/lib/Sema/SemaTemplateDeduction.cpp
----- a/clang/lib/Sema/SemaTemplateDeduction.cpp
--+++ b/clang/lib/Sema/SemaTemplateDeduction.cpp
--@@ -497,6 +497,16 @@
--   if (auto *Expansion = dyn_cast<PackExpansionType>(ParamType))
--     ParamType = Expansion->getPattern();
-+ ```console
-+ $ gdb opt
-+-GNU gdb 5.0
-+-Copyright 2000 Free Software Foundation, Inc.
-+-GDB is free software, covered by the GNU General Public License, and you are
-+-welcome to change it and/or distribute copies of it under certain conditions.
-+-Type "show copying" to see the conditions.
-+-There is absolutely no warranty for GDB.  Type "show warranty" for details.
-+-This GDB was configured as "sparc-sun-solaris2.6"...
-+-(gdb)
-+ ```
-  
--+  // FIXME: It's not clear how deduction of a parameter of reference type from
--+  // an argument should be performed. For now, we just make the argument have
--+  // the same kind of reference type as the parameter.
--+  if (ParamType->isReferenceType()) {
--+    ValueType = ValueType.getNonReferenceType();
--+    ValueType = ParamType->isRValueReferenceType()
--+                    ? S.Context.getRValueReferenceType(ValueType)
--+                    : S.Context.getLValueReferenceType(ValueType);
--+  }
--+
--   return DeduceTemplateArgumentsByTypeMatch(
--       S, TemplateParams, ParamType, ValueType, Info, Deduced,
--       TDF_SkipNonDependent | TDF_IgnoreQualifiers,
--diff -ruN --strip-trailing-cr a/clang/test/Sema/LifetimeSafety/safety.cpp b/clang/test/Sema/LifetimeSafety/safety.cpp
----- a/clang/test/Sema/LifetimeSafety/safety.cpp
--+++ b/clang/test/Sema/LifetimeSafety/safety.cpp
--@@ -4076,6 +4076,30 @@
--     use(v);                         // expected-note 2 {{later used here}}
+-diff -ruN --strip-trailing-cr a/llvm/include/llvm/IR/Metadata.h b/llvm/include/llvm/IR/Metadata.h
+---- a/llvm/include/llvm/IR/Metadata.h
+-+++ b/llvm/include/llvm/IR/Metadata.h
+-@@ -397,18 +397,8 @@
+-   using OwnerTy = MetadataTracking::OwnerTy;
+- 
+- private:
+--  struct UseEntry {
+--    void *Ref = nullptr;
+--    OwnerTy Owner = nullptr;
+--  };
+--
+--  static constexpr unsigned IndexThreshold = 32;
+--  // Tracked uses of this. Dropping one moves the last entry into its slot, so
+--  // the order is deterministic but not the order they were added in.
+--  SmallVector<UseEntry, 4> UseMap;
+--  // Lazily allocated map from Ref to its index in UseMap for large use lists.
+--  using IndexMapTy = DenseMap<void *, unsigned>;
+--  std::unique_ptr<IndexMapTy> IndexMap;
+-+  uint64_t NextIndex = 0;
+-+  SmallDenseMap<void *, std::pair<OwnerTy, uint64_t>, 4> UseMap;
+- 
+- protected:
+-   ~ReplaceableUses() {
+-@@ -439,7 +429,6 @@
+-   unsigned getNumUses() const { return UseMap.size(); }
+- 
+- private:
+--  UseEntry *findRef(void *Ref);
+-   void addRef(void *Ref, OwnerTy Owner);
+-   void dropRef(void *Ref);
+-   void moveRef(void *Ref, void *New, const Metadata &MD);
+-diff -ruN --strip-trailing-cr a/llvm/lib/IR/Metadata.cpp b/llvm/lib/IR/Metadata.cpp
+---- a/llvm/lib/IR/Metadata.cpp
+-+++ b/llvm/lib/IR/Metadata.cpp
+-@@ -258,96 +258,82 @@
 - }
 - 
--+namespace off_by_one_crash {
--+struct Item {
--+  const int* ptr;
--+};
--+
--+struct Container {
--+  const Item* saved;
--+  void size();
--+};
--+
--+struct Helper {
--+  void AddItem(const Item& item [[clang::lifetime_capture_by(c)]],
--+               Container& c) const;
--+  void Populate() const {
--+    Container c{};
--+    {
--+      Item item;
--+      AddItem(item, c); // expected-warning {{local variable 'item' does not live long enough}}
--+    }                   // expected-note {{local variable 'item' is destroyed here}}
--+    c.size();           // expected-note {{later used here}}
+- SmallVector<Metadata *> ReplaceableUses::getAllArgListUsers() {
+--  SmallVector<Metadata *> MDUsers;
+--  for (const auto &[Ref, Owner] : UseMap) {
+-+  SmallVector<std::pair<OwnerTy, uint64_t> *> MDUsersWithID;
+-+  for (auto Pair : UseMap) {
+-+    OwnerTy Owner = Pair.second.first;
+-     if (Owner.isNull())
+-       continue;
+-     if (!isa<Metadata *>(Owner))
+-       continue;
+-     Metadata *OwnerMD = cast<Metadata *>(Owner);
+-     if (OwnerMD->getMetadataID() == Metadata::DIArgListKind)
+--      MDUsers.push_back(OwnerMD);
+-+      MDUsersWithID.push_back(&UseMap[Pair.first]);
+-   }
+-+  llvm::sort(MDUsersWithID, [](auto UserA, auto UserB) {
+-+    return UserA->second < UserB->second;
+-+  });
+-+  SmallVector<Metadata *> MDUsers;
+-+  for (auto *UserWithID : MDUsersWithID)
+-+    MDUsers.push_back(cast<Metadata *>(UserWithID->first));
+-   return MDUsers;
+- }
+- 
+- SmallVector<DbgVariableRecord *>
+- ReplaceableUses::getAllDbgVariableRecordUsers() {
+-+  SmallVector<std::pair<OwnerTy, uint64_t> *> DVRUsersWithID;
+-+  for (auto Pair : UseMap) {
+-+    OwnerTy Owner = Pair.second.first;
+-+    if (Owner.isNull())
+-+      continue;
+-+    if (!isa<DebugValueUser *>(Owner))
+-+      continue;
+-+    DVRUsersWithID.push_back(&UseMap[Pair.first]);
 -+  }
--+};
--+} // namespace off_by_one_crash
+-   // Order DbgVariableRecord users in reverse-creation order. Normal dbg.value
+-   // users of MetadataAsValues are ordered by their UseList, i.e. reverse order
+-   // of when they were added: we need to replicate that here. The structure of
+-   // debug-info output depends on the ordering of intrinsics, thus we need
+-   // to keep them consistent for comparisons sake.
+-+  llvm::sort(DVRUsersWithID, [](auto UserA, auto UserB) {
+-+    return UserA->second > UserB->second;
+-+  });
+-   SmallVector<DbgVariableRecord *> DVRUsers;
+--  for (const auto &[Ref, Owner] : reverse(UseMap)) {
+--    if (Owner.isNull())
+--      continue;
+--    if (!isa<DebugValueUser *>(Owner))
+--      continue;
+--    DVRUsers.push_back(cast<DebugValueUser *>(Owner)->getUser());
+--  }
+-+  for (auto UserWithID : DVRUsersWithID)
+-+    DVRUsers.push_back(cast<DebugValueUser *>(UserWithID->first)->getUser());
+-   return DVRUsers;
+- }
+- 
+--ReplaceableUses::UseEntry *ReplaceableUses::findRef(void *Ref) {
+--  if (!IndexMap) {
+--    // Search backward for temporal locality; recently added references are
+--    // often dropped or moved first.
+--    for (UseEntry &U : reverse(UseMap))
+--      if (U.Ref == Ref)
+--        return &U;
+--    return nullptr;
+--  }
+--
+--  auto It = IndexMap->find(Ref);
+--  return It == IndexMap->end() ? nullptr : &UseMap[It->second];
+--}
+--
+- void ReplaceableUses::addRef(void *Ref, OwnerTy Owner) {
+--  assert(Ref && "Expected live reference");
+--  assert(!findRef(Ref) && "Reference already tracked");
+--  unsigned NewIdx = UseMap.size();
+--  UseMap.push_back({Ref, Owner});
+--  if (IndexMap) {
+--    (*IndexMap)[Ref] = NewIdx;
+--  } else if (UseMap.size() > IndexThreshold) {
+--    // Build the index map once UseMap grows past the threshold.
+--    IndexMap = std::make_unique<IndexMapTy>();
+--    for (unsigned I = 0, E = UseMap.size(); I != E; ++I)
+--      (*IndexMap)[UseMap[I].Ref] = I;
+--  }
+-+  bool WasInserted =
+-+      UseMap.insert(std::make_pair(Ref, std::make_pair(Owner, NextIndex)))
+-+          .second;
+-+  (void)WasInserted;
+-+  assert(WasInserted && "Expected to add a reference");
 -+
-- struct [[gsl::Pointer()]] PtrWithInt { int x; };
-- PtrWithInt f() {
--   return PtrWithInt{10};
--diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/temp_arg_nontype_ref.cpp b/clang/test/SemaTemplate/temp_arg_nontype_ref.cpp
----- a/clang/test/SemaTemplate/temp_arg_nontype_ref.cpp
--+++ b/clang/test/SemaTemplate/temp_arg_nontype_ref.cpp
--@@ -45,3 +45,27 @@
--   template <bool &v> int *f(A<bool &, v>);
--   int *p = f(A<bool &, b>());
-- } // namespace GH40328
--+
--+#if __cplusplus >= 201703L
--+// Partial specializations of templates whose constant template parameter is
--+// declared as `auto &&`.
--+namespace auto_ref_primary {
--+  int i;
--+  long l;
--+
--+  template <auto &&> struct A { static const int k = 0; };
--+  template <int &v> struct A<v> { static const int k = 1; };
--+  static_assert(A<i>::k == 1, "");
--+  static_assert(A<l>::k == 0, "");
--+
--+  template <auto &&, class> struct B { static const int k = 0; };
--+  template <auto &v> struct B<v, int> { static const int k = 1; };
--+  static_assert(B<i, int>::k == 1, "");
--+  static_assert(B<i, long>::k == 0, "");
--+
--+  template <auto &&> const int V = 0;
--+  template <int &v> const int V<v> = 1;
--+  static_assert(V<i> == 1, "");
--+  static_assert(V<l> == 0, "");
--+} // namespace auto_ref_primary
--+#endif
--diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/temp_arg_template_p0522.cpp b/clang/test/SemaTemplate/temp_arg_template_p0522.cpp
----- a/clang/test/SemaTemplate/temp_arg_template_p0522.cpp
--+++ b/clang/test/SemaTemplate/temp_arg_template_p0522.cpp
--@@ -175,3 +175,121 @@
--   template <class ...Ts> struct B {};
--   using T = decltype(f<B>());
-- } // namespace GH181166
--+
--+// Matching of template template arguments whose constant parameters have
--+// reference type. The argument value is an expression, so its type drops the
--+// top-level reference (`auto &` is seen as `auto`).
--+//
--+// Names spell out the types of constant template parameters: `TakesFoo` has a
--+// template template parameter P whose parameter has type `Foo`, and `Foo_Bar`
--+// matches P against a template template argument A whose parameter has type
--+// `Bar`. A is a template template parameter, a class template `BarClass`, or a
--+// member template `MemberBar`.
--+namespace nttp_ref {
--+  template <template <auto &> class> struct TakesAutoRef; // #TakesAutoRef
--+  template <template <auto &> class TT> using AutoRef_AutoRef = TakesAutoRef<TT>;
--+  template <template <auto> class TT> using AutoRef_Auto = TakesAutoRef<TT>;
--+  template <template <auto &&> class TT> using AutoRef_AutoRRef = TakesAutoRef<TT>;
--+
--+  template <template <auto> class> struct TakesAuto; // #TakesAuto
--+  template <template <auto &> class TT> using Auto_AutoRef = TakesAuto<TT>;
--+  template <template <auto &&> class TT> using Auto_AutoRRef = TakesAuto<TT>;
--+  template <template <const auto &> class TT> using Auto_ConstAutoRef = TakesAuto<TT>;
--+
--+  template <template <const auto &> class> struct TakesConstAutoRef; // #TakesConstAutoRef
--+  template <template <const auto &> class TT> using ConstAutoRef_ConstAutoRef = TakesConstAutoRef<TT>;
--+  template <template <auto &> class TT> using ConstAutoRef_AutoRef = TakesConstAutoRef<TT>;
--+  template <template <auto> class TT> using ConstAutoRef_Auto = TakesConstAutoRef<TT>;
--+
--+  template <template <auto &...> class> struct TakesAutoRefPack;
--+  template <template <auto &...> class TT> using AutoRefPack_AutoRefPack = TakesAutoRefPack<TT>;
--+
--+  template <template <decltype(auto)> class> struct TakesDecltypeAuto; // #TakesDecltypeAuto
--+  template <template <decltype(auto)> class TT> using DecltypeAuto_DecltypeAuto = TakesDecltypeAuto<TT>;
--+
--+  // A class template argument has its parameters at the same depth as those
--+  // of the template template parameter.
--+  template <auto &> struct AutoRefClass;
--+  template <auto &&> struct AutoRRefClass;
--+  template <auto> struct AutoClass;
--+  using AutoRef_AutoRefClass = TakesAutoRef<AutoRefClass>;
--+  using AutoRef_AutoRRefClass = TakesAutoRef<AutoRRefClass>;
--+  using Auto_AutoRefClass = TakesAuto<AutoRefClass>;
--+  using AutoRef_AutoClass = TakesAutoRef<AutoClass>;
--+
--+  template <class U, template <U &> class> struct TakesDependentRef;
--+  template <class U, template <U &> class TT> using DependentRef_DependentRef = TakesDependentRef<U, TT>;
--+
--+  template <class U> struct Outer {
--+    template <template <U &> class> struct TakesOuterRef;
--+    template <template <U &> class TT> using OuterRef_OuterRef = TakesOuterRef<TT>;
--+  };
--+
--+  template <template <class T, T &> class> struct TakesTypeAndRef;
--+  template <template <class T, T &> class TT> using TypeAndRef_TypeAndRef = TakesTypeAndRef<TT>;
--+  template <template <class T, T> class TT> using TypeAndRef_TypeAndValue = TakesTypeAndRef<TT>;
--+  template <class T, T &> struct TypeAndRefClass;
--+  using TypeAndRef_TypeAndRefClass = TakesTypeAndRef<TypeAndRefClass>;
--+
--+  // The argument for P's parameter must be a valid argument for A's parameter.
--+  template <template <int> class> struct TakesInt; // #TakesInt
--+  // expected-error@-1 {{value of type 'int' is not implicitly convertible to 'int &'}}
--+  template <template <int &> class TT> using Int_IntRef = TakesInt<TT>;
--+  // expected-note@-1 {{different template parameters}}
--+  template <template <const int &> class TT> using Int_ConstIntRef = TakesInt<TT>;
--+  // expected-error@#TakesInt {{conversion from 'int' to 'const int &' in converted constant expression would bind reference to a temporary}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <template <auto &> class TT> using Int_AutoRef = TakesInt<TT>;
--+  // expected-error@#TakesInt {{value of type 'int' is not implicitly convertible to 'int &'}}
--+  // expected-note@-2 {{different template parameters}}
--+  using Int_AutoRefClass = TakesInt<AutoRefClass>;
--+  // expected-error@#TakesInt {{value of type 'int' is not implicitly convertible to 'int &'}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <template <auto &&> class TT> using Int_AutoRRef = TakesInt<TT>;
--+  // expected-error@#TakesInt {{non-type template parameter has rvalue reference type 'int &&'}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <template <const auto &> class TT> using Int_ConstAutoRef = TakesInt<TT>;
--+  // expected-error@#TakesInt {{conversion from 'int' to 'const int &' in converted constant expression would bind reference to a temporary}}
--+  // expected-note@-2 {{different template parameters}}
--+
--+  template <template <int...> class> struct TakesIntPack; // #TakesIntPack
--+  template <template <auto &...> class TT> using IntPack_AutoRefPack = TakesIntPack<TT>;
--+  // expected-error@#TakesIntPack {{value of type 'int' is not implicitly convertible to 'int &'}}
--+  // expected-note@-2 {{different template parameters}}
--+
--+  template <template <const int &> class> struct TakesConstIntRef; // #TakesConstIntRef
--+  template <template <int &> class TT> using ConstIntRef_IntRef = TakesConstIntRef<TT>;
--+  // expected-error@#TakesConstIntRef {{value of type 'const int' is not implicitly convertible to 'int &'}}
--+  // expected-note@-2 {{different template parameters}}
--+
--+  template <template <int *> class> struct TakesIntPtr; // #TakesIntPtr
--+  template <template <int> class TT> using IntPtr_Int = TakesIntPtr<TT>;
--+  // expected-error@#TakesIntPtr {{value of type 'int *' is not implicitly convertible to 'int'}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <template <auto &> class TT> using IntPtr_AutoRef = TakesIntPtr<TT>;
--+  // expected-error@#TakesIntPtr {{value of type 'int *' is not implicitly convertible to 'int *&'}}
--+  // expected-note@-2 {{different template parameters}}
--+
--+  // Only a pointer can initialize a parameter of type `auto *`.
--+  template <template <auto *> class TT> using Int_AutoPtr = TakesInt<TT>;
--+  // expected-error@#TakesInt {{with type 'auto *' has incompatible initializer of type 'int'}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <template <auto *> class TT> using AutoRef_AutoPtr = TakesAutoRef<TT>;
--+  // expected-error@#TakesAutoRef {{with type 'auto *' has incompatible initializer of type 'auto'}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <template <auto *> class TT> using Auto_AutoPtr = TakesAuto<TT>;
--+  // expected-error@#TakesAuto {{with type 'auto *' has incompatible initializer of type 'auto'}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <template <auto *> class TT> using ConstAutoRef_AutoPtr = TakesConstAutoRef<TT>;
--+  // expected-error@#TakesConstAutoRef {{with type 'auto *' has incompatible initializer of type 'const auto'}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <template <auto *> class TT> using DecltypeAuto_AutoPtr = TakesDecltypeAuto<TT>;
--+  // expected-error@#TakesDecltypeAuto {{with type 'auto *' has incompatible initializer of type 'decltype(auto)'}}
--+  // expected-note@-2 {{different template parameters}}
--+  template <class> struct DependentAutoPtr {
--+    template <auto *> struct MemberAutoPtr;
--+    using Auto_MemberAutoPtr = TakesAuto<MemberAutoPtr>;
--+    // expected-error@#TakesAuto {{with type 'auto *' has incompatible initializer of type 'auto'}}
--+    // expected-note@-2 {{different template parameters}}
--+  };
--+} // namespace nttp_ref
-+ Note that {program}`opt` has a lot of debugging information in it, so it takes
+-+  ++NextIndex;
+-+  assert(NextIndex != 0 && "Unexpected overflow");
+- }
+- 
+- void ReplaceableUses::dropRef(void *Ref) {
+--  UseEntry *Entry = findRef(Ref);
+--  assert(Entry && "Expected to find Ref");
+--  if (IndexMap)
+--    IndexMap->erase(Ref);
+--  if (Entry != &UseMap.back()) {
+--    *Entry = UseMap.back();
+--    if (IndexMap)
+--      (*IndexMap)[Entry->Ref] = Entry - UseMap.begin();
+--  }
+--  UseMap.pop_back();
+--  if (IndexMap && UseMap.size() <= IndexThreshold / 2)
+--    IndexMap.reset();
+-+  bool WasErased = UseMap.erase(Ref);
+-+  (void)WasErased;
+-+  assert(WasErased && "Expected to drop a reference");
+- }
+- 
+- void ReplaceableUses::moveRef(void *Ref, void *New, const Metadata &MD) {
+--  assert(!findRef(New) && "Cannot move to an existing reference");
+--  UseEntry *Entry = findRef(Ref);
+--  assert(Entry && "Expected to move a reference");
+--  if (IndexMap) {
+--    IndexMap->erase(Ref);
+--    (*IndexMap)[New] = Entry - UseMap.begin();
+--  }
+--  Entry->Ref = New;
+-+  auto I = UseMap.find(Ref);
+-+  assert(I != UseMap.end() && "Expected to move a reference");
+-+  auto OwnerAndIndex = I->second;
+-+  UseMap.erase(I);
+-+  bool WasInserted = UseMap.insert(std::make_pair(New, OwnerAndIndex)).second;
+-+  (void)WasInserted;
+-+  assert(WasInserted && "Expected to add a reference");
+- 
+-   // Check that the references are direct if there's no owner.
+-   (void)MD;
+--  assert((Entry->Owner || *static_cast<Metadata **>(Ref) == &MD) &&
+-+  assert((OwnerAndIndex.first || *static_cast<Metadata **>(Ref) == &MD) &&
+-          "Reference without owner must be direct");
+--  assert((Entry->Owner || *static_cast<Metadata **>(New) == &MD) &&
+-+  assert((OwnerAndIndex.first || *static_cast<Metadata **>(New) == &MD) &&
+-          "Reference without owner must be direct");
+- }
+- 
+-@@ -360,11 +346,14 @@
+-   auto &Store = Context.pImpl->ValuesAsMetadata;
+-   auto I = Store.find(&C);
+-   ValueAsMetadata *MD = I->second;
+-+  using UseTy =
+-+      std::pair<void *, std::pair<MetadataTracking::OwnerTy, uint64_t>>;
+-   // Copy out uses and update value of Constant used by debug info metadata with
+--  // poison below.
+--  SmallVector<UseEntry, 4> Uses = MD->UseMap;
+-+  // poison below
+-+  SmallVector<UseTy, 8> Uses(MD->UseMap.begin(), MD->UseMap.end());
+- 
+--  for (const auto &[Ref, Owner] : Uses) {
+-+  for (const auto &Pair : Uses) {
+-+    MetadataTracking::OwnerTy Owner = Pair.second.first;
+-     if (!Owner)
+-       continue;
+-     // Check for MetadataAsValue.
+-@@ -380,7 +369,7 @@
+-       continue;
+-     if (isa<DINode>(OwnerMD)) {
+-       OwnerMD->handleChangedOperand(
+--          Ref, ValueAsMetadata::get(PoisonValue::get(C.getType())));
+-+          Pair.first, ValueAsMetadata::get(PoisonValue::get(C.getType())));
+-     }
+-   }
+- }
+-@@ -390,21 +379,25 @@
+-     return;
+- 
+-   // Copy out uses since UseMap will get touched below.
+--  SmallVector<UseEntry, 4> Uses = UseMap;
+--
+--  for (const auto &[Ref, Owner] : Uses) {
+-+  using UseTy = std::pair<void *, std::pair<OwnerTy, uint64_t>>;
+-+  SmallVector<UseTy, 8> Uses(UseMap.begin(), UseMap.end());
+-+  llvm::sort(Uses, [](const UseTy &L, const UseTy &R) {
+-+    return L.second.second < R.second.second;
+-+  });
+-+  for (const auto &Pair : Uses) {
+-     // Check that this Ref hasn't disappeared after RAUW (when updating a
+-     // previous Ref).
+--    if (!findRef(Ref))
+-+    if (!UseMap.count(Pair.first))
+-       continue;
+- 
+-+    OwnerTy Owner = Pair.second.first;
+-     if (!Owner) {
+-       // Update unowned tracking references directly.
+--      Metadata *&DirectRef = *static_cast<Metadata **>(Ref);
+--      dropRef(Ref);
+--      DirectRef = MD;
+-+      Metadata *&Ref = *static_cast<Metadata **>(Pair.first);
+-+      Ref = MD;
+-       if (MD)
+--        MetadataTracking::track(DirectRef);
+-+        MetadataTracking::track(Ref);
+-+      UseMap.erase(Pair.first);
+-       continue;
+-     }
+- 
+-@@ -415,7 +408,7 @@
+-     }
+- 
+-     if (auto *DVU = dyn_cast<DebugValueUser *>(Owner)) {
+--      DVU->handleChangedValue(Ref, MD);
+-+      DVU->handleChangedValue(Pair.first, MD);
+-       continue;
+-     }
+- 
+-@@ -424,7 +417,7 @@
+-     switch (OwnerMD->getMetadataID()) {
+- #define HANDLE_METADATA_LEAF(CLASS)                                            \
+-   case Metadata::CLASS##Kind:                                                  \
+--    cast<CLASS>(OwnerMD)->handleChangedOperand(Ref, MD);                       \
+-+    cast<CLASS>(OwnerMD)->handleChangedOperand(Pair.first, MD);                \
+-     continue;
+- #include "llvm/IR/Metadata.def"
+-     default:
+-@@ -440,16 +433,18 @@
+- 
+-   if (!ResolveUsers) {
+-     UseMap.clear();
+--    IndexMap.reset();
+-     return;
+-   }
+- 
+--  // Move uses out since UseMap could get touched below.
+--  SmallVector<UseEntry, 4> Uses = std::move(UseMap);
+-+  // Copy out uses since UseMap could get touched below.
+-+  using UseTy = std::pair<void *, std::pair<OwnerTy, uint64_t>>;
+-+  SmallVector<UseTy, 8> Uses(UseMap.begin(), UseMap.end());
+-+  llvm::sort(Uses, [](const UseTy &L, const UseTy &R) {
+-+    return L.second.second < R.second.second;
+-+  });
+-   UseMap.clear();
+--  IndexMap.reset();
+--  for (const auto &U : Uses) {
+--    auto Owner = U.Owner;
+-+  for (const auto &Pair : Uses) {
+-+    auto Owner = Pair.second.first;
+-     if (!Owner)
+-       continue;
+-     if (!isa<Metadata *>(Owner))
+-diff -ruN --strip-trailing-cr a/llvm/lib/ObjCopy/ELF/ELFObject.cpp b/llvm/lib/ObjCopy/ELF/ELFObject.cpp
+---- a/llvm/lib/ObjCopy/ELF/ELFObject.cpp
+-+++ b/llvm/lib/ObjCopy/ELF/ELFObject.cpp
+-@@ -1709,11 +1709,7 @@
+-   case SHT_REL:
+-   case SHT_RELA:
+-   case SHT_CREL:
+--    // SHF_ALLOC relocations of an executable or shared object are copied
+--    // verbatim. Relocatable files relocations are usually non-ALLOC, but Linux
+--    // livepatch modules set SHF_ALLOC on .klp.rela.* to keep these static
+--    // relocations in memory.
+--    if ((Shdr.sh_flags & SHF_ALLOC) && ElfFile.getHeader().e_type != ET_REL) {
+-+    if (Shdr.sh_flags & SHF_ALLOC) {
+-       if (Expected<ArrayRef<uint8_t>> Data = ElfFile.getSectionContents(Shdr))
+-         return Obj.addSection<DynamicRelocationSection>(*Data);
+-       else
+-diff -ruN --strip-trailing-cr a/llvm/lib/ObjCopy/ELF/ELFObject.h b/llvm/lib/ObjCopy/ELF/ELFObject.h
+---- a/llvm/lib/ObjCopy/ELF/ELFObject.h
+-+++ b/llvm/lib/ObjCopy/ELF/ELFObject.h
+-@@ -38,7 +38,6 @@
+- class SymbolTableSection;
+- class RelocationSection;
+- class DynamicRelocationSection;
+--class DynamicSymbolTableSection;
+- class GnuDebugLinkSection;
+- class GroupSection;
+- class SectionIndexSection;
+-@@ -876,15 +875,10 @@
+- // and another which handles the symbol table type. The symbol table type is
+- // taken as a type parameter to the class (see RelocSectionWithSymtabBase).
+- class RelocationSectionBase : public SectionBase {
+--  const bool Dynamic;
+--
+- protected:
+-   SectionBase *SecToApplyRel = nullptr;
+- 
+--  explicit RelocationSectionBase(bool Dynamic) : Dynamic(Dynamic) {}
+--
+- public:
+--  bool isDynamic() const { return Dynamic; }
+-   const SectionBase *getSection() const { return SecToApplyRel; }
+-   void setSection(SectionBase *Sec) { SecToApplyRel = Sec; }
+- 
+-@@ -903,9 +897,7 @@
+-   void setSymTab(SymTabType *SymTab) { Symbols = SymTab; }
+- 
+- protected:
+--  RelocSectionWithSymtabBase()
+--      : RelocationSectionBase(
+--            std::is_same_v<SymTabType, DynamicSymbolTableSection>) {}
+-+  RelocSectionWithSymtabBase() = default;
+- 
+-   SymTabType *Symbols = nullptr;
+- 
+-@@ -936,8 +928,9 @@
+-   const Object &getObject() const { return Obj; }
+- 
+-   static bool classof(const SectionBase *S) {
+--    return RelocationSectionBase::classof(S) &&
+--           !static_cast<const RelocationSectionBase *>(S)->isDynamic();
+-+    if (S->OriginalFlags & ELF::SHF_ALLOC)
+-+      return false;
+-+    return RelocationSectionBase::classof(S);
+-   }
+- };
+- 
+-@@ -1022,8 +1015,9 @@
+-       function_ref<bool(const SectionBase *)> ToRemove) override;
+- 
+-   static bool classof(const SectionBase *S) {
+--    return RelocationSectionBase::classof(S) &&
+--           static_cast<const RelocationSectionBase *>(S)->isDynamic();
+-+    if (!(S->OriginalFlags & ELF::SHF_ALLOC))
+-+      return false;
+-+    return S->OriginalType == ELF::SHT_REL || S->OriginalType == ELF::SHT_RELA;
+-   }
+- };
+- 
+-diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test b/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
+---- a/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
+-+++ b/llvm/test/tools/llvm-objcopy/ELF/reloc-alloc-symtab.test
+-@@ -1,42 +0,0 @@
+--## In a relocatable file, an SHF_ALLOC relocation section (e.g. .klp.rela.* in
+--## Linux livepatch modules) is a static relocation section: its symbol indexes
+--## are updated and the symbols it references are kept.
+--
+--# RUN: yaml2obj %s -o %t
+--# RUN: llvm-strip --strip-unneeded %t -o %t1
+--# RUN: llvm-readelf -Sr -s %t1 | FileCheck %s
+--# RUN: yaml2obj -DTYPE=SHT_CREL %s -o %t.crel
+--# RUN: llvm-strip --strip-unneeded %t.crel -o %t1.crel
+--# RUN: llvm-readelf -Sr -s %t1.crel | FileCheck %s
+--
+--# CHECK:      [ 2] .klp.rela.vmlinux.text {{RELA|CREL}} {{.*}} AI  3   1
+--# CHECK-NEXT: [ 3] .symtab
+--# CHECK:      R_X86_64_PC32 {{.*}} referenced + 0
+--# CHECK:      Symbol table '.symtab' contains 2 entries:
+--# CHECK:      1: {{.*}} UND referenced
+--
+--!ELF
+--FileHeader:
+--  Class:   ELFCLASS64
+--  Data:    ELFDATA2LSB
+--  Type:    ET_REL
+--  Machine: EM_X86_64
+--Sections:
+--  - Name:    .text
+--    Type:    SHT_PROGBITS
+--    Flags:   [ SHF_ALLOC, SHF_EXECINSTR ]
+--    Content: "e800000000"
+--  - Name:    .klp.rela.vmlinux.text
+--    Type:    [[TYPE=SHT_RELA]]
+--    Flags:   [ SHF_ALLOC, SHF_INFO_LINK ]
+--    Link:    .symtab
+--    Info:    .text
+--    Relocations:
+--      - Offset: 1
+--        Symbol: referenced
+--        Type:   R_X86_64_PC32
+--Symbols:
+--  - Name:    unreferenced
+--    Section: .text
+--  - Name:    referenced
+--    Binding: STB_GLOBAL
+-diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test b/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
+---- a/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
+-+++ b/llvm/test/tools/llvm-objcopy/ELF/reloc-no-symtab.test
+-@@ -10,16 +10,11 @@
+- # RUN: llvm-readobj --sections %t.original | FileCheck %s
+- # RUN: llvm-readobj --sections %t.stripped | FileCheck %s
+- 
+--## In a relocatable file, .rela.plt is a static relocation section.
+--# RUN: yaml2obj -DTYPE=ET_REL %s -o %t.rel
+--# RUN: llvm-strip %t.rel -o %t.rel.stripped
+--# RUN: llvm-readobj --sections %t.rel.stripped | FileCheck %s
+--
+- !ELF
+- FileHeader:
+-   Class:           ELFCLASS64
+-   Data:            ELFDATA2LSB
+--  Type:            [[TYPE=ET_EXEC]]
+-+  Type:            ET_REL
+-   Machine:         EM_X86_64
+- Sections:
+-   - Name:          .text
+-diff -ruN --strip-trailing-cr a/llvm/unittests/IR/MetadataTest.cpp b/llvm/unittests/IR/MetadataTest.cpp
+---- a/llvm/unittests/IR/MetadataTest.cpp
+-+++ b/llvm/unittests/IR/MetadataTest.cpp
+-@@ -5355,29 +5355,6 @@
+-   EXPECT_TRUE(!MD);
+- }
+- 
+--// Once the use list is indexed, look each changed reference up again right
+--// away: a later swap in dropRef would repair a stale index entry.
+--TEST_F(TrackingMDRefTest, LargeUseList) {
+--  auto Temp = MDTuple::getTemporary(Context, {});
+--  TrackingMDRef Refs[41];
+--  for (unsigned I = 0; I != 40; ++I)
+--    Refs[I].reset(Temp.get());
+--  Refs[0].reset();
+--  Refs[0].reset(Temp.get());
+--  Refs[0].reset();
+--  Refs[40] = std::move(Refs[1]);
+--  Refs[1].reset(Temp.get());
+--  Refs[40].reset();
+--  Refs[39].reset();
+--  EXPECT_EQ(38u, Temp->getNumTemporaryUses());
+--
+--  auto *N = MDTuple::getDistinct(Context, {});
+--  Temp->replaceAllUsesWith(N);
+--  EXPECT_EQ(0u, Temp->getNumTemporaryUses());
+--  for (unsigned I = 1; I != 39; ++I)
+--    EXPECT_EQ(N, Refs[I].get()) << I;
+--}
+--
+- TEST(NamedMDNodeTest, Search) {
+-   LLVMContext Context;
+-   ConstantAsMetadata *C =
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 0b12038e..79e40910 100644
+index 9de7c05a..7b8ac881 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "e40e0bc36b14d296df5798c52792f662c715b445"
--    LLVM_SHA256 = "ed7e226f70358ea38776b73c817e723d5afa59d0c42973c3f77be68c144da3bb"
-+    LLVM_COMMIT = "018a9e4a74ba5d383351bda907a8b116bc5d8c47"
-+    LLVM_SHA256 = "67463f6d054b8880cbde059a8d02ca6ca4649312f60cfe98a30401ac17fe0b39"
+-    LLVM_COMMIT = "62e30e3326d9b4e3948d242ccfee7aa4fc030ef3"
+-    LLVM_SHA256 = "478ae34c463f28708582082098aaf0e79f431c2719f5d297bd546051dbeae0dd"
++    LLVM_COMMIT = "c4d9267a31897dd76b2aab5196b75bffb49e6846"
++    LLVM_SHA256 = "a96c8b33f0d8d3be008b8c9f74ef310254c4f7f7edf8c04c76f4d99ed9d34f1a"
  
      tf_http_archive(
          name = name,
 diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index 001568a7..49cfe5b6 100644
+index c38c5147..c6cd6f2b 100644
 --- a/third_party/stablehlo/temporary.patch
 +++ b/third_party/stablehlo/temporary.patch
-@@ -15,6 +15,755 @@
- #
- # This file is automatically generated by the `generate_patch` tool.
- # Do not edit directly.
-+diff --ruN a/stablehlo/.github/ISSUE_TEMPLATE/bug_report.yml b/stablehlo/.github/ISSUE_TEMPLATE/bug_report.yml
-+--- stablehlo/.github/ISSUE_TEMPLATE/bug_report.yml
-++++ stablehlo/.github/ISSUE_TEMPLATE/bug_report.yml
-+@@ -1,50 +0,0 @@
-+-# Copyright 2024 The StableHLO Authors.
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#     http://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-name: 🐞 Bug Report
-+-description: Report an issue
-+-body:
-+-  - type: markdown
-+-    attributes:
-+-      value: |
-+-        :star2: Thanks for taking the time to report this issue! :star2:
-+-
-+-        Please search through [other recent issues](https://github.com/openxla/stablehlo/issues) to see if your report overlaps with an existing issue.
-+-  - type: textarea
-+-    id: what-happened
-+-    attributes:
-+-      label: What happened?
-+-      description: |
-+-        Also tell us, what did you expect to happen?
-+-
-+-        Include any MLIR output leading up to whatever error occurred where possible.
-+-      placeholder: Tell us what you see! Please also copy/paste or link to any relevant log output.
-+-    validations:
-+-      required: true
-+-  - type: textarea
-+-    id: reproducing
-+-    attributes:
-+-      label: Steps to reproduce your issue
-+-      description: |
-+-        Include any commands that you ran.
-+-      value: |
-+-        1. Go to '...'
-+-        2. Click on '....'
-+-        3. Scroll down to '....'
-+-        4. See error
-+-  - type: textarea
-+-    id: version
-+-    attributes:
-+-      label: Version information
-+-      description: What version of our software are you using?
-+-      placeholder: This could be a git commit hash.
-+diff --ruN a/stablehlo/.github/ISSUE_TEMPLATE/config.yml b/stablehlo/.github/ISSUE_TEMPLATE/config.yml
-+--- stablehlo/.github/ISSUE_TEMPLATE/config.yml
-++++ stablehlo/.github/ISSUE_TEMPLATE/config.yml
-+@@ -1,24 +0,0 @@
-+-# Copyright 2024 The StableHLO Authors.
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#     http://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-blank_issues_enabled: true
-+-contact_links:
-+-  - name: 📄 Blank Issue
-+-    url: https://github.com/openxla/stablehlo/issues/new
-+-    about: If you know what you're doing (especially collaborators)
-+-  - name: 🗣 Start a discussion on GitHub
-+-    url: https://github.com/orgs/openxla/discussions/new
-+-    about: For early feedback on a design or other proposal
-+-  - name: 💬 Join us on Discord
-+-    url: https://discord.gg/Wqr8vWZKKJ
-+-    about: For realtime communication with the team and collaborators
-+diff --ruN a/stablehlo/.github/ISSUE_TEMPLATE/feature_request.yml b/stablehlo/.github/ISSUE_TEMPLATE/feature_request.yml
-+--- stablehlo/.github/ISSUE_TEMPLATE/feature_request.yml
-++++ stablehlo/.github/ISSUE_TEMPLATE/feature_request.yml
-+@@ -1,30 +0,0 @@
-+-# Copyright 2024 The StableHLO Authors.
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#     http://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-name: ➕ Feature Request
-+-description: Ask for a new feature to be added
-+-body:
-+-  - type: markdown
-+-    attributes:
-+-      value: |
-+-        :star2: Thanks for taking the time to file this request! :star2:
-+-
-+-        We also work closely with upstream communities like the MLIR project, which uses the [MLIR Discourse forum](https://discourse.llvm.org/c/mlir/31) for coordination.
-+-  - type: textarea
-+-    id: overview
-+-    attributes:
-+-      label: Request description
-+-      description: |
-+-        What would you like added or changed?
-+-    validations:
-+-      required: true
-+diff --ruN a/stablehlo/.github/actions/setup-build/action.yml b/stablehlo/.github/actions/setup-build/action.yml
-+--- stablehlo/.github/actions/setup-build/action.yml
-++++ stablehlo/.github/actions/setup-build/action.yml
-+@@ -1,58 +0,0 @@
-+-# Copyright 2023 The StableHLO Authors.
-+-#
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#      https://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-# The setup-build action gets everything needed by buildAndTest into the workspace.
-+-name: "Setup build environment (ninja, ccache, llvm, clang, lld)"
-+-description: "Setup build environment (ninja, ccache, llvm, clang, lld)"
-+-
-+-inputs:
-+-  llvm-version:
-+-    description: |
-+-      LLVM version for checkout and build. Used for ccache value and checkout.
-+-    required: true
-+-  clang-version:
-+-    description: |
-+-      Clang and LLD version to use for compilation. Independent of LLVM version.
-+-    required: false
-+-    default: '20'
-+-  python-version:
-+-    description: |
-+-      Python version to install.
-+-    required: false
-+-    default: '3.11.13'
-+-runs:
-+-  # This is a composite action - has a list of steps to execute.
-+-  using: "composite"
-+-
-+-  steps:
-+-  # Checkout llvm at version specified in input argument.
-+-  - uses: actions/checkout@v4
-+-    with:
-+-      repository: llvm/llvm-project
-+-      ref: ${{ inputs.llvm-version }}
-+-      path: llvm-project
-+-      fetch-depth: 1
-+-
-+-  # Setup C++ caching using ccache.
-+-  # Cache key is a combination of OS arch and LLVM version.
-+-  - name: Ccache for C++ compilation
-+-    uses: hendrikmuhs/ccache-action@v1.2
-+-    with:
-+-      key: ${{ runner.os }}-stablehlo_build_assets-${{ inputs.llvm-version }}
-+-      max-size: 4G
-+-
-+-  - name: Install MLIR python requirements
-+-    shell: bash
-+-    run: |
-+-      python3 -m pip install -r $GITHUB_WORKSPACE/llvm-project/mlir/python/requirements.txt
-+diff --ruN a/stablehlo/.github/workflows/buildAndTestBazel.yml b/stablehlo/.github/workflows/buildAndTestBazel.yml
-+--- stablehlo/.github/workflows/buildAndTestBazel.yml
-++++ stablehlo/.github/workflows/buildAndTestBazel.yml
-+@@ -1,103 +0,0 @@
-+-# Copyright 2023 The StableHLO Authors.
-+-#
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#      https://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-name: Bazel Build
-+-
-+-on:
-+-  pull_request:
-+-    branches: [ main ]
-+-  push:
-+-    branches: [ main ]
-+-  schedule:
-+-    # Run once a day
-+-    - cron:  '0 12 * * *'
-+-  workflow_dispatch:
-+-    inputs:
-+-      halt-for-connection:
-+-        description: 'Should this workflow run wait for a remote connection?'
-+-        type: choice
-+-        required: true
-+-        default: 'no'
-+-        options:
-+-          - 'yes'
-+-          - 'no'
-+-
-+-# Ensure that only a single job or workflow using the same
-+-# concurrency group will run at a time. This would cancel
-+-# any in-progress jobs in the same github workflow and github
-+-# ref (e.g. refs/heads/main or refs/pull/<pr_number>/merge).
-+-concurrency:
-+-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-+-  cancel-in-progress: ${{ github.ref != 'main' }}
-+-
-+-jobs:
-+-  bazel-build:
-+-    strategy:
-+-      fail-fast: false
-+-    runs-on: ${{ github.repository == 'openxla/stablehlo' && 'linux-x86-n2-16' || 'ubuntu-22.04' }}
-+-    container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
-+-
-+-    steps:
-+-    # Checkout StableHLO with all commits in the chain
-+-    - name: Checkout StableHLO
-+-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-+-      with:
-+-        fetch-depth: $(( ${{ github.event_name == 'pull_request' && github.event.pull_request.commits || 0 }} + 1 ))
-+-        set-safe-directory: true
-+-
-+-    - name: Mark project as safe for Git
-+-      run: git config --global --add safe.directory '*'
-+-
-+-    - name: "Wait For Connection"
-+-      uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
-+-      with:
-+-        halt-dispatch-input: ${{ inputs.halt-for-connection }}
-+-
-+-    - name: Validate LLVM Commit
-+-      run: |
-+-        ./build_tools/github_actions/lint_llvm_commit.sh .
-+-
-+-    - name: Get LLVM Version
-+-      id: llvm-version
-+-      shell: bash
-+-      run: |
-+-        echo "version=$(cat ./build_tools/llvm_version.txt)" >> $GITHUB_OUTPUT
-+-
-+-    - name: Build and check docs
-+-      shell: bash
-+-      run: |
-+-        ./build_tools/github_actions/ci_build_docs.sh -c
-+-
-+-    - name: Build and Test StableHLO (Diff Only)
-+-      if: ${{ github.event_name == 'pull_request' }}
-+-      shell: bash
-+-      run: |
-+-        START_HASH=${{ github.event.pull_request.base.sha }}
-+-        END_HASH=${{ github.event.pull_request.head.sha }}
-+-        BAZEL_DIFF=/tmp/bazel-diff.jar
-+-        curl -Lo "$BAZEL_DIFF" https://github.com/Tinder/bazel-diff/releases/download/17.0.2/bazel-diff_deploy.jar
-+-        ./build_tools/github_actions/ci_build_bazel.sh "$BAZEL_DIFF" "$START_HASH" "$END_HASH"
-+-
-+-    - name: Build and Test StableHLO (All)
-+-      if: ${{ github.event_name != 'pull_request' }}
-+-      shell: bash
-+-      run: |
-+-        ./build_tools/github_actions/ci_build_bazel.sh
-+-
-+-    - name: "Wait For Connection - On Error"
-+-      if: failure()
-+-      uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
-+-      with:
-+-        halt-dispatch-input: ${{ inputs.halt-for-connection }}
-+-
-+diff --ruN a/stablehlo/.github/workflows/buildAndTestCMake.yml b/stablehlo/.github/workflows/buildAndTestCMake.yml
-+--- stablehlo/.github/workflows/buildAndTestCMake.yml
-++++ stablehlo/.github/workflows/buildAndTestCMake.yml
-+@@ -1,98 +0,0 @@
-+-# Copyright 2023 The StableHLO Authors.
-+-#
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#      https://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-name: CMake Build
-+-
-+-on:
-+-  pull_request:
-+-    branches: [ main ]
-+-  push:
-+-    branches: [ main ]
-+-  schedule:
-+-    # Run once every 6hr building against llvm-project@HEAD
-+-    - cron:  '0 */6 * * *'
-+-  workflow_dispatch:
-+-
-+-# Ensure that only a single job or workflow using the same
-+-# concurrency group will run at a time. This would cancel
-+-# any in-progress jobs in the same github workflow and github
-+-# ref (e.g. refs/heads/main or refs/pull/<pr_number>/merge).
-+-concurrency:
-+-  group: ${{ github.workflow }}-${{ github.ref }}
-+-  cancel-in-progress: true
-+-
-+-jobs:
-+-  cmake-build:
-+-    # Only run scheduled CI on main repo
-+-    if: (github.repository == 'openxla/stablehlo' || github.event_name != 'schedule')
-+-    name: "cmake-build${{ github.event_name == 'schedule' && ' (llvm-project@HEAD)' || ''}}"
-+-    env:
-+-      LLVM_PROJECT_DIR: "llvm-project"
-+-      LLVM_BUILD_DIR: "llvm-build"
-+-      STABLEHLO_BUILD_DIR: "stablehlo-build"
-+-      STABLEHLO_PYTHON_BUILD_DIR: "stablehlo-python-build"
-+-    strategy:
-+-      fail-fast: false
-+-    runs-on: ${{ github.repository == 'openxla/stablehlo' && 'linux-x86-n2-16' || 'ubuntu-22.04' }}
-+-    container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cmake:latest"
-+-
-+-    steps:
-+-    - name: Checkout StableHLO
-+-      uses: actions/checkout@v4
-+-
-+-    - name: Get LLVM Version
-+-      id: llvm-version
-+-      shell: bash
-+-      run: |
-+-        USE_LLVM_HEAD=${{ github.event_name == 'schedule' }}
-+-        if [[ $USE_LLVM_HEAD = true ]]; then
-+-          echo "version=main" >> $GITHUB_OUTPUT
-+-        else
-+-          echo "version=$(cat ./build_tools/llvm_version.txt)" >> $GITHUB_OUTPUT
-+-        fi;
-+-
-+-    - name: Setup workspace
-+-      uses: ./.github/actions/setup-build
-+-      with:
-+-        llvm-version: ${{ steps.llvm-version.outputs.version }}
-+-
-+-    - name: Configure and Build LLVM
-+-      shell: bash
-+-      run: |
-+-        ./build_tools/github_actions/ci_build_cmake_llvm.sh "$LLVM_PROJECT_DIR" "$LLVM_BUILD_DIR"
-+-      env:
-+-          CMAKE_BUILD_TYPE: Release
-+-          MLIR_ENABLE_BINDINGS_PYTHON: ON
-+-
-+-    - name: Build and Test StableHLO (with AddressSanitizer)
-+-      shell: bash
-+-      run: |
-+-        ./build_tools/github_actions/ci_build_cmake.sh "$LLVM_BUILD_DIR" "$STABLEHLO_BUILD_DIR"
-+-      env:
-+-          CMAKE_BUILD_TYPE: Release
-+-          STABLEHLO_ENABLE_BINDINGS_PYTHON: OFF
-+-          STABLEHLO_ENABLE_SANITIZER: address
-+-          # TODO: remove this once https://github.com/openxla/stablehlo/pull/2318 is fixed
-+-          ASAN_OPTIONS: allow_user_poisoning=false
-+-
-+-    - name: Build and Test StableHLO (with Python bindings)
-+-      shell: bash
-+-      run: |
-+-        python3 -m pip install tensorflow-cpu nanobind==2.9
-+-        python3 -m pip install -r "$LLVM_PROJECT_DIR/mlir/python/requirements.txt"
-+-        ./build_tools/github_actions/ci_build_cmake.sh "$LLVM_BUILD_DIR" "$STABLEHLO_BUILD_DIR"
-+-      env:
-+-          CMAKE_BUILD_TYPE: Release
-+-          STABLEHLO_ENABLE_BINDINGS_PYTHON: ON
-+-          STABLEHLO_ENABLE_PYTHON_TF_TESTS: ON
-+diff --ruN a/stablehlo/.github/workflows/execute_tutorials.yml b/stablehlo/.github/workflows/execute_tutorials.yml
-+--- stablehlo/.github/workflows/execute_tutorials.yml
-++++ stablehlo/.github/workflows/execute_tutorials.yml
-+@@ -1,46 +0,0 @@
-+-# Copyright 2024 The StableHLO Authors. All Rights Reserved.
-+-
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-
-+-#      https://www.apache.org/licenses/LICENSE-2.0
-+-
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-name: Execute Tutorial Notebooks
-+-
-+-on:
-+-  push:
-+-    paths:
-+-      - 'docs/tutorials/**.ipynb'
-+-      - .github/workflows/execute_tutorials.yml
-+-  schedule:
-+-    # Run once a day
-+-    - cron:  '0 20 * * *'
-+-  workflow_dispatch:
-+-
-+-jobs:
-+-  test-notebooks:
-+-    runs-on: ubuntu-latest
-+-
-+-    steps:
-+-      - name: Checkout repository
-+-        uses: actions/checkout@v4
-+-
-+-      - name: Set up Python and install dependencies
-+-        uses: actions/setup-python@v5
-+-        with:
-+-          python-version: '3.11'
-+-      - run:  |
-+-          pip install --upgrade pip
-+-          pip install ipython ipykernel nbclient
-+-
-+-      - name: Execute tutorial notebooks
-+-        run: |
-+-          jupyter execute docs/tutorials/*.ipynb
-+-        shell: bash
-+diff --ruN a/stablehlo/.github/workflows/lint.yml b/stablehlo/.github/workflows/lint.yml
-+--- stablehlo/.github/workflows/lint.yml
-++++ stablehlo/.github/workflows/lint.yml
-+@@ -1,111 +0,0 @@
-+-# Copyright 2023 The StableHLO Authors.
-+-#
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#      https://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-name: Lint
-+-
-+-on:
-+-  pull_request:
-+-    branches: [ main ]
-+-  push:
-+-    branches: [ main ]
-+-  schedule:
-+-    # Run once a day
-+-    - cron:  '0 12 * * *'
-+-  workflow_dispatch:
-+-
-+-env:
-+-  # Have `go install` place binaries in $PATH
-+-  GOBIN: "/usr/local/bin"
-+-
-+-jobs:
-+-  clang-format:
-+-    # This job can only be run on pull_request since GITHUB_BASE_REF is only set on PR.
-+-    if: "github.event_name == 'pull_request'"
-+-    runs-on: ubuntu-22.04
-+-    steps:
-+-      - name: Checking out repository
-+-        uses: actions/checkout@v4
-+-
-+-      - name: Run clang-format
-+-        run: |
-+-          git fetch --no-tags --prune --depth=1 origin "${GITHUB_BASE_REF?}:${GITHUB_BASE_REF?}"
-+-          ./build_tools/github_actions/lint_clang_format.sh -b "${GITHUB_BASE_REF}"
-+-
-+-  whitespace-checks:
-+-    if: "github.event_name == 'pull_request'"
-+-    runs-on: ubuntu-22.04
-+-    steps:
-+-      - name: Checking out repository
-+-        uses: actions/checkout@v4
-+-
-+-      - name: Run Whitespace Checks
-+-        run: |
-+-          git fetch --no-tags --prune --depth=1 origin "${GITHUB_BASE_REF?}:${GITHUB_BASE_REF?}"
-+-          ./build_tools/github_actions/lint_whitespace_checks.sh
-+-
-+-  version-checks:
-+-    if: "github.event_name == 'pull_request'"
-+-    runs-on: ubuntu-22.04
-+-    steps:
-+-      - name: Checking out repository
-+-        uses: actions/checkout@v4
-+-
-+-      - name: Run Version Checks
-+-        run: |
-+-          ./build_tools/github_actions/lint_version.sh
-+-
-+-  buildifier-check:
-+-    if: "github.event_name == 'pull_request'"
-+-    runs-on: ubuntu-22.04
-+-    defaults:
-+-      run:
-+-        shell: bash
-+-    steps:
-+-      - name: Checking out repository
-+-        uses: actions/checkout@v4
-+-
-+-      - name: Install buildifier
-+-        run: go install github.com/bazelbuild/buildtools/buildifier@433ea85 # 6.4.0
-+-
-+-      - name: Run buildifier checks
-+-        run: ./build_tools/github_actions/lint_buildifier.sh
-+-
-+-  license-check:
-+-    if: "github.event_name == 'pull_request'"
-+-    runs-on: ubuntu-22.04
-+-    defaults:
-+-      run:
-+-        shell: bash
-+-    steps:
-+-      - name: Checking out repository
-+-        uses: actions/checkout@v4
-+-
-+-      - name: Run license checks
-+-        run: |
-+-          git fetch --no-tags --prune --depth=1 origin "${GITHUB_BASE_REF?}:${GITHUB_BASE_REF?}"
-+-          ./build_tools/github_actions/lint_check_license.sh -b "${GITHUB_BASE_REF}"
-+-
-+-  shell-script-check:
-+-    if: "github.event_name == 'pull_request'"
-+-    runs-on: ubuntu-22.04
-+-    defaults:
-+-      run:
-+-        shell: bash
-+-    steps:
-+-      - name: Checking out repository
-+-        uses: actions/checkout@v4
-+-
-+-      # shellcheck is installed by default on Ubuntu runners: https://github.com/actions/runner-images/blob/37a171e44de1f134793d7f0cbff137ca481942ab/images/ubuntu/Ubuntu2204-Readme.md
-+-      - name: Run shellcheck
-+-        run: ./build_tools/github_actions/lint_shellcheck.sh
-+diff --ruN a/stablehlo/.github/workflows/markdown_lint.yml b/stablehlo/.github/workflows/markdown_lint.yml
-+--- stablehlo/.github/workflows/markdown_lint.yml
-++++ stablehlo/.github/workflows/markdown_lint.yml
-+@@ -1,35 +0,0 @@
-+-# Copyright 2023 The StableHLO Authors.
-+-#
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#      https://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-name: Markdown Lint
-+-
-+-on:
-+-  pull_request:
-+-    branches: [ main ]
-+-  push:
-+-    branches: [ main ]
-+-  schedule:
-+-    # Run once a day
-+-    - cron:  '0 12 * * *'
-+-  workflow_dispatch:
-+-
-+-jobs:
-+-  markdown-lint:
-+-    runs-on: ubuntu-22.04
-+-    steps:
-+-    - name: Checking out repository
-+-      uses: actions/checkout@v4
-+-    - name: Running markdownlint
-+-      run: |
-+-        ./build_tools/github_actions/lint_markdown.sh --ignore "./docs/generated/**/*.md" "./**/*.md"
-+diff --ruN a/stablehlo/.github/workflows/publishWheelRelease.yml b/stablehlo/.github/workflows/publishWheelRelease.yml
-+--- stablehlo/.github/workflows/publishWheelRelease.yml
-++++ stablehlo/.github/workflows/publishWheelRelease.yml
-+@@ -1,136 +0,0 @@
-+-# Copyright 2024 The StableHLO Authors.
-+-#
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#      https://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-name: Publish Python Wheel Release
-+-
-+-on:
-+-  workflow_dispatch:
-+-  schedule:
-+-    # Runs at 6:00 AM UTC, which is 10:00 PM previous day PST (UTC-8)
-+-    - cron: '0 6 * * *'
-+-
-+-# Ensure that only a single job or workflow using the same
-+-# concurrency group will run at a time. This would cancel
-+-# any in-progress jobs in the same github workflow and github
-+-# ref (e.g. refs/heads/main or refs/pull/<pr_number>/merge).
-+-concurrency:
-+-  group: ${{ github.workflow }}-${{ github.ref }}
-+-  cancel-in-progress: true
-+-
-+-jobs:
-+-  # TODO(fzakaria): Consider running this job only if a new commit for the day has been done
-+-  cmake-build-wheel:
-+-    # Only run scheduled CI on main repo
-+-    if: (github.repository == 'openxla/stablehlo' || github.event_name != 'schedule')
-+-    name: "cmake-build ${{ github.event_name == 'schedule' && '(llvm-project@HEAD)' || ''}}"
-+-    env:
-+-      LLVM_PROJECT_DIR: "llvm-project"
-+-      LLVM_BUILD_DIR: "llvm-build"
-+-      # The setup.py script expects the StableHLO build to be in 'build'
-+-      STABLEHLO_BUILD_DIR: "build"
-+-    strategy:
-+-      fail-fast: false
-+-      matrix:
-+-        python-version: [ "3.10", "3.11", "3.12" ]
-+-    runs-on: ${{ github.repository == 'openxla/stablehlo' && 'linux-x86-n2-16' ||  'ubuntu-22.04'  }}
-+-    container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cmake:latest"
-+-
-+-    steps:
-+-    - name: Checkout StableHLO
-+-      uses: actions/checkout@v4
-+-      # TODO(fzakaria): We need all the commits and the tags for the
-+-      # git describe` command to work to find the correct version.
-+-      # This can be removed if the version can be determmined in another way.
-+-      with:
-+-        fetch-depth: 0
-+-    - name: Get LLVM Version
-+-      id: llvm-version
-+-      shell: bash
-+-      run: |
-+-        echo "version=$(cat ${{ github.workspace }}/build_tools/llvm_version.txt)" >> $GITHUB_OUTPUT
-+-
-+-    - name: Setup workspace
-+-      uses: ./.github/actions/setup-build
-+-      with:
-+-        llvm-version: ${{ steps.llvm-version.outputs.version }}
-+-        python-version: ${{ matrix.python-version }}
-+-
-+-    # The actual tool need to execute the python build
-+-    # TODO(fzakaria): Consider using cibuildwheel to build multiple wheels at
-+-    # once and mark them as manylinux compatible.
-+-    - name: Install build dependencies
-+-      shell: bash
-+-      run: pip install build
-+-
-+-    - name: Configure and Build LLVM
-+-      shell: bash
-+-      run: |
-+-        ./build_tools/github_actions/ci_build_cmake_llvm.sh "$LLVM_PROJECT_DIR" "$LLVM_BUILD_DIR"
-+-      env:
-+-          CMAKE_BUILD_TYPE: Release
-+-          MLIR_ENABLE_BINDINGS_PYTHON: ON
-+-
-+-    - name: Build and Test StableHLO with Python
-+-      shell: bash
-+-      run: |
-+-        pip install tensorflow-cpu nanobind==2.4
-+-        pip install -r "$LLVM_PROJECT_DIR/mlir/python/requirements.txt"
-+-        ./build_tools/github_actions/ci_build_cmake.sh "$LLVM_BUILD_DIR" "$STABLEHLO_BUILD_DIR"
-+-      env:
-+-          CMAKE_BUILD_TYPE: Release
-+-          STABLEHLO_ENABLE_BINDINGS_PYTHON: ON
-+-          STABLEHLO_ENABLE_PYTHON_TF_TESTS: ON
-+-
-+-    - name: Build and Test Python Wheel
-+-      shell: bash
-+-      run: |
-+-        ./build_tools/github_actions/ci_build_python_wheel.sh "$GITHUB_WORKSPACE/${{ github.sha }}"
-+-
-+-    - name: Upload an artifact
-+-      uses: actions/upload-artifact@v4
-+-      with:
-+-        if-no-files-found: error
-+-        name: build_artifact-${{ matrix.python-version }}
-+-        path: ${{ github.sha }}
-+-
-+-  upload-tarballs:
-+-    runs-on: 'ubuntu-24.04'
-+-    needs: cmake-build-wheel
-+-    strategy:
-+-      fail-fast: false
-+-      matrix:
-+-        python-version: [ "3.10", "3.11", "3.12" ]
-+-
-+-    steps:
-+-      - name: Checkout
-+-        uses: actions/checkout@v4
-+-
-+-      - name: Download artifacts
-+-        uses: actions/download-artifact@v4
-+-        with:
-+-          name: build_artifact-${{ matrix.python-version }}
-+-          path: ${{ github.sha }}
-+-
-+-      - name: Release current commit
-+-        uses: ncipollo/release-action@v1.13.0
-+-        with:
-+-          artifacts: "${{ github.sha }}/*.whl"
-+-          token: "${{ secrets.PUBLISH_ACCESS_TOKEN }}"
-+-          # git describe in setup.py explicitly filters out this tag
-+-          tag: "dev-wheels"
-+-          name: "dev-wheels"
-+-          removeArtifacts: false
-+-          allowUpdates: true
-+-          replacesArtifacts: true
-+-          makeLatest: false
-+diff --ruN a/stablehlo/.gitignore b/stablehlo/.gitignore
-+--- stablehlo/.gitignore
-++++ stablehlo/.gitignore
-+@@ -1,14 +0,0 @@
-+-bazel-bin
-+-bazel-out
-+-bazel-stablehlo
-+-bazel-testlogs
-+-build
-+-cmake-build
-+-llvm-project
-+-llvm-build
-+-.vscode
-+-.cache
-+-.idea/
-+-**/__pycache__
-+-*.whl
-+-**/*.egg-info/
- diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
- --- stablehlo/BUILD.bazel
- +++ stablehlo/BUILD.bazel
-@@ -7002,3 +7751,369 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
-    patterns->add<ReshapeOp_RemoveNoop, GetTupleElementOp_UnpackTuple>(context);
-    patterns->add<TupleIsRepacking, WhileOpImplicitCapture>(context, options);
+@@ -881,9 +881,9 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+ +Performs element-wise base-2 exponential operation on `operand` tensor and
+ +produces a `result` tensor. Depending on the element type, does the following:
+ +
+-+*   For floats: `exp2` from IEEE-754.
+-+*   For complex numbers: complex base-2 exponential.
+-+*   For quantized types: `dequantize_op_quantize(exp2, operand, type(result))`.
+++* For floats: `exp2` from IEEE-754.
+++* For complex numbers: complex base-2 exponential.
+++* For quantized types: `dequantize_op_quantize(exp2, operand, type(result))`.
+ +
+ +#### Inputs
+ +
+@@ -907,7 +907,7 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+ +
+ +#### Constraints
+ +
+-+*   (C1) `baseline_type(operand) = baseline_type(result)`.
+++* (C1) `baseline_type(operand) = baseline_type(result)`.
+ +
+ +#### Examples
+ +
+@@ -947,9 +947,9 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+ +Performs element-wise base-2 logarithm operation on `operand` tensor and
+ +produces a `result` tensor. Depending on the element type, does the following:
+ +
+-+*   For floats: `log2` from IEEE-754.
+-+*   For complex numbers: complex base-2 logarithm.
+-+*   For quantized types: `dequantize_op_quantize(log2, operand, type(result))`.
+++* For floats: `log2` from IEEE-754.
+++* For complex numbers: complex base-2 logarithm.
+++* For quantized types: `dequantize_op_quantize(log2, operand, type(result))`.
+ +
+ +#### Inputs
+ +
+@@ -973,7 +973,7 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+ +
+ +#### Constraints
+ +
+-+*   (C1) `baseline_type(operand) = baseline_type(result)`.
+++* (C1) `baseline_type(operand) = baseline_type(result)`.
+ +
+ +#### Examples
+ +
+@@ -1018,22 +1018,24 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+  * (C1) `element_type(operand) = element_type(source)`.
+  * (C2) `shape(source) = num_windows` where:
+    * `padded_operand_shape = padding[:, 0] + shape(operand) + padding[:, 1]`.
+-@@ -7501,6 +7597,7 @@
++@@ -7501,7 +7597,7 @@
+  syntax ([ISO/IEC 14977:1996](https://www.iso.org/standard/26153.html),
+  [Wikipedia](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form)),
+  with two modifications: 1) rules are defined using `::=` rather than `=`,
+-+
+- 2) concatenation is expressed using juxtaposition rather than `,`.
++-2) concatenation is expressed using juxtaposition rather than `,`.
+++2\) concatenation is expressed using juxtaposition rather than `,`.
+  
+  For describing semantics (i.e. within "Types", "Constants" and "Ops" sections),
+-@@ -7571,6 +7668,7 @@
++ we are using formulas which are based on Python syntax extended with support
++@@ -7571,7 +7667,7 @@
+  ### Names
+  
+  In formulas, lexical scope includes: 1) global functions, 2) member definitions,
+-+
+- 3) local definitions. The list of global functions is provided below. The list
++-3) local definitions. The list of global functions is provided below. The list
+++3\) local definitions. The list of global functions is provided below. The list
+  of element definitions depends on the program element that the notation is
+  applied to:
++ 
+ diff --ruN a/stablehlo/rfcs/20260821-low-precision-complex.md b/stablehlo/rfcs/20260821-low-precision-complex.md
+ --- stablehlo/rfcs/20260821-low-precision-complex.md
+ +++ stablehlo/rfcs/20260821-low-precision-complex.md
+@@ -1657,16 +1659,16 @@ diff --ruN a/stablehlo/rfcs/20260907-exp2-log2.md b/stablehlo/rfcs/20260907-exp2
+ +
+ +Currently, StableHLO lacks native `exp2` and `log2` operations:
+ +
+-+*   Frameworks expose `exp2` and `log2` directly: JAX provides
+-+    [`jnp.exp2`][jax1] / `lax.exp2` and [`jnp.log2`][jax2] / `lax.log2`, and
+-+    PyTorch provides [`torch.exp2`][torch1] and [`torch.log2`][torch2].
+-+*   Without first-class ops in StableHLO, frameworks must decompose `exp2(x)`
+-+    into `exponential(x * ln(2))` and `log2(x)` into `log(x) / ln(2)`.
+-+*   Decomposing `exp2` and `log2` into natural `exponential` and `log` scaled by
+-+    `ln(2)` degrades numerical accuracy (introducing rounding error on integer
+-+    powers of two where `exp2(n)` and `log2(2^n)` should evaluate exactly) and
+-+    prevents backends from emitting single-instruction base-2 hardware
+-+    operations without fragile algebraic pattern-matching.
+++* Frameworks expose `exp2` and `log2` directly: JAX provides [`jnp.exp2`][jax1]
+++  / `lax.exp2` and [`jnp.log2`][jax2] / `lax.log2`, and PyTorch provides
+++  [`torch.exp2`][torch1] and [`torch.log2`][torch2].
+++* Without first-class ops in StableHLO, frameworks must decompose `exp2(x)` into
+++  `exponential(x * ln(2))` and `log2(x)` into `log(x) / ln(2)`.
+++* Decomposing `exp2` and `log2` into natural `exponential` and `log` scaled by
+++  `ln(2)` degrades numerical accuracy (introducing rounding error on integer
+++  powers of two where `exp2(n)` and `log2(2^n)` should evaluate exactly) and
+++  prevents backends from emitting single-instruction base-2 hardware operations
+++  without fragile algebraic pattern-matching.
+ +
+ +Following the precedent of `TanOp` ([20240312-tanop.md](20240312-tanop.md)) and
+ +the transcendental accuracy specification
+@@ -1681,12 +1683,12 @@ diff --ruN a/stablehlo/rfcs/20260907-exp2-log2.md b/stablehlo/rfcs/20260907-exp2
+ +
+ +## Exp2Op, Log2Op, and Compatibility
+ +
+-+*   **VHLO Serialization**: StableHLO version `1.21.0` introduces
+-+    `VHLO_Exp2OpV1` (`exp2_v1`) and `VHLO_Log2OpV1` (`log2_v1`).
+-+*   **Forward Compatibility & Decomposition**: For runtimes targeting StableHLO
+-+    versions prior to `1.21.0`, compatibility expansion lowers `exp2(x)` to
+-+    `exponential(multiply(x, constant(ln(2))))` and `log2(x)` to `divide(log(x),
+-+    constant(ln(2)))`.
+++* **VHLO Serialization**: StableHLO version `1.21.0` introduces `VHLO_Exp2OpV1`
+++  (`exp2_v1`) and `VHLO_Log2OpV1` (`log2_v1`).
+++* **Forward Compatibility & Decomposition**: For runtimes targeting StableHLO
+++  versions prior to `1.21.0`, compatibility expansion lowers `exp2(x)` to
+++  `exponential(multiply(x, constant(ln(2))))` and `log2(x)` to
+++  `divide(log(x), constant(ln(2)))`.
+ +
+ +[jax1]: https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.exp2.html
+ +[jax2]: https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.log2.html
+@@ -3698,15 +3700,30 @@ diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stable
+  
+  #include "llvm/Support/Casting.h"
+  #include "llvm/Support/Errc.h"
+-@@ -175,36 +176,39 @@
++@@ -174,37 +175,52 @@
++     ArrayRef<InterpreterValue> inputs, std::queue<StringAttr>& infeed,
+      SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
+      InterpreterFallback* fallback) {
+-   llvm::DefaultThreadPool threadPool;
++-  llvm::DefaultThreadPool threadPool;
+ -  SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
+-+  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
+- 
++-
+    uint32_t numReplicas = programs.size();
+    uint32_t numPartitions = programs[0].size();
+++
+++  // StableHLO collectives are blocking barriers: a process inside rendezvous
+++  // waits for every other process in its group to arrive, so all processes
+++  // must run concurrently. Size the pool from the process count rather than
+++  // the default (hardware_concurrency(), i.e. the host thread count). With a
+++  // default-sized pool, a program with more processes than the host has
+++  // hardware threads leaves the surplus tasks queued and never started while
+++  // the started tasks block forever waiting for them - a deadlock that only
+++  // surfaces as the rendezvous timeout. hardware_concurrency(N) leaves
+++  // ThreadPoolStrategy::Limit false, so the pool gets N threads uncapped by the
+++  // host.
+++  llvm::DefaultThreadPool threadPool(
+++      llvm::hardware_concurrency(numReplicas * numPartitions));
+++  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
+++
+    ProcessGrid processGrid(numReplicas, numPartitions, infeed);
+  
+ +  SmallVector<SmallVector<InterpreterValue>> taskOutputs(numReplicas *
+@@ -4443,6 +4460,159 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
+  
+    // CHECK-LABEL: @all_reduce_sdy_mesh_max
+    func.func @all_reduce_sdy_mesh_max(%arg0: tensor<4xf32>) -> tensor<4xf32> {
++diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
++--- stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
+++++ stablehlo/stablehlo/tests/transforms/stablehlo_canonicalize_dynamism.mlir
++@@ -168,6 +168,18 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_broadcast_in_dim_discardable_attrs
+++func.func @dynamic_broadcast_in_dim_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<3x4xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_broadcast_in_dim
+++  //      CHECK: stablehlo.broadcast_in_dim %arg0, dims = [1]
+++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
+++  %0 = stablehlo.constant dense<[3, 4]> : tensor<2xi64>
+++  %1 = stablehlo.dynamic_broadcast_in_dim %arg0, %0, dims = [1] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<2xi64>) -> tensor<3x4xf32>
+++  return %1 : tensor<3x4xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_broadcast_in_dim_inapplicable_dynamic_operand_type
++ func.func @dynamic_broadcast_in_dim_inapplicable_dynamic_operand_type(%arg0: tensor<?xf32>) -> tensor<3x4xf32> {
++   // CHECK: stablehlo.dynamic_broadcast_in_dim
++@@ -225,6 +237,26 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_conv_discardable_attrs
+++func.func @dynamic_conv_discardable_attrs(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_conv
+++  //      CHECK: stablehlo.convolution(%arg0, %arg1)
+++  // CHECK-SAME:   mhlo.frontend_attributes = {MUST_FUSE = "0"}
+++  %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
+++  %1 = "stablehlo.dynamic_conv"(%arg0, %arg1, %0) {
+++    dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
+++    window_strides = array<i64: 1, 1>,
+++    lhs_dilation = array<i64: 1, 1>,
+++    rhs_dilation = array<i64: 1, 1>,
+++    feature_group_count = 1 : i64,
+++    batch_group_count = 1 : i64,
+++    mhlo.frontend_attributes = {MUST_FUSE = "0"}
+++  } : (tensor<100x26x26x32xf32>, tensor<3x3x1x32xf32>, tensor<2x2xi32>) -> tensor<100x28x28x1xf32>
+++  return %1 : tensor<100x28x28x1xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_conv_success_dynamic_result_type
++ func.func @dynamic_conv_success_dynamic_result_type(%arg0: tensor<100x26x26x32xf32>, %arg1: tensor<3x3x1x32xf32>) -> tensor<?x28x28x1xf32> {
++   //  CHECK-NOT: stablehlo.dynamic_conv
++@@ -295,6 +327,25 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: @dynamic_gather_discardable_attrs
+++func.func @dynamic_gather_discardable_attrs(%arg0 : tensor<2x4x9xi32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
+++  //  CHECK-NOT: stablehlo.dynamic_gather
+++  //      CHECK: "stablehlo.gather"(%arg0, %arg1)
+++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
+++  %0 = stablehlo.constant dense<[1, 1, 8]> : tensor<3xi32>
+++  %1 = "stablehlo.dynamic_gather"(%arg0, %arg1, %0) <{
+++    dimension_numbers = #stablehlo.gather<
+++      collapsed_slice_dims = [0, 1],
+++      index_vector_dim = 2,
+++      offset_dims = [2],
+++      start_index_map = [0, 1]
+++    >
+++  }> {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x4x9xi32>, tensor<1x5x2xi32>, tensor<3xi32>) -> tensor<1x5x8xi32>
+++  return %1 : tensor<1x5x8xi32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: @dynamic_gather_success_dynamic_result_type
++ func.func @dynamic_gather_success_dynamic_result_type(%arg0 : tensor<2x4x9xi32>, %arg1 : tensor<1x5x2xi32>) -> tensor<1x5x?xi32> {
++   //  CHECK-NOT: stablehlo.dynamic_gather
++@@ -348,6 +399,18 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_iota_discardable_attrs
+++func.func @dynamic_iota_discardable_attrs() -> tensor<4xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_iota
+++  //      CHECK: stablehlo.iota
+++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
+++  %0 = stablehlo.constant dense<4> : tensor<1xi64>
+++  %1 = stablehlo.dynamic_iota %0, dim = 0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<1xi64>) -> tensor<4xf32>
+++  return %1 : tensor<4xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_iota_inapplicable_dynamic_output_shape
++ func.func @dynamic_iota_inapplicable_dynamic_output_shape(%arg0: tensor<1xi64>) -> tensor<4xf32> {
++   // CHECK: stablehlo.dynamic_iota
++@@ -380,6 +443,20 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_pad_discardable_attrs
+++func.func @dynamic_pad_discardable_attrs(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<11xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_pad
+++  //      CHECK: stablehlo.pad
+++  // CHECK-SAME:   {mhlo.frontend_attributes = {MUST_FUSE = "0"}}
+++  %0 = stablehlo.constant dense<0> : tensor<1xi64>
+++  %1 = stablehlo.constant dense<1> : tensor<1xi64>
+++  %2 = stablehlo.constant dense<2> : tensor<1xi64>
+++  %3 = stablehlo.dynamic_pad %arg0, %arg1, %0, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<f32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<11xf32>
+++  return %3 : tensor<11xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_pad_success_dynamic_result_type
++ func.func @dynamic_pad_success_dynamic_result_type(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
++   // CHECK-NOT: stablehlo.dynamic_pad
++@@ -437,6 +514,17 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: func @dynamic_reshape_discardable_attrs
+++func.func @dynamic_reshape_discardable_attrs(%arg0: tensor<4xf32>) -> tensor<1x4xf32> {
+++  //  CHECK-NOT: stablehlo.dynamic_reshape
+++  //      CHECK: stablehlo.reshape %arg0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>) -> tensor<1x4xf32>
+++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
+++  %1 = stablehlo.dynamic_reshape %arg0, %0 {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xf32>, tensor<2xi64>) -> tensor<1x4xf32>
+++  return %1 : tensor<1x4xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: func @dynamic_reshape_inapplicable_dynamic_output_shape
++ func.func @dynamic_reshape_inapplicable_dynamic_output_shape(%arg0: tensor<4xf32>, %arg1: tensor<2xi64>) -> tensor<1x4xf32> {
++   // CHECK: stablehlo.dynamic_reshape
++diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
++--- stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
+++++ stablehlo/stablehlo/tests/transforms/stablehlo_legalize_deprecated_ops.mlir
++@@ -10,6 +10,16 @@
++ 
++ // -----
++ 
+++// CHECK-LABEL: op_dot_discardable_attrs
+++func.func @op_dot_discardable_attrs(%arg0: tensor<2x3xf32>,
+++                 %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
+++  // CHECK: stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
+++  %0 = "stablehlo.dot"(%arg0, %arg1) {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
+++  func.return %0 : tensor<2x?xf32>
+++}
+++
+++// -----
+++
++ // CHECK-LABEL: op_unary_einsum
++ func.func @op_unary_einsum(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
++   // CHECK:      %cst = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+ --- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+ +++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+@@ -8393,6 +8563,99 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
+      return success();
+    }
+  };
++@@ -119,8 +120,11 @@
++                                          "expected static output_dimensions");
++     if (!op.getType().hasStaticShape())
++       return rewriter.notifyMatchFailure(op, "expected static result type");
++-    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
++-        op, op.getType(), op.getOperand(), op.getBroadcastDimensionsAttr());
+++    auto broadcastInDimOp = BroadcastInDimOp::create(
+++        rewriter, op.getLoc(), op.getType(), op.getOperand(),
+++        op.getBroadcastDimensionsAttr());
+++    broadcastInDimOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, broadcastInDimOp);
++     return success();
++   }
++ };
++@@ -139,12 +143,14 @@
++         RankedTensorType::get({static_cast<int64_t>(padding.size()) / 2, 2},
++                               rewriter.getI64Type()),
++         padding);
++-    rewriter.replaceOpWithNewOp<ConvolutionOp>(
++-        op, op.getType(), op.getLhs(), op.getRhs(), op.getWindowStridesAttr(),
++-        paddingAttr, op.getLhsDilationAttr(), op.getRhsDilationAttr(),
++-        op.getWindowReversalAttr(), op.getDimensionNumbers(),
++-        op.getFeatureGroupCount(), op.getBatchGroupCount(),
++-        op.getPrecisionConfigAttr());
+++    auto convolutionOp = ConvolutionOp::create(
+++        rewriter, op.getLoc(), op.getType(), op.getLhs(), op.getRhs(),
+++        op.getWindowStridesAttr(), paddingAttr, op.getLhsDilationAttr(),
+++        op.getRhsDilationAttr(), op.getWindowReversalAttr(),
+++        op.getDimensionNumbers(), op.getFeatureGroupCount(),
+++        op.getBatchGroupCount(), op.getPrecisionConfigAttr());
+++    convolutionOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, convolutionOp);
++     return success();
++   }
++ };
++@@ -159,10 +165,13 @@
++     SmallVector<int64_t> sliceSizes;
++     if (!succeeded(hlo::matchInts(op.getSliceSizes(), sliceSizes)))
++       return rewriter.notifyMatchFailure(op, "expected static slice_sizes");
++-    rewriter.replaceOpWithNewOp<GatherOp>(
++-        op, op.getType(), op.getOperand(), op.getStartIndices(),
++-        op.getDimensionNumbersAttr(), rewriter.getDenseI64ArrayAttr(sliceSizes),
++-        op.getIndicesAreSortedAttr());
+++    auto gatherOp =
+++        GatherOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand(),
+++                         op.getStartIndices(), op.getDimensionNumbersAttr(),
+++                         rewriter.getDenseI64ArrayAttr(sliceSizes),
+++                         op.getIndicesAreSortedAttr());
+++    gatherOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, gatherOp);
++     return success();
++   }
++ };
++@@ -179,8 +188,10 @@
++       return rewriter.notifyMatchFailure(op, "expected static output_shape");
++     if (!op.getType().hasStaticShape())
++       return rewriter.notifyMatchFailure(op, "expected static result type");
++-    rewriter.replaceOpWithNewOp<IotaOp>(op, op.getType(),
++-                                        op.getIotaDimension());
+++    auto iotaOp = IotaOp::create(rewriter, op.getLoc(), op.getType(),
+++                                 op.getIotaDimension());
+++    iotaOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, iotaOp);
++     return success();
++   }
++ };
++@@ -198,9 +209,11 @@
++       return rewriter.notifyMatchFailure(op, "expected static high");
++     if (!succeeded(hlo::matchInts(op.getInteriorPadding(), interiorPadding)))
++       return rewriter.notifyMatchFailure(op, "expected static interior");
++-    rewriter.replaceOpWithNewOp<PadOp>(op, op.getType(), op.getOperand(),
++-                                       op.getPaddingValue(), edgePaddingLow,
++-                                       edgePaddingHigh, interiorPadding);
+++    auto padOp = PadOp::create(
+++        rewriter, op.getLoc(), op.getType(), op.getOperand(),
+++        op.getPaddingValue(), edgePaddingLow, edgePaddingHigh, interiorPadding);
+++    padOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, padOp);
++     return success();
++   }
++ };
++@@ -216,7 +229,10 @@
++       return rewriter.notifyMatchFailure(op, "expected static output_shape");
++     if (!op.getType().hasStaticShape())
++       return rewriter.notifyMatchFailure(op, "expected static result type");
++-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
+++    auto reshapeOp =
+++        ReshapeOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand());
+++    reshapeOp->setDiscardableAttrs(op->getDiscardableAttrDictionary());
+++    rewriter.replaceOp(op, reshapeOp);
++     return success();
++   }
++ };
+ diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
+ --- stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
+ +++ stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
+@@ -8433,6 +8696,42 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/s
+    populateWithGenerated(*patterns);
   }
-+diff --ruN a/stablehlo/third_party/BUILD b/stablehlo/third_party/BUILD
-+--- stablehlo/third_party/BUILD
-++++ stablehlo/third_party/BUILD
-+@@ -1 +0,0 @@
-+-licenses(["notice"])  # Apache 2.0
-+\ No newline at end of file
-+diff --ruN a/stablehlo/third_party/repo.bzl b/stablehlo/third_party/repo.bzl
-+--- stablehlo/third_party/repo.bzl
-++++ stablehlo/third_party/repo.bzl
-+@@ -1,159 +0,0 @@
-+-# Copyright 2017 The TensorFlow Authors. All rights reserved.
-+-#
-+-# Licensed under the Apache License, Version 2.0 (the "License");
-+-# you may not use this file except in compliance with the License.
-+-# You may obtain a copy of the License at
-+-#
-+-#    http://www.apache.org/licenses/LICENSE-2.0
-+-#
-+-# Unless required by applicable law or agreed to in writing, software
-+-# distributed under the License is distributed on an "AS IS" BASIS,
-+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+-# See the License for the specific language governing permissions and
-+-# limitations under the License.
-+-
-+-"""Utilities for defining TensorFlow Bazel dependencies."""
-+-
-+-def tf_mirror_urls(url):
-+-    """A helper for generating TF-mirror versions of URLs.
-+-
-+-    Given a URL, it returns a list of the TF-mirror cache version of that URL
-+-    and the original URL, suitable for use in `urls` field of `tf_http_archive`.
-+-    """
-+-    if not url.startswith("https://"):
-+-        return [url]
-+-    return [
-+-        "https://storage.googleapis.com/mirror.tensorflow.org/%s" % url[8:],
-+-        url,
-+-    ]
-+-
-+-def _get_env_var(ctx, name):
-+-    if name in ctx.os.environ:
-+-        return ctx.os.environ[name]
-+-    else:
-+-        return None
-+-
-+-# Checks if we should use the system lib instead of the bundled one
-+-def _use_system_lib(ctx, name):
-+-    syslibenv = _get_env_var(ctx, "TF_SYSTEM_LIBS")
-+-    if not syslibenv:
-+-        return False
-+-    return name in [n.strip() for n in syslibenv.split(",")]
-+-
-+-def _get_link_dict(ctx, link_files, build_file):
-+-    link_dict = {ctx.path(v): ctx.path(Label(k)) for k, v in link_files.items()}
-+-    if build_file:
-+-        # Use BUILD.bazel because it takes precedence over BUILD.
-+-        link_dict[ctx.path("BUILD.bazel")] = ctx.path(Label(build_file))
-+-    return link_dict
-+-
-+-def _tf_http_archive_impl(ctx):
-+-    # Construct all paths early on to prevent rule restart. We want the
-+-    # attributes to be strings instead of labels because they refer to files
-+-    # in the TensorFlow repository, not files in repos depending on TensorFlow.
-+-    # See also https://github.com/bazelbuild/bazel/issues/10515.
-+-    link_dict = _get_link_dict(ctx, ctx.attr.link_files, ctx.attr.build_file)
-+-
-+-    # For some reason, we need to "resolve" labels once before the
-+-    # download_and_extract otherwise it'll invalidate and re-download the
-+-    # archive each time.
-+-    # https://github.com/bazelbuild/bazel/issues/10515
-+-    patch_files = ctx.attr.patch_file
-+-    for patch_file in patch_files:
-+-        if patch_file:
-+-            ctx.path(Label(patch_file))
-+-
-+-    if _use_system_lib(ctx, ctx.attr.name):
-+-        link_dict.update(_get_link_dict(
-+-            ctx = ctx,
-+-            link_files = ctx.attr.system_link_files,
-+-            build_file = ctx.attr.system_build_file,
-+-        ))
-+-    else:
-+-        ctx.download_and_extract(
-+-            url = ctx.attr.urls,
-+-            sha256 = ctx.attr.sha256,
-+-            type = ctx.attr.type,
-+-            stripPrefix = ctx.attr.strip_prefix,
-+-        )
-+-        if hasattr(ctx.attr, "patch_cmds") and ctx.attr.patch_cmds:
-+-            for cmd in ctx.attr.patch_cmds:
-+-                res = ctx.execute(["bash", "-c", cmd])
-+-                if res.return_code != 0:
-+-                    fail("patch_cmd failed: %s\n%s" % (cmd, res.stderr))
-+-        if patch_files:
-+-            for patch_file in patch_files:
-+-                patch_file = ctx.path(Label(patch_file)) if patch_file else None
-+-                if patch_file:
-+-                    ctx.patch(patch_file, strip = 1)
-+-
-+-    for dst, src in link_dict.items():
-+-        ctx.delete(dst)
-+-        ctx.symlink(src, dst)
-+-
-+-_tf_http_archive = repository_rule(
-+-    implementation = _tf_http_archive_impl,
-+-    attrs = {
-+-        "sha256": attr.string(mandatory = True),
-+-        "urls": attr.string_list(mandatory = True),
-+-        "strip_prefix": attr.string(),
-+-        "type": attr.string(),
-+-        "patch_file": attr.string_list(),
-+-        "patch_cmds": attr.string_list(),
-+-        "build_file": attr.string(),
-+-        "system_build_file": attr.string(),
-+-        "link_files": attr.string_dict(),
-+-        "system_link_files": attr.string_dict(),
-+-    },
-+-    environ = ["TF_SYSTEM_LIBS"],
-+-)
-+-
-+-def tf_http_archive(name, sha256, urls, **kwargs):
-+-    """Downloads and creates Bazel repos for dependencies.
-+-
-+-    This is a swappable replacement for both http_archive() and
-+-    new_http_archive() that offers some additional features. It also helps
-+-    ensure best practices are followed.
-+-
-+-    File arguments are relative to the TensorFlow repository by default. Dependent
-+-    repositories that use this rule should refer to files either with absolute
-+-    labels (e.g. '@foo//:bar') or from a label created in their repository (e.g.
-+-    'str(Label("//:bar"))').
-+-    """
-+-    if len(urls) < 2:
-+-        fail("tf_http_archive(urls) must have redundant URLs.")
-+-
-+-    if not any([mirror in urls[0] for mirror in (
-+-        "mirror.tensorflow.org",
-+-        "mirror.bazel.build",
-+-        "storage.googleapis.com",
-+-    )]):
-+-        fail("The first entry of tf_http_archive(urls) must be a mirror " +
-+-             "URL, preferrably mirror.tensorflow.org. Even if you don't have " +
-+-             "permission to mirror the file, please put the correctly " +
-+-             "formatted mirror URL there anyway, because someone will come " +
-+-             "along shortly thereafter and mirror the file.")
-+-
-+-    if native.existing_rule(name):
-+-        return
-+-
-+-    _tf_http_archive(
-+-        name = name,
-+-        sha256 = sha256,
-+-        urls = urls,
-+-        **kwargs
-+-    )
-+-
-+-def _tf_vendored_impl(ctx):
-+-    ctx.symlink(ctx.path(ctx.attr._root).dirname.get_child(ctx.attr.path), ".")
-+-
-+-tf_vendored = repository_rule(
-+-    implementation = _tf_vendored_impl,
-+-    doc = "Similar to local_repository, but path is relative to the root of the " +
-+-          "repository, not the root of the workspace.",
-+-    attrs = {
-+-        "_root": attr.label(default = "//:unused"),
-+-        "path": attr.string(),
-+-    },
-+-    local = True,
-+-)
-+diff --ruN a/stablehlo/third_party/rules_ml_toolchain/BUILD b/stablehlo/third_party/rules_ml_toolchain/BUILD
-+--- stablehlo/third_party/rules_ml_toolchain/BUILD
-++++ stablehlo/third_party/rules_ml_toolchain/BUILD
-+@@ -1 +0,0 @@
-+-exports_files(["fix_strip.patch"])
-+diff --ruN a/stablehlo/third_party/rules_ml_toolchain/fix_strip.patch b/stablehlo/third_party/rules_ml_toolchain/fix_strip.patch
-+--- stablehlo/third_party/rules_ml_toolchain/fix_strip.patch
-++++ stablehlo/third_party/rules_ml_toolchain/fix_strip.patch
-+@@ -1,30 +0,0 @@
-+-diff --git a/cc/impls/linux_x86_64_linux_x86_64/wrappers/BUILD b/cc/impls/linux_x86_64_linux_x86_64/wrappers/BUILD
-+-index a206127..fa119c10 100644
-+---- a/cc/impls/linux_x86_64_linux_x86_64/wrappers/BUILD
-+-+++ b/cc/impls/linux_x86_64_linux_x86_64/wrappers/BUILD
-+-@@ -24,5 +24,6 @@ filegroup(
-+-         "idler",
-+-         "ld",
-+-         "objcopy",
-+-+        "strip",
-+-     ],
-+-     visibility = ["//visibility:public"],
-+- )
-+-diff --git a/cc/impls/linux_x86_64_linux_x86_64/wrappers/strip b/cc/impls/linux_x86_64_linux_x86_64/wrappers/strip
-+-new file mode 100755
-+-index 0000000..e3b0923
-+---- /dev/null
-+-+++ b/cc/impls/linux_x86_64_linux_x86_64/wrappers/strip
-+-@@ -0,0 +1,3 @@
-+-+#!/bin/bash
-+-+
-+-+"$STRIP_PATH" "$@"
-+-diff --git a/third_party/rules_cc_toolchain/toolchain_config.bzl b/third_party/rules_cc_toolchain/toolchain_config.bzl
-+-index 7381bbb..23afe63 100644
-+---- a/third_party/rules_cc_toolchain/toolchain_config.bzl
-+-+++ b/third_party/rules_cc_toolchain/toolchain_config.bzl
-+-@@ -58,3 +58,4 @@ ALL_ACTIONS = [
-+-     ACTION_NAMES.cpp_link_static_library,
-+-     ACTION_NAMES.clif_match,
-+-+    ACTION_NAMES.strip,
-+- ]
-+diff --ruN a/stablehlo/third_party/zlib-ng.BUILD b/stablehlo/third_party/zlib-ng.BUILD
-+--- stablehlo/third_party/zlib-ng.BUILD
-++++ stablehlo/third_party/zlib-ng.BUILD
-+@@ -1,106 +0,0 @@
-+-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-+-# See https://llvm.org/LICENSE.txt for license information.
-+-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-+-
-+-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
-+-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-+-
-+-package(
-+-    default_visibility = ["//visibility:public"],
-+-    # BSD/MIT-like license (for zlib)
-+-    licenses = ["notice"],
-+-)
-+-
-+-copy_file(
-+-    # The input template is identical to the CMake output.
-+-    name = "zconf_gen",
-+-    src = "zconf.h.in",
-+-    out = "zconf.h",
-+-    allow_symlink = True,
-+-)
-+-
-+-cc_library(
-+-    name = "zlib",
-+-    srcs = select({
-+-        "@llvm-project//third-party:llvm_zlib_enabled": [
-+-            "adler32.c",
-+-            "adler32_p.h",
-+-            "chunkset.c",
-+-            "chunkset_tpl.h",
-+-            "compare258.c",
-+-            "compress.c",
-+-            "crc32.c",
-+-            "crc32_comb.c",
-+-            "crc32_comb_tbl.h",
-+-            "crc32_p.h",
-+-            "crc32_tbl.h",
-+-            "deflate.c",
-+-            "deflate.h",
-+-            "deflate_fast.c",
-+-            "deflate_medium.c",
-+-            "deflate_p.h",
-+-            "deflate_quick.c",
-+-            "deflate_slow.c",
-+-            "fallback_builtins.h",
-+-            "functable.c",
-+-            "functable.h",
-+-            "infback.c",
-+-            "inffast.c",
-+-            "inffast.h",
-+-            "inffixed_tbl.h",
-+-            "inflate.c",
-+-            "inflate.h",
-+-            "inflate_p.h",
-+-            "inftrees.c",
-+-            "inftrees.h",
-+-            "insert_string.c",
-+-            "insert_string_tpl.h",
-+-            "match_tpl.h",
-+-            "trees.c",
-+-            "trees.h",
-+-            "trees_emit.h",
-+-            "trees_tbl.h",
-+-            "uncompr.c",
-+-            "zbuild.h",
-+-            "zendian.h",
-+-            "zutil.c",
-+-            "zutil.h",
-+-            "zutil_p.h",
-+-        ],
-+-        "//conditions:default": [],
-+-    }),
-+-    hdrs = select({
-+-        "@llvm-project//third-party:llvm_zlib_enabled": [
-+-            "zlib.h",
-+-            ":zconf_gen",
-+-        ],
-+-        "//conditions:default": [],
-+-    }),
-+-    copts = [
-+-        "-std=c11",
-+-        "-DZLIB_COMPAT",
-+-        "-DWITH_GZFILEOP",
-+-        "-DWITH_OPTIM",
-+-        "-DWITH_NEW_STRATEGIES",
-+-        # For local builds you might want to add "-DWITH_NATIVE_INSTRUCTIONS"
-+-        # here to improve performance. Native instructions aren't enabled in
-+-        # the default config for reproducibility.
-+-    ],
-+-    defines = select({
-+-        "@llvm-project//third-party:llvm_zlib_enabled": [
-+-            "LLVM_ENABLE_ZLIB=1",
-+-        ],
-+-        "//conditions:default": [
-+-            "LLVM_ENABLE_ZLIB=0",
-+-        ],
-+-    }),
-+-    # Clang includes zlib with angled instead of quoted includes, so we need
-+-    # strip_include_prefix here.
-+-    strip_include_prefix = ".",
-+-    visibility = ["//visibility:public"],
-+-)
-+-
-+-alias(
-+-    name = "zlib-ng",
-+-    actual = ":zlib",
-+-)
-+diff --ruN a/stablehlo/third_party/zstd.BUILD b/stablehlo/third_party/zstd.BUILD
-+--- stablehlo/third_party/zstd.BUILD
-++++ stablehlo/third_party/zstd.BUILD
-+@@ -1,44 +0,0 @@
-+-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-+-# See https://llvm.org/LICENSE.txt for license information.
-+-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-+-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-+-
-+-package(
-+-    default_visibility = ["//visibility:public"],
-+-    # BSD/MIT-like license (for zstd)
-+-    licenses = ["notice"],
-+-)
-+-
-+-cc_library(
-+-    name = "zstd",
-+-    srcs = select({
-+-        "@llvm-project//third-party:llvm_zstd_enabled": glob([
-+-            "lib/common/*.c",
-+-            "lib/common/*.h",
-+-            "lib/compress/*.c",
-+-            "lib/compress/*.h",
-+-            "lib/decompress/*.c",
-+-            "lib/decompress/*.h",
-+-            "lib/decompress/*.S",
-+-            "lib/dictBuilder/*.c",
-+-            "lib/dictBuilder/*.h",
-+-        ]),
-+-        "//conditions:default": [],
-+-    }),
-+-    hdrs = select({
-+-        "@llvm-project//third-party:llvm_zstd_enabled": [
-+-            "lib/zdict.h",
-+-            "lib/zstd.h",
-+-            "lib/zstd_errors.h",
-+-        ],
-+-        "//conditions:default": [],
-+-    }),
-+-    defines = select({
-+-        "@llvm-project//third-party:llvm_zstd_enabled": [
-+-            "LLVM_ENABLE_ZSTD=1",
-+-            "ZSTD_MULTITHREAD",
-+-        ],
-+-        "//conditions:default": [],
-+-    }),
-+-    strip_include_prefix = "lib",
-+-)
+  
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
++--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
+++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp
++@@ -132,6 +132,14 @@
++   llvm::report_fatal_error("unsupported type");
++ }
++ 
+++void copyDiscardableAttrs(Operation* src, Operation* dst) {
+++  dst->setDiscardableAttrs(src->getDiscardableAttrDictionary());
+++}
+++
+++void copyDiscardableAttrs(Value src, Value dst) {
+++  copyDiscardableAttrs(src.getDefiningOp(), dst.getDefiningOp());
+++}
+++
++ #include "stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.h.inc"
++ }  // namespace
++ 
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td b/stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
++--- stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
+++++ stablehlo/stablehlo/transforms/StablehloLegalizeDeprecatedOpsPatterns.td
++@@ -45,9 +45,12 @@
++ 
++ // def CrossReplicaSumToAllReduce : <Declared in cpp>
++ 
+++def CopyDiscardableAttrs : NativeCodeCallVoid<"copyDiscardableAttrs($0, $1)">;
+++
++ def DotToDotGeneral : Pat<
++-  (StableHLO_DotOp $lhs, $rhs, $precision_config),
++-  (StableHLO_DotGeneralOp $lhs, $rhs, (GetDefaultDotDimensionNumbers $lhs), $precision_config, (NativeCodeCall<"Attribute{}">))>;
+++  (StableHLO_DotOp:$src $lhs, $rhs, $precision_config),
+++  (StableHLO_DotGeneralOp:$dst $lhs, $rhs, (GetDefaultDotDimensionNumbers $lhs), $precision_config, (NativeCodeCall<"Attribute{}">)),
+++  [], [(CopyDiscardableAttrs $src, $dst)]>;
++ 
++ def UnaryEinsumToEinsum : Pat<
++   (StableHLO_UnaryEinsumOp $operand, $equation),
+ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+ --- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+ +++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp

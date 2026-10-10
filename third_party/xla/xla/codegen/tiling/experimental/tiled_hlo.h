@@ -87,12 +87,24 @@ class TiledHloRegion {
 class TiledHloInstruction {
  public:
   TiledHloInstruction(const HloInstruction* hlo, Tile tile)
-      : hlo_(hlo), tile_(std::move(tile)) {}
+      : hlo_(hlo), tiles_({std::move(tile)}) {}
+
+  TiledHloInstruction(const HloInstruction* hlo,
+                      llvm::SmallVector<Tile, 2> tiles)
+      : hlo_(hlo), tiles_(std::move(tiles)) {}
 
   const HloInstruction* hlo() const { return hlo_; }
 
-  const Tile& tile() const { return tile_; }
-  void set_tile(Tile tile) { tile_ = std::move(tile); }
+  const Tile& tile(int64_t output_idx = 0) const {
+    CHECK_GE(output_idx, 0);
+    CHECK_LT(output_idx, tiles_.size());
+    return tiles_[output_idx];
+  }
+  absl::Span<const Tile> tiles() const { return tiles_; }
+  absl::Span<Tile> tiles() { return absl::MakeSpan(tiles_); }
+  void set_tiles(llvm::SmallVector<Tile, 2> tiles) {
+    tiles_ = std::move(tiles);
+  }
 
   const TiledHloInstruction* operand(int64_t operand_id) const {
     return operands_[operand_id];
@@ -128,12 +140,12 @@ class TiledHloInstruction {
   // TODO: b/509505290 -- Remove these once we migrate to this tiling and the
   // old API is removed.
   llvm::SmallVector<int64_t> tile_sizes() const {
-    auto tile_sizes = tile_.GetStaticTileSizes();
+    auto tile_sizes = tile().GetStaticTileSizes();
     CHECK_OK(tile_sizes);
     return *tile_sizes;
   }
   llvm::SmallVector<int64_t> tile_strides() const {
-    auto tile_strides = tile_.GetStaticTileStrides();
+    auto tile_strides = tile().GetStaticTileStrides();
     CHECK_OK(tile_strides);
     return *tile_strides;
   }
@@ -154,8 +166,8 @@ class TiledHloInstruction {
   // Pointer to the original HLO instruction.
   const HloInstruction* hlo_;
 
-  // Symbolic tile.
-  Tile tile_;
+  // Symbolic tile(s), one per tiled output.
+  llvm::SmallVector<Tile, 2> tiles_;
 
   // Operands of the instruction in the tiled computation graph.
   llvm::SmallVector<const TiledHloInstruction*, 2> operands_;
@@ -166,7 +178,7 @@ class TiledHloInstruction {
 
 inline bool operator==(const TiledHloInstruction& lhs,
                        const TiledHloInstruction& rhs) {
-  return lhs.hlo() == rhs.hlo() && lhs.tile() == rhs.tile() &&
+  return lhs.hlo() == rhs.hlo() && lhs.tiles() == rhs.tiles() &&
          lhs.operands() == rhs.operands();
 }
 
@@ -178,7 +190,7 @@ inline bool operator!=(const TiledHloInstruction& lhs,
 template <typename H>
 H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
   h = H::combine(std::move(h), *tiled_hlo_instruction.hlo(),
-                 tiled_hlo_instruction.tile());
+                 tiled_hlo_instruction.tiles());
   for (const TiledHloInstruction* operand : tiled_hlo_instruction.operands()) {
     h = H::combine(std::move(h), operand);
   }
@@ -267,17 +279,6 @@ class TiledHloComputation {
         instruction_storage_(std::move(instruction_storage)),
         region_(std::move(tiled_root_region)),
         rt_symbol_to_tiled_hlo_(std::move(rt_symbol_to_tiled_hlo)) {}
-
-  // Creates a region from `roots`, constructing all its instructions (including
-  // those of nested regions) in `instruction_storage`.
-  static absl::StatusOr<TiledHloRegion> CreateHloRegion(
-      llvm::SmallVector<std::pair<const HloInstruction*, experimental::Tile>, 4>
-          roots,
-      const HloFusionAdaptor& fusion, TilingSpace& tiling_space,
-      std::deque<TiledHloInstruction>& instruction_storage,
-      absl::flat_hash_map<int64_t,
-                          std::pair<const TiledHloInstruction*, Interval>>&
-          rt_symbol_to_tiled_hlo);
 
   std::unique_ptr<TilingSpace> tiling_space_;
 

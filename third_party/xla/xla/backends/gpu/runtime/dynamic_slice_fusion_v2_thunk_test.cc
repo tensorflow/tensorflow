@@ -733,6 +733,7 @@ TEST_P(DynamicSliceFusionV2CommandBufferTest, UpdatesLoopDependentOffsets) {
 
   CommandBufferThunk command_buffer_thunk(
       std::move(command_executor), Thunk::ThunkInfo(),
+      /*devices_in_process=*/1,
       /*thunks=*/nullptr,
       /*enable_command_buffers_during_profiling=*/true);
 
@@ -801,8 +802,15 @@ TEST(DynamicSliceFusionV2ThunkTest, SerializeDeserializeRoundTrip) {
 
   std::vector<Parameter> parameters = {
       {0, arg_shape, arg_shape, MakeConfig(0, 0, 1024),
-       std::vector<Offset>{
-           Offset{0, Offset::Add(Offset::Constant(1), Offset::Constant(2))}}},
+       std::vector<Offset>{Offset{
+           0, Offset::Add(
+                  Offset::Constant(1),
+                  Offset::Minimum(
+                      Offset::Maximum(Offset::Divide(Offset::Parameter(0),
+                                                     Offset::Constant(2)),
+                                      Offset::Remainder(Offset::Parameter(0),
+                                                        Offset::Constant(3))),
+                      Offset::Constant(2)))}}},
       {1, arg2_shape, arg2_shape},
   };
 

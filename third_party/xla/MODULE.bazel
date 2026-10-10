@@ -11,6 +11,7 @@ bazel_dep(name = "bazel_features", version = "1.43.0")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "boringssl", version = "0.20250818.0")
 bazel_dep(name = "curl", version = "8.22.0")
+bazel_dep(name = "flatbuffers", version = "24.3.25.bcr.1")
 bazel_dep(name = "google_benchmark", version = "1.9.4", repo_name = "com_google_benchmark")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
 bazel_dep(name = "grpc", version = "1.81.0")
@@ -146,14 +147,17 @@ use_repo(
     "oneccl_v1",
     "onednn",
     "onednn_async",
+    "onednn_async_aarch64",
     "onedpl",
     "org_sqlite",
     "pthreadpool",
     "raft",
     "rapids_logger",
+    "rdma_core",
     "riegeli",
     "rmm",
     "robin_map",
+    "roc_mori",
     "rocm_device_libs",
     "shardy",
     "slinky",

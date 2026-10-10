@@ -108,6 +108,8 @@ TEST(IntrinsicLibTest, DefinesWideEigenAtan) {
   if (!AreEigenIntrinsicsAvailable()) {
     GTEST_SKIP();
   }
+  EXPECT_TRUE(AreEigenIntrinsicsAvailable("+avx,+avx2"));
+  EXPECT_TRUE(AreEigenIntrinsicsAvailable("+avx,+avx512f"));
   constexpr absl::string_view kKernel = R"(
     declare <8 x float> @xla.atan.v8f32(<8 x float>)
     define <8 x float> @kernel(<8 x float> %x) {

@@ -75,6 +75,9 @@ class TestMemoryReservation final : public MemoryReservation {
     return DeviceAddressBase(storage_.get(), size_);
   }
 
+  // Host storage has no mapping granularity.
+  size_t granularity() const override { return 1; }
+
   int active_mapping_count() const { return active_mapping_count_; }
   int mapping_count() const { return mapping_count_; }
 

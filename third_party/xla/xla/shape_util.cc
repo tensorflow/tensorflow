@@ -726,8 +726,12 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ int64_t ShapeUtil::SubshapeCount(const Shape& shape) {
-  int64_t n = 0;
-  ForEachSubshape(shape, [&](const Shape&, const ShapeIndex&) { ++n; });
+  int64_t n = 1;
+  if (shape.IsTuple()) {
+    for (const Shape& subshape : shape.tuple_shapes()) {
+      n += SubshapeCount(subshape);
+    }
+  }
   return n;
 }
 
@@ -1322,12 +1326,196 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 /* static */ std::vector<ShapeUtil::IndexedShape> ShapeUtil::GetLeafShapes(
     const Shape& shape) {
   std::vector<IndexedShape> leaves;
-  ForEachSubshape(shape, [&](const Shape& sub_shape, const ShapeIndex& index) {
-    if (IsLeafIndex(shape, index)) {
-      leaves.emplace_back(index, sub_shape);
-    }
+  ForEachLeafShape(shape, [&](const Shape& sub_shape, const ShapeIndex& index) {
+    leaves.emplace_back(index, sub_shape);
   });
   return leaves;
+}
+
+template <typename ShapeT, typename Fn>
+/* static */ void ShapeUtil::ForEachSubshapeHelper(ShapeT* shape, Fn&& fn,
+                                                   ShapeIndex* index) {
+  fn(shape, *index);
+  if (auto* tuple = shape->if_tuple_state()) {
+    ShapeT* tuple_shape = tuple->tuple_shapes.data();
+    int64_t tuple_count = tuple->tuple_shapes.size();
+    index->push_back(0);
+    for (int64_t i = 0; i < tuple_count; ++i, ++tuple_shape, ++index->back()) {
+      ForEachSubshapeHelper(tuple_shape, fn, index);
+    }
+    index->pop_back();
+  }
+}
+
+template <typename ShapeT, typename Fn>
+/* static */ absl::Status ShapeUtil::ForEachSubshapeWithStatusHelper(
+    ShapeT* shape, Fn&& fn, ShapeIndex* index) {
+  ABSL_RETURN_IF_ERROR(fn(shape, *index));
+  if (auto* tuple = shape->if_tuple_state()) {
+    ShapeT* tuple_shape = tuple->tuple_shapes.data();
+    int64_t tuple_count = tuple->tuple_shapes.size();
+    index->push_back(0);
+    for (int64_t i = 0; i < tuple_count; ++i, ++tuple_shape, ++index->back()) {
+      ABSL_RETURN_IF_ERROR(ForEachSubshapeWithStatusHelper(tuple_shape, fn, index));
+    }
+    index->pop_back();
+  }
+  return absl::OkStatus();
+}
+
+template <typename ShapeT, typename Fn>
+/* static */ void ShapeUtil::ForEachSubshapePostOrderHelper(ShapeT* shape,
+                                                            Fn&& fn,
+                                                            ShapeIndex* index) {
+  if (auto* tuple = shape->if_tuple_state()) {
+    ShapeT* tuple_shape = tuple->tuple_shapes.data();
+    int64_t tuple_count = tuple->tuple_shapes.size();
+    index->push_back(0);
+    for (int64_t i = 0; i < tuple_count; ++i, ++tuple_shape, ++index->back()) {
+      ForEachSubshapePostOrderHelper(tuple_shape, fn, index);
+    }
+    index->pop_back();
+  }
+  fn(shape, *index);
+}
+
+template <typename ShapeT, typename Fn>
+/* static */ absl::Status ShapeUtil::ForEachSubshapePostOrderWithStatusHelper(
+    ShapeT* shape, Fn&& fn, ShapeIndex* index) {
+  if (auto* tuple = shape->if_tuple_state()) {
+    ShapeT* tuple_shape = tuple->tuple_shapes.data();
+    int64_t tuple_count = tuple->tuple_shapes.size();
+    index->push_back(0);
+    for (int64_t i = 0; i < tuple_count; ++i, ++tuple_shape, ++index->back()) {
+      ABSL_RETURN_IF_ERROR(
+          ForEachSubshapePostOrderWithStatusHelper(tuple_shape, fn, index));
+    }
+    index->pop_back();
+  }
+  ABSL_RETURN_IF_ERROR(fn(shape, *index));
+  return absl::OkStatus();
+}
+
+/* static */ void ShapeUtil::ForEachSubshape(const Shape& shape,
+                                             VisitorFunction fn) {
+  ShapeIndex index;
+  ForEachSubshapeHelper(
+      &shape,
+      [&](const Shape* subshape, const ShapeIndex& index) {
+        fn(*subshape, index);
+      },
+      &index);
+}
+
+/* static */ void ShapeUtil::ForEachMutableSubshape(Shape* shape,
+                                                    MutableVisitorFunction fn) {
+  ShapeIndex index;
+  ForEachSubshapeHelper(shape, fn, &index);
+}
+
+/* static */ absl::Status ShapeUtil::ForEachLeafShapeWithStatus(
+    const Shape& shape, StatusVisitorFunction fn) {
+  ShapeIndex index;
+  return ForEachSubshapeWithStatusHelper(
+      &shape,
+      [&](const Shape* subshape, const ShapeIndex& index) -> absl::Status {
+        if (!subshape->IsTuple()) {
+          ABSL_RETURN_IF_ERROR(fn(*subshape, index));
+        }
+        return absl::OkStatus();
+      },
+      &index);
+}
+
+/* static */ absl::Status ShapeUtil::ForEachMutableLeafShapeWithStatus(
+    Shape* shape, MutableStatusVisitorFunction fn) {
+  ShapeIndex index;
+  return ForEachSubshapeWithStatusHelper(
+      shape,
+      [&](Shape* subshape, const ShapeIndex& index) -> absl::Status {
+        if (!subshape->IsTuple()) {
+          ABSL_RETURN_IF_ERROR(fn(subshape, index));
+        }
+        return absl::OkStatus();
+      },
+      &index);
+}
+
+/* static */ void ShapeUtil::ForEachLeafShape(const Shape& shape,
+                                              VisitorFunction fn) {
+  ShapeIndex index;
+  ForEachSubshapeHelper(
+      &shape,
+      [&](const Shape* subshape, const ShapeIndex& index) {
+        if (!subshape->IsTuple()) {
+          fn(*subshape, index);
+        }
+      },
+      &index);
+}
+
+/* static */ void ShapeUtil::ForEachMutableLeafShape(
+    Shape* shape, MutableVisitorFunction fn) {
+  ShapeIndex index;
+  ForEachSubshapeHelper(
+      shape,
+      [&](Shape* subshape, const ShapeIndex& index) {
+        if (!subshape->IsTuple()) {
+          fn(subshape, index);
+        }
+      },
+      &index);
+}
+
+/* static */ absl::Status ShapeUtil::ForEachSubshapeWithStatus(
+    const Shape& shape, StatusVisitorFunction fn) {
+  ShapeIndex index;
+  return ForEachSubshapeWithStatusHelper(
+      &shape,
+      [&](const Shape* subshape, const ShapeIndex& index) -> absl::Status {
+        return fn(*subshape, index);
+      },
+      &index);
+}
+
+/* static */ absl::Status ShapeUtil::ForEachMutableSubshapeWithStatus(
+    Shape* shape, MutableStatusVisitorFunction fn) {
+  ShapeIndex index;
+  return ForEachSubshapeWithStatusHelper(shape, fn, &index);
+}
+
+/* static */ void ShapeUtil::ForEachSubshapePostOrder(const Shape& shape,
+                                                      VisitorFunction fn) {
+  ShapeIndex index;
+  ForEachSubshapePostOrderHelper(
+      &shape,
+      [&](const Shape* subshape, const ShapeIndex& index) {
+        fn(*subshape, index);
+      },
+      &index);
+}
+
+/* static */ void ShapeUtil::ForEachMutableSubshapePostOrder(
+    Shape* shape, MutableVisitorFunction fn) {
+  ShapeIndex index;
+  ForEachSubshapePostOrderHelper(shape, fn, &index);
+}
+
+/* static */ absl::Status ShapeUtil::ForEachSubshapePostOrderWithStatus(
+    const Shape& shape, StatusVisitorFunction fn) {
+  ShapeIndex index;
+  return ForEachSubshapePostOrderWithStatusHelper(
+      &shape,
+      [&](const Shape* subshape, const ShapeIndex& index) -> absl::Status {
+        return fn(*subshape, index);
+      },
+      &index);
+}
+
+/* static */ absl::Status ShapeUtil::ForEachMutableSubshapePostOrderWithStatus(
+    Shape* shape, MutableStatusVisitorFunction fn) {
+  ShapeIndex index;
+  return ForEachSubshapePostOrderWithStatusHelper(shape, fn, &index);
 }
 
 /* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
@@ -2355,8 +2543,21 @@ ShapeUtil::ByteStrides(const Shape& shape) {
     int64_t dim_size = dim < shape_dim_size ? LayoutUtil::MaxSplitSize(
                                                   shape, minor_to_major[dim])
                                             : 1;
-    num_of_elements *=
-        RoundUpTo(dim_size, tile_dimensions[tile_dim_size - dim - 1]);
+    int64_t tile_dim = tile_dimensions[tile_dim_size - dim - 1];
+    if (tile_dim == Tile::kCombineDimension) {
+      int64_t packing = 1;
+      if (shape.layout().tiles().size() > 1) {
+        const Tile& sub_tile = shape.layout().tiles(1);
+        if (dim < sub_tile.dimensions().size()) {
+          packing = std::max<int64_t>(
+              1, sub_tile.dimension(sub_tile.dimensions().size() - 1 - dim));
+        } else if (dim == 1 && !sub_tile.dimensions().empty()) {
+          packing = std::max<int64_t>(1, sub_tile.dimension(0));
+        }
+      }
+      tile_dim = packing;
+    }
+    num_of_elements *= RoundUpTo(dim_size, tile_dim);
   }
   for (; dim < shape_dim_size; dim++) {
     int64_t dim_size = LayoutUtil::MaxSplitSize(shape, minor_to_major[dim]);

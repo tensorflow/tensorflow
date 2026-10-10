@@ -35,13 +35,13 @@ __global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
                            const int32_t* __restrict__ dim_size,
                            const int32_t* __restrict__ threshold,
                            const int64_t* __restrict__ dim_range) {
-  for (int64_t out_idx : GpuGridRangeX<int64_t>(nthreads)) {
+  CUDA_1D_KERNEL_LOOP(out_idx, nthreads, int64_t) {
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
       const int64_t stride = dim_range[i] / dim_size[i];
-      const int64_t shift = dim_size[i] - threshold[i];
-      const int64_t indx = (out_idx / stride) % dim_size[i];
-      const int64_t shifted_indx = (indx + shift) % dim_size[i];
+      const int shift = dim_size[i] - threshold[i];
+      const int indx = (out_idx / stride) % dim_size[i];
+      const int shifted_indx = (indx + shift) % dim_size[i];
       offset += (shifted_indx - indx) * stride;
     }
     output[out_idx + offset] = input[out_idx];
@@ -76,7 +76,7 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
     auto config_or = GetGpuLaunchConfig64(num_elements, d);
-    TF_CHECK_OK(config_or.status());
+    CHECK_OK(config_or.status());  // Crash OK
     const GpuLaunchConfig64& cfg = *config_or;
 
     TF_CHECK_OK(

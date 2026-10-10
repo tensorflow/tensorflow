@@ -125,15 +125,18 @@ __global__ void SortedSegmentReductionCustomKernel(
       // Decide whether to write result to global memory. Result is only written
       // to global memory if we move to another segment. Otherwise we can keep
       // accumulating locally.
-      if (current_output_segment_id > last_output_segment_id) {
-        const Index output_index =
-            last_output_segment_id * inner_dim_size + segment_offset;
-        // Decide whether to write result to global memory using atomic
-        // operations.
-        if (last_output_segment_id == first_segment_id) {
-          AtomicReductionF()(output + output_index, reduce_res);
-        } else {
-          ReductionF()(output + output_index, reduce_res);
+      if (last_output_segment_id < current_output_segment_id) {
+        if (last_output_segment_id >= 0 &&
+            last_output_segment_id < output_outer_dim_size) {
+          const Index output_index =
+              last_output_segment_id * inner_dim_size + segment_offset;
+          // Decide whether to write result to global memory using atomic
+          // operations.
+          if (last_output_segment_id == first_segment_id) {
+            AtomicReductionF()(output + output_index, reduce_res);
+          } else {
+            ReductionF()(output + output_index, reduce_res);
+          }
         }
         reduce_res = initial_value;
       }
@@ -146,9 +149,12 @@ __global__ void SortedSegmentReductionCustomKernel(
     // For the last result in a strip, always write using atomic operations
     // due to possible race conditions with threads computing
     // the following strip.
-    const Index output_index =
-        last_output_segment_id * inner_dim_size + segment_offset;
-    AtomicReductionF()(output + output_index, reduce_res);
+    if (last_output_segment_id >= 0 &&
+        last_output_segment_id < output_outer_dim_size) {
+      const Index output_index =
+          last_output_segment_id * inner_dim_size + segment_offset;
+      AtomicReductionF()(output + output_index, reduce_res);
+    }
   }
 }
 

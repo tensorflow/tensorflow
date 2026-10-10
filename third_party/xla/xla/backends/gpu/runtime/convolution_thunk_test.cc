@@ -155,7 +155,8 @@ TEST(ConvolutionThunkTest, ProtoRoundTrip) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ConvolutionThunk> thunk,
       ConvolutionThunk::FromProto(thunk_info, proto.convolution_thunk(),
-                                  buffer_allocations));
+                                  buffer_allocations,
+                                  /*devices_per_host=*/1));
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }

@@ -44,7 +44,7 @@ class EigenTanh : public Intrinsic<EigenTanh> {
 
   static std::vector<std::vector<Type>> SupportedVectorTypes(
       absl::string_view features) {
-    if (!AreEigenIntrinsicsAvailable()) {
+    if (!AreEigenIntrinsicsAvailable(features)) {
       return {};
     }
     return {
@@ -67,7 +67,7 @@ class EigenAtan : public Intrinsic<EigenAtan> {
 
   static std::vector<std::vector<Type>> SupportedVectorTypes(
       absl::string_view features) {
-    if (!AreEigenIntrinsicsAvailable()) {
+    if (!AreEigenIntrinsicsAvailable(features)) {
       return {};
     }
     return {

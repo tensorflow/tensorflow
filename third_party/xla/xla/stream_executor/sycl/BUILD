@@ -101,7 +101,7 @@ cc_library(
     copts = tsl_copts(),
     visibility = ["//visibility:public"],
     deps = if_sycl_is_configured([
-        ":cub_sort_kernel_sycl_impl",
+        ":cub_sort_kernel_sycl",
         ":sycl_platform",
         ":sycl_blas_lt_plugin",
         ":sycl_dnn",
@@ -517,7 +517,7 @@ xla_test(
     ],
 )
 
-sycl_library(
+cc_library(
     name = "sycl_device_description",
     srcs = ["sycl_device_description.cc"],
     hdrs = ["sycl_device_description.h"],
@@ -708,6 +708,10 @@ sycl_library(
     name = "cub_sort_kernel_sycl_impl",
     srcs = ["cub_sort_kernel_sycl_impl.dp.cpp"],
     hdrs = ["cub_sort_kernel_sycl.h"],
+    # Enables oneDPL's bfloat16 radix sort, which older DPC++ compilers do not
+    # turn on by default.
+    # TODO(intel-tf): Remove once we require DPC++ 2026.0 or newer.
+    copts = ["-DSYCL_EXT_ONEAPI_BFLOAT16=1"],
     tags = [
         "gpu",
         "oneapi-only",
@@ -716,7 +720,33 @@ sycl_library(
         "//xla:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings",
         "@onedpl",
     ],
     alwayslink = 1,
+)
+
+sycl_library(
+    name = "cub_sort_kernel_sycl",
+    srcs = ["cub_sort_kernel_sycl.cc"],
+    hdrs = ["cub_sort_kernel_sycl.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cub_sort_kernel_sycl_impl",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/service/gpu:cublas_cudnn",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
 )

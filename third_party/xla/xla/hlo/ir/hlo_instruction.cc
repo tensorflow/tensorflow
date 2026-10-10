@@ -6047,6 +6047,96 @@ HloModule* HloInstruction::GetModule() const {
   return nullptr;
 }
 
+Shape* HloInstruction::mutable_shape() {
+  DCHECK(shape_) << "Instruction shape must be set";
+  if (shape_is_canonicalized_) {
+    shape_ = std::make_shared<Shape>(*shape_);
+    shape_is_canonicalized_ = false;
+  }
+  return &*shape_;
+}
+
+void HloInstruction::set_sharding(HloSharding sharding) {
+  set_sharding(std::make_shared<HloSharding>(std::move(sharding)));
+}
+
+void HloInstruction::set_sharding(std::shared_ptr<const HloSharding> sharding) {
+  sharding_ = std::move(sharding);
+}
+
+void HloInstruction::SetAndSanitizeName(absl::string_view name) {
+  name_ = NameUniquer::GetSanitizedName(name);
+}
+
+void HloInstruction::clear_backend_config() {
+  backend_config_ = std::make_shared<BackendConfigWrapper>();
+}
+
+absl::Status HloInstruction::set_backend_config(
+    const tsl::protobuf::Message& proto) {
+  backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
+  return absl::OkStatus();
+}
+
+void HloInstruction::set_raw_backend_config_string(std::string config_str) {
+  backend_config_ =
+      std::make_shared<BackendConfigWrapper>(std::move(config_str));
+}
+
+void HloInstruction::set_frontend_attributes(
+    FrontendAttributes frontend_attributes) {
+  if (!has_rare() && frontend_attributes.map().empty()) {
+    return;
+  }
+  mutable_rare()->frontend_attributes = std::move(frontend_attributes);
+}
+
+void HloInstruction::add_frontend_attributes(
+    FrontendAttributes frontend_attributes) {
+  if (!frontend_attributes.map().empty()) {
+    mutable_rare()->frontend_attributes.mutable_map()->insert(
+        frontend_attributes.map().begin(), frontend_attributes.map().end());
+  }
+}
+
+bool HloInstruction::add_frontend_attribute(absl::string_view key,
+                                            absl::string_view value) {
+  auto it = mutable_rare()->frontend_attributes.mutable_map()->insert(
+      {std::string(key), std::string(value)});
+  return it.second;
+}
+
+std::optional<std::string> HloInstruction::get_frontend_attribute(
+    absl::string_view key) const {
+  auto it = rare()->frontend_attributes.map().find(key);
+  if (it == rare()->frontend_attributes.map().end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+void HloInstruction::set_metadata(const OpMetadata& metadata) {
+  if (&metadata == kEmptyMetadata) {
+    metadata_.reset();
+  } else {
+    mutable_metadata() = metadata;
+  }
+}
+
+OpMetadata& HloInstruction::mutable_metadata() {
+  if (metadata_ == nullptr) {
+    metadata_ = std::make_unique<OpMetadata>();
+  }
+  return *metadata_;
+}
+
+HloInstruction::Rare* HloInstruction::mutable_rare() {
+  if (rare_ == nullptr) {
+    rare_ = std::make_unique<Rare>();
+  }
+  return rare_.get();
+}
+
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
 }

@@ -67,12 +67,31 @@ py_test(
     ],
 )
 
+pytype_strict_library(
+    name = "build_lib",
+    srcs = ["build.py"],
+    deps = [
+        ":bazel_diff",
+        ":change_detector",
+    ],
+)
+
 pytype_strict_binary(
     name = "build",
     srcs = ["build.py"],
     deps = [
         ":bazel_diff",
         ":change_detector",
+    ],
+)
+
+py_test(
+    name = "build_test",
+    srcs = ["build_test.py"],
+    deps = [
+        ":build_lib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

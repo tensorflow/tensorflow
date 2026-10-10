@@ -701,18 +701,6 @@ def TPU_ReshapeOp : TPU_Op<"reshape", [Pure]> {
   let hasFolder = 1;
 }
 
-// TODO(mvoz): deprecated - use concat. Canonicalization will do so automatically.
-// b/376295711
-def TPU_RepeatOp : TPU_Op<"repeat", [Pure]> {
-  let arguments = (ins
-    AnyVectorOfNonZeroRank:$source,
-    I32Attr:$dimension,
-    I32Attr:$times
-  );
-  let results = (outs AnyVectorOfNonZeroRank:$output);
-  let assemblyFormat = [{ $source `,` $dimension `x` $times attr-dict `:` type($source) `->` type($output) }];
-}
-
 def TPU_BroadcastInSublanesOp : TPU_Op<"broadcast_in_sublanes", [Pure]> {
   let description = [{
     For each sublane `i`, broadcasts the value in lane `lane + i` along the
@@ -1434,10 +1422,7 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
-        ::mlir::MemRefLayoutAttrInterface source_layout,
-        ::mlir::ArrayRef<int64_t> squeezed,
-        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
+    mlir::InFlightDiagnostic verifyTiling();
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;

@@ -47,6 +47,7 @@ namespace {
 
 using ::absl_testing::IsOkAndHolds;
 using ::testing::Contains;
+using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::FieldsAre;
 using ::testing::UnorderedElementsAre;
@@ -1937,6 +1938,30 @@ TEST_P(GemmFusionTestVersioned,
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_P(GemmFusionTestVersioned,
+       Int4ContractingInvariantOperandWithMinorBatchDimIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[2,4,64]{2,1,0} parameter(0)
+      lhs_converted = bf16[2,4,64]{2,1,0} convert(lhs)
+      scale = s4[2,4]{0,1} parameter(1)
+      scale_converted = bf16[2,4]{0,1} convert(scale)
+      scale_bcast = bf16[2,4,64]{2,1,0} broadcast(scale_converted),
+        dimensions={0,1}
+      lhs_scaled = bf16[2,4,64]{2,1,0} multiply(lhs_converted, scale_bcast)
+      rhs = bf16[2,64,8]{2,1,0} parameter(2)
+      ROOT dot = bf16[2,4,8]{2,1,0} dot(lhs_scaled, rhs),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={2},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
+}
+
 TEST_P(GemmFusionTestVersioned, Int4WithMinorContractingDimIsRewritten) {
   constexpr absl::string_view kInt4Dot = R"(
     ENTRY main {
@@ -2621,6 +2646,124 @@ ENTRY e {
   ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion()));
+}
+
+TEST_P(GemmFusionTestV2,
+       DoNotFuseNonContractingTransposeIfProducerCanAbsorbIt) {
+  // The transpose only reorders the sub-dimensions of the LHS non-contracting
+  // dimension, and its producer (a normalization) is not fused into the GEMM.
+  // The transpose saves no memory traffic in the GEMM fusion, so it is left for
+  // its producer, while the bias + ReLU epilogue is still fused.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[16,8,3,64]{3,2,1,0} parameter(0)
+  p1 = f16[16,8,3]{2,1,0} parameter(1)
+  rsqrt = f16[16,8,3]{2,1,0} rsqrt(p1)
+  scale = f16[16,8,3,64]{3,2,1,0} broadcast(rsqrt), dimensions={0,1,2}
+  normalized = f16[16,8,3,64]{3,2,1,0} multiply(p0, scale)
+  transpose = f16[3,16,8,64]{3,2,1,0} transpose(normalized),
+    dimensions={2,0,1,3}
+  bitcast = f16[384,64]{1,0} bitcast(transpose)
+  p2 = f16[64,64]{1,0} parameter(2)
+  dot = f16[384,64]{1,0} dot(bitcast, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p3 = f16[64]{0} parameter(3)
+  bias = f16[384,64]{1,0} broadcast(p3), dimensions={1}
+  add = f16[384,64]{1,0} add(dot, bias)
+  zero = f16[] constant(0)
+  zeros = f16[384,64]{1,0} broadcast(zero), dimensions={}
+  ROOT relu = f16[384,64]{1,0} maximum(add, zeros)
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_THAT(fusion, GmockMatch(m::Fusion()));
+  EXPECT_THAT(fusion->fused_expression_root(), GmockMatch(m::Maximum()));
+  EXPECT_THAT(fusion->operands(),
+              Contains(GmockMatch(m::AnyOf<HloInstruction>(
+                  m::Transpose(m::Multiply()),
+                  m::Bitcast(m::Transpose(m::Multiply()))))));
+}
+
+TEST_P(GemmFusionTestV2, FuseNonContractingTransposeIfProducerIsFused) {
+  // The producer (a multiply by a broadcast parameter) is fused into the GEMM,
+  // so the transpose is fused as well.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[16,8,3,64]{3,2,1,0} parameter(0)
+  p1 = f16[16,8,3]{2,1,0} parameter(1)
+  scale = f16[16,8,3,64]{3,2,1,0} broadcast(p1), dimensions={0,1,2}
+  scaled = f16[16,8,3,64]{3,2,1,0} multiply(p0, scale)
+  transpose = f16[3,16,8,64]{3,2,1,0} transpose(scaled), dimensions={2,0,1,3}
+  bitcast = f16[384,64]{1,0} bitcast(transpose)
+  p2 = f16[64,64]{1,0} parameter(2)
+  ROOT dot = f16[384,64]{1,0} dot(bitcast, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_THAT(fusion, GmockMatch(m::Fusion()));
+  EXPECT_THAT(fusion->operands(), Each(GmockMatch(ParamOrBitcastParam())));
+}
+
+TEST_P(GemmFusionTestV2,
+       FuseTransposeKeepingNonContractingDimensionContiguous) {
+  // The transpose only swaps the batch and non-contracting dimensions.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[128,8,64]{2,1,0} parameter(0)
+  p1 = f16[128,8]{1,0} parameter(1)
+  rsqrt = f16[128,8]{1,0} rsqrt(p1)
+  scale = f16[128,8,64]{2,1,0} broadcast(rsqrt), dimensions={0,1}
+  normalized = f16[128,8,64]{2,1,0} multiply(p0, scale)
+  transpose = f16[8,128,64]{2,1,0} transpose(normalized), dimensions={1,0,2}
+  p2 = f16[8,64,32]{2,1,0} parameter(2)
+  ROOT dot = f16[8,128,32]{2,1,0} dot(transpose, p2),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_THAT(fusion, GmockMatch(m::Fusion()));
+  EXPECT_THAT(fusion->operands(),
+              UnorderedElementsAre(GmockMatch(m::Multiply()),
+                                   GmockMatch(m::Parameter())));
+}
+
+TEST_P(GemmFusionTestV2, FuseNonContractingTransposeMovingMinorDimension) {
+  // The contracting dimension is interleaved between the two parts of the
+  // non-contracting dimension, but the transpose also moves the minor
+  // dimension, so it would not be free to fuse into the producer.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[3,64,128]{2,1,0} parameter(0)
+  p1 = f16[3,64]{1,0} parameter(1)
+  rsqrt = f16[3,64]{1,0} rsqrt(p1)
+  scale = f16[3,64,128]{2,1,0} broadcast(rsqrt), dimensions={0,1}
+  normalized = f16[3,64,128]{2,1,0} multiply(p0, scale)
+  transpose = f16[3,128,64]{2,1,0} transpose(normalized), dimensions={0,2,1}
+  bitcast = f16[384,64]{1,0} bitcast(transpose)
+  p2 = f16[64,64]{1,0} parameter(2)
+  ROOT dot = f16[384,64]{1,0} dot(bitcast, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_THAT(fusion, GmockMatch(m::Fusion()));
+  EXPECT_THAT(fusion->operands(),
+              UnorderedElementsAre(GmockMatch(m::Multiply()),
+                                   GmockMatch(m::Parameter())));
 }
 
 TEST_P(GemmFusionTestV2, ConcatResetTrackerCrash) {

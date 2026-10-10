@@ -321,25 +321,42 @@ TEST_P(HloEvaluatorBf16Test, DoesClampInt64) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_P(HloEvaluatorBf16Test, DISABLED_DoesClampSpecialBroadcast) {
-  auto low = LiteralUtil::CreateR0<float>(0.f);
-  auto value = LiteralUtil::CreateR2<float>({{-1.f, 0.f}, {1.f, 2.f}});
-  auto high = LiteralUtil::CreateR0<float>(1.f);
+TEST_P(HloEvaluatorBf16Test, DoesClampSpecialBroadcast) {
+  Literal low = LiteralUtil::CreateR0<float>(0.f);
+  Literal value = LiteralUtil::CreateR2<float>({{-1.f, 0.f}, {1.f, 2.f}});
+  Literal high = LiteralUtil::CreateR0<float>(1.f);
+  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 0.f}, {1.f, 1.f}});
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
 
-  Shape shape = value.shape();
-  HloComputation::Builder b(TestName());
-  auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(low)));
-  auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
-  auto c3 = b.AddInstruction(HloInstruction::CreateConstant(std::move(high)));
-  b.AddInstruction(
-      HloInstruction::CreateTernary(shape, HloOpcode::kClamp, c1, c2, c3));
-  m_->AddEntryComputation(b.Build());
+TEST_P(HloEvaluatorBf16Test, DoesClampScalarLowerBound) {
+  Literal low = LiteralUtil::CreateR0<float>(0.f);
+  Literal value = LiteralUtil::CreateR2<float>({{-1.f, 5.f}, {1.f, 4.f}});
+  Literal high = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 3.f}});
+  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 4.f}, {1.f, 3.f}});
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+TEST_P(HloEvaluatorBf16Test, DoesClampScalarUpperBound) {
+  Literal low = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 0.f}});
+  Literal value = LiteralUtil::CreateR2<float>({{-1.f, 5.f}, {1.f, 4.f}});
+  Literal high = LiteralUtil::CreateR0<float>(3.f);
+  Literal expected = LiteralUtil::CreateR2<float>({{0.f, 3.f}, {2.f, 3.f}});
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
 
-  auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {1, 1}});
-
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+TEST_F(HloEvaluatorTest, DoesClampScalarBoundDifferentResultLayout) {
+  Literal low = LiteralUtil::CreateR0<int64_t>(0);
+  Literal value = LiteralUtil::CreateR2<int64_t>({{-5, 10}, {2, -1}});
+  Literal high = LiteralUtil::CreateR2<int64_t>({{4, 8}, {6, 1}});
+  Layout layout({0, 1});
+  Literal expected =
+      LiteralUtil::CreateR2WithLayout<int64_t>({{0, 8}, {2, 0}}, layout);
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
 }
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs select

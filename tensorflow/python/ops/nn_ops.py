@@ -1745,28 +1745,29 @@ def pool(
   ```
 
   Args:
-    input: Tensor of rank N+2, of shape
-      `[batch_size] + input_spatial_shape + [num_channels]` if data_format does
-      not start with "NC" (default), or
+    input: Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
+      [num_channels]` if data_format does not start with "NC" (default), or
       `[batch_size, num_channels] + input_spatial_shape` if data_format starts
-      with "NC".  Pooling happens over the spatial dimensions only.
+      with "NC".  Pooling happens over the spatial dimensions only. For
+      `pooling_type="AVG"`, the dtype must be `float16`, `bfloat16`, `float32`,
+      or `float64`. Integer tensors must be explicitly cast to a supported
+      floating-point dtype before average pooling.
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
-    padding: The padding algorithm, must be "SAME" or "VALID".
-      See the "returns" section of `tf.nn.convolution` for details.
-    dilation_rate: Optional.  Dilation rate.  List of N ints >= 1.
-      Defaults to `[1]*N`.  If any value of dilation_rate is > 1, then all
-      values of strides must be 1.
-    strides: Optional.  Sequence of N ints >= 1.  Defaults to `[1]*N`.
-      If any value of strides is > 1, then all values of dilation_rate must be
-      1.
+    padding: The padding algorithm, must be "SAME" or "VALID". See the "returns"
+      section of `tf.nn.convolution` for details.
+    dilation_rate: Optional.  Dilation rate.  List of N ints >= 1. Defaults to
+      `[1]*N`.  If any value of dilation_rate is > 1, then all values of strides
+      must be 1.
+    strides: Optional.  Sequence of N ints >= 1.  Defaults to `[1]*N`. If any
+      value of strides is > 1, then all values of dilation_rate must be 1.
     name: Optional. Name of the op.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
       does not start with "NC"), or the second dimension (if `data_format`
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
-      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
-      For N=3, the valid values are "NDHWC" (default) and "NCDHW".
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW". For
+      N=3, the valid values are "NDHWC" (default) and "NCDHW".
     dilations: Alias for dilation_rate
 
   Returns:
@@ -1790,7 +1791,6 @@ def pool(
 
   Raises:
     ValueError: if arguments are invalid.
-
   """
   dilation_rate = deprecated_argument_lookup(
       "dilations", dilations, "dilation_rate", dilation_rate)
@@ -1925,11 +1925,23 @@ def pool_v2(
                  [0, N+1] + range(1, N+1))
   ```
 
+  Average pooling requires floating-point input. Integer tensors are not
+  automatically cast; use `tf.cast` before pooling:
+
+  >>> values = tf.reshape(tf.constant([1, 2, 3, 4]), [1, 2, 2, 1])
+  >>> result = tf.nn.pool(tf.cast(values, tf.float32), window_shape=[2, 2],
+  ...                     pooling_type="AVG", padding="VALID")
+  >>> result.numpy().tolist()
+  [[[[2.5]]]]
+
   Args:
     input: Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
       [num_channels]` if data_format does not start with "NC" (default), or
       `[batch_size, num_channels] + input_spatial_shape` if data_format starts
-      with "NC".  Pooling happens over the spatial dimensions only.
+      with "NC".  Pooling happens over the spatial dimensions only. For
+      `pooling_type="AVG"`, the dtype must be `float16`, `bfloat16`, `float32`,
+      or `float64`. Integer tensors must be explicitly cast to a supported
+      floating-point dtype before average pooling.
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
     strides: Optional. Sequence of N ints >= 1.  Defaults to `[1]*N`. If any
@@ -4715,7 +4727,8 @@ def avg_pool_v2(input, ksize, strides, padding, data_format=None, name=None):  #
     input:  Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
       [num_channels]` if `data_format` does not start with "NC" (default), or
       `[batch_size, num_channels] + input_spatial_shape` if data_format starts
-      with "NC". Pooling happens over the spatial dimensions only.
+      with "NC". Pooling happens over the spatial dimensions only. Must have
+      dtype `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1`, `N` or `N+2`. The size
       of the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
@@ -4781,13 +4794,13 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC",
 
   Args:
     value: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
-      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+      `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
     input: Alias for value.
@@ -4825,7 +4838,7 @@ def avg_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):  
 
   Args:
     input: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
-      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+      `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
@@ -4867,7 +4880,8 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
   Note internally this op reshapes and uses the underlying 2d operation.
 
   Args:
-    input: A 3-D `Tensor` of the format specified by `data_format`.
+    input: A 3-D `Tensor` of the format specified by `data_format` and type
+      `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1` or `3`. The size of the
       window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1` or `3`. The stride of
@@ -4913,7 +4927,7 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
 
   Args:
     input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]` and
-      type `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+      type `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1`, `3` or `5`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The

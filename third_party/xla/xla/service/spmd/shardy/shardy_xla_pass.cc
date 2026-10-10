@@ -44,18 +44,21 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
 #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
+#include "shardy/dialect/sdy/transforms/export/utils.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "re2/re2.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
@@ -142,6 +145,7 @@ absl::Status createFromProtoAndReplaceComputations(
   ABSL_ASSIGN_OR_RETURN(StackFrames stack_frames,
                    StackFrames::FromProto(proto.stack_frame_index()));
   module->set_stack_frames(std::move(stack_frames));
+
   return absl::OkStatus();
 }
 
@@ -246,10 +250,11 @@ std::pair<int64_t, ShapeIndex> getFlattenedParamNumberAndIndex(
 // parameter.
 HloInputOutputAliasConfig getFlattenedInputOutputAliasConfig(
     const HloInputOutputAliasConfig& inputOutputAliasConfig,
+    const Shape& flattenedOutputShape,
     const OriginalParamIndexToFlattenedNum& originalParamIndexToFlattenedNum,
     bool useTupleArgs) {
   HloInputOutputAliasConfig flattenedInputOutputAliasConfig(
-      getFlattenedShape(inputOutputAliasConfig.shape()));
+      flattenedOutputShape);
   int64_t resultIndex = 0;
   ShapeUtil::ForEachLeafShape(
       inputOutputAliasConfig.shape(),
@@ -507,10 +512,8 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
                                     useTupleArgs);
   OriginalParamIndexToFlattenedNum originalParamIndexToFlattenedNum =
       getOriginalParamIndexToFlattenedNum(hloModule);
-  HloInputOutputAliasConfig flattenedInputOutputAliasConfig =
-      getFlattenedInputOutputAliasConfig(hloModule->input_output_alias_config(),
-                                         originalParamIndexToFlattenedNum,
-                                         useTupleArgs);
+  HloInputOutputAliasConfig oldInputOutputAliasConfig =
+      hloModule->input_output_alias_config();
   HloBufferDonorConfig flattenedBufferDonorsConfig =
       getFlattenedBufferDonorsConfig(hloModule->buffer_donor_config(),
                                      originalParamIndexToFlattenedNum,
@@ -543,17 +546,56 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
   // root instructions. We use the TupleSimplifier as a temporary solution.
   CHECK_OK(TupleSimplifier().Run(hloModule));
 
-  // Restore entry computation layout.
-  *hloModule->mutable_entry_computation_layout() =
-      std::move(flattenedEntryComputationLayout);
-  hloModule->set_input_output_alias_config(
-      std::move(flattenedInputOutputAliasConfig));
+  hloModule->set_input_output_alias_config(getFlattenedInputOutputAliasConfig(
+      oldInputOutputAliasConfig,
+      hloModule->entry_computation()->root_instruction()->shape(),
+      originalParamIndexToFlattenedNum, useTupleArgs));
   hloModule->set_buffer_donor_config(std::move(flattenedBufferDonorsConfig));
 
-  ABSL_RETURN_IF_ERROR(hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-      hloModule,
-      hloModule->config().allow_spmd_sharding_propagation_to_output(),
-      hloModule->config().allow_spmd_sharding_propagation_to_parameters()));
+  if (runSdyShardingPropagation &&
+      mlir::sdy::shardyGeneratesDeviceCode(propagationOptions)) {
+    const HloModuleProto& proto = hloProto.hlo_module();
+    if (proto.has_spmd_output_sharding()) {
+      ABSL_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
+                       HloSharding::FromProto(proto.spmd_output_sharding()));
+      hloModule->set_spmd_output_sharding(std::move(hlo_sharding));
+    }
+    if (!proto.spmd_parameters_shardings().empty() ||
+        proto.has_spmd_output_sharding()) {
+      std::vector<HloSharding> param_shardings;
+      param_shardings.reserve(proto.spmd_parameters_shardings_size());
+      for (const auto& sharding_proto : proto.spmd_parameters_shardings()) {
+        ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
+                         HloSharding::FromProto(sharding_proto));
+        param_shardings.push_back(std::move(sharding));
+      }
+      hloModule->set_spmd_parameters_shardings(std::move(param_shardings));
+    }
+
+    ProgramShape newProgramShape =
+        hloModule->entry_computation()->ComputeProgramShape();
+    for (int64_t i = 0; i < newProgramShape.parameters_size(); ++i) {
+      ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+          flattenedEntryComputationLayout.parameter_shape(i),
+          newProgramShape.mutable_parameters(i)));
+    }
+    ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        flattenedEntryComputationLayout.result_shape(),
+        newProgramShape.mutable_result()));
+    *hloModule->mutable_entry_computation_layout() =
+        ComputationLayout(newProgramShape, /*ignore_layouts=*/false);
+  } else {
+    // Restore entry computation layout.
+    *hloModule->mutable_entry_computation_layout() =
+        std::move(flattenedEntryComputationLayout);
+
+    ABSL_RETURN_IF_ERROR(
+        hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
+            hloModule,
+            hloModule->config().allow_spmd_sharding_propagation_to_output(),
+            hloModule->config()
+                .allow_spmd_sharding_propagation_to_parameters()));
+  }
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.

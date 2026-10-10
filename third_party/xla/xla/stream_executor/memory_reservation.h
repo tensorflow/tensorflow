@@ -46,6 +46,11 @@ class MemoryReservation {
   // accessible until physical memory is mapped via MapTo.
   virtual DeviceAddressBase address() const = 0;
 
+  // Alignment required for mapping offsets and sizes. Backends may report a
+  // recommended granularity larger than their hardware minimum. Pure virtual
+  // so that a backend cannot silently inherit a wrong value.
+  virtual size_t granularity() const = 0;
+
   // Describes a mapping from a memory reservation range
   // [reservation_offset, reservation_offset + size) to a physical allocation
   // range [allocation_offset, allocation_offset + size).
@@ -70,6 +75,7 @@ class MemoryReservation {
   // An RAII wrapper that gives access to a contiguous slice of a memory
   // reservation backed by one or more physical memory allocations.
   // Unmaps the mapped range from the reservation on destruction.
+  // Must be destroyed before the reservation and its backing allocations.
   class ScopedMapping {
    public:
     ScopedMapping() = default;

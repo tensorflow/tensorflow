@@ -778,9 +778,11 @@ cuda_py_strict_test(
     shard_count = 24,
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
+        "notsan",  # Whole-process RSS profiling via memory_profiler is incompatible with TSAN shadow memory/quarantine overhead.
     ],
     xla_tags = [
         "no_cuda_asan",  # TODO(b/183963686)
+        "notsan",  # Whole-process RSS profiling via memory_profiler is incompatible with TSAN shadow memory/quarantine overhead.
     ],
     deps = [
         ":test_base",
@@ -1072,7 +1074,7 @@ tf_py_strict_test(
     name = "repeat_test",
     size = "medium",
     srcs = ["repeat_test.py"],
-    shard_count = 2,
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

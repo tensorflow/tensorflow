@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -124,11 +123,13 @@ absl::StatusOr<const se::CommandBuffer::Command*> HandleRecordAction(
 
 ConditionalThunk::ConditionalThunk(ThunkInfo thunk_info,
                                    const ShapedSlice& branch_index_buffer_index,
-                                   std::vector<ThunkSequence> branch_thunks)
+                                   std::vector<ThunkSequence> branch_thunks,
+                                   int devices_per_host)
     : Command(Kind::kConditional, std::move(thunk_info)),
       branch_index_buffer_index_(branch_index_buffer_index),
       branch_index_is_bool_(branch_index_buffer_index.shape.element_type() ==
-                            PRED) {
+                            PRED),
+      host_memory_pools_(devices_per_host) {
   PrimitiveType element_type = branch_index_buffer_index.shape.element_type();
   CHECK(element_type == PRED || element_type == S32);
   CHECK_EQ(branch_index_buffer_index.shape.dimensions(),
@@ -171,17 +172,14 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
     }
   }
 
-  absl::MutexLock lock(mutex_);
-
-  if (!host_memory_pools_.contains(params.executor)) {
-    PrimitiveType type =
-        branch_index_is_bool_ ? PrimitiveType::PRED : PrimitiveType::S32;
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HostMemoryPool> pool,
-                     HostMemoryPool::Create(params.executor, type));
-    host_memory_pools_[params.executor] = std::move(pool);
-  }
-
-  return absl::OkStatus();
+  return host_memory_pools_.GetOrCreateAndInitialize(
+      params.executor->device_ordinal(), [&](PoolState* state) -> absl::Status {
+        PrimitiveType type =
+            branch_index_is_bool_ ? PrimitiveType::PRED : PrimitiveType::S32;
+        ABSL_ASSIGN_OR_RETURN(state->pool,
+                         HostMemoryPool::Create(params.executor, type));
+        return absl::OkStatus();
+      });
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*> ConditionalThunk::Record(
@@ -245,11 +243,9 @@ absl::Status ConditionalThunk::SetOrUpdateCommandBufferBranchExecutors(
 absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
-  HostMemoryPool* pool;
-  {
-    absl::MutexLock lock(mutex_);
-    pool = host_memory_pools_.at(stream.parent()).get();
-  }
+  PoolState* state = host_memory_pools_.Find(stream.parent()->device_ordinal());
+  TF_RET_CHECK(state != nullptr && state->pool != nullptr);
+  HostMemoryPool* pool = state->pool.get();
   ABSL_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
 
   // Copy the predicate value from device.
@@ -346,7 +342,7 @@ absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
     ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    const Deserializer& deserializer) {
+    const Deserializer& deserializer, int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(ShapedSlice branch_index_buffer_index,
                    ShapedSlice::FromProto(thunk_proto.branch_index_buffer(),
                                           buffer_allocations));
@@ -361,9 +357,9 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
     }
     branch_thunks.push_back(std::move(thunks));
   }
-  return std::make_unique<ConditionalThunk>(std::move(thunk_info),
-                                            branch_index_buffer_index,
-                                            std::move(branch_thunks));
+  return std::make_unique<ConditionalThunk>(
+      std::move(thunk_info), branch_index_buffer_index,
+      std::move(branch_thunks), devices_per_host);
 }
 
 std::string ConditionalThunk::ToString(int indent) const {

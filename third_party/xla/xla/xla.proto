@@ -108,6 +108,7 @@ message DebugOptions {
     COLLECTIVE_KERNEL_ALL_REDUCE = 1;
     COLLECTIVE_KERNEL_ALL_GATHER = 2;
     COLLECTIVE_KERNEL_REDUCE_SCATTER = 3;
+    COLLECTIVE_KERNEL_ALL_COLLECTIVES = 8;
   }
 
   enum LibNvJitLinkMode {
@@ -482,7 +483,7 @@ message DebugOptions {
 
   // Controls when cuDNN fusions are compiled in "deviceless" mode, i.e. driven
   // purely by the DeviceDescription without a live cuDNN handle. Deviceless
-  // compilation requires cuDNN >= 9.8.
+  // compilation requires cuDNN >= 9.23.
   enum CudnnDevicelessCompilationMode {
     CUDNN_DEVICELESS_COMPILATION_UNSET = 0;
     // Never use deviceless compilation; always require a live device.
@@ -1021,6 +1022,15 @@ message DebugOptions {
   // after the runtime support has landed (GPU compatibility window).
   optional bool xla_gpu_experimental_enable_dynamic_slice_table_offsets = 552;
 
+  // Enables divide, remainder, minimum, maximum, and clamp operations in
+  // dynamic-slice fusion offset expressions.
+  //
+  // TODO(ezhulenev): Remove this flag and always enable extended offset
+  // expressions two weeks after the runtime support has landed (GPU
+  // compatibility window).
+  optional bool xla_gpu_experimental_enable_dynamic_slice_extended_offsets =
+      555;
+
   // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
   // This feature is still experimental and effective only
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
@@ -1371,6 +1381,12 @@ message DebugOptions {
   // provided, deviceless compilation is assumed, and the current device is
   // ignored.
   optional string xla_gpu_target_config_filename = 261;
+
+  // Description of the target GPU topology in GpuTopologyProto format or inline
+  // shorthand ([platform:]num_partitions x num_hosts_per_partition x
+  // num_devices_per_host); if provided, deviceless compilation is assumed, and
+  // the current device is ignored.
+  optional string xla_gpu_topology_filename = 554;
 
   // Enable this flag will use a separate memory space color for
   // temp buffer, and then will use separate memory allocator to allocate it,
@@ -1915,7 +1931,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 554
+  // Next id: 556
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

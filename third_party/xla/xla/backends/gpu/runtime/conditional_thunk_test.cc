@@ -88,7 +88,8 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
     const ShapedSlice& branch_index_buffer_index,
     std::vector<ThunkSequence> branch_thunk_sequences) {
   return std::make_unique<ConditionalThunk>(
-      thunk_info, branch_index_buffer_index, std::move(branch_thunk_sequences));
+      thunk_info, branch_index_buffer_index, std::move(branch_thunk_sequences),
+      /*devices_per_host=*/1);
 }
 
 struct BranchRecordCounts {
@@ -220,7 +221,7 @@ TEST(ConditionalThunkTest, PreparePropagatesToCommandBufferBranchExecutors) {
   ConditionalThunk thunk(
       Thunk::ThunkInfo(),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
-      std::move(branch_thunks));
+      std::move(branch_thunks), /*devices_per_host=*/1);
 
   BranchRecordCounts branch0_counts;
   BranchRecordCounts branch1_counts;
@@ -264,7 +265,7 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
   ConditionalThunk thunk(
       Thunk::ThunkInfo(),
       ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
-      std::move(branch_thunks));
+      std::move(branch_thunks), /*devices_per_host=*/1);
 
   BranchRecordCounts branch0_counts;
   BranchRecordCounts branch1_counts;
@@ -477,7 +478,8 @@ TEST(ConditionalThunkTest, FromProto) {
           [](const ThunkProto& proto)
               -> absl::StatusOr<std::unique_ptr<DummyThunk>> {
             return DummyThunk::FromProto(proto, Kind::kCustomCall);
-          }));
+          },
+          /*devices_per_host=*/1));
   ASSERT_NE(thunk, nullptr);
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
@@ -542,7 +544,8 @@ TEST(ConditionalThunkTest, TransformNested) {
   branch_thunks.push_back(std::move(branch0));
   branch_thunks.push_back(std::move(branch1));
   auto conditional_thunk = std::make_unique<ConditionalThunk>(
-      Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks));
+      Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks),
+      /*devices_per_host=*/1);
 
   EXPECT_OK(conditional_thunk->TransformNested([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());

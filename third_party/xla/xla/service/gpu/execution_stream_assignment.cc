@@ -176,7 +176,7 @@ bool IsHostShape(const Shape& shape) {
 std::optional<ExecutionScopeKind> CopyStartDirection(
     const HloInstruction* copy_start) {
   const Shape& shape = copy_start->shape();
-  if (!shape.IsTuple() || shape.tuple_shapes_size() < 2) {
+  if (!shape.IsTuple() || shape.tuple_shapes().size() < 2) {
     return std::nullopt;
   }
   bool dst_host = IsHostShape(shape.tuple_shapes(0));

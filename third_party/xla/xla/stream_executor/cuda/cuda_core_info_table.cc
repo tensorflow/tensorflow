@@ -53,6 +53,10 @@ CoreInfo FindCudaCoreInfo(CudaComputeCapability cc) {
   //
   // [B200Specs] B200 Specs
   // https://www.techpowerup.com/gpu-specs/b200.c4210
+  //
+  // [RubinArch] Inside NVIDIA Rubin GPU Architecture: Powering the Era of
+  // Agentic AI
+  // https://developer.nvidia.com/blog/inside-nvidia-rubin-gpu-architecture-powering-the-era-of-agentic-ai/
 
   // =============== Constants ===============
   // Make sure to annotate with the sources when adding new data.
@@ -74,6 +78,8 @@ CoreInfo FindCudaCoreInfo(CudaComputeCapability cc) {
   // [B200Specs].
   constexpr float kBlackwellTcClockScale = 0.934;
   constexpr int kBlackwellTcPerSm = 4;  // [B200Specs]
+
+  constexpr int kRubinTcPerSm = 4;  // [RubinArch]
 
   // =============== Lookup table ===============
   // Make sure to annotate with the sources when adding new data.
@@ -153,10 +159,40 @@ CoreInfo FindCudaCoreInfo(CudaComputeCapability cc) {
                {kF32, kBlackwellTcPerSm, 512, kBlackwellTcClockScale},
                // Assuming clock rate is the same as base, like Hopper.
                {kF64, kBlackwellTcPerSm, 16, 1.0},
+           }},
+          {CudaComputeCapability::Rubin(),
+           /*cuda_core_perf_table=*/
+           {
+               // DType, Units/SM, Ops/Clk
+               {kF16, 128, 1},
+               {kF32, 128, 1},
+               {kF64, 32, 1},
+               {kI32, 64, 1},
+           },
+           /*tensor_core_perf_table=*/
+           {
+               // DType  Units/SM   Ops/Clk
+               {kF4, kRubinTcPerSm, 8192},
+               {kF6, kRubinTcPerSm, 4096},
+               {kI8, kRubinTcPerSm, 64},
+               {kF8, kRubinTcPerSm, 4096},
+               {kF16, kRubinTcPerSm, 1024},
+               {kF32, kRubinTcPerSm, 512},
+               {kF64, kRubinTcPerSm, 8},
            }}});
 
+  // Prefer model-specific data when the table contains an exact compute
+  // capability match.
   for (const auto& config : *kTable) {
-    if (config.cc.major == cc.major) {
+    if (config.cc.major == cc.major && config.cc.minor == cc.minor) {
+      return CoreInfo{config.cuda_core_infos, config.tensor_core_infos};
+    }
+  }
+
+  // Minor-zero entries describe the fallback for the corresponding major
+  // compute-capability family.
+  for (const auto& config : *kTable) {
+    if (config.cc.major == cc.major && config.cc.minor == 0) {
       return CoreInfo{config.cuda_core_infos, config.tensor_core_infos};
     }
   }

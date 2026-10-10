@@ -135,7 +135,8 @@ ENTRY computation {
   send_sequence.push_back(std::move(send_thunk));
 
   auto async_start = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo{}, CommunicationStreamId(0), std::move(send_sequence));
+      Thunk::ThunkInfo{}, CommunicationStreamId(0), std::move(send_sequence),
+      /*devices_per_host=*/1);
 
   auto async_done = std::make_unique<AsyncDoneThunk>(
       Thunk::ThunkInfo{}, async_start->async_execution());
@@ -229,7 +230,8 @@ ENTRY computation {
   recv_sequence.push_back(std::move(recv_thunk));
 
   auto async_start = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo{}, CommunicationStreamId(0), std::move(recv_sequence));
+      Thunk::ThunkInfo{}, CommunicationStreamId(0), std::move(recv_sequence),
+      /*devices_per_host=*/1);
 
   auto async_done = std::make_unique<AsyncDoneThunk>(
       Thunk::ThunkInfo{}, async_start->async_execution());

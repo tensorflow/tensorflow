@@ -64,8 +64,12 @@ const std::string& GetCppGenIrString(
   return ::llvm_ir::kEigenUnary16LlIr;
 }
 
-bool AreEigenIntrinsicsAvailable() {
-  return !GetCppGenIrString(intrinsics::IntrinsicOptions()).empty();
+// Availability ignores prefer_vector_width because all IR variants share the
+// same translation unit and compiler guards.
+bool AreEigenIntrinsicsAvailable(absl::string_view features) {
+  intrinsics::IntrinsicOptions options;
+  options.features = std::string(features);
+  return !GetCppGenIrString(options).empty();
 }
 
 namespace {

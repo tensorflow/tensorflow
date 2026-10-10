@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -88,8 +90,8 @@ class ConfigAssignerPass : public HloModulePass {
                      mlir::MLIRContext* mlir_context,
                      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
                      Compiler* compiler, se::PlatformId platform_id,
-                     tsl::thread::ThreadPool* thread_pool = nullptr,
-                     MlirContextPool* mlir_context_pool = nullptr);
+                     tsl::thread::ThreadPool* thread_pool,
+                     MlirContextPool* absl_nonnull mlir_context_pool);
 
   // Note: the target_config must outlive the pass.
   static absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> Create(

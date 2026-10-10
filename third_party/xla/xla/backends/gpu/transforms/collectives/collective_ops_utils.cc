@@ -514,6 +514,12 @@ absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
       case xla::DebugOptions::COLLECTIVE_KERNEL_REDUCE_SCATTER:
         instructions_to_annotate.insert(HloOpcode::kReduceScatter);
         break;
+      case xla::DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES:
+        instructions_to_annotate.insert(HloOpcode::kAllReduce);
+        instructions_to_annotate.insert(HloOpcode::kAllReduceStart);
+        instructions_to_annotate.insert(HloOpcode::kAllGather);
+        instructions_to_annotate.insert(HloOpcode::kReduceScatter);
+        break;
       default:
         return absl::InvalidArgumentError(absl::StrFormat(
             "Unsupported collective: %s",

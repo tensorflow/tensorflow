@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/reduce_test_util.h"
 
 #include <memory>
+#include <set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -664,6 +665,41 @@ absl::StatusOr<TensorValue> EmitScaledDot(
   return mlir::cast<TensorValue>(result);
 }
 
+// Emits `root` and its transitive dependencies within `region`, in region
+// order, and returns the value of `root`. Dependencies are also collected
+// through nested regions, whose loop-invariant operands may live in `region`.
+// Instructions already emitted in `emitter_ctx` are skipped.
+absl::StatusOr<TensorValue> EmitRegionInstructionWithDependencies(
+    EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
+    const ge::TiledHloInstruction* root) {
+  absl::flat_hash_set<const ge::TiledHloInstruction*> visited;
+  std::vector<const ge::TiledHloInstruction*> worklist{root};
+  while (!worklist.empty()) {
+    const ge::TiledHloInstruction* instr = worklist.back();
+    worklist.pop_back();
+    if (emitter_ctx.IsEmitted(*instr) || !visited.insert(instr).second) {
+      continue;
+    }
+    absl::c_copy(instr->operands(), std::back_inserter(worklist));
+    for (const ge::TiledHloRegion& nested_region : instr->hlo_regions()) {
+      absl::c_copy(nested_region.instructions(), std::back_inserter(worklist));
+    }
+  }
+
+  for (const ge::TiledHloInstruction* instr : region.instructions()) {
+    if (!visited.contains(instr)) {
+      continue;
+    }
+    ABSL_ASSIGN_OR_RETURN(TensorValue value,
+                     EmitTiledHloInstruction(emitter_ctx, *instr));
+    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(instr, value))
+        << instr->hlo()->ToString();
+  }
+  TF_RET_CHECK(emitter_ctx.IsEmitted(*root))
+      << "Instruction not found in its region: " << root->hlo()->ToString();
+  return emitter_ctx.TiledHloToTensorValue(*root);
+}
+
 // Emits a kRaggedDot instruction.
 //
 // kRaggedNonContracting (G is kSequential outer loop):
@@ -706,82 +742,16 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
                    xtile::GetDotAccumulatorType(b, *ragged_dot_instr));
   TensorValue accumulator = CreateConst(b, acc_type, 0.0f, padded_tile_sizes);
 
-  // Helper to emit a tiled operand and its transitive deps within the region.
-  auto emit_operand = [&](const ge::TiledHloInstruction* operand_t)
-      -> absl::StatusOr<TensorValue> {
-    absl::flat_hash_set<const ge::TiledHloInstruction*> deps;
-    std::function<void(const ge::TiledHloInstruction*)> collect;
-    collect = [&](const ge::TiledHloInstruction* t) {
-      if (!deps.insert(t).second) {
-        return;
-      }
-      for (const ge::TiledHloInstruction* op : t->operands()) {
-        if (absl::c_linear_search(
-                tiled_ragged_dot.hlo_regions().front().instructions(), op)) {
-          collect(op);
-        }
-      }
-    };
-    collect(operand_t);
-    TensorValue result;
-    for (const ge::TiledHloInstruction* region_instr :
-         tiled_ragged_dot.hlo_regions().front().instructions()) {
-      if (!deps.count(region_instr)) {
-        continue;
-      }
-      ABSL_ASSIGN_OR_RETURN(TensorValue v,
-                       EmitTiledHloInstruction(emitter_ctx, *region_instr));
-      emitter_ctx.MapTiledHloToTensorValue(region_instr, v);
-      if (region_instr == operand_t) {
-        result = v;
-      }
-    }
-    TF_RET_CHECK(result) << "operand_t not found in its own dep set";
-    return result;
+  const ge::TiledHloRegion& region = tiled_ragged_dot.hlo_regions().front();
+  // Emits a tiled operand and its transitive deps within the region.
+  auto emit_operand = [&](const ge::TiledHloInstruction* operand_t) {
+    return EmitRegionInstructionWithDependencies(emitter_ctx, region,
+                                                 operand_t);
   };
 
   if (is_batch) {
     return absl::UnimplementedError("kRaggedBatch: not yet implemented");
   }
-
-  // Helper to emit group_sizes and any transitively required instructions
-  // (e.g. a scalar constant that gets broadcast-simplified) using only the
-  // dependency chain of gs_tiled within the region.
-  auto emit_gs =
-      [&](const ge::TiledHloInstruction* gs_t) -> absl::StatusOr<TensorValue> {
-    // Collect gs_tiled's transitive dependencies that live in the region.
-    absl::flat_hash_set<const ge::TiledHloInstruction*> gs_deps;
-    std::function<void(const ge::TiledHloInstruction*)> collect;
-    collect = [&](const ge::TiledHloInstruction* t) {
-      if (!gs_deps.insert(t).second) {
-        return;
-      }
-      for (const ge::TiledHloInstruction* op : t->operands()) {
-        if (absl::c_linear_search(
-                tiled_ragged_dot.hlo_regions().front().instructions(), op)) {
-          collect(op);
-        }
-      }
-    };
-    collect(gs_t);
-
-    // Emit each dep in def-before-use (region) order.
-    TensorValue gs_tile;
-    for (const ge::TiledHloInstruction* region_instr :
-         tiled_ragged_dot.hlo_regions().front().instructions()) {
-      if (!gs_deps.count(region_instr)) {
-        continue;
-      }
-      ABSL_ASSIGN_OR_RETURN(TensorValue result,
-                       EmitTiledHloInstruction(emitter_ctx, *region_instr));
-      emitter_ctx.MapTiledHloToTensorValue(region_instr, result);
-      if (region_instr == gs_t) {
-        gs_tile = result;
-      }
-    }
-    TF_RET_CHECK(gs_tile) << "gs_tiled not found in its own dep set";
-    return gs_tile;
-  };
 
   if (!is_contracting) {
     // --- kRaggedNonContracting ---
@@ -842,10 +812,10 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
                        emitter_ctx.MapSymbolIdToSequentialDimValueScoped(
                            g_dim_info.id, g_iv, Interval{0, G - 1}));
 
-      // Emit group_sizes tile (G-scoped).
-      // Uses emit_gs which handles any HLO form:  parameter, inlined constant,
-      // broadcast of scalar constant, or any other op-defined group_sizes.
-      ABSL_ASSIGN_OR_RETURN(TensorValue gs_tile, emit_gs(gs_tiled));
+      // Emit group_sizes tile (G-scoped). `emit_operand` handles any HLO form:
+      // parameter, inlined constant, broadcast of scalar constant, or any
+      // other op-defined group_sizes.
+      ABSL_ASSIGN_OR_RETURN(TensorValue gs_tile, emit_operand(gs_tiled));
 
       // Extract group_size_g from gs_tile.
       // gs_tile is tensor<1xi{32|64}>; XTile/Triton's tensor.extract requires

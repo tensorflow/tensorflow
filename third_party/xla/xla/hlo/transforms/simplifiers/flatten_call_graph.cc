@@ -39,6 +39,105 @@ bool FlattenCallGraph::SkipCloningForCalls(const HloComputation& computation) {
   });
 }
 
+namespace {
+
+// Pure read-only predicate returning true if `computation` is itself an async
+// computation or has at least one caller path from an enclosing async
+// computation.
+// TODO: b/534428440 - Make this a class method and cache results per
+// computation.
+bool IsInAsyncComputationSubtree(const HloComputation& computation) {
+  std::vector<const HloComputation*> worklist = {&computation};
+  absl::flat_hash_set<const HloComputation*> visited = {&computation};
+  while (!worklist.empty()) {
+    const HloComputation* current = worklist.back();
+    worklist.pop_back();
+    if (current->IsAsyncComputation()) {
+      return true;
+    }
+    for (const HloInstruction* caller : current->caller_instructions()) {
+      const HloComputation* parent = caller->parent();
+      if (parent != nullptr && visited.insert(parent).second) {
+        worklist.push_back(parent);
+      }
+    }
+  }
+  return false;
+}
+
+// Returns true if `instruction` is an async consumer (`kAsyncUpdate` or
+// `kAsyncDone`) whose root `kAsyncStart` can be resolved within
+// `execution_threads`. Such consumers share their `kAsyncStart`'s computation
+// rather than cloning independently.
+//
+// How async chains are inferred across pipelined while loops:
+// `async_chain_start()` (via `FindAsyncChainDataflow` in hlo_instructions.cc)
+// walks backwards from `kAsyncDone` / `kAsyncUpdate` while tracking the active
+// tuple ShapeIndex:
+// - At `kGetTupleElement(index=i)`, it pushes `i` onto the active ShapeIndex
+//   and continues into operand(0).
+// - At `kParameter` of a `while_body`, it hops out to the enclosing `kWhile`'s
+//   init operand (`while_op->operand(0)`, resolving prologue `kAsyncStart`s) or
+//   `while_body->root_instruction()` at the same tuple ShapeIndex.
+// - At `kWhile` (e.g., from an epilogue `kAsyncDone(GTE(while_op, index=i))`),
+//   it hops into `while_body->root_instruction()` at the same tuple ShapeIndex
+//   (resolving the in-body `kAsyncStart`).
+// - At `kTuple`, it pops `i` from the ShapeIndex and continues into
+//   `tuple->operand(i)` until reaching the originating `kAsyncStart`.
+// Thus, the prologue `kAsyncStart` connects to the `kAsyncDone` inside the
+// while loop body, and the epilogue `kAsyncDone` connects to the
+// `kAsyncStart` inside the while loop body.
+// TODO: b/534428440 - Document how pipelined while-loop async chains are
+// inferred in MSA documentation (go/xla-msa).
+bool HasIncludedAsyncChainStart(
+    const HloInstruction* instruction,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (instruction->opcode() != HloOpcode::kAsyncUpdate &&
+      instruction->opcode() != HloOpcode::kAsyncDone) {
+    return false;
+  }
+  const HloInstruction* start = instruction->async_chain_start();
+  return start != nullptr &&
+         HloInstruction::IsThreadIncluded(start->parent()->execution_thread(),
+                                          execution_threads);
+}
+
+// Updates all `kAsyncUpdate` and `kAsyncDone` instructions in
+// `execution_threads` to reference the same `async_wrapped_computation` as
+// their root `kAsyncStart`.
+// TODO: b/534428440 - VLOG the async chains for debugging.
+bool SetIdenticalCalledComputationForAsyncChain(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  for (HloComputation* comp :
+       module->MakeComputationPostOrder(execution_threads)) {
+    for (HloInstruction* inst : comp->instructions()) {
+      if (!HasIncludedAsyncChainStart(inst, execution_threads)) {
+        continue;
+      }
+      HloComputation* target_comp =
+          inst->async_chain_start()->async_wrapped_computation();
+      if (target_comp != nullptr &&
+          inst->async_wrapped_computation() != target_comp) {
+        inst->ReplaceCalledComputations(
+            [&](HloComputation*) { return target_comp; });
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+}  // namespace
+
+bool FlattenCallGraph::SkipCloningForNonAsync(
+    const HloComputation& computation) {
+  // Skip cloning only when `computation` is neither an async computation nor
+  // transitively called from inside an async computation.
+  return !IsInAsyncComputationSubtree(computation);
+}
+
 absl::StatusOr<bool> FlattenCallGraph::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -55,8 +154,9 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
     }
     absl::InlinedVector<HloInstruction*, 1> callers;
     for (HloInstruction* caller : computation->caller_instructions()) {
-      if (execution_threads.empty() ||
-          execution_threads.contains(caller->parent()->execution_thread())) {
+      if ((execution_threads.empty() ||
+           execution_threads.contains(caller->parent()->execution_thread())) &&
+          !HasIncludedAsyncChainStart(caller, execution_threads)) {
         callers.push_back(caller);
       }
     }
@@ -120,6 +220,9 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
         HloComputation* current = worklist.back();
         worklist.pop_back();
         for (HloInstruction* instruction : current->instructions()) {
+          if (HasIncludedAsyncChainStart(instruction, execution_threads)) {
+            continue;
+          }
           instruction->ReplaceCalledComputations([&](HloComputation* callee) {
             if (skip_cloning_handler_(*callee)) {
               return callee;
@@ -131,6 +234,10 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
         }
       }
     }
+  }
+
+  if (SetIdenticalCalledComputationForAsyncChain(module, execution_threads)) {
+    changed = true;
   }
 
   XLA_VLOG_LINES(3, "After flatten call graph:\n" + module->ToString());

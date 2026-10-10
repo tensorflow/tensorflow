@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -300,7 +300,7 @@ class GpuCompiler : public LLVMCompiler {
   absl::Mutex user_asm_hook_m_;
   AsmModuleHook user_asm_hook_ ABSL_GUARDED_BY(user_asm_hook_m_);
 
-  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool_;
+  MlirContextPool mlir_context_pool_;
 };
 
 void GpuCollectiveBufferAnalysis(

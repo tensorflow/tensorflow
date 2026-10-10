@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
@@ -6851,15 +6852,12 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
-bool SupportsDevicelessDeviceProperties() {
-  return cudnn_frontend::detail::get_backend_version() >= 90800;
-}
-
-bool SupportsDevicelessConvGraphs(const DeviceDescription& gpu_device_info) {
-  const auto* cc =
-      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
-  return cc == nullptr || cc->major < 10 ||
-         cudnn_frontend::detail::get_backend_version() >= 91900;
+bool SupportsDevicelessCudnnCompilation() {
+  const int min_backend_version =
+      kMinDevicelessCudnnVersion.major_version() * 10000 +
+      kMinDevicelessCudnnVersion.minor_version() * 100 +
+      kMinDevicelessCudnnVersion.patch_version();
+  return cudnn_frontend::detail::get_backend_version() >= min_backend_version;
 }
 
 namespace {
@@ -6894,6 +6892,8 @@ absl::Status PlanEnumerationStatus(bool deviceless,
   return absl::InternalError(absl::StrCat("cuDNN frontend error (", stage,
                                           "): ", result.get_message()));
 }
+
+extern "C" ABSL_ATTRIBUTE_WEAK void EnsureCudaCompatLoaded();
 
 }  // namespace
 
@@ -6934,8 +6934,15 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
     ABSL_RETURN_IF_ERROR(create_and_filter_plans());
     RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn.handle()));
   } else {
-    // Deviceless mode. No cuDNN version guard needed: DeviceProperties
-    // deserialization inside BuildDeviceProperties rejects runtimes < 9.8.
+    if (EnsureCudaCompatLoaded != nullptr) {
+      EnsureCudaCompatLoaded();
+    }
+    if (!SupportsDevicelessCudnnCompilation()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Deviceless cuDNN compilation requires cuDNN >= ",
+          kMinDevicelessCudnnVersion.ToString(), " (loaded ",
+          cudnn_frontend::detail::get_backend_version_string(), ")."));
+    }
     ABSL_ASSIGN_OR_RETURN(auto device_props,
                      xla::gpu::BuildDeviceProperties(gpu_device_info));
     graph_.set_device_properties(device_props);

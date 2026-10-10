@@ -1,21 +1,21 @@
 # Test-related settings.
 
 build:rocm_dev --remote_upload_local_results=false
-build:rocm_dev --remote_cache="grpcs://wardite.cluster.engflow.com"
+build:rocm_dev --remote_cache="grpcs://internal.actinolite.cluster.engflow.com"
 
 common:rocm_base --test_verbose_timeout_warnings
 common:rocm_base --test_timeout=920,2400,7200,9600
 
-build:rocm_rbe --remote_cache="grpcs://wardite.cluster.engflow.com"
+build:rocm_rbe --remote_cache="grpcs://internal.actinolite.cluster.engflow.com"
 build:rocm_rbe --repo_env=REMOTE_GPU_TESTING=1
-build:rocm_rbe --bes_backend="grpcs://wardite.cluster.engflow.com"
-build:rocm_rbe --bes_results_url="https://wardite.cluster.engflow.com/invocation/"
+build:rocm_rbe --bes_backend="grpcs://internal.actinolite.cluster.engflow.com"
+build:rocm_rbe --bes_results_url="https://internal.actinolite.cluster.engflow.com/invocation/"
 build:rocm_rbe --host_platform="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --extra_execution_platforms="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --platforms="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --bes_timeout=600s
-build:rocm_rbe --tls_client_certificate="/data/ci-cert.crt"
-build:rocm_rbe --tls_client_key="/data/ci-cert.key"
+build:rocm_rbe --tls_client_certificate="/data/temp-rbe-cert.crt"
+build:rocm_rbe --tls_client_key="/data/temp-rbe-cert.key"
 build:rocm_rbe --spawn_strategy=remote,local
 build:rocm_rbe --grpc_keepalive_time=30s
 build:rocm_rbe --remote_cache_compression
@@ -26,7 +26,7 @@ build:rocm_rbe --experimental_strict_repo_env
 
 
 test:rocm_rbe --jobs=50
-test:rocm_rbe --remote_executor=grpcs://wardite.cluster.engflow.com
+test:rocm_rbe --remote_executor=grpcs://internal.actinolite.cluster.engflow.com
 test:rocm_rbe --remote_timeout=3600
 test:rocm_rbe --strategy=TestRunner=remote,local
 test:rocm_rbe --test_sharding_strategy=explicit

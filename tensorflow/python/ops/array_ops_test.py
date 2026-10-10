@@ -493,15 +493,19 @@ class TestFoldInputValidation(test.TestCase):
     patches = random_ops.random_normal([1, 4, 4, 1])
     with self.assertRaisesRegex(ValueError, "kernel_size must be >= 1"):
       array_ops.fold(patches, (4, 4), (-1, 1), 2)
+    with self.assertRaisesRegex(ValueError, "kernel_size must be >= 1"):
       array_ops.fold(patches, (4, 4), (2, -1), 2)
-      array_ops.fold(patches, (4, 4), 2, 2)
+    with self.assertRaisesRegex(ValueError, "kernel_size must be >= 1"):
+      array_ops.fold(patches, (4, 4), -1, 2)
 
   def test_invalid_stride(self):
     patches = random_ops.random_normal([1, 4, 4, 1])
     with self.assertRaisesRegex(ValueError, "stride must be >= 1"):
       array_ops.fold(patches, (4, 4), 2, (-1, 1))
+    with self.assertRaisesRegex(ValueError, "stride must be >= 1"):
       array_ops.fold(patches, (4, 4), 2, (1, -2))
-      array_ops.fold(patches, (4, 4), 2, 2)
+    with self.assertRaisesRegex(ValueError, "stride must be >= 1"):
+      array_ops.fold(patches, (4, 4), 2, -1)
 
   def test_invalid_reduction(self):
     patches = random_ops.random_normal([1, 3, 3, 4])

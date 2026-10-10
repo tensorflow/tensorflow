@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -40,8 +41,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -128,19 +129,16 @@ TEST_P(PriorityFusionTest, ParallelTilingSearchMatchesSerialTilingSearch) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> parallel_module,
                        ParseAndReturnVerifiedModule(kHlo));
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 8);
-  // Mirrors the contexts GpuCompiler pools: multithreading is disabled, so the
-  // cost model must give each candidate its own context.
-  MlirContextPool mlir_context_pool(
-      [] {
-        return std::make_unique<mlir::MLIRContext>(
-            mlir::MLIRContext::Threading::DISABLED);
-      },
-      /*preallocate=*/8);
+  // Same contexts as GpuCompiler pools. They are single-threaded, so the cost
+  // model must give each candidate its own context.
+  MlirContextPool mlir_context_pool(CreateMlirContext, /*preallocate=*/8);
+  std::unique_ptr<mlir::MLIRContext> parallel_mlir_context =
+      CreateMlirContext();
   GpuHloCostAnalysis::Options options;
   options.count_multiple_input_accesses = true;
-  PriorityFusion parallel_priority_fusion(&thread_pool, device_info_,
-                                          &alias_info_, options, &mlir_context_,
-                                          &mlir_context_pool);
+  PriorityFusion parallel_priority_fusion(
+      &thread_pool, device_info_, &alias_info_, options,
+      parallel_mlir_context.get(), &mlir_context_pool);
   ASSERT_OK_AND_ASSIGN(bool parallel_changed,
                        parallel_priority_fusion.Run(parallel_module.get()));
 
@@ -1572,7 +1570,7 @@ TEST_P(HerolessPriorityFusionTest, LimitNumberOfParameters) {
     module_text +=
         absl::StrFormat("add%d = f32[] add(add%d, p%d)\n", i, i - 1, i);
   }
-  module_text += "}";
+  module_text += '}';
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_text));
   EXPECT_THAT(priority_fusion_.Run(module.get()),
               absl_testing::IsOkAndHolds(true));

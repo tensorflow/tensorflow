@@ -122,6 +122,11 @@ class EmitterContext {
     return tiled_hlo_to_tensor_.at(&tiled_hlo);
   }
 
+  bool IsEmitted(
+      const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
+    return tiled_hlo_to_tensor_.contains(&tiled_hlo);
+  }
+
   bool MapTiledHloToTensorValue(
       const gpu::experimental::TiledHloInstruction* tiled_hlo,
       TensorValue value) {

@@ -66,7 +66,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/rng_seed_thunk.h"
-#include "xla/backends/gpu/runtime/select_k_thunk.h"
+#include "xla/backends/gpu/runtime/select_k_thunk_proto_deserialization.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -79,7 +79,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -148,13 +147,15 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           std::move(thunk_info), thunk_proto.device_to_device_copy_thunk(),
           buffer_allocations);
     case ThunkProto::kWhileThunk:
-      return WhileThunk::FromProto(std::move(thunk_info),
-                                   thunk_proto.while_thunk(),
-                                   buffer_allocations, deserializer);
+      return WhileThunk::FromProto(
+          std::move(thunk_info), thunk_proto.while_thunk(), buffer_allocations,
+          deserializer,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kConditionalThunk:
-      return ConditionalThunk::FromProto(std::move(thunk_info),
-                                         thunk_proto.conditional_thunk(),
-                                         buffer_allocations, deserializer);
+      return ConditionalThunk::FromProto(
+          std::move(thunk_info), thunk_proto.conditional_thunk(),
+          buffer_allocations, deserializer,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kGemmThunk:
       return GemmThunk::FromProto(std::move(thunk_info),
                                   thunk_proto.gemm_thunk(), buffer_allocations);
@@ -163,9 +164,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           std::move(thunk_info), thunk_proto.triangular_solve_thunk(),
           buffer_allocations);
     case ThunkProto::kKernelThunk:
-      return KernelThunk::FromProto(std::move(thunk_info),
-                                    thunk_proto.kernel_thunk(),
-                                    buffer_allocations);
+      return KernelThunk::FromProto(
+          std::move(thunk_info), thunk_proto.kernel_thunk(), buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kReplicaIdThunk:
       return ReplicaIdThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.replica_id_thunk(),
@@ -190,20 +191,23 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
           std::move(thunk_info), thunk_proto.cublas_lt_matmul_thunk(),
           buffer_allocations);
     case ThunkProto::kNormThunk:
-      return NormThunk::FromProto(std::move(thunk_info),
-                                  thunk_proto.norm_thunk(), buffer_allocations);
+      return NormThunk::FromProto(
+          std::move(thunk_info), thunk_proto.norm_thunk(), buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kConvolutionThunk:
-      return ConvolutionThunk::FromProto(std::move(thunk_info),
-                                         thunk_proto.convolution_thunk(),
-                                         buffer_allocations);
+      return ConvolutionThunk::FromProto(
+          std::move(thunk_info), thunk_proto.convolution_thunk(),
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kConvolutionReorderThunk: {
       return ConvolutionReorderThunk::FromProto(
           std::move(thunk_info), thunk_proto.convolution_reorder_thunk(),
           buffer_allocations);
     }
     case ThunkProto::kFftThunk:
-      return FftThunk::FromProto(std::move(thunk_info), thunk_proto.fft_thunk(),
-                                 buffer_allocations);
+      return FftThunk::FromProto(
+          std::move(thunk_info), thunk_proto.fft_thunk(), buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kMemset32BitValueThunk:
       return Memset32BitValueThunk::FromProto(
           std::move(thunk_info), thunk_proto.memset32bit_value_thunk(),
@@ -242,10 +246,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return HostExecuteDoneThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_done_thunk(),
           buffer_allocations, host_executable_async_events_map);
+    // TODO: Remove this case on Apr 30, 2027
     case ThunkProto::kSelectKThunk:
-      return SelectKThunk::FromProto(std::move(thunk_info),
-                                     thunk_proto.select_k_thunk(),
-                                     buffer_allocations);
+      return DeserializeSelectKThunkProto(
+          std::move(thunk_info), thunk_proto.select_k_thunk(),
+          buffer_allocations, platform_name, gpu_compute_capability);
     case ThunkProto::kHostSendThunk:
       return HostSendThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_send_thunk(),
@@ -267,9 +272,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                                      thunk_proto.outfeed_thunk(),
                                      buffer_allocations);
     case ThunkProto::kCustomKernelThunk:
-      return CustomKernelThunk::FromProto(std::move(thunk_info),
-                                          thunk_proto.custom_kernel_thunk(),
-                                          buffer_allocations, symbol_resolver);
+      return CustomKernelThunk::FromProto(
+          std::move(thunk_info), thunk_proto.custom_kernel_thunk(),
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_process()
+                                   : 0,
+          symbol_resolver);
     case ThunkProto::kAllGatherThunk:
       return AllGatherThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.all_gather_thunk(),
@@ -289,7 +297,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kRaggedAllToAllThunk:
       return RaggedAllToAllThunk::FromProto(
           std::move(thunk_info), thunk_proto.ragged_all_to_all_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kCollectivePermuteThunk:
       return CollectivePermuteThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_permute_thunk(),
@@ -303,11 +312,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kCollectiveBroadcastThunk:
       return CollectiveBroadcastThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_broadcast_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kCollectiveReduceThunk:
       return CollectiveReduceThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_reduce_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kCollectiveGroupThunk:
       return CollectiveGroupThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_group_thunk(),
@@ -315,11 +326,14 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kCollectiveKernelThunk:
       return CollectiveKernelThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_kernel_thunk(),
-          buffer_allocations);
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_process()
+                                   : 0);
     case ThunkProto::kAsyncStartThunk:
-      return AsyncStartThunk::FromProto(std::move(thunk_info),
-                                        thunk_proto.async_start_thunk(),
-                                        deserializer, async_execution_map);
+      return AsyncStartThunk::FromProto(
+          std::move(thunk_info), thunk_proto.async_start_thunk(), deserializer,
+          async_execution_map,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kAsyncDoneThunk:
       return AsyncDoneThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.async_done_thunk(),

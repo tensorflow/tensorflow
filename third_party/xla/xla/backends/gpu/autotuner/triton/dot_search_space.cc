@@ -639,9 +639,7 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     return;
   }
 
-  // Output tilings alone typically produce 12-20 configs (without split-K
-  // multipliers). We only skip optimization for very small search spaces.
-  constexpr int kMinConfigsForOccupancyOptimization = 15;
+  constexpr int kMinConfigsForOccupancyOptimization = 24;
   if (configs.size() < kMinConfigsForOccupancyOptimization) {
     VLOG(10) << "Skipping occupancy optimization for small search spaces. "
                 "Configs size: "

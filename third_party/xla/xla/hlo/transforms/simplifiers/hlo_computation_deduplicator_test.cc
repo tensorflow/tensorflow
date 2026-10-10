@@ -39,11 +39,13 @@ namespace {
 
 class HloComputationDeduplicatorTest : public HloHardwareIndependentTestBase {
  protected:
-  std::vector<std::string> RunDeduplicatePass(const absl::string_view text,
-                                              bool expect_true) {
+  std::vector<std::string> RunDeduplicatePass(
+      const absl::string_view text, bool expect_true,
+      bool deduplicate_large_computations = false) {
     std::unique_ptr<HloModule> module =
         ParseAndReturnVerifiedModule(text).value();
-    HloComputationDeduplicator dedup;
+    HloComputationDeduplicator dedup(/*mark_fusion_duplications=*/false,
+                                     deduplicate_large_computations);
     bool changed = dedup.Run(module.get()).value();
     EXPECT_EQ(changed, expect_true);
     std::vector<std::string> computation_names;
@@ -479,6 +481,10 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionLargeConstant) {
   }
   EXPECT_EQ(region_b_count, 1);
   EXPECT_EQ(computation_names.size(), 3);
+
+  computation_names = RunDeduplicatePass(
+      text, /*expect_true=*/true, /*deduplicate_large_computations=*/true);
+  EXPECT_EQ(computation_names.size(), 2);
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBDifferentcomp) {
@@ -634,6 +640,13 @@ TEST_F(HloComputationDeduplicatorTest, LargeSubComputationTest) {
   EXPECT_FALSE(changed);
   std::vector<HloComputation *> computations = module->MakeComputationSorted();
   EXPECT_EQ(computations.size(), (total_regions + 1));
+
+  HloComputationDeduplicator dedup_large(
+      /*mark_fusion_duplications=*/false,
+      /*deduplicate_large_computations=*/true);
+  ASSERT_OK_AND_ASSIGN(changed, dedup_large.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(module->MakeComputationSorted().size(), 2);
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontDeduplicateReduceAllReduce) {
