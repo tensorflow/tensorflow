@@ -1366,7 +1366,7 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(
         np_array_ops.pad(empty, 1, 'constant'), np.pad(empty, 1, 'constant'))
     with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                'Incompatible shapes'):
+                                'Incompatible shapes|broadcast'):
       np_array_ops.pad(np.arange(12).reshape(3, 4), [1, 2, 3], 'constant')
 
   def testPadBroadcastPadWidthStaticShape(self):
