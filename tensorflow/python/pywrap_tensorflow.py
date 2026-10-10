@@ -71,20 +71,26 @@ try:
 
   # pylint: disable=wildcard-import,g-import-not-at-top,line-too-long,undefined-variable
   try:
-    from tensorflow.python._pywrap_tensorflow_internal import *
-  # This try catch logic is because there is no bazel equivalent for py_extension.
-  # Externally in opensource we must enable exceptions to load the shared object
-  # by exposing the PyInit symbols with pybind. This error will only be
-  # caught internally or if someone changes the name of the target _pywrap_tensorflow_internal.
+    try:
+      from tensorflow.python._pywrap_tensorflow_internal import *
+    # This try catch logic is because there is no bazel equivalent for py_extension.
+    # Externally in opensource we must enable exceptions to load the shared object
+    # by exposing the PyInit symbols with pybind. This error will only be
+    # caught internally or if someone changes the name of the target _pywrap_tensorflow_internal.
 
-  # This logic is used in other internal projects using py_extension.
-  except ModuleNotFoundError:
-    pass
-
-  if _use_dlopen_global_flags:
-    pywrap_dlopen_global_flags.reset_dlopen_flags()
-  elif _can_set_rtld_local:
-    sys.setdlopenflags(_default_dlopen_flags)
+    # This logic is used in other internal projects using py_extension.
+    except ModuleNotFoundError:
+      pass
+  finally:
+    # Always restore the dlopen flags, even if the import above raised an
+    # ImportError that is not a ModuleNotFoundError (e.g. a genuine load
+    # failure). Otherwise a real failure here would leave the process's
+    # dlopen flags permanently altered for any caller that catches the
+    # resulting ImportError and keeps running.
+    if _use_dlopen_global_flags:
+      pywrap_dlopen_global_flags.reset_dlopen_flags()
+    elif _can_set_rtld_local:
+      sys.setdlopenflags(_default_dlopen_flags)
 except ImportError as exc:
   if os.name == 'nt':
     try:
