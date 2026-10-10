@@ -1022,6 +1022,89 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       self.assertEqual(indices_tf.size, 3)
       self.assertAllClose(indices_tf[:3], [3, 0, 5])
 
+  def _testMixedThresholdDtype(self, nms):
+    # Regression test for GitHub issue 128614: boxes and scores of one
+    # floating-point type with thresholds of another, which
+    # tf.image.non_max_suppression produces for float16 boxes, failed to
+    # compile because XLA doesn't mix floating-point types in one operation.
+    if np.float16 not in self.float_types:
+      self.skipTest("float16 is not supported on this device")
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    for dtype, threshold_dtype in ((np.float16, np.float32),
+                                   (np.float32, np.float16)):
+      with self.subTest(
+          dtype=dtype.__name__,
+          threshold_dtype=threshold_dtype.__name__), self.session() as sess:
+        boxes = array_ops.placeholder(dtype, shape=[6, 4])
+        scores = array_ops.placeholder(dtype, shape=[6])
+        iou_threshold = array_ops.placeholder(threshold_dtype, shape=[])
+        score_threshold = array_ops.placeholder(threshold_dtype, shape=[])
+        with self.device_scope():
+          selected_indices, num_valid = nms(boxes, scores, iou_threshold,
+                                            score_threshold)
+        indices_tf, num_valid_tf = sess.run(
+            [selected_indices, num_valid],
+            feed_dict={
+                boxes: np.array(boxes_data, dtype=dtype),
+                scores: np.array(scores_data, dtype=dtype),
+                iou_threshold: 0.5,
+                score_threshold: 0.4
+            })
+        # Box 5 is below the score threshold.
+        self.assertEqual(num_valid_tf, 2)
+        self.assertAllEqual([3, 0], indices_tf[:num_valid_tf])
+
+  def testNMSV3MixedThresholdDtype(self):
+
+    def nms(boxes, scores, iou_threshold, score_threshold):
+      selected_indices = image_ops.non_max_suppression_v3(
+          boxes=boxes,
+          scores=scores,
+          max_output_size=6,
+          iou_threshold=iou_threshold,
+          score_threshold=score_threshold)
+      return selected_indices, array_ops.size(selected_indices)
+
+    self._testMixedThresholdDtype(nms)
+
+  def testNMSV4MixedThresholdDtype(self):
+
+    def nms(boxes, scores, iou_threshold, score_threshold):
+      return gen_image_ops.non_max_suppression_v4(
+          boxes=boxes,
+          scores=scores,
+          max_output_size=6,
+          iou_threshold=iou_threshold,
+          score_threshold=score_threshold,
+          pad_to_max_output_size=True)
+
+    self._testMixedThresholdDtype(nms)
+
+  def testNMSV3NonScalarScoreThreshold(self):
+    # Shape inference can't reject a score_threshold of unknown shape, so the
+    # XLA kernel checks that it is a scalar when it compiles.
+    with self.session() as sess:
+      boxes = array_ops.placeholder(np.float32, shape=[6, 4])
+      scores = array_ops.placeholder(np.float32, shape=[6])
+      score_threshold = array_ops.placeholder(np.float32)
+      with self.device_scope():
+        selected_indices = image_ops.non_max_suppression_v3(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=6,
+            iou_threshold=0.5,
+            score_threshold=score_threshold)
+      with self.assertRaisesOpError("Score Threshold isn't a scalar"):
+        sess.run(
+            selected_indices,
+            feed_dict={
+                boxes: np.zeros([6, 4], np.float32),
+                scores: np.zeros([6], np.float32),
+                score_threshold: [0.4]
+            })
+
   def testNMSV3EmptyInput(self):
     # Regression test for #117245: with no boxes the suppression loop was
     # built from zero-sized dimensions and segfaulted the compiler. The
