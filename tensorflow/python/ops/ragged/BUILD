@@ -1070,6 +1070,7 @@ py_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:ragged_conversion_ops_gen",
         "//tensorflow/python/platform:test",
     ],
 )
