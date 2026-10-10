@@ -143,6 +143,9 @@ class MaxPoolingOp : public OpKernel {
                    params.forward_output_shape(&params_forward_output_shape));
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, params_forward_output_shape, &output));
+    if (params_forward_output_shape.num_elements() == 0) {
+      return;
+    }
 
     if (params.depth_window > 1) {
       // Validate spec against the current implementation.  A
@@ -421,6 +424,9 @@ class MaxPoolingV2Op : public OpKernel {
                    params.forward_output_shape(&params_forward_output_shape));
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, params_forward_output_shape, &output));
+    if (params_forward_output_shape.num_elements() == 0) {
+      return;
+    }
 
     if (params.depth_window > 1) {
       // Validate spec against the current implementation.  A
