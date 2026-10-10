@@ -18,10 +18,12 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
@@ -80,7 +82,7 @@ class PackOp : public OpKernel {
                     expanded_num_dims, ")")));
 
     TensorShape output_shape(first_input.shape());
-    output_shape.InsertDim(axis, num);
+    OP_REQUIRES_OK(c, output_shape.InsertDimWithStatus(axis, num));
 
     // In the num = 1 case, just reshape the input
     if (num == 1) {

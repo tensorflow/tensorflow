@@ -1152,7 +1152,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "pack_op",
     prefix = "pack_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -1191,7 +1193,10 @@ tf_kernel_library(
     name = "shape_ops",
     features = ["-layering_check"],
     prefix = "shape_ops",
-    deps = ARRAY_DEPS + ["//tensorflow/core/common_runtime:dma_helper"],
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/common_runtime:dma_helper",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(

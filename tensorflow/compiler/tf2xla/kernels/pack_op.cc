@@ -64,7 +64,7 @@ class PackOp : public XlaOpKernel {
     std::vector<xla::XlaOp> reshaped_inputs(num);
 
     TensorShape child_shape(shapes[0]);
-    child_shape.InsertDim(axis, 1);
+    OP_REQUIRES_OK(ctx, child_shape.InsertDimWithStatus(axis, 1));
 
     for (int i = 0; i < num; ++i) {
       // Reshape the inputs to have an extra dimension of size 1.
