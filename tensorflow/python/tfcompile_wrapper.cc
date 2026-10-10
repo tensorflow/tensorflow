@@ -18,6 +18,7 @@ limitations under the License.
 #ifdef __s390x__
 #include "llvm/ADT/StringRef.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #endif
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
@@ -49,12 +50,24 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
         flags.graph = std::move(graph);
         flags.config = std::move(config);
 #ifdef __s390x__
-        flags.target_triple = std::move(
-            target_triple.empty() ? llvm::sys::getDefaultTargetTriple()
-                                  : target_triple);
-        flags.target_cpu =
-            std::move(target_cpu.empty() ? llvm::sys::getHostCPUName().str()
-                                         : target_cpu);
+        bool is_cross_compile = false;
+        if (target_triple.empty()) {
+          flags.target_triple = llvm::sys::getDefaultTargetTriple();
+        } else {
+          flags.target_triple = std::move(target_triple);
+          is_cross_compile =
+              llvm::Triple(flags.target_triple).getArch() !=
+              llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArch();
+        }
+
+        // Only default to the host CPU when not cross-compiling to prevent
+        // passing host-specific CPU flags (e.g., z14) to target backends of
+        // different architectures.
+        if (target_cpu.empty() && !is_cross_compile) {
+          flags.target_cpu = llvm::sys::getHostCPUName().str();
+        } else {
+          flags.target_cpu = std::move(target_cpu);
+        }
 #else
         flags.target_triple = std::move(target_triple);
         flags.target_cpu = std::move(target_cpu);
