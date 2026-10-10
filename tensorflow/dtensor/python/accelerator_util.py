@@ -293,23 +293,34 @@ def initialize_accelerator_system(
 def shutdown_accelerator_system() -> None:
   """Shuts down the accelerator system."""
   global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+
+  # Validate first, so a validation error can never mask a real failure
+  # from `async_wait()` below.
+  if not is_initialized():
+    raise ValueError(
+        "Accelerator system is not initialized. Call "
+        "tf.experimental.dtensor.initialize_accelerator_system first."
+    )
+
+  device_type = _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+
+  if not config.is_local_mode():
+    raise ValueError(
+        "Shutting down accelerator system under multi-client mode is "
+        "not supported."
+    )
+
   try:
     context.async_wait()
+  except Exception:
+    logging.exception(
+        "Error waiting for async operations to finish before shutting "
+        "down the accelerator system."
+    )
+    raise
   finally:
-    if not is_initialized():
-      raise ValueError(
-          "Accelerator system is not initialized. Call "
-          "tf.experimental.dtensor.initialize_accelerator_system first."
-      )
-
-    device_type = _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
-
-    if not config.is_local_mode():
-      raise ValueError(
-          "Shutting down accelerator system under multi-client mode is "
-          "not supported."
-      )
-
+    # Cleanup always runs, even if `async_wait()` raised, so the system
+    # is never left stuck in an "initialized" state.
     if device_type == "TPU":
       tpu_util.shutdown_tpu_system()
 
