@@ -63,7 +63,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:unregistered_attributes",
-        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -109,6 +108,26 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "stack_location_utils_benchmark_test",
+    srcs = ["stack_location_utils_benchmark_test.cc"],
+    deps = [
+        ":hlo_to_mlir_hlo",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_benchmark//:benchmark",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "hlo_function_importer",
     srcs = ["hlo_function_importer.cc"],
@@ -130,8 +149,6 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:hlo_proto_cc",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -233,7 +250,10 @@ xla_cc_test(
     srcs = ["hlo_utils_test.cc"],
     deps = [
         ":hlo_utils",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",

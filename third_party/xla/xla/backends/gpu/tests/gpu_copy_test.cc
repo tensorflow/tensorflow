@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,7 +35,20 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class GpuCopyTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
+class GpuCopyTest : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloInterpreterReferenceMixin<
+        GpuPjRtCodegenTest>::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_dynamic_slice_table_offsets(
+        true);
+    return debug_options;
+  }
+
+  bool EmitsDynamicSliceCopyThunks() const {
+    return SupportsDynamicSliceCopyThunks(device_description());
+  }
+};
 
 // The GPU backend should not emit a copy kernel for the kCopy instruction in
 // this test. Instead, it should generate a CopyThunk which invokes cuMemcpy at
@@ -110,7 +124,7 @@ constexpr char kSliceMemcpyModule[] = R"(
       c1 = s32[] constant(1)
       ROOT slice = s32[1] dynamic-slice(p0, c1), dynamic_slice_sizes={1},
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
     }
 
     ENTRY main {
@@ -124,9 +138,12 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicSlice) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kSliceMemcpyModule));
 
-  // There should not be a kernel for `dynamic_slice`.
+  // There should not be a kernel for `dynamic_slice`, except on platforms that
+  // emit DS/DUS copy fusions as regular kernels.
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
-                               "; CHECK-NOT: void @slice",
+                               EmitsDynamicSliceCopyThunks()
+                                   ? "; CHECK-NOT: void @slice"
+                                   : "; CHECK: void @slice",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/false));
   EXPECT_TRUE(
@@ -140,7 +157,7 @@ constexpr char kDynamicUpdateSliceModule[] = R"(
       c1 = s32[] constant(1)
       ROOT update-slice = s32[4] dynamic-update-slice(p0, p1, c1),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
     }
 
     ENTRY main {
@@ -155,7 +172,9 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSlice) {
                        ParseAndReturnVerifiedModule(kDynamicUpdateSliceModule));
 
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
-                               "; CHECK-NOT: void @updated",
+                               EmitsDynamicSliceCopyThunks()
+                                   ? "; CHECK-NOT: void @updated"
+                                   : "; CHECK: void @updated",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/false));
   EXPECT_TRUE(
@@ -171,7 +190,7 @@ constexpr char kDynamicUpdateSliceWithBitcastModule[] = R"(
       bc1 = s32[4] bitcast(p1)
       update-slice = s32[64] dynamic-update-slice(bc0, bc1, p2),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"0","byte_stride":"4","loop_index":"0"}}
+              {"loop_index":"0","linear":{"byte_offset":"0","byte_stride":"4"}}}
       ROOT bc = s32[8,8] bitcast(update-slice)
     }
 
@@ -231,17 +250,24 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
       std::unique_ptr<VerifiedHloModule> hlo_module,
       ParseAndReturnVerifiedModule(kDynamicUpdateSliceWithBitcastModule));
 
-  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
-    CHECK-NOT: define {{.*}}@
-    CHECK: define {{.*}}@input
-    CHECK-NOT: define {{.*}}@
-    CHECK: define {{.*}}@cmp
-    CHECK-NOT: define {{.*}}@
-    CHECK: define {{.*}}@next_ivar
-    CHECK-NOT: define {{.*}}@
-  )",
-                               /*match_optimized_ir=*/false,
-                               /*run_optimization_passes=*/false));
+  if (EmitsDynamicSliceCopyThunks()) {
+    ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
+      CHECK-NOT: define {{.*}}@
+      CHECK: define {{.*}}@input
+      CHECK-NOT: define {{.*}}@
+      CHECK: define {{.*}}@cmp
+      CHECK-NOT: define {{.*}}@
+      CHECK: define {{.*}}@next_ivar
+      CHECK-NOT: define {{.*}}@
+    )",
+                                 /*match_optimized_ir=*/false,
+                                 /*run_optimization_passes=*/false));
+  } else {
+    ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                                 "; CHECK: define {{.*}}@updated_bc",
+                                 /*match_optimized_ir=*/false,
+                                 /*run_optimization_passes=*/false));
+  }
   EXPECT_TRUE(RunAndCompareNoHloPasses(kDynamicUpdateSliceWithBitcastModule,
                                        ErrorSpec{0, 0}));
 }
@@ -285,10 +311,9 @@ constexpr char kSliceMemcpyModuleUnfused[] = R"(
     })";
 
 TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
-  auto compute_capability = device_description().gpu_compute_capability();
-  if (auto cc = compute_capability.cuda_compute_capability();
-      !cc || !cc->IsAtLeastAmpere()) {
-    GTEST_SKIP() << "Test requires at least Ampere.";
+  if (!EmitsDynamicSliceCopyThunks()) {
+    GTEST_SKIP()
+        << "Test requires a platform that emits dynamic-slice copy thunks.";
   }
 
   // This is an integration test to verify that dynamic-slices that depend on
@@ -324,6 +349,86 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
                        CHECK-NOT: define {{.*}}@)",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/true));
+  EXPECT_TRUE(RunAndCompare(kSliceMemcpyModuleUnfused, ErrorSpec{0, 0}));
+}
+
+constexpr char kDUSOutOfBoundsConstantOffsetsModule[] = R"(
+    ENTRY main {
+      p0 = s32[3,1,33] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      c1 = s32[] constant(1)
+      c31 = s32[] constant(31)
+      ROOT dus = s32[3,1,33] dynamic-update-slice(p0, p1, c1, c1, c31)
+    })";
+
+TEST_F(GpuCopyTest,
+       UseMemcpyForDynamicUpdateSliceWithOutOfBoundsConstantOffsets) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kDUSOutOfBoundsConstantOffsetsModule));
+
+  if (EmitsDynamicSliceCopyThunks()) {
+    ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                                 "; CHECK-NOT: define {{.*}}@",
+                                 /*match_optimized_ir=*/false,
+                                 /*run_optimization_passes=*/true));
+  } else {
+    ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                                 "; CHECK: define {{.*}}@",
+                                 /*match_optimized_ir=*/false,
+                                 /*run_optimization_passes=*/true));
+  }
+  EXPECT_TRUE(
+      RunAndCompare(kDUSOutOfBoundsConstantOffsetsModule, ErrorSpec{0, 0}));
+}
+
+TEST_F(GpuCopyTest, DynamicUpdateSliceOffsetTable) {
+  const char* hlo = R"(
+    body {
+      p = (s32[], s32[3,5], s32[6,1,1]) parameter(0)
+      i = s32[] get-tuple-element(p), index=0
+      buf = s32[3,5] get-tuple-element(p), index=1
+      updates = s32[6,1,1] get-tuple-element(p), index=2
+
+      zero = s32[] constant(0)
+      slice = s32[1,1,1] dynamic-slice(updates, i, zero, zero),
+          dynamic_slice_sizes={1,1,1}
+      update = s32[1,1] reshape(slice)
+      dus = s32[3,5] dynamic-update-slice(buf, update, i, i)
+
+      one = s32[] constant(1)
+      next = s32[] add(i, one)
+      ROOT result = (s32[], s32[3,5], s32[6,1,1]) tuple(next, dus, updates)
+    }
+
+    cond {
+      p = (s32[], s32[3,5], s32[6,1,1]) parameter(0)
+      i = s32[] get-tuple-element(p), index=0
+      limit = s32[] constant(6)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      buf = s32[3,5] parameter(0)
+      updates = s32[6,1,1] parameter(1)
+      zero = s32[] constant(0)
+      init = (s32[], s32[3,5], s32[6,1,1]) tuple(zero, buf, updates)
+      loop = (s32[], s32[3,5], s32[6,1,1])
+        while(init), condition=cond, body=body
+      ROOT result = s32[3,5] get-tuple-element(loop), index=1
+    })";
+
+  if (EmitsDynamicSliceCopyThunks()) {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    // Only the loop condition and increment need kernels. The copy uses a
+    // linear source offset and destination offsets {0, 24, 48, 52, 56, 56}.
+    ASSERT_OK(CompileAndVerifyIr(std::move(module), R"(
+        CHECK-COUNT-2: define {{.*}}@
+        CHECK-NOT: define {{.*}}@)",
+                                 /*match_optimized_ir=*/false,
+                                 /*run_optimization_passes=*/true));
+  }
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
 }
 
 }  // namespace

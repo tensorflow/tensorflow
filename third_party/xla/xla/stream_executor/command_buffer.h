@@ -169,11 +169,27 @@ class CommandBuffer {
       const KernelArgs& args, absl::Span<const Command* const> dependencies,
       StreamPriority priority = StreamPriority::Default) = 0;
 
+  // Creates a kernel launch command from an externally-managed native function.
+  // Nolint because it matches existing CreateLaunch virtual method signature
+  // precedent for default arguments.
+  // NOLINTNEXTLINE
+  virtual absl::StatusOr<const Command*> CreateLaunch(
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args,
+      absl::Span<const Command* const> dependencies,
+      StreamPriority priority = StreamPriority::Default) = 0;
+
   // Updates a kernel launch command.
   virtual absl::Status UpdateLaunch(
       const Command* command, const ThreadDim& threads, const BlockDim& blocks,
       const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgs& args) = 0;
+
+  virtual absl::Status UpdateLaunch(
+      const Command* command, const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
 
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
@@ -230,6 +246,26 @@ class CommandBuffer {
   virtual absl::Status UpdateMemcpyD2D(const Command* command,
                                        DeviceAddressBase* dst,
                                        const DeviceAddressBase& src,
+                                       uint64_t size) = 0;
+
+  // Creates a device-to-host memory copy.
+  virtual absl::StatusOr<const Command*> CreateMemcpyD2H(
+      void* dst, const DeviceAddressBase& src, uint64_t size,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a device-to-host memory copy.
+  virtual absl::Status UpdateMemcpyD2H(const Command* command, void* dst,
+                                       const DeviceAddressBase& src,
+                                       uint64_t size) = 0;
+
+  // Creates a host-to-device memory copy.
+  virtual absl::StatusOr<const Command*> CreateMemcpyH2D(
+      DeviceAddressBase* dst, const void* src, uint64_t size,
+      absl::Span<const Command* const> dependencies) = 0;
+
+  // Updates a host-to-device memory copy.
+  virtual absl::Status UpdateMemcpyH2D(const Command* command,
+                                       DeviceAddressBase* dst, const void* src,
                                        uint64_t size) = 0;
 
   // Creates a memset command.
@@ -307,6 +343,13 @@ class CommandBuffer {
                                    DeviceAddress<bool> pred,
                                    UpdateCommands update_cond,
                                    UpdateCommands update_body) = 0;
+
+  // Adds a host node (callback) to the command buffer.
+  // The `callback` will be executed on the CPU (host) when this node is
+  // processed during command buffer execution.
+  virtual absl::StatusOr<const Command*> CreateHost(
+      absl::AnyInvocable<void()> callback,
+      absl::Span<const Command* const> dependencies) = 0;
 
   // Set the priority of all nodes in the command buffer.
   virtual absl::Status SetPriority(StreamPriority priority) = 0;

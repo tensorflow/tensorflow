@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/analysis/while_loop_analysis.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -774,7 +773,7 @@ optional<Range> MatchLoopRangeWithKnownValues(
   int64_t trip_count_step = 0;
   if (!Match(while_body_indvar_update,
              m::AddAnyOrder(m::Op().Is(while_body_indvar),
-                            m::Op(&trip_count_increase_step_instr)))) {
+                            m::Constant(&trip_count_increase_step_instr)))) {
     if (trip_count_increase_step_instr == nullptr) {
       VLOG(2) << "Pattern-match failed: induction variable is not getting "
                  "updated by an add operation: "
@@ -917,19 +916,9 @@ optional<Range> MatchLoopRangeWithKnownValues(
                /*is_linear=*/true};
 }
 
-optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
-                                            int64_t indvar_tuple_idx,
-                                            const Literal& indvar_init) {
-  // First, find the scalar constant init that `i` is initialized to.
-  optional<int64_t> indvar_init_val =
-      LiteralUtil::LiteralAsScalarInt64(indvar_init);
-  if (!indvar_init_val) {
-    VLOG(2) << "Pattern-match failed: induction variable init is not a "
-               "constant scalar representable as an int64_t: "
-            << indvar_init.ToString();
-    return nullopt;
-  }
-
+// NOLINTBEGIN(clang-diagnostic-pre-c++20-compat)
+optional<int64_t> MatchTrivialLoopInductionStep(const HloInstruction* while_op,
+                                                int64_t indvar_tuple_idx) {
   // Check that `i` goes as `i += k` in the while body where k is a natural
   // number.
   auto* while_body = while_op->while_body();
@@ -944,7 +933,6 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
     return std::nullopt;
   }
   HloInstruction* trip_count_increase_step_instr = nullptr;
-  int64_t trip_count_step = 0;
   if (!Match(while_body_indvar_update,
              m::AddAnyOrder(m::Op().Is(while_body_indvar),
                             m::Constant(&trip_count_increase_step_instr)))) {
@@ -962,26 +950,45 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
               << while_body_indvar_update->ToString();
       return nullopt;
     }
-    if (!LiteralUtil::LiteralAsScalarInt64(
-             trip_count_increase_step_instr->literal())
-             .has_value()) {
-      VLOG(2)
-          << "Pattern-match failed: trip count step is not an integral type: "
-          << trip_count_increase_step_instr->shape().ToString();
-      return nullopt;
-    }
     VLOG(2) << "Pattern-match for trip count step failed: "
             << trip_count_increase_step_instr->ToString();
   }
 
-  trip_count_step = LiteralUtil::LiteralAsScalarInt64(
-                        trip_count_increase_step_instr->literal())
-                        .value();
-  if (trip_count_step <= 0) {
-    VLOG(2) << "Pattern-match failed: trip count step is not a natural number: "
-            << trip_count_step;
+  optional<int64_t> trip_count_step = LiteralUtil::LiteralAsScalarInt64(
+      trip_count_increase_step_instr->literal());
+  if (!trip_count_step.has_value()) {
+    VLOG(2) << "Pattern-match failed: trip count step is not an integral type: "
+            << trip_count_increase_step_instr->shape().ToString();
     return nullopt;
   }
+  if (*trip_count_step <= 0) {
+    VLOG(2) << "Pattern-match failed: trip count step is not a natural number: "
+            << *trip_count_step;
+    return nullopt;
+  }
+  return trip_count_step;
+}
+
+optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
+                                            int64_t indvar_tuple_idx,
+                                            const Literal& indvar_init) {
+  // First, find the scalar constant init that `i` is initialized to.
+  optional<int64_t> indvar_init_val =
+      LiteralUtil::LiteralAsScalarInt64(indvar_init);
+  if (!indvar_init_val) {
+    VLOG(2) << "Pattern-match failed: induction variable init is not a "
+               "constant scalar representable as an int64_t: "
+            << indvar_init.ToString();
+    return nullopt;
+  }
+  // NOLINTEND(clang-diagnostic-pre-c++20-compat)
+
+  optional<int64_t> step =
+      MatchTrivialLoopInductionStep(while_op, indvar_tuple_idx);
+  if (!step) {
+    return nullopt;
+  }
+  const int64_t trip_count_step = *step;
   // Check that we do op(i, N) or op(N, i) as the while condition.  Capture the
   // value N.
   auto* while_cond = while_op->while_condition();
@@ -1019,26 +1026,16 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i < N: "
             << while_cond_root->ToString();
+    if (*while_cond_bound_val <= *indvar_init_val) {
+      return 0;
+    }
     optional<int64_t> trips =
         CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
-    if (trips) {
-      const int64_t remainder = std::remainder(*trips, trip_count_step);
-      const int64_t div = std::floor(*trips / trip_count_step);
-      if (remainder == 0) {
-        return std::max(int64_t{0}, div);
-      }
-      trips = CheckedAdd(div, 1);
-      if (!trips) {
-        VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
-        return nullopt;
-      }
-      if (*trips < *while_cond_bound_val) {
-        return std::max(int64_t{0}, *trips);
-      }
-      return std::max(int64_t{0}, div);
+    if (!trips) {
+      VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
+      return nullopt;
     }
-    VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
-    return nullopt;
+    return (*trips - 1) / trip_count_step + 1;
   }
 
   // Handle `i = init; i <= N; i+=k`.
@@ -1048,18 +1045,21 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i <= N: "
             << while_cond_root->ToString();
+    if (*while_cond_bound_val < *indvar_init_val) {
+      return 0;
+    }
     optional<int64_t> trips =
         CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
     if (!trips) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    trips = CheckedAdd(std::floor(*trips / trip_count_step), 1);
+    trips = CheckedAdd(*trips / trip_count_step, 1);
     if (!trips) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    return std::max<int64_t>(0, *trips);
+    return *trips;
   }
 
   VLOG(2) << "Pattern-match failed: while condition follows unknown pattern: "

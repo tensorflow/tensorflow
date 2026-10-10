@@ -814,5 +814,95 @@ TEST_F(AutotunerTest, DumpLogsWithCacheContext) {
   EXPECT_EQ(actual_profiles.instruction_profiles_size(), 1);
 }
 
+TEST_F(AutotunerTest, ExcludedBackendsAreProfiledForReferenceButNotPicked) {
+  Autotuner::Options options;
+  options.excluded_backends = {autotuner::Backend::CUBLASLT_FISSION};
+  options.correctness_check_options.enable_correctness_check = true;
+
+  auto cublas_backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*cublas_backend, name()).WillRepeatedly(Return("cublas_backend"));
+  EXPECT_CALL(*cublas_backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::CUBLASLT_FISSION));
+  EXPECT_CALL(*cublas_backend, CanProduceWrongResults())
+      .WillRepeatedly(Return(false));
+  std::vector<std::unique_ptr<BackendConfig>> cublas_configs;
+  cublas_configs.push_back(GetTestConfig("cublas_config"));
+  EXPECT_CALL(*cublas_backend, GetSupportedConfigs)
+      .WillOnce(Return(std::move(cublas_configs)));
+  EXPECT_CALL(*cublas_backend, Compile(_, _)).WillRepeatedly([] {
+    return std::unique_ptr<Executable>();
+  });
+
+  auto triton_backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*triton_backend, name()).WillRepeatedly(Return("triton_backend"));
+  EXPECT_CALL(*triton_backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::TRITON));
+  EXPECT_CALL(*triton_backend, CanProduceWrongResults())
+      .WillRepeatedly(Return(true));
+  std::vector<std::unique_ptr<BackendConfig>> triton_configs;
+  triton_configs.push_back(GetTestConfig("triton_config"));
+  EXPECT_CALL(*triton_backend, GetSupportedConfigs)
+      .WillOnce(Return(std::move(triton_configs)));
+  EXPECT_CALL(*triton_backend, Compile(_, _)).WillRepeatedly([] {
+    return std::unique_ptr<Executable>();
+  });
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, CheckInputBuffers(_))
+      .WillRepeatedly(Return(absl::OkStatus()));
+  EXPECT_CALL(*profiler, CheckOutputBuffer(_, _, _))
+      .WillRepeatedly(Return(absl::OkStatus()));
+
+  // cuBLAS duration 50us (faster), Triton duration 100us.
+  // Both return valid outputs and match reference.
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce([] {
+        ProfileResult res({absl::Microseconds(50)});
+        res.output_buffer =
+            ScopedShapedBuffer(ShapeUtil::MakeShape(F32, {4}), nullptr, 0);
+        return res;
+      })
+      .WillOnce([] {
+        ProfileResult res({absl::Microseconds(100)});
+        res.output_buffer =
+            ScopedShapedBuffer(ShapeUtil::MakeShape(F32, {4}), nullptr, 0);
+        return res;
+      });
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(cublas_backend));
+  backends.push_back(std::move(triton_backend));
+
+  ASSERT_OK_AND_ASSIGN(auto orchestrator,
+                       CodegenOrchestrator::Create(std::move(backends), {}));
+
+  std::vector<std::unique_ptr<Profiler>> profilers;
+  profilers.push_back(std::move(profiler));
+
+  ASSERT_OK_AND_ASSIGN(auto autotuner,
+                       Autotuner::Create(std::move(orchestrator),
+                                         std::move(profilers), options));
+
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      ROOT copy = f32[4] copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto results,
+      autotuner->TuneConfigs(*module, [](const HloInstruction& instr) {
+        return instr.opcode() == HloOpcode::kCopy;
+      }));
+  ASSERT_EQ(results.size(), 1);
+  EXPECT_EQ(results[0].config.codegen_backend->backend(),
+            autotuner::Backend::TRITON);
+}
+
 }  // namespace
 }  // namespace xla

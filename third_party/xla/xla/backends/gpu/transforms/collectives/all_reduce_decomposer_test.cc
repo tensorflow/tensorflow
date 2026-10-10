@@ -25,8 +25,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -36,7 +34,7 @@ namespace {
 using AllReduceDecomposerTest = HloHardwareIndependentTestBase;
 
 TEST_F(AllReduceDecomposerTest, SmallAllReduceIsDecomposed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 add {
@@ -52,7 +50,7 @@ ENTRY main {
 )"));
 
   AllReduceDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
   EXPECT_OK(HloCSE(true).Run(module.get()));
@@ -93,7 +91,7 @@ ENTRY main {
 }
 
 TEST_F(AllReduceDecomposerTest, LargeAllReduceIsNotDecomposed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 add {
@@ -109,7 +107,7 @@ ENTRY main {
 )"));
 
   AllReduceDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
 }
 

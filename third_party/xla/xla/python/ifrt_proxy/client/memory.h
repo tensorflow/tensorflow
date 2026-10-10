@@ -58,6 +58,8 @@ class Memory : public RTTIExtends<Memory, xla::ifrt::Memory> {
   absl::string_view DebugString() const override { return debug_string_; }
   absl::string_view ToString() const override { return to_string_; }
 
+  inline static char ID = 0;  // NOLINT
+
  private:
   friend class Client;  // For `devices_` initialization.
 

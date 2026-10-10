@@ -80,7 +80,8 @@ DotKernelEmitter::EmitKernelDefinition() {
       KernelApiIrBuilder::Options::FromHloModuleConfig(hlo_module->config()));
 
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
-      absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
+      absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx,
+      target_machine_);
 
   ABSL_ASSIGN_OR_RETURN(
       KernelApiIrBuilder::KernelPrototype kernel_prototype,

@@ -24,24 +24,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/topk_rewriter.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -72,9 +66,9 @@ class TopkTest : public HloPjRtGpuTestBase, public ParameterizedInterface {
         %p.1.rhs.40629 = s32[] parameter(3)
         %constant.40630 = pred[] constant(true)
         %broadcast.40631 = pred[] broadcast(pred[] %constant.40630), dimensions={}
-        %p.0.lhs.40626 = f32[] parameter(0)
-        %p.0.rhs.40627 = f32[] parameter(1)
-        %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, type=TOTALORDER
+        %p.0.lhs.40626 = $3[] parameter(0)
+        %p.0.rhs.40627 = $3[] parameter(1)
+        %compare.40632 = pred[] compare($3[] %p.0.lhs.40626, $3[] %p.0.rhs.40627), direction=GT, order=TOTAL
         ROOT %select.40633 = pred[] select(pred[] %broadcast.40631, pred[] %compare.40632, pred[] %broadcast.40631)
       }
 
@@ -87,50 +81,6 @@ class TopkTest : public HloPjRtGpuTestBase, public ParameterizedInterface {
   }
 };
 
-class GeneralizeTopkVisitor : public DfsHloRewriteVisitor {
- public:
-  absl::Status HandleCustomCall(HloInstruction* inst) override {
-    HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
-    if (topk == nullptr || topk->custom_call_target() != "__gpu$TopK") {
-      return absl::OkStatus();
-    }
-    HloComputation* comp = topk->parent();
-    auto original_shape = ShapeUtil::SliceTuple(topk->shape(), 0, 2);
-    HloInstruction* original_topk =
-        comp->AddInstruction(HloInstruction::CreateCustomCall(
-            original_shape, topk->operands(), topk->to_apply(), "TopK"));
-    // TupleUtil::ExtractPrefix creates the following structure:
-    //      TopK
-    //   -------------
-    //   |     |     |
-    //  Get   Get   Get
-    //    \    |     /
-    //     CreateTuple
-    // Here we walk to Create Tuple and replace it with the original topk.
-    HloInstruction* new_tuple = topk->users()[0]->users()[0];
-    return ReplaceInstruction(new_tuple, original_topk);
-  }
-};
-
-class GeneralizeTopk : public HloModulePass {
- public:
-  absl::string_view name() const override { return "generalized-topk"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(HloModule* module,
-                               const absl::flat_hash_set<absl::string_view>&
-                                   execution_threads) override {
-    return GeneralizeTopkVisitor().RunOnModule(module, execution_threads);
-  }
-};
-
-void ToSortAndSlice(HloModule* module) {
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, GeneralizeTopk().Run(module));
-  ASSERT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(module));
-  ASSERT_TRUE(changed);
-}
-
 TEST_P(TopkTest, ProducesCorrectResult) {
   // TODO(intel-tf): Remove this check once specialization for SYCL/oneAPI
   // backend is added.
@@ -139,16 +89,23 @@ TEST_P(TopkTest, ProducesCorrectResult) {
   }
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
-                          TopkHlo(n, k, batch_size, dtype));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                       TopkHlo(n, k, batch_size, dtype));
+  std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       TopkSpecializer(device_description().gpu_compute_capability())
           .Run(topk_module.get()));
   ASSERT_TRUE(changed);
 
-  std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
-  ToSortAndSlice(reference_module.get());
+  ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
+  ASSERT_TRUE(changed);
+  // Disable TopkRewriter, otherwise it will rewrite sort+slice back to TopK
+  // custom call and make test and reference modules identical.
+  reference_module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_disable_hlo_passes("topk-rewriter");
+
   EXPECT_TRUE(RunAndCompareTwoModules(
       std::move(topk_module), std::move(reference_module), std::nullopt));
 }
@@ -175,12 +132,12 @@ TEST_F(TopkTest, PreservesBackendConfig) {
       p.1.rhs = s32[] parameter(3)
       p.0.lhs = f32[] parameter(0)
       p.0.rhs = f32[] parameter(1)
-      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, type=TOTALORDER
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
     }
 
     ENTRY top_k {
       arg = f32[8,1024] parameter(0)
-      ROOT result = (f32[8,64], s32[8,64]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false}
+      ROOT result = (f32[8,64], s32[8,64]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false, order = "TOTAL"}
     }
   )";
 
@@ -204,7 +161,231 @@ TEST_F(TopkTest, PreservesBackendConfig) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* custom_call = root->operand(0)->operand(0);
   EXPECT_EQ(custom_call->custom_call_target(), "__gpu$TopK");
-  EXPECT_EQ(custom_call->raw_backend_config_string(), "{is_stable = false}");
+  EXPECT_EQ(custom_call->raw_backend_config_string(),
+            "{is_stable = false, order = \"TOTAL\"}");
+}
+
+TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    ENTRY top_k {
+      arg = f32[8,1024] parameter(0)
+      ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo, config));
+
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  const char* check_pattern = R"(
+// CHECK-LABEL: ENTRY %top_k
+// CHECK: %[[ARG:[^ ]+]] = f32[8,1024]{{.*}} parameter(0)
+
+// 1. Bitcast to U32 and S32
+// CHECK: %[[VAL_U32:[^ ]+]] = u32[8,1024]{{.*}} bitcast-convert(%[[ARG]])
+// CHECK: %[[VAL_S32:[^ ]+]] = s32[8,1024]{{.*}} bitcast-convert(%[[ARG]])
+
+// 2. Pure Bitwise Radix Flip (F32 -> U32)
+// CHECK: %[[SRA:[^ ]+]] = s32[8,1024]{{.*}} shift-right-arithmetic(%[[VAL_S32]], {{.*}})
+// CHECK: %[[SRA_U32:[^ ]+]] = u32[8,1024]{{.*}} bitcast-convert(%[[SRA]])
+// CHECK: %[[MASK:[^ ]+]] = u32[8,1024]{{.*}} or(%[[SRA_U32]], {{.*}})
+// CHECK: %[[RADIX_KEY:[^ ]+]] = u32[8,1024]{{.*}} xor(%[[VAL_U32]], %[[MASK]])
+
+// 3. Pack into U64
+// CHECK: %[[KEY_U64:[^ ]+]] = u64[8,1024]{{.*}} convert(%[[RADIX_KEY]])
+// CHECK: %[[SHIFT_LEFT:[^ ]+]] = u64[8,1024]{{.*}} shift-left(%[[KEY_U64]], {{.*}})
+// CHECK: %[[IOTA:[^ ]+]] = u32[8,1024]{{.*}} iota(), iota_dimension=1
+// CHECK: %[[SUBTRACT:[^ ]+]] = u32[8,1024]{{.*}} subtract({{.*}}, %[[IOTA]])
+// CHECK: %[[PACKED:[^ ]+]] = u64[8,1024]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
+
+// 4. CustomCall (__gpu$TopK)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "TOTAL"}
+
+// 5. Unpack U64 -> U32
+// CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
+// CHECK: %[[UNPACK_U32:[^ ]+]] = u32[8,32]{{.*}} convert(%[[SRL]])
+
+// 6. Pure Bitwise Radix Unflip (U32 -> F32)
+// CHECK: %[[MSB:[^ ]+]] = u32[8,32]{{.*}} shift-right-logical(%[[UNPACK_U32]], {{.*}})
+// CHECK: %[[MSB_MINUS_ONE:[^ ]+]] = u32[8,32]{{.*}} subtract(%[[MSB]], {{.*}})
+// CHECK: %[[UNMASK:[^ ]+]] = u32[8,32]{{.*}} or(%[[MSB_MINUS_ONE]], {{.*}})
+// CHECK: %[[UNFLIPPED:[^ ]+]] = u32[8,32]{{.*}} xor(%[[UNPACK_U32]], %[[UNMASK]])
+// CHECK: %[[F32_OUT:[^ ]+]] = f32[8,32]{{.*}} bitcast-convert(%[[UNFLIPPED]])
+
+// 7. Tuple output
+// CHECK: ROOT {{.*}} tuple({{.*}}%[[F32_OUT]], {{.*}}%[[CUSTOM_CALL]]#1)
+  )";
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), check_pattern));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = bf16[] parameter(0)
+      p.0.rhs = bf16[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    ENTRY top_k {
+      arg = bf16[8,65540] parameter(0)
+      ROOT result = (bf16[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo, config));
+
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  const char* check_pattern = R"(
+// CHECK-LABEL: ENTRY %top_k
+// CHECK: %[[ARG:[^ ]+]] = bf16[8,65540]{{.*}} parameter(0)
+
+// 1. Convert BF16 -> F32, then Bitcast to U32 and S32
+// CHECK: %[[F32_VAL:[^ ]+]] = f32[8,65540]{{.*}} convert(%[[ARG]])
+// CHECK: %[[VAL_U32:[^ ]+]] = u32[8,65540]{{.*}} bitcast-convert(%[[F32_VAL]])
+// CHECK: %[[VAL_S32:[^ ]+]] = s32[8,65540]{{.*}} bitcast-convert(%[[F32_VAL]])
+
+// 2. Pure Bitwise Radix Flip (F32 -> U32)
+// CHECK: %[[SRA:[^ ]+]] = s32[8,65540]{{.*}} shift-right-arithmetic(%[[VAL_S32]], {{.*}})
+// CHECK: %[[SRA_U32:[^ ]+]] = u32[8,65540]{{.*}} bitcast-convert(%[[SRA]])
+// CHECK: %[[MASK:[^ ]+]] = u32[8,65540]{{.*}} or(%[[SRA_U32]], {{.*}})
+// CHECK: %[[RADIX_KEY:[^ ]+]] = u32[8,65540]{{.*}} xor(%[[VAL_U32]], %[[MASK]])
+
+// 3. Pack into U64
+// CHECK: %[[KEY_U64:[^ ]+]] = u64[8,65540]{{.*}} convert(%[[RADIX_KEY]])
+// CHECK: %[[SHIFT_LEFT:[^ ]+]] = u64[8,65540]{{.*}} shift-left(%[[KEY_U64]], {{.*}})
+// CHECK: %[[IOTA:[^ ]+]] = u32[8,65540]{{.*}} iota(), iota_dimension=1
+// CHECK: %[[SUBTRACT:[^ ]+]] = u32[8,65540]{{.*}} subtract({{.*}}, %[[IOTA]])
+// CHECK: %[[PACKED:[^ ]+]] = u64[8,65540]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
+
+// 4. CustomCall (__gpu$TopK)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "TOTAL"}
+
+// 5. Unpack U64 -> U32
+// CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
+// CHECK: %[[UNPACK_U32:[^ ]+]] = u32[8,32]{{.*}} convert(%[[SRL]])
+
+// 6. Pure Bitwise Radix Unflip (U32 -> F32)
+// CHECK: %[[MSB:[^ ]+]] = u32[8,32]{{.*}} shift-right-logical(%[[UNPACK_U32]], {{.*}})
+// CHECK: %[[MSB_MINUS_ONE:[^ ]+]] = u32[8,32]{{.*}} subtract(%[[MSB]], {{.*}})
+// CHECK: %[[UNMASK:[^ ]+]] = u32[8,32]{{.*}} or(%[[MSB_MINUS_ONE]], {{.*}})
+// CHECK: %[[UNFLIPPED:[^ ]+]] = u32[8,32]{{.*}} xor(%[[UNPACK_U32]], %[[UNMASK]])
+// CHECK: %[[F32_OUT:[^ ]+]] = f32[8,32]{{.*}} bitcast-convert(%[[UNFLIPPED]])
+
+// 7. Convert F32 -> BF16 and Tuple output
+// CHECK: %[[BF16_OUT:[^ ]+]] = bf16[8,32]{{.*}} convert(%[[F32_OUT]])
+// CHECK: ROOT {{.*}} tuple({{.*}}%[[BF16_OUT]], {{.*}}%[[CUSTOM_CALL]]#1)
+  )";
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), check_pattern));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(TopkTest, RewriteStableTopKDisabledByDefault) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    ENTRY top_k {
+      arg = f32[8,1024] parameter(0)
+      ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(TopkTest, SkipsPartialOrderTopK) {
+  const char* hlo = R"(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
+    }
+
+    ENTRY top_k {
+      arg = f32[8,1024] parameter(0)
+      small_k = (f32[8,8], s32[8,8]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "PARTIAL"}
+      raft_k = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "PARTIAL"}
+      ROOT result = tuple(small_k, raft_k)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo, config));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

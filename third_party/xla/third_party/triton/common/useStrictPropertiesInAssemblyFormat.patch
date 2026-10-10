@@ -1,0 +1,114 @@
+Prevents issues due to https://github.com/llvm/llvm-project/commit/c495a9b796c46456e523a5eeb3690415ba99f5db.
+This is a temporary fix to unblock the LLVM integration, the opt-out will eventually be removed.
+See b/567092262 for more details.
+
+--- a/include/triton/Dialect/Gluon/IR/GluonDialect.td
++++ b/include/triton/Dialect/Gluon/IR/GluonDialect.td
+@@ -16,6 +16,7 @@ def Gluon_Dialect : Dialect {
+     "mlir::gpu::GPUDialect",
+   ];
+   let useDefaultAttributePrinterParser = 1;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif
+
+--- a/include/triton/Dialect/Triton/IR/TritonDialect.td
++++ b/include/triton/Dialect/Triton/IR/TritonDialect.td
+@@ -52,6 +52,7 @@ def Triton_Dialect : Dialect {
+   let hasConstantMaterializer = 1;
+   let useDefaultAttributePrinterParser = 1;
+   let useDefaultTypePrinterParser = 1;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ include "triton/Dialect/Triton/IR/TritonTypes.td"
+
+--- a/include/triton/Dialect/TritonGPU/IR/TritonGPUDialect.td
++++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUDialect.td
+@@ -35,6 +35,7 @@ def TritonGPU_Dialect : Dialect {
+ 
+   let useDefaultTypePrinterParser = 1;
+   let useDefaultAttributePrinterParser = 1;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif
+
+--- a/include/triton/Dialect/TritonInstrument/IR/TritonInstrumentDialect.td
++++ b/include/triton/Dialect/TritonInstrument/IR/TritonInstrumentDialect.td
+@@ -6,6 +6,7 @@ include "mlir/IR/OpBase.td"
+ def TritonInstrument_Dialect : Dialect {
+   let name = "tti";
+   let cppNamespace = "::mlir::triton::instrument";
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif // TRITONINSTRUMENT_DIALECT
+
+--- a/include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUDialect.td
++++ b/include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUDialect.td
+@@ -44,6 +44,7 @@ def TritonNvidiaGPU_Dialect : Dialect {
+ 
+   let useDefaultAttributePrinterParser = 1;
+   let useDefaultTypePrinterParser = 1;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif
+
+--- a/third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUDialect.td
++++ b/third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUDialect.td
+@@ -37,6 +37,7 @@ def TritonAMDGPU_Dialect : Dialect {
+   let dependentDialects = ["triton::TritonDialect"];
+ 
+   let useDefaultAttributePrinterParser = 1;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif
+
+--- a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUDialect.td
++++ b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUDialect.td
+@@ -35,6 +35,7 @@ def NVGPU_Dialect : Dialect {
+   let dependentDialects = [
+     "mlir::LLVM::LLVMDialect"
+   ];
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif
+
+--- a/third_party/nvidia/include/Dialect/NVWS/IR/NVWSDialect.td
++++ b/third_party/nvidia/include/Dialect/NVWS/IR/NVWSDialect.td
+@@ -39,6 +39,7 @@ def NVWS_Dialect : Dialect {
+ 
+   let useDefaultTypePrinterParser = 1;
+   let useDefaultAttributePrinterParser = 1;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif
+
+--- a/third_party/proton/Dialect/include/Dialect/Proton/IR/ProtonDialect.td
++++ b/third_party/proton/Dialect/include/Dialect/Proton/IR/ProtonDialect.td
+@@ -13,6 +13,7 @@ def Proton_Dialect : Dialect {
+   }];
+ 
+   let dependentDialects = [];
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif
+
+--- a/third_party/proton/Dialect/include/Dialect/ProtonGPU/IR/ProtonGPUDialect.td
++++ b/third_party/proton/Dialect/include/Dialect/ProtonGPU/IR/ProtonGPUDialect.td
+@@ -22,6 +22,7 @@ def ProtonGPU_Dialect : Dialect {
+ 
+   let useDefaultTypePrinterParser = 1;
+   let useDefaultAttributePrinterParser = 1;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif  // PROTONGPU_DIALECT
+

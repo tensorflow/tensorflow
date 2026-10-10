@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -85,6 +87,9 @@ static FailureOr<APFloat> convertFloatValue(
 }
 
 std::optional<CoreType> getRefCoreType(TypedValue<MemRefType> value) {
+  if (!value) {
+    return std::nullopt;
+  }
   auto space = dyn_cast_if_present<tpu::MemorySpaceAttr>(
       value.getType().getMemorySpace());
   if (!space) {
@@ -275,6 +280,76 @@ LogicalResult MemRefSliceOp::verify() {
   return success();
 }
 
+std::optional<bool> MemRefSliceOp::sliceStridesAcrossSourceTiles(
+    const int64_t source_size, const int64_t slice_size,
+    const int64_t source_tile_size, const int64_t result_tile_size,
+    Value offset) {
+  CHECK_EQ(source_tile_size % result_tile_size, 0);
+  DCHECK(offset == nullptr || isGuaranteedDivisible(offset, result_tile_size));
+  const std::optional<int64_t> maybe_cst_offset =
+      offset ? getConstantIntValue(offset) : std::nullopt;
+  if (maybe_cst_offset && slice_size != ShapedType::kDynamic) {
+    // Fully static slice
+    return (*maybe_cst_offset + slice_size - 1) / source_tile_size !=
+           *maybe_cst_offset / source_tile_size;
+  }
+  if (slice_size != ShapedType::kDynamic && slice_size <= result_tile_size) {
+    // We never stride at all
+    return false;
+  }
+  if (source_size != ShapedType::kDynamic && source_size <= source_tile_size) {
+    // Source has only one tile
+    return false;
+  }
+  if (slice_size != ShapedType::kDynamic && slice_size > source_tile_size) {
+    // Slice is too big to be contained in a single source tile
+    return true;
+  }
+  // TODO(apaszke,tlongeri): Should we relax the requirement for the shape to
+  // be divisible by the slice size? We need to consider if accessing the last
+  // partial tile is allowed or not.
+  if (slice_size != ShapedType::kDynamic &&
+      source_tile_size % slice_size == 0 &&
+      source_size != ShapedType::kDynamic && source_size % slice_size == 0 &&
+      offset != nullptr && isGuaranteedDivisible(offset, slice_size)) {
+    // Slice is guaranteed to fit in a single source tile.
+    return false;
+  }
+  return std::nullopt;
+}
+
+std::optional<bool> MemRefSliceOp::sliceStridesWithinSourceTiles(
+    const int64_t source_size, const int64_t slice_size,
+    const int64_t source_tile_size, const int64_t result_tile_size,
+    Value offset) {
+  CHECK_EQ(source_tile_size % result_tile_size, 0);
+  DCHECK(offset == nullptr || isGuaranteedDivisible(offset, result_tile_size));
+  if (source_tile_size == result_tile_size) {
+    // The source tile isn't subdivided into result tiles
+    return false;
+  }
+  if (slice_size != ShapedType::kDynamic) {
+    if (slice_size <= result_tile_size) {
+      // We never stride at all
+      return false;
+    }
+    if (slice_size > 2 * result_tile_size) {
+      // We stride more than once. We've checked that the result tile is smaller
+      // than the source tile, so we must stride within source tiles at least
+      // once.
+      return true;
+    }
+    // We stride exactly once. Is it within or across source tiles?
+    if (offset != nullptr) {
+      if (const std::optional<int64_t> rem =
+              getRemainder(offset, source_tile_size)) {
+        return *rem != source_tile_size - result_tile_size;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
     std::array<int64_t, 2> tc_target_shape, MemRefType source_type_override) {
   mlir::MemRefType source_ty = getMemRef().getType();
@@ -410,6 +485,181 @@ void MemRefSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<MemRefSliceFoldConstantDynamicDim>(context);
 }
 
+LogicalResult SharedMemRefSliceOp::verify() {
+  CoreType core_type = GetCoreTypeOfParentOp(**this);
+  if (core_type != CoreType::kScVectorSubcore) {
+    return emitOpError("Unsupported core type: ") << core_type;
+  }
+
+  auto source_type = getMemRef().getType();
+  auto target_type = getType();
+  auto source_memory_space = source_type.getMemorySpace();
+  auto target_memory_space = target_type.getMemorySpace();
+
+  auto expected_source_memory_space =
+      tpu::MemorySpaceAttr::get(getContext(), tpu::MemorySpace::kVmemShared);
+  if (source_memory_space != expected_source_memory_space) {
+    return emitOpError("Source memref must have memory space ")
+           << expected_source_memory_space;
+  }
+  auto expected_target_memory_space = tpu::MemorySpaceAttr::get(
+      getContext(), tpu::MemorySpace::kVmem, CoreType::kScVectorSubcore);
+  if (target_memory_space != expected_target_memory_space &&
+      target_memory_space !=
+          tpu::MemorySpaceAttr::get(getContext(), tpu::MemorySpace::kVmem)) {
+    return emitOpError("Target memref must have memory space ")
+           << expected_target_memory_space;
+  }
+  if (source_type.getElementType() != target_type.getElementType()) {
+    return emitOpError("Source and target element types must match.");
+  }
+
+  ArrayRef<int64_t> source_shape = source_type.getShape();
+  ArrayRef<int64_t> target_shape = target_type.getShape();
+  if (source_shape.size() != target_shape.size()) {
+    return emitOpError("Target shape rank must match source shape rank.");
+  }
+  if (source_shape.empty()) {
+    return emitOpError("Source and target memrefs must be at least rank 1.");
+  }
+  if (source_shape.drop_back() != target_shape.drop_back()) {
+    return emitOpError(
+        "Target shape must match source shape for all dimensions except the "
+        "last.");
+  }
+  if (source_shape.back() == 0 || target_shape.back() == 0) {
+    return emitOpError(
+        "Source and target minormost dimension must be greater than 0.");
+  }
+  if (ShapedType::isDynamic(source_shape.back()) ||
+      ShapedType::isDynamic(target_shape.back())) {
+    return emitOpError(
+        "Source and target minormost dimension cannot be dynamic.");
+  }
+  if (source_shape.back() % target_shape.back() != 0) {
+    return emitOpError(
+        "Source shape's minormost dimension must be divisible by target "
+        "shape's minormost dimension.");
+  }
+  return success();
+}
+
+FailureOr<TiledLayoutAttr> SharedMemRefSliceOp::inferResultLayout(
+    MemRefType source_type, ArrayRef<int64_t> target_shape,
+    int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
+    int64_t spmem_word_size_bytes,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  if (!source_type.hasStaticShape() ||
+      !ShapedType::isStaticShape(target_shape)) {
+    return emit_error() << "SharedMemRefSliceOp requires static shapes.";
+  }
+  if (spmem_stripe_granularity_bytes % spmem_word_size_bytes != 0) {
+    return emit_error() << "Shared VMEM stripe granularity ("
+                        << spmem_stripe_granularity_bytes
+                        << " bytes) must be a multiple of the VMEM word size ("
+                        << spmem_word_size_bytes << " bytes).";
+  }
+  auto layout_attr = dyn_cast<TiledLayoutAttr>(source_type.getLayout());
+  if (!layout_attr) {
+    return emit_error()
+           << "SharedMemRefSliceOp requires a tiled source layout.";
+  }
+  ArrayRef<xla::Tile> tiles = layout_attr.getTiles();
+  if (tiles.empty()) {
+    return emit_error()
+           << "shared_memref_slice input tiling layout tiles cannot be empty";
+  }
+  ArrayRef<int64_t> source_shape = source_type.getShape();
+  CHECK(!layout_attr.getTileStrides().empty());
+  if (layout_attr.getTileStrides().back() != 1) {
+    return emit_error()
+           << "The last dimension of the MemRef must be contiguous for "
+              "SharedMemRefSliceOp.";
+  }
+
+  int64_t bitwidth = source_type.getElementTypeBitWidth();
+  int64_t word_bitwidth = spmem_word_size_bytes * 8;
+  if (word_bitwidth % bitwidth != 0) {
+    return emit_error() << "Element bitwidth (" << bitwidth
+                        << ") must divide the VMEM word bitwidth ("
+                        << word_bitwidth << ").";
+  }
+  int64_t packing = word_bitwidth / bitwidth;
+  int64_t stripe_elems = spmem_stripe_granularity_bytes * 8 / bitwidth;
+  int64_t stripe_words = spmem_stripe_granularity_bytes / spmem_word_size_bytes;
+
+  // Case 1: 1D DMA-granule tiling (e.g. `#tpu.tiled<(8), [16, 1]>`), where the
+  // single 1D tile already equals `stripe_width` (`target_shape.back()`), so
+  // the tile dimensions stay unchanged and the leading tile strides are scaled
+  // down by `num_sc_tiles`.
+  bool is_1d_stripe_tiling =
+      tiles.size() == 1 &&
+      tiles[0].dimensions() == ArrayRef<int64_t>{stripe_elems};
+  // Case 2: Full-width tiling where `tiles[0]` spans `source_shape.back()`
+  // (either a single unpacked tile or a 2D packed layout with sub-tile
+  // `(packing, 1)`), so `tiles[0]`'s trailing dimension is rewritten to
+  // `target_shape.back()` (`stripe_width`) and tile strides remain unchanged.
+  bool is_packed_tiling =
+      tiles.size() == 2 && tiles[0].dimensions().size() >= 2 &&
+      tiles[1].dimensions() == ArrayRef<int64_t>{packing, 1};
+  bool is_unpacked_tiling = tiles.size() == 1 &&
+                            tiles[0].dimensions().size() >= 2 &&
+                            bitwidth == word_bitwidth;
+  bool is_full_width_tiling =
+      (is_unpacked_tiling || is_packed_tiling) &&
+      tiles[0].dimensions().back() == source_shape.back();
+
+  int64_t stripe_width;
+  if (is_packed_tiling && is_full_width_tiling) {
+    stripe_width = stripe_words;
+  } else if ((is_unpacked_tiling && is_full_width_tiling) ||
+             is_1d_stripe_tiling) {
+    stripe_width = stripe_elems;
+  } else {
+    return emit_error() << "Expected a 1D stripe tile (" << stripe_elems
+                        << ") or a full-width 2D tile with trailing dimension "
+                        << source_shape.back()
+                        << ". 1D TC tilings are not yet supported.";
+  }
+  int64_t expected_source_last_dim = num_sc_tiles * stripe_width;
+
+  if (source_shape.back() != expected_source_last_dim) {
+    return emit_error() << "Source trailing dimension (" << source_shape.back()
+                        << ") must equal " << expected_source_last_dim;
+  }
+  if (target_shape.back() != stripe_width) {
+    return emit_error() << "Target trailing dimension (" << target_shape.back()
+                        << ") must equal " << stripe_width;
+  }
+
+  SmallVector<xla::Tile> new_tiles(tiles.begin(), tiles.end());
+  SmallVector<int64_t> new_tile_strides(layout_attr.getTileStrides());
+  if (is_1d_stripe_tiling) {
+    for (int64_t i = 0; i < new_tile_strides.size() - 1; ++i) {
+      if (ShapedType::isDynamic(new_tile_strides[i])) {
+        continue;
+      }
+      if (new_tile_strides[i] % num_sc_tiles != 0) {
+        return emit_error()
+               << "Tile strides must be divisible by the ratio of source and "
+                  "target trailing dimensions.";
+      }
+      new_tile_strides[i] /= num_sc_tiles;
+    }
+  } else {
+    CHECK(is_full_width_tiling);
+    // The minormost dimension of the memref shape and the first tile are both
+    // scaled down by num_sc_tiles, so the tile strides are unchanged.
+    SmallVector<int64_t> first_tile_dims =
+        llvm::to_vector(tiles[0].dimensions());
+    first_tile_dims.back() = target_shape.back();
+    new_tiles[0] = xla::Tile(first_tile_dims);
+  }
+
+  return TiledLayoutAttr::get(source_type.getContext(), new_tiles,
+                              new_tile_strides);
+}
+
 LogicalResult MemRefSqueezeOp::verify() {
   MemRefType source_type = getInput().getType();
   MemRefType target_type = getType();
@@ -521,7 +771,9 @@ struct MemRefSqueezeFoldCast : public OpRewritePattern<MemRefSqueezeOp> {
     }
     for (auto [source_dim, result_dim] :
          llvm::zip(cast_source_type.getShape(), cast_result_type.getShape())) {
-      if (source_dim == result_dim) continue;
+      if (source_dim == result_dim) {
+        continue;
+      }
       if (ShapedType::isDynamic(source_dim) &&
           !ShapedType::isDynamic(result_dim)) {
         // The result type must be more dynamic than the source type.
@@ -561,73 +813,286 @@ void MemRefSqueezeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 LogicalResult MemRefReshapeOp::verify() {
-  auto src_ty = getInput().getType();
-  auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  const MemRefType input_ty = getInput().getType();
+  const MemRefType result_ty = getType();
+  if (result_ty.getMemorySpace() != input_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
-  if (src_ty.getShape().size() < 2 || tgt_ty.getShape().size() < 2) {
-    return emitError("Not implemented: 1d memref reshape.");
-  }
-  if (tgt_ty.getElementType() != src_ty.getElementType()) {
+  if (result_ty.getElementType() != input_ty.getElementType()) {
     return emitOpError("Element types don't match.");
   }
-  auto src_elements_num = ShapedType::getNumElements(src_ty.getShape());
-  auto tgt_elements_num = ShapedType::getNumElements(tgt_ty.getShape());
-  if (src_elements_num != tgt_elements_num) {
-    return emitOpError(
-        "Number of elements doesn't match between input and output memref "
-        "type.");
-  }
-  if (src_ty.getLayout().isIdentity() && tgt_ty.getLayout().isIdentity()) {
-    return success();  // Untiled reshape
-  }
-  auto src_layout = dyn_cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = dyn_cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (!src_layout || !tgt_layout) {
-    return emitOpError("Only identity or tiled layouts supported.");
-  }
-  return verifyTiling();
-}
-
-mlir::InFlightDiagnostic MemRefReshapeOp::verifyTiling() {
-  auto src_ty = getInput().getType();
-  auto tgt_ty = getType();
-  auto src_layout = cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (src_layout.getTiles() != tgt_layout.getTiles()) {
-    return emitOpError(
-        "Expected the same tiling for the input and output memref.");
-  }
-  if (src_layout.getTiles().empty()) {
-    return {};  // Untiled reshape
-  }
-  auto tile = src_layout.getTiles().front().dimensions();
-  if (tile.size() != 2) {
-    return emitOpError("Not implemented: memref reshape with 1D tiling.");
-  }
-  if (!src_layout.tilesAreKnownContiguous(src_ty.getShape()) ||
-      !tgt_layout.tilesAreKnownContiguous(tgt_ty.getShape())) {
-    return emitOpError("Not implemented: reshape on a non-contiguous memref.");
-  }
-  auto src_tiled_shape = src_ty.getShape().take_back(tile.size());
-  auto tgt_tiled_shape = tgt_ty.getShape().take_back(tile.size());
-  bool is_src_align_tile_2nd_minor = src_tiled_shape[0] % tile[0] == 0;
-  bool is_src_align_tile_minor = src_tiled_shape[1] % tile[1] == 0;
-  bool is_tgt_align_tile_2nd_minor = tgt_tiled_shape[0] % tile[0] == 0;
-  bool is_tgt_align_tile_minor = tgt_tiled_shape[1] % tile[1] == 0;
-  if (tile[0] == 1 && is_src_align_tile_minor && is_tgt_align_tile_minor) {
-    // When the tiling is (1, ?) and the source and target shapes are aligned
-    // to the tile, we support reshape on any dims.
-  } else if (tgt_tiled_shape[1] != src_tiled_shape[1]) {
-    return emitOpError("Expected the minormost dimension to be unchanged");
-  } else if (tgt_tiled_shape[0] != src_tiled_shape[0]) {
-    if (!is_src_align_tile_2nd_minor || !is_tgt_align_tile_2nd_minor) {
-      return emitOpError(
-          "Expected the 2nd minor dimension is aligned to the tile");
+  int64_t input_static_elements = 1;
+  int64_t result_static_elements = 1;
+  int64_t input_dynamic_dims = 0;
+  int64_t result_dynamic_dims = 0;
+  for (const int64_t dim : input_ty.getShape()) {
+    if (ShapedType::isDynamic(dim)) {
+      ++input_dynamic_dims;
+    } else {
+      input_static_elements *= dim;
     }
   }
-  return {};
+  for (const int64_t dim : result_ty.getShape()) {
+    if (ShapedType::isDynamic(dim)) {
+      ++result_dynamic_dims;
+    } else {
+      result_static_elements *= dim;
+    }
+  }
+  const bool is_static = input_dynamic_dims == 0;
+  if (is_static != (result_dynamic_dims == 0)) {
+    return emitOpError(
+        "Input and result shapes must be both static or both dynamic.");
+  }
+  if (is_static && input_static_elements != result_static_elements) {
+    return emitOpError("Input and result number of elements don't match.");
+  }
+  if (result_dynamic_dims > 1) {
+    return emitOpError(
+        "Multiple result dynamic dimensions (their values are ambiguous).");
+  }
+  // The above checks are fundamental, the following is simply unimplemented:
+  if (!is_static && (input_dynamic_dims > 1 ||
+                     input_static_elements != result_static_elements)) {
+    // inferResultLayout relies on this check. Make sure to update it when
+    // removing this.
+    return emitOpError(
+        "Not implemented: Input with multiple dynamic dimensions or a changing "
+        "single dynamic dimension.");
+  }
+  FAILUREOR_ASSIGN_OR_RETURN(
+      const MemRefLayoutAttrInterface expected_result_layout,
+      inferResultLayout(input_ty, result_ty.getShape(),
+                        [&]() { return emitOpError(); }));
+  if (expected_result_layout != result_ty.getLayout()) {
+    return emitOpError("Expected result layout to be ")
+           << expected_result_layout;
+  }
+  return success();
+}
+
+FailureOr<MemRefLayoutAttrInterface> MemRefReshapeOp::inferResultLayout(
+    const MemRefType input_type, const ArrayRef<int64_t> result_shape,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  MLIRContext* const ctx = input_type.getContext();
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  const MemRefLayoutAttrInterface input_layout = input_type.getLayout();
+  const int64_t input_rank = input_type.getRank();
+  const int64_t result_rank = result_shape.size();
+  if (const auto input_tiled_layout = dyn_cast<TiledLayoutAttr>(input_layout)) {
+    if (!input_tiled_layout.tilesAreKnownContiguous(input_type.getShape())) {
+      return emit_error()
+             << "Not implemented: Reshape on a non-contiguous memref.";
+    }
+    const ArrayRef<xla::Tile> input_tiles = input_tiled_layout.getTiles();
+    if (input_tiles.empty()) {
+      // Untiled reshape
+      return MemRefLayoutAttrInterface(
+          TiledLayoutAttr::getContiguous(ctx, /*tiles=*/{}, result_shape));
+    }
+    const ArrayRef<int64_t> input_first_tile = input_tiles.front().dimensions();
+    const int64_t input_first_tile_rank = input_first_tile.size();
+    const int64_t input_untiled_rank = input_rank - input_first_tile_rank;
+
+    const TiledLayoutAttr preserved_tile_layout = [&]() -> TiledLayoutAttr {
+      if (result_rank < input_first_tile_rank) {
+        return nullptr;
+      }
+      int64_t i = 0;
+      // Leading tile dimensions of size 1 can be effectively ignored.
+      while (i < input_first_tile_rank && input_first_tile[i] == 1) {
+        ++i;
+      }
+      if (i == input_first_tile_rank) {
+        // Untiled reshape
+        return TiledLayoutAttr::getContiguous(ctx, /*tiles=*/{}, result_shape);
+      }
+      // Excluding leading ones, tiled dimensions must remain unchanged, with
+      // the possible exception of the first. Dimensions can be folded into or
+      // unfolded from it if it is tile-aligned in both the input and result.
+      // NOTE: This relies on the verifier enforcing that, if there is a dynamic
+      //       dimension, it is preserved between input and result.
+      auto input_dim_it = input_shape.end() - input_first_tile_rank + i;
+      auto result_dim_it = result_shape.end() - input_first_tile_rank + i;
+      bool can_preserve_tiling = *input_dim_it == *result_dim_it ||
+                                 (ShapedType::isStatic(*input_dim_it) &&
+                                  ShapedType::isStatic(*result_dim_it) &&
+                                  *input_dim_it % input_first_tile[i] == 0 &&
+                                  *result_dim_it % input_first_tile[i] == 0);
+      ++i;
+      ++input_dim_it;
+      ++result_dim_it;
+      for (; i < input_first_tile_rank; ++i, ++input_dim_it, ++result_dim_it) {
+        can_preserve_tiling &= *input_dim_it == *result_dim_it;
+      }
+      if (!can_preserve_tiling) {
+        return nullptr;
+      }
+      return TiledLayoutAttr::getContiguous(ctx, input_tiles, result_shape);
+    }();
+    if (preserved_tile_layout != nullptr) {
+      return MemRefLayoutAttrInterface(preserved_tile_layout);
+    }
+    const TiledLayoutAttr reshaped_tile_layout = [&]() -> TiledLayoutAttr {
+      if (input_tiles.size() != 1) {
+        return nullptr;
+      }
+      // To reason about the reshape, it can be helpful to conceptually view it
+      // as having the following steps:
+      //
+      // 1. Expand the unpadded tiled dimensions as follows:
+      //      16x256 with T(8, 128) -> 2x8x2x128
+      //    Note that this is not the same as getExpandedShape. Expanded
+      //    dimensions from the same unexpanded dimension are kept adjacent.
+      //
+      // 2. Collapse adjacent dimensions that have compatible striding.
+      //    Note that tile dimensions can be collapsed together iff the non-tile
+      //    dimensions that separate them are of size 1 (i.e. the original
+      //    unexpanded dimension is exactly one tile).
+      //
+      // 3. Expand the collapsed dimensions into the result shape. Fail if this
+      //    is not possible.
+      //
+      // The code below does not implement this _exactly_, to maintain a tiled
+      // representation, but performs a similar process. The expanded shape can
+      // be viewed as alternating tile and non-tile dimensions. Like above, tile
+      // dimensions can be collapsed together iff the non-tile dimensions that
+      // separate them are of size 1. Likewise, non-tile dimensions can be
+      // collapsed together iff the tile dimensions that separate them are of
+      // size 1. We iteratively collapse tile and non-tile dimensions and then
+      // try expanding them into the result shape.
+      auto get_input_tile_size = [&](int64_t input_dim) {
+        return input_untiled_rank <= input_dim
+                   ? input_first_tile[input_dim - input_untiled_rank]
+                   : 1;
+      };
+      // Dynamic and padded dimensions must be preserved exactly.
+      // NOTE: This relies on the verifier enforcing that, if there is a dynamic
+      //       dimension, it is preserved between input and result.
+      auto input_dim_is_dynamic_or_padded = [&](int64_t input_dim) {
+        const int64_t input_tile_size = get_input_tile_size(input_dim);
+        return ShapedType::isDynamic(input_shape[input_dim]) ||
+               input_shape[input_dim] % input_tile_size != 0;
+      };
+      int64_t input_dim = 0;
+      int64_t result_dim = 0;
+      SmallVector<int64_t> result_tile;
+      while (input_dim < input_rank || result_dim < result_rank) {
+        if (input_dim < input_rank &&
+            input_dim_is_dynamic_or_padded(input_dim)) {
+          if (result_dim == result_rank ||
+              input_shape[input_dim] != result_shape[result_dim]) {
+            return nullptr;
+          }
+          if (input_untiled_rank <= input_dim) {
+            result_tile.push_back(
+                input_first_tile[input_dim - input_untiled_rank]);
+          }
+          ++input_dim;
+          ++result_dim;
+          continue;
+        }
+        // Take as many non-tile dimensions as possible
+        int64_t non_tile_elements = 1;
+        while (input_dim < input_rank) {
+          if (input_dim_is_dynamic_or_padded(input_dim)) {
+            break;
+          }
+          const int64_t input_tile_size = get_input_tile_size(input_dim);
+          non_tile_elements *= input_shape[input_dim] / input_tile_size;
+          if (input_tile_size != 1) {
+            break;
+          }
+          ++input_dim;
+        }
+        // Take as many tile dimensions as possible.
+        // TODO(tlongeri): This could be generalized to multiple tiles, if they
+        // do not tile across previous tiles (i.e. they are equal to the
+        // previous tile's unit subtile), by iteratively taking dims from the
+        // most nested tiles up to the least nested one.
+        int64_t tile_elements = 1;
+        while (input_dim < input_rank) {
+          if (input_dim_is_dynamic_or_padded(input_dim)) {
+            break;
+          }
+          tile_elements *= get_input_tile_size(input_dim);
+          ++input_dim;
+          if (input_dim == input_rank ||
+              input_shape[input_dim] != get_input_tile_size(input_dim)) {
+            break;
+          }
+        }
+
+        // Expand non-tile dimensions
+        while (result_dim < result_rank) {
+          CHECK_LT(result_dim, result_rank);
+          if (ShapedType::isDynamic(result_shape[result_dim])) {
+            break;
+          }
+          if (non_tile_elements % result_shape[result_dim] == 0) {
+            if (!result_tile.empty()) {
+              result_tile.push_back(1);
+            }
+            non_tile_elements /= result_shape[result_dim];
+            ++result_dim;
+          } else if (result_shape[result_dim] % non_tile_elements == 0) {
+            // non_tile_elements is left holding the non-tile size for the
+            // current result dimension.
+            break;
+          } else {
+            // Cannot expand into the desired shape
+            return nullptr;
+          }
+        }
+        // Expand tile dimensions
+        while (result_dim < result_rank) {
+          CHECK_LT(result_dim, result_rank);
+          if (ShapedType::isDynamic(result_shape[result_dim])) {
+            break;
+          }
+          CHECK_EQ(result_shape[result_dim] % non_tile_elements, 0);
+          const int64_t result_dim_size =
+              result_shape[result_dim] / non_tile_elements;
+          non_tile_elements = 1;
+          if (tile_elements % result_dim_size == 0) {
+            if (!result_tile.empty() || result_dim_size != 1) {
+              result_tile.push_back(result_dim_size);
+            }
+            tile_elements /= result_dim_size;
+            ++result_dim;
+          } else if (result_dim_size % tile_elements == 0) {
+            break;
+          } else {
+            // Cannot expand into the desired shape
+            return nullptr;
+          }
+        }
+        if (non_tile_elements != 1 || tile_elements != 1) {
+          // Cannot expand into the desired shape
+          return nullptr;
+        }
+      }
+      return TiledLayoutAttr::getContiguous(
+          ctx, /*tiles=*/{xla::Tile(result_tile)}, result_shape);
+    }();
+    if (reshaped_tile_layout != nullptr) {
+      return MemRefLayoutAttrInterface(reshaped_tile_layout);
+    }
+    // TODO(tlongeri): Unify preserved_tile_layout, reshaped_tile_layout cases
+    //                 by generalizing reshaped_tile_layout case to multiple
+    //                 tiles.
+    return emit_error()
+           << "Not implemented: Supported only when (a) tiled dimensions "
+              "remain unchanged, except maybe for tile-aligned "
+              "folding/unfolding of the first tiled dimension, or (b) the "
+              "input layout has a single tile, under specific conditions.";
+  }
+  if (input_layout.isIdentity()) {
+    // Untiled reshape
+    return MemRefLayoutAttrInterface(AffineMapAttr::get(
+        AffineMap::getMultiDimIdentityMap(result_rank, ctx)));
+  }
+  return emit_error() << "Only tiled or identity layouts supported.";
 }
 
 LogicalResult TransposeOp::verify() {
@@ -665,70 +1130,137 @@ LogicalResult TransposeOp::verify() {
   return success();
 }
 
+OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
+  if (llvm::is_sorted(getPermutation())) {
+    return getVector();
+  }
+  if (auto cst = dyn_cast_if_present<SplatElementsAttr>(adaptor.getVector())) {
+    return cst.reshape(getType());
+  }
+  if (auto prev_op = getVector().getDefiningOp<TransposeOp>()) {
+    ArrayRef<int64_t> prev_perm = prev_op.getPermutation();
+    ArrayRef<int64_t> curr_perm = getPermutation();
+    CHECK_EQ(prev_perm.size(), curr_perm.size());
+    SmallVector<int64_t> composed_perm(curr_perm.size());
+    for (size_t i = 0; i < curr_perm.size(); ++i) {
+      composed_perm[i] = prev_perm[curr_perm[i]];
+    }
+    if (llvm::is_sorted(composed_perm)) {
+      return prev_op.getVector();
+    }
+  }
+  return nullptr;
+}
+
 LogicalResult MemRefBitcastOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
-    return emitOpError("Memory spaces do not match.");
+  FAILUREOR_ASSIGN_OR_RETURN(
+      auto result_type, inferResultType(src_ty, tgt_ty.getElementType(),
+                                        [this]() { return emitOpError(); }));
+  if (result_type != tgt_ty) {
+    return emitOpError("Expected result type to be ") << result_type;
   }
-  if (src_ty.getRank() != tgt_ty.getRank()) {
-    return emitOpError("Ranks do not match.");
-  }
-  if (src_ty.getRank() <= 1) {
-    return emitOpError("Not implemented: 1d memref bitcast.");
-  }
-  auto src_bitwidth = getElementTypeBitwidth(src_ty);
-  auto tgt_bitwidth = getElementTypeBitwidth(tgt_ty);
-  for (int i = 0; i < src_ty.getRank(); ++i) {
-    auto src_dim_size = src_ty.getDimSize(i);
-    auto tgt_dim_size = tgt_ty.getDimSize(i);
-    if (i == src_ty.getRank() - 2) {
-      auto src_bits = src_dim_size * src_bitwidth;
-      auto tgt_bits = tgt_dim_size * tgt_bitwidth;
-      if (src_bits != tgt_bits) {
-        return emitOpError(
-                   "Expected the same number of bits on the 2nd minormost "
-                   "dim: (")
-               << src_dim_size << " * " << src_bitwidth << ") vs ("
-               << tgt_dim_size << " * " << tgt_bitwidth << ")";
-        ;
-      }
-    } else {
-      if (src_dim_size != tgt_dim_size) {
-        return emitOpError("Expected the same dim size on dim ")
-               << i << ": " << src_dim_size << " vs " << tgt_dim_size;
-      }
-    }
-  }
-  // Source and target attributes may be different before propagation is done by
-  // the canonicalizer, so we allow this when attributes are "unset" in the
-  // target type.
-  auto tgt_layout = dyn_cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (!tgt_layout) {
-    return success();
-  }
-  auto src_layout = dyn_cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  if (!src_layout) {
-    return emitOpError("Expected a tiled layout for the input memref.");
-  }
-  return verifyTiling();
+  return success();
 }
 
-mlir::InFlightDiagnostic MemRefBitcastOp::verifyTiling() {
-  auto src_ty = getMemRefType(getInput());
-  auto tgt_ty = getType();
-  auto src_bitwidth = getElementTypeBitwidth(src_ty);
-  auto tgt_bitwidth = getElementTypeBitwidth(tgt_ty);
-  auto src_layout = cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  // TODO(jevinjiang): verify memref tiling is valid. Here we just assume the
-  // source and target tilings are valid.
-  auto src_tile = src_layout.getTiles().front().dimensions();
-  auto tgt_tile = tgt_layout.getTiles().front().dimensions();
-  if (src_tile[0] * src_bitwidth != tgt_tile[0] * tgt_bitwidth) {
-    return emitOpError("Invalid memref bitcast.");
+mlir::FailureOr<MemRefType> MemRefBitcastOp::inferResultType(
+    const MemRefType input_type, const Type result_elem_type,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  const int8_t input_bitwidth = getElementTypeBitwidth(input_type);
+  const int8_t result_bitwidth = getTypeBitwidth(result_elem_type);
+  if (input_bitwidth == result_bitwidth) {
+    return MemRefType(
+        MemRefType::Builder(input_type).setElementType(result_elem_type));
   }
-  return {};
+  const int64_t rank = input_type.getRank();
+  if (rank < 2) {
+    return emit_error() << "Cannot bitcast along 2nd minor in 1D memref";
+  }
+  if (input_type.isDynamicDim(rank - 2)) {
+    return emit_error() << "Not implemented: Dynamic 2nd minor dimension";
+  }
+  if (input_type.getDimSize(rank - 2) * input_bitwidth % result_bitwidth != 0) {
+    return emit_error() << "Input 2nd minor dimension bits not a multiple of "
+                           "result bitwidth";
+  }
+  SmallVector<int64_t> result_shape(input_type.getShape());
+  result_shape[rank - 2] =
+      input_type.getDimSize(rank - 2) * input_bitwidth / result_bitwidth;
+
+  if (auto affine_layout = dyn_cast<AffineMapAttr>(input_type.getLayout());
+      affine_layout && affine_layout.isIdentity()) {
+    // An affine map layout is interpreted as "unset"/"unknown" (non-standard
+    // semantics)
+    return MemRefType(MemRefType::Builder(input_type)
+                          .setShape(result_shape)
+                          .setElementType(result_elem_type));
+  }
+  const auto input_layout =
+      dyn_cast<tpu::TiledLayoutAttr>(input_type.getLayout());
+  if (input_layout == nullptr) {
+    return emit_error() << "Expected a tiled layout for the input memref.";
+  }
+  ArrayRef<xla::Tile> input_tiles = input_layout.getTiles();
+  while (!input_tiles.empty() && llvm::all_of(input_tiles.back().dimensions(),
+                                              llvm::equal_to<int64_t>(1))) {
+    input_tiles = input_tiles.drop_back(1);
+  }
+  const int64_t num_input_tiles = input_tiles.size();
+  for (int64_t i = 0; i < num_input_tiles - 1; ++i) {
+    if (input_tiles[i].dimensions().size() <
+        input_tiles[i + 1].dimensions().size()) {
+      // NOTE: TiledLayoutAttr verification allows tiles that tile across
+      // previous levels, like T(256)(128)(2, 1), but it enforces that
+      // previous levels are evenly divided by later levels.
+      return emit_error() << "Not implemented: Tile at level " << i + 1
+                          << " tiles across previous tiles.";
+    }
+  }
+
+  const bool has_interleaving_tile =
+      !input_tiles.empty() && input_tiles.back().dimensions().size() >= 2 &&
+      *(input_tiles.back().dimensions().end() - 1) == 1;
+  const int64_t input_factor =
+      has_interleaving_tile ? *(input_tiles.back().dimensions().end() - 2) : 1;
+  if (input_factor * input_bitwidth % result_bitwidth != 0) {
+    return emit_error() << "Not implemented: Input 2nd minor interleaving tile "
+                           "bits not a multiple of result bitwidth";
+  }
+  const int64_t result_factor = input_factor * input_bitwidth / result_bitwidth;
+  SmallVector<xla::Tile> result_tiles;
+  result_tiles.reserve(input_tiles.size());
+  for (const xla::Tile& input_tile : input_tiles) {
+    const int64_t tile_rank = input_tile.dimensions().size();
+    SmallVector<int64_t> tile;
+    if (tile_rank == 0) {
+      continue;  // Skip
+    }
+    if (tile_rank == 1) {
+      // Recall we checked tiles are of decreasing rank. This is part of a
+      // suffix of 1D tiles. The input factor must be 1 since the last tile
+      // is not of the form (..., A, 1).
+      // The suffix ...(A)(B)(C) becomes ...(1, A)(1, B)(1, C)
+      CHECK_EQ(input_factor, 1);
+      CHECK_NE(result_factor, 1);  // Identical bitwidths handled above
+      tile.push_back(1);
+    }
+    tile.append(input_tile.dimensions().begin(), input_tile.dimensions().end());
+    CHECK_EQ(*(tile.end() - 2) * result_factor % input_factor, 0);
+    *(tile.end() - 2) = *(tile.end() - 2) * result_factor / input_factor;
+    // Since tiles are of decreasing rank and higher level tiles divide lower
+    // level tiles, we can safely remove all-1s tiles.
+    if (!llvm::all_of(tile, llvm::equal_to<int64_t>(1))) {
+      result_tiles.emplace_back(tile);
+    }
+  }
+  if (!has_interleaving_tile && result_factor != 1) {
+    result_tiles.emplace_back(xla::Tile({result_factor, 1}));
+  }
+  auto result_layout = tpu::TiledLayoutAttr::get(
+      input_type.getContext(), result_tiles, input_layout.getTileStrides());
+  return MemRefType::get(result_shape, result_elem_type, result_layout,
+                         input_type.getMemorySpace());
 }
 
 LogicalResult MemRefBitcastOp::canonicalize(MemRefBitcastOp op,
@@ -777,6 +1309,16 @@ LogicalResult StridedLoadOp::verify() {
                                         /*min_stride=*/0);
 }
 
+OpFoldResult StridedLoadOp::fold(FoldAdaptor adaptor) {
+  if (llvm::all_of(getStrides(), [](int32_t s) { return s == 1; })) {
+    OpBuilder builder(*this);
+    return tpu::VectorLoadOp::create(builder, getLoc(), getType(), getBase(),
+                                     getIndices())
+        .getResult();
+  }
+  return nullptr;
+}
+
 LogicalResult StridedStoreOp::verify() {
   return verifyStridedOp<StridedStoreOp>(*this, getBase().getType(),
                                          getValueToStore().getType(),
@@ -799,10 +1341,11 @@ LogicalResult verifyStoreOp(Op op) {
       return op.emitError(
           "Not implemented: masked store with non-32-bit element type");
     }
-    if (value_ty.getShape() != op.getMask().getType().getShape())
+    if (value_ty.getShape() != op.getMask().getType().getShape()) {
       return op.emitOpError("Expected mask shape to match result shape: (")
              << value_ty.getShape() << "). Got: ("
              << op.getMask().getType().getShape() << ").";
+    }
   }
   return success();
 }
@@ -825,6 +1368,94 @@ void VectorStoreOp::build(OpBuilder& builder, OperationState& state,
         /*strides=*/builder.getDenseI32ArrayAttr({}), mask, add);
 }
 
+LogicalResult CompressStoreVregOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  VectorType value_ty = getValueToStore().getType();
+  if (value_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and valueToStore element type to match");
+  }
+  if (llvm::size(getIndices()) != ref_ty.getRank()) {
+    return emitOpError("Expected ") << ref_ty.getRank() << " indices.";
+  }
+  VectorType mask_ty = getMask().getType();
+  if (value_ty.getShape()[0] != mask_ty.getShape()[0]) {
+    return emitOpError(
+               "Expected valueToStore dimension 0 to match mask dimension 0: ")
+           << value_ty.getShape()[0] << " vs " << mask_ty.getShape()[0] << ".";
+  }
+  return success();
+}
+
+template <typename Op>
+LogicalResult verifyCompressStoreExpandLoad(
+    Op op, VectorType ty, int32_t compress_expand_dim, StringRef vector_name,
+    StringRef compress_expand_dim_name) {
+  MemRefType ref_ty = op.getBase().getType();
+  const int64_t rank = ref_ty.getRank();
+  if (ty.getRank() != rank) {
+    return op.emitOpError("Expected ")
+           << vector_name << " to have the same rank as base (" << rank
+           << "). Got: " << ty.getRank() << ".";
+  }
+  if (llvm::size(op.getIndices()) != rank) {
+    return op.emitOpError("Expected ") << rank << " indices.";
+  }
+  if (compress_expand_dim < 0 || compress_expand_dim >= rank) {
+    return op.emitOpError("Expected ")
+           << compress_expand_dim_name << " to be in [0, " << rank
+           << "). Got: " << compress_expand_dim << ".";
+  }
+  const StringRef non_target_dim_adjective =
+      compress_expand_dim_name == "compress_dim" ? "Non-compressed"
+                                                 : "Non-expanded";
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i == compress_expand_dim || ref_ty.isDynamicDim(i)) {
+      continue;
+    }
+    if (ty.getDimSize(i) > ref_ty.getDimSize(i)) {
+      return op.emitOpError(non_target_dim_adjective)
+             << " dimension " << i << " of " << vector_name
+             << " goes out of bounds of base (" << ty.getDimSize(i) << " > "
+             << ref_ty.getDimSize(i) << ").";
+    }
+  }
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return op.emitOpError("Expected base memref to be in VMEM.");
+  }
+  if (ty.getElementType() != ref_ty.getElementType()) {
+    return op.emitOpError("Expected base and ")
+           << vector_name << " element type to match";
+  }
+  // Note: We deliberately do not go through verifyStoreOp / verifyLoadOp, which
+  // reject masked stores/loads of non-32-bit element types. The mask here is
+  // mandatory and narrow element types are allowed. They are rejected later, in
+  // the vector layout passes.
+  if (ty.getShape() != op.getMask().getType().getShape()) {
+    return op.emitOpError("Expected mask shape to match ")
+           << (vector_name == "valueToStore" ? "value" : "result")
+           << " shape: (" << ty.getShape() << "). Got: ("
+           << op.getMask().getType().getShape() << ").";
+  }
+  return success();
+}
+
+LogicalResult VectorCompressStoreOp::verify() {
+  return verifyCompressStoreExpandLoad(
+      *this, getValueToStore().getType(), getCompressDim(),
+      /*vector_name=*/"valueToStore",
+      /*compress_expand_dim_name=*/"compress_dim");
+}
+
+LogicalResult VectorExpandLoadOp::verify() {
+  return verifyCompressStoreExpandLoad(
+      *this, getResult().getType(), getExpandDim(),
+      /*vector_name=*/"result",
+      /*compress_expand_dim_name=*/"expand_dim");
+}
+
 template <typename Op>
 LogicalResult verifyLoadOp(Op op) {
   MemRefType ref_ty = op.getBase().getType();
@@ -845,6 +1476,31 @@ LogicalResult verifyLoadOp(Op op) {
       return op.emitOpError(
           "Expected mask shape to be broadcastable to result shape.");
     }
+  }
+  return success();
+}
+
+LogicalResult ExpandLoadVregOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  VectorType result_ty = getResult().getType();
+  if (result_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and result element type to match");
+  }
+  if (llvm::size(getIndices()) != ref_ty.getRank()) {
+    return emitOpError("Expected ") << ref_ty.getRank() << " indices.";
+  }
+  // Note: We deliberately do not go through verifyLoadOp, which rejects masked
+  // loads of non-32-bit element types. The mask here is mandatory and narrow
+  // element types are allowed. They are rejected later, in the vector layout
+  // passes.
+  VectorType mask_ty = getMask().getType();
+  if (result_ty.getShape()[0] != mask_ty.getShape()[0]) {
+    return emitOpError(
+               "Expected result dimension 0 to match mask dimension 0: ")
+           << result_ty.getShape()[0] << " vs " << mask_ty.getShape()[0] << ".";
   }
   return success();
 }
@@ -970,17 +1626,11 @@ OpFoldResult EraseLayoutOp::fold(FoldAdaptor adaptor) {
 LogicalResult EraseLayoutOp::verify() {
   MemRefType operand_type = getOperand().getType();
   MemRefType result_type = getType();
-  // TODO(tlongeri): Enforce no shape changes
-  if (operand_type.getElementType() != result_type.getElementType()) {
-    return emitOpError("Cannot change the memref element type");
+  if (operand_type.getMemorySpace() != result_type.getMemorySpace()) {
+    return emitOpError("Cannot change the memref memory space");
   }
-  if (operand_type.getMemorySpace() != result_type.getMemorySpace() &&
-      result_type.getMemorySpace()) {
-    return emitOpError(
-        "Memref memory space must be either erased (changed to null) or "
-        "preserved");
-  }
-  if (operand_type.getLayout() == nullptr) {
+  if (auto affine_map_attr = dyn_cast<AffineMapAttr>(result_type.getLayout());
+      affine_map_attr == nullptr || !affine_map_attr.isIdentity()) {
     return emitOpError("Memref layout must be erased");
   }
   return success();
@@ -1349,21 +1999,47 @@ LogicalResult ConvOp::verify() {
     return emitOpError("Expected window attributes size to match spatial dims");
   }
 
+  const int64_t feature_group_count = getFeatureGroupCount();
+  const int64_t batch_group_count = getBatchGroupCount();
+  if (feature_group_count <= 0) {
+    return emitOpError("Expected feature_group_count to be positive");
+  }
+  if (batch_group_count <= 0) {
+    return emitOpError("Expected batch_group_count to be positive");
+  }
+  if (feature_group_count > 1 && batch_group_count > 1) {
+    return emitOpError(
+        "At most one of batch_group_count and feature_group_count may be > 1");
+  }
+
   // Contracting feature dimension size match
   const int64_t in_feat = lhs_ty.getDimSize(dnums.getInputFeatureDimension());
   const int64_t kernel_in_feat =
       rhs_ty.getDimSize(dnums.getKernelInputFeatureDimension());
-  if (in_feat != kernel_in_feat) {
+  if (in_feat % feature_group_count != 0) {
+    return emitOpError(
+        absl::StrFormat("LHS feature dimension size (%d) must be divisible by "
+                        "feature_group_count (%d)",
+                        in_feat, feature_group_count));
+  }
+  if (in_feat / feature_group_count != kernel_in_feat) {
     return emitOpError(absl::StrFormat(
-        "LHS feature dimension size (%d) must match kernel input feature "
-        "dimension size (%d)",
-        in_feat, kernel_in_feat));
+        "LHS feature dimension size divided by feature_group_count "
+        "(%d / %d = %d) must match kernel input feature dimension size (%d)",
+        in_feat, feature_group_count, in_feat / feature_group_count,
+        kernel_in_feat));
   }
 
   // Output feature dimension size match
   const int64_t out_feat = acc_ty.getDimSize(dnums.getOutputFeatureDimension());
   const int64_t kernel_out_feat =
       rhs_ty.getDimSize(dnums.getKernelOutputFeatureDimension());
+  if (kernel_out_feat % (feature_group_count * batch_group_count) != 0) {
+    return emitOpError(absl::StrFormat(
+        "Kernel output feature dimension size (%d) must be divisible by "
+        "feature_group_count * batch_group_count (%d)",
+        kernel_out_feat, feature_group_count * batch_group_count));
+  }
   if (out_feat != kernel_out_feat) {
     return emitOpError(absl::StrFormat(
         "ACC output feature dimension size (%d) must match kernel output "
@@ -1374,11 +2050,17 @@ LogicalResult ConvOp::verify() {
   // Batch dimension size match
   const int64_t in_batch = lhs_ty.getDimSize(dnums.getInputBatchDimension());
   const int64_t out_batch = acc_ty.getDimSize(dnums.getOutputBatchDimension());
-  if (in_batch != out_batch) {
+  if (in_batch % batch_group_count != 0) {
+    return emitOpError(
+        absl::StrFormat("LHS batch dimension size (%d) must be divisible by "
+                        "batch_group_count (%d)",
+                        in_batch, batch_group_count));
+  }
+  if (in_batch / batch_group_count != out_batch) {
     return emitOpError(absl::StrFormat(
-        "LHS batch dimension size (%d) must match ACC output batch dimension "
-        "size (%d)",
-        in_batch, out_batch));
+        "LHS batch dimension size divided by batch_group_count (%d / %d = %d) "
+        "must match ACC output batch dimension size (%d)",
+        in_batch, batch_group_count, in_batch / batch_group_count, out_batch));
   }
 
   // Spatial dimension output size formula matching
@@ -1424,10 +2106,25 @@ LogicalResult ConvOp::verify() {
 }
 
 LogicalResult MaskCastOp::verify() {
-  auto input_ty = getInput().getType();
-  auto output_ty = getResult().getType();
-  return success(input_ty.getShape().take_front(2) ==
-                 output_ty.getShape().take_front(2));
+  const VectorType input_ty = getInput().getType();
+  const VectorType output_ty = getResult().getType();
+  const int64_t input_rank = input_ty.getRank();
+  const int64_t output_rank = output_ty.getRank();
+  const int64_t min_rank = std::min(input_rank, output_rank);
+  const int64_t max_rank = std::max(input_rank, output_rank);
+  CHECK_GE(max_rank, 1);
+  // Unfortunately, if input and output ranks are equal, we don't have enough
+  // information to determine whether the last dimension is a subelement
+  // dimension (packed mask) or a target shape dimension (unpacked mask).
+  if (min_rank < max_rank - 1) {
+    return emitOpError("Input and output ranks must differ by at most 1");
+  }
+  if (input_ty.getShape().take_front(max_rank - 1) !=
+      output_ty.getShape().take_front(max_rank - 1)) {
+    return emitOpError(
+        "Input and output shapes must match on leading dimensions");
+  }
+  return success();
 }
 
 LogicalResult ScanOp::verify() {
@@ -1459,15 +2156,43 @@ LogicalResult ScanOp::verify() {
   if (input_ty.getElementType().isInteger(1) &&
       getKind() != ReductionKind::kSum) {
     return emitOpError("Only sum reduction is supported for i1 vector inputs.");
-  } else if (getKind() != ReductionKind::kSum &&
-             getKind() != ReductionKind::kMax &&
-             getKind() != ReductionKind::kMin) {
-    return emitOpError("Only sum, max and min reductions are supported.");
+  }
+  switch (getKind()) {
+    case ReductionKind::kSum:
+      break;
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(input_ty.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type.");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(input_ty.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type.");
+      }
+      break;
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead.");
+    case ReductionKind::kArgMax:
+    case ReductionKind::kArgMin:
+    case ReductionKind::kFindFirstSet:
+      return emitOpError("Only sum, max and min reductions are supported.");
   }
 
   if (getMask() == nullptr) {
     return success();
-  } else if (input_ty.getElementType().isInteger(1)) {
+  }
+  if (input_ty.getElementType().isInteger(1)) {
     return emitOpError("Mask is not supported for i1 vector inputs.");
   }
 
@@ -1533,6 +2258,19 @@ mlir::tpu::CoreType SemaphoreSignalOp::getTargetCoreType() {
   return getRefCoreType(getSemaphore()).value_or(GetCoreTypeOfParentOp(**this));
 }
 
+namespace {
+
+bool isRemote(Value device_id, Value core_id) {
+  return device_id != nullptr || core_id != nullptr;
+}
+
+template <typename OpTy>
+bool isRemote(OpTy op) {
+  return isRemote(op.getDeviceId(), op.getCoreId());
+}
+
+}  // namespace
+
 LogicalResult SemaphoreSignalOp::verify() {
   MemRefType sem_type = getSemaphore().getType();
   if (sem_type.getRank() != 0) {
@@ -1542,7 +2280,7 @@ LogicalResult SemaphoreSignalOp::verify() {
   CoreType issuing_core_type = GetCoreTypeOfParentOp(**this);
   CoreType target_core_type = getTargetCoreType();
 
-  if (getCoreId() == nullptr && getDeviceId() == nullptr) {
+  if (!isRemote(*this)) {
     if (target_core_type != issuing_core_type) {
       return emitOpError(
           absl::StrFormat("Target core type (%s) must match source core type "
@@ -1569,6 +2307,140 @@ LogicalResult SemaphoreWaitOp::verify() {
   return success();
 }
 
+namespace {
+
+bool isSparseCoreStreamLocalMemory(tpu::MemorySpaceAttr mem_space,
+                                   CoreType issuing_core) {
+  if (mem_space.getCoreType().value_or(issuing_core) != issuing_core) {
+    return false;
+  }
+  if (issuing_core == CoreType::kScVectorSubcore) {
+    return mem_space.getValue() == MemorySpace::kVmem;
+  }
+  if (issuing_core == CoreType::kScScalarSubcore) {
+    return mem_space.getValue() == MemorySpace::kSmem;
+  }
+  return false;
+}
+
+LogicalResult verifySparseCoreDmaSemaphores(
+    Operation* op, tpu::MemorySpaceAttr source_mem_space,
+    tpu::MemorySpaceAttr target_mem_space, Value source_semaphore,
+    Value target_semaphore, bool is_remote, CoreType issuing_core) {
+  if (is_remote) {
+    return success();
+  }
+  bool src_is_local =
+      isSparseCoreStreamLocalMemory(source_mem_space, issuing_core);
+  bool tgt_is_local =
+      isSparseCoreStreamLocalMemory(target_mem_space, issuing_core);
+  if (!src_is_local && tgt_is_local) {
+    if (source_semaphore != nullptr) {
+      return op->emitOpError(
+          "Source semaphores are unsupported for transfers from a "
+          "non-local memory to local memory on SparseCore");
+    }
+  }
+  return success();
+}
+
+LogicalResult verifyCommonDmaParams(
+    Operation* op, MemRefType source_ty, MemRefType target_ty,
+    TypedValue<MemRefType> source_sem, TypedValue<MemRefType> target_sem,
+    Value device_id, Value core_id, Value subcore_id, int priority,
+    bool strict_ordering, CoreType issuing_core) {
+  Type sem_elem_type = nullptr;
+
+  if (target_sem) {
+    MemRefType target_sem_type = getMemRefType(target_sem);
+    if (target_sem_type.getRank() != 0) {
+      return op->emitOpError("DMA target semaphore must be rank 0");
+    }
+    sem_elem_type = target_sem_type.getElementType();
+  }
+
+  if (source_sem) {
+    MemRefType source_sem_type = getMemRefType(source_sem);
+    if (source_sem_type.getRank() != 0) {
+      return op->emitOpError("DMA source semaphore reference must be rank 0");
+    }
+    if (sem_elem_type && source_sem_type.getElementType() != sem_elem_type) {
+      return op->emitOpError(
+          "DMA source and target semaphore must have the same type");
+    }
+    if (!sem_elem_type) {
+      sem_elem_type = source_sem_type.getElementType();
+    }
+  }
+
+  if (source_ty.getElementType() != target_ty.getElementType()) {
+    return op->emitOpError("DMA source and target element type mismatch");
+  }
+  if (source_ty.getShape() != target_ty.getShape()) {
+    return op->emitOpError("DMA source and target shape mismatch.");
+  }
+
+  bool is_remote = isRemote(device_id, core_id);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+  if (is_sc) {
+    if (source_ty.getMemorySpace() == nullptr) {
+      return op->emitOpError(
+          "Source memory space must be provided for SparseCore DMA");
+    }
+    if (target_ty.getMemorySpace() == nullptr) {
+      return op->emitOpError(
+          "Target memory space must be provided for SparseCore DMA");
+    }
+  }
+
+  if (priority < 0 || priority > 1) {
+    return op->emitOpError(
+               "Not implemented: only support priority 0 or 1, but got ")
+           << priority;
+  }
+  if (priority != 0 && is_remote) {
+    return op->emitOpError(
+        "Not implemented: non-zero priority is not supported for remote DMA");
+  }
+  if (source_sem &&
+      getRefCoreType(source_sem).value_or(issuing_core) != issuing_core) {
+    return op->emitOpError(
+        "Source semaphore and source ref core type mismatched");
+  }
+  // If the target core_type is different from the issuing core_type,
+  // the specific core_id must be provided. The device_id is irrelevant here.
+  CoreType target_core = getRefCoreType(target_sem).value_or(issuing_core);
+  if (target_core != issuing_core && core_id == nullptr) {
+    return op->emitOpError(
+        absl::StrFormat("Core id must be specified when target core type (%v) "
+                        "is different from source core type (%v)",
+                        target_core, issuing_core));
+  }
+  if (strict_ordering && issuing_core != CoreType::kScScalarSubcore &&
+      issuing_core != CoreType::kScVectorSubcore) {
+    return op->emitOpError(
+        "Strict ordering is only supported on the SC scalar and vector "
+        "subcores");
+  }
+  if (sem_elem_type && isa<SemaphoreType>(sem_elem_type)) {
+    if (HasMemorySpace(source_ty, MemorySpace::kSmem, CoreType::kTc) ||
+        HasMemorySpace(target_ty, MemorySpace::kSmem, CoreType::kTc)) {
+      return op->emitOpError(
+          "Non-DMA semaphores are not supported for DMAs involving SMEM");
+    }
+  }
+  // Subcore ID applies only to SC vector subcore DMAs.
+  if (target_core != CoreType::kScVectorSubcore && subcore_id != nullptr) {
+    return op->emitOpError(
+        "Subcore id should not be set unless target core type is SC vector "
+        "subcore");
+  }
+  return success();
+}
+
+}  // namespace
+
 void EnqueueDMAOp::build(OpBuilder& builder, OperationState& state,
                          Value source, Value source_semaphore, Value target,
                          Value target_semaphore, Value device_id, Value core_id,
@@ -1582,97 +2454,52 @@ mlir::tpu::CoreType EnqueueDMAOp::getTargetCoreType() {
 }
 
 LogicalResult EnqueueDMAOp::verify() {
-  Value target_sem = getTargetSemaphore();
-  if (!target_sem) {
-    // TODO: b/501204503 - Support optional source and destination semaphores.
-    return emitOpError("EnqueueDMA target semaphore must be provided.");
-  }
-  MemRefType target_sem_type = getMemRefType(target_sem);
-  if (target_sem_type.getRank() != 0) {
-    return emitOpError("DMA target semaphore must be rank 0");
-  }
-  Type target_sem_elem_type = target_sem_type.getElementType();
-
-  Value source_sem = getSourceSemaphore();
-  if (source_sem) {
-    MemRefType source_sem_type = getMemRefType(source_sem);
-    if (source_sem_type.getRank() != 0) {
-      return emitOpError("DMA source semaphore reference must be rank 0");
-    }
-    if (source_sem_type.getElementType() != target_sem_elem_type) {
-      return emitOpError(
-          "DMA source and target semaphore must have the same type");
-    }
-  }
   MemRefType source_ty = getMemRefType(getSource());
   MemRefType target_ty = getMemRefType(getTarget());
-  if (source_ty.getElementType() != target_ty.getElementType()) {
-    return emitOpError("DMA source and target element type mismatch");
-  }
-  if (source_ty.getShape() != target_ty.getShape()) {
-    return emitOpError("DMA source and target shape mismatch.");
+  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
+  bool is_remote = isRemote(*this);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+
+  if (failed(verifyCommonDmaParams(
+          getOperation(), source_ty, target_ty, getSourceSemaphore(),
+          getTargetSemaphore(), getDeviceId(), getCoreId(), getSubcoreId(),
+          getPriority(), getStrictOrdering(), issuing_core))) {
+    return failure();
   }
 
-  if (getDeviceId() || getCoreId()) {
+  if (is_remote) {
     if (!getSourceSemaphore()) {
       return emitOpError(
           "DMA source semaphore must be specified when device_id or core_id is "
           "specified");
     }
   }
-  bool is_remote = getDeviceId() || getCoreId();
-  if (getSourceSemaphore()) {
-    // TODO: b/501204503 - Support optional source and destination semaphores.
-    if (!is_remote) {
+
+  if (is_sc) {
+    auto source_mem_space =
+        dyn_cast_or_null<tpu::MemorySpaceAttr>(source_ty.getMemorySpace());
+    auto target_mem_space =
+        dyn_cast_or_null<tpu::MemorySpaceAttr>(target_ty.getMemorySpace());
+    if (source_mem_space != nullptr && target_mem_space != nullptr) {
+      if (failed(verifySparseCoreDmaSemaphores(
+              getOperation(), source_mem_space, target_mem_space,
+              getSourceSemaphore(), getTargetSemaphore(), is_remote,
+              issuing_core))) {
+        return failure();
+      }
+    }
+  } else {
+    if (getTargetSemaphore() == nullptr) {
+      return emitOpError("DMA target semaphore must be specified");
+    }
+    if (!is_remote && getSourceSemaphore() != nullptr) {
       return emitOpError(
           "DMA destination device_id or core_id must be specified when source "
           "semaphore is specified");
     }
   }
-  int priority = getPriority();
-  if (priority < 0 || priority > 1) {
-    return emitOpError(
-               "Not implemented: only support priority 0 or 1, but got ")
-           << priority;
-  }
-  if (priority != 0 && is_remote) {
-    return emitOpError(
-        "Not implemented: non-zero priority is not supported for remote DMA");
-  }
-  // If the target core_type is different from the issuing core_type,
-  // the specific core_id must be provided. The device_id is irrelevant here.
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  CoreType target_core = getTargetCoreType();
-  if (getSourceSemaphore() &&
-      getRefCoreType(getSourceSemaphore()).value_or(issuing_core) !=
-          issuing_core) {
-    return emitOpError("Source semaphore and source ref core type mismatched");
-  }
-  if (target_core != issuing_core && getCoreId() == nullptr) {
-    return emitOpError(
-        absl::StrFormat("Core id must be specified when target core type (%v) "
-                        "is different from source core type (%v)",
-                        target_core, issuing_core));
-  }
-  if (getStrictOrdering() && issuing_core != CoreType::kScScalarSubcore &&
-      issuing_core != CoreType::kScVectorSubcore) {
-    return emitOpError(
-        "Strict ordering is only supported on the SC scalar and vector "
-        "subcores");
-  }
-  if (isa<SemaphoreType>(target_sem_elem_type)) {
-    if (HasMemorySpace(source_ty, MemorySpace::kSmem, CoreType::kTc) ||
-        HasMemorySpace(target_ty, MemorySpace::kSmem, CoreType::kTc)) {
-      return emitOpError(
-          "Non-DMA semaphores are not supported for DMAs involving SMEM");
-    }
-  }
-  // Subcore ID applies only to SC vector subcore DMAs.
-  if (target_core != CoreType::kScVectorSubcore && getSubcoreId() != nullptr) {
-    return emitOpError(
-        "Subcore id should not be set unless target core type is SC vector "
-        "subcore");
-  }
+
   return success();
 }
 
@@ -1728,11 +2555,11 @@ LogicalResult EnqueueIndirectDMAOp::verify() {
   if (is_gather) {
     return verifyGather(getOperation(), /*operand_shape=*/source_ty.getShape(),
                         /*offsets_shape=*/offsets_shape,
-                        /*results_memory_space=*/target_ty.getShape());
+                        /*result_shape=*/target_ty.getShape());
   }
-  return verifyScatter(getOperation(), /*updates_ty=*/source_ty.getShape(),
+  return verifyScatter(getOperation(), /*updates_shape=*/source_ty.getShape(),
                        /*offsets_shape=*/offsets_shape,
-                       /*operand_ty=*/target_ty.getShape());
+                       /*operand_shape=*/target_ty.getShape());
 }
 
 void WaitDMA2Op::build(OpBuilder& builder, OperationState& state,
@@ -1756,29 +2583,63 @@ LogicalResult WaitDMA2Op::verify() {
 }
 
 LogicalResult WaitDMAOp::verify() {
+  MemRefType source_ty = getMemRefType(getSource());
+  MemRefType target_ty = getMemRefType(getTarget());
+  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
+  bool is_remote = isRemote(*this);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+
+  if (failed(verifyCommonDmaParams(
+          getOperation(), source_ty, target_ty, getSourceSemaphore(),
+          getTargetSemaphore(), getDeviceId(), getCoreId(), getSubcoreId(),
+          getPriority(), getStrictOrdering(), issuing_core))) {
+    return failure();
+  }
+
   bool wait_destination = getWaitTarget();
   TypedValue<MemRefType> sem =
       wait_destination ? getTargetSemaphore() : getSourceSemaphore();
-  if (!sem) {
-    // TODO: b/501204503 - Support optional source and destination semaphores
-    // with global reserved semaphore allocation tracking.
-    return emitOpError("The awaited semaphore must be provided");
-  }
 
-  if (getMemRefType(sem).getRank() != 0) {
-    return emitOpError("DMA wait semaphore must be rank 0");
+  if (is_sc) {
+    if (!is_remote) {
+      auto source_mem_space =
+          dyn_cast_or_null<tpu::MemorySpaceAttr>(source_ty.getMemorySpace());
+      auto target_mem_space =
+          dyn_cast_or_null<tpu::MemorySpaceAttr>(target_ty.getMemorySpace());
+      if (source_mem_space != nullptr && target_mem_space != nullptr) {
+        bool src_is_local =
+            isSparseCoreStreamLocalMemory(source_mem_space, issuing_core);
+        bool tgt_is_local =
+            isSparseCoreStreamLocalMemory(target_mem_space, issuing_core);
+        if (!src_is_local && tgt_is_local && !wait_destination) {
+          return emitOpError(
+              "Awaiting source read completion is unsupported for transfers "
+              "from a non-local memory to local memory on SparseCore");
+        }
+      }
+    }
+  } else {
+    if (wait_destination) {
+      if (getTargetSemaphore() == nullptr) {
+        return emitOpError("DMA target semaphore must be specified");
+      }
+      if (!is_remote && getSourceSemaphore() != nullptr) {
+        return emitOpError(
+            "DMA destination device_id or core_id must be specified when "
+            "source semaphore is specified");
+      }
+    } else {
+      if (getSourceSemaphore() == nullptr) {
+        return emitOpError("The awaited semaphore must be provided");
+      }
+    }
   }
-
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  if (getRefCoreType(sem).value_or(issuing_core) != issuing_core) {
-    return emitOpError("Can only await semaphores attached to the local core");
-  }
-
-  // Subcore ID applies only to SC vector subcore.
-  if (issuing_core != CoreType::kScVectorSubcore && getSubcoreId() != nullptr) {
-    return emitOpError(
-        "Subcore id should not be set unless issuing core type is SC vector "
-        "subcore");
+  if (sem) {
+    if (getRefCoreType(sem).value_or(issuing_core) != issuing_core) {
+      return emitOpError(
+          "Can only await semaphores attached to the local core");
+    }
   }
 
   return success();
@@ -2253,14 +3114,45 @@ LogicalResult AllReduceOp::verify() {
 
   switch (kind) {
     case ReductionKind::kSum:
-    case ReductionKind::kMax:
-    case ReductionKind::kMin:
       if (in_ty != out_ty) {
         return emitOpError(
             "Sum, max, and min reductions must have the same "
             "input and output type");
       }
       break;
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(in_ty.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type");
+      }
+      if (in_ty != out_ty) {
+        return emitOpError(
+            "Sum, max, and min reductions must have the same "
+            "input and output type");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(in_ty.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type");
+      }
+      if (in_ty != out_ty) {
+        return emitOpError(
+            "Sum, max, and min reductions must have the same "
+            "input and output type");
+      }
+      break;
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead");
     case ReductionKind::kArgMax:
     case ReductionKind::kArgMin:
       if (in_ty.getShape() != out_ty.getShape()) {
@@ -2287,7 +3179,6 @@ LogicalResult AllReduceOp::verify() {
       break;
     case ReductionKind::kFindFirstSet:
       return emitOpError("Only i1 input is supported for find_first_set");
-      break;
   }
   return success();
 }
@@ -2387,9 +3278,40 @@ LogicalResult ReduceOp::verify() {
           "arg_max/arg_min not supported - use tpu.reduce_index instead");
     case ReductionKind::kFindFirstSet:
       return emitOpError("find_first_set not supported");
+    case ReductionKind::kMax_DEPRECATED:
+    case ReductionKind::kMin_DEPRECATED:
+      return emitOpError(
+          "max and min reduction kind symbols are deprecated. Max and min "
+          "reductions are supported via maxf, minf, maxsi, minsi, maxui, or "
+          "minui instead");
+    case ReductionKind::kMaxF:
+    case ReductionKind::kMinF:
+      if (!isa<FloatType>(input_type.getElementType())) {
+        return emitOpError(
+            "maxf and minf reductions require float element type");
+      }
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
+    case ReductionKind::kMaxSI:
+    case ReductionKind::kMinSI:
+    case ReductionKind::kMaxUI:
+    case ReductionKind::kMinUI:
+      if (!isa<IntegerType>(input_type.getElementType())) {
+        return emitOpError(
+            "maxsi, minsi, maxui and minui reductions require integer element "
+            "type");
+      }
+      if (input_type.getElementType() != output_type.getElementType()) {
+        return emitOpError(
+            "Input and output must have the same element type for sum, max and "
+            "min reductions");
+      }
+      break;
     case ReductionKind::kSum:
-    case ReductionKind::kMax:
-    case ReductionKind::kMin:
       // TODO(tlongeri): Might be worth allowing things like bf16 -> f32.
       if (input_type.getElementType() != output_type.getElementType()) {
         return emitOpError(
@@ -2604,6 +3526,39 @@ LogicalResult SubcoreIdOp::verify() {
   }
   return success();
 }
+
+LogicalResult TileSizeOp::verify() {
+  MemRefType memref_ty = getSource().getType();
+  const int32_t index = getIndex();
+  if (index < 0 || index >= memref_ty.getRank()) {
+    return emitOpError("Index out of bounds");
+  }
+  return success();
+}
+
+LogicalResult MemRefMemorySpaceIsOp::verify() {
+  if (getMemorySpace().getValue() == MemorySpace::kAny) {
+    return emitOpError("Comparing to 'any' can never succeed");
+  }
+  return success();
+}
+
+OpFoldResult MemRefMemorySpaceIsOp::fold(FoldAdaptor adaptor) {
+  auto actual = dyn_cast_if_present<MemorySpaceAttr>(
+      getSource().getType().getMemorySpace());
+  if (!actual || actual.getValue() == MemorySpace::kAny) {
+    return nullptr;  // Not specialized yet.
+  }
+  MemorySpaceAttr expected = getMemorySpace();
+  if (actual.getValue() == expected.getValue() &&
+      expected.getCoreType().has_value() && !actual.getCoreType().has_value()) {
+    return nullptr;  // Core type not canonicalized yet.
+  }
+  return BoolAttr::get(
+      getContext(), HasMemorySpace(getSource().getType(), expected.getValue(),
+                                   expected.getCoreType()));
+}
+
 }  // namespace tpu
 }  // namespace mlir
 

@@ -43,6 +43,10 @@ class RocmMemoryReservation : public MemoryReservation {
   // Returns the base address and padded size of the reserved virtual range.
   DeviceAddressBase address() const override;
 
+  // The mapping granularity reported by hipMemGetAllocationGranularity;
+  // mapping offsets and sizes must be multiples of it.
+  size_t granularity() const override { return granularity_; }
+
   ~RocmMemoryReservation() override;
 
   // Non-movable: the base class MemoryReservation already deletes its move
@@ -55,7 +59,7 @@ class RocmMemoryReservation : public MemoryReservation {
 
  private:
   explicit RocmMemoryReservation(StreamExecutor* executor, char* ptr,
-                                 uint64_t size);
+                                 uint64_t size, size_t granularity);
 
   absl::Status Map(size_t reservation_offset, size_t allocation_offset,
                    size_t size, MemoryAllocation& allocation) override;
@@ -70,6 +74,7 @@ class RocmMemoryReservation : public MemoryReservation {
   // null check is purely defensive.
   char* ptr_;
   uint64_t size_;
+  size_t granularity_;
   // Bytes currently mapped into the reservation. Kept in sync by Map()/UnMap()
   // so the destructor can skip a redundant hipMemUnmap when the ScopedMapping
   // that owns the mapping has already unmapped the range (which would otherwise

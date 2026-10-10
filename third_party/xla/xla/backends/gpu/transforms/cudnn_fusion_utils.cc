@@ -81,12 +81,30 @@ PrecisionConfig GetPrecisionConfig(const HloInstruction& hlo) {
 
 namespace {
 
+// Returns true if `hlo` is a broadcast supported by cuDNN epilogue fusion.
+// Layout-normalized NHWC convolutions place the feature (channel) dimension
+// last, and cuDNN runtime kernels can misindex non-channel 1D broadcasts in 2D
+// conv epilogues, so 1D broadcasts are restricted to the last dimension.
+bool IsSupportedBroadcast(const HloInstruction& hlo) {
+  return ShapeUtil::IsScalar(hlo.operand(0)->shape()) ||
+         (hlo.operand(0)->shape().dimensions().size() == 1 &&
+          hlo.dimensions(0) == hlo.shape().dimensions().size() - 1);
+}
+
 bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
                                   bool can_fuse_reduce, bool is_nchw,
                                   const se::DeviceDescription& device_info) {
   if (is_nchw) {
     return false;
   }
+
+  // cuDNN only supports epilogues on Ampere and above.
+  const se::CudaComputeCapability* cuda_cc =
+      device_info.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
+    return false;
+  }
+
   const HloOpcode opcode = hlo.opcode();
   // Do not fuse chained converts (a convert whose operand is already a
   // convert). Note: Fusing chained converts could steal a convert from an
@@ -132,8 +150,7 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
              IsEpilogueOpSupportedByCuDNN(*hlo.users()[0], can_fuse_reduce,
                                           is_nchw, device_info);
     case HloOpcode::kBroadcast:
-      return ShapeUtil::IsScalar(hlo.operand(0)->shape()) ||
-             hlo.operand(0)->shape().dimensions().size() == 1;
+      return IsSupportedBroadcast(hlo);
     case HloOpcode::kConstant:
       return ShapeUtil::IsScalar(hlo.shape());
     case HloOpcode::kReduce:
@@ -142,6 +159,24 @@ bool IsEpilogueOpSupportedByCuDNN(const HloInstruction& hlo,
       return false;
   }
 }
+
+namespace {
+
+bool IsCheapToDuplicate(const HloInstruction* hlo) {
+  if (hlo->opcode() == HloOpcode::kConstant) {
+    return ShapeUtil::IsScalar(hlo->shape());
+  }
+  if (hlo->opcode() == HloOpcode::kBroadcast) {
+    return IsSupportedBroadcast(*hlo);
+  }
+  if (hlo->opcode() == HloOpcode::kConvert) {
+    return ShapeUtil::IsScalar(hlo->shape()) ||
+           hlo->shape().dimensions().size() == 1;
+  }
+  return false;
+}
+
+}  // namespace
 
 HloInstruction* FuseTowardOperand(
     HloInstruction* hlo, HloComputation::Builder& builder,
@@ -154,7 +189,7 @@ HloInstruction* FuseTowardOperand(
   HloInstruction* fused_hlo;
   if (IsEpilogueOpSupportedByCuDNN(*hlo, /*can_fuse_reduce=*/false, is_nchw,
                                    device_info) &&
-      hlo->user_count() == 1) {
+      (hlo->user_count() == 1 || IsCheapToDuplicate(hlo))) {
     HloInstruction::InstructionVector new_operands;
     for (int i = 0; i < hlo->operand_count(); ++i) {
       HloInstruction* operand = hlo->mutable_operand(i);

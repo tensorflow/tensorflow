@@ -82,7 +82,7 @@ def read_model_from_bytearray(model_bytearray):
       buffer.offset = 0
       buffer.size = 0
   for subgraph in model.subgraphs:
-    for op in subgraph.operators:
+    for op in subgraph.operators or []:
       if op.largeCustomOptionsOffset:
         op.customOptions = model_bytearray[
             op.largeCustomOptionsOffset : op.largeCustomOptionsOffset
@@ -200,7 +200,7 @@ def randomize_weights(model, random_seed=0, buffers_to_skip=None):
 
   buffer_types = {}
   for graph in model.subgraphs:
-    for op in graph.operators:
+    for op in graph.operators or []:
       if op.inputs is None:
         break
       for input_idx in op.inputs:
@@ -256,6 +256,12 @@ def opcode_to_name(model, op_code):
   """
   op = model.operatorCodes[op_code]
   code = max(op.builtinCode, op.deprecatedBuiltinCode)
+  if code == schema_fb.BuiltinOperator.CUSTOM and op.customCode:
+    return (
+        op.customCode.decode('ascii')
+        if isinstance(op.customCode, bytes)
+        else op.customCode
+    )
   for name, value in vars(schema_fb.BuiltinOperator).items():
     if value == code:
       return name

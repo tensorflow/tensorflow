@@ -22,8 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/reduce_scatter_combiner.h"
+#include "xla/hlo/transforms/collectives/reduce_scatter_combiner.h"
 
 namespace xla::gpu {
 

@@ -1,0 +1,39 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
+
+region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  p = f32[8,16,12,32,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce = f32[16,32] reduce(p, c), dimensions={0,2,4}, to_apply=region,
+    backend_config={sizes:[8,4,8]}
+}
+
+ENTRY main {
+  p = f32[8,16,12,32,16] parameter(0)
+  ROOT fusion = f32[16,32] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["8", "16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
+
+// Reduction dim 0 is fully tiled (8/8) and reads at offset 0. Only dims 2
+// (12/4 = 3 iterations) and 4 (16/8 = 2 iterations) are looped over.
+// CHECK-LABEL: xtile.entry_func @triton_fn
+// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:     %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:     %[[C3:.*]] = arith.constant 3 : index
+// CHECK:         %[[ACC:.*]] = scf.for {{.*}} = %[[C0]] to %[[C3]]
+// CHECK:           scf.for {{.*}} = %[[C0]] to %[[C2]]
+// CHECK:             xtile.extract %arg0[%[[C0]],
+// CHECK:         "tt.reduce"(%[[ACC]])

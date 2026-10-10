@@ -57,6 +57,8 @@ limitations under the License.
 
 namespace xla {
 
+class CustomOptions;
+
 class PjRtClient;
 
 // Provides configuration for implementations that support compile and execute
@@ -308,6 +310,9 @@ struct ExecuteOptions {
   // may be executed in any order and concurrently.
   int64_t execution_stream_id = 0;
 
+  // If non-null, per-execution custom options passed to the runtime.
+  std::shared_ptr<const CustomOptions> custom_options;
+
   // The `call_location` field is used to pass down call site location
   // information from higher-level frameworks like JAX and PyTorch to the PJRT
   // plugin. This field stores the source location (e.g., file:line) of the
@@ -367,9 +372,19 @@ class PjRtExecutable {
   // Unique name for this executable, e.g., HloModule name.
   virtual absl::string_view name() const = 0;
 
+  // Return HloModule (optimized).
+  virtual absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const {
+    return absl::UnimplementedError("GetHloModule is not implemented");
+  }
+
   // Return an array of HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
-  GetHloModules() const = 0;
+  GetHloModules() const;
+
+  // Unoptimized hlo module.
+  virtual std::optional<HloModuleProto> GetUnoptimizedHloModule() const {
+    return std::nullopt;
+  }
 
   // Returns an output Shape per program, the size should be equal to
   // `GetHloModules()`.

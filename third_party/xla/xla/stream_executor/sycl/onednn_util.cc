@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "dnnl.hpp"
 #include "dnnl_sycl.hpp"
+#include "xla/primitive_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/env_var.h"
@@ -76,6 +77,51 @@ dnnl::memory CreateDnnlMemory(const dnnl::memory::desc& md,
                                            DNNL_MEMORY_ALLOCATE);
   } else {
     return dnnl::sycl_interop::make_memory(md, engine, kind, data_handle);
+  }
+}
+
+absl::StatusOr<dnnl::memory::data_type> ToOneDnnDataType(
+    xla::PrimitiveType xla_type) {
+  switch (xla_type) {
+    case xla::PrimitiveType::F16:
+      return dnnl::memory::data_type::f16;
+    case xla::PrimitiveType::BF16:
+      return dnnl::memory::data_type::bf16;
+    case xla::PrimitiveType::F32:
+      return dnnl::memory::data_type::f32;
+    case xla::PrimitiveType::F64:
+      return dnnl::memory::data_type::f64;
+    case xla::PrimitiveType::S8:
+      return dnnl::memory::data_type::s8;
+    case xla::PrimitiveType::U8:
+      return dnnl::memory::data_type::u8;
+    case xla::PrimitiveType::S32:
+      return dnnl::memory::data_type::s32;
+    default:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported element type: ",
+          xla::primitive_util::LowercasePrimitiveTypeName(xla_type)));
+  }
+}
+
+absl::StatusOr<dnnl::memory::data_type> ToOneDnnDataType(
+    dnn::DataType dnn_type) {
+  switch (dnn_type) {
+    case dnn::DataType::kHalf:
+      return dnnl::memory::data_type::f16;
+    case dnn::DataType::kBF16:
+      return dnnl::memory::data_type::bf16;
+    case dnn::DataType::kFloat:
+      return dnnl::memory::data_type::f32;
+    case dnn::DataType::kDouble:
+      return dnnl::memory::data_type::f64;
+    case dnn::DataType::kInt8:
+      return dnnl::memory::data_type::s8;
+    case dnn::DataType::kInt32:
+      return dnnl::memory::data_type::s32;
+    default:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported DNN datatype: ", dnn::DataType_Name(dnn_type)));
   }
 }
 

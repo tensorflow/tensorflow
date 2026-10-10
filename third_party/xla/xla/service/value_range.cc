@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -162,6 +163,9 @@ Range RecursivelyIdentifyRange(
       if (instr->comparison_direction() != ComparisonDirection::kLt) {
         return Range{};
       }
+      if (lhs.IsEmpty() || rhs.IsEmpty()) {
+        return Range{};
+      }
       if (lhs.IsBounded() && lhs.max()->lt(rhs.min())) {
         return RecordAndReturnRange(
             Range{ConstantValue::GetOne(/*bitwidth=*/1, /*is_signed=*/false),
@@ -269,18 +273,41 @@ Range RecursivelyIdentifyRange(
       }
       ConstantValue single_value = lhs.IsSingleValue() ? lhs.min() : rhs.min();
       Range operand_range = lhs.IsSingleValue() ? rhs : lhs;
+      const bool is_neg =
+          single_value.IsSigned() && single_value.GetSignedValue() < 0;
+      // `!p.div(single_value).eq(v)` catches all multiplication overflow except
+      // `INT_MIN * -1` in two's complement, which wraps to `p == v` (`< 0`).
+      auto wraps = [&](const ConstantValue& v) {
+        ConstantValue p = v.mul(single_value);
+        return single_value.GetUnsignedValue() != 0 &&
+               ((is_neg && p == v && v.GetSignedValue() < 0) ||
+                !p.div(single_value).eq(v));
+      };
+      // Unbounded ranges represent `[min, +inf)`. Multiplying by a negative
+      // constant `c` produces `(-inf, c * min]`, which `Range` cannot represent
+      // because `Range` requires a finite lower bound `min_`.
+      if (wraps(operand_range.min()) ||
+          (operand_range.IsBounded() ? wraps(*operand_range.max()) : is_neg)) {
+        return Range{};
+      }
       // When multiplying with a constant, min, max, and step are all
       // multiplied by the single value.
       ConstantValue min = operand_range.min().mul(single_value);
       if (operand_range.IsBounded()) {
         ConstantValue max = operand_range.max()->mul(single_value);
+        if (is_neg) {
+          std::swap(min, max);
+        }
         if (!operand_range.IsStepKnown()) {
           return RecordAndReturnRange(Range{min, max, operand_range.IsLinear()},
                                       instr, known_ranges);
         }
-        ConstantValue step = operand_range.step()->mul(single_value);
-        // Zero step makes it difficult to simulate the range; update it to 1.
-        if (step.GetSignedValue() == 0) {
+        ConstantValue step = operand_range.step()->mul(
+            is_neg ? ConstantValue::GetZero(64, true).sub(single_value)
+                   : single_value);
+        // Zero or negative step makes it difficult to simulate the range;
+        // update it to 1.
+        if (step.GetSignedValue() <= 0) {
           step = ConstantValue::GetOne(/*bitwidth=*/64, /*is_signed=*/true);
         }
         return RecordAndReturnRange(

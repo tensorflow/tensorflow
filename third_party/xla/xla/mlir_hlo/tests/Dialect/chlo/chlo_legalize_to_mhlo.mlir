@@ -22,10 +22,8 @@
 // CHECK-NEXT:     %[[TMP_3:.*]] = mhlo.add %[[TMP_1]], %[[TMP_arg0]] : tensor<bf16>
 // CHECK-NEXT:     %[[TMP_4:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_3]] : tensor<bf16>
 // CHECK-NEXT:     %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]] : tensor<bf16>
-// CHECK-NEXT:     %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]] : tensor<bf16>
-// CHECK-NEXT:     %[[TMP_7:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_6]] : tensor<bf16>
-// CHECK-NEXT:     %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<bf16>
-// CHECK-NEXT:     return %[[TMP_8]] : tensor<bf16>
+// CHECK-NEXT:     %[[TMP_6:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_5]] : tensor<bf16>
+// CHECK-NEXT:     return %[[TMP_6]] : tensor<bf16>
 func.func @asin_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
   %result = "chlo.asin"(%arg) : (tensor<bf16>) -> tensor<bf16>
   func.return %result : tensor<bf16>
@@ -41,10 +39,8 @@ func.func @asin_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // CHECK-NEXT:    %[[TMP_3:.*]] = mhlo.add %[[TMP_1]], %[[TMP_arg0]] : tensor<f16>
 // CHECK-NEXT:    %[[TMP_4:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_3]] : tensor<f16>
 // CHECK-NEXT:    %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]] : tensor<f16>
-// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]] : tensor<f16>
-// CHECK-NEXT:    %[[TMP_7:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_6]] : tensor<f16>
-// CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f16>
-// CHECK-NEXT:    return %[[TMP_8]] : tensor<f16>
+// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_5]] : tensor<f16>
+// CHECK-NEXT:    return %[[TMP_6]] : tensor<f16>
 func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f16>) -> tensor<f16>
@@ -61,10 +57,8 @@ func.func @asin_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-NEXT:    %[[TMP_3:.*]] = mhlo.add %[[TMP_1]], %[[TMP_arg0]] : tensor<f32>
 // CHECK-NEXT:    %[[TMP_4:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_3]] : tensor<f32>
 // CHECK-NEXT:    %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]] : tensor<f32>
-// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]] : tensor<f32>
-// CHECK-NEXT:    %[[TMP_7:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_6]] : tensor<f32>
-// CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f32>
-// CHECK-NEXT:    return %[[TMP_8]] : tensor<f32>
+// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_5]] : tensor<f32>
+// CHECK-NEXT:    return %[[TMP_6]] : tensor<f32>
 func.func @asin_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f32>) -> tensor<f32>
@@ -80,10 +74,8 @@ func.func @asin_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:    %[[TMP_3:.*]] = mhlo.add %[[TMP_1]], %[[TMP_arg0]] : tensor<f64>
 // CHECK-NEXT:    %[[TMP_4:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_3]] : tensor<f64>
 // CHECK-NEXT:    %[[TMP_5:.*]] = mhlo.sqrt %[[TMP_4]] : tensor<f64>
-// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.add %[[TMP_1]], %[[TMP_5]] : tensor<f64>
-// CHECK-NEXT:    %[[TMP_7:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_6]] : tensor<f64>
-// CHECK-NEXT:    %[[TMP_8:.*]] = mhlo.add %[[TMP_7]], %[[TMP_7]] : tensor<f64>
-// CHECK-NEXT:    return %[[TMP_8]] : tensor<f64>
+// CHECK-NEXT:    %[[TMP_6:.*]] = mhlo.atan2 %[[TMP_arg0]], %[[TMP_5]] : tensor<f64>
+// CHECK-NEXT:    return %[[TMP_6]] : tensor<f64>
 func.func @asin_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-HIGH-LEVEL: mhlo.asin
   %result = "chlo.asin"(%arg) : (tensor<f64>) -> tensor<f64>

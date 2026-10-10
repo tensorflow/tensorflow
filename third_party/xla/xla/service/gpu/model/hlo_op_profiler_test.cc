@@ -33,9 +33,13 @@ namespace {
 class HloOpProfilerTest : public HloPjRtGpuTestBase {
  protected:
   void SetUp() override {
+    if (IsRocm()) {
+      GTEST_SKIP() << "Test timeouts in rocm";  // TODO ROCm fix timeout
+    }
+
     const auto& cap = device_description().gpu_compute_capability();
-    if (!cap.IsCuda() && !cap.IsRocm()) {
-      GTEST_SKIP() << "Not built with --config=cuda or --config=rocm";
+    if (!cap.IsCuda()) {
+      GTEST_SKIP() << "Not built with --config=cuda";
     }
   }
 

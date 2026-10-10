@@ -29,7 +29,7 @@ limitations under the License.
 namespace stream_executor::cuda {
 
 // This compilation provider invokes ptxas and nvlink to compile and link PTX to
-// CUBIN.
+// CUBIN. An empty `path_to_nvlink` means it can compile but not link.
 class SubprocessCompilationProvider : public CompilationProvider {
  public:
   explicit SubprocessCompilationProvider(std::string path_to_ptxas,
@@ -51,7 +51,9 @@ class SubprocessCompilationProvider : public CompilationProvider {
       const CompilationOptions& options) const override;
 
   bool SupportsCompileToRelocatableModule() const override { return true; }
-  bool SupportsCompileAndLink() const override { return true; }
+  bool SupportsCompileAndLink() const override {
+    return !path_to_nvlink_.empty();
+  }
 
   absl::StatusOr<int> GetLatestPtxIsaVersion() const override;
 

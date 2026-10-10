@@ -588,10 +588,9 @@ cc_library(
 tf_cuda_cc_test(
     name = "pjrt_compile_util_test",
     srcs = ["pjrt_compile_util_test.cc"],
-    tags = [
+    tags = tf_cuda_tests_tags() + [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
         "xla",
     ],
     deps = [
@@ -1139,7 +1138,6 @@ cc_library(
         "cluster_scoping_pass.cc",
         "deadness_analysis.cc",
         "deadness_analysis_internal.h",
-        "disable_functional_ops_lowering_for_xla_pass.cc",
         "encapsulate_subgraphs_pass.cc",
         "encapsulate_xla_computations_pass.cc",
         "extract_outside_compilation_pass.cc",
@@ -1155,7 +1153,6 @@ cc_library(
         "clone_constants_for_better_clustering.h",
         "cluster_scoping_pass.h",
         "deadness_analysis.h",
-        "disable_functional_ops_lowering_for_xla_pass.h",
         "encapsulate_subgraphs_pass.h",
         "encapsulate_xla_computations_pass.h",
         "extract_outside_compilation_pass.h",
@@ -1332,7 +1329,6 @@ tf_cc_test(
         "build_xla_ops_pass_test.cc",
         "clone_constants_for_better_clustering_test.cc",
         "cluster_scoping_pass_test.cc",
-        "disable_functional_ops_lowering_for_xla_pass_test.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
         "extract_outside_compilation_pass_test.cc",
@@ -1647,6 +1643,7 @@ cc_library(
     hdrs = ["device_compiler_client.h"],
     visibility = [":internal"],
     deps = [
+        ":common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core/util:determinism",
         "@xla//xla/client:executable_build_options",
@@ -1657,8 +1654,11 @@ tf_cc_test(
     name = "device_compiler_client_test",
     srcs = ["device_compiler_client_test.cc"],
     deps = [
+        ":common",
         ":device_compiler_client",
         "@com_google_googletest//:gtest_main",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/service:hlo_proto_cc",
     ],
 )
 
@@ -1722,6 +1722,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
@@ -1978,10 +1979,9 @@ tf_cc_test(
 tf_cuda_cc_test(
     name = "device_compiler_test",
     srcs = ["device_compiler_test.cc"],
-    tags = [
+    tags = tf_cuda_tests_tags() + [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "requires-gpu-nvidia",
         "xla",
     ],
     deps = [

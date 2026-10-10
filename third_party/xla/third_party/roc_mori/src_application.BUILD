@@ -18,7 +18,7 @@
 # Mirrors src/application/CMakeLists.txt: a single cc_library named
 # mori_application. All sources are host C++ (CMake sets LANGUAGE CXX on
 # them); they just call into the ROCm runtime APIs (HIP, HSA, rocm-smi,
-# hsakmt) plus ibverbs/libpci. No device kernels live here.
+# hsakmt) plus ibverbs. No device kernels live here.
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -32,12 +32,6 @@ cc_library(
             "bootstrap/torch_bootstrap.cpp",
         ],
     ),
-    copts = [
-        # @local_config_rocm's rocm_headers_includes target propagates
-        # -D__HIP_DISABLE_CPP_FUNCTIONS__=1 to every consumer, which hides
-        # the templated hipMalloc(T**, size_t) overload.
-        "-U__HIP_DISABLE_CPP_FUNCTIONS__",
-    ],
     linkopts = [
         "-ldl",
     ],
@@ -53,9 +47,6 @@ cc_library(
         "@local_config_rocm//rocm:hsakmt",
         # CMake ibverbs: system libibverbs.so (rdma-core).
         "@roc_mori//:ibverbs",
-        # CMake pci: system libpci.so (pciutils). pci.cpp uses pci_alloc / pci_init
-        # / pci_scan_bus / pci_read_byte.
-        "@roc_mori//:libpci",
         # System libdrm + libdrm_amdgpu. Required transitively by libhsakmt.a
         # (amdgpu_get_marketing_name, amdgpu_query_gpu_info, amdgpu_*, drmClose).
         "@roc_mori//:libdrm",

@@ -154,3 +154,42 @@ func.func @main(
   } : (!stablehlo.token, tensor<2xi64>) -> (!stablehlo.token, tensor<2xi64>)
   return %0#0, %0#1 : !stablehlo.token, tensor<2xi64>
 }
+
+// -----
+
+// ***************** Zero-element operand test *****************
+
+// A zero-element operand is replaced by a constant during the HLO round trip,
+// which drops any non side-effecting op producing it. Make sure the remaining
+// operands keep their in shardings rather than the manual computation coming
+// back with none at all.
+
+// Make sure this temp attr doesn't exist anymore.
+// CHECK-NOT: sharding_hlo_string
+
+// CHECK-V2: sdy.mesh @mesh_1 = <["a"=4]>
+// CHECK-V3: sdy.mesh @mesh = <["a"=4]>
+sdy.mesh @mesh_1 = <["a"=4]>
+
+// CHECK-LABEL: func.func @main
+func.func @main(%arg0: tensor<4x8xi32>) -> tensor<4x8xi32> {
+  // CHECK-NEXT:     %[[MANUAL_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-V2-SAME{LITERAL}: in_shardings=[<@mesh_1, [{"a"}, {}]>] out_shardings=[<@mesh_1, [{"a"}, {}]>] manual_axes={"a"} (%arg1: tensor<1x8xi32>) {
+  // CHECK-V3-SAME{LITERAL}: in_shardings=[<@mesh, [{"a"}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>] manual_axes={"a"} (%arg1: tensor<1x8xi32>) {
+  // CHECK-NEXT:       sdy.return %arg1 : tensor<1x8xi32>
+  // CHECK-NEXT:     } : (tensor<4x8xi32>) -> tensor<4x8xi32>
+  // CHECK-NEXT:     return %[[MANUAL_COMP]] : tensor<4x8xi32>
+  %c = stablehlo.constant dense<> : tensor<0xi32>
+  %0 = sdy.manual_computation(%c, %arg0)
+      in_shardings=[<@mesh_1, [{}], replicated={"a"}>, <@mesh_1, [{"a"}, {}]>]
+      out_shardings=[<@mesh_1, [{"a"}, {}]>]
+      manual_axes={"a"} (%arg1: tensor<0xi32>, %arg2: tensor<1x8xi32>) {
+    %init = stablehlo.constant dense<0> : tensor<i32>
+    %red = stablehlo.reduce(%arg1 init: %init) applies stablehlo.add across dimensions = [0] : (tensor<0xi32>, tensor<i32>) -> tensor<i32>
+    %bcast = stablehlo.broadcast_in_dim %red, dims = [] : (tensor<i32>) -> tensor<1x8xi32>
+    %add = stablehlo.add %arg2, %bcast : tensor<1x8xi32>
+    sdy.return %add : tensor<1x8xi32>
+  } : (tensor<0xi32>, tensor<4x8xi32>) -> tensor<4x8xi32>
+  return %0 : tensor<4x8xi32>
+}
+

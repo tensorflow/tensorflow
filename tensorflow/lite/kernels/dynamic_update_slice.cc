@@ -278,15 +278,23 @@ void DynamicUpdateSliceInt4(const TfLiteTensor* input,
   // If the update is the entirety of the output, then simply copy it and
   // return.
   if (input_shape.FlatSize() == update_shape.FlatSize()) {
-    memcpy(output_data, update_data, input->bytes);
+    // Clamp the copy length to the destination size. `input->bytes` is derived
+    // from the raw FlatBuffer buffer size for constant tensors and may be
+    // inflated relative to the logical shape, so it must be bounded by
+    // `output->bytes` to avoid an out-of-bounds write.
+    memcpy(output_data, update_data, std::min(input->bytes, output->bytes));
     return;
   }
   RuntimeShape clamped_start_indices =
       ClampStartIndices(input_dims, indices_data, input_shape, update_shape);
 
   // If the operation is not done in-place, copy the input data to the output.
+  // Clamp the copy length to the destination size, since `input->bytes` may be
+  // larger than the output allocation for constant tensors loaded from a
+  // FlatBuffer model.
+  size_t bytes = std::min(input->bytes, output->bytes);
   if (input->data.data != output->data.data) {
-    memcpy(output->data.data, input->data.data, input->bytes);
+    memcpy(output->data.data, input->data.data, bytes);
   }
 
   // Update tensor has no elements. Skip.

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -221,6 +222,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
 absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
     Client* client, absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
     ArrayCopySemantics semantics) {
+  // Validate the specs.
   for (int i = 1; i < specs.size(); ++i) {
     if (specs[0].array != nullptr && specs[i].array != nullptr &&
         specs[0].array->sharding().devices() !=
@@ -233,58 +235,98 @@ absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
     }
   }
 
-  std::vector<tsl::Future<>> result;
-  result.reserve(specs.size());
-  for (Client::CopyArraysToHostBufferShardsSpec& spec : specs) {
-    if (spec.buffers.empty()) {  // Nothing to copy.
-      result.push_back(absl::OkStatus());
-      continue;
-    }
+  auto copy_spec = [&](Client::CopyArraysToHostBufferShardsSpec& spec)
+      -> absl::StatusOr<tsl::Future<>> {
     if (spec.array == nullptr) {
       return absl::InvalidArgumentError(
           "CopyArraysToHostBufferShards called with a null array.");
     }
-    if (!spec.array->sharding().devices()->IsFullyAddressable()) {
-      return absl::InvalidArgumentError(
-          "CopyArraysToHostBufferShards called with an array with some "
-          "non-addressable devices.");
+    using UniqueIndexDomains =
+        absl::InlinedVector<xla::ifrt::Sharding::IndexDomainAndShardIndices, 1>;
+    ABSL_ASSIGN_OR_RETURN(
+        UniqueIndexDomains unique_index_domains,
+        spec.array->sharding().UniqueIndexDomains(spec.array->shape()));
+    if (spec.buffers.size() != unique_index_domains.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "The number of buffers (", spec.buffers.size(),
+          ") does not match the number of unique index domains (",
+          unique_index_domains.size(), ") in CopyArraysToHostBufferShards."));
     }
-    // Split the array into single-device arrays.
-    ABSL_ASSIGN_OR_RETURN(std::vector<ArrayRef> single_device_arrays,
-                     spec.array->DisassembleIntoSingleDeviceArrays(
-                         semantics, SingleDeviceShardSemantics::kAllShards));
+    if (spec.buffers.empty()) {  // Nothing to copy.
+      return tsl::Future<>(absl::OkStatus());
+    }
+    // Split the array into addressable single-device arrays.
+    ABSL_ASSIGN_OR_RETURN(
+        std::vector<ArrayRef> single_device_arrays,
+        spec.array->DisassembleIntoSingleDeviceArrays(
+            semantics, SingleDeviceShardSemantics::kAddressableShards));
+    absl::flat_hash_map<Device*, ArrayRef> device_to_array;
+    device_to_array.reserve(single_device_arrays.size());
+    for (ArrayRef& arr : single_device_arrays) {
+      device_to_array.insert(
+          {arr->sharding().devices()->devices().front(), std::move(arr)});
+    }
 
-    absl::InlinedVector<tsl::Future<>, 4> buffer_futures;
-    buffer_futures.reserve(spec.buffers.size());
-    for (auto& buffer : spec.buffers) {
-      Client::CopyArraysToHostBufferShardsSpec::ShardIndices& shard_indices =
-          buffer.first;
-      Client::MutableHostBuffer& host_buffer = buffer.second;
+    // For each buffer, select an addressable array shard to copy from.
+    absl::InlinedVector<ArrayRef, 1> source_arrays;
+    source_arrays.reserve(spec.buffers.size());
+    for (int i = 0; i < spec.buffers.size(); ++i) {
+      absl::Span<const int> shard_indices =
+          unique_index_domains[i].shard_indices;
       if (shard_indices.empty()) {
-        return absl::InvalidArgumentError(
-            "No source shard indices specified for a host buffer in "
+        return absl::InternalError(
+            "No source shard indices found for a unique index domain in "
             "CopyArraysToHostBufferShards.");
       }
-      // If multiple array source shards are specified, pick the first one to
-      // copy from.
-      const int64_t shard_idx = shard_indices.front();
-      if (shard_idx < 0 || shard_idx >= single_device_arrays.size()) {
-        return absl::OutOfRangeError(
-            absl::StrCat("Shard index ", shard_idx, " out of range [0, ",
-                         single_device_arrays.size(), ")"));
+      // If multiple array source shards are available, pick the first
+      // addressable one to copy from.
+      ArrayRef source_array;
+      for (int shard_idx : shard_indices) {
+        if (shard_idx < 0 ||
+            shard_idx >= spec.array->sharding().devices()->size()) {
+          return absl::OutOfRangeError(
+              absl::StrCat("Shard index ", shard_idx, " out of range [0, ",
+                           spec.array->sharding().devices()->size(), ")"));
+        }
+        Device* device = spec.array->sharding().devices()->devices()[shard_idx];
+        auto it = device_to_array.find(device);
+        if (it != device_to_array.end()) {
+          source_array = it->second;
+          break;
+        }
       }
+      if (source_array == nullptr) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("CopyArraysToHostBufferShards called with an array "
+                         "that has no addressable devices to fulfill host "
+                         "buffer #",
+                         i));
+      }
+      source_arrays.push_back(std::move(source_array));
+    }
+
+    // Dispatch per-buffer copy operations.
+    CHECK_EQ(source_arrays.size(), spec.buffers.size());
+    absl::InlinedVector<tsl::Future<>, 4> buffer_futures;
+    buffer_futures.reserve(spec.buffers.size());
+    for (int i = 0; i < spec.buffers.size(); ++i) {
+      Client::MutableHostBuffer& host_buffer = spec.buffers[i];
       std::optional<absl::Span<const int64_t>> byte_strides;
       if (host_buffer.byte_strides.has_value()) {
         byte_strides = absl::MakeConstSpan(*host_buffer.byte_strides);
       }
-      buffer_futures.push_back(
-          single_device_arrays[shard_idx]->CopyToHostBuffer(
-              host_buffer.data, byte_strides, semantics));
+      buffer_futures.push_back(source_arrays[i]->CopyToHostBuffer(
+          host_buffer.data, byte_strides, semantics));
     }
-    CHECK(!buffer_futures.empty());
-    result.push_back(buffer_futures.size() == 1
-                         ? std::move(buffer_futures.front())
-                         : tsl::JoinFutures(buffer_futures));
+    return tsl::JoinFutures(buffer_futures);
+  };
+
+  std::vector<tsl::Future<>> result;
+  result.reserve(specs.size());
+  for (Client::CopyArraysToHostBufferShardsSpec& spec : specs) {
+    absl::StatusOr<tsl::Future<>> future = copy_spec(spec);
+    result.push_back(future.ok() ? std::move(*future)
+                                 : tsl::Future<>(future.status()));
   }
   return result;
 }

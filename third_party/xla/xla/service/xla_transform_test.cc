@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cse.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -836,6 +837,49 @@ TEST_F(XlaTransformTest, GetHloPassPipelineTraceValidationAndErrorHandling) {
       PJRT_Xla_Transform_Destroy_Hlo_Pass_Pipeline_Trace_Args_STRUCT_SIZE;
   destroy_args.trace = nullptr;
   extension.destroy_hlo_pass_pipeline_trace(&destroy_args);
+}
+
+TEST_F(XlaTransformTest, ApplyTransformsCustomVerifierMetadata) {
+  absl::string_view hlo_text = R"(
+    HloModule test_module, num_partitions=2
+    ENTRY main {
+      ROOT p0 = f32[4] parameter(0), sharding={devices=[4]0,1,2,3}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       xla::ParseAndReturnUnverifiedModule(hlo_text));
+  module->mutable_config().set_use_spmd_partitioning(true);
+
+  auto transform = std::make_shared<TrivialTransform>("trivial_transform");
+  RegisterHloXlaTransform(HloXlaTransform::PipelineStage::kPreScheduler,
+                          transform);
+
+  // Default verifier should reject this module because
+  // verify_sharding_device_numbers is true and num_partitions (2) != sharding
+  // device count (4).
+  {
+    ASSERT_OK_AND_ASSIGN(auto clone,
+                         xla::ParseAndReturnUnverifiedModule(hlo_text));
+    clone->mutable_config().set_use_spmd_partitioning(true);
+    HloPassPipeline default_pipeline("default_pipeline");
+    default_pipeline.AddPass<ApplyXlaTransforms>(
+        HloXlaTransform::PipelineStage::kPreScheduler);
+    EXPECT_FALSE(default_pipeline.Run(clone.get()).ok());
+  }
+
+  // With custom TargetVerifierMetadata (with
+  // verify_sharding_device_numbers=false), ApplyXlaTransforms succeeds.
+  {
+    HloPassPipeline custom_pipeline("custom_pipeline");
+    auto verifier_metadata = std::make_unique<DefaultVerifierMetadata>(
+        HloVerifierOpts{}.WithVerifyShardingDeviceNumbers(false));
+    custom_pipeline.AddPass<ApplyXlaTransforms>(
+        HloXlaTransform::PipelineStage::kPreScheduler,
+        std::move(verifier_metadata));
+    ASSERT_OK_AND_ASSIGN(bool changed, custom_pipeline.Run(module.get()));
+    EXPECT_TRUE(changed);
+  }
 }
 
 }  // namespace

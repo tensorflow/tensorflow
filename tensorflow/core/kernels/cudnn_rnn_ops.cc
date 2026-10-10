@@ -421,7 +421,7 @@ class CudnnRnnAllocatorInTemp : public ScratchAllocator {
 template <typename T>
 class CudnnRnnAllocatorInOutput : public ScratchAllocator {
  public:
-  ~CudnnRnnAllocatorInOutput() override {}
+  ~CudnnRnnAllocatorInOutput() override = default;
   CudnnRnnAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
   int64_t GetMemoryLimitInBytes() override {
@@ -464,7 +464,7 @@ class CudnnRNNSpaceAllocator : public ScratchAllocator {
   explicit CudnnRNNSpaceAllocator(OpKernelContext* context)
       : context_(context) {}
 
-  ~CudnnRNNSpaceAllocator() override {}
+  ~CudnnRNNSpaceAllocator() override = default;
 
   int64_t GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64_t>::max();

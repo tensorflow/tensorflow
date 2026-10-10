@@ -36,12 +36,14 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -682,6 +684,74 @@ TEST_F(ConvKindAssignmentTest, TestBackwardFilterPatternNoMatch) {
 
       ROOT conv = f32[8,128,2,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
     })");
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(DynCast<HloConvolutionInstruction>(
+                  m->entry_computation()->root_instruction())
+                  ->convolution_kind(),
+              CONVOLUTION_KIND_FPROP);
+}
+
+TEST_F(ConvKindAssignmentTest, TransposedConvBackwardFilter) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      x = bf16[1024,12,12,256] parameter(0)
+      dy = bf16[1024,24,24,192] parameter(1)
+      ROOT conv = bf16[5,5,256,192] convolution(x, dy), window={size=24x24 pad=3_2x3_2 lhs_dilate=2x2}, dim_labels=f01b_i01o->01bf
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  const HloInstruction* conv = nullptr;
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reverse(
+                  m::Convolution(&conv, m::Parameter(1), m::Parameter(0)))));
+  EXPECT_THAT(m->entry_computation()->root_instruction()->dimensions(),
+              ::testing::ElementsAre(0, 1));
+  EXPECT_EQ(Cast<HloConvolutionInstruction>(conv)->convolution_kind(),
+            CONVOLUTION_KIND_WGRAD);
+  EXPECT_EQ(window_util::ToString(conv->window()),
+            "size=12x12 pad=1_2x1_2 rhs_dilate=2x2");
+  EXPECT_EQ(ConvolutionDimensionNumbersToString(
+                conv->convolution_dimension_numbers()),
+            "f01b_i01o->01fb");
+}
+
+// The forward pass of a transposed convolution is not a backward filter
+// convolution and must remain a forward convolution.
+TEST_F(ConvKindAssignmentTest, TransposedConvForwardIsNotBackwardFilter) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      x = bf16[1024,12,12,256] parameter(0)
+      w = bf16[5,5,256,192] parameter(1)
+      ROOT conv = bf16[1024,24,24,192] convolution(x, w), window={size=5x5 pad=3_2x3_2 lhs_dilate=2x2}, dim_labels=b01f_01io->b01f
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(DynCast<HloConvolutionInstruction>(
+                  m->entry_computation()->root_instruction())
+                  ->convolution_kind(),
+              CONVOLUTION_KIND_FPROP);
+}
+
+// If swapping the operands would result in negative padding (padding larger
+// than the filter size), fall back to a forward convolution.
+TEST_F(ConvKindAssignmentTest,
+       TransposedConvBackwardFilterWithNegativePaddingNoMatch) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      x = bf16[1024,12,12,256] parameter(0)
+      dy = bf16[1024,26,26,192] parameter(1)
+      ROOT conv = bf16[5,5,256,192] convolution(x, dy), window={size=26x26 pad=5_2x5_2 lhs_dilate=2x2}, dim_labels=f01b_i01o->01bf
+    })";
   ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));

@@ -207,6 +207,88 @@ TEST_F(CudnnFusionCompilerConstTest,
   EXPECT_GT(plan_count, 0);
 }
 
+TEST_F(CudnnFusionCompilerConstTest,
+       GetAvailablePlanCountFromConvolutionFusionWithBatchBroadcast) {
+  std::string hlo_text = R"(
+  fusion_batch_bcast {
+    p0 = f32[2,16,16,32] parameter(0)
+    p1 = f32[32,3,3,32] parameter(1)
+    conv = f32[2,16,16,32] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    batch_vec = f32[2] parameter(2)
+    bcast = f32[2,16,16,32] broadcast(batch_vec), dimensions={0}
+    ROOT mul = f32[2,16,16,32] multiply(conv, bcast)
+  }
+
+  ENTRY e {
+    p0 = f32[2,16,16,32] parameter(0)
+    p1 = f32[32,3,3,32] parameter(1)
+    p2 = f32[2] parameter(2)
+    ROOT _ = f32[2,16,16,32] fusion(p0, p1, p2), kind=kCustom, calls=fusion_batch_bcast,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$$fusion",
+        }
+      }
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  auto* fusion = Cast<HloFusionInstruction>(root);
+
+  ASSERT_OK_AND_ASSIGN(int plan_count,
+                       CuDnnFusionCompiler::GetAvailablePlanCount(
+                           stream_executor(),
+                           stream_executor()->GetDeviceDescription(), *fusion));
+  EXPECT_GT(plan_count, 0);
+}
+
+TEST_F(CudnnFusionCompilerConstTest,
+       GetAvailablePlanCountFrom1DConvolutionFusionWithBatchBroadcast) {
+  std::string hlo_text = R"(
+  fusion_1d_bcast {
+    p0 = f32[2,16,32] parameter(0)
+    p1 = f32[32,3,32] parameter(1)
+    conv = f32[2,16,32] convolution(p0, p1),
+      window={size=3 pad=1_1},
+      dim_labels=b0f_o0i->b0f,
+      convolution_kind=fprop
+    batch_vec = f32[2] parameter(2)
+    bcast = f32[2,16,32] broadcast(batch_vec), dimensions={0}
+    ROOT mul = f32[2,16,32] multiply(conv, bcast)
+  }
+
+  ENTRY e {
+    p0 = f32[2,16,32] parameter(0)
+    p1 = f32[32,3,32] parameter(1)
+    p2 = f32[2] parameter(2)
+    ROOT _ = f32[2,16,32] fusion(p0, p1, p2), kind=kCustom, calls=fusion_1d_bcast,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$$fusion",
+        }
+      }
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  auto* fusion = Cast<HloFusionInstruction>(root);
+
+  ASSERT_OK_AND_ASSIGN(int plan_count,
+                       CuDnnFusionCompiler::GetAvailablePlanCount(
+                           stream_executor(),
+                           stream_executor()->GetDeviceDescription(), *fusion));
+  EXPECT_GT(plan_count, 0);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

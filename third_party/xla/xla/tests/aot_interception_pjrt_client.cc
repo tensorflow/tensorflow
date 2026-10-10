@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tests/aot_interception_pjrt_client.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <initializer_list>
 #include <memory>
 #include <optional>
@@ -27,9 +28,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "riegeli/base/maker.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -43,6 +46,7 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -52,16 +56,16 @@ limitations under the License.
 #include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 
 namespace {
 
-// Resolves a nested field descriptor by walking `path` (a sequence of field
-// names) starting from `root`. Every element except the last must name a
-// message field. CHECK-fails if the schema no longer matches so that a stale
-// path is caught immediately instead of silently ignoring nothing.
+// Resolves a nested field descriptor by walking `path` from `root`; every
+// element but the last must name a message field. CHECK-fails on a stale path
+// rather than silently ignoring nothing.
 const tsl::protobuf::FieldDescriptor* FieldByPath(
     const tsl::protobuf::Descriptor* root,
     std::initializer_list<absl::string_view> path) {
@@ -81,9 +85,98 @@ const tsl::protobuf::FieldDescriptor* FieldByPath(
   return field;
 }
 
+// DebugOptions fields that cannot change the compiled program. Every other
+// field, including fields added in future, is compared. That includes
+// runtime-only knobs such as watchdog timeouts: GpuExecutable reads them from
+// the serialized options, so the artifact carries them into every process that
+// loads it. A field belongs here only if every reader of it is in one of the
+// groups below; when in doubt, leave it out. Keep each group sorted.
+// TODO(b/567825028): Replace this hand-kept list once DebugOptions separates
+// compiler options from runtime, debug and environment options.
+constexpr absl::string_view kIgnoredDebugOptionsFields[] = {
+    // Dump controls not covered by `kIgnoredDebugOptionsFieldPrefixes`.
+    "xla_enable_dumping",
+    "xla_gpu_experimental_dump_fdo_profiles",
+    "xla_gpu_experimental_dump_gpu_executable",
+    "xla_hlo_graph_addresses",
+    "xla_hlo_graph_sharding_color",
+    // HLO text rendering: read only by HloModule::ToString(), which formats
+    // dumps, logs and error messages.
+    "xla_hlo_print_inline_stack_frames",
+    "xla_syntax_sugar_async_ops",
+    // Logging, profiling and tracing: log text, timers, profiler and NVTX
+    // payloads only.
+    "xla_debug_buffer_assignment_show_max",
+    "xla_detailed_logging",
+    "xla_enable_hlo_modules_upload",
+    "xla_enable_scoped_logging_timers",
+    "xla_gpu_enable_cupti_multi_subscriber",
+    "xla_gpu_print_compilation_stats",
+    "xla_gpu_rocm_max_trace_events",
+    "xla_gpu_trace_annotation_level",
+    // Host-specific: where the toolchain and compilation caches live and how
+    // many threads compile, not what is compiled.
+    "xla_gpu_cuda_data_dir",
+    "xla_gpu_experimental_autotuner_cache_dir",
+    "xla_gpu_force_compilation_parallelism",
+    "xla_gpu_kernel_cache_file",
+    "xla_gpu_per_fusion_autotune_cache_dir",
+    "xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found",
+    // Verification only: can abort compilation or log, but never changes a
+    // successfully compiled executable.
+    "xla_gpu_crash_on_verification_failures",
+    "xla_gpu_llvm_verification_level",
+    "xla_hlo_pass_fix_detect_cycles",
+    "xla_unsupported_crash_on_hlo_pass_fix_max_iterations",
+    "xla_unsupported_crash_on_hlo_pass_noop_change",
+    "xla_unsupported_crash_on_hlo_pass_silent_hlo_change",
+    // Not read by the GPU compiler or runtime from the stored options: read by
+    // the CPU or TPU compilers only, or only from process-global flags.
+    "xla_embed_ir_in_executable",
+    "xla_flags_reset",
+    "xla_force_host_platform_device_count",
+    "xla_tpu_detect_inf",
+    "xla_tpu_detect_nan",
+    // Test harness only: never read by the compiler or runtime.
+    "xla_test_add_command_buffer_mode",
+    "xla_test_all_input_layouts",
+    "xla_test_all_output_layouts",
+};
+
+// Every DebugOptions field with one of these prefixes is ignored, including
+// fields added in future.
+constexpr absl::string_view kIgnoredDebugOptionsFieldPrefixes[] = {
+    // Read by the CPU backend only.
+    "xla_cpu_",
+    // Dump controls: where, whether and in which format to write debug dumps.
+    // xla_dump_to is also overridden per process at GpuExecutable
+    // deserialization.
+    "xla_dump_",
+    "xla_gpu_dump_",
+};
+
+// Resolves `kIgnoredDebugOptionsFields` plus every field matching
+// `kIgnoredDebugOptionsFieldPrefixes`.
+std::vector<const tsl::protobuf::FieldDescriptor*> IgnoredDebugOptionsFields() {
+  const tsl::protobuf::Descriptor* descriptor = DebugOptions::descriptor();
+  std::vector<const tsl::protobuf::FieldDescriptor*> fields;
+  for (const absl::string_view name : kIgnoredDebugOptionsFields) {
+    fields.push_back(FieldByPath(descriptor, {name}));
+  }
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+    for (const absl::string_view prefix : kIgnoredDebugOptionsFieldPrefixes) {
+      if (absl::StartsWith(field->name(), prefix)) {
+        fields.push_back(field);
+        break;
+      }
+    }
+  }
+  return fields;
+}
+
 // Runs the structural comparison shared by all backends. `extra_ignored_fields`
-// lists additional field descriptors to ignore, on top of the common,
-// backend-agnostic ones.
+// adds backend-specific fields to the common ignore list.
 absl::Status CompareStructurally(
     const HumanReadableAotExecutable& fresh,
     const HumanReadableAotExecutable& golden,
@@ -92,6 +185,8 @@ absl::Status CompareStructurally(
   tsl::protobuf::util::MessageDifferencer differencer;
   differencer.set_message_field_comparison(
       tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
+  // Only report real differences, not the (long) list of ignored fields.
+  differencer.set_report_ignores(false);
 
   std::vector<const tsl::protobuf::FieldDescriptor*> ignored_fields = {
       ExecutableAndOptionsProto::descriptor()->FindFieldByName(
@@ -101,6 +196,15 @@ absl::Status CompareStructurally(
   };
   ignored_fields.insert(ignored_fields.end(), extra_ignored_fields.begin(),
                         extra_ignored_fields.end());
+  // Both debug_options copies (compile options and HLO module config) are
+  // `DebugOptions`, so ignoring its fields applies to both. The list was
+  // classified for GPU; it is a no-op on CPU, which still ignores
+  // debug_options wholesale.
+  const std::vector<const tsl::protobuf::FieldDescriptor*>
+      ignored_debug_options_fields = IgnoredDebugOptionsFields();
+  ignored_fields.insert(ignored_fields.end(),
+                        ignored_debug_options_fields.begin(),
+                        ignored_debug_options_fields.end());
   for (const auto* field : ignored_fields) {
     CHECK(field != nullptr)
         << "AOTInterceptionPjrtClient: a proto field descriptor to ignore was "
@@ -119,6 +223,45 @@ absl::Status CompareStructurally(
   return absl::OkStatus();
 }
 
+std::string RegenerationHint(absl::string_view target_name) {
+  // Bazel exports the running test's full label as TEST_TARGET, which is what
+  // update_goldens.py takes. Fall back to a placeholder label if it is unset.
+  const char* test_target = std::getenv("TEST_TARGET");
+  std::string label = test_target != nullptr
+                          ? std::string(test_target)
+                          : absl::StrCat("//<package>:", target_name);
+  return absl::StrCat(
+      "\n\nRegenerate the goldens for target `", label,
+      "` and add the newly generated v<N+1> directory to the change after "
+      "reviewing the differences.\n"
+      "(Google-internal: run, from the workspace root, "
+      "third_party/tensorflow/compiler/xla/tests/"
+      "aot_compatibility/google/update_goldens.py ",
+      label, ")");
+}
+
+// Context for a load failure in kBackwardsCompatibility mode: the golden came
+// from an older compiler, so failing to load it is a compatibility break.
+std::string BackwardsCompatibilityHint(absl::string_view artifact_path,
+                                       absl::string_view platform_name) {
+  std::string hint = absl::StrCat(
+      "Backwards compatibility check failed: the current runtime could not "
+      "load the golden executable ",
+      artifact_path,
+      ", which was serialized by an older compiler. The runtime must keep "
+      "loading everything compilers emitted in the last 6 months; a thunk "
+      "kind, proto field, or registered symbol was most likely removed or "
+      "renamed.");
+  // The guide only covers XLA:GPU; do not point CPU failures at it.
+  if (AOTInterceptionPjrtClient::PlatformFromName(platform_name)
+          .value_or(AOTTestPlatform::kCpu) == AOTTestPlatform::kGpu) {
+    absl::StrAppend(&hint,
+                    " See the GPU AOT compatibility guide: "
+                    "https://openxla.org/xla/gpu_aot_compatibility");
+  }
+  return hint;
+}
+
 }  // namespace
 
 absl::StatusOr<HumanReadableAotExecutable>
@@ -126,41 +269,40 @@ AOTInterceptionPjrtClient::DeserializeToHumanReadable(
     absl::string_view serialized, AOTTestPlatform platform) {
   HumanReadableAotExecutable unpacked;
 
-  if (platform == AOTTestPlatform::kGpu) {
-    ABSL_RETURN_IF_ERROR(
-        ReadSplitProto(std::make_unique<riegeli::StringReader<>>(serialized),
-                       *unpacked.mutable_executable_and_options()));
+  switch (platform) {
+    case AOTTestPlatform::kGpu: {
+      ABSL_RETURN_IF_ERROR(
+          ReadSplitProto(std::make_unique<riegeli::StringReader<>>(serialized),
+                         *unpacked.mutable_executable_and_options()));
 
-    std::string serialized_gpu_exec =
-        std::move(*unpacked.mutable_executable_and_options()
-                       ->mutable_serialized_executable());
-    unpacked.mutable_executable_and_options()->clear_serialized_executable();
-
-    ABSL_RETURN_IF_ERROR(
-        ReadSplitProto(std::make_unique<riegeli::StringReader<std::string>>(
-                           std::move(serialized_gpu_exec)),
-                       *unpacked.mutable_gpu_executable()));
-    return unpacked;
+      ABSL_RETURN_IF_ERROR(ReadSplitProto(
+          riegeli::Maker<riegeli::StringReader>(
+              unpacked.executable_and_options().serialized_executable()),
+          *unpacked.mutable_gpu_executable()));
+      unpacked.mutable_executable_and_options()->clear_serialized_executable();
+      return unpacked;
+    }
+    case AOTTestPlatform::kCpu: {
+      // CPU artifacts are plain protos: an ExecutableAndOptionsProto whose
+      // `serialized_executable` holds a cpu::CompilationResultProto.
+      ExecutableAndOptionsProto& executable_and_options =
+          *unpacked.mutable_executable_and_options();
+      if (!executable_and_options.ParseFromString(serialized)) {
+        return absl::InternalError(
+            "AOTInterceptionPjrtClient: failed to parse CPU "
+            "ExecutableAndOptionsProto.");
+      }
+      if (!unpacked.mutable_cpu_executable()->ParseFromString(
+              executable_and_options.serialized_executable())) {
+        return absl::InternalError(
+            "AOTInterceptionPjrtClient: failed to parse CPU "
+            "CompilationResultProto.");
+      }
+      executable_and_options.clear_serialized_executable();
+      return unpacked;
+    }
   }
-
-  // CPU artifacts are plain (non-split) protos: an ExecutableAndOptionsProto
-  // whose `serialized_executable` field holds a serialized
-  // cpu::CompilationResultProto.
-  ExecutableAndOptionsProto& executable_and_options =
-      *unpacked.mutable_executable_and_options();
-  if (!executable_and_options.ParseFromString(serialized)) {
-    return absl::InternalError(
-        "AOTInterceptionPjrtClient: failed to parse CPU "
-        "ExecutableAndOptionsProto.");
-  }
-  if (!unpacked.mutable_cpu_executable()->ParseFromString(
-          executable_and_options.serialized_executable())) {
-    return absl::InternalError(
-        "AOTInterceptionPjrtClient: failed to parse CPU "
-        "CompilationResultProto.");
-  }
-  executable_and_options.clear_serialized_executable();
-  return unpacked;
+  CHECK(false) << "Unsupported platform for AOT testing!";
 }
 
 absl::StatusOr<AOTTestPlatform> AOTInterceptionPjrtClient::PlatformFromName(
@@ -183,23 +325,16 @@ absl::string_view AOTInterceptionPjrtClient::PlatformSubdir(
       return "gpu";
     case AOTTestPlatform::kCpu:
       return "cpu";
-    default:
-      CHECK(false) << "Unsupported platform for AOT testing!";
   }
+  CHECK(false) << "Unsupported platform for AOT testing!";
 }
 
 absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
     const HumanReadableAotExecutable& fresh,
     const HumanReadableAotExecutable& golden) {
-  // `binary`, `asm_text`, `buffer_allocations`, `gpu_compute_capability` and
-  // the `ptx`/`cubin` kernel binaries capture backend machine code and
-  // device-specific details and are not part of the structural comparison.
-  //
-  // TODO(b/528258781): Debug options are currently ignored wholesale (both the
-  // shared build options and the HLO module config). Evaluate which flags
-  // meaningfully affect the compiled artifact and should be compared, versus
-  // which are host- or run-specific noise (e.g. dump paths and cache
-  // directories) that must be excluded, and ignore only the latter.
+  // The ignored fields hold backend machine code and device-specific details.
+  // Both debug_options copies are compared, except for the fields in
+  // `kIgnoredDebugOptionsFields`.
   return CompareStructurally(
       fresh, golden,
       {
@@ -209,27 +344,36 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
               "buffer_allocations"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName(
               "gpu_compute_capability"),
-          // `ptx`/`cubin` hold the (non-deterministic) kernel binaries embedded
-          // in custom-kernel thunks; excluded like `binary`/`asm_text`. Both
-          // oneof variants are ignored, so a ptx<->cubin case flip is
-          // intentionally tolerated (same kernel, different backend encoding).
+          // Non-deterministic kernel binaries in custom-kernel thunks. Both
+          // oneof variants are ignored, so a ptx<->cubin flip is tolerated.
           stream_executor::KernelLoaderSpecProto::descriptor()->FindFieldByName(
               "ptx"),
           stream_executor::KernelLoaderSpecProto::descriptor()->FindFieldByName(
               "cubin"),
-          ExecutableBuildOptionsProto::descriptor()->FindFieldByName(
-              "debug_options"),
-          HloModuleConfigProto::descriptor()->FindFieldByName("debug_options"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cuda_toolkit_version"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cudnn_version"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cub_version"),
+          // GpuTopology embeds the compile host's driver/toolkit/CPU details.
+          // Only the topology shape (partitions/hosts/devices) is stable across
+          // hosts of the same arch.
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"gpu_topology", "gpu_target_config"}),
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"gpu_topology", "host_target_machine_options"}),
       });
 }
 
 absl::Status AOTInterceptionPjrtClient::CompareGoldenCPUExecutable(
     const HumanReadableAotExecutable& fresh,
     const HumanReadableAotExecutable& golden) {
-  // `object_files`, `target_machine_options` and `data_layout` capture the
-  // compiled machine code and host-specific target details; `debug_options`
-  // (both the shared build options and the HLO module config) is host- or
-  // run-specific noise. None are part of the structural comparison.
+  // The ignored fields hold compiled machine code, host-specific target details
+  // and, for now, both debug_options copies.
   return CompareStructurally(
       fresh, golden,
       {
@@ -239,13 +383,16 @@ absl::Status AOTInterceptionPjrtClient::CompareGoldenCPUExecutable(
               "target_machine_options"),
           cpu::CompilationResultProto::descriptor()->FindFieldByName(
               "data_layout"),
+          // TODO(b/528258781): Debug options are still ignored wholesale on
+          // CPU: `kIgnoredDebugOptionsFields` was classified for GPU only (it
+          // ignores every xla_cpu_* field), and the CPU golden predates
+          // current DebugOptions defaults. Compare them here too once CPU flags
+          // are classified and the golden regenerated.
           ExecutableBuildOptionsProto::descriptor()->FindFieldByName(
               "debug_options"),
           HloModuleConfigProto::descriptor()->FindFieldByName("debug_options"),
-          // The following capture host/process-specific metadata (a global
-          // module-id counter and the host intra-op thread-pool size) that
-          // legitimately varies between the golden-generation run and the test
-          // run, so they are excluded from the structural comparison.
+          // Host/process metadata: a global module-id counter and the intra-op
+          // thread-pool size, both of which vary run to run.
           FieldByPath(cpu::CompilationResultProto::descriptor(),
                       {"hlo_module", "hlo_module", "id"}),
           FieldByPath(cpu::CompilationResultProto::descriptor(),
@@ -267,15 +414,72 @@ absl::Status AOTInterceptionPjrtClient::VerifyAgainstGolden(
   ABSL_ASSIGN_OR_RETURN(HumanReadableAotExecutable golden,
                    LoadHumanReadableArtifact());
 
+  absl::Status diff_status;
   switch (platform) {
     case AOTTestPlatform::kGpu:
-      return CompareGPUExecutables(fresh_unpacked, golden);
+      diff_status = CompareGPUExecutables(fresh_unpacked, golden);
+      break;
     case AOTTestPlatform::kCpu:
-      return CompareGoldenCPUExecutable(fresh_unpacked, golden);
+      diff_status = CompareGoldenCPUExecutable(fresh_unpacked, golden);
+      break;
   }
-  return absl::UnimplementedError(
-      "AOTInterceptionPjrtClient: unsupported platform in "
-      "VerifyAgainstGolden.");
+
+  if (!diff_status.ok()) {
+    absl::string_view target_name =
+        tsl::io::Basename(tsl::io::Dirname(tsl::io::Dirname(artifact_path_)));
+    return absl::Status(
+        diff_status.code(),
+        absl::StrCat("Golden artifact verification failed for ", artifact_path_,
+                     ".\n", diff_status.message(),
+                     RegenerationHint(target_name)));
+  }
+
+  return absl::OkStatus();
+}
+
+void AOTInterceptionPjrtClient::ApplyAotDeterminismDebugOptions(
+    DebugOptions& debug_options) {
+  debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+}
+
+absl::Status AOTInterceptionPjrtClient::DumpGolden(
+    const PjRtExecutable& fresh_executable) {
+  ABSL_ASSIGN_OR_RETURN(std::string serialized,
+                   fresh_executable.SerializeExecutable());
+  ABSL_ASSIGN_OR_RETURN(AOTTestPlatform platform,
+                   PlatformFromName(inner_client_->platform_name()));
+  ABSL_ASSIGN_OR_RETURN(HumanReadableAotExecutable unpacked,
+                   DeserializeToHumanReadable(serialized, platform));
+  return WriteGoldenTextProto(unpacked, artifact_path_);
+}
+
+absl::Status AOTInterceptionPjrtClient::WriteGoldenTextProto(
+    const HumanReadableAotExecutable& unpacked, absl::string_view path) {
+  tsl::Env* env = tsl::Env::Default();
+  ABSL_RETURN_IF_ERROR(
+      env->RecursivelyCreateDir(std::string(tsl::io::Dirname(path))));
+  // The text-format schema header lets editors and formatters recognize it.
+  const tsl::protobuf::Descriptor* descriptor = unpacked.GetDescriptor();
+  std::string body;
+  if (!tsl::protobuf::TextFormat::PrintToString(unpacked, &body)) {
+    return absl::InternalError(
+        absl::StrCat("Failed to serialize HumanReadableAotExecutable to text "
+                     "format for ",
+                     path));
+  }
+  std::string out =
+      absl::StrCat("# proto-file: ", descriptor->file()->name(), "\n",
+                   "# proto-message: ", descriptor->full_name(), "\n", body);
+  // Write to a sibling temporary and rename, so an interrupted or failed write
+  // cannot leave a truncated golden behind for someone to check in.
+  const std::string tmp_path = absl::StrCat(path, ".tmp");
+  ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(env, tmp_path, out));
+  absl::Status renamed = env->RenameFile(tmp_path, std::string(path));
+  if (!renamed.ok()) {
+    env->DeleteFile(tmp_path).IgnoreError();
+    return renamed;
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<HumanReadableAotExecutable>
@@ -305,13 +509,22 @@ AOTInterceptionPjrtClient::PackArtifactForInnerClient() {
   ExecutableAndOptionsProto executable_and_options =
       std::move(*unpacked.mutable_executable_and_options());
 
-  // Deriving the platform from the artifact (rather than the live inner client)
-  // to keep the un/packing pure.
-  const AOTTestPlatform platform =
-      unpacked.backend_executable_case() ==
-              HumanReadableAotExecutable::kCpuExecutable
-          ? AOTTestPlatform::kCpu
-          : AOTTestPlatform::kGpu;
+  // Derived from the artifact, not the live client, to keep un/packing pure. An
+  // unset oneof means a malformed golden, not one of the platforms.
+  AOTTestPlatform platform;
+  switch (unpacked.backend_executable_case()) {
+    case HumanReadableAotExecutable::kCpuExecutable:
+      platform = AOTTestPlatform::kCpu;
+      break;
+    case HumanReadableAotExecutable::kGpuExecutable:
+      platform = AOTTestPlatform::kGpu;
+      break;
+    case HumanReadableAotExecutable::BACKEND_EXECUTABLE_NOT_SET:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "AOTInterceptionPjrtClient: golden artifact has no backend "
+          "executable set: ",
+          artifact_path_));
+  }
   if (platform == AOTTestPlatform::kGpu) {
     std::string serialized_gpu_exec;
     ABSL_RETURN_IF_ERROR(WriteSplitGpuExecutable(
@@ -349,72 +562,74 @@ AOTInterceptionPjrtClient::PackArtifactForInnerClient() {
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 AOTInterceptionPjrtClient::Compile(const XlaComputation& computation,
                                    CompileOptions options) {
-  if (mode_ == AOTTestMode::kBackwardsCompatibility) {
-    VLOG(1) << "AOTInterceptionPjrtClient: Intercepting Compile in "
-               "kBackwardsCompatibility mode for computation ["
-            << computation.name()
-            << "]. Deserializing executable instead of recompiling.";
-    ABSL_ASSIGN_OR_RETURN(std::string serialized, PackArtifactForInnerClient());
-    VLOG(1) << "AOTInterceptionPjrtClient: Calling "
-               "inner_client_->DeserializeExecutable.";
-    return inner_client_->DeserializeExecutable(serialized, std::move(options));
+  switch (mode_) {
+    case AOTTestMode::kBackwardsCompatibility: {
+      VLOG(1) << "AOTInterceptionPjrtClient: Intercepting Compile in "
+                 "kBackwardsCompatibility mode for computation ["
+              << computation.name()
+              << "]. Deserializing executable instead of recompiling.";
+      ABSL_ASSIGN_OR_RETURN(std::string serialized, PackArtifactForInnerClient());
+      VLOG(1) << "AOTInterceptionPjrtClient: Calling "
+                 "inner_client_->DeserializeExecutable.";
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtExecutable> exec,
+          inner_client_->DeserializeExecutable(serialized, std::move(options)),
+          _ << BackwardsCompatibilityHint(artifact_path_,
+                                          inner_client_->platform_name()));
+      return exec;
+    }
+    case AOTTestMode::kUpdateGolden:
+    case AOTTestMode::kGoldenVerification: {
+      ApplyAotDeterminismDebugOptions(
+          *options.executable_build_options.mutable_debug_options());
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> exec,
+                       inner_client_->Compile(computation, std::move(options)));
+      TF_RET_CHECK(exec != nullptr) << "Compile() returned nullptr";
+      ABSL_RETURN_IF_ERROR(mode_ == AOTTestMode::kUpdateGolden
+                          ? DumpGolden(*exec)
+                          : VerifyAgainstGolden(*exec));
+      return exec;
+    }
   }
-  if (mode_ == AOTTestMode::kGoldenVerification) {
-    VLOG(1) << "AOTInterceptionPjrtClient: Compile called in "
-               "kGoldenVerification mode for computation ["
-            << computation.name()
-            << "]. Compiling fresh and verifying against golden.";
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> exec,
-                     inner_client_->Compile(computation, std::move(options)));
-
-    TF_RET_CHECK(exec != nullptr) << "Compile() returned nullptr";
-    ABSL_RETURN_IF_ERROR(VerifyAgainstGolden(*exec));
-    VLOG(1) << "AOTInterceptionPjrtClient: Golden Verification successful "
-            << "for [" << computation.name() << "]";
-
-    return exec;
-  }
-
-  return absl::InternalError(
-      "Unknown AOTTestMode in AOTInterceptionPjrtClient::Compile");
+  CHECK(false) << "Unsupported AOT test mode!";
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 AOTInterceptionPjrtClient::CompileAndLoad(const XlaComputation& computation,
                                           CompileOptions options) {
-  if (mode_ == AOTTestMode::kBackwardsCompatibility) {
-    VLOG(1) << "AOTInterceptionPjrtClient: Intercepting CompileAndLoad in "
-               "kBackwardsCompatibility mode for computation ["
-            << computation.name()
-            << "]. Deserializing and loading executable instead of "
-               "recompiling.";
-    ABSL_ASSIGN_OR_RETURN(std::string serialized, PackArtifactForInnerClient());
-    VLOG(1) << "AOTInterceptionPjrtClient: Calling "
-               "inner_client_->LoadSerializedExecutable.";
-    return inner_client_->LoadSerializedExecutable(
-        serialized, std::move(options), LoadOptions());
+  switch (mode_) {
+    case AOTTestMode::kBackwardsCompatibility: {
+      VLOG(1) << "AOTInterceptionPjrtClient: Intercepting CompileAndLoad in "
+                 "kBackwardsCompatibility mode for computation ["
+              << computation.name()
+              << "]. Deserializing and loading executable instead of "
+                 "recompiling.";
+      ABSL_ASSIGN_OR_RETURN(std::string serialized, PackArtifactForInnerClient());
+      VLOG(1) << "AOTInterceptionPjrtClient: Calling "
+                 "inner_client_->LoadSerializedExecutable.";
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> exec,
+                       inner_client_->LoadSerializedExecutable(
+                           serialized, std::move(options), LoadOptions()),
+                       _ << BackwardsCompatibilityHint(
+                           artifact_path_, inner_client_->platform_name()));
+      return exec;
+    }
+    case AOTTestMode::kUpdateGolden:
+    case AOTTestMode::kGoldenVerification: {
+      ApplyAotDeterminismDebugOptions(
+          *options.executable_build_options.mutable_debug_options());
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtLoadedExecutable> exec,
+          inner_client_->CompileAndLoad(computation, std::move(options)));
+      PjRtExecutable* fresh_exec = exec->GetExecutable();
+      TF_RET_CHECK(fresh_exec != nullptr) << "GetExecutable() returned nullptr";
+      ABSL_RETURN_IF_ERROR(mode_ == AOTTestMode::kUpdateGolden
+                          ? DumpGolden(*fresh_exec)
+                          : VerifyAgainstGolden(*fresh_exec));
+      return exec;
+    }
   }
-  if (mode_ == AOTTestMode::kGoldenVerification) {
-    VLOG(1) << "AOTInterceptionPjrtClient: CompileAndLoad called in "
-               "kGoldenVerification mode for computation ["
-            << computation.name()
-            << "]. Compiling fresh and verifying against golden.";
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<PjRtLoadedExecutable> exec,
-        inner_client_->CompileAndLoad(computation, std::move(options)));
-
-    PjRtExecutable* fresh_exec = exec->GetExecutable();
-    TF_RET_CHECK(fresh_exec != nullptr) << "GetExecutable() returned nullptr";
-
-    ABSL_RETURN_IF_ERROR(VerifyAgainstGolden(*fresh_exec));
-    VLOG(1) << "AOTInterceptionPjrtClient: Golden Verification successful "
-            << "for [" << computation.name() << "]";
-
-    return exec;
-  }
-
-  return absl::InternalError(
-      "Unknown AOTTestMode in AOTInterceptionPjrtClient::CompileAndLoad");
+  CHECK(false) << "Unsupported AOT test mode!";
 }
 
 absl::StatusOr<PjRtDevice*> AOTInterceptionPjrtClient::LookupDevice(

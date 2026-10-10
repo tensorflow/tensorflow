@@ -44,7 +44,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pylint==2.13.9 numpy wheel
+        pip install pylint==2.13.9 "numpy<2.0.0" wheel
     - name: Run PyLint on changed files
       run: |
         echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc

@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -55,12 +55,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/collectives/collective_permute_cycle.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/shape_inference.h"
@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -130,7 +131,7 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
     return InvalidArgument("Unbounded dynamism is disabled for instruction: %s",
                            hlo->ToString());
   }
-  if (hlo->shape().has_layout()) {
+  if (opts_.layout_sensitive && hlo->shape().has_layout()) {
     if (hlo->shape().layout().minor_to_major().size() !=
         hlo->shape().dimensions().size()) {
       return InvalidArgument(
@@ -191,12 +192,73 @@ absl::Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
   return CheckUnaryShape(copy);
 }
 
+absl::Status VerifySparsityAndBlockScaling(const HloInstruction* hlo) {
+  if (hlo->operand_count() < 2) {
+    return InvalidArgument("%s must have at least 2 operands, got %d",
+                           HloOpcodeString(hlo->opcode()),
+                           hlo->operand_count());
+  }
+  std::vector<char> seen_indices(hlo->operand_count(), false);
+  int64_t seen_count = 0;
+  auto check_idx = [&](int32_t idx, absl::string_view desc) -> absl::Status {
+    if (idx < 2 || idx >= hlo->operand_count()) {
+      return InvalidArgument("%s %d out of bounds", desc, idx);
+    }
+    if (!hlo->operand(idx)->shape().IsArray()) {
+      return InvalidArgument(
+          "Expected array argument for %s at index %d, but got %s", desc, idx,
+          ShapeUtil::HumanString(hlo->operand(idx)->shape()));
+    }
+    if (seen_indices[idx]) {
+      return InvalidArgument("Duplicate index %d for %s", idx, desc);
+    }
+    seen_indices[idx] = true;
+    ++seen_count;
+    return absl::OkStatus();
+  };
+
+  if (hlo->sparsity_config().has_lhs()) {
+    ABSL_RETURN_IF_ERROR(
+        check_idx(hlo->sparsity_config().lhs().idx(), "Sparsity idx for lhs"));
+  }
+  if (hlo->sparsity_config().has_rhs()) {
+    ABSL_RETURN_IF_ERROR(
+        check_idx(hlo->sparsity_config().rhs().idx(), "Sparsity idx for rhs"));
+  }
+  if (hlo->block_scaling_config().has_lhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().lhs().scale_idx(),
+                              "Block scaling scale_idx for lhs"));
+    if (hlo->block_scaling_config().lhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().lhs().zero_idx(),
+                                "Block scaling zero_idx for lhs"));
+    }
+  }
+  if (hlo->block_scaling_config().has_rhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().rhs().scale_idx(),
+                              "Block scaling scale_idx for rhs"));
+    if (hlo->block_scaling_config().rhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().rhs().zero_idx(),
+                                "Block scaling zero_idx for rhs"));
+    }
+  }
+  if (seen_count != hlo->operand_count() - 2) {
+    return InvalidArgument(
+        "Expected all %d extra operands to be referenced by sparsity_config or "
+        "block_scaling_config, but %d were referenced",
+        hlo->operand_count() - 2, seen_count);
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
+  ABSL_RETURN_IF_ERROR(VerifySparsityAndBlockScaling(dot));
   ABSL_ASSIGN_OR_RETURN(const Shape expected,
                    ShapeInference::InferDotOpShape(
                        dot->operand(0)->shape(), dot->operand(1)->shape(),
                        dot->dot_dimension_numbers(),
-                       /*preferred_element_type=*/dot->shape().element_type()));
+                       /*preferred_element_type=*/dot->shape().element_type(),
+                       dot->sparsity_config()));
 
   return CheckShape(dot, expected);
 }
@@ -303,36 +365,8 @@ absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
 }
 
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
-  if (convolution->sparsity_config().has_lhs()) {
-    int32_t idx = convolution->sparsity_config().lhs().idx();
-    if (idx < 2 || idx >= convolution->operand_count()) {
-      return InvalidArgument("Sparsity idx %d out of bounds for lhs", idx);
-    }
-    if (!convolution->operand(idx)->shape().IsArray()) {
-      return InvalidArgument(
-          "Expected array argument for lhs sparsity at index %d, but got %s",
-          idx, ShapeUtil::HumanString(convolution->operand(idx)->shape()));
-    }
-  }
-  if (convolution->sparsity_config().has_rhs()) {
-    int32_t idx = convolution->sparsity_config().rhs().idx();
-    if (idx < 2 || idx >= convolution->operand_count()) {
-      return InvalidArgument("Sparsity idx %d out of bounds for rhs", idx);
-    }
-    if (!convolution->operand(idx)->shape().IsArray()) {
-      return InvalidArgument(
-          "Expected array argument for rhs sparsity at index %d, but got %s",
-          idx, ShapeUtil::HumanString(convolution->operand(idx)->shape()));
-    }
-  }
-  if (convolution->sparsity_config().has_lhs() &&
-      convolution->sparsity_config().has_rhs()) {
-    if (convolution->sparsity_config().lhs().idx() ==
-        convolution->sparsity_config().rhs().idx()) {
-      return InvalidArgument("LHS and RHS sparsity idx cannot be the same (%d)",
-                             convolution->sparsity_config().lhs().idx());
-    }
-  }
+  ABSL_RETURN_IF_ERROR(VerifySparsityAndBlockScaling(convolution));
+
   ABSL_ASSIGN_OR_RETURN(
       Shape expected,
       ShapeInference::InferConvolveShape(
@@ -429,12 +463,12 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
     // on the second pass we only add to `seen_replica_ids` iff we see a replica
     // id in the range [0, n) for the first time. So, there is no need to check
     // that all `seen_replica_ids` values are true.
-#ifndef NDEBUG
-    for (int64_t i = 0; i < n; ++i) {
-      CHECK(seen_replica_ids[i])
-          << "Programming error: seen_replica_ids[" << i << "] is false!";
+    if constexpr (tsl::kIsDebugBuild) {
+      for (int64_t i = 0; i < n; ++i) {
+        CHECK(seen_replica_ids[i])
+            << "Programming error: seen_replica_ids[" << i << "] is false!";
+      }
     }
-#endif  // NDEBUG
 
     // replica-groups have numbers [0, n). This n should be either replica or
     // partition count, or their product. In some cases, replica and/or
@@ -1160,6 +1194,14 @@ absl::Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
+absl::Status ShapeVerifier::HandleShuffle(HloInstruction* shuffle) {
+  HloShuffleInstruction* shuffle_instr = Cast<HloShuffleInstruction>(shuffle);
+  return CheckShape(
+      shuffle, ShapeInference::InferShuffleShape(
+                   shuffle_instr->operand(0)->shape(),
+                   shuffle_instr->dimensions(), shuffle_instr->shuffle_mode()));
+}
+
 absl::Status ShapeVerifier::HandleTopK(HloInstruction* hlo) {
   return CheckShape(
       hlo, ShapeInference::InferTopKShape(hlo->operand(0)->shape(),
@@ -1687,40 +1729,46 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   return absl::OkStatus();
 }
 
+absl::Status ShapeVerifier::CheckCompositeCall(const HloInstruction* call) {
+  if (!call->is_composite()) {
+    return absl::OkStatus();
+  }
+  TF_RET_CHECK(call->has_frontend_attributes())
+      << "A composite call op must have frontend attributes";
+  auto map = call->frontend_attributes().map();
+  if (auto name = map.find("composite.name");
+      name == map.end() || name->second.empty()) {
+    return InvalidArgument(
+        "A composite call op must have frontend attributes with key "
+        "composite.name whose value is non-empty");
+  }
+  if (auto attributes = map.find("composite.attributes");
+      attributes != map.end() && attributes->second.empty()) {
+    return InvalidArgument(
+        "A composite call op must have frontend attributes with key "
+        "composite.attributes whose value is default: {} or non-empty");
+  }
+  if (auto version_str = map.find("composite.version");
+      version_str != map.end()) {
+    int64_t version = 0;
+    if (!absl::SimpleAtoi(version_str->second, &version) || version < 0) {
+      return InvalidArgument(
+          "A composite call op must have frontend attributes with a "
+          "composite.version whose value is a non-negative integer but got: "
+          "%s",
+          version_str->second);
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ShapeVerifier::HandleCall(HloInstruction* call) {
   ABSL_RETURN_IF_ERROR(
       CheckParameterCount(call, call->to_apply(), call->operand_count()));
   for (int64_t i = 0; i < call->to_apply()->num_parameters(); ++i) {
     ABSL_RETURN_IF_ERROR(CheckOperandAndParameter(call, i, call->to_apply(), i));
   }
-  if (call->is_composite()) {
-    TF_RET_CHECK(call->has_frontend_attributes())
-        << "A composite call op must have frontend attributes";
-    auto map = call->frontend_attributes().map();
-    if (auto name = map.find("composite.name");
-        name == map.end() || name->second.empty()) {
-      return InvalidArgument(
-          "A composite call op must have frontend attributes with key "
-          "composite.name whose value is non-empty");
-    }
-    if (auto attributes = map.find("composite.attributes");
-        attributes != map.end() && attributes->second.empty()) {
-      return InvalidArgument(
-          "A composite call op must have frontend attributes with key "
-          "composite.attributes whose value is default: {} or non-empty");
-    }
-    if (auto version_str = map.find("composite.version");
-        version_str != map.end()) {
-      int64_t version = 0;
-      if (!absl::SimpleAtoi(version_str->second, &version) || version < 0) {
-        return InvalidArgument(
-            "A composite call op must have frontend attributes with a "
-            "composite.version whose value is a non-negative integer but got: "
-            "%s",
-            version_str->second);
-      }
-    }
-  }
+  ABSL_RETURN_IF_ERROR(CheckCompositeCall(call));
   // The shape of kCall should match the shape of the computation it calls.
   return CheckShape(call, call->to_apply()->root_instruction()->shape());
 }
@@ -3644,12 +3692,12 @@ std::string FormatShapeIndexValidationError(
   }
   return absl::StrFormat(
       "Mismatched tuple structure in shape and original value.\n%s"
-      "Instruction: %s\nShape indices in shape only: {%s}\nShape indices in "
-      "original value "
-      "only: {%s}",
-      module_info, instruction->ToString(),
-      absl::StrJoin(shape_only, ", ", shape_index_formatter),
-      absl::StrJoin(ov_only, ", ", shape_index_formatter));
+      "Shape indices in shape only: {%s}\nShape indices in "
+      "original value only: {%s}\n"
+      "Instruction: %s\n",
+      module_info, absl::StrJoin(shape_only, ", ", shape_index_formatter),
+      absl::StrJoin(ov_only, ", ", shape_index_formatter),
+      instruction->ToString());
 }
 
 }  // namespace
@@ -3909,28 +3957,18 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
   }
 
   if (auto* comparison = DynCast<HloCompareInstruction>(instruction)) {
-    const Shape& operand_shape = comparison->operand(1)->shape();
+    const Shape& operand_shape = comparison->operand(0)->shape();
     PrimitiveType operand_element_type = operand_shape.element_type();
-    Comparison::Type default_comparison_type =
-        Comparison::DefaultComparisonType(operand_element_type);
-    if (primitive_util::IsFloatingPointType(operand_element_type)) {
-      if (comparison->type() != Comparison::Type::kFloat &&
-          comparison->type() != Comparison::Type::kFloatTotalOrder) {
+    if (primitive_util::IsIntegralType(operand_element_type) ||
+        operand_element_type == PRED) {
+      if (comparison->order() != ComparisonOrder::kTotal) {
         return FailedPrecondition(
-            "Expected comparison type %s or %s.\n"
-            "actual: %s\noperand: %s\n",
-            ComparisonTypeToString(Comparison::Type::kFloat),
-            ComparisonTypeToString(Comparison::Type::kFloatTotalOrder),
-            ComparisonTypeToString(comparison->type()),
+            "Expected comparison order %s for integral/pred operand, but got "
+            "%s.\noperand: %s\n",
+            ComparisonOrderToShortString(ComparisonOrder::kTotal),
+            ComparisonOrderToShortString(comparison->order()),
             ShapeUtil::HumanString(operand_shape));
       }
-    } else if (comparison->type() != default_comparison_type) {
-      return FailedPrecondition(
-          "Expected comparison type %s.\n"
-          "actual: %s\noperand: %s\n",
-          ComparisonTypeToString(default_comparison_type),
-          ComparisonTypeToString(comparison->type()),
-          ShapeUtil::HumanString(operand_shape));
     }
   }
   return absl::OkStatus();
@@ -4387,17 +4425,35 @@ absl::Status InstructionVerifier::HandleWhile(HloInstruction* xla_while) {
 
 absl::Status InstructionVerifier::HandleCall(HloInstruction* call) {
   if (opts_.verify_call_nested_computation_thread_name) {
-    return CheckCallableInstructionThreadName(call);
+    ABSL_RETURN_IF_ERROR(CheckCallableInstructionThreadName(call));
   }
-
-  // As opposed to other callable instructions, nothing respects input/output
-  // aliasing for call instructions, so make sure it's not set.
-  const HloCallableInstruction* callable =
-      DynCast<const HloCallableInstruction>(call);
-  TF_RET_CHECK(callable != nullptr);
-  TF_RET_CHECK(callable->output_to_operand_aliasing().empty())
-      << "Call instruction " << call->ToString()
-      << " may not have an output-to-operand aliasing set.";
+  const auto* callable = Cast<const HloCallableInstruction>(call);
+  for (const auto& pair : callable->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < callable->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        callable->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(callable->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(callable->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        callable->operand(pair.second.first)->shape(), pair.second.second);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(operand_subshape,
+                                                           output_subshape))
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
+    } else {
+      TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(
+          operand_subshape, output_subshape))
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/false) << " vs "
+          << output_subshape.ToString(/*print_layout=*/false);
+    }
+  }
   return absl::OkStatus();
 }
 

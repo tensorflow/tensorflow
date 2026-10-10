@@ -156,7 +156,8 @@ ComputationKernelEmitter::EmitKernelDefinition() {
       KernelApiIrBuilder::BufferValidation::kNone);
 
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
-      absl::StrCat(instr_->name(), "_computation_kernel_module"), *ctx);
+      absl::StrCat(instr_->name(), "_computation_kernel_module"), *ctx,
+      target_machine_);
 
   ABSL_ASSIGN_OR_RETURN(std::string kernel_name,
                    kernel_api_ir_builder.GetKernelName(instr_, "_kernel"));

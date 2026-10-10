@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
@@ -53,15 +54,18 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/backends/gpu/target_config/cudnn_device_props.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -202,7 +206,8 @@ std::string CudnnStatusToString(cudnnStatus_t status) {
 
 // RAII wrapper for all calls to cuDNN with a cuDNN handle argument.
 //
-// See CudnnAccess::GetHandle() for details.
+// See CudnnAccess::GetHandle() and CudnnAccess::GetCompilationHandle() for
+// details.
 class CudnnHandle {
  public:
   // Takes ownership of the lock to access cuDNN using handle.
@@ -249,6 +254,7 @@ class CudnnAccess {
   explicit CudnnAccess(cudnnHandle_t handle) : handle_(handle) {}
 
   absl::Status InitializeCompilationHandle() {
+    absl::MutexLock lock(compilation_mutex_);
     if (cudnnCreate(&compilation_handle_) != CUDNN_STATUS_SUCCESS) {
       return absl::InternalError(
           "Creation of compilation cudnn handle failed.");
@@ -257,11 +263,13 @@ class CudnnAccess {
   }
 
   ~CudnnAccess() {
-    absl::MutexLock lock(mutex_);
     cudnnDestroy(handle_);
 
     if (compilation_handle_) {
       cudnnDestroy(compilation_handle_);
+    }
+    if (private_stream_) {
+      cuStreamDestroy(private_stream_);
     }
   }
 
@@ -295,11 +303,30 @@ class CudnnAccess {
     return CudnnHandle(executor, std::move(lock), handle_);
   }
 
-  absl::StatusOr<cudnnHandle_t> GetCompilationHandle() {
+  // Creates a CudnnHandle instance for the compilation handle, which is used
+  // to build and deserialize cuDNN graphs and execution plans.
+  //
+  // TOOD(b/567795551): We currently use a private stream for all compilation
+  // related tasks to avoid race conditions. Explore if we can use the default
+  // stream instead.
+  absl::StatusOr<CudnnHandle> GetCompilationHandle(StreamExecutor* executor) {
+    auto lock = std::make_unique<absl::MutexLock>(compilation_mutex_);
+    compilation_mutex_.AssertHeld();
     if (!compilation_handle_) {
       return absl::InternalError("CudnnAccess not properly initialized.");
     }
-    return compilation_handle_;
+    CudnnHandle cudnn(executor, std::move(lock), compilation_handle_);
+    if (private_stream_ == nullptr) {
+      CUstream stream;
+      ABSL_RETURN_IF_ERROR(
+          cuda::ToStatus(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING)));
+      if (cudnnSetStream(compilation_handle_, stream) != CUDNN_STATUS_SUCCESS) {
+        cuStreamDestroy(stream);
+        return absl::InternalError("Failed to set cuDNN compilation stream.");
+      }
+      private_stream_ = stream;
+    }
+    return cudnn;
   }
 
   void NotifyStreamDestroyed(Stream* stream) {
@@ -323,8 +350,17 @@ class CudnnAccess {
   // cuDNN library handle.
   cudnnHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 
-  // Shared compilation handle for all threads calling GetCompilationHandle()
-  cudnnHandle_t compilation_handle_ = nullptr;
+  // Guards the use of compilation_handle_ below. Separate from mutex_ so that
+  // compilation doesn't block execution.
+  absl::Mutex compilation_mutex_;
+
+  // Shared compilation handle for all threads calling GetCompilationHandle().
+  cudnnHandle_t compilation_handle_ ABSL_GUARDED_BY(compilation_mutex_) =
+      nullptr;  // Owned.
+
+  // Private stream bound to compilation_handle_, see GetCompilationHandle().
+  CUstream private_stream_ ABSL_GUARDED_BY(compilation_mutex_) =
+      nullptr;  // Owned.
 };
 
 namespace {
@@ -3956,6 +3992,17 @@ static absl::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
   return {std::move(plan)};
 }
 
+// Sets the SM version in the cuDNN graph. Without this, cuDNN will fallback to
+// querying the GPU, which doesn't work for deviceless compilation.
+absl::Status SetGraphSmVersion(cudnn_frontend::graph::Graph& graph,
+                               const DeviceDescription& gpu_device_info) {
+  const CudaComputeCapability* cc =
+      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
+  TF_RET_CHECK(cc != nullptr);
+  graph.set_sm_version(cc->major * 10 + cc->minor);
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 void FixDimsForRaggedOffset(std::vector<int64_t>& dims, int max_reg_per_batch) {
@@ -4003,6 +4050,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   graph.set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_io_data_type(ioDataType)
       .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
   int64_t uid = 0;
   auto next_uid = [&]() -> int64_t { return CuDnnTensorUID(uid++); };
 
@@ -4252,6 +4300,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
   graph.set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_io_data_type(ioDataType)
       .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
 
   auto next_uid = [uid = 0]() mutable -> int { return CuDnnTensorUID(uid++); };
 
@@ -4386,6 +4435,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
   graph.set_compute_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_io_data_type(ioDataType);
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
 
   auto next_uid = [uid = 0]() mutable -> int { return CuDnnTensorUID(uid++); };
 
@@ -4573,6 +4623,7 @@ absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
           << "\n global_scale: " << has_global_scale;
 
   cudnn_frontend::graph::Graph graph;
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
   auto compute_type = cudnn_frontend::DataType_t::FLOAT;
   graph.set_compute_data_type(compute_type);
   graph.set_intermediate_data_type(compute_type);
@@ -4683,6 +4734,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
 
   using cudnn_frontend::graph::Tensor_attributes;
   cudnn_frontend::graph::Graph graph;
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph, gpu_device_info));
   if (!(q_desc.type() == k_desc.type() && k_desc.type() == p_desc.type() &&
         p_desc.type() == v_desc.type() && v_desc.type() == do_desc.type() &&
         do_desc.type() == dq_desc.type() && dq_desc.type() == dk_desc.type() &&
@@ -5871,7 +5923,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
-  if (engine_options.require_determinism) {
+  if (!engine_options.require_determinism) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_0);
   }
 
@@ -6806,7 +6858,10 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
 
 absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
     Stream& stream, absl::string_view serialized_data) const {
-  auto cudnn = cudnn_->GetHandle(stream.parent(), &stream);
+  // Deserializing a graph runs a warmup execution by default. Use a private
+  // stream for the warmup to avoid race conditions.
+  ABSL_ASSIGN_OR_RETURN(CudnnHandle cudnn,
+                   cudnn_->GetCompilationHandle(stream.parent()));
   cudnn_frontend::graph::Graph graph;
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph.deserialize(
       cudnn.handle(),
@@ -6815,15 +6870,12 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
-bool SupportsDevicelessDeviceProperties() {
-  return cudnn_frontend::detail::get_backend_version() >= 90800;
-}
-
-bool SupportsDevicelessConvGraphs(const DeviceDescription& gpu_device_info) {
-  const auto* cc =
-      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
-  return cc == nullptr || cc->major < 10 ||
-         cudnn_frontend::detail::get_backend_version() >= 91900;
+bool SupportsDevicelessCudnnCompilation() {
+  const int min_backend_version =
+      kMinDevicelessCudnnVersion.major_version() * 10000 +
+      kMinDevicelessCudnnVersion.minor_version() * 100 +
+      kMinDevicelessCudnnVersion.patch_version();
+  return cudnn_frontend::detail::get_backend_version() >= min_backend_version;
 }
 
 namespace {
@@ -6859,6 +6911,8 @@ absl::Status PlanEnumerationStatus(bool deviceless,
                                           "): ", result.get_message()));
 }
 
+extern "C" ABSL_ATTRIBUTE_WEAK void EnsureCudaCompatLoaded();
+
 }  // namespace
 
 absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
@@ -6885,18 +6939,30 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
     return absl::OkStatus();
   };
 
+  ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph_, gpu_device_info));
+
   if (dnn_support) {
     const CudnnSupport& cudnn_support =
         static_cast<CudnnSupport&>(*dnn_support);
-    ABSL_ASSIGN_OR_RETURN(auto cudnn_handle,
-                     cudnn_support.cudnn_->GetCompilationHandle());
+    // Holds the lock on the shared compilation handle until the end of scope.
+    ABSL_ASSIGN_OR_RETURN(
+        CudnnHandle cudnn,
+        cudnn_support.cudnn_->GetCompilationHandle(cudnn_support.parent_));
     RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
-    RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn_handle));
+    RETURN_IF_CUDNN_FRONTEND_ERROR(
+        graph_.build_operation_graph(cudnn.handle()));
     ABSL_RETURN_IF_ERROR(create_and_filter_plans());
-    RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn_handle));
+    RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn.handle()));
   } else {
-    // Deviceless mode. No cuDNN version guard needed: DeviceProperties
-    // deserialization inside BuildDeviceProperties rejects runtimes < 9.8.
+    if (EnsureCudaCompatLoaded != nullptr) {
+      EnsureCudaCompatLoaded();
+    }
+    if (!SupportsDevicelessCudnnCompilation()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Deviceless cuDNN compilation requires cuDNN >= ",
+          kMinDevicelessCudnnVersion.ToString(), " (loaded ",
+          cudnn_frontend::detail::get_backend_version_string(), ")."));
+    }
     ABSL_ASSIGN_OR_RETURN(auto device_props,
                      xla::gpu::BuildDeviceProperties(gpu_device_info));
     graph_.set_device_properties(device_props);
@@ -6914,13 +6980,14 @@ absl::Status CudnnGraph::Build(dnn::DnnSupport* dnn_support,
   if (dnn_support) {
     const CudnnSupport& cudnn_support =
         static_cast<CudnnSupport&>(*dnn_support);
-    ABSL_ASSIGN_OR_RETURN(auto cudnn_handle,
-                     cudnn_support.cudnn_->GetCompilationHandle());
+    ABSL_ASSIGN_OR_RETURN(
+        CudnnHandle cudnn,
+        cudnn_support.cudnn_->GetCompilationHandle(cudnn_support.parent_));
     if (plan_id.has_value()) {
       RETURN_CUDNN_FRONTEND_STATUS(
-          graph_.build_plan_at_index(cudnn_handle, *plan_id));
+          graph_.build_plan_at_index(cudnn.handle(), *plan_id));
     }
-    RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans(cudnn_handle));
+    RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans(cudnn.handle()));
   } else {
     // no need to set_device_properties, it is done in Prepare()
     if (plan_id.has_value()) {

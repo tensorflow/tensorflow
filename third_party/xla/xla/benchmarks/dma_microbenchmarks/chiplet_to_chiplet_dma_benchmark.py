@@ -14,29 +14,17 @@
 
 """JAX microbenchmarks for measuring chiplet-to-chiplet bandwidth."""
 
-from absl import flags
 from absl.testing import absltest
 import jax
 from jax import lax
 from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
-from xla.benchmarks.dma_microbenchmarks import memory_base  # pylint: disable=g-direct-tensorflow-import
-
-
-_NUMBER_OF_MEASUREMENTS = flags.DEFINE_integer(
-    "number_of_measurements",
-    default=5,
-    help="Number of measurements to take. Default: 5",
-)
+from xla.benchmarks.dma_microbenchmarks import memory_base
 
 
 class ChipletToChipletBenchmarks(memory_base.MemoryBenchmarks):
   """Test suite measuring chiplet-to-chiplet bandwidth."""
-
-  def setUp(self):
-    super().setUp()
-    self.number_of_measurements = _NUMBER_OF_MEASUREMENTS.value
 
   def get_devices(self):
     if jax.local_device_count() < 2:

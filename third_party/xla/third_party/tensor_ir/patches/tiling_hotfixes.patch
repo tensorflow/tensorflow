@@ -1,0 +1,36 @@
+diff --git a/include/tensor_ir/Compiler/CudaTile/CudaTileCompiler.h b/include/tensor_ir/Compiler/CudaTile/CudaTileCompiler.h
+--- a/include/tensor_ir/Compiler/CudaTile/CudaTileCompiler.h
++++ b/include/tensor_ir/Compiler/CudaTile/CudaTileCompiler.h
+@@ -160,6 +160,9 @@
+   /// TileIR bytecode.
+   CudaTileArtifactKind artifactKind = CudaTileArtifactKind::TileIR;
+ 
++  /// Tile size for contracting dimensions in layout-propagation lowering.
++  int64_t reductionTileSize = 128;
++
+   CudaTileCompileOptions(SmTarget computeCapability_)
+       : CompileOptions(computeCapability_, CompilerBackend::CudaTile) {}
+ 
+diff --git a/lib/Analysis/TileCandidateGenerator.cpp b/lib/Analysis/TileCandidateGenerator.cpp
+--- a/lib/Analysis/TileCandidateGenerator.cpp
++++ b/lib/Analysis/TileCandidateGenerator.cpp
+@@ -1680,7 +1680,7 @@
+       return false;
+     }
+     int64_t maxTile =
+-        shape[i] > 1 ? llvm::bit_floor(static_cast<uint64_t>(shape[i])) : 1;
++        shape[i] > 1 ? llvm::bit_ceil(static_cast<uint64_t>(shape[i])) : 1;
+     if (static_cast<int64_t>(tile[i]) > maxTile) {
+       return false;
+     }
+diff --git a/lib/Compiler/CudaTile/CudaTileCompiler.cpp b/lib/Compiler/CudaTile/CudaTileCompiler.cpp
+--- a/lib/Compiler/CudaTile/CudaTileCompiler.cpp
++++ b/lib/Compiler/CudaTile/CudaTileCompiler.cpp
+@@ -124,6 +124,7 @@
+       getCodegenStrategy(cudaTileOptions.codegenStrategy);
+   pipelineOptions.maxCandidates =
+       getMaxTileCandidatesFromEnvOrDefault(cudaTileOptions.maxTileCandidates);
++  pipelineOptions.reductionTileSize = cudaTileOptions.reductionTileSize;
+   return pipelineOptions;
+ }
+ 

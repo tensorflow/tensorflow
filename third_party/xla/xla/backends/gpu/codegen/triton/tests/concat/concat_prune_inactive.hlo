@@ -1,16 +1,21 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
+// RUN: fusion_to_triton %s 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
 
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
-
+// Expected IR once b/528277610 is fixed:
 // CHECK:      xtile.entry_func @triton_fn
 // CHECK-NEXT:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-NEXT:   %[[EXTRACT:.*]] = xtile.extract %arg0[%[[C0]], %[[C0]]] [64, 16] [1, 1] : memref<64x10xf32> -> tensor<64x16xf32>
 // CHECK-NEXT:   xtile.insert %[[EXTRACT]] into %arg3[%[[C0]], %[[C0]]] [64, 16] [1, 1] : tensor<64x16xf32> -> memref<64x10xf32>
 // CHECK-NEXT:   xtile.return
 
+// The nested concatenate produces a concat-dim tile offset with a negative
+// constant part (base offset -64). Under this fusion's concat-dim tile size
+// (64), the remaining size 80 (the distance from the base offset to the end of
+// operand 0) is not a multiple of 64 (80 mod 64 = 16), so a tile would straddle
+// an operand boundary and the tiling is correctly rejected. This is the
+// sign-agnostic boundary-alignment check from b/491092362 (the old check
+// rejected purely on the negative sign with a different message).
 // TODO: b/528277610 - fix tiling emitter.
-// CHECK-ERROR: Tiling propagation rejected for %inner_concat = f32[1,32,10]{2,1,0} concatenate(%param_1, %param_2), dimensions={1}: The base offset -64 is negative.
+// CHECK-ERROR: Tiling propagation rejected for %inner_concat = f32[1,32,10]{2,1,0} concatenate(%param_1, %param_2), dimensions={1}: The remaining operand size 16 (in concatenate operand 0) is not divisible by the selected tile size 64
 
 HloModule min_repro, is_scheduled=true, entry_computation_layout={(f32[64,10]{1,0}, f32[1,16,10]{2,1,0}, f32[1,16,10]{2,1,0})->f32[64,10]{1,0}}
 

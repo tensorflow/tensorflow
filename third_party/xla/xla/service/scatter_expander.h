@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_SCATTER_EXPANDER_H_
 #define XLA_SERVICE_SCATTER_EXPANDER_H_
 
+#include <utility>
+
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -49,7 +52,10 @@ class ScatterExpander : public OpExpanderPass {
     kEliminateIndeterministicScatters,
   };
 
-  explicit ScatterExpander(Mode m) : mode_(m) {}
+  // extra_filter: optional additional condition an instruction must satisfy
+  // to be expanded (see OpExpanderPass).
+  explicit ScatterExpander(Mode m, HloPredicate extra_filter = nullptr)
+      : OpExpanderPass(std::move(extra_filter)), mode_(m) {}
 
   absl::string_view name() const override { return "scatter_expander"; }
 

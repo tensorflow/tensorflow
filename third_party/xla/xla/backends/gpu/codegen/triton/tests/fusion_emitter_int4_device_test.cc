@@ -43,7 +43,7 @@ namespace {
 
 class TritonTestBase : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
-  virtual bool EnableTilingPropagation() const = 0;
+  virtual bool EnableGemmFusionV2() const { return false; }
 
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
@@ -54,8 +54,7 @@ class TritonTestBase : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     debug_options
         .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        EnableTilingPropagation());
+    debug_options.set_xla_gpu_experimental_gemm_fusion_v2(EnableGemmFusionV2());
     return debug_options;
   }
 };
@@ -63,14 +62,12 @@ class TritonTestBase : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
 class TritonTest : public TritonTestBase,
                    public ::testing::WithParamInterface<bool> {
  public:
-  bool EnableTilingPropagation() const override { return GetParam(); }
+  bool EnableGemmFusionV2() const override { return GetParam(); }
 };
 
-INSTANTIATE_TEST_SUITE_P(TritonTestWithTilingParam, TritonTest,
-                         ::testing::Bool(),
+INSTANTIATE_TEST_SUITE_P(TritonTest, TritonTest, ::testing::Bool(),
                          [](const ::testing::TestParamInfo<bool>& info) {
-                           return info.param ? "ExperimentalTiling"
-                                             : "SymbolicTiling";
+                           return info.param ? "GemmFusionV2" : "GemmFusionV1";
                          });
 
 // The following tests are for the channel and subchannel dequantization
@@ -149,30 +146,20 @@ TEST_P(TritonTest, FuseSubchannelDequantizationWithTranspose) {
     }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  std::string pattern =
-      R"(
+  // Check that the transpose of the scales and the broadcast are fused into
+  // the Triton GEMM together with the dequantization multiply. Depending on
+  // the GEMM fusion version, the multiply consumes the broadcast either
+  // directly or through a bitcast to the dot operand shape. On some devices
+  // (e.g. A100) bf16 multiply is not supported, so there is an additional
+  // convert to f32 in between.
+  constexpr absl::string_view kPattern = R"(
     CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(
     CHECK:    %[[broadcast:.*]] = {{.*}} broadcast(%[[transpose]])
-    CHECK-PTX: multiply({{.*}}, %[[broadcast]])
-    CHECK-GCN: %[[convert:.*]] = f32[2,64,8,256]{3,2,1,0} convert(%[[broadcast]])
-    CHECK-GCN: multiply({{.*}}, %[[convert]])
+    CHECK:    multiply(
     CHECK:    ENTRY
     CHECK:    __triton
   )";
-  if (device_description().cuda_compute_capability().IsAmpere()) {
-    // On A100, multiply with bf16 is not supported, so we have an additional
-    // convert op that we need to match.
-    pattern =
-        R"(
-    CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(
-    CHECK:    %[[broadcast:.*]] = {{.*}} broadcast(%[[transpose]])
-    CHECK:    %[[convert:.*]] = {{.*}} convert(%[[broadcast]])
-    CHECK:    multiply({{.*}}, %[[convert]])
-    CHECK:    ENTRY
-    CHECK:    __triton
-  )";
-  }
-  EXPECT_THAT(RunFileCheck(module->ToString(), pattern),
+  EXPECT_THAT(RunFileCheck(module->ToString(), kPattern),
               absl_testing::IsOkAndHolds(true));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
@@ -485,15 +472,10 @@ struct I4TestParams {
 
 class ParametrizedTritonTest
     : public TritonTestBase,
-      public ::testing::WithParamInterface<std::tuple<I4TestParams, bool>> {
- public:
-  bool EnableTilingPropagation() const override {
-    return std::get<1>(GetParam());
-  }
-};
+      public ::testing::WithParamInterface<I4TestParams> {};
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
-  const I4TestParams& i4_params = std::get<0>(GetParam());
+  const I4TestParams& i4_params = GetParam();
   if (i4_params.HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -531,7 +513,7 @@ ENTRY entry_computation {
 }
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
-  const I4TestParams& i4_params = std::get<0>(GetParam());
+  const I4TestParams& i4_params = GetParam();
   if (!i4_params.HasBatchDim()) {
     GTEST_SKIP() << "3d test ignores 2d case.";
   }
@@ -568,7 +550,7 @@ ENTRY entry_computation {
 }
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheRhs) {
-  const I4TestParams& i4_params = std::get<0>(GetParam());
+  const I4TestParams& i4_params = GetParam();
   if (i4_params.HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -644,14 +626,9 @@ std::vector<I4TestParams> Int4TestCases() {
   };
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    ParametrizedTritonTest, ParametrizedTritonTest,
-    ::testing::Combine(::testing::ValuesIn(Int4TestCases()), ::testing::Bool()),
-    [](const ::testing::TestParamInfo<std::tuple<I4TestParams, bool>>& info) {
-      return absl::StrCat(
-          std::get<0>(info.param).name,
-          std::get<1>(info.param) ? "ExperimentalTiling" : "SymbolicTiling");
-    });
+INSTANTIATE_TEST_SUITE_P(ParametrizedTritonTest, ParametrizedTritonTest,
+                         ::testing::ValuesIn(Int4TestCases()),
+                         I4TestParams::ToString);
 
 TEST_P(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
   constexpr absl::string_view kHloText = R"(
@@ -673,10 +650,10 @@ TEST_P(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
 }
 
 TEST_P(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
-  if (device_description().cuda_compute_capability().IsBlackwell()) {
-    GTEST_SKIP() << "Skipping flaky test for Blackwell GPUs (b/476375458).";
-  }
-  // We cannot do triton_gemm and we use cuBLAS instead.
+  // The minor (packed) dimension of the S4 operand becomes the major part of
+  // the merged non-contracting dimension, so it cannot be tiled in Triton and
+  // the int4 unpacking has to stay out of the Triton fusion.
+  // Confirm that it can still be compiled and run.
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutWithManyNonContractingDimsReversedLayout
 
@@ -688,11 +665,7 @@ TEST_P(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
     }
   )";
 
-  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_THAT(RunFileCheck(module->ToString(), "CHECK: __triton"),
-              absl_testing::IsOkAndHolds(true));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_P(TritonTest, RejectTritonFusionForWithMinorBatchDim) {

@@ -167,6 +167,7 @@ API docstring: tensorflow.nn
 
 import functools
 import numbers
+import sys
 
 import numpy as np
 
@@ -236,6 +237,13 @@ def _get_sequence(value, n, channel_index, name):
     value = [value]
   else:
     value = list(value)  # Try casting to a list.
+
+  for v in value:
+    if isinstance(v, int) and (v > sys.maxsize or v < -sys.maxsize - 1):
+      if context.executing_eagerly():
+        raise OverflowError(f"{name} value {v} exceeds 64-bit integer limit")
+      else:
+        raise ValueError(f"{name} value {v} exceeds 64-bit integer limit")
 
   len_value = len(value)
 
@@ -1195,6 +1203,160 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
+def _check_dilated_convolution_shapes(
+    input_tensor,
+    filters,
+    dilations,
+    padding,
+    num_batch_dims,
+    channels_first,
+    num_spatial_dims,
+):
+  """Raises a descriptive error if a dilated convolution has no window.
+
+  `tf.nn.convolution` evaluates dilated convolutions with
+  `with_space_to_batch`, which subsamples the input into blocks and convolves
+  each block densely. When the dilated filter is larger than the input, no
+  valid window exists. `tf.function` then fails with an opaque
+  negative-dimension error, while eager mode silently returns a tensor of the
+  wrong shape, because the inner convolution returns a tensor shaped like its
+  input instead of the empty output (#113319). Validating the shapes up front
+  gives both execution modes the same descriptive error.
+
+  Shapes that are not statically known are left for the run-time assertion in
+  `_assert_dilated_convolution_fits`. "SAME" padding always admits an output
+  and is not checked. A malformed `input`, `filters` or `padding` (unknown or
+  too small a rank, or a padding list that is too short) is left for the core
+  convolution code, which already reports it with a better message than an
+  `IndexError` from here would.
+
+  Args:
+    input_tensor: The `input` argument of `convolution_internal`.
+    filters: The `filters` argument of `convolution_internal`.
+    dilations: The dilation rate, a list of `num_spatial_dims` positive ints.
+    padding: The `padding` argument of `convolution_internal`.
+    num_batch_dims: The number of leading batch dimensions of `input`.
+    channels_first: Whether the channel dimension precedes the spatial ones.
+    num_spatial_dims: The number of spatial dimensions, 1, 2 or 3.
+
+  Raises:
+    ValueError: If the dilated filter does not fit in the padded input.
+  """
+  if all(d == 1 for d in dilations):
+    return
+
+  spatial_start = num_batch_dims + 1 if channels_first else num_batch_dims
+  if isinstance(padding, str):
+    if padding == "SAME":
+      # `with_space_to_batch` pads enough for an output to always exist.
+      return
+    if padding != "VALID":
+      return
+    spatial_pads = [(0, 0)] * num_spatial_dims
+  else:
+    # Drop the batch and channel dimensions, keep the spatial ones.
+    spatial_pads = [
+        list(p)
+        for p in padding[spatial_start : spatial_start + num_spatial_dims]
+    ]
+    if len(spatial_pads) < num_spatial_dims:
+      return
+
+  if input_tensor.shape.rank is None or filters.shape.rank is None:
+    return
+  if (
+      input_tensor.shape.rank < num_spatial_dims + num_batch_dims + 1
+      or filters.shape.rank < num_spatial_dims
+  ):
+    # Let the core convolution code report the rank error it already raises.
+    return
+  in_shape = input_tensor.shape.as_list()
+  f_shape = filters.shape.as_list()
+  if None in in_shape or None in f_shape:
+    return
+
+  in_spatial = in_shape[spatial_start : spatial_start + num_spatial_dims]
+  # The spatial dimensions of `filters` come first regardless of the data
+  # format.
+  f_spatial = f_shape[:num_spatial_dims]
+
+  for i in range(num_spatial_dims):
+    available = in_spatial[i] + spatial_pads[i][0] + spatial_pads[i][1]
+    dilated = (f_spatial[i] - 1) * dilations[i] + 1
+    if available < dilated:
+      raise ValueError(
+          f"Input spatial dimension {i} ({in_spatial[i]}) plus padding "
+          f"({spatial_pads[i][0] + spatial_pads[i][1]}) is too small for "
+          f"dilation rate {dilations[i]} with filter size {f_spatial[i]}: the "
+          f"dilated filter spans {dilated} values but only {available} are "
+          "available, so the convolution has no valid window."
+      )
+
+
+def _assert_dilated_convolution_fits(
+    input_tensor,
+    filters,
+    dilations,
+    padding,
+    num_batch_dims,
+    channels_first,
+    num_spatial_dims,
+):
+  """Guards a dilated convolution whose spatial shapes are dynamic.
+
+  `_check_dilated_convolution_shapes` cannot see shapes that are unknown at
+  tracing time (a `tf.function` accepting a `TensorSpec` with `None`
+  dimensions). Without a run-time check, an input too small for the dilated
+  filter makes the convolution silently return a wrongly shaped result instead
+  of failing, which is the eager half of #113319.
+
+  Args:
+    input_tensor: The `input` argument of `convolution_internal`.
+    filters: The `filters` argument of `convolution_internal`.
+    dilations: The dilation rate, a list of `num_spatial_dims` positive ints.
+    padding: The `padding` argument of `convolution_internal`.
+    num_batch_dims: The number of leading batch dimensions of `input`.
+    channels_first: Whether the channel dimension precedes the spatial ones.
+    num_spatial_dims: The number of spatial dimensions, 1, 2 or 3.
+
+  Returns:
+    `input`, with a control dependency on the shape assertion.
+  """
+  spatial_start = num_batch_dims + 1 if channels_first else num_batch_dims
+  if isinstance(padding, str):
+    pads = [0] * num_spatial_dims
+  else:
+    spatial_pads = [
+        list(p)
+        for p in padding[spatial_start : spatial_start + num_spatial_dims]
+    ]
+    if len(spatial_pads) < num_spatial_dims:
+      # The core convolution code reports the malformed padding already.
+      return input
+    pads = [p[0] + p[1] for p in spatial_pads]
+
+  in_shape = array_ops.shape(input_tensor)
+  f_shape = array_ops.shape(filters)
+  in_spatial = in_shape[spatial_start : spatial_start + num_spatial_dims]
+  f_spatial = f_shape[:num_spatial_dims]
+
+  pads_tensor = ops.convert_to_tensor(pads, dtype=in_spatial.dtype)
+  available = in_spatial + pads_tensor
+  dilated = (f_spatial - 1) * ops.convert_to_tensor(
+      dilations, dtype=f_spatial.dtype
+  ) + 1
+  check = check_ops.assert_greater_equal(
+      available,
+      dilated,
+      message=(
+          "Dilated convolution: the input (plus padding) is smaller than "
+          "the dilated filter, so there is no valid window."
+      ),
+  )
+  with ops.control_dependencies([check]):
+    return array_ops.identity(input_tensor)
+
+
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -1333,6 +1495,37 @@ def convolution_internal(
       else:
         strides = strides[1:-1]
         dilations = dilations[1:-1]
+
+      channels_first = channel_index == num_batch_dims
+      _check_dilated_convolution_shapes(
+          input,
+          filters,
+          dilations,
+          padding,
+          num_batch_dims,
+          channels_first,
+          num_spatial_dims,
+      )
+
+      # The check above only sees static shapes. When tracing a `tf.function`
+      # whose spatial dimensions are unknown, fall back to a run-time
+      # assertion so that an oversized dilated filter fails instead of
+      # silently producing a wrongly shaped result. "SAME" padding always
+      # admits an output.
+      if not (isinstance(padding, str) and padding == "SAME"):
+        in_shape = (
+            input.shape.as_list() if input.shape.rank is not None else None
+        )
+        if in_shape is None or None in in_shape:
+          input = _assert_dilated_convolution_fits(
+              input,
+              filters,
+              dilations,
+              padding,
+              num_batch_dims,
+              channels_first,
+              num_spatial_dims,
+          )
 
       op = Convolution(
           tensor_shape.as_shape(input.shape),
@@ -1552,28 +1745,29 @@ def pool(
   ```
 
   Args:
-    input: Tensor of rank N+2, of shape
-      `[batch_size] + input_spatial_shape + [num_channels]` if data_format does
-      not start with "NC" (default), or
+    input: Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
+      [num_channels]` if data_format does not start with "NC" (default), or
       `[batch_size, num_channels] + input_spatial_shape` if data_format starts
-      with "NC".  Pooling happens over the spatial dimensions only.
+      with "NC".  Pooling happens over the spatial dimensions only. For
+      `pooling_type="AVG"`, the dtype must be `float16`, `bfloat16`, `float32`,
+      or `float64`. Integer tensors must be explicitly cast to a supported
+      floating-point dtype before average pooling.
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
-    padding: The padding algorithm, must be "SAME" or "VALID".
-      See the "returns" section of `tf.nn.convolution` for details.
-    dilation_rate: Optional.  Dilation rate.  List of N ints >= 1.
-      Defaults to `[1]*N`.  If any value of dilation_rate is > 1, then all
-      values of strides must be 1.
-    strides: Optional.  Sequence of N ints >= 1.  Defaults to `[1]*N`.
-      If any value of strides is > 1, then all values of dilation_rate must be
-      1.
+    padding: The padding algorithm, must be "SAME" or "VALID". See the "returns"
+      section of `tf.nn.convolution` for details.
+    dilation_rate: Optional.  Dilation rate.  List of N ints >= 1. Defaults to
+      `[1]*N`.  If any value of dilation_rate is > 1, then all values of strides
+      must be 1.
+    strides: Optional.  Sequence of N ints >= 1.  Defaults to `[1]*N`. If any
+      value of strides is > 1, then all values of dilation_rate must be 1.
     name: Optional. Name of the op.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
       does not start with "NC"), or the second dimension (if `data_format`
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
-      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
-      For N=3, the valid values are "NDHWC" (default) and "NCDHW".
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW". For
+      N=3, the valid values are "NDHWC" (default) and "NCDHW".
     dilations: Alias for dilation_rate
 
   Returns:
@@ -1597,7 +1791,6 @@ def pool(
 
   Raises:
     ValueError: if arguments are invalid.
-
   """
   dilation_rate = deprecated_argument_lookup(
       "dilations", dilations, "dilation_rate", dilation_rate)
@@ -1732,11 +1925,23 @@ def pool_v2(
                  [0, N+1] + range(1, N+1))
   ```
 
+  Average pooling requires floating-point input. Integer tensors are not
+  automatically cast; use `tf.cast` before pooling:
+
+  >>> values = tf.reshape(tf.constant([1, 2, 3, 4]), [1, 2, 2, 1])
+  >>> result = tf.nn.pool(tf.cast(values, tf.float32), window_shape=[2, 2],
+  ...                     pooling_type="AVG", padding="VALID")
+  >>> result.numpy().tolist()
+  [[[[2.5]]]]
+
   Args:
     input: Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
       [num_channels]` if data_format does not start with "NC" (default), or
       `[batch_size, num_channels] + input_spatial_shape` if data_format starts
-      with "NC".  Pooling happens over the spatial dimensions only.
+      with "NC".  Pooling happens over the spatial dimensions only. For
+      `pooling_type="AVG"`, the dtype must be `float16`, `bfloat16`, `float32`,
+      or `float64`. Integer tensors must be explicitly cast to a supported
+      floating-point dtype before average pooling.
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
     strides: Optional. Sequence of N ints >= 1.  Defaults to `[1]*N`. If any
@@ -1912,8 +2117,9 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
         [batch, height, width, out_channels].
 
   Raises:
-    ValueError: If input/output depth does not match `filters`' shape, or if
-      padding is other than `'VALID'` or `'SAME'`.
+    ValueError: If input/output depth does not match `filters`' shape, if
+      `value` or `filters` is not rank 4, or if padding is other than
+      `'VALID'` or `'SAME'`.
 
   References:
     Multi-Scale Context Aggregation by Dilated Convolutions:
@@ -1932,6 +2138,10 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       (https://ieeexplore.ieee.org/abstract/document/6738831)
       ([pdf](https://arxiv.org/pdf/1302.1700.pdf))
   """
+  value = ops.convert_to_tensor(value, name="value")
+  filters = ops.convert_to_tensor(filters, name="filters")
+  value.shape.assert_has_rank(4)
+  filters.shape.assert_has_rank(4)
   return convolution(
       input=value,
       filter=filters,
@@ -2795,6 +3005,13 @@ def conv2d_transpose_v2(
     if data_format is None:
       data_format = "NHWC"
     channel_index = 1 if data_format.startswith("NC") else 3
+
+    filters = ops.convert_to_tensor(filters, name="filters")
+    if filters.shape.rank is not None and filters.shape.rank != 4:
+      raise ValueError(
+          "`filters` must be 4-dimensional. "
+          f"Received: filters with shape {filters.shape}"
+      )
 
     strides = _get_sequence(strides, 2, channel_index, "strides")
     dilations = _get_sequence(dilations, 2, channel_index, "dilations")
@@ -4510,7 +4727,8 @@ def avg_pool_v2(input, ksize, strides, padding, data_format=None, name=None):  #
     input:  Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
       [num_channels]` if `data_format` does not start with "NC" (default), or
       `[batch_size, num_channels] + input_spatial_shape` if data_format starts
-      with "NC". Pooling happens over the spatial dimensions only.
+      with "NC". Pooling happens over the spatial dimensions only. Must have
+      dtype `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1`, `N` or `N+2`. The size
       of the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
@@ -4576,13 +4794,13 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC",
 
   Args:
     value: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
-      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+      `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
     input: Alias for value.
@@ -4620,7 +4838,7 @@ def avg_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):  
 
   Args:
     input: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
-      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+      `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
@@ -4662,7 +4880,8 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
   Note internally this op reshapes and uses the underlying 2d operation.
 
   Args:
-    input: A 3-D `Tensor` of the format specified by `data_format`.
+    input: A 3-D `Tensor` of the format specified by `data_format` and type
+      `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1` or `3`. The size of the
       window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1` or `3`. The stride of
@@ -4708,7 +4927,7 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
 
   Args:
     input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]` and
-      type `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+      type `float16`, `bfloat16`, `float32`, or `float64`.
     ksize: An int or list of `ints` that has length `1`, `3` or `5`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The

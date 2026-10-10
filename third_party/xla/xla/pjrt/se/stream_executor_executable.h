@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
@@ -78,12 +79,8 @@ class StreamExecutorExecutable : public PjRtExecutable {
   absl::StatusOr<CompileOptions> GetCompileOptions() const override {
     return compile_options_;
   }
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override {
-    if (hlo_module_ == nullptr) {
-      return std::vector<std::shared_ptr<HloModule>>{};
-    }
-    return std::vector<std::shared_ptr<HloModule>>{hlo_module_};
+  absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const override {
+    return hlo_module_;
   }
 
   const std::shared_ptr<HloModule>& hlo_module() const { return hlo_module_; }
@@ -111,6 +108,10 @@ class StreamExecutorExecutable : public PjRtExecutable {
   }
 
   const std::optional<HloModuleProto>& unoptimized_hlo_module_proto() const {
+    return unoptimized_hlo_module_proto_;
+  }
+
+  std::optional<HloModuleProto> GetUnoptimizedHloModule() const override {
     return unoptimized_hlo_module_proto_;
   }
 

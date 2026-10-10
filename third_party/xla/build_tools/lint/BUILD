@@ -95,3 +95,31 @@ pytype_strict_binary(
     name = "tags",
     srcs = ["tags.py"],
 )
+
+pytype_strict_library(
+    name = "check_dwyu",
+    srcs = ["check_dwyu.py"],
+)
+
+py_test(
+    name = "check_dwyu_test",
+    srcs = ["check_dwyu_test.py"],
+    deps = [
+        ":check_dwyu",
+    ],
+)
+
+pytype_strict_library(
+    name = "run_dwyu",
+    srcs = ["run_dwyu.py"],
+)
+
+py_test(
+    name = "run_dwyu_test",
+    srcs = ["run_dwyu_test.py"],
+    data = ["//:.bant-macros"],  # copybara:comment_replace data = ["//third_party/xla:.bant-macros"],
+    deps = [
+        ":check_dwyu",
+        ":run_dwyu",
+    ],
+)

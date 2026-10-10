@@ -416,6 +416,9 @@ add {
   // CHECK-NEXT:  mhlo.compare LE, %arg0, %arg1, TOTALORDER : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   %compare.5 = pred[3] compare(Arg_0.1, Arg_1.2), direction=LE, type=TOTALORDER
 
+  // CHECK-NEXT:  mhlo.compare LT, %arg0, %arg1, WEAKORDER : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
+  %compare.weak = pred[3] compare(Arg_0.1, Arg_1.2), direction=LT, order=WEAK
+
   // Requires broadcast of compatible tensors.
   // CHECK-NEXT:  mhlo.compare GT, %arg0, %arg2 : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   ROOT %compare.6 = pred[3] compare(Arg_0.1, Arg_2.3), direction=GT
@@ -2061,7 +2064,7 @@ add {
   ROOT %opt-barrier = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %args)
 }
 
-// CHECK-LABEL : func private parition_id
+// CHECK-LABEL: func private @partition_id
 %partition_id {
   // CHECK: mhlo.partition_id : tensor<ui32>
   ROOT %pid = u32[] partition-id()
@@ -2075,7 +2078,7 @@ add {
   // CHECK: mhlo.round_nearest_even %[[ARG0]] : tensor<2xf32>
 }
 
-// CHECK-LABEL : func private domain
+// CHECK-LABEL: func private @domain
 %domain (Arg_0.1: u32[]) -> u32[] {
   // CHECK: "mhlo.domain"(
   // CHECK-SAME: {entry_metadata = "{maximal device=1}", exit_metadata = "{}", kind = #mhlo<kind sharding>}
@@ -2219,3 +2222,19 @@ add_original_value {
   // CHECK:  }) {mhlo.original_value = #mhlo.original_value<false, [<[], <"c", []>>]>}
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add_original_value, origin={{"c"}}
 }
+
+// Test tuple parameter original value
+// CHECK-LABEL: func.func private @test_tuple_original_value
+// CHECK-SAME:    %arg0: tuple<tensor<f32>, tensor<f32>> {mhlo.original_value = #mhlo.original_value<false, [<[0], <"p0", []>>, <[1], <"p1", []>>]>}
+// FLATTEN-CHECK-LABEL: func private @test_tuple_original_value
+// FLATTEN-CHECK-SAME:    %arg0: tensor<f32> {mhlo.original_value = #mhlo.original_value<false, [<[], <"p0", []>>]>}
+// FLATTEN-CHECK-SAME:    %arg1: tensor<f32> {mhlo.original_value = #mhlo.original_value<false, [<[], <"p1", []>>]>}
+%test_tuple_original_value (param.1: (f32[], f32[])) -> f32[] {
+  %param.1 = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+  %gte.0 = f32[] get-tuple-element(%param.1), index=0
+  %gte.1 = f32[] get-tuple-element(%param.1), index=1
+  ROOT %add = f32[] add(%gte.0, %gte.1)
+}
+
+
+

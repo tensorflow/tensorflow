@@ -60,6 +60,9 @@ class CudaKernel : public Kernel {
   void set_gpu_function(CUfunction gpu_function) {
     gpu_function_ = gpu_function;
   }
+  PlatformSpecificHandle platform_specific_handle() const override {
+    return PlatformSpecificHandle{gpu_function_};
+  }
 
   // Collects metadata for the specified kernel.
   absl::StatusOr<KernelMetadata> GetKernelMetadata();

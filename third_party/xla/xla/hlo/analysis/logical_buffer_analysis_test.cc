@@ -680,6 +680,49 @@ TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBinding) {
   VerifyBufferDefinedAt(async_done, {});
 }
 
+// Verifies that omitting output_to_operand_aliasing on an AsyncStart wrapping
+// DUS causes LogicalBufferAnalysis to mint a brand-new logical buffer for
+// Output {1} (causing memory doubling and copy insertion), whereas annotating
+// it prevents new buffer definition.
+TEST_F(LogicalBufferAnalysisTest, AsyncDUSBufferAllocationWithoutAliasing) {
+  absl::string_view hlo_str = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[1024] parameter(0)
+    p1 = f32[256] parameter(1)
+    p2 = s32[] parameter(2)
+    ROOT dus = f32[1024] dynamic-update-slice(p0, p1, p2)
+  }
+
+  ENTRY entry {
+    p0 = f32[1024] parameter(0)
+    p1 = f32[256] parameter(1)
+    p2 = s32[] parameter(2)
+    start_unannotated = ((f32[1024], f32[256], s32[]), f32[1024], s32[]) async-start(p0, p1, p2),
+        calls=async_computation
+    done_unannotated = f32[1024] async-done(start_unannotated)
+    start_annotated = ((f32[1024], f32[256], s32[]), f32[1024], s32[]) async-start(p0, p1, p2),
+        calls=async_computation, output_to_operand_aliasing={ {1}: (0, {}) }
+    done_annotated = f32[1024] async-done(start_annotated)
+    ROOT tuple = (f32[1024], f32[1024]) tuple(done_unannotated, done_annotated)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(analysis_, LogicalBufferAnalysis::Run(module.get()));
+
+  HloInstruction* unannotated =
+      FindInstruction(module.get(), "start_unannotated");
+  HloInstruction* annotated = FindInstruction(module.get(), "start_annotated");
+
+  // Output {1} defines a new buffer when unannotated:
+  VerifyBufferDefinedAt(unannotated, {1});
+
+  // Output {1} is aliased to operand 0 when annotated, so NO new buffer is
+  // defined:
+  VerifyNoBufferDefinedAt(annotated, {1});
+}
+
 TEST_F(LogicalBufferAnalysisTest, AsyncStartLateBindingWithAliasing) {
   absl::string_view hlo_str = R"(
   HloModule module

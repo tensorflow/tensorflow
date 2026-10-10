@@ -58,6 +58,7 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
 
   TF_LITE_ENSURE(context, axis_value >= 0);
   TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
+  TF_LITE_ENSURE(context, axis_value <= INT16_MAX);
 
   const int input_size = SizeOfDimension(input, axis_value);
   TF_LITE_ENSURE(context, num_splits != 0);
@@ -128,6 +129,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE(context, axis_value >= 0);
   TF_LITE_ENSURE(context, axis_value < NumDimensions(op_context.input));
+  TF_LITE_ENSURE(context, axis_value <= INT16_MAX);
 
   // TODO(b/173221795): Our usage of VectorOfTensors could be optimized by
   // calculating it in Prepare, unless we defer shape calculation.
@@ -138,7 +140,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     VectorOfTensors<scalar> all_outputs(*context, *node->outputs);    \
     tflite::SplitParams op_params;                                    \
     op_params.num_split = NumOutputs(node);                           \
-    op_params.axis = axis_value;                                      \
+    op_params.axis = static_cast<int16_t>(axis_value);                \
     reference_ops::Split(op_params, GetTensorShape(op_context.input), \
                          GetTensorData<scalar>(op_context.input),     \
                          all_outputs.shapes(), all_outputs.data());   \

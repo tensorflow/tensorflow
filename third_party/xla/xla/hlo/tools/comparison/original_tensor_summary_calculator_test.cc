@@ -2771,6 +2771,127 @@ TEST(OriginalTensorSummaryCalculatorTest, PropagateIterationIndexToVariable) {
                   ScopeInstruction::Create("while_orig", 5)}));
 }
 
+TEST(OriginalTensorSummaryCalculatorTest,
+     PropagateIterationIndexToVariableIterationZero) {
+  const TensorKey opt_tensor_key{/*instruction_name=*/"opt_instr"};
+  absl::flat_hash_map<TensorKey, std::vector<int64_t>> opt_dims = {
+      {opt_tensor_key, {2, 2}}};
+
+  // call_map: while_opt -> [while_orig] where while_orig has iteration_index =
+  // -2, which means this is a placeholding variable.
+  absl::flat_hash_map<std::string, std::vector<ScopeInstruction>> call_map = {
+      {"while_opt", {ScopeInstruction::Create("while_orig", -2)}}};
+
+  absl::flat_hash_map<TensorKey, absl::InlinedVector<OriginalTensorInfo, 1>>
+      orig_map = {{opt_tensor_key,
+                   {{/*original_scoped_tensor_key=*/ScopedTensorKey{
+                         /*tensor_key=*/TensorKey{/*instruction_name=*/
+                                                  "orig_instr"}},
+                     /*tensor_transformation=*/nullptr}}}};
+
+  std::vector<CallbackResult> results;
+  OriginalTensorSummaryCalculator calculator(
+      std::make_shared<
+          const absl::flat_hash_map<TensorKey, std::vector<int64_t>>>(
+          std::move(opt_dims)),
+      std::make_shared<const absl::flat_hash_map<
+          std::string, std::vector<ScopeInstruction>>>(std::move(call_map)),
+      std::make_shared<const absl::flat_hash_map<
+          TensorKey, absl::InlinedVector<OriginalTensorInfo, 1>>>(
+          std::move(orig_map)),
+      [&](const AbsoluteScopedTensorKey& key,
+          std::shared_ptr<const TensorTransformation> pending,
+          const OriginalTensorSummary& summary) {
+        results.push_back({key, std::move(pending), summary});
+        return absl::OkStatus();
+      });
+
+  // Optimized tensor has scope [while_opt] with iteration index 0
+  AbsoluteScopedTensorKey opt_key{
+      /*scope_instructions=*/{ScopeInstruction::Create("while_opt", 0)},
+      /*tensor_key=*/opt_tensor_key,
+  };
+
+  std::vector<DimSplitSpec> split_spec = {};
+  FloatSummary shard_summary = CreateSummary({1.0f}, split_spec);
+  ShardTensorSummary shard = {0, shard_summary};
+
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
+  ASSERT_THAT(results, SizeIs(1));
+
+  // The resulting original tensor key should have scope [while_orig] with
+  // iteration index 0 (not placeholder -2).
+  EXPECT_THAT(results[0].original_tensor_key.tensor_key.instruction_name,
+              Eq("orig_instr"));
+  EXPECT_THAT(results[0].original_tensor_key.scope_instructions,
+              Eq(std::vector<ScopeInstruction>{
+                  ScopeInstruction::Create("while_orig", 0)}));
+  EXPECT_THAT(results[0].original_tensor_key.scope_instructions[0].ToString(),
+              Eq("while_orig"));
+}
+
+TEST(OriginalTensorSummaryCalculatorTest,
+     PropagateIterationIndexToVariableIterationZeroMultiScope) {
+  const TensorKey opt_tensor_key{/*instruction_name=*/"opt_instr"};
+  absl::flat_hash_map<TensorKey, std::vector<int64_t>> opt_dims = {
+      {opt_tensor_key, {2, 2}}};
+
+  // call_map: while_opt -> [scope1, while_orig] where while_orig has
+  // iteration_index = -2, which means this is a placeholding variable.
+  absl::flat_hash_map<std::string, std::vector<ScopeInstruction>> call_map = {
+      {"while_opt",
+       {ScopeInstruction::Create("scope1"),
+        ScopeInstruction::Create("while_orig", -2)}}};
+
+  absl::flat_hash_map<TensorKey, absl::InlinedVector<OriginalTensorInfo, 1>>
+      orig_map = {{opt_tensor_key,
+                   {{/*original_scoped_tensor_key=*/ScopedTensorKey{
+                         /*tensor_key=*/TensorKey{/*instruction_name=*/
+                                                  "orig_instr"}},
+                     /*tensor_transformation=*/nullptr}}}};
+
+  std::vector<CallbackResult> results;
+  OriginalTensorSummaryCalculator calculator(
+      std::make_shared<
+          const absl::flat_hash_map<TensorKey, std::vector<int64_t>>>(
+          std::move(opt_dims)),
+      std::make_shared<const absl::flat_hash_map<
+          std::string, std::vector<ScopeInstruction>>>(std::move(call_map)),
+      std::make_shared<const absl::flat_hash_map<
+          TensorKey, absl::InlinedVector<OriginalTensorInfo, 1>>>(
+          std::move(orig_map)),
+      [&](const AbsoluteScopedTensorKey& key,
+          std::shared_ptr<const TensorTransformation> pending,
+          const OriginalTensorSummary& summary) {
+        results.push_back({key, std::move(pending), summary});
+        return absl::OkStatus();
+      });
+
+  // Optimized tensor has scope [while_opt] with iteration index 0
+  AbsoluteScopedTensorKey opt_key{
+      /*scope_instructions=*/{ScopeInstruction::Create("while_opt", 0)},
+      /*tensor_key=*/opt_tensor_key,
+  };
+
+  std::vector<DimSplitSpec> split_spec = {};
+  FloatSummary shard_summary = CreateSummary({1.0f}, split_spec);
+  ShardTensorSummary shard = {0, shard_summary};
+
+  ASSERT_THAT(calculator.ProcessShardSummary(opt_key, shard),
+              absl_testing::IsOk());
+  ASSERT_THAT(results, SizeIs(1));
+
+  EXPECT_THAT(results[0].original_tensor_key.tensor_key.instruction_name,
+              Eq("orig_instr"));
+  EXPECT_THAT(results[0].original_tensor_key.scope_instructions,
+              Eq(std::vector<ScopeInstruction>{
+                  ScopeInstruction::Create("scope1"),
+                  ScopeInstruction::Create("while_orig", 0)}));
+  EXPECT_THAT(results[0].original_tensor_key.scope_instructions[1].ToString(),
+              Eq("while_orig"));
+}
+
 TEST(OriginalTensorSummaryCalculatorTest, PropagateIterationIndexToWhileLoop) {
   const TensorKey opt_tensor_key{/*instruction_name=*/"opt_instr"};
   absl::flat_hash_map<TensorKey, std::vector<int64_t>> opt_dims = {

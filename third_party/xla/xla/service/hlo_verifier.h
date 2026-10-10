@@ -253,6 +253,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleRngBitGenerator(HloInstruction*) override;
   absl::Status HandleRngGetAndUpdateState(HloInstruction*) override;
   absl::Status HandleReverse(HloInstruction* reverse) override;
+  absl::Status HandleShuffle(HloInstruction* shuffle) override;
   absl::Status HandleSort(HloInstruction* hlo) override;
   absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleConstant(HloInstruction* constant) override;
@@ -324,6 +325,7 @@ class ShapeVerifier : public DfsHloVisitor {
   static absl::Status CheckParameterCount(
       const HloInstruction* calling_instruction,
       const HloComputation* computation, int expected);
+  static absl::Status CheckCompositeCall(const HloInstruction* call);
 
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   absl::Status CheckUnaryShape(const HloInstruction* instruction);

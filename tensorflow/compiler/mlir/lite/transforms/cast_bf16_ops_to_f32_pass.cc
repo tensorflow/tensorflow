@@ -68,11 +68,17 @@ class CastBf16OpsToF32 : public RewritePattern {
     // Skip cast ops, constants, zero-operand ops, terminators, return-like ops,
     // region-bearing ops (e.g. tfl.while, tfl.if), and call ops to prevent type
     // mismatches with nested block arguments or function signatures.
+    //
+    // stablehlo.composite is also skipped: its operand/result types must stay
+    // in sync with its decomposition function's signature, which this pass does
+    // not rewrite. It is matched by name because this pass intentionally does
+    // not depend on the StableHLO dialect.
     if (isa<mlir::TFL::CastOp>(op) || op.hasTrait<OpTrait::ConstantLike>() ||
         op.getName().hasTrait<OpTrait::ZeroOperands>() ||
         op.hasTrait<OpTrait::IsTerminator>() ||
         op.hasTrait<OpTrait::ReturnLike>() || op.getNumRegions() > 0 ||
-        isa<CallOpInterface>(op)) {
+        isa<CallOpInterface>(op) ||
+        op.getName().getStringRef() == "stablehlo.composite") {
       return failure();
     }
     for (Value input : op.getOperands()) {
@@ -142,6 +148,12 @@ class RemoveUnneededCastOps : public OpRewritePattern<mlir::TFL::CastOp> {
     if (orig_input.getType() != op.getType()) {
       return failure();
     }
+    // Only fold round trips through bf16, which is what this pass introduces.
+    // Other narrowing round trips (e.g. f32 -> f16 -> f32) are explicit
+    // precision changes in the source program and must be preserved.
+    if (!getElementTypeOrSelf(prev_cast.getType()).isBF16()) {
+      return failure();
+    }
     rewriter.replaceOp(op, orig_input);
     return success();
   }
@@ -153,7 +165,6 @@ void CastBf16OpsToF32Pass::runOnOperation() {
   MLIRContext& ctx = getContext();
   RewritePatternSet patterns(&ctx);
   func::FuncOp func_op = getOperation();
-
   patterns.add<CastBf16OpsToF32, RemoveUnneededCastOps>(&ctx);
 
   if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {

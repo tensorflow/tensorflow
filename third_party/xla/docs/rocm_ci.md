@@ -371,7 +371,7 @@ The runner pool and container for this job are:
 
 ```yaml
 {
-  pool: "linux-x86-n2-16",
+  pool: "linux-x86-n4-16",
   container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
   name: "XLA Linux x86 GPU ROCm",
   repo: "openxla/xla",

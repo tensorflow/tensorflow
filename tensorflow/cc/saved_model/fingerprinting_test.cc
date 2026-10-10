@@ -17,15 +17,17 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
@@ -215,11 +217,10 @@ TEST(FingerprintingTest, CreateFingerprintDefPbEmptyMetaGraphsReturnsError) {
   SavedModel saved_model;
   TF_ASSERT_OK(WriteBinaryProto(Env::Default(), pb_file, saved_model));
 
-  absl::StatusOr<FingerprintDef> result = CreateFingerprintDef(model_dir);
-  EXPECT_FALSE(result.ok());
-  EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ(result.status().message(),
-            "SavedModel (.pb) contains no MetaGraphs.");
+  EXPECT_THAT(
+      CreateFingerprintDef(model_dir).status(),
+      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             "SavedModel (.pb) contains no MetaGraphs."));
 }
 
 }  // namespace

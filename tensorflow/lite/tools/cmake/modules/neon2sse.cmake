@@ -40,4 +40,5 @@ endif()
 add_subdirectory(
   "${neon2sse_SOURCE_DIR}"
   "${neon2sse_BINARY_DIR}"
+  EXCLUDE_FROM_ALL
 )

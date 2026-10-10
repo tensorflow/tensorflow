@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/mlir/fingerprint_utils.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/env.h"
@@ -277,10 +278,15 @@ void IfrtToDotPass::runOnOperation() {
   std::string module_name = module_op.getName().value_or("unknown").str();
   // Include the module fingerprint in the file name to avoid exporting a
   // module multiple times.
-  std::string file_path =
-      tsl::io::JoinPath(dot_graph_dump_to,
-                        absl::StrCat("ifrt_", module_name, "_",
-                                     MlirModuleFingerprint(module_op), ".dot"));
+  absl::StatusOr<uint64_t> fingerprint = FingerprintModuleOp(module_op);
+  if (!fingerprint.ok()) {
+    LOG(WARNING) << "Failed to get fingerprint for module " << module_name
+                 << ": " << fingerprint.status();
+    return;
+  }
+  std::string file_path = tsl::io::JoinPath(
+      dot_graph_dump_to,
+      absl::StrCat("ifrt_", module_name, "_", *fingerprint, ".dot"));
   std::unique_ptr<tsl::WritableFile> f;
   if (const absl::Status status =
           tsl::Env::Default()->NewWritableFile(file_path, &f);

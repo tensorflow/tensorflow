@@ -415,5 +415,18 @@ TEST(CachingCompilationProviderTest,
   });
 }
 
+TEST(CachingCompilationProviderTest,
+     GetLatestPtxIsaVersionDelegatesToUnderlyingProvider) {
+  auto mock_compilation_provider = std::make_unique<MockCompilationProvider>();
+  EXPECT_CALL(*mock_compilation_provider, GetLatestPtxIsaVersion)
+      .WillOnce(Return(92));
+
+  CachingCompilationProvider caching_compilation_provider(
+      std::move(mock_compilation_provider));
+
+  EXPECT_THAT(caching_compilation_provider.GetLatestPtxIsaVersion(),
+              absl_testing::IsOkAndHolds(92));
+}
+
 }  // namespace
 }  // namespace stream_executor::cuda

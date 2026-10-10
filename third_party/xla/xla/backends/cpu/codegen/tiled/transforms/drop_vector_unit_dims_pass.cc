@@ -38,8 +38,6 @@ class DropVectorUnitDimsPass
     mlir::RewritePatternSet patterns(context);
     mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
     mlir::vector::populateDropUnitDimWithShapeCastPatterns(patterns);
-    mlir::vector::populateDropInnerMostUnitDimsXferOpPatterns(patterns);
-    mlir::vector::populateVectorTransferDropUnitDimsPatterns(patterns);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();

@@ -948,8 +948,10 @@ def central_crop(image, central_fraction):
         return image
     else:
       assert_ops = _assert(
-          math_ops.logical_or(central_fraction > 0.0, central_fraction <= 1.0),
-          ValueError, 'central_fraction must be within (0, 1]')
+          math_ops.logical_and(central_fraction > 0.0, central_fraction <= 1.0),
+          ValueError,
+          'central_fraction must be within (0, 1]',
+      )
       image = control_flow_ops.with_dependencies(assert_ops, image)
 
     _AssertAtLeast3DImage(image)
@@ -3310,9 +3312,59 @@ def encode_png(image, compression=-1, name=None):
 
 
 @tf_export(
+    'io.encode_jxl',
+    'image.encode_jxl',
+    v1=['io.encode_jxl', 'image.encode_jxl'],
+)
+@dispatch.add_dispatch_support
+def encode_jxl(image, quality=95.0, effort=7, name=None):
+  r"""JPEG XL-encode an image.
+
+  `image` is a rank-N Tensor of type uint8 or uint16 with shape `batch_dims +
+  [height, width, channels]`, where `channels` is:
+
+  *   1: for grayscale.
+  *   3: for RGB.
+  *   4: for RGBA.
+
+  `quality` is a JPEG-style quality factor in `[0.0, 100.0]`. It is mapped
+  internally to a JPEG XL Butteraugli distance using the same mapping as
+  `cjxl -q`: `100.0` encodes losslessly, `95.0` (the default) is high-quality
+  lossy encoding matching `encode_jpeg`, `90.0` is visually lossless, and
+  lower values compress more. Quality factors are not comparable across
+  codecs, so a given `quality` will not produce the same file size or visual
+  quality as the same value passed to `tf.io.encode_jpeg`.
+
+  The `effort` parameter (1 to 9) controls compression effort (default 7).
+
+  Args:
+    image: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
+      Rank N >= 3 with shape `batch_dims + [height, width, channels]`.
+    quality: An optional `float`. Defaults to `95.0`. Quality factor in `[0.0,
+      100.0]`; `100.0` encodes losslessly, `95.0` is high-quality lossy, and
+      lower values compress more.
+    effort: An optional `int`. Defaults to `7`. Effort setting from 1 (fastest)
+      to 9 (slowest, best compression).
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `string`.
+  """
+  image = ops.convert_to_tensor(image)
+  image = _AssertAtLeast3DImage(image)
+  return gen_image_ops.encode_jxl(
+      image,
+      quality=quality,
+      effort=effort,
+      name=name,
+  )
+
+
+@tf_export(
     'io.decode_image',
     'image.decode_image',
-    v1=['io.decode_image', 'image.decode_image'])
+    v1=['io.decode_image', 'image.decode_image'],
+)
 @dispatch.add_dispatch_support
 def decode_image(contents,
                  channels=None,
@@ -4260,21 +4312,33 @@ def psnr(a, b, max_val, name=None):
     and shape [batch_size, 1].
   """
   with ops.name_scope(name, 'PSNR', [a, b]):
+    # Convert first: max_val is cast to the dtype of `a` below, and the shape
+    # check reads their static shapes, neither of which an unconverted value
+    # has.
+    a = ops.convert_to_tensor(a, name='a')
+    b = ops.convert_to_tensor(b, name='b')
+
     # Need to convert the images to float32.  Scale max_val accordingly so that
     # PSNR is computed correctly.
     max_val = math_ops.cast(max_val, a.dtype)
     max_val = convert_image_dtype(max_val, dtypes.float32)
     a = convert_image_dtype(a, dtypes.float32)
     b = convert_image_dtype(b, dtypes.float32)
-    mse = math_ops.reduce_mean(math_ops.squared_difference(a, b), [-3, -2, -1])
-    psnr_val = math_ops.subtract(
-        20 * math_ops.log(max_val) / math_ops.log(10.0),
-        np.float32(10 / np.log(10)) * math_ops.log(mse),
-        name='psnr')
 
+    # Check the shapes before reducing, so a rank below 3 is reported as such
+    # rather than surfacing from the reduction. This has to come after the
+    # conversions above: the check compares the two shapes with an op that
+    # needs both images to have the same dtype.
     _, _, checks = _verify_compatible_image_shapes(a, b)
     with ops.control_dependencies(checks):
-      return array_ops.identity(psnr_val)
+      a = array_ops.identity(a)
+
+    mse = math_ops.reduce_mean(math_ops.squared_difference(a, b), [-3, -2, -1])
+    return math_ops.subtract(
+        20 * math_ops.log(max_val) / math_ops.log(10.0),
+        np.float32(10 / np.log(10)) * math_ops.log(mse),
+        name='psnr',
+    )
 
 
 def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):

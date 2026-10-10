@@ -642,34 +642,6 @@ class LazyCompilationTest(test.TestCase):
       self.assertTrue(InLabels(RunMetadataLabels(run_metadata), "_XlaRun"))
 
 
-class AutoClusteringWhileLoopTest(test.TestCase):
-  """Regression test for auto-clustering silently dropping while_loop output.
-
-  Auto-clustering used to lower functional control flow ops (While/If/Case)
-  to Switch/Merge before MarkForCompilationPass ran, so only fragments of a
-  loop body ended up in a cluster instead of the whole While op. That could
-  silently produce wrong results for some loop bodies, unlike
-  jit_compile=True which never lowers these ops in the first place.
-  """
-
-  def testWhileLoopOutputIsCorrectUnderAutoClustering(self):
-    config = NoRewriteSessionConfig()
-    config.graph_options.optimizer_options.global_jit_level = (
-        config_pb2.OptimizerOptions.ON_2
-    )
-
-    with session_lib.Session(config=config) as sess:
-      x = array_ops.placeholder(dtypes.float32)
-      c = lambda i, _: math_ops.less(i, 5)
-      b = lambda i, x: (i + 1, x + 1.0)
-      _, result = while_loop.while_loop(c, b, (constant_op.constant(0), x))
-
-      output = test_utils.RunWithWarmup(
-          sess, result, {x: np.array([1.0, 2.0, 3.0], dtype=np.float32)}
-      )
-      self.assertAllClose(output, np.array([6.0, 7.0, 8.0], dtype=np.float32))
-
-
 if __name__ == "__main__":
   os.environ["TF_XLA_FLAGS"] = ("--tf_xla_enable_lazy_compilation=true " +
                                 os.environ.get("TF_XLA_FLAGS", ""))

@@ -178,8 +178,7 @@ class CpuOptProvider : public CompiledOptProvider {
     // Fails to register if module does not have entry computation layout
     if (module.config().has_entry_computation_layout()) {
       RegisterPass<cpu::CpuLayoutAssignment>(
-          module.mutable_entry_computation_layout(), &target_machine_features,
-          nullptr);
+          module.mutable_entry_computation_layout(), &target_machine_features);
     }
 
     const int max_parallelism =
@@ -212,9 +211,6 @@ class CpuOptProvider : public CompiledOptProvider {
   llvm::TargetOptions CompilerTargetOptions(
       const HloModuleConfig& module_config) {
     llvm::TargetOptions target_options;
-    // Always allow FMA fusion. This increases precision instead of decreasing
-    // it.
-    target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
     return target_options;
   }
 };

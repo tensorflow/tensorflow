@@ -74,9 +74,9 @@ namespace xla {
 //   group state.
 class HloOriginalValueGrouper {
  public:
-  using GroupReadyCallback = std::function<void(
-      int64_t callback_id, int64_t replica_id, int64_t partition_id,
-      absl::Span<std::shared_ptr<Literal> const> literals)>;
+  using GroupReadyCallback =
+      std::function<void(int64_t callback_id, int64_t partition_id,
+                         absl::Span<std::shared_ptr<Literal> const> literals)>;
 
   HloOriginalValueGrouper(
       const HloModule* optimized_module,

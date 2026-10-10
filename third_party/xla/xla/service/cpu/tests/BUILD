@@ -21,7 +21,8 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
-load("//xla/tsl/mkl:graph.bzl", "onednn_cc_test")
+load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
+load("//xla/tsl/mkl:graph.bzl", "onednn_cc_test", "onednn_graph_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -60,13 +61,12 @@ cc_library(
         "//xla/tests:codegen_utils",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:pjrt_cpu_client_registry",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_for_library",
         "@tsl//tsl/platform:casts",
     ],
 )
@@ -87,7 +87,6 @@ xla_test(
         "//xla/service/cpu:cpu_instruction_fusion",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
     ],
@@ -103,22 +102,6 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-xla_cc_test(
-    name = "cpu_external_constants_test",
-    srcs = ["cpu_external_constants_test.cc"],
-    deps = [
-        ":cpu_pjrt_codegen_test",
-        "//xla:array2d",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/cpu:cpu_options",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:test",
     ],
 )
 
@@ -146,7 +129,6 @@ xla_test(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:platform",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -172,7 +154,6 @@ xla_test(
         "//xla/service:hlo_proto_cc",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
     ],
@@ -190,7 +171,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",
@@ -254,7 +235,6 @@ xla_cc_test(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -270,7 +250,6 @@ xla_test(
         "//xla/service/cpu:test_header_helper",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -292,12 +271,12 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service:llvm_compiler",
         "//xla/service:platform_util",
+        "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:cpu_compiler",
         "//xla/stream_executor:platform",
         "//xla/tests:codegen_utils",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -309,7 +288,6 @@ xla_cc_test(
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-        "@tsl//tsl/platform",
         "@tsl//tsl/platform:platform_port",
     ],
 )
@@ -326,8 +304,6 @@ xla_test(
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -348,7 +324,6 @@ xla_test(
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -405,8 +380,9 @@ xla_test(
     backends = ["cpu"],
     deps = [
         "//xla:literal",
-        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -419,7 +395,6 @@ xla_cc_test(
         ":cpu_pjrt_codegen_test",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_aot_compilation_result",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -472,12 +447,117 @@ xla_test(
     backends = ["cpu"],
     deps = [
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+onednn_cc_test(
+    name = "onednn_matmul_test",
+    srcs = ["onednn_matmul_test.cc"],
+    copts = tsl_copts(),
+    shard_count = 8,
+    deps = [
+        "//xla:error_spec",
+        "//xla/hlo/testlib:test",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:pjrt_cpu_client_registry",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+onednn_cc_test(
+    name = "onednn_convolution_test",
+    srcs = ["onednn_convolution_test.cc"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_contraction_rewriter",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:pjrt_cpu_client_registry",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+onednn_cc_test(
+    name = "onednn_layer_norm_test",
+    srcs = ["onednn_layer_norm_test.cc"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:error_spec",
+        "//xla/hlo/testlib:test",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:pjrt_cpu_client_registry",
+        "//xla/tests:xla_internal_test_main",
+    ],
+)
+
+onednn_cc_test(
+    name = "onednn_softmax_test",
+    srcs = ["onednn_softmax_test.cc"],
+    copts = tsl_copts(),
+    shard_count = if_graph_api(4, 1),
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/testlib:test",
+        "//xla/service:cpu_plugin",
+        "//xla/service:pattern_matcher",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:onednn_config_proto_cc",
+        "//xla/service/cpu:onednn_ops_rewriter",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:pjrt_cpu_client_registry",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+onednn_graph_cc_test(
+    name = "onednn_fusion_test",
+    srcs = ["onednn_fusion_test.cc"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla/backends/cpu:onednn_support",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:pjrt_cpu_client_registry",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:platform_port",
     ],
 )

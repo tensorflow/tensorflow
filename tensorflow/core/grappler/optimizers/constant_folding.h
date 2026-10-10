@@ -131,7 +131,6 @@ class ConstantFolding : public GraphOptimizer {
                                                   NodeDef* node,
                                                   GraphDef* graph);
 
-  void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   absl::Status FoldGraph(
       const GraphProperties& properties, GraphDef* output,
       absl::flat_hash_set<std::string>* nodes_to_not_simplify);

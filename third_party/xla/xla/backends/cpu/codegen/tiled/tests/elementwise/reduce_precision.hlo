@@ -25,7 +25,7 @@ fusion {
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG:[^:]+]]: memref<128x32xf32>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x32xf32>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 3 : index]})
 // CHECK-SAME:     attributes {num_opaque_args = 0 : i32}
 
 // CHECK:  %[[C0:.*]] = arith.constant 0 : index
@@ -45,7 +45,7 @@ fusion {
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // CHECK-VECTOR:         %[[ALLOCA_0:.*]] = memref.alloca() : memref<1x4xf32>
 // CHECK-VECTOR:         %[[ALLOCA_1:.*]] = memref.alloca() : memref<1x4xf32>
-// CHECK-VECTOR:         %[[ALLOCA_2:.*]] = memref.alloca() {alignment = 64 : i64} : memref<1x4xf32>
+// CHECK-VECTOR:         %[[ALLOCA_2:.*]] = memref.alloca() alignment = 64 : memref<1x4xf32>
 // CHECK-VECTOR:         memref.copy %{{.*}}, %[[ALLOCA_0]]
 // CHECK-VECTOR:         memref.copy %{{.*}}, %{{.*}}
 

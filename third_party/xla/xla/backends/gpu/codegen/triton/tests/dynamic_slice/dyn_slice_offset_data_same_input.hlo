@@ -1,8 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
-
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 fusion {
   p0 = s32[64] parameter(0)
@@ -13,7 +10,7 @@ fusion {
 // CHECK:         xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:[A-Za-z0-9]+]]: memref<64xi32>,
 // CHECK-SAME:      %[[ARG1:[A-Za-z0-9]+]]: memref<10xi32>,
-// CHECK-SAME:      %[[PID:[A-Za-z0-9]+]]: index) attributes {num_opaque_args = 0 : i32}
+// CHECK-SAME:      %[[PID:[A-Za-z0-9]+]]: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}}) attributes {num_opaque_args = 0 : i32}
 // CHECK-DAG: %[[C54_I32:.*]] = arith.constant 54 : i32
 // CHECK-DAG: %[[C0_I32:.*]] = arith.constant 0 : i32
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index

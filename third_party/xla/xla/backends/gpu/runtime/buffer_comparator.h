@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_BUFFER_COMPARATOR_H_
 #define XLA_BACKENDS_GPU_RUNTIME_BUFFER_COMPARATOR_H_
 
+#include <cstdint>
+#include <string>
+
 #include "absl/status/statusor.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
@@ -44,9 +47,13 @@ class BufferComparator {
   //     abs(a - b) / (max(abs(a), abs(b)) + 1) < tolerance
   //
   // See the implementation for the tolerance value.
-  absl::StatusOr<bool> CompareEqual(
-      se::Stream* stream, const se::DeviceAddressBase& current,
-      const se::DeviceAddressBase& expected) const;
+  // If `error_report` is non-null and the comparison returns false,
+  // `*error_report` is populated with a human-readable summary of the
+  // differences between current and expected buffers.
+  absl::StatusOr<bool> CompareEqual(se::Stream* stream,
+                                    const se::DeviceAddressBase& current,
+                                    const se::DeviceAddressBase& expected,
+                                    std::string* error_report = nullptr) const;
 
  private:
   Shape shape_;

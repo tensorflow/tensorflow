@@ -51,11 +51,11 @@ constexpr size_t kMemoryAllocationSize = 1024;
 class SyclExecutorTest : public xla::gpu::HloPjRtGpuTestBase {};
 
 TEST_F(SyclExecutorTest, GetSyclKernel) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(kDefaultDeviceOrdinal));
 
   std::string hlo_text = R"(
     ENTRY e {
@@ -66,17 +66,15 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
 
   xla::HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<xla::HloModule> hlo_module,
-      xla::ParseAndReturnUnverifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                       xla::ParseAndReturnUnverifiedModule(hlo_text, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      hlo_module, compiler()->RunHloPasses(std::move(hlo_module), executor,
-                                           /*device_allocator=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<xla::Executable> exec,
-      compiler()->RunBackend(std::move(hlo_module), executor,
-                             /*device_allocator=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(hlo_module,
+                       compiler()->RunHloPasses(std::move(hlo_module), executor,
+                                                /*device_allocator=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::Executable> exec,
+                       compiler()->RunBackend(std::move(hlo_module), executor,
+                                              /*device_allocator=*/nullptr));
 
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
@@ -98,12 +96,12 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   MultiModuleLoaderSpec module_spec;
   ModuleHandle module_handle;
   module_spec.AddCudaCubinInMemory(spv_bin);
-  TF_ASSERT_OK_AND_ASSIGN(module_handle, executor->LoadModule(module_spec));
+  ASSERT_OK_AND_ASSIGN(module_handle, executor->LoadModule(module_spec));
   auto global_consts = gpu_exec->constants();
   EXPECT_EQ(global_consts.size(), 1);
   for (auto& const_info : global_consts) {
     absl::StatusOr<DeviceAddressBase> global_status;
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         global_status,
         executor->GetSymbol(const_info.symbol_name, module_handle));
   }
@@ -112,8 +110,8 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   // spec. Load the kernel directly from that spec.
   const KernelLoaderSpec& kernel_spec =
       kernel_thunk->custom_kernel().kernel_spec();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
-                          executor->LoadKernel(kernel_spec));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                       executor->LoadKernel(kernel_spec));
 
   auto sycl_executor = dynamic_cast<SyclExecutor*>(executor);
   ASSERT_NE(sycl_executor, nullptr);
@@ -148,58 +146,57 @@ TEST_F(SyclExecutorTest, RegisteredHostMemoryIsPinned) {
 }
 
 TEST_F(SyclExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          stream_executor::PlatformManager::PlatformWithId(
-                              stream_executor::sycl::kSyclPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<MemoryAllocator> allocator,
-      executor->CreateMemoryAllocator(MemoryType::kUnified));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
-                          allocator->Allocate(kMemoryAllocationSize));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithId(
+                           stream_executor::sycl::kSyclPlatformId));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
+                       executor->CreateMemoryAllocator(MemoryType::kUnified));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       allocator->Allocate(kMemoryAllocationSize));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
   allocation.reset();
 }
 
 TEST_F(SyclExecutorTest, CreateHostMemoryAllocatorWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          stream_executor::PlatformManager::PlatformWithId(
-                              stream_executor::sycl::kSyclPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
-                          executor->CreateMemoryAllocator(MemoryType::kHost));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
-                          allocator->Allocate(kMemoryAllocationSize));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithId(
+                           stream_executor::sycl::kSyclPlatformId));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
+                       executor->CreateMemoryAllocator(MemoryType::kHost));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       allocator->Allocate(kMemoryAllocationSize));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
   allocation.reset();
 }
 
 TEST_F(SyclExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          stream_executor::PlatformManager::PlatformWithId(
-                              stream_executor::sycl::kSyclPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithId(
+                           stream_executor::sycl::kSyclPlatformId));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
       executor->CreateMemoryAllocator(MemoryType::kCollective));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
-                          allocator->Allocate(kMemoryAllocationSize));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       allocator->Allocate(kMemoryAllocationSize));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
   allocation.reset();
 }
 
 TEST_F(SyclExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          stream_executor::PlatformManager::PlatformWithId(
-                              stream_executor::sycl::kSyclPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithId(
+                           stream_executor::sycl::kSyclPlatformId));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(kDefaultDeviceOrdinal));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
               Not(IsOk()));
 }

@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/xla_data.pb.h"
 
@@ -56,6 +57,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kTranspose:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kGather:
@@ -63,6 +65,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
+    case HloOpcode::kLog2:
     case HloOpcode::kLog1p:
     case HloOpcode::kMap:
     case HloOpcode::kMaximum:
@@ -98,7 +101,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
-      return using_new_fusion_emitter_;
+      return true;
     case HloOpcode::kCopy:
       // If it is a simple copy with no change in layout then it is more
       // efficient to use the default copy thunk which will just be a simple
@@ -106,8 +109,9 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
       if (instruction.shape() == instruction.operand(0)->shape()) {
         return false;
       }
-
-      return IsSupportedTilingType(instruction.shape().element_type());
+      return IsSupportedTilingType(instruction.shape().element_type()) ||
+             primitive_util::IsSubByteNonPredType(
+                 instruction.shape().element_type());
     case HloOpcode::kConcatenate:
       return !CanDoFastConcatenate(instruction).ok();
     case HloOpcode::kConvolution:

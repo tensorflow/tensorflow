@@ -96,7 +96,7 @@ def parse_hunks(diff: str) -> list[Hunk]:
 
   for file, raw_hunks in batch(raw_per_file_hunks, 2):
     # ignore initial empty match
-    hunks = re.split(hunk_header_pattern, raw_hunks, re.MULTILINE)[1:]
+    hunks = re.split(hunk_header_pattern, raw_hunks)[1:]
     for start, length, body in batch(hunks, 3):
       lines = body.split("\n")
       lines = lines if lines[-1] else lines[:-1]  # trim empty line

@@ -27,6 +27,10 @@ limitations under the License.
 
 namespace xla {
 
+// The reads/writes are best-effort and only log warnings if they fail. This
+// ensures that the autotuner cache does not fail the compilation due to
+// permission issues or disks quotas.
+//
 // DirectoryStore implements AutotuneCacheStore by writing each autotune entry
 // into its own protobuf file inside a structured directory layout:
 //   <directory_path>/<device>/[<explicit_version>]/<hlo_fingerprint>.pb

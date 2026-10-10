@@ -21,10 +21,6 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/stream_executor/device_description.h"
 
-namespace mlir {
-class MLIRContext;
-}  // namespace mlir
-
 namespace xla {
 namespace gpu {
 
@@ -32,8 +28,7 @@ namespace gpu {
 // This pipeline must run before scheduling to ensure correctness.
 HloPassPipeline PreSchedulingCopyInsertionPipeline(
     const HloModuleConfig& config, const GpuAliasInfo* alias_info,
-    const se::DeviceDescription& device_description,
-    mlir::MLIRContext* mlir_context);
+    const se::DeviceDescription& device_description);
 
 }  // namespace gpu
 }  // namespace xla

@@ -18,34 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "tensorflow/cc/saved_model/constants.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow::saved_model::fingerprinting {
-
-namespace {
-
-absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
-    absl::string_view export_dir) {
-  const std::string fingerprint_pb_path =
-      io::JoinPath(export_dir, kFingerprintFilenamePb);
-  TF_RETURN_IF_ERROR(Env::Default()->FileExists(fingerprint_pb_path));
-
-  FingerprintDef fingerprint_proto;
-  absl::Status result =
-      ReadBinaryProto(Env::Default(), fingerprint_pb_path, &fingerprint_proto);
-  if (!result.ok()) return result;
-
-  return fingerprint_proto;
-}
-
-}  // namespace
 
 std::string Singleprint(uint64_t graph_def_program_hash,
                         uint64_t signature_def_hash,
@@ -61,12 +36,6 @@ std::string Singleprint(const FingerprintDef& fingerprint) {
   return Singleprint(
       fingerprint.graph_def_program_hash(), fingerprint.signature_def_hash(),
       fingerprint.saved_object_graph_hash(), fingerprint.checkpoint_hash());
-}
-
-absl::StatusOr<std::string> Singleprint(absl::string_view export_dir) {
-  TF_ASSIGN_OR_RETURN(FingerprintDef fingerprint_def,
-                      ReadSavedModelFingerprint(export_dir));
-  return Singleprint(fingerprint_def);
 }
 
 }  // namespace tensorflow::saved_model::fingerprinting

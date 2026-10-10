@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
@@ -73,11 +74,10 @@ class TestAllocator : public tsl::Allocator {
 };
 
 TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
-  TF_ASSERT_OK_AND_ASSIGN(auto* platform,
-                          xla::PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
-                          xla::PlatformUtil::GetStreamExecutors(platform));
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto* platform, xla::PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
+                       xla::PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   std::vector<MultiDeviceAdapter::AllocatorInfo> infos;
   infos.push_back({std::make_shared<TestAllocator>(0x1000), stream.get(),
@@ -91,34 +91,33 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
   std::unique_ptr<DeviceAddressAllocator> allocator =
       std::make_unique<MultiDeviceAdapter>(platform, std::move(infos));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff0,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff0->opaque()), 0x1001);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff1,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff1->opaque()), 0x1002);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff2,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff2->opaque()), 0x3001);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff3,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff3->opaque()), 0x2001);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff4,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff4->opaque()), 0x4001);
 }
 
 TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
-  TF_ASSERT_OK_AND_ASSIGN(auto* platform,
-                          xla::PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
-                          xla::PlatformUtil::GetStreamExecutors(platform));
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto* platform, xla::PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
+                       xla::PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   std::shared_ptr<absl::flat_hash_set<void*>> allocations =
       std::make_shared<absl::flat_hash_set<void*>>();
@@ -138,7 +137,7 @@ TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
       std::make_unique<MultiDeviceAdapter>(platform,
                                            std::move(info_deallocator));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff0,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(allocations->size(), 1);

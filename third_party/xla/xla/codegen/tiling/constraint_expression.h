@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,9 +40,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/scheduling_annotations_util.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -72,14 +73,14 @@ class WhileLoopUnrollerTest : public HloTestBase {
   void UnrollAndCompare(std::unique_ptr<HloModule> module,
                         absl::Span<Literal* const> arguments,
                         int64_t unroll_factor = -1, bool wrap_in_loop = false) {
-    TF_ASSERT_OK_AND_ASSIGN(Literal before_unroll,
-                            Execute(module->Clone(), arguments));
+    ASSERT_OK_AND_ASSIGN(Literal before_unroll,
+                         Execute(module->Clone(), arguments));
     VLOG(2) << "before unroll value: " << before_unroll.ToString();
     EXPECT_TRUE(WhileLoopUnroller(unroll_factor, wrap_in_loop)
                     .Run(module.get())
                     .value());
-    TF_ASSERT_OK_AND_ASSIGN(Literal after_unroll,
-                            Execute(std::move(module), arguments));
+    ASSERT_OK_AND_ASSIGN(Literal after_unroll,
+                         Execute(std::move(module), arguments));
     VLOG(2) << "after unroll value: " << after_unroll.ToString();
 
     ASSERT_TRUE(LiteralTestUtil::NearOrEqual(/*expected=*/before_unroll,
@@ -436,10 +437,10 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopUnrollNeedPrepare) {
     ROOT result = s32[3]{0} get-tuple-element(while), index=1
   }
   )";
-  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
-                   false);
-  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
-                   true);
+  ASSERT_OK_AND_ASSIGN(auto m1, ParseAndReturnVerifiedModule(hlo_string));
+  UnrollAndCompare(std::move(m1), {}, -1, false);
+  ASSERT_OK_AND_ASSIGN(auto m2, ParseAndReturnVerifiedModule(hlo_string));
+  UnrollAndCompare(std::move(m2), {}, -1, true);
 }
 
 // This test passes because we run TupleSimplifier before unrolling.
@@ -582,8 +583,8 @@ TEST_F(WhileLoopUnrollerTest, GetUnrollableLoops) {
     ROOT result = (s32[3]{0}, s32[3]{0}) tuple(o1,o2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto unrollable_loops = WhileLoopUnroller::GetUnrollableLoops(
       module.get(), {}, /*unroll_config=*/std::nullopt);
@@ -641,11 +642,11 @@ TEST_F(WhileLoopUnrollerTest, UnrollMultipleLoops) {
     ROOT result = (s32[3]{0}, s32[3]{0}) tuple(o1,o2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Unroll the first loop
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       UnrollResult unrolled_result,
       WhileLoopUnroller::UnrollAndReturnReplacement(
           module->entry_computation()->GetInstructionWithName("while1")));
@@ -662,7 +663,7 @@ TEST_F(WhileLoopUnrollerTest, UnrollMultipleLoops) {
   EXPECT_EQ(call_instrs_1.size(), 0);
 
   // Unroll the second loop
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       UnrollResult unrolled_result2,
       WhileLoopUnroller::UnrollAndReturnReplacement(
           module->entry_computation()->GetInstructionWithName("while2")));
@@ -707,6 +708,40 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopNonZeroInit) {
                    false);
   UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
                    true);
+}
+
+TEST_F(WhileLoopUnrollerTest, SimpleLoopNonUnitStep) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(loop_var.1), index=0
+    step = s32[] constant(2)
+    next_i = s32[] add(i, step)
+    sum = s32[] get-tuple-element(loop_var.1), index=1
+    next_sum = s32[] add(sum, i)
+    ROOT tuple = (s32[], s32[]) tuple(next_i, next_sum)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(loop_var.2), index=0
+    bound = s32[] constant(6)
+    ROOT less-than = pred[] compare(i, bound), direction=LT
+  }
+  ENTRY SimpleLoop {
+    init_i = s32[] constant(0)
+    init_sum = s32[] constant(0)
+    tuple.1 = (s32[], s32[]) tuple(init_i, init_sum)
+    ROOT while = (s32[], s32[]) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_direct,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  UnrollAndCompare(std::move(module_direct), {}, -1, false);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_wrapped,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  UnrollAndCompare(std::move(module_wrapped), {}, -1, true);
 }
 
 TEST_F(WhileLoopUnrollerTest, SimpleLoopS16IndVar) {
@@ -864,8 +899,8 @@ TEST_F(WhileLoopUnrollerTest, NoUnrelatedInlining) {
     ROOT call = call(while), to_apply=NopComputation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(
       WhileLoopUnroller(/*unroll_factor=*/-1).Run(hlo_module.get()).value());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(), op::Call());
@@ -1100,8 +1135,8 @@ TEST_F(WhileLoopUnrollerTest, LoopWithCollective2) {
   absl::flat_hash_map<int64_t, int64_t> num_instrs_per_group;
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
-    TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                            GetSchedulingAnnotationGroupId(instr));
+    ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                         GetSchedulingAnnotationGroupId(instr));
     if (id) {
       num_instrs_per_group[*id]++;
     }
@@ -1125,6 +1160,26 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDS) {
   EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
                   instr, input, HloOpcode::kDynamicSlice, config.value())
                   .has_value());
+}
+
+// With trip count 3 on a dimension of size 3, starting at 1 leaves index 0
+// unwritten and stepping by 2 leaves index 1 unwritten.
+TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUSRequiresStartZeroStepOne) {
+  for (auto [start, stop, step] : {std::tuple(1, 4, 1), std::tuple(0, 6, 2)}) {
+    auto module = MakeModuleWithDUS(start, stop, step, /*slice_size=*/1,
+                                    /*dim_size=*/3);
+    HloInstruction* loop = module->entry_computation()->root_instruction();
+    auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+    ASSERT_TRUE(config.has_value());
+    ASSERT_EQ(config->trip_count, 3);
+    HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+    HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+    HloInstruction* instr = body->GetInstructionWithName("slice");
+    EXPECT_FALSE(MatchShapeCoveringDynamicIndexInstruction(
+                     instr, input, HloOpcode::kDynamicUpdateSlice, *config)
+                     .has_value())
+        << "start=" << start << " step=" << step;
+  }
 }
 
 TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSShapeMismatch) {
@@ -1167,6 +1222,54 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSShapeMismatch) {
   HloInstruction* instr = body->GetInstructionWithName("slice");
   EXPECT_FALSE(MatchShapeCoveringDynamicIndexInstruction(
                    instr, input, HloOpcode::kDynamicSlice, config.value())
+                   .has_value());
+  HloInstruction* update = body->GetInstructionWithName("update");
+  HloInstruction* dus = body->GetInstructionWithName("new-update");
+  EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
+                  dus, update, HloOpcode::kDynamicUpdateSlice, config.value())
+                  .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUSShapeMismatch) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule SimpleLoop
+  body {
+    param = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) parameter(0)
+    idx = s32[]{:T(128)} get-tuple-element(param), index=0
+    constant1 = s32[]{:T(128)} constant(1)
+    new-idx = s32[]{:T(128)} add(idx, constant1)
+    update = s32[3,10]{1,0} get-tuple-element(param), index=1
+    slice = s32[1,5]{1,0} get-tuple-element(param), index=2
+    zero = s32[] constant(0)
+    new-update = s32[3,10]{1,0} dynamic-update-slice(update, slice, idx, zero)
+    ROOT tuple = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) tuple(new-idx, new-update, slice)
+  }
+  condition {
+    param = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) parameter(0)
+    idx = s32[] get-tuple-element(param), index=0
+    constant3 = s32[]{:T(128)} constant(3)
+    ROOT less-than = pred[] compare(idx, constant3), direction=LT
+  }
+  ENTRY main {
+    constant0 = s32[]{:T(128)} constant(0)
+    init-update = s32[3,10]{1,0} constant({...})
+    init-slice = s32[1,5]{1,0} constant({...})
+    init-while = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) tuple(constant0, init-update, init-slice)
+    ROOT while = (s32[]{:T(128)}, s32[3,10]{1,0}, s32[1,5]{1,0}) while(init-while), condition=condition, body=body
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  std::optional<WhileLoopConfig> config =
+      WhileLoopUnroller::IsLoopUnrollable(loop);
+  ASSERT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("body");
+  HloInstruction* update = body->GetInstructionWithName("update");
+  HloInstruction* dus = body->GetInstructionWithName("new-update");
+  EXPECT_FALSE(MatchShapeCoveringDynamicIndexInstruction(
+                   dus, update, HloOpcode::kDynamicUpdateSlice, config.value())
                    .has_value());
 }
 
@@ -1398,9 +1501,9 @@ TEST_F(WhileLoopUnrollerTest, UnrollLoopWithDynamicGte) {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloInstruction* loop =
       module->entry_computation()->root_instruction()->mutable_operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(UnrollResult unrolled_result,
-                          WhileLoopUnroller::UnrollAndReturnReplacement(
-                              loop, -1, false, true, true));
+  ASSERT_OK_AND_ASSIGN(UnrollResult unrolled_result,
+                       WhileLoopUnroller::UnrollAndReturnReplacement(
+                           loop, -1, false, true, true));
   bool unrolled = unrolled_result.unrolled;
   EXPECT_TRUE(unrolled);
   // Below method is successful only if all the DynamicGte and DynamicTuple
@@ -1682,8 +1785,8 @@ TEST_F(WhileLoopUnrollerTest, SymmetricMatMul) {
       ROOT get-tuple-element.320 = f32[8192,8192]{1,0:T(8,128)} get-tuple-element(outer.while), index=1
     }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kModule));
   HloInstruction* while_op = FindInstruction(m.get(), "outer.while");
   ASSERT_NE(while_op, nullptr);
 

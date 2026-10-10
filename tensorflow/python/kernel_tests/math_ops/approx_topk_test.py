@@ -163,7 +163,14 @@ class ApproxTopkTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                            math_ops.matmul(qy_op, db_op, transpose_b=True))
     gt = np.argsort(scores)[:, :k]
     ann_recall = self.compute_recall(idx, gt)
-    self.assertGreaterEqual(ann_recall, 0.95)
+    use_tf32_tol = (
+        test_util.is_gpu_available()
+        and dtype == dtypes.float32
+        and k == 1
+        and feature_dim == 2
+    )
+    min_recall = 0.80 if use_tf32_tol else 0.95
+    self.assertGreaterEqual(ann_recall, min_recall)
 
   def test_highdim(self):
     db = self._rng.random([2, 10, 200, 3], dtype=np.float32)

@@ -26,6 +26,7 @@ def Mlrt_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlrt::compiler";
+  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 def MlrtFutureType : DialectType<Mlrt_Dialect,

@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -109,6 +111,35 @@ std::string GetKvStoreKey(
                       backend_fingerprint, "_", shard_index);
 }
 
+absl::StatusOr<std::optional<ConfigAssigner::Config>> ParseForcedConfig(
+    absl::string_view force_config, const CodegenOrchestrator& orchestrator) {
+  if (force_config.empty()) {
+    return std::nullopt;
+  }
+  autotuner::Config config_proto;
+  bool parsed =
+      tsl::protobuf::TextFormat::ParseFromString(force_config, &config_proto);
+  if (!parsed) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse force_config as textproto: ", force_config));
+  }
+  CodegenBackend* matched_backend = nullptr;
+  for (const auto& backend : orchestrator.codegen_backends()) {
+    if (backend->backend() == config_proto.backend()) {
+      matched_backend = backend.get();
+      break;
+    }
+  }
+  if (matched_backend == nullptr) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Backend ", Backend_Name(config_proto.backend()),
+        " in force_config is not registered with the orchestrator."));
+  }
+  return ConfigAssigner::Config{
+      matched_backend,
+      std::make_unique<BackendConfig>(config_proto.backend_config())};
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<ConfigAssigner>> ConfigAssigner::Create(
@@ -117,9 +148,11 @@ absl::StatusOr<std::unique_ptr<ConfigAssigner>> ConfigAssigner::Create(
     std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator,
     std::unique_ptr<Autotuner> absl_nullable autotuner,
     tsl::thread::ThreadPool* thread_pool) {
+  ABSL_ASSIGN_OR_RETURN(std::optional<Config> forced_config,
+                   ParseForcedConfig(options.force_config, *orchestrator));
   return absl::WrapUnique(new ConfigAssigner(
       std::move(options), std::move(cache), std::move(orchestrator),
-      std::move(autotuner), thread_pool));
+      std::move(autotuner), thread_pool, std::move(forced_config)));
 }
 
 absl::Status ConfigAssigner::AssignConfigs(
@@ -297,6 +330,14 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
           HloPrintOptions::PrintSubcomputationMode::kFullBodies);
     }
     VLOG(1) << "Getting config for HLO: " << instr->ToString(print_options);
+  }
+  if (forced_config_.has_value()) {
+    VLOG(1) << "Using forced config: "
+            << forced_config_->codegen_backend->name() << " : "
+            << forced_config_->backend_config->ShortDebugString();
+    return Config{
+        forced_config_->codegen_backend,
+        std::make_unique<BackendConfig>(*forced_config_->backend_config)};
   }
   std::optional<Config> cached_config = LookUp(instr);
   if (cached_config.has_value()) {
@@ -547,11 +588,12 @@ std::string ConfigAssigner::Options::ToString() const {
   "prefer_estimated_configs": %v,
   "dump_hlos": %v,
   "use_new_cache_format": %v,
-  "compile_all_supported_configs": %v
+  "compile_all_supported_configs": %v,
+  "force_config": "%s"
 })json",
       expect_all_instructions_in_cache, allow_autotuning,
       prefer_estimated_configs, dump_hlos, use_new_cache_format,
-      compile_all_supported_configs);
+      compile_all_supported_configs, force_config);
 }
 
 AutotunerCacheInterface::CacheStats ConfigAssigner::GetCacheStats() const {

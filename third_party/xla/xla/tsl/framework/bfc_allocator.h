@@ -54,12 +54,15 @@ using tensorflow::MemoryDump;
 //
 // See prior art: https://gee.cs.oswego.edu/dl/html/malloc.html
 //
+// By default, BFC operates in non-partitioned mode, where the whole address
+// range is available to all allocation requests.
+//
 // High-level model:
 //
 // - Backing memory comes from the SubAllocator as AllocationRegions. With
 //   Options::allow_growth=true the allocator grows by adding regions up to
 //   total_memory; with Options::allow_growth=false it reserves one fixed region
-//   during construction. stats_.bytes_reserved tracks bytes held from the
+//   on the first allocation. stats_.bytes_reserved tracks bytes held from the
 //   SubAllocator, while stats_.bytes_in_use tracks bytes currently live for
 //   clients.
 //
@@ -72,28 +75,78 @@ using tensorflow::MemoryDump;
 //   adjacent free chunks to repair fragmentation.
 //
 // - Free chunks are indexed by size-class Bins. Each Bin stores ChunkHandles in
-//   a FreeChunkSet ordered by chunk size and then address. Allocation starts in
-//   the smallest viable bin, scans upward, and uses the smallest fitting chunk.
-//   Allocated chunks are never in a Bin.
+//   a FreeChunkSet ordered by size, ownership, and the configured address
+//   order. Allocation starts in the smallest viable bin, scans upward, and uses
+//   the smallest fitting chunk. Allocated chunks are never in a Bin.
 //
-// - AllocationAttributes::allocation_end controls placement. Without spatial
-//   partitioning all requests use AllocationEnd::kLower, and ordinary free
-//   chunks stay in ChunkTag::kLower, which is classic BFC behavior.
+// - AllocationAttributes::allocation_end controls placement. In non-partitioned
+//   mode all requests use AllocationEnd::kLower, and ordinary free chunks stay
+//   in ChunkTag::kLower.
 //
-// - With Options::enable_spatial_partitioning=true, which requires
-//   Options::allow_growth=false, the fixed address range is split into
+// - With Options::enable_spatial_partitioning=true, the initial region has
 //   lower-end ownership, one central gap, and upper-end ownership.
 //   AllocationEnd::kLower requests grow upward, and AllocationEnd::kUpper
 //   requests grow downward. ChunkTag records ownership: kLower and kUpper for
 //   allocated chunks and same-tag interior holes, and kCentralGap for the
 //   central gap. The central gap is tracked by central_gap_ instead of being
 //   inserted into a Bin. Each end first reuses binned holes with its own tag,
-//   then carves from the central gap. This keeps each end's placements
-//   independent of activity from the opposite end except when lower and upper
-//   allocations exhaust the central gap.
+//   then carves from the central gap. Each end has separate splitting policies
+//   for owned holes and central-gap carves, independent of placement direction.
+//   Exact gap splitting leaves the remainder shared, except for alignment
+//   padding outside the gap, which becomes a same-tag free hole. Heuristic gap
+//   splitting may retain small remainders as allocation padding. An end using
+//   exact gap splitting has placements independent of activity from the other
+//   end, except when the central gap cannot satisfy its requests.
+//
+// - Spatial growth uses the usual Extend fallback after neither an owned hole
+//   nor the central gap fits. Adjacent regions can merge when the existing
+//   suballocator supports coalescing; otherwise, growth adds separate
+//   upper-only regions. Lower-end allocations, including padding, always stay
+//   inside initial_region_bytes, even when a coalesced free span crosses that
+//   limit.
 //
 class BFCAllocator : public Allocator {
  public:
+  // Address preference for equal-size holes owned by the same end. Size remains
+  // the primary best-fit key; this order is independent of placement direction.
+  enum class HoleOrder {
+    kAscendingAddress,   // Prefer the lowest-address fitting hole.
+    kDescendingAddress,  // Prefer the highest-address fitting hole.
+  };
+
+  // Splitting policy, configured separately for owned holes and central-gap
+  // carves, independently of placement direction.
+  //
+  // Coalescing can only join adjacent free chunks; it cannot move a live
+  // allocation out of their way. Retaining a small remainder as allocation
+  // padding trades internal fragmentation for potentially less external
+  // fragmentation. For example, splitting an 8 MiB hole for a 6 MiB request
+  // allows a longer-lived allocation to occupy the 2 MiB remainder and prevent
+  // the original hole from reforming when the 6 MiB allocation is freed.
+  // Retaining that remainder as padding returns all 8 MiB together. This is a
+  // workload-dependent heuristic, not a BFC correctness requirement.
+  //
+  // Exact splitting avoids this optional padding. In particular, the central
+  // gap's size depends on allocations from both ends. Retaining its remainder
+  // as padding can make this end's chunk sizes and subsequent placements depend
+  // on opposite-end activity. Exact gap splitting preserves that independence
+  // as long as the gap can satisfy the requests. Both policies round request
+  // sizes and honor alignment; neither eliminates external fragmentation.
+  enum class SplitPolicy {
+    // Apply the BFC size/fragmentation heuristic, retaining small remainders as
+    // allocation padding instead of creating additional free chunks.
+    kRetainPadding,
+    // Allocate exactly the rounded request size and leave any remainder free.
+    kExact,
+  };
+
+  struct AllocationPolicy {
+    // Best fit always compares sizes first; this only breaks equal-size ties.
+    HoleOrder hole_order = HoleOrder::kAscendingAddress;
+    SplitPolicy hole_split_policy = SplitPolicy::kRetainPadding;
+    SplitPolicy gap_split_policy = SplitPolicy::kExact;
+  };
+
   struct Options {
     bool allow_growth = true;
 
@@ -128,18 +181,38 @@ class BFCAllocator : public Allocator {
     // other end's tagged interior holes. When a buffer at either end of the
     // central gap is freed it rejoins the gap, growing it, and adjacent holes
     // with the same tag cascade back in turn -- so e.g. allocating 100% lower,
-    // freeing it, then allocating 100% upper is fully supported. The only
-    // failure is true exhaustion: lower and upper meeting with no gap left.
+    // freeing it, then allocating 100% upper is fully supported. A request can
+    // still fail if neither an own-tag hole nor the central gap fits, even if
+    // free memory remains in fragmented or opposite-tag holes.
     //
-    // Because neither end ever carves the other's interior holes, each end's
-    // placement is a pure function of that end's request sequence and is never
-    // perturbed by activity from the opposite end, except when lower and upper
-    // allocations exhaust the central gap. That makes offsets reproducible
-    // across processes that issue the same requests for that end in the same
-    // order, e.g. symmetric collective buffers across ranks.
+    // Neither end carves the other's interior holes. With exact gap splitting,
+    // an end's placements depend only on its own request sequence, except when
+    // the central gap cannot satisfy a request. This makes offsets reproducible
+    // across processes issuing the same requests for that end, e.g. symmetric
+    // collective buffers across ranks. Heuristic gap splitting can make chunk
+    // sizes depend on the opposite end's activity through the gap size.
     //
-    // Requires allow_growth=false (a single fixed address range).
+    // With allow_growth=true, only upper-end requests can extend the arena.
+    // Adjacent allocations may coalesce when SupportsCoalescing() permits it;
+    // other allocations become upper-only regions. Lower requests are bounded
+    // by initial_region_bytes, even when the central free span extends past it.
+    // This mode requires initial_region_bytes and garbage_collection=false.
     bool enable_spatial_partitioning = false;
+
+    // Size of the initial shared region for growable spatial arenas. It is
+    // requested on the first allocation and, like a fixed pool, shrinks if
+    // the suballocator cannot provide that much; the lower end is then
+    // confined to what was obtained. total_memory remains the cap across all
+    // regions. Must be a multiple of the suballocator granularity.
+    size_t initial_region_bytes = 0;
+
+    // Policies for owned-hole reuse and gap carves, independent of placement
+    // direction. By default, owned holes use the BFC heuristic and gap carves
+    // split exactly.
+    // Non-partitioned allocations use lower_end_policy; the defaults preserve
+    // non-partitioned BFC behavior.
+    AllocationPolicy lower_end_policy;
+    AllocationPolicy upper_end_policy;
   };
 
   BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator, size_t total_memory,
@@ -374,13 +447,24 @@ class BFCAllocator : public Allocator {
      public:
       explicit ChunkComparator(BFCAllocator* allocator)
           : allocator_(allocator) {}
-      // Sort first by size and then use pointer address as a tie breaker.
+      // Sort first by size, then ownership, then the configured address order.
+      // Ownership must precede address so policies with opposite address orders
+      // still define a strict ordering over a bin containing both tags.
       bool operator()(const ChunkHandle ha, const ChunkHandle hb) const
           ABSL_NO_THREAD_SAFETY_ANALYSIS {
         const Chunk* a = allocator_->ChunkFromHandle(ha);
         const Chunk* b = allocator_->ChunkFromHandle(hb);
         if (a->size != b->size) {
           return a->size < b->size;
+        }
+        if (a->tag != b->tag) {
+          return a->tag < b->tag;
+        }
+        const AllocationPolicy& policy =
+            a->tag == ChunkTag::kLower ? allocator_->opts_.lower_end_policy
+                                       : allocator_->opts_.upper_end_policy;
+        if (policy.hole_order == HoleOrder::kDescendingAddress) {
+          return a->ptr > b->ptr;
         }
         return a->ptr < b->ptr;
       }
@@ -445,12 +529,19 @@ class BFCAllocator : public Allocator {
     void set_handle(const void* p, ChunkHandle h) { handles_[IndexFor(p)] = h; }
     void erase(const void* p) { set_handle(p, kInvalidChunkHandle); }
 
+    // The last chunk in the region (its `next` is kInvalidChunkHandle).
+    // Maintained by Extend, SplitChunk and MergeChunks so that extending a
+    // region does not require walking its chunk list.
+    ChunkHandle tail() const { return tail_; }
+    void set_tail(ChunkHandle h) { tail_ = h; }
+
    private:
     void Swap(AllocationRegion* other) {
       std::swap(ptr_, other->ptr_);
       std::swap(memory_size_, other->memory_size_);
       std::swap(end_ptr_, other->end_ptr_);
       std::swap(handles_, other->handles_);
+      std::swap(tail_, other->tail_);
     }
 
     size_t IndexFor(const void* p) const {
@@ -470,6 +561,8 @@ class BFCAllocator : public Allocator {
     // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
     // for the memory allocation represented by "p"
     std::vector<ChunkHandle> handles_;
+
+    ChunkHandle tail_ = kInvalidChunkHandle;
 
     AllocationRegion(const AllocationRegion&) = delete;
     void operator=(const AllocationRegion&) = delete;
@@ -537,7 +630,25 @@ class BFCAllocator : public Allocator {
     }
     void erase(const void* p) { return MutableRegionFor(p)->erase(p); }
 
+    // Records `h` as the last chunk of the region containing `p`.
+    void set_tail(const void* p, ChunkHandle h) {
+      MutableRegionFor(p)->set_tail(h);
+    }
+
     const std::vector<AllocationRegion>& regions() const { return regions_; }
+
+    void* RegionStart(const void* p) const { return RegionFor(p)->ptr(); }
+
+    // Returns the region whose end_ptr() is `p`, i.e. the one that
+    // AddOrExtendAllocationRegion(p, ...) would extend, or nullptr.
+    const AllocationRegion* RegionEndingAt(const void* p) const {
+      auto entry =
+          std::upper_bound(regions_.begin(), regions_.end(), p, &Comparator);
+      if (entry != regions_.begin() && (entry - 1)->end_ptr() == p) {
+        return &*(entry - 1);
+      }
+      return nullptr;
+    }
 
    private:
     static bool Comparator(const void* ptr, const AllocationRegion& other) {
@@ -587,8 +698,25 @@ class BFCAllocator : public Allocator {
 
   // Try to add a new memory region that can satisfy an allocation of
   // 'rounded_bytes' bytes.  Returns true on success and false on
-  // failure.
-  bool Extend(size_t alignment, size_t rounded_bytes)
+  // failure. Requests are sized in multiples of the suballocator's
+  // allocation granularity. A contiguous spatial extension may be smaller
+  // than 'rounded_bytes' when it only has to complete a free tail chunk.
+  bool Extend(size_t alignment, size_t rounded_bytes,
+              AllocationEnd allocation_end)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // The last chunk of `region`, validated against the region bounds in debug
+  // builds. Must not be called between AllocationRegion::extend and the
+  // linking of the new chunk.
+  ChunkHandle RegionTail(const AllocationRegion& region) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // Bytes that an extension adjacent to `region` must add so that an
+  // allocation of `rounded_bytes` aligned to `alignment` fits in the chunk
+  // formed by merging the extension with the region's free tail. Includes
+  // alignment padding even when the tail cannot be merged into.
+  size_t TailExtensionBytes(const AllocationRegion& region, size_t alignment,
+                            size_t rounded_bytes) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Deallocate free regions to give back the memory to suballocator, so that
@@ -623,6 +751,15 @@ class BFCAllocator : public Allocator {
   void* FindChunkPtrInCentralGap(size_t rounded_bytes, size_t num_bytes,
                                  size_t alignment, uint64_t freed_before,
                                  AllocationEnd allocation_end)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // BFC split heuristic, also available for owned holes and central-gap carves
+  // in partitioned mode: split if the chunk is at least twice the rounded
+  // request size, or if keeping it whole would waste at least
+  // max_internal_fragmentation_bytes_ on padding.
+  // alignment_padding excludes a prefix that must be split off for alignment.
+  bool ShouldSplitChunk(size_t chunk_size, size_t rounded_bytes,
+                        size_t alignment_padding = 0) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Carves an allocation of 'num_bytes' (rounded to 'rounded_bytes') out of the
@@ -661,7 +798,8 @@ class BFCAllocator : public Allocator {
 
   // Adds the chunk 'h' to the free data structure. Spatial partitioning
   // keeps the single central gap out of the bins and bins only lower/upper
-  // interior holes; classic BFC inserts every free chunk into a size bin.
+  // interior holes; non-partitioned BFC inserts every free chunk into a size
+  // bin.
   void InsertFreeChunk(ChunkHandle h) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Removes the chunk 'h' from the free data structure.
@@ -727,6 +865,13 @@ class BFCAllocator : public Allocator {
   // Structures immutable after construction
   size_t memory_limit_ = 0;
 
+  // Base and size of the initial shared region in growable spatial mode. The
+  // size is opts_.initial_region_bytes unless the suballocator could only
+  // provide less, and remains the lower-end allocation limit. Contiguous
+  // growth may merge free chunks across that limit for upper use.
+  uintptr_t spatial_region_start_ ABSL_GUARDED_BY(mutex_) = 0;
+  size_t spatial_region_bytes_ ABSL_GUARDED_BY(mutex_) = 0;
+
   // Maximum bytes a chunk may exceed the requested size before it is split, to
   // bound internal fragmentation. Derived from Options::fragmentation_fraction
   // and memory_limit_ once at construction.
@@ -750,9 +895,9 @@ class BFCAllocator : public Allocator {
 
   const Options opts_;
 
-  // Tag assigned to newly-created free chunks. Classic BFC keeps ordinary
-  // free chunks in kLower; spatial partitioning starts each fixed region as
-  // the kCentralGap span.
+  // Tag assigned to newly-created free chunks. Non-partitioned BFC keeps
+  // ordinary free chunks in kLower; spatial partitioning starts its initial
+  // region as the kCentralGap span. Additional spatial regions use kUpper.
   const ChunkTag free_chunk_tag_;
 
   // The size of the current region allocation.
@@ -764,6 +909,10 @@ class BFCAllocator : public Allocator {
   // device visible memory which is not adjacent to the other region in the
   // device's address space).
   const bool coalesce_regions_;
+
+  // Suballocator configuration, including any VA reservation, must be complete
+  // before BFC construction. Region sizes also obey kMinAllocationSize.
+  const size_t allocation_granularity_;
 
   std::unique_ptr<SubAllocator> sub_allocator_;
   std::string name_;

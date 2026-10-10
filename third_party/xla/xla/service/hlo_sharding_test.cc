@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
@@ -38,8 +39,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -294,7 +293,7 @@ TEST_F(TileTest, PassesValidationAndMatchesTileInfo) {
     // {device_index, tile_offest, tile_limit}.
     std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>
         tiles;
-    TF_ASSERT_OK(sharding.EachTile(
+    ASSERT_OK(sharding.EachTile(
         shape.dimensions(),
         [&tiles](int device_index, absl::Span<const int64_t> tile_offset,
                  absl::Span<const int64_t> tile_limit) {
@@ -450,28 +449,28 @@ TEST_F(HloShardingTest, EachTile) {
     // 6-way sharded along axis 0, 1-way sharded along axis 1.
     HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
     Shape shape = ShapeUtil::MakeShape(U32, {12, 20});
-    TF_EXPECT_OK(validate(shape, sharding));
+    EXPECT_OK(validate(shape, sharding));
 
     {
       Mesh mesh({6}, {"x"});
       NamedSharding named_sharding =
           test_utils::FromAxisNames(mesh, {{"x"}, {}});
 
-      TF_EXPECT_OK(validate(shape, HloSharding(named_sharding)));
+      EXPECT_OK(validate(shape, HloSharding(named_sharding)));
     }
   }
   {
     // 6-way sharded along axis 0, 1-way sharded along axis 1.
     HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
     Shape shape = ShapeUtil::MakeShape(U32, {11, 20});
-    TF_EXPECT_OK(validate(shape, sharding));
+    EXPECT_OK(validate(shape, sharding));
 
     {
       Mesh mesh({6}, {"x"});
       NamedSharding named_sharding =
           test_utils::FromAxisNames(mesh, {{"x"}, {}});
 
-      TF_EXPECT_OK(validate(shape, HloSharding(named_sharding)));
+      EXPECT_OK(validate(shape, HloSharding(named_sharding)));
     }
   }
   {
@@ -479,14 +478,14 @@ TEST_F(HloShardingTest, EachTile) {
     // replicated by 3 times.
     HloSharding sharding = HloSharding::PartialTile(TileAssignment({2, 1, 3}));
     Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
-    TF_EXPECT_OK(validate(shape, sharding));
+    EXPECT_OK(validate(shape, sharding));
 
     {
       Mesh mesh({2, 3}, {"x", "y"});
       NamedSharding named_sharding =
           test_utils::FromAxisNames(mesh, {{"x"}, {}});
 
-      TF_EXPECT_OK(validate(shape, HloSharding(named_sharding)));
+      EXPECT_OK(validate(shape, HloSharding(named_sharding)));
     }
   }
   {
@@ -495,14 +494,14 @@ TEST_F(HloShardingTest, EachTile) {
     HloSharding sharding = HloSharding::Subgroup(TileAssignment({2, 1, 3}),
                                                  {OpSharding::REPLICATED});
     Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
-    TF_EXPECT_OK(validate(shape, sharding));
+    EXPECT_OK(validate(shape, sharding));
 
     {
       Mesh mesh({2, 3}, {"x", "y"});
       NamedSharding named_sharding = test_utils::FromAxisNames(
           mesh, {{"x"}, {}}, /*replicated_axes=*/{"y"});
 
-      TF_EXPECT_OK(validate(shape, HloSharding(named_sharding)));
+      EXPECT_OK(validate(shape, HloSharding(named_sharding)));
     }
   }
 }
@@ -964,7 +963,7 @@ class HloParseShardingWithMetadataTest
 
 TEST_P(HloParseShardingWithMetadataTest, ParseHloString) {
   auto check = [](const HloSharding& sharding) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto parsed_sharding,
         ParseSharding(sharding.ToString(/*include_metadata=*/true)));
     EXPECT_EQ(sharding, parsed_sharding);
@@ -1494,6 +1493,49 @@ TEST_F(HloShardingTest, V3ToV2ToV3RoundTripSubAxes) {
   HloSharding hlo_sharding_restored =
       HloSharding::V3ToV2Sharding(named_sharding_restored);
   EXPECT_EQ(hlo_sharding, hlo_sharding_restored);
+}
+
+TEST_F(HloShardingTest, CopyAndMoveWithNamedSharding) {
+  EXPECT_EQ(sizeof(NamedSharding), 232);
+  EXPECT_EQ(sizeof(HloSharding), 168);
+
+  Mesh mesh({4}, {"axis_0"});
+  NamedSharding named_sharding =
+      test_utils::FromAxisNames(mesh, {{"axis_0:(1)2"}});
+  HloSharding sharding(named_sharding);
+  EXPECT_TRUE(sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(sharding.named_sharding(), named_sharding);
+
+  // Test copy constructor
+  HloSharding copy_sharding = sharding;
+  EXPECT_TRUE(copy_sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(copy_sharding.named_sharding(), named_sharding);
+  EXPECT_EQ(copy_sharding, sharding);
+
+  // Test copy assignment
+  HloSharding assign_sharding = HloSharding::Replicate();
+  EXPECT_FALSE(assign_sharding.UseNamedShardingLeaf());
+  assign_sharding = sharding;
+  EXPECT_TRUE(assign_sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(assign_sharding.named_sharding(), named_sharding);
+  EXPECT_EQ(assign_sharding, sharding);
+
+  // Test self-assignment
+  HloSharding& sharding_ref = sharding;
+  sharding = sharding_ref;
+  EXPECT_TRUE(sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(sharding.named_sharding(), named_sharding);
+
+  // Test move constructor
+  HloSharding move_sharding = std::move(copy_sharding);
+  EXPECT_TRUE(move_sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(move_sharding.named_sharding(), named_sharding);
+
+  // Test move assignment
+  HloSharding move_assign_sharding = HloSharding::Replicate();
+  move_assign_sharding = std::move(assign_sharding);
+  EXPECT_TRUE(move_assign_sharding.UseNamedShardingLeaf());
+  EXPECT_EQ(move_assign_sharding.named_sharding(), named_sharding);
 }
 
 }  // namespace

@@ -64,6 +64,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@xla//xla/tsl/platform:errors",

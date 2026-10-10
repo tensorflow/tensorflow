@@ -29,6 +29,7 @@ License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -40,10 +41,13 @@ License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -66,16 +70,13 @@ bool HasTritonBlockLevelFusionConfig(const HloInstruction* fusion) {
 
 class FusionBlockLevelRewriterTestBase
     : public HloHardwareIndependentTestBase,
-      public testing::WithParamInterface<std::tuple<bool, bool>> {
+      public testing::WithParamInterface<bool> {
  public:
   FusionBlockLevelRewriterTestBase() {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
-  bool EnableTilingPropagation() const { return std::get<0>(GetParam()); }
-  bool EnableSameShapeMultiOutputFusion() const {
-    return std::get<1>(GetParam());
-  }
+  bool EnableSameShapeMultiOutputFusion() const { return GetParam(); }
 
  protected:
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo(
@@ -91,8 +92,6 @@ class FusionBlockLevelRewriterTest : public FusionBlockLevelRewriterTestBase {
         HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(
         true);
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        EnableTilingPropagation());
     debug_options
         .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(
             EnableSameShapeMultiOutputFusion());
@@ -100,22 +99,12 @@ class FusionBlockLevelRewriterTest : public FusionBlockLevelRewriterTestBase {
   }
 };
 
-INSTANTIATE_TEST_SUITE_P(
-    FusionBlockLevelRewriterTest, FusionBlockLevelRewriterTest,
-    testing::Combine(testing::Bool(), testing::Bool()),
-    [](const testing::TestParamInfo<std::tuple<bool, bool>>& info) {
-      std::vector<std::string> parts;
-      if (std::get<0>(info.param)) {
-        parts.push_back("TilingPropagation");
-      }
-      if (std::get<1>(info.param)) {
-        parts.push_back("SameShapeMultiOutputFusion");
-      }
-      if (parts.empty()) {
-        return std::string("Default");
-      }
-      return absl::StrJoin(parts, "_");
-    });
+INSTANTIATE_TEST_SUITE_P(FusionBlockLevelRewriterTest,
+                         FusionBlockLevelRewriterTest, testing::Bool(),
+                         [](const testing::TestParamInfo<bool>& info) {
+                           return info.param ? "SameShapeMultiOutputFusion"
+                                             : "Default";
+                         });
 
 TEST_P(FusionBlockLevelRewriterTest,
        DoesNotRewriteFusionThatIsAlreadyBlockLevel) {
@@ -220,9 +209,7 @@ ENTRY entry {
                                &mlir_context_)
           .Run(module.get());
 
-  const bool should_rewrite =
-      EnableSameShapeMultiOutputFusion() && EnableTilingPropagation();
-  if (should_rewrite) {
+  if (EnableSameShapeMultiOutputFusion()) {
     EXPECT_THAT(result, IsOkAndHolds(true));
     const HloInstruction* root =
         module->entry_computation()->root_instruction();
@@ -379,8 +366,8 @@ ENTRY entry {
   param_1 = f32[10,10] parameter(1)
   ROOT fusion = f32[10,10] fusion(param_0, param_1), kind=kLoop, calls=fusion_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
@@ -420,10 +407,10 @@ ENTRY entry {
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
                                &mlir_context_)
           .Run(module.get()),
-      absl_testing::IsOkAndHolds(EnableTilingPropagation()));
+      absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(HasTritonBlockLevelFusionConfig(root), EnableTilingPropagation());
+  EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
 TEST_P(FusionBlockLevelRewriterTest, DoesNotRewriteScanFusionWithCarryOutput) {
@@ -458,6 +445,72 @@ ENTRY entry {
                                &mlir_context_)
           .Run(module.get()),
       absl_testing::IsOkAndHolds(false));
+}
+
+TEST_P(FusionBlockLevelRewriterTest, RewritesFusionWithParallelTilingSearch) {
+  const absl::string_view hlo_text = R"(
+fusion_computation {
+  param_0 = f32[128,128] parameter(0)
+  ROOT exp = f32[128,128] exponential(param_0)
+}
+
+ENTRY entry {
+  param_0 = f32[128,128] parameter(0)
+  ROOT fusion = f32[128,128] fusion(param_0), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
+  // Same contexts as GpuCompiler pools. They are single-threaded, so the cost
+  // model must give each candidate its own context.
+  MlirContextPool mlir_context_pool(CreateMlirContext, /*preallocate=*/4);
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_, &thread_pool, &mlir_context_pool)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(FusionBlockLevelRewriterTestBase,
+       RewritesSameShapeMultiOutputFusionWithoutGeneralBlockLevelRewriter) {
+  const absl::string_view hlo_text = R"hlo(
+f {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  add = f32[10,10] add(p0, p1)
+  sub = f32[10,10] subtract(p0, p1)
+  ROOT multi_output = (f32[10,10], f32[10,10]) tuple(add, sub)
+}
+
+ENTRY entry {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  ROOT fusion = (f32[10,10], f32[10,10]) fusion(p0, p1), kind=kLoop, calls=f
+})hlo";
+  DebugOptions debug_options =
+      HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(
+      false);
+  debug_options.set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(
+      true);
+
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);
+  EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
 }  // namespace

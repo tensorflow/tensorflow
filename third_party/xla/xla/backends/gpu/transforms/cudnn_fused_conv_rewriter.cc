@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
@@ -1697,9 +1698,7 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::RunImpl(
       auto* cc = compute_capability_.cuda_compute_capability();
       ABSL_ASSIGN_OR_RETURN(changed,
                        F8GraphConv(comp, *cc, dnn_version_, toolkit_version_));
-      if (changed) {
-        return changed;
-      }
+      any_changed |= changed;
     }
     // Fuse "inside out" starting with the operations closest to the conv.
     ABSL_ASSIGN_OR_RETURN(changed, FuseRemoveConvertInConv(comp));

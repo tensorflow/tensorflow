@@ -85,13 +85,13 @@ def TPU_TiledLayoutAttr
 
     // Returns the smallest tile that can be used to divide the first tile of
     // `tiles` into contiguous subtiles.
-    // NOTE: For tiles (T1, T2, ..., Tn), let Ts be the subtile unit. Then,
+    // NOTE: For tiles (T1, T2, ..., Tn), let Ts be the unit subtile. Then,
     //   (T1, T2, ..., Tn) is equivalent to (T1, Ts, T2, ..., Tn). Furthermore,
     //   tiles (T2, ..., Tn) permute data within each Ts tile, but never across
     //   Ts tiles.
-    static ::llvm::SmallVector<int64_t> getSubtileUnit(::llvm::ArrayRef<::xla::Tile> tiles);
-    ::llvm::SmallVector<int64_t> getSubtileUnit() const {
-      return getSubtileUnit(getTiles());
+    static ::llvm::SmallVector<int64_t> getUnitSubtile(::llvm::ArrayRef<::xla::Tile> tiles);
+    ::llvm::SmallVector<int64_t> getUnitSubtile() const {
+      return getUnitSubtile(getTiles());
     }
 
     int64_t getRank() const {
@@ -124,6 +124,7 @@ def TPU_MemorySpaceAttr : AttrDef<TPU_Dialect, "MemorySpace"> {
         return get($_ctxt, value, std::nullopt);
     }]>
   ];
+  let genVerifyDecl = 1;
 }
 
 class TPU_Op<string mnemonic, list<Trait> traits = []> :
@@ -216,10 +217,12 @@ def TPU_ScanOp : TPU_Op<"scan"> {
 def TPU_SortOp : TPU_Op<"sort", [Pure]> {
   let summary = "Sorts key/value pairs based on keys.";
   let description = [{
-    tpu.sort performs a stable sort of key/value pairs in ascending or
-    descending order based on keys. Masked-out keys and values are placed at the
-    end of the output vectors. An output mask indicates which outputs
-    correspond to the valid inputs.
+    tpu.sort performs a stable sort of key/value pairs in the innermost
+    dimension in ascending or descending order based on keys. Duplicate keys
+    preserve their input order regardless of the sorting order. Masked-out keys
+    and values are placed at the end of the output vectors. Integer keys are
+    treated as unsigned. An output mask indicates which outputs correspond to
+    the valid inputs.
   }];
   let arguments = (ins
     VectorOfNonZeroRankOf<[I32,F32]>:$keys,
@@ -292,6 +295,168 @@ def TPU_VectorStoreOp :TPU_Op<"vector_store", [DefaultMemWrite, AttrSizedOperand
   ];
 }
 
+def TPU_CompressStoreVregOp : TPU_Op<"compress_store_vreg", [DefaultMemWrite]> {
+  let summary = "Performs a masked, compressed store of a single vreg.";
+  let description = [{
+    `tpu.compress_store_vreg` performs a masked, compressed store of a single
+    vreg to memory starting at the address given by `base[indices]`. It is the
+    physical (vreg-level) counterpart of `tpu.vector_compress_store`.
+
+    Masked-out lanes are skipped when writing to memory: elements from the
+    enabled lanes are stored contiguously to sequential locations in memory
+    starting at `base[indices]`.
+
+    For example, storing [A, B, C, D] with mask [true, false, true, false]
+    writes A to `base[indices]` and C to `base[indices] + 1`.
+
+    valueToStore: The vreg to store. For packed (sub-32-bit) types, the vreg is
+                  2-D with shape `(lane_count, packing)`, and a lane stores all
+                  of its `packing` subelements together.
+    base        : Memref to store to.
+    indices     : Scalar indices into `base`, identifying the position of the
+                  first stored element. The length must be the same as the
+                  rank of `base`.
+    mask        : 1-D lane mask.
+    add         : If true, the enabled elements are added to the values already
+                  in memory instead of overwriting them.
+  }];
+  let arguments = (ins
+    TPU_Vreg:$valueToStore,
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfRankAndType<[1], [I1]>:$mask,
+    DefaultValuedAttr<BoolAttr, "false">:$add
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $valueToStore `,` $mask attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+  }];
+  let hasVerifier = 1;
+}
+
+def TPU_VectorCompressStoreOp : TPU_Op<"vector_compress_store", [DefaultMemWrite]> {
+  let summary = "Performs a masked, compressed store of a vector.";
+  let description = [{
+    In contrast to `tpu.vector_store`, which has non-compressed semantics
+    (masked-out elements leave gaps in memory), masked-out elements are skipped
+    entirely when striding along `compress_dim`: `valueToStore[i_0, i_1, ...]`,
+    if not masked, is stored at `base[j_0, j_1, ...]` where:
+    - For `n != compress_dim`, `j_n = indices_n + i_n` (same as a regular store)
+    - For `n == compress_dim`, `j_n = indices_n + c`, where `c` is the count of
+      enabled (true) values in `mask[i_0, i_1, ..., 0:i_n, ...]`
+
+    For example, for a rank-1 `valueToStore` (and hence `compress_dim` = 0),
+    storing [A, B, C, D] with mask [true, false, true, false] writes A to
+    `base[indices]` and C to `base[indices + 1]`.
+
+    valueToStore: The vector to store. Must be of the same rank as the base
+                  memref shape.
+    base        : Memref to store to.
+    indices     : Scalar indices into `base`, identifying the position of the
+                  first stored element. Must be of the same rank as the base
+                  memref shape.
+    mask        : Mask of the same shape as `valueToStore`. Masking has a
+                  granularity of 32 bits: elements that share a 32-bit word
+                  must have the same mask value.
+    compress_dim: The dimension along which the enabled elements are written
+                  consecutively.
+    add         : If true, the enabled elements are added to the values already
+                  in memory instead of overwriting them.
+  }];
+  let arguments = (ins
+    AnyVectorOfNonZeroRank:$valueToStore,
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfNonZeroRankOf<[I1]>:$mask,
+    I32Attr:$compress_dim,
+    DefaultValuedAttr<BoolAttr, "false">:$add
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $valueToStore `,` $mask attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+  }];
+  let hasVerifier = 1;
+}
+
+def TPU_ExpandLoadVregOp : TPU_Op<"expand_load_vreg", [DefaultMemRead]> {
+  let summary = "Performs a masked, expanded load of a single vreg.";
+  let description = [{
+    `tpu.expand_load_vreg` performs a masked, expanded load of a single vreg
+    from memory starting at the address given by `base[indices]`. It is the
+    physical (vreg-level) counterpart of `tpu.vector_expand_load`.
+
+    Masked-out lanes do not consume an address: the enabled lanes are filled
+    from contiguous, sequential locations in memory starting at
+    `base[indices]`. The n-th enabled lane reads `base[indices] + n`.
+
+    For example, loading with mask [true, false, true, false] yields
+    [`base[indices]`, <undef>, `base[indices] + 1`, <undef>].
+
+    Elements in masked-out lanes are undefined.
+
+    base   : Memref to load from.
+    indices: Scalar indices into `base`, identifying the position of the first
+             loaded element. The length must be the same as the rank of `base`.
+    mask   : 1-D lane mask.
+    result : The loaded vreg. For packed (sub-32-bit) types, the vreg is 2-D
+             with shape `(lane_count, packing)`, and a lane loads all of its
+             `packing` subelements together.
+  }];
+  let arguments = (ins
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfRankAndType<[1], [I1]>:$mask
+  );
+  let results = (outs TPU_Vreg:$result);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $mask attr-dict `:` type($base) `,` type($result) `,` type($mask)
+  }];
+  let hasVerifier = 1;
+}
+
+def TPU_VectorExpandLoadOp : TPU_Op<"vector_expand_load", [DefaultMemRead]> {
+  let summary = "Performs a masked, expanded load of a vector.";
+  let description = [{
+    In contrast to `tpu.vector_load`, which has non-expanded semantics
+    (masked-out elements leave gaps in the addresses that are read), masked-out
+    elements are skipped entirely when striding along `expand_dim`:
+    `result[i_0, i_1, ...]`, if not masked, is loaded from
+    `base[j_0, j_1, ...]` where:
+    - For `n != expand_dim`, `j_n = indices_n + i_n` (same as a regular load)
+    - For `n == expand_dim`, `j_n = indices_n + c`, where `c` is the count of
+      enabled (true) values in `mask[i_0, i_1, ..., 0:i_n, ...]`
+
+    Elements at masked-off positions are undefined.
+
+    For example, for a rank-1 `result` (and hence `expand_dim` = 0), loading
+    with mask [true, false, true, false] yields
+    [base[indices], <undef>, base[indices + 1], <undef>].
+
+    base      : Memref to load from.
+    indices   : Scalar indices into `base`, identifying the position of the
+                first loaded element. Must be of the same rank as the base
+                memref shape.
+    mask      : Mask of the same shape as `result`. Masking has a granularity
+                of 32 bits: elements that share a 32-bit word must have the
+                same mask value.
+    expand_dim: The dimension along which the enabled elements are read
+                consecutively.
+    result    : The loaded vector. Must be of the same rank as the base memref
+                shape.
+  }];
+  let arguments = (ins
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfNonZeroRankOf<[I1]>:$mask,
+    I32Attr:$expand_dim
+  );
+  let results = (outs AnyVectorOfNonZeroRank:$result);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $mask attr-dict `:` type($base) `,` type($result) `,` type($mask)
+  }];
+  let hasVerifier = 1;
+}
+
 // tpu.vector_load loads a vector from memory into a register.
 //
 //  base   : Memref to load from.
@@ -333,6 +498,7 @@ def TPU_StridedLoadOp : TPU_Op<"strided_load", [DefaultMemRead]> {
     $base `[` $indices `]` attr-dict `:` type($base) `,` type($result)
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def TPU_StridedStoreOp : TPU_Op<"strided_store", [DefaultMemWrite]> {
@@ -533,18 +699,6 @@ def TPU_ReshapeOp : TPU_Op<"reshape", [Pure]> {
   let assemblyFormat = [{ $source attr-dict `:` type($source) `->` type($result) }];
   let hasVerifier = 1;
   let hasFolder = 1;
-}
-
-// TODO(mvoz): deprecated - use concat. Canonicalization will do so automatically.
-// b/376295711
-def TPU_RepeatOp : TPU_Op<"repeat", [Pure]> {
-  let arguments = (ins
-    AnyVectorOfNonZeroRank:$source,
-    I32Attr:$dimension,
-    I32Attr:$times
-  );
-  let results = (outs AnyVectorOfNonZeroRank:$output);
-  let assemblyFormat = [{ $source `,` $dimension `x` $times attr-dict `:` type($source) `->` type($output) }];
 }
 
 def TPU_BroadcastInSublanesOp : TPU_Op<"broadcast_in_sublanes", [Pure]> {
@@ -906,6 +1060,8 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
     - `rhs_dilation`: Dilation factor for the kernel/filter (defaults to 1).
     - `window_reversal`: Boolean flags indicating whether to reverse the kernel
       window along each spatial dimension.
+    - `feature_group_count`: Number of feature groups for grouped convolution.
+    - `batch_group_count`: Number of batch groups for grouped convolution.
     - `precision`: Optional contraction precision mode for TPU matrix multiplication.
   }];
   let arguments = (ins
@@ -918,6 +1074,8 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
     DenseI64ArrayAttr:$lhs_dilation,
     DenseI64ArrayAttr:$rhs_dilation,
     DenseBoolArrayAttr:$window_reversal,
+    DefaultValuedAttr<I64Attr, "1">:$feature_group_count,
+    DefaultValuedAttr<I64Attr, "1">:$batch_group_count,
     OptionalAttr<TPU_ContractPrecisionEnum>:$precision
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);
@@ -1197,10 +1355,64 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
     std::optional<std::string> verifyOffsetAndSizeTileAlignment(
         std::array<int64_t, 2> tc_target_shape,
         MemRefType source_type_override = nullptr);
+
+    // Given a source shape size, a slice shape size, a source tile size, a
+    // result tile size and optionally a slice offset, the below functions
+    // returns a tri-state boolean (nullopt means "unknown") indicating whether
+    // the result tiles of the slice stride across or within the source tiles.
+    // The result tile should divide the source tile and the offset, if
+    // provided, should be divisible by the result tile size.
+    static std::optional<bool> sliceStridesAcrossSourceTiles(
+        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
+        int64_t result_tile_size, Value offset);
+    static std::optional<bool> sliceStridesWithinSourceTiles(
+        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
+        int64_t result_tile_size, Value offset);
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+}
+
+def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure]> {
+  let summary = "Slices a shared VMEM memref to a subcore-local VMEM memref.";
+  let description = [{
+    Extracts a subcore-local VMEM slice from a shared VMEM memref by dividing
+    the minor dimension across `num_subcores`.
+
+    To align with SparseCore physical VMEM striping, each subcore's minor
+    dimension slice (`result_shape[-1] = input_shape[-1] / num_subcores`) must
+    span exactly one physical VMEM stripe (`stripe_words`, e.g. 8 words / 32
+    bytes on TPU v7x).
+      - With >1D tiling (which requires a `(packing, 1)` sub-tile when
+        `packing > 1`), each minor index spans a full word, so
+        `result_shape[-1] == stripe_words`.
+      - With 1D tiling, each word holds `packing` elements along the minor
+        dimension, so `result_shape[-1] == stripe_words * packing`
+        (`stripe_bytes / element_bytes`).
+
+    Examples of valid shapes/layouts on a target with 16 subcores, 4B words, and
+    8-word stripes (e.g. TPU v7x):
+      - `8x128xbf16, #tpu.tiled<(8,128)(2,1),[1,1]>` (`result_shape[-1] = 8`)
+      - `8x256xbf16, #tpu.tiled<(16),[16,1]>` (`result_shape[-1] = 16`)
+      - `8x128xi32, #tpu.tiled<(8,128),[1,1]>` (`result_shape[-1] = 8`)
+      - `8x128xi32, #tpu.tiled<(8),[16,1]>` (`result_shape[-1] = 8`)
+  }];
+  let arguments = (ins
+    AnyMemRef:$mem_ref
+  );
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $mem_ref attr-dict `:` type($mem_ref) `->` type($result)
+  }];
+  let extraClassDeclaration = [{
+    static ::mlir::FailureOr<::mlir::tpu::TiledLayoutAttr> inferResultLayout(
+        ::mlir::MemRefType source_type, ::mlir::ArrayRef<int64_t> target_shape,
+        int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
+        int64_t spmem_word_size_bytes,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
+  }];
+  let hasVerifier = 1;
 }
 
 def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
@@ -1223,7 +1435,9 @@ def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
+        ::mlir::MemRefType input_type, ::mlir::ArrayRef<int64_t> result_shape,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
 }
@@ -1235,7 +1449,9 @@ def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    static ::mlir::FailureOr<::mlir::MemRefType> inferResultType(
+        ::mlir::MemRefType input_type, ::mlir::Type result_elem_type,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
@@ -1271,7 +1487,7 @@ def TPU_AssumeLayoutOp : TPU_Op<"assume_layout", [Pure]> {
   }];
 }
 
-def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure]> {
+def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure, SameOperandsAndResultShape, SameOperandsAndResultElementType]> {
   let description = [{
     Erases the layout attribute and, optionally, the memory space from a memref.
     The resulting memref is otherwise identical to the input.
@@ -1737,6 +1953,7 @@ def TPU_TransposeOp : TPU_Op<"transpose", [Pure]> {
     }
   }];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def TPU_LogOp : TPU_Op<"log"> {
@@ -1798,6 +2015,46 @@ def TPU_FetchAndAddSyncOp : TPU_Op<"fetch_and_add_sync", [DefaultMemRead, Defaul
     attr-dict `:` type($base) `,` type($value) `->` type($result)
   }];
 
+  let hasVerifier = 1;
+}
+
+def TPU_TileSizeOp : TPU_Op<"tile_size", [Pure]> {
+  let summary = "Get the top level tile size of a given memref.";
+  let description = [{
+    Get the tile size of a memref at the given dimension index. This only
+    returns the first level of tiles. If the dimension is not tiled, the value
+    is always 1.
+  }];
+
+  let arguments = (ins AnyMemRef:$source, I32Attr:$index);
+  let results = (outs I32:$result);
+
+  let assemblyFormat = [{
+    attr-dict $source `,` $index `:` type($source)
+  }];
+
+  let hasVerifier = 1;
+}
+
+def TPU_MemRefMemorySpaceIsOp : TPU_Op<"memref_memory_space_is", [Pure]> {
+  let summary = "Check if a memref resides in the given memory space.";
+  let description = [{
+    Returns true if `source` is in `memory_space`. If `memory_space` has no
+    core type, the core type of `source` is ignored.
+
+    The result is resolved at compile time, once the memory space of `source`
+    is fully known: `any` is specialized, and a missing memory space or core
+    type is filled in from the enclosing function's `tpu.core_type`.
+  }];
+
+  let arguments = (ins AnyMemRef:$source, TPU_MemorySpaceAttr:$memory_space);
+  let results = (outs I1:$result);
+
+  let assemblyFormat = [{
+    $source `,` $memory_space attr-dict `:` type($source)
+  }];
+
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 

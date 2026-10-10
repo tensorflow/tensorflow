@@ -695,6 +695,23 @@ func.func @fuseMulIntoFullyConnectedNoBias(%arg0: tensor<4x2xf32>, %arg1: none) 
 // CHECK:  return %[[RES]] : tensor<4x2xf32>
 }
 
+// A multiplier with leading unit dims (e.g. ConvNeXt layer scale after a
+// keep_num_dims FC) must not broadcast the fused bias beyond 1-D.
+// CHECK-LABEL: @fuseMulIntoFullyConnectedKeepsBias1D
+func.func @fuseMulIntoFullyConnectedKeepsBias1D(%arg0: tensor<1x2x2x3xf32>) -> tensor<1x2x2x2xf32> {
+  %cst0 = arith.constant dense<[[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]> : tensor<2x3xf32>
+  %cst1 = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+  %cst2 = arith.constant dense<[[[[3.0, 5.0]]]]> : tensor<1x1x1x2xf32>
+  %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<1x2x2x3xf32>, tensor<2x3xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+  %1 = "tfl.mul"(%0, %cst2) {fused_activation_function = "NONE"} : (tensor<1x2x2x2xf32>, tensor<1x1x1x2xf32>) -> tensor<1x2x2x2xf32>
+  func.return %1 : tensor<1x2x2x2xf32>
+
+// CHECK-DAG:  %[[FILTER:.*]] = arith.constant dense<{{\[\[}}3.000000e+00, 6.000000e+00, 9.000000e+00], [5.000000e+00, 1.000000e+01, 1.500000e+01]]> : tensor<2x3xf32>
+// CHECK-DAG:  %[[BIAS:.*]] = arith.constant dense<[3.000000e+00, 1.000000e+01]> : tensor<2xf32>
+// CHECK:  %[[RES:.*]] = "tfl.fully_connected"(%arg0, %[[FILTER]], %[[BIAS]]) <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<1x2x2x3xf32>, tensor<2x3xf32>, tensor<2xf32>) -> tensor<1x2x2x2xf32>
+// CHECK:  return %[[RES]] : tensor<1x2x2x2xf32>
+}
+
 // CHECK-LABEL: @fuseMulIntoDepthwiseConv2d
 func.func @fuseMulIntoDepthwiseConv2d(%arg0: tensor<1x112x112x2xf32>) -> tensor<1x112x112x2xf32> {
   %cst0 = arith.constant dense<[[[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]], [[13.0, 14.0], [15.0, 16.0], [17.0, 18.0]]]]> : tensor<1x3x3x2xf32>
@@ -4067,6 +4084,46 @@ func.func @gelu_approximate1_with_mul1(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // CHECK: "tfl.gelu"(%arg0) <{approximate = true}> : (tensor<3xf32>) -> tensor<3xf32>
 }
 
+func.func @gelu_approximate_with_mul3(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst = arith.constant dense<0.797884583> : tensor<f32>
+  %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
+  %cst_1 = arith.constant dense<1.000000e+00> : tensor<f32>
+  %cst_3 = arith.constant dense<4.471500e-02> : tensor<f32>
+  %0 = "tfl.mul"(%arg0, %cst_3) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %1 = "tfl.mul"(%0, %arg0) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %2 = "tfl.mul"(%1, %arg0) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %3 = "tfl.add"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %4 = "tfl.mul"(%3, %cst) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %5 = "tfl.tanh"(%4) : (tensor<3xf32>) -> tensor<3xf32>
+  %6 = "tfl.add"(%5, %cst_1) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %7 = "tfl.mul"(%arg0, %cst_0) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %8 = "tfl.mul"(%7, %6) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %8 : tensor<3xf32>
+
+// CHECK-LABEL:gelu_approximate
+// CHECK: "tfl.gelu"(%arg0) <{approximate = true}> : (tensor<3xf32>) -> tensor<3xf32>
+}
+
+func.func @gelu_approximate1_with_mul3(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst = arith.constant dense<0.797884583> : tensor<f32>
+  %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
+  %cst_1 = arith.constant dense<1.000000e+00> : tensor<f32>
+  %cst_3 = arith.constant dense<4.471500e-02> : tensor<f32>
+  %0 = "tfl.mul"(%arg0, %cst_3) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %1 = "tfl.mul"(%0, %arg0) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %2 = "tfl.mul"(%1, %arg0) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %3 = "tfl.add"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %4 = "tfl.mul"(%3, %cst) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %5 = "tfl.tanh"(%4) : (tensor<3xf32>) -> tensor<3xf32>
+  %6 = "tfl.add"(%5, %cst_1) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %7 = "tfl.mul"(%6, %cst_0) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %8 = "tfl.mul"(%arg0, %7) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %8 : tensor<3xf32>
+
+// CHECK-LABEL:gelu_approximate
+// CHECK: "tfl.gelu"(%arg0) <{approximate = true}> : (tensor<3xf32>) -> tensor<3xf32>
+}
+
 func.func @gelu_approximate_no_match(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst = arith.constant dense<0.797884583> : tensor<f32>
   %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
@@ -5165,3 +5222,30 @@ func.func @Fuse4DResourceAddIntoDepthwiseConv2D(%arg0: tensor<1x32x32x4xf32>, %a
   // CHECK: %[[DW_CONV:.*]] = "tfl.depthwise_conv_2d"(%arg0, %arg1, %[[NEW_BIAS]])
   // CHECK: return %[[DW_CONV]]
 }
+
+// CHECK-LABEL: @fuse_sum_mul_to_mean
+func.func @fuse_sum_mul_to_mean(%arg0: tensor<2x3x4xf32>) -> tensor<2x1x4xf32> {
+  %cst_axes = arith.constant dense<1> : tensor<1xi32>
+  %cst_factor = arith.constant dense<0.333333333> : tensor<1xf32>
+  %0 = "tfl.sum"(%arg0, %cst_axes) <{keep_dims = true}> : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<2x1x4xf32>
+  %1 = "tfl.mul"(%0, %cst_factor) <{fused_activation_function = "NONE"}> : (tensor<2x1x4xf32>, tensor<1xf32>) -> tensor<2x1x4xf32>
+  func.return %1 : tensor<2x1x4xf32>
+
+  // CHECK-NOT: tfl.sum
+  // CHECK-NOT: tfl.mul
+  // CHECK:     "tfl.mean"(%arg0, %{{.*}}) <{keep_dims = true}>
+}
+
+// CHECK-LABEL: @do_not_fuse_sum_mul_with_arbitrary_factor
+func.func @do_not_fuse_sum_mul_with_arbitrary_factor(%arg0: tensor<2x3x4xf32>) -> tensor<2x1x4xf32> {
+  %cst_axes = arith.constant dense<1> : tensor<1xi32>
+  %cst_factor = arith.constant dense<8.000000e-01> : tensor<1xf32>
+  %0 = "tfl.sum"(%arg0, %cst_axes) <{keep_dims = true}> : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<2x1x4xf32>
+  %1 = "tfl.mul"(%0, %cst_factor) <{fused_activation_function = "NONE"}> : (tensor<2x1x4xf32>, tensor<1xf32>) -> tensor<2x1x4xf32>
+  func.return %1 : tensor<2x1x4xf32>
+
+  // CHECK:     "tfl.sum"
+  // CHECK:     tfl.mul
+  // CHECK-NOT: "tfl.mean"
+}
+

@@ -26,9 +26,25 @@ namespace stream_executor::cuda {
 
 using Write42KernelFn = void (*)(int32_t* out, int num_elements);
 
+// Maximum threads per block declared via __launch_bounds__ on
+// GetWrite42WithLaunchBoundsKernel(). Tests expect to read this back statically
+// from the CUBIN.
+inline constexpr int kWrite42LaunchBoundsMaxThreads = 256;
+
+// Number of int32_t elements in the static shared memory buffer used by
+// GetWrite42WithLaunchBoundsKernel(). The resulting static shared memory size
+// is kWrite42SharedElements * sizeof(int32_t) bytes.
+inline constexpr int kWrite42SharedElements = 256;
+
 // Returns the host function pointer for a simple CUDA kernel, that writes 42 to
 // each element of the given device buffer.
 Write42KernelFn GetWrite42Kernel();
+
+// Returns the host function pointer for a CUDA kernel that behaves like
+// Write42Kernel, but additionally declares __launch_bounds__ and uses a fixed
+// amount of static shared memory. Used by tests to verify statically-extracted
+// occupancy attributes.
+Write42KernelFn GetWrite42WithLaunchBoundsKernel();
 
 // Launches a simple CUDA kernel using the chevron syntax (<<<...>>>)
 // that writes 42 to each element of the given device buffer.

@@ -1661,6 +1661,60 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
         c, b, [i], return_same_structure=True, maximum_iterations=50)
     self.assertEqual(self.evaluate(r), [10])
 
+  @test_util.run_v2_only
+  def testEagerWhileLoopSingleLoopVarBareTensorBodyPreservesShape(self):
+    x = array_ops.ones([1, 28, 28, 1])
+    shapes_seen = []
+
+    def cond(a):
+      shapes_seen.append(a.shape.as_list())
+      return math_ops.logical_and(
+          array_ops.shape(a)[0] < 10, math_ops.reduce_max(a) < 4.0
+      )
+
+    def body(a):
+      return a + 1.0
+
+    r = while_loop.while_loop(cond, body, [x], return_same_structure=True)
+    self.assertAllEqual(shapes_seen, [[1, 28, 28, 1]] * 4)
+    self.assertIsInstance(r, list)
+    self.assertLen(r, 1)
+    self.assertEqual(r[0].shape.as_list(), [1, 28, 28, 1])
+    self.assertAllClose(
+        self.evaluate(r[0]), array_ops.ones([1, 28, 28, 1]) * 4.0
+    )
+
+    shapes_seen.clear()
+    r_max = while_loop.while_loop(
+        cond, body, [x], return_same_structure=True, maximum_iterations=3
+    )
+    self.assertAllEqual(shapes_seen, [[1, 28, 28, 1]] * 4)
+    self.assertIsInstance(r_max, list)
+    self.assertLen(r_max, 1)
+    self.assertEqual(r_max[0].shape.as_list(), [1, 28, 28, 1])
+    self.assertAllClose(self.evaluate(r_max[0]), self.evaluate(r[0]))
+
+  @test_util.run_v2_only
+  def testEagerWhileLoopMultiVarBareTensorBodyRaisesValueError(self):
+    x = array_ops.ones([1, 28, 28, 1])
+    for max_iters in (None, 2):
+      with self.assertRaises(ValueError):
+        while_loop.while_loop(
+            lambda a, b: array_ops.shape(a)[0] < 10,
+            lambda a, b: array_ops.ones([2, 28, 28, 1]),
+            [x, x],
+            return_same_structure=True,
+            maximum_iterations=max_iters,
+        )
+      with self.assertRaises(ValueError):
+        while_loop.while_loop(
+            lambda d: d["a"] < 3,
+            lambda d: {"a": d["a"] + 1},
+            [{"a": constant_op.constant(0)}],
+            return_same_structure=True,
+            maximum_iterations=max_iters,
+        )
+
   @test_util.enable_control_flow_v2
   @test_util.run_in_graph_and_eager_modes
   def testSkipsUnnecessaryCaptureGradients(self):

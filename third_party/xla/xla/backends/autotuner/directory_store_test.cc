@@ -226,5 +226,21 @@ TEST_F(DirectoryStoreTest, NoTemporaryFilesLeftBehind) {
   EXPECT_THAT(children, testing::ElementsAre("fp1.pb"));
 }
 
+TEST_F(DirectoryStoreTest, WriteToInvalidPathIsNonFatal) {
+  // Create a file at a path where a directory is expected so that directory
+  // creation fails.
+  std::string blocking_file = cache_dir_ + "/blocked_dir";
+  std::ofstream ofs(blocking_file);
+  ofs << "blocking file";
+  ofs.close();
+
+  // Try to use a cache dir underneath the regular file.
+  DirectoryStore store(blocking_file + "/subpath", CacheMode::kReadWrite);
+  autotuner::AutotuneEntry entry = MakeEntry(
+      "gpu", "v1.0", "fp1", "cg1", "opt1", autotuner::Backend::TRITON);
+  // Write should be non-fatal (log warning and return OK).
+  EXPECT_OK(store.Write(entry));
+}
+
 }  // namespace
 }  // namespace xla

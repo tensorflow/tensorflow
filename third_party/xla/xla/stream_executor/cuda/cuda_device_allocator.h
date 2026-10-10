@@ -20,8 +20,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -50,6 +53,10 @@ class CudaDeviceAllocator : public MemoryAllocator {
 
     // Whether to mark allocations as GPUDirect RDMA capable.
     bool enable_rdma = false;
+
+    // Whether to use CUDA Virtual Memory Management (VMM) APIs. If false,
+    // falls back to legacy cuMemAlloc / cuMemFree APIs.
+    bool use_vmm = true;
   };
 
   explicit CudaDeviceAllocator(StreamExecutor* executor);
@@ -59,6 +66,9 @@ class CudaDeviceAllocator : public MemoryAllocator {
       uint64_t size) final;
 
   const Options& options() const { return options_; }
+
+  static void EnterStreamCapture(StreamExecutor* executor);
+  static void ExitStreamCapture(StreamExecutor* executor);
 
  private:
   StreamExecutor* executor_;
@@ -92,6 +102,30 @@ CUmemAllocationProp BuildVmmAllocationProp(
 // simpler handle-type combinations if the device rejects the strongest one.
 absl::StatusOr<CudaDeviceAllocator::Options> QueryDeviceAllocatorOptions(
     CUdevice device);
+
+// The handle types the driver accepted for a granularity query, and the
+// recommended mapping granularity for them.
+struct VmmGranularityProbe {
+  CudaDeviceAllocator::Options options;
+  size_t granularity = 0;
+};
+
+// Queries the recommended VMM allocation granularity for `options`. Drivers can
+// reject the query itself for unsupported handle types, so this falls back the
+// same way CreateVmmPhysicalAllocation does (FABRIC+POSIX_FD -> POSIX_FD ->
+// NONE) and returns `options` with the handle types that were accepted. The
+// caller must have activated the device context.
+absl::StatusOr<VmmGranularityProbe> ProbeVmmGranularity(
+    CUdevice device, CudaDeviceAllocator::Options options);
+
+// Creates a physical VMM allocation of `padded_size` bytes with cuMemCreate,
+// falling back through simpler handle types (FABRIC+POSIX_FD -> POSIX_FD ->
+// NONE) when the driver reports NOT_PERMITTED, NOT_SUPPORTED or INVALID_VALUE.
+// The returned handle may therefore carry fewer handle types than `properties`
+// requested; callers that computed `padded_size` from the original properties
+// accept that. The caller must have activated the device context.
+absl::StatusOr<CUmemGenericAllocationHandle> CreateVmmPhysicalAllocation(
+    CUmemAllocationProp properties, uint64_t padded_size);
 
 }  // namespace stream_executor::gpu
 

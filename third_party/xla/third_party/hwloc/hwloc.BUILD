@@ -51,8 +51,8 @@ _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef hwloc_thread_t": "#define hwloc_thread_t pthread_t",
     "#  undef HWLOC_HAVE_STDINT_H": "#  define HWLOC_HAVE_STDINT_H 1",
     # Prefix bundled APIs (tf_hwloc_*) so they cannot interpose system hwloc
-    # (tensorflow#125854). Public symbols must stay visible across TF DSOs
-    # (libplatform_port.so vs libtensorflow_framework.so).
+    # (openxla/xla#39355, tensorflow#125854). Public symbols must stay visible
+    # across DSOs (libplatform_port.so vs libtensorflow_framework.so).
     "#undef HWLOC_SYM_TRANSFORM": "#define HWLOC_SYM_TRANSFORM 1",
     "#undef HWLOC_SYM_PREFIX_CAPS": "#define HWLOC_SYM_PREFIX_CAPS TF_",
     "#undef HWLOC_SYM_PREFIX": "#define HWLOC_SYM_PREFIX tf_",

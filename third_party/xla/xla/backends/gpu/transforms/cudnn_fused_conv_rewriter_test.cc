@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -905,6 +906,84 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvF8) {
       R"(
 // CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f8e4m3fn]conv();"
       )");
+}
+
+// The pass used to stop after the first computation in which an FP8
+// convolution was rewritten, leaving the FP8 convolutions of the remaining
+// computations of the module unrewritten.
+TEST_F(CudnnFusedConvRewriterTest, TestConvF8InMultipleComputations) {
+  MAYBE_SKIP_TEST("F8");
+  const std::string kHloString = R"(
+    HloModule Test
+
+    branch_a {
+      p = (f8e4m3fn[1,128,6,6], f8e4m3fn[3,3,128,16]) parameter(0)
+      input_a = f8e4m3fn[1,128,6,6] get-tuple-element(p), index=0
+      filter_a = f8e4m3fn[3,3,128,16] get-tuple-element(p), index=1
+      ROOT conv_a = f8e4m3fn[1,16,6,6] convolution(input_a, filter_a), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    }
+
+    branch_b {
+      p = (f8e4m3fn[1,128,6,6], f8e4m3fn[3,3,128,16]) parameter(0)
+      input_b = f8e4m3fn[1,128,6,6] get-tuple-element(p), index=0
+      filter_b = f8e4m3fn[3,3,128,16] get-tuple-element(p), index=1
+      ROOT conv_b = f8e4m3fn[1,16,6,6] convolution(input_b, filter_b), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    }
+
+    ENTRY Test {
+      predicate = pred[] parameter(0)
+      input = f8e4m3fn[1,128,6,6] parameter(1)
+      filter_a = f8e4m3fn[3,3,128,16] parameter(2)
+      filter_b = f8e4m3fn[3,3,128,16] parameter(3)
+      operands_a = (f8e4m3fn[1,128,6,6], f8e4m3fn[3,3,128,16]) tuple(input, filter_a)
+      operands_b = (f8e4m3fn[1,128,6,6], f8e4m3fn[3,3,128,16]) tuple(input, filter_b)
+      ROOT result = f8e4m3fn[1,16,6,6] conditional(predicate, operands_a, operands_b), true_computation=branch_a, false_computation=branch_b
+    })";
+
+  // Both branch computations must get a ForwardGraph Custom Call.
+  const se::CudaComputeCapability hopper{se::CudaComputeCapability::kHopper, 0};
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloPass(ConvRewriter(hopper), module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_OK_AND_ASSIGN(
+      changed, RunHloPass(CudnnFusedConvRewriter(hopper, GetDnnVersion(),
+                                                 GetToolkitVersion()),
+                          module.get()));
+  EXPECT_TRUE(changed);
+  for (absl::string_view name : {"branch_a", "branch_b"}) {
+    HloComputation* branch = module->GetComputationWithName(name);
+    ASSERT_THAT(branch, NotNull()) << name;
+    const HloInstruction* conv = nullptr;
+    for (const HloInstruction* instr : branch->instructions()) {
+      if (instr->opcode() == HloOpcode::kCustomCall) {
+        conv = instr;
+      }
+    }
+    ASSERT_THAT(conv, NotNull()) << name;
+    EXPECT_EQ(conv->custom_call_target(), kCudnnConvForwardGraphCallTarget)
+        << name;
+  }
+
+  bool fp8_supported = GetDnnVersion() >= se::dnn::VersionInfo{9, 8, 0}
+                           ? GetCudaComputeCapability().IsAtLeastAda()
+                           : GetCudaComputeCapability().IsAtLeastHopper();
+  if (fp8_supported) {
+    // Through the full pipeline, neither convolution may fall back to the
+    // legacy (non-FP8) Custom Call.
+    absl::StatusOr<bool> filecheck_result =
+        RunFileCheck(GetOptimizedHlo(kHloString), R"(
+// CHECK-NOT: custom_call_target="__cudnn$convForward"
+// CHECK: custom_call_target="__cudnn$convForwardGraph"
+// CHECK-NOT: custom_call_target="__cudnn$convForward"
+// CHECK: custom_call_target="__cudnn$convForwardGraph"
+// CHECK-NOT: custom_call_target="__cudnn$convForward"
+    )");
+    ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
+    EXPECT_TRUE(*filecheck_result);
+    EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.15, 0.15})) << kHloString;
+  }
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputF8) {

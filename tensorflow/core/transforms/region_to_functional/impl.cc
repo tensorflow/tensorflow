@@ -363,7 +363,7 @@ using ConvertStatelessIfOp =
     ConvertIfLikeOp<StatelessIfRegionOp, StatelessIfOp>;
 using ConvertStatefulIfOp = ConvertIfLikeOp<StatefulIfRegionOp, StatefulIfOp>;
 
-// Base class for patterns to convert an case-like TFG region op to
+// Base class for patterns to convert a case-like TFG region op to
 // functional form.
 template <typename CaseLikeRegionOp, typename CaseLikeOp>
 struct ConvertCaseLikeOp
@@ -509,7 +509,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
   NamedAttrList attrs(preserved ? preserved.getAttrs() : DictionaryAttr());
   // The original function name is preserved in the region attributes, but don't
   // re-use it when creating a new function.
-  attrs.erase(SymbolTable::getSymbolAttrName());
+  attrs.erase("sym_name");
 
   SmallVector<Attribute> arg_attrs, res_attrs;
   ArrayAttr preserved_arg_attrs =
@@ -638,8 +638,7 @@ GraphFuncOp BasePattern::CreateFunc(Location loc, const Twine &sym_name,
 // name, since it is treated differently from the other attributes.
 static StringAttr GetFunctionName(RegionAttr preserved) {
   if (!preserved) return {};
-  return preserved.getAttrs().getAs<StringAttr>(
-      SymbolTable::getSymbolAttrName());
+  return preserved.getAttrs().getAs<StringAttr>("sym_name");
 }
 
 FuncAttr BasePattern::Outline(Operation *op, PatternRewriter &rewriter,

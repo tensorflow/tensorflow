@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
@@ -64,7 +65,35 @@ std::string HloPtrToString(const HloInstruction* hlo) {
   return hlo == nullptr ? "nullptr" : hlo->ToString();
 }
 
+bool HasIndexWiseVariadic(const HloFusionAdaptor& fusion) {
+  return absl::c_any_of(fusion.MakeInstructionPostOrder(),
+                        [](const HloInstructionAdaptor& instr) {
+                          return IsIndexWiseVariadic(instr.instruction());
+                        });
+}
+
+// Returns the position of the first dimension of result `result_index` in the
+// ordered list of dimensions of `hlo`. For an index-wise variadic instruction
+// the dimensions of all results are laid out back to back: result k starts at
+// the sum of the ranks of results 0..k-1. For every other instruction the
+// results share the dimensions of the first one and the offset is 0.
+int64_t GetResultDimensionOffset(const HloInstruction& hlo,
+                                 int64_t result_index) {
+  if (!IsIndexWiseVariadic(hlo)) {
+    return 0;
+  }
+  int64_t offset = 0;
+  for (int64_t i = 0; i < result_index; ++i) {
+    offset += hlo.shape().tuple_shapes(i).dimensions().size();
+  }
+  return offset;
+}
+
 }  // namespace
+
+bool IsIndexWiseVariadic(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kAllGather && hlo.operand_count() > 1;
+}
 
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
     const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes) {
@@ -137,6 +166,20 @@ void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
       ProcessRaggedDot(hlo);
       break;
     default:
+      if (HloInstruction::IsOpElementwise(hlo.opcode())) {
+        for (int64_t i = 0; i < hlo.shape().dimensions().size(); ++i) {
+          auto it = hlo_to_dimension_.find(std::make_pair(&hlo, i));
+          if (it != hlo_to_dimension_.end()) {
+            const DimensionInfo* dim_info = it->second;
+            for (const HloInstruction* operand : hlo.operands()) {
+              if (operand->shape().dimensions().size() ==
+                  hlo.shape().dimensions().size()) {
+                hlo_to_dimension_[std::make_pair(operand, i)] = dim_info;
+              }
+            }
+          }
+        }
+      }
       // TODO(goncharov): should have a explicit list of supported instructions?
       break;
   }
@@ -318,10 +361,13 @@ const Shape& GetFirstShape(const HloInstruction* instr, int64_t index) {
 
 // Propagate dimensions from get-tuple-element to its operand.
 void TilingSpace::ProcessGetTupleElement(const HloInstruction& hlo) {
+  const int64_t offset =
+      GetResultDimensionOffset(*hlo.operand(0), hlo.tuple_index());
   for (int64_t i = 0; i < hlo.shape().dimensions().size(); ++i) {
     auto it = hlo_to_dimension_.find(std::make_pair(&hlo, i));
     if (it != hlo_to_dimension_.end()) {
-      hlo_to_dimension_[std::make_pair(hlo.operand(0), i)] = it->second;
+      const DimensionInfo* dim_info = it->second;
+      hlo_to_dimension_[std::make_pair(hlo.operand(0), offset + i)] = dim_info;
     }
   }
 }
@@ -373,6 +419,16 @@ std::optional<const TilingSpace::RTVarInfo*> TilingSpace::GetRTVarInfo(
     return std::nullopt;
   }
   return it->second;
+}
+
+bool TilingSpace::HasPerOutputTiles(const HloInstructionAdaptor& hlo) const {
+  return IsIndexWiseVariadic(hlo.instruction());
+}
+
+bool TilingSpace::HasPerOutputTiles() const {
+  return absl::c_any_of(hlo_to_dimension_, [](const auto& kv) {
+    return IsIndexWiseVariadic(*kv.first.first);
+  });
 }
 
 absl::Status TilingSpace::AssignTileSizes(
@@ -430,23 +486,24 @@ absl::Status TilingSpace::InitializeDimensions(
 
   for (const auto& root : roots) {
     const Shape& root_shape = root.shape();
-    if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce &&
+    const HloInstruction& root_hlo = root.instruction();
+    if (!root_shape.IsArray() && root.opcode() != HloOpcode::kReduce &&
         root.opcode() != HloOpcode::kScan) {
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported root shape ", root_shape.ToString(),
-                       " for root ", root.instruction().ToString()));
+                       " for root ", root_hlo.ToString()));
     }
 
-    const Shape& shape = GetFirstShape(&root.instruction());
+    const Shape& shape = GetFirstShape(&root_hlo);
     for (auto [index, dim] : llvm::enumerate(shape.dimensions())) {
       DimensionSemantics dim_type = DimensionSemantics::kParallel;
       if (root.opcode() == HloOpcode::kScan) {
-        auto scan = Cast<HloScanInstruction>(&root.instruction());
+        auto scan = Cast<HloScanInstruction>(&root_hlo);
         if (index == scan->scan_dimension()) {
           dim_type = DimensionSemantics::kSequential;
         }
       }
-      AppendDimension(&root.instruction(), index, dim, dim_type);
+      AppendDimension(&root_hlo, index, dim, dim_type);
     }
   }
   return absl::OkStatus();
@@ -502,7 +559,7 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   TF_RET_CHECK(module) << "Fusion has no module";
   const DebugOptions& debug_options = module->config().debug_options();
 
-  if (roots.size() == 1) {
+  if (roots.size() == 1 || HasIndexWiseVariadic(fusion)) {
     ABSL_RETURN_IF_ERROR(tiling_space->InitializeDimensions(roots));
   } else if (
       IsSameShapeMultiOutputFusion(roots, Shape::Equal().IgnoreElementType()) &&
@@ -530,30 +587,101 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   // Second pass: Create the root tiles now that
   // `tiling_space->num_dimensions()` is known.
   for (const HloInstructionAdaptor& root : roots) {
-    const Shape& root_shape = root.shape();
     absl::Span<const int64_t> dims =
         GetFirstShape(&root.instruction()).dimensions();
     llvm::SmallVector<DimTile> dim_tiles;
     dim_tiles.reserve(dims.size());
     for (auto [index, dim] : llvm::enumerate(dims)) {
-      int64_t global_dim_id =
-          tiling_space->GetDimensionInfo(root.instruction(), index).id.value();
-      dim_tiles.push_back(GetDefaultDimTile(
-          TiledDimId(global_dim_id),
-          CreateSymbolExpr(global_dim_id, tiling_space->num_dimensions(), ctx),
-          dim));
+      const DimensionInfo& dim_info =
+          tiling_space->GetDimensionInfo(root.instruction(), index);
+      dim_tiles.push_back(
+          tiling_space->GetDefaultRootDimTile(dim_info.id, dim));
     }
-    Tile tile{*tiling_space, std::move(dim_tiles)};
+    Tile root_tile{*tiling_space, std::move(dim_tiles)};
+    const Shape& root_shape = root.shape();
     if (root_shape.IsTuple()) {
       for (int64_t i = 0, e = root_shape.tuple_shapes().size(); i < e; ++i) {
-        tiling_space->tiled_roots_.push_back(tile);
+        tiling_space->tiled_roots_.push_back(root_tile);
       }
-      continue;
+    } else {
+      tiling_space->tiled_roots_.push_back(std::move(root_tile));
     }
-    tiling_space->tiled_roots_.push_back(std::move(tile));
   }
 
   return tiling_space;
+}
+
+std::unique_ptr<TilingSpace> TilingSpace::Clone(
+    mlir::MLIRContext* target_context) const {
+  const bool rebind =
+      target_context != nullptr && target_context != mlir_context_;
+  if (rebind) {
+    // Only the default root tiles of a symbolic space can be rebuilt in another
+    // context. Constraints hold expressions of this space's context, so they
+    // must be trivial.
+    CHECK(is_symbolic_) << "Cloning into another MLIRContext is only "
+                           "supported for a symbolic TilingSpace.";
+    CHECK(divisibility_constraints_.empty() && constraint_.IsAlwaysSatisfied())
+        << "Cloning a TilingSpace with constraints into another MLIRContext is "
+           "not supported.";
+    RegisterSymbolicExprStorage(target_context);
+  }
+
+  auto cloned = std::make_unique<TilingSpace>();
+  cloned->mlir_context_ = rebind ? target_context : mlir_context_;
+  cloned->is_symbolic_ = is_symbolic_;
+  cloned->constraint_ = constraint_;
+  cloned->divisibility_constraints_ = divisibility_constraints_;
+
+  cloned->dimensions_ = dimensions_;
+  cloned->hlo_to_dimension_.reserve(hlo_to_dimension_.size());
+  // Populating an unordered map from another unordered map is order-independent
+  // since keys are unique and elements are only accessed via direct lookups.
+  // NOLINTNEXTLINE
+  for (const auto& [key, dim_ptr] : hlo_to_dimension_) {
+    cloned->hlo_to_dimension_[key] = &cloned->dimensions_[dim_ptr->id.value()];
+  }
+
+  cloned->rt_vars_ = rt_vars_;
+  cloned->hlo_to_rt_var_.reserve(hlo_to_rt_var_.size());
+  // Populating an unordered map from another unordered map is order-independent
+  // since keys are unique and elements are only accessed via direct lookups.
+  // NOLINTNEXTLINE
+  for (const auto& [key, rt_var_ptr] : hlo_to_rt_var_) {
+    cloned->hlo_to_rt_var_[key] = &cloned->rt_vars_[rt_var_ptr->id];
+  }
+
+  cloned->tiled_roots_.reserve(tiled_roots_.size());
+  for (const auto& root_tile : tiled_roots_) {
+    if (!rebind) {
+      cloned->tiled_roots_.push_back(
+          root_tile.CloneWithNewTilingSpace(*cloned));
+      continue;
+    }
+    // A symbolic root tile is the default one built by Create, whose size is
+    // the symbol of its dimension.
+    llvm::SmallVector<DimTile> dim_tiles;
+    dim_tiles.reserve(root_tile.dim_tiles().size());
+    for (const DimTile& dim_tile : root_tile.dim_tiles()) {
+      dim_tiles.push_back(cloned->GetDefaultRootDimTile(
+          TiledDimId(dim_tile.size.GetValue() - num_dimensions()),
+          dim_tile.upper_bound.GetValue()));
+    }
+    cloned->tiled_roots_.push_back(Tile{*cloned, std::move(dim_tiles)});
+  }
+
+  cloned->dim_vars_indexing_ = dim_vars_indexing_;
+  cloned->range_vars_indexing_ = range_vars_indexing_;
+  cloned->rt_vars_indexing_ = rt_vars_indexing_;
+
+  return cloned;
+}
+
+DimTile TilingSpace::GetDefaultRootDimTile(TiledDimId id,
+                                           int64_t dim_size) const {
+  return GetDefaultDimTile(
+      id, CreateSymbolExpr(id.value(), num_dimensions(), mlir_context_),
+      dim_size);
 }
 
 int64_t TilingSpace::num_parallel_dimensions() const {
@@ -565,37 +693,70 @@ int64_t TilingSpace::num_parallel_dimensions() const {
 void TilingSpace::InitSimplificationIndexing() {
   CHECK(!is_symbolic_) << "Tile sizes must be assigned before initializing "
                           "cached indexing map variables.";
+  CHECK(dim_vars_indexing_.empty())
+      << "InitSimplificationIndexing must be called once";
+  CHECK(range_vars_indexing_.empty());
+  CHECK(rt_vars_indexing_.empty());
 
-  dim_vars_indexing_.clear();
   dim_vars_indexing_.reserve(dimensions_.size());
-  for (const auto& dim_info : dimensions_) {
-    CHECK_GT(dim_info.tile_size.value(), 0);
-    int64_t upper_bound =
-        llvm::divideCeil(dim_info.dimension_size, dim_info.tile_size.value());
+  range_vars_indexing_.reserve(dimensions_.size());
+  for (const DimensionInfo& dim_info : dimensions_) {
+    int64_t tile_size = dim_info.tile_size.value();
+    CHECK_GT(tile_size, 0);
+    int64_t upper_bound = llvm::divideCeil(dim_info.dimension_size, tile_size);
     dim_vars_indexing_.push_back(IndexingMap::Variable{0, upper_bound - 1});
+    // Even though ts_X must already be replaced with constants right now, we
+    // initialize their bounds to [tile_size, tile_size] for completeness.
+    range_vars_indexing_.push_back(IndexingMap::Variable{tile_size, tile_size});
   }
-
-  range_vars_indexing_.assign(dimensions_.size(), IndexingMap::Variable{0, 0});
-
-  rt_vars_indexing_.clear();
   rt_vars_indexing_.reserve(rt_vars_.size());
-  for (const auto& rt_var : rt_vars_) {
+  for (const RTVarInfo& rt_var : rt_vars_) {
     rt_vars_indexing_.push_back(IndexingMap::Variable{rt_var.bounds});
   }
 }
 
-SymbolicExpr TilingSpace::SimplifyExpression(const SymbolicExpr& expr) const {
+TilingSpace::SimplificationResult TilingSpace::SimplifyExpressions(
+    const llvm::SmallVector<SymbolicExpr>& expressions,
+    llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints) const {
+  SimplificationResult result;
   if (is_symbolic_) {
-    return expr.Canonicalize();
+    result.expressions.reserve(expressions.size());
+    for (const auto& expr : expressions) {
+      result.expressions.push_back(expr.Canonicalize());
+    }
+    return result;
   }
-
-  SymbolicMap map = SymbolicMap::Get(mlir_context(), dimensions_.size(),
-                                     rt_vars_.size(), {expr});
-
-  IndexingMap indexing_map(map, dim_vars_indexing_, range_vars_indexing_,
-                           rt_vars_indexing_);
-  indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
-  return indexing_map.GetSymbolicMap().GetResults()[0];
+  CHECK_EQ(dimensions_.size(), dim_vars_indexing_.size());
+  CHECK_EQ(dimensions_.size(), range_vars_indexing_.size());
+  CHECK_EQ(rt_vars_indexing_.size(), rt_vars_.size());
+  // TODO(b/565301234): add constraints from tiling space? They don't seem to
+  // be used in the current implementation.
+  SymbolicMap map =
+      SymbolicMap::Get(mlir_context(), dimensions_.size(),
+                       dimensions_.size() + rt_vars_.size(), expressions);
+  IndexingMap indexing_map(
+      map, dim_vars_indexing_, range_vars_indexing_, rt_vars_indexing_,
+      absl::MakeConstSpan(constraints.data(), constraints.size()));
+  VLOG(2) << "SimplifyExpressions original map: " << indexing_map;
+  bool simplified =
+      indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kReplace);
+  VLOG(2) << "SimplifyExpressions simplified map: " << simplified << " "
+          << indexing_map;
+  if (indexing_map.IsKnownEmpty()) {
+    // IndexingMap resets all results to 0 when the domain is empty, so we
+    // return the original expressions instead.
+    VLOG(2) << "Constraints are infeasible, expressions are not simplified: "
+            << absl::StrJoin(constraints, ", ",
+                             [](std::string* out, const auto& c) {
+                               absl::StrAppend(out, c.first.ToString(), " in ",
+                                               c.second.ToString());
+                             });
+    result.expressions = expressions;
+    result.is_known_empty = true;
+    return result;
+  }
+  result.expressions = std::move(indexing_map).GetSymbolicMap().GetResults();
+  return result;
 }
 
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>
@@ -634,5 +795,4 @@ TilingSpace::GetValidTilings() {
   }
   return valid_tilings;
 }
-
 }  // namespace xla::gpu::experimental

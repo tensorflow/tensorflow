@@ -1,0 +1,74 @@
+
+Fix layout rematerialization/hoisting in RemoveLayoutConversions and work around
+SM90+ ptxas miscompilation for cp.async with L2::cache_hint.
+
+
+--- a/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
+@@ -706,6 +706,9 @@ void LayoutRematerialization::rewriteSlice(
+   for (const auto &[value, encoding] : layout) {
+     if (Value remat = existingRemats.lookup({value, encoding}))
+       mapping.map(value, remat);
++    else if (auto tensorType = dyn_cast<RankedTensorType>(value.getType());
++             tensorType && tensorType.getEncoding() == encoding)
++      mapping.map(value, value);
+   }
+ 
+   SetVector<Operation *> opsToRewrite;
+@@ -1236,6 +1239,8 @@ bool LayoutRematerialization::hoistConvertDotOperand(
+     ConvertLayoutOp convertOp) {
+   auto targetType = convertOp.getType();
+   // The pass is targeted to MMA dot operands
++  if (convertOp.getSrc().getType() == targetType)
++    return false;
+ 
+   auto canBePipelined = [&](ConvertLayoutOp convertOp) {
+     // FIXME: Check that the parent is a for loop
+@@ -1334,6 +1339,9 @@ bool LayoutRematerialization::hoistConvertDotOperand(
+     mapping.map(loadOp->getResult(0), newConvertOp.getResult());
+   }
+ 
++  if (innerSlice.empty() && existingRemats.empty())
++    return false;
++
+   LLVM_DEBUG({
+     DBGS() << "  Hoisting " << convertOp << '\n';
+     for (Value v : innerSlice)
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
+@@ -1060,7 +1060,7 @@ struct AsyncCopyGlobalToLocalOpConversion
+         l2PrefetchSizeAttr ? l2PrefetchSizeAttr.getInt() : 0;
+ 
+     auto emitCpAsync = [&b, threadPred, ptrTy, l2PolicyReg, l2PrefetchSize,
+-                        cacheModifier = cachePolicy->modifier,
++                        computeCapability, cacheModifier = cachePolicy->modifier,
+                         hasMask =
+                             bool(llMask)](RewriterBase &rewriter, Location loc,
+                                           ArrayRef<Value> vals, Value shmemAddr,
+@@ -1083,6 +1083,24 @@ struct AsyncCopyGlobalToLocalOpConversion
+       auto srcElem = b.extract_val(ptrTy, structElem, 0);
+       auto maskElem = b.extract_val(i1_ty, structElem, 1);
+ 
++      if (l2PolicyReg && computeCapability >= 90) {
++        // On SM90+, ptxas miscompiles cp.async with L2::cache_hint when the
++        // shared memory address is matched as [R_thread + UR_uniform] (opcode
++        // 0x7dae), overwriting the low 32 bits of the 64-bit createpolicy
++        // uniform register pair and emitting an invalid odd descriptor register
++        // desc[UR(2k+1)] that faults with CUDA_ERROR_ILLEGAL_INSTRUCTION.
++        // Materializing the shared memory address through lop3.b32 prevents
++        // ptxas from decomposing it into [R + UR], forcing the valid [R],
++        // desc[UR(2k)] encoding (opcode 0x7fae).
++        PTXBuilder addrBuilder;
++        auto *outAddr = addrBuilder.newOperand("=r");
++        auto *inAddr = addrBuilder.newOperand(shmemAddr, "r");
++        (*addrBuilder.create<>("lop3.b32"))(
++            outAddr, inAddr, inAddr, inAddr,
++            addrBuilder.newConstantOperand(0xF0));
++        shmemAddr = addrBuilder.launch(rewriter, loc, i32_ty);
++      }
++
+       PTXBuilder ptxBuilder;
+       auto &copyAsyncOp =
+           *ptxBuilder.create<PTXCpAsyncLoadInstr>(srcCacheModifier);
+

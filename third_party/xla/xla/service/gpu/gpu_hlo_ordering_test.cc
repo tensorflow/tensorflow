@@ -16,12 +16,18 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_ordering.h"
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/ffi/ffi.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -30,6 +36,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+absl::Status DummyCmdBufferCompatibleFfiHandler() { return absl::OkStatus(); }
+
+XLA_FFI_DEFINE_HANDLER(kDummyCmdBufferCompatibleFfiHandler,
+                       DummyCmdBufferCompatibleFfiHandler, ffi::Ffi::Bind(),
+                       {ffi::Traits::kCmdBufferCompatible});
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__test_cmd_buffer_compatible_ffi", "GPU",
+                         kDummyCmdBufferCompatibleFfiHandler);
 
 class ConcurrentRegionsHloOrderingTest : public HloHardwareIndependentTestBase {
 };
@@ -56,7 +72,7 @@ TEST_F(ConcurrentRegionsHloOrderingTest, ExecutesBeforeInConcurrentRegion) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(entry, {param, a, b, c, d, root});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
   ConcurrentRegionsHloOrdering ordering(schedule);
   // There are no data dependencies between a, b, c, and d. All ops can be
   // executed concurrently.
@@ -93,7 +109,7 @@ TEST_F(ConcurrentRegionsHloOrderingTest, DataDependentOpsInSameRegion) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(entry, {param, a0, a1, b0, b1, root});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
   ConcurrentRegionsHloOrdering ordering(schedule);
   // a1 has a data dependency on a0.
   EXPECT_TRUE(ordering.ExecutesBefore(a0, a1));
@@ -152,7 +168,7 @@ TEST_F(ConcurrentRegionsHloOrderingTest, GemmSeparatesConcurrentRegions) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(entry, {param, a, b, gemm, c, d, root});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
   ConcurrentRegionsHloOrdering ordering(schedule);
   // No data dependency between a and b and can be executed concurrently.
   EXPECT_FALSE(ordering.ExecutesBefore(a, b));
@@ -171,6 +187,40 @@ TEST_F(ConcurrentRegionsHloOrderingTest, GemmSeparatesConcurrentRegions) {
   EXPECT_EQ(ordering.GetConcurrentRegionId(gemm), 1);
   EXPECT_EQ(ordering.GetConcurrentRegionId(c), 2);
   EXPECT_EQ(ordering.GetConcurrentRegionId(d), 2);
+}
+
+TEST_F(ConcurrentRegionsHloOrderingTest,
+       CmdBufferCompatibleFfiCustomCallStaysInSameRegion) {
+  auto module = CreateNewVerifiedModule();
+  const Shape small_shape = ShapeUtil::MakeShape(xla::F32, {1024, 1024});
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, small_shape, "param"));
+  HloInstruction* ffi_call =
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
+          small_shape, {param}, "__test_cmd_buffer_compatible_ffi"));
+  Cast<HloCustomCallInstruction>(ffi_call)->set_api_version(
+      CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateUnary(small_shape, HloOpcode::kNegate, param));
+  HloInstruction* legacy_call = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(small_shape, {param}, "legacy_target"));
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateTuple({ffi_call, a, legacy_call}));
+  HloComputation* entry =
+      module->AddEntryComputation(builder.Build(/*root_instruction=*/root));
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(entry, {param, ffi_call, a, legacy_call, root});
+  ASSERT_OK(schedule.Verify());
+  ConcurrentRegionsHloOrdering ordering(schedule);
+
+  EXPECT_FALSE(ordering.ExecutesBefore(ffi_call, a));
+  EXPECT_EQ(ordering.GetConcurrentRegionId(ffi_call), 0);
+  EXPECT_EQ(ordering.GetConcurrentRegionId(a), 0);
+  EXPECT_TRUE(ordering.ExecutesBefore(a, legacy_call));
+  EXPECT_EQ(ordering.GetConcurrentRegionId(legacy_call), 1);
 }
 
 }  // namespace

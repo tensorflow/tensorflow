@@ -61,6 +61,9 @@ class ConfigAssigner {
     // When autotuning is disabled, if true, compiles all supported configs in
     // parallel before returning the first successful one.
     bool compile_all_supported_configs = false;
+    // Single serialized config to override config of all instructions,
+    // bypassing cache and autotuning.
+    std::string force_config = "";
 
     std::string ToString() const;
   };
@@ -94,12 +97,14 @@ class ConfigAssigner {
                  absl_nonnull std::unique_ptr<AutotunerCacheInterface> cache,
                  absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
                  absl_nullable std::unique_ptr<Autotuner> autotuner,
-                 tsl::thread::ThreadPool* thread_pool)
+                 tsl::thread::ThreadPool* thread_pool,
+                 std::optional<Config> forced_config = std::nullopt)
       : options_(options),
         optimal_config_cache_(std::move(cache)),
         orchestrator_(std::move(orchestrator)),
         autotuner_(std::move(autotuner)),
-        thread_pool_(thread_pool) {}
+        thread_pool_(thread_pool),
+        forced_config_(std::move(forced_config)) {}
 
   using InstructionGroup = std::vector<HloInstruction*>;
 
@@ -151,6 +156,7 @@ class ConfigAssigner {
   absl_nullable std::unique_ptr<Autotuner> autotuner_;
   tsl::thread::ThreadPool* thread_pool_ = nullptr;
   int dump_counter_ = 0;
+  std::optional<Config> forced_config_;
 };
 
 }  // namespace xla

@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/debugging/leak_check.h"
@@ -215,7 +216,9 @@ absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion() {
   return SemanticVersion{major, minor, 0};
 }
 
-absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
+namespace {
+
+absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompilerImpl() {
   absl::string_view ptx_contents = ".version 99.99";
   nvPTXCompilerHandle compiler_handle{};
   RETURN_IF_NVPTXCOMPILER_ERROR(nvPTXCompilerCreate(
@@ -250,6 +253,17 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
       nvPTXCompilerGetErrorLog(compiler_handle, error_log.data()));
 
   return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(error_log);
+}
+
+}  // namespace
+
+absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
+  // Cache the result because querying the supported PTX ISA version compiles a
+  // dummy `.version 99.99` PTX snippet and parses the resulting error log (and
+  // leaks memory inside libnvptxcompiler prior to CUDA 13).
+  static const absl::NoDestructor<absl::StatusOr<int>> version(
+      GetLatestPtxIsaVersionForNvptxCompilerImpl());
+  return *version;
 }
 
 }  // namespace stream_executor

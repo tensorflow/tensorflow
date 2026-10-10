@@ -114,6 +114,55 @@ class PyToPyTest(test.TestCase):
 
     self.assertEqual(f(1), 1 - 1 + 1)  # Only f is converted.
 
+  def test_annotation_imported_in_enclosing_scope(self):
+    # Annotations are re-evaluated when the transformed function is created.
+    # A name imported inside the enclosing function is not part of the
+    # function's closure - CPython evaluates the annotation eagerly and drops
+    # the reference - so the annotation is dropped from the generated code
+    # and its value is restored from the original function.
+    def f():
+      from typing import Tuple
+
+      def g(a) -> Tuple[int, int]:
+        return a + 1, a + 2
+
+      return g
+
+    g = f()
+
+    tr = TestTranspiler()
+    transformed_g, _, _ = tr.transform(g, None)
+
+    self.assertEqual(transformed_g(1), (1 - 1, 1 - 2))
+    self.assertEqual(transformed_g.__annotations__, g.__annotations__)
+
+  def test_annotation_arg_imported_in_enclosing_scope(self):
+    def f():
+      from typing import List
+
+      def g(a: List[int]) -> int:
+        return a + 1
+
+      return g
+
+    g = f()
+
+    tr = TestTranspiler()
+    transformed_g, _, _ = tr.transform(g, None)
+
+    self.assertEqual(transformed_g(1), 1 - 1)
+    self.assertEqual(transformed_g.__annotations__, g.__annotations__)
+
+  def test_annotation_from_enclosing_scope_is_kept_when_resolvable(self):
+    def f(a: int) -> int:
+      return a + 1
+
+    tr = TestTranspiler()
+    transformed_f, _, _ = tr.transform(f, None)
+
+    self.assertEqual(transformed_f(1), 1 - 1)
+    self.assertEqual(transformed_f.__annotations__, f.__annotations__)
+
   def test_lambda(self):
     b = 2
     f = lambda x: (b + (x if x > 0 else -x))

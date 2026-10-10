@@ -67,6 +67,8 @@ inline std::optional<mhlo::ComparisonType> mhloComparisonType(
       return mhlo::ComparisonType::SIGNED;
     case chlo::ComparisonType::UNSIGNED:
       return mhlo::ComparisonType::UNSIGNED;
+    case chlo::ComparisonType::WEAKORDER:
+      return mhlo::ComparisonType::WEAKORDER;
   }
   return {};
 }

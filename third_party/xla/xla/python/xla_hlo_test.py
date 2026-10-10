@@ -281,6 +281,25 @@ ENTRY %main {
             logging.info("Operand of %s: %s", inst.name, operand.name)
 
     @unittest.skipIf(cloud_tpu or pathways, "not implemented")
+    def testHloInstructionControlPredecessors(self):
+      module = _hlo.hlo_module_from_text(R"""
+HloModule control_predecessors
+
+ENTRY %main {
+  %p0 = f32[] parameter(0)
+  %first = f32[] negate(%p0)
+  ROOT %second = f32[] abs(%p0), control-predecessors={%first}
+}
+""")
+      instructions = {
+          inst.name: inst for inst in module.computations()[0].instructions()
+      }
+      self.assertEmpty(instructions["first"].control_predecessors())
+      predecessors = instructions["second"].control_predecessors()
+      self.assertLen(predecessors, 1)
+      self.assertEqual(predecessors[0].name, "first")
+
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testHloInstructionName(self):
       module = self.ExampleComputation()
       computations = module.computations()

@@ -268,6 +268,19 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_aarch64_with_onednn_async",
+    constraint_values =
+        [
+            "@platforms//cpu:aarch64",
+            "@platforms//os:linux",
+        ],
+    define_values = {
+        "build_with_onednn_async": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_armhf",
     constraint_values =
         [
@@ -575,6 +588,13 @@ alias(
     name = "libtpu_on_gce",
     # This should never point to a set `config_setting` in OSS.
     actual = if_google("//tools/cc_target_os:gce", ":google"),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "chromiumos",
+    # This should never point to a set `config_setting` in OSS.
+    actual = if_google("@platforms//os:chromiumos", ":google"),
     visibility = ["//visibility:public"],
 )
 

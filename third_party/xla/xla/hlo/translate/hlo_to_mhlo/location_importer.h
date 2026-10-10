@@ -18,15 +18,19 @@ limitations under the License.
 
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace mlir {
 namespace hlo {
 
 // Returns an MLIR Location generated from HLO Instruction. Uses instruction
-// metadata if present or instruction name.
+// metadata if present or instruction name. frame_locations, when given,
+// memoizes the stack frame locations of the instruction's module by frame id
+// (see GetLocationFromFrameIndex).
 mlir::Location GenerateInstructionLocation(
-    const xla::HloInstruction* instruction, mlir::MLIRContext* context);
+    const xla::HloInstruction* instruction, mlir::MLIRContext* context,
+    llvm::SmallVectorImpl<mlir::LocationAttr>* frame_locations = nullptr);
 
 }  // namespace hlo
 }  // namespace mlir

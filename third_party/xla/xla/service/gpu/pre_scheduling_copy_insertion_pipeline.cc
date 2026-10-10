@@ -19,10 +19,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/backends/gpu/transforms/alias_in_place_outputs.h"
 #include "xla/backends/gpu/transforms/alias_passthrough_params.h"
+#include "xla/backends/gpu/transforms/constant_fill_copy_rewriter.h"
 #include "xla/backends/gpu/transforms/copy_fusion.h"
 #include "xla/backends/gpu/transforms/sanitize_constant_names.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/copy_insertion.h"
@@ -40,8 +41,7 @@ namespace gpu {
 
 HloPassPipeline PreSchedulingCopyInsertionPipeline(
     const HloModuleConfig& config, const GpuAliasInfo* alias_info,
-    const se::DeviceDescription& device_description,
-    mlir::MLIRContext* mlir_context) {
+    const se::DeviceDescription& device_description) {
   const DebugOptions& debug_options = config.debug_options();
 
   // In some cases, we have to place the result of an instruction in a temporary
@@ -68,7 +68,6 @@ HloPassPipeline PreSchedulingCopyInsertionPipeline(
   if (config.alias_passthrough_params()) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
-  pipeline.AddPass<AliasInPlaceOutputs>(mlir_context);
   pipeline.AddPass<LoopScheduleLinearizer>(alias_info);
 
   if (debug_options.xla_gpu_copy_insertion_use_region_analysis()) {
@@ -79,6 +78,7 @@ HloPassPipeline PreSchedulingCopyInsertionPipeline(
     pipeline.AddPass<CopyInsertion>(alias_info);
   }
 
+  pipeline.AddPass<ConstantFillCopyRewriter>();
   pipeline.AddPass<CopyFusion>(device_description);
   pipeline.AddPass<SanitizeConstantNames>();
   return pipeline;

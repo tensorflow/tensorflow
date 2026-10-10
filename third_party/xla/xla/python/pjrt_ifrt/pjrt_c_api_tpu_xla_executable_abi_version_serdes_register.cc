@@ -13,30 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
-#include "absl/base/attributes.h"
-#include "absl/status/status_macros.h"
-#include "absl/status/statusor.h"
-#include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
-#include "xla/pjrt/pjrt_abi_version.h"
-#include "xla/pjrt/pjrt_api.h"
-#include "xla/pjrt/plugin/plugin_names.h"
-#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
-
-namespace xla {
-
-namespace tpu_xla_executable_abi_version_serdes {
-
-ABSL_ATTRIBUTE_WEAK
-absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
-PjRtExecutableAbiVersionFromProto(
-    const xla::PjRtExecutableAbiVersionProto& proto) {
-  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
-  return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
-}
-
-}  // namespace tpu_xla_executable_abi_version_serdes
-
-}  // namespace xla
+// PjRtExecutableAbiVersionFromProto is now defined weakly in
+// tpu_xla_executable_abi_version_serdes.cc. This file is kept for backwards
+// compatibility with existing build rules.

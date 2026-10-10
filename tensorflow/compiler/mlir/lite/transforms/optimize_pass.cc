@@ -21,11 +21,12 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
-#include <memory>
 #include <numeric>
 #include <optional>
 #include <utility>
@@ -42,12 +43,14 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -570,6 +573,45 @@ ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
 
 TypeAttr RescaleQtype(Type input, Attribute factor) {
   return RescaleQuantizedType(input, factor);
+}
+
+// Returns true if the multiplication by factor (1/N) following a sum reduction
+// along axes can be fused into TFL::MeanOp.
+static bool CanFuseSumMulToMean(Value input, Attribute axes, Attribute factor) {
+  RankedTensorType input_type =
+      mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
+  if (!input_type || !input_type.hasStaticShape()) return false;
+
+  auto dense_factor = mlir::dyn_cast_or_null<DenseElementsAttr>(factor);
+  if (!dense_factor || dense_factor.getNumElements() != 1) return false;
+  if (!mlir::isa<FloatType>(dense_factor.getElementType())) return false;
+
+  float factor_val =
+      (*dense_factor.getValues<APFloat>().begin()).convertToFloat();
+  if (factor_val <= 0.0f) return false;
+
+  auto dense_axes = mlir::dyn_cast_or_null<DenseIntElementsAttr>(axes);
+  if (!dense_axes || dense_axes.empty()) return false;
+
+  int64_t rank = input_type.getRank();
+  auto shape = input_type.getShape();
+  int64_t reduction_elements = 1;
+
+  llvm::SmallSet<int64_t, 4> unique_axes;
+  for (const APInt& val : dense_axes.getValues<APInt>()) {
+    int64_t axis = val.getSExtValue();
+    if (axis < 0) axis += rank;
+    if (axis < 0 || axis >= rank) return false;
+    if (unique_axes.insert(axis).second) {
+      reduction_elements *= shape[axis];
+    }
+  }
+
+  if (reduction_elements <= 0) return false;
+
+  float expected_factor = 1.0f / static_cast<float>(reduction_elements);
+  float diff = std::abs(factor_val - expected_factor);
+  return diff <= 1e-4f * expected_factor;
 }
 
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results
@@ -1889,12 +1931,24 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
                            /*fusedActivationFunction=*/
                            rewriter.getStringAttr("NONE"))
             .getOutput();
-    // If bias isn't None, it needs to be multiplied as well.
+    // If bias isn't None, it needs to be multiplied as well. Use the
+    // multiplier flattened to 1-D: `cst` may have leading unit dims (e.g.
+    // [1, 1, 1, C]), and multiplying the 1-D bias by it directly would
+    // broadcast the bias to that rank.
     if (!mlir::isa<NoneType>(bias.getType())) {
-      bias = TFL::MulOp::create(rewriter, mul_op.getLoc(), bias, constant_val,
-                                /*fusedActivationFunction=*/
-                                rewriter.getStringAttr("NONE"))
-                 .getOutput();
+      Value bias_multiplier = constant_val;
+      auto bias_type = mlir::dyn_cast<RankedTensorType>(bias.getType());
+      if (bias_type && bias_type.getRank() == 1 && shape.size() != 1) {
+        auto flat_cst = cst.reshape(RankedTensorType::get(
+            {element_size}, cst.getType().getElementType()));
+        bias_multiplier = arith::ConstantOp::create(
+            rewriter, mul_op.getLoc(), flat_cst.getType(), flat_cst);
+      }
+      bias =
+          TFL::MulOp::create(rewriter, mul_op.getLoc(), bias, bias_multiplier,
+                             /*fusedActivationFunction=*/
+                             rewriter.getStringAttr("NONE"))
+              .getOutput();
     }
 
     auto fc = TFL::FullyConnectedOp::create(

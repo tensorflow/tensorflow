@@ -21,7 +21,7 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/examples/label_image"
   FILTER "_test\\.cc$"
 )
 list(APPEND TFLITE_LABEL_IMAGE_SRCS
-  ${XLA_SOURCE_DIR}/xla/tsl/util/stats_calculator.cc
+  ${TENSORFLOW_HEADERS_INCLUDE_DIR}/xla/tsl/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_buffer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
@@ -82,8 +82,10 @@ target_compile_options(label_image
   PRIVATE
     ${TFLITE_LABEL_IMAGE_CC_OPTIONS}
 )
+target_compile_definitions(label_image
+  PRIVATE
+    TFLITE_WITHOUT_PROTO
+)
 target_link_libraries(label_image
   tensorflow-lite
-  profiling_info_proto
-  libprotobuf
 )

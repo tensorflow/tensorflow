@@ -76,8 +76,10 @@ bool IsTableLookup(const HloInstruction* hlo) {
 }
 
 std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
-  CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
-  CHECK(ShapeUtil::IsEffectiveScalar(constant->shape()));
+  if (constant == nullptr || constant->opcode() != HloOpcode::kConstant ||
+      !ShapeUtil::IsEffectiveScalar(constant->shape())) {
+    return std::nullopt;
+  }
   absl::InlinedVector<int64_t, 8> multi_index(
       constant->shape().dimensions().size());
   return constant->literal().GetIntegralAsS64(multi_index);
@@ -238,8 +240,10 @@ const HloInstruction* BacktrackToBase(
     if (cur->opcode() == HloOpcode::kClamp) {
       // For some clamp ops it's possible to prove they are no-ops at compile
       // time.
-      std::optional<int64_t> lower_bound = GetScalarInt64Value(cur->operand(0));
-      std::optional<int64_t> upper_bound = GetScalarInt64Value(cur->operand(2));
+      std::optional<int64_t> lower_bound =
+          GetScalarInt64Value(BacktrackToBase(cur->operand(0), cache));
+      std::optional<int64_t> upper_bound =
+          GetScalarInt64Value(BacktrackToBase(cur->operand(2), cache));
       std::optional<std::pair<int64_t, int64_t>> range =
           GetKnownRange(cur->operand(1));
       if (lower_bound.has_value() && upper_bound.has_value() &&
@@ -297,8 +301,8 @@ std::optional<int64_t> EvaluateOffset(
     if (!inner) {
       return std::nullopt;
     }
-    auto lower = GetScalarInt64Value(expr->operand(0));
-    auto upper = GetScalarInt64Value(expr->operand(2));
+    auto lower = GetScalarInt64Value(BacktrackToBase(expr->operand(0), cache));
+    auto upper = GetScalarInt64Value(BacktrackToBase(expr->operand(2), cache));
     if (!lower || !upper) {
       return std::nullopt;
     }
@@ -1010,6 +1014,8 @@ std::optional<CollectiveUsers> FindUniqueDynamicSliceUserFromCollective(
     bool allow_multiple_users, bool allow_intervening_reshape,
     bool allow_intervening_bitcast) {
   if (instruction->user_count() == 0) {
+    VLOG(2) << "FindUniqueDynamicSliceUserFromCollective fails, No users for "
+            << instruction->ToString();
     return std::nullopt;
   }
 
@@ -1029,7 +1035,9 @@ std::optional<CollectiveUsers> FindUniqueDynamicSliceUserFromCollective(
   if (allow_intervening_reshape) {
     if (user->opcode() == HloOpcode::kReshape) {
       if (user->user_count() != 1) {
-        VLOG(2) << "Reshape user count > 1 for " << user->ToString();
+        VLOG(2) << "FindUniqueDynamicSliceUserFromCollective fails, Reshape "
+                   "user count > 1 for "
+                << user->ToString();
         return std::nullopt;
       }
       result.reshape = user;
@@ -1040,7 +1048,9 @@ std::optional<CollectiveUsers> FindUniqueDynamicSliceUserFromCollective(
   if (allow_intervening_bitcast) {
     if (user->opcode() == HloOpcode::kBitcast) {
       if (user->user_count() != 1) {
-        VLOG(2) << "Bitcast user count > 1 for " << user->ToString();
+        VLOG(2) << "FindUniqueDynamicSliceUserFromCollective fails, Bitcast "
+                   "user count > 1 for "
+                << user->ToString();
         return std::nullopt;
       }
       result.bitcast = user;
@@ -1052,6 +1062,11 @@ std::optional<CollectiveUsers> FindUniqueDynamicSliceUserFromCollective(
     result.dynamic_slice = user;
     return result;
   }
+  VLOG(2) << "FindUniqueDynamicSliceUserFromCollective fails, user is not "
+             "dynamic slice, user_opcode="
+          << HloOpcodeString(user->opcode()) << " user_name=" << user->name()
+          << " user_shape=" << user->shape().ToString()
+          << " collective=" << instruction->name();
   return std::nullopt;
 }
 
@@ -1063,22 +1078,27 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     bool is_constrain_layout, bool use_global_device_ids, bool is_cross_module,
     bool allow_intervening_bitcast, bool allow_multiple_users) {
   if (!instruction->shape().IsArray() || is_constrain_layout) {
-    VLOG(2) << "Unsupported collective: " << instruction->ToString();
+    VLOG(2) << "MatchWithDynamicSlice fails, "
+               "Unsupported_collective_or_constrain_layout "
+            << instruction->ToString();
     return std::nullopt;
   }
   if (instruction->shape().dimensions().size() -
           absl::c_count(instruction->shape().dimensions(), 1) <
       min_rank) {
-    VLOG(2) << " Should be at least rank-" << min_rank
-            << " excluding trivial dimensions " << instruction->ToString();
+    VLOG(2) << "MatchWithDynamicSlice fails, Should be at least rank-"
+            << min_rank << " excluding trivial dimensions "
+            << instruction->ToString();
     return std::nullopt;
   }
   if (!allow_multiple_users && instruction->user_count() != 1) {
-    VLOG(2) << "All-gather user_count != 1 " << instruction->ToString();
+    VLOG(2) << "MatchWithDynamicSlice fails, All-gather user_count != 1 "
+            << instruction->ToString();
     return std::nullopt;
   }
   if (!CheckUniformReplicaGroups(instruction)) {
-    VLOG(2) << "Non-uniform replica groups " << instruction->ToString();
+    VLOG(2) << "MatchWithDynamicSlice fails, Non-uniform_replica_groups "
+            << instruction->ToString();
     return std::nullopt;
   }
 
@@ -1088,7 +1108,9 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
           allow_intervening_bitcast);
 
   if (!ds_user.has_value()) {
-    VLOG(2) << "AG or AR user is not dynamic slice " << instruction->ToString();
+    VLOG(2)
+        << "MatchWithDynamicSlice fails, AG or AR user is not dynamic slice "
+        << instruction->ToString();
     return std::nullopt;
   }
 
@@ -1102,6 +1124,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
       GetGroupSize(is_cross_module, use_global_device_ids, num_partitions,
                    num_replicas, instruction);
   if (!optional_group_size) {
+    VLOG(2) << "MatchWithDynamicSlice fails, GetGroupSize_returned_nullopt "
+            << instruction->ToString();
     return std::nullopt;
   }
   int64_t group_size = *optional_group_size;
@@ -1118,15 +1142,16 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     // unless they use use_global_device_ids.
     if (instruction->replica_groups().size() != num_replicas ||
         instruction->replica_groups()[0].replica_ids_size() != 1) {
-      VLOG(2) << "Unsupported size > 1 replica groups for cross-partition, "
-                 "non-global ID "
+      VLOG(2) << "MatchWithDynamicSlice fails, Unsupported size > 1 replica "
+                 "groups for cross-partition, non-global ID "
               << instruction->ToString();
       return std::nullopt;
     }
     spec.sharded_partitions = num_partitions;
   }
   if (group_size < 2) {
-    VLOG(2) << "Group_size < 2, nothing to do " << instruction->ToString();
+    VLOG(2) << "MatchWithDynamicSlice fails, Group_size < 2, nothing to do "
+            << instruction->ToString();
     return std::nullopt;
   }
   spec.group_size = group_size;
@@ -1134,6 +1159,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   std::optional<SplitDimSpec> split_dim_spec =
       ExtractSplitDimSpec(*user, allow_multiple_split_dims);
   if (!split_dim_spec) {
+    VLOG(2) << "MatchWithDynamicSlice fails, ExtractSplitDimSpec_failed ds="
+            << user->ToString();
     return std::nullopt;
   }
   spec.split_dim = split_dim_spec->split_dim;
@@ -1146,8 +1173,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   }
 
   if (Product(group_sizes) != group_size) {
-    VLOG(2) << "Group size mismatch " << user->ToString() << " vs "
-            << instruction->ToString();
+    VLOG(2) << "MatchWithDynamicSlice fails, Group size mismatch "
+            << user->ToString() << " vs " << instruction->ToString();
     return std::nullopt;
   }
   if (split_dims.size() > 1) {
@@ -1160,7 +1187,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     if (!IsPerIdOffsets(absl::MakeSpan(offsets), shard_size, map_id,
                         group_sizes, instruction, is_cross_module,
                         use_global_device_ids)) {
-      VLOG(2) << "IsPerIdOffsets() failed " << instruction->ToString();
+      VLOG(2) << "MatchWithDynamicSlice fails, IsPerIdOffsets() failed "
+              << instruction->ToString();
       return std::nullopt;
     }
   } else {
@@ -1168,7 +1196,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
                        user->dynamic_slice_sizes()[spec.split_dim], map_id,
                        group_size, instruction, is_cross_module,
                        use_global_device_ids)) {
-      VLOG(2) << "IsPerIdOffset() failed " << instruction->ToString();
+      VLOG(2) << "MatchWithDynamicSlice fails, IsPerIdOffset() failed "
+              << instruction->ToString();
       return std::nullopt;
     }
   }
@@ -1191,7 +1220,8 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
           return unmodified_output_to_input_map.count(out_dim) != 0;
         });
     if (!all_split_dims_unmodified) {
-      VLOG(2) << "Split dimensions are modified by reshape";
+      VLOG(2) << "MatchWithDynamicSlice fails, Split dimensions are modified "
+                 "by reshape";
       return std::nullopt;
     }
 

@@ -160,6 +160,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     mask = make_mask(arr_shape[:ndims_mask])
     if axis is not None:
       mask = make_mask(arr_shape[axis:ndims_mask + axis])
+    masked_arr = None
     if axis is None or axis == 0:
       masked_arr = arr[mask]
     elif axis == 1:
@@ -590,6 +591,45 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     x = np.ndarray(shape=[0, 1, 1])
     v = array_ops.reverse_v2(x, axis=[1])
     self.assertAllEqual(self.evaluate(v), v)
+
+  def testReverseScalarOutOfRangeAxis(self):
+    # Regression test for GitHub issue 110038: a scalar has no valid axis, so
+    # any axis must be rejected. The kernel returned the input unchanged
+    # instead, which disagreed with the error shape inference raises for the
+    # same call in graph mode.
+    for axis in ([0], [1, 2, 3], [-1]):
+      with self.subTest(axis=axis):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), "out of valid range"
+        ):
+          self.evaluate(
+              array_ops.reverse_v2(constant_op.constant(4.0), axis=axis)
+          )
+
+  def testReverseScalarEmptyAxisIsValid(self):
+    # An empty axis list reverses nothing and stays valid for any input.
+    x = constant_op.constant(4.0)
+    self.assertAllEqual(4.0, self.evaluate(array_ops.reverse_v2(x, axis=[])))
+
+  def testReverseEmptyTensorOutOfRangeAxis(self):
+    # The same validation gap applied to empty tensors, whose axes can be out
+    # of range even though there is nothing to reverse.
+    for shape, axis in (([0], [5]), ([0, 3], [7]), ([0, 3], [-4])):
+      with self.subTest(shape=shape, axis=axis):
+        x = array_ops.zeros(shape, dtype=dtypes.float32)
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), "out of valid range"
+        ):
+          self.evaluate(array_ops.reverse_v2(x, axis=axis))
+
+  def testReverseEmptyTensorValidAxis(self):
+    # In-range axes on empty tensors keep working.
+    for shape, axis in (([0], [0]), ([0, 3], [1]), ([0, 3], [-1])):
+      with self.subTest(shape=shape, axis=axis):
+        x = array_ops.zeros(shape, dtype=dtypes.float32)
+        self.assertAllEqual(
+            np.zeros(shape), self.evaluate(array_ops.reverse_v2(x, axis=axis))
+        )
 
 
 class MeshgridTest(test_util.TensorFlowTestCase):
@@ -1650,6 +1690,24 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
     check_output_dtype("float64")
     check_output_dtype(np.float64)
 
+  def testXlaJitCompileWithStaticMaxlen(self):
+    if not context.executing_eagerly() or not test_util.is_xla_enabled():
+      return
+
+    @def_function.function(jit_compile=True)
+    def fn(lengths):
+      return array_ops.sequence_mask(lengths, maxlen=5)
+
+    res = fn(constant_op.constant([1, 3, 2]))
+    self.assertAllEqual(
+        res,
+        [
+            [True, False, False, False, False],
+            [True, True, True, False, False],
+            [True, True, False, False, False],
+        ],
+    )
+
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
@@ -2047,6 +2105,19 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
     tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
     self.assertAllEqual(result, tf_result)
 
+  def testScalarValue(self):
+    cdf = np.array([0, 0.2, 0.5, 0.6, 0.8, 1.0], dtype=np.float32)
+    values = (0.53, np.float32(0.53), constant_op.constant(0.53))
+
+    for value in values:
+      for side in ("left", "right"):
+        with self.subTest(value=value, side=side):
+          result = np.searchsorted(cdf, 0.53, side=side)
+          tf_result = self.evaluate(
+              array_ops.searchsorted(cdf, value, side=side)
+          )
+          self.assertAllEqual(result, tf_result)
+
   def testUpperBoundFloatRandomNd(self):
     dim_size = 7
     for d in range(1, 5):
@@ -2285,6 +2356,60 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
       return array_ops.searchsorted(x, y)
 
     _ = g.get_concrete_function()
+
+  def testNaN(self):
+    """NaN should always be placed at the end of a sorted sequence."""
+    # Test NaN in values
+    sorted_sequence = np.array(
+        [2.0, 4.0, 8.0, 16.0, 32.0, 64.0], dtype=np.float32
+    )
+    values = np.array([np.nan, 8.0], dtype=np.float32)
+    for side in ("left", "right"):
+      with self.subTest(side=side, case="nan_in_values"):
+        expected = np.searchsorted(sorted_sequence, values, side=side)
+        actual = self.evaluate(
+            array_ops.searchsorted(sorted_sequence, values, side=side)
+        )
+        self.assertAllEqual(expected, actual)
+
+    # Test NaN in sorted_sequence
+    sorted_sequence_with_nan = np.array(
+        [2.0, 4.0, 8.0, np.nan, np.nan], dtype=np.float32
+    )
+    values_to_search = np.array([3.0, np.nan], dtype=np.float32)
+    for side in ("left", "right"):
+      with self.subTest(side=side, case="nan_in_sequence"):
+        expected = np.searchsorted(
+            sorted_sequence_with_nan, values_to_search, side=side
+        )
+        actual = self.evaluate(
+            array_ops.searchsorted(
+                sorted_sequence_with_nan, values_to_search, side=side
+            )
+        )
+        self.assertAllEqual(expected, actual)
+
+    # Regression test: NaN in sorted_sequence with multiple NaNs, searching
+    # for finite values that fall before, between, and after non-NaN elements.
+    sorted_sequence_with_nans = np.array(
+        [2.0, 4.0, np.nan, np.nan], dtype=np.float32
+    )
+    for val in [3.0, 5.0, np.nan]:
+      for side in ("left", "right"):
+        with self.subTest(side=side, val=val, case="nan_in_sorted_regression"):
+          expected = np.searchsorted(
+              sorted_sequence_with_nans,
+              np.array([val], dtype=np.float32),
+              side=side,
+          )
+          actual = self.evaluate(
+              array_ops.searchsorted(
+                  sorted_sequence_with_nans,
+                  np.array([val], dtype=np.float32),
+                  side=side,
+              )
+          )
+          self.assertAllEqual(expected, actual)
 
   def testInvalidValuesLowerBound(self):
     arg_0_tensor = random_ops.random_uniform([3, 3], dtype=dtypes.float32)

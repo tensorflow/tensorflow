@@ -46,9 +46,6 @@ xla_test(
 xla_test(
     name = "ynn_fusion_test",
     srcs = ["ynn_fusion_test.cc"],
-    backend_tags = {
-        "cpu": ["broken"],  # b/516277731
-    },
     backends = ["cpu"],
     deps = [
         "//xla:error_spec",
@@ -65,6 +62,17 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "mock_custom_call_test",
+    srcs = ["mock_custom_call_test.cc"],
+    backends = ["cpu"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest_main",
     ],
 )

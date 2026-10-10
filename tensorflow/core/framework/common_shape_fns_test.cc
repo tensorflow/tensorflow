@@ -1370,6 +1370,22 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   set_op({1, 1, 1, 1}, {1, 1, 1, 1}, "VALID", "NHWC");
   INFER_OK(op, "[1,2,2,1]", "[d0_0,2,2,d0_3]");
 
+  // A window one larger than the input produces an empty spatial dimension.
+  set_op({1, 1, 1, 1}, {1, 2, 2, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,1,2,3]", "[d0_0,0,1,d0_3]");
+  // Integer division also truncates a small negative numerator to zero.
+  set_op({1, 2, 1, 1}, {1, 4, 2, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,1,2,3]", "[d0_0,0,1,d0_3]");
+  // A substantially larger window still has a negative output size.
+  set_op({1, 1, 1, 1}, {1, 3, 2, 1}, "VALID", "NHWC");
+  INFER_ERROR("Negative dimension size", op, "[1,1,2,3]");
+
+  // Empty inputs follow the same window-size rules as the runtime kernel.
+  set_op({1, 1, 1, 1}, {1, 1, 2, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,0,10,3]", "[d0_0,0,9,d0_3]");
+  set_op({1, 1, 1, 1}, {1, 2, 2, 1}, "VALID", "NHWC");
+  INFER_ERROR("Negative dimension size", op, "[1,0,10,3]");
+
   // 4x4 input, 2x1 ksize, 1x2 stride
   set_op({1, 1, 2, 1}, {1, 2, 1, 1}, "VALID", "NHWC");
   INFER_OK(op, "[1,4,4,1]", "[d0_0,3,2,d0_3]");

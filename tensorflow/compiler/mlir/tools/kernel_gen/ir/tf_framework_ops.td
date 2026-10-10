@@ -40,6 +40,7 @@ def TFFramework_Dialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 1;
+  let useStrictPropertiesInAssemblyFormat = 1;
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
@@ -113,7 +114,7 @@ def TFFramework_TFAllocOp : TFFramework_Op<"alloc", [
         "reuse_input_candidates";
   }];
   let assemblyFormat = [{
-    `(` $ctx (`,` $dyn_sizes^ )? `)` attr-dict `:` type($result)
+    `(` $ctx (`,` $dyn_sizes^ )? `)` prop-dict attr-dict `:` type($result)
   }];
 
   let hasVerifier = 1;
@@ -294,7 +295,7 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
     static constexpr StringRef kJITEntryFunctionName = "main";
   }];
 
-  let assemblyFormat = "($ctx^ `,`)? $code attr-dict";
+  let assemblyFormat = "($ctx^ `,`)? $code prop-dict attr-dict";
 }
 
 //===----------------------------------------------------------------------===//

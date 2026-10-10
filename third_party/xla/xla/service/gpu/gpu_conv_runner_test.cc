@@ -90,8 +90,8 @@ TEST(GpuConvDescriptorTest, ProtoRoundTrip) {
     feature_group_count: 1
   )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuConvDescriptor desc,
-                          GpuConvDescriptor::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(GpuConvDescriptor desc,
+                       GpuConvDescriptor::FromProto(proto));
 
   EXPECT_THAT(desc.ToProto(), EqualsProto(proto));
 }

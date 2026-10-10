@@ -717,14 +717,15 @@ cc_library(
         "//tensorflow/core/platform:error_logging",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:context_types_hdrs",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-        "@xla//xla/tsl/platform:env",
     ],
     alwayslink = 1,
 )
@@ -3023,6 +3024,7 @@ tf_cc_test(
     srcs = ["process_util_test.cc"],
     deps = [
         ":process_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -3114,10 +3116,11 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "direct_session_test",
-    size = "medium",
+    size = "large",
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check="]),  # The GPU tracer leaks memory
     features = ["-layering_check"],
+    shard_count = 8,
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

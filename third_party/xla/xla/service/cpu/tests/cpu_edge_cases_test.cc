@@ -20,8 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
@@ -223,6 +226,263 @@ ENTRY entry {
   EXPECT_EQ(data[9], 10);
   EXPECT_EQ(data[10], 11);
   EXPECT_EQ(data[11], 12);
+}
+
+// Regression tests for https://github.com/openxla/xla/issues/47370: in-place
+// ops and loops inside a sort comparator used to crash the legacy IR emitter.
+// Each comparator computes a value known to be true through the in-place op
+// and returns xor(p0 >= p1, true), i.e. an ascending order.
+class SortComparatorTest : public HloTestBase {
+ protected:
+  void RunAndExpectSorted(absl::string_view hlo_text) {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+    Literal input = LiteralUtil::CreateR1<int32_t>({3, 1, 4, 1, 5, 9, 2});
+    ASSERT_OK_AND_ASSIGN(const Literal result,
+                         Execute(std::move(module), {&input}));
+    EXPECT_EQ(result, LiteralUtil::CreateR1<int32_t>({1, 1, 2, 3, 4, 5, 9}));
+  }
+};
+
+TEST_F(SortComparatorTest, ScatterInSortComparator) {
+  RunAndExpectSorted(R"(
+HloModule scatter_in_sort_comparator
+
+overwrite {
+  lhs = f32[] parameter(0)
+  ROOT rhs = f32[] parameter(1)
+}
+
+compare {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  c = f32[] convert(p1)
+  operand = f32[3] broadcast(c), dimensions={}
+  indices = s32[2,1] constant({{0}, {1}})
+  updates = f32[2] constant({5, 2})
+  scattered = f32[3] scatter(operand, indices, updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=overwrite
+  a = f32[1] slice(scattered), slice={[0:1]}
+  b = f32[1] slice(scattered), slice={[1:2]}
+  a_scalar = f32[] reshape(a)
+  b_scalar = f32[] reshape(b)
+  flip = pred[] compare(a_scalar, b_scalar), direction=GT
+  ge = pred[] compare(p0, p1), direction=GE
+  ROOT result = pred[] xor(ge, flip)
+}
+
+ENTRY main {
+  x = s32[7] parameter(0)
+  ROOT sorted = s32[7] sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+)");
+}
+
+TEST_F(SortComparatorTest, VariadicScatterInSortComparator) {
+  RunAndExpectSorted(R"(
+HloModule variadic_scatter_in_sort_comparator
+
+overwrite2 {
+  a0 = f32[] parameter(0)
+  a1 = f32[] parameter(1)
+  upd0 = f32[] parameter(2)
+  upd1 = f32[] parameter(3)
+  ROOT t = (f32[], f32[]) tuple(upd0, upd1)
+}
+
+compare {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  c = f32[] convert(p1)
+  operand = f32[3] broadcast(c), dimensions={}
+  indices = s32[2,1] constant({{0}, {1}})
+  updates0 = f32[2] constant({5, 2})
+  updates1 = f32[2] constant({1, 9})
+  scattered = (f32[3], f32[3]) scatter(operand, operand, indices, updates0, updates1), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=overwrite2
+  out1 = f32[3] get-tuple-element(scattered), index=1
+  a = f32[1] slice(out1), slice={[0:1]}
+  b = f32[1] slice(out1), slice={[1:2]}
+  a_scalar = f32[] reshape(a)
+  b_scalar = f32[] reshape(b)
+  flip = pred[] compare(b_scalar, a_scalar), direction=GT
+  ge = pred[] compare(p0, p1), direction=GE
+  ROOT result = pred[] xor(ge, flip)
+}
+
+ENTRY main {
+  x = s32[7] parameter(0)
+  ROOT sorted = s32[7] sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+)");
+}
+
+TEST_F(SortComparatorTest, DynamicUpdateSliceInSortComparator) {
+  RunAndExpectSorted(R"(
+HloModule dus_in_sort_comparator
+
+compare {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  c = f32[] convert(p1)
+  operand = f32[3] broadcast(c), dimensions={}
+  update = f32[1] constant({7})
+  zero = s32[] constant(0)
+  two = s32[] constant(2)
+  idx = s32[] clamp(zero, p0, two)
+  updated = f32[3] dynamic-update-slice(operand, update, idx)
+  picked = f32[1] dynamic-slice(updated, idx), dynamic_slice_sizes={1}
+  picked_scalar = f32[] reshape(picked)
+  three = f32[] constant(3)
+  flip = pred[] compare(picked_scalar, three), direction=GT
+  ge = pred[] compare(p0, p1), direction=GE
+  ROOT result = pred[] xor(ge, flip)
+}
+
+ENTRY main {
+  x = s32[7] parameter(0)
+  ROOT sorted = s32[7] sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+)");
+}
+
+TEST_F(SortComparatorTest, WhileInSortComparator) {
+  RunAndExpectSorted(R"(
+HloModule while_in_sort_comparator
+
+body {
+  state = (s32[], f32[3]) parameter(0)
+  i = s32[] get-tuple-element(state), index=0
+  buffer = f32[3] get-tuple-element(state), index=1
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ten = s32[] constant(10)
+  value = s32[] add(i, ten)
+  value_f = f32[] convert(value)
+  update = f32[1] reshape(value_f)
+  next_buffer = f32[3] dynamic-update-slice(buffer, update, i)
+  ROOT next_state = (s32[], f32[3]) tuple(next_i, next_buffer)
+}
+
+condition {
+  state = (s32[], f32[3]) parameter(0)
+  i = s32[] get-tuple-element(state), index=0
+  three = s32[] constant(3)
+  ROOT continue = pred[] compare(i, three), direction=LT
+}
+
+compare {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  c = f32[] convert(p1)
+  operand = f32[3] broadcast(c), dimensions={}
+  zero = s32[] constant(0)
+  init = (s32[], f32[3]) tuple(zero, operand)
+  loop = (s32[], f32[3]) while(init), condition=condition, body=body
+  buffer_out = f32[3] get-tuple-element(loop), index=1
+  a = f32[1] slice(buffer_out), slice={[0:1]}
+  b = f32[1] slice(buffer_out), slice={[1:2]}
+  a_scalar = f32[] reshape(a)
+  b_scalar = f32[] reshape(b)
+  flip = pred[] compare(b_scalar, a_scalar), direction=GT
+  ge = pred[] compare(p0, p1), direction=GE
+  ROOT result = pred[] xor(ge, flip)
+}
+
+ENTRY main {
+  x = s32[7] parameter(0)
+  ROOT sorted = s32[7] sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+)");
+}
+
+// Unrolling the loop moves the scatter into the comparator, where it has to
+// be expanded (and the resulting loop unrolled) in turn.
+TEST_F(SortComparatorTest, ScatterInWhileInSortComparator) {
+  RunAndExpectSorted(R"(
+HloModule scatter_in_while_in_sort_comparator
+
+overwrite {
+  lhs = f32[] parameter(0)
+  ROOT rhs = f32[] parameter(1)
+}
+
+body {
+  state = (s32[], f32[3]) parameter(0)
+  i = s32[] get-tuple-element(state), index=0
+  buffer = f32[3] get-tuple-element(state), index=1
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  indices = s32[2,1] constant({{0}, {1}})
+  updates = f32[2] constant({5, 2})
+  next_buffer = f32[3] scatter(buffer, indices, updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=overwrite
+  ROOT next_state = (s32[], f32[3]) tuple(next_i, next_buffer)
+}
+
+condition {
+  state = (s32[], f32[3]) parameter(0)
+  i = s32[] get-tuple-element(state), index=0
+  two = s32[] constant(2)
+  ROOT continue = pred[] compare(i, two), direction=LT
+}
+
+compare {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  c = f32[] convert(p1)
+  operand = f32[3] broadcast(c), dimensions={}
+  zero = s32[] constant(0)
+  init = (s32[], f32[3]) tuple(zero, operand)
+  loop = (s32[], f32[3]) while(init), condition=condition, body=body
+  buffer_out = f32[3] get-tuple-element(loop), index=1
+  a = f32[1] slice(buffer_out), slice={[0:1]}
+  b = f32[1] slice(buffer_out), slice={[1:2]}
+  a_scalar = f32[] reshape(a)
+  b_scalar = f32[] reshape(b)
+  flip = pred[] compare(a_scalar, b_scalar), direction=GT
+  ge = pred[] compare(p0, p1), direction=GE
+  ROOT result = pred[] xor(ge, flip)
+}
+
+ENTRY main {
+  x = s32[7] parameter(0)
+  ROOT sorted = s32[7] sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+)");
+}
+
+// A scatter with more indices than the unroll threshold stays a loop, which
+// the nested emitter must reject with a status instead of a CHECK failure.
+TEST_F(SortComparatorTest, LargeScatterInSortComparatorIsUnimplemented) {
+  constexpr absl::string_view kHloText = R"(
+HloModule large_scatter_in_sort_comparator
+
+overwrite {
+  lhs = f32[] parameter(0)
+  ROOT rhs = f32[] parameter(1)
+}
+
+compare {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  c = f32[] convert(p1)
+  operand = f32[3] broadcast(c), dimensions={}
+  indices = s32[70,1] iota(), iota_dimension=0
+  updates = f32[70] broadcast(c), dimensions={}
+  scattered = f32[3] scatter(operand, indices, updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=overwrite
+  a = f32[1] slice(scattered), slice={[0:1]}
+  a_scalar = f32[] reshape(a)
+  flip = pred[] compare(a_scalar, c), direction=GT
+  ge = pred[] compare(p0, p1), direction=GE
+  ROOT result = pred[] xor(ge, flip)
+}
+
+ENTRY main {
+  x = s32[7] parameter(0)
+  ROOT sorted = s32[7] sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  Literal input = LiteralUtil::CreateR1<int32_t>({3, 1, 4, 1, 5, 9, 2});
+  EXPECT_EQ(Execute(std::move(module), {&input}).status().code(),
+            absl::StatusCode::kUnimplemented);
 }
 
 }  // namespace

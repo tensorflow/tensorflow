@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -351,7 +350,7 @@ absl::StatusOr<std::vector<XlaOp>> Sweeps(
             sweep_values, "ApplyRotations", body_builder));
     std::vector<XlaOp> output(values.size());
     output[0] = values[0] + ScalarLike(values[0], 1);
-    std::copy(sweep_values.begin(), sweep_values.end(), output.begin() + 1);
+    absl::c_copy(sweep_values, output.begin() + 1);
     return output;
   };
   return WhileLoopHelper(while_cond_fn, while_body_fn, initial_values,
@@ -435,6 +434,47 @@ absl::Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
 //     off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
 //             frobenius_norm + diag_norm)
 //   return A, V
+absl::StatusOr<EighExpander::ScaledInput> EighExpander::ScaleInputMatrix(
+    XlaOp a) {
+  XlaBuilder* builder = a.builder();
+  ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  const int64_t num_dims = a_shape.dimensions().size();
+  const int64_t num_batch_dims = num_dims - 2;
+  PrimitiveType type = a_shape.element_type();
+  PrimitiveType real_type = primitive_util::IsComplexType(type)
+                                ? primitive_util::ComplexComponentType(type)
+                                : type;
+  XlaOp zero_real = Zero(builder, real_type);
+  XlaOp one_real = One(builder, real_type);
+  XlaOp abs_a = primitive_util::IsComplexType(type)
+                    ? Max(Abs(Real(a)), Abs(Imag(a)))
+                    : Abs(a);
+  XlaOp a_max =
+      Reduce(abs_a, zero_real, CreateScalarMaxComputation(real_type, builder),
+             {num_dims - 2, num_dims - 1});
+  XlaOp scale = Select(Eq(a_max, zero_real), one_real, a_max);
+
+  std::vector<int64_t> batch_broadcast_dims(num_batch_dims);
+  absl::c_iota(batch_broadcast_dims, 0);
+
+  XlaOp scale_a = primitive_util::IsComplexType(type)
+                      ? Complex(scale, ZerosLike(scale))
+                      : scale;
+  scale_a = BroadcastInDim(scale_a, a_shape.dimensions(), batch_broadcast_dims);
+  return ScaledInput{a / scale_a, scale};
+}
+
+absl::StatusOr<XlaOp> EighExpander::RescaleEigenvalues(XlaOp w, XlaOp scale) {
+  XlaBuilder* builder = w.builder();
+  ABSL_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
+  const int64_t num_batch_dims = w_shape.dimensions().size() - 1;
+  std::vector<int64_t> batch_broadcast_dims(num_batch_dims);
+  absl::c_iota(batch_broadcast_dims, 0);
+  XlaOp scale_w =
+      BroadcastInDim(scale, w_shape.dimensions(), batch_broadcast_dims);
+  return w * scale_w;
+}
+
 XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
                               bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
@@ -477,11 +517,11 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
 
     a = Symmetrize(a, lower);
 
+    ABSL_ASSIGN_OR_RETURN(ScaledInput scaled_input, ScaleInputMatrix(a));
+    a = scaled_input.scaled_matrix;
+    XlaOp scale = scaled_input.scale;
+
     const int64_t k = CeilOfRatio(n, int64_t{2});
-    // tl = A[:n // 2, :n // 2]
-    // bl = A[n // 2:, :n // 2]
-    // tr = A[:n // 2, n // 2:]
-    // br = A[n // 2:, n // 2:]
     auto tl = SliceInMinorDims(a, {0, 0}, {k, k});
     auto bl = SliceInMinorDims(a, {k, 0}, {n, k});
     auto tr = SliceInMinorDims(a, {0, k}, {k, n});
@@ -495,10 +535,6 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
       config.mutable_dimensions(num_dims - 1)->set_edge_padding_high(1);
       br = Pad(br, zero, config);
     }
-    // v_tl = np.eye(n // 2, dtype=A.dtype)
-    // v_tr = np.zeros((n // 2, n // 2), A.dtype)
-    // v_bl = np.zeros((n // 2, n // 2), A.dtype)
-    // v_br = np.eye(n // 2, dtype=A.dtype)
     auto v_tl = Broadcast(IdentityMatrix(builder, type, k, k), batch_dims);
     auto v_br = v_tl;
     auto v_tr = ZerosLike(v_tl);
@@ -536,6 +572,8 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
       v = SliceInMinorDims(v, {0, 0}, {n, n});
     }
     v = MaybeConjugate(TransposeInMinorDims(v), true);
+
+    ABSL_ASSIGN_OR_RETURN(w, RescaleEigenvalues(w, scale));
 
     if (sort_eigenvalues) {
       ABSL_RETURN_IF_ERROR(SortByEigenvalues(v, w));

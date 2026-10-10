@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -110,14 +112,18 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
 
 absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
     PjRtClient* client) {
-  const StreamExecutorGpuClient* gpu_client =
-      dynamic_cast<const StreamExecutorGpuClient*>(client);
+  const auto* gpu_client = dynamic_cast<const CommonPjRtClient*>(client);
   if (gpu_client != nullptr) {
-    return gpu_client->client()->backend().default_stream_executor();
+    if (const auto* raw_gpu_client =
+            dynamic_cast<const PjRtStreamExecutorRawClient*>(
+                gpu_client->raw_client())) {
+      return raw_gpu_client->client()->backend().default_stream_executor();
+    }
   }
 
   return absl::InvalidArgumentError(
-      "Given PjRtClient is not a StreamExecutorGpuClient.");
+      "Given PjRtClient does not contain a xla::LocalClient needed for "
+      "autotuning.");
 }
 
 }  // namespace
@@ -255,9 +261,9 @@ StreamExecutorGpuCompiler::Compile(
   }
 
   if (IsEarlyExitCompilation(options)) {
-    LOG_EVERY_N(INFO, 60)
-        << "Early exit compilation is enabled. Note that this is always "
-           "a deviceless compilation.";
+    LOG_EVERY_N(INFO, 60) << "Early exit after layout assignment is enabled. "
+                             "Note that this is always "
+                             "a deviceless compilation.";
   } else if (client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
@@ -318,14 +324,40 @@ StreamExecutorGpuCompiler::Compile(
   aot_options.set_gpu_topology(xla_gpu_topology);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());
-  if (IsEarlyExitCompilation(options)) {
-    aot_options.set_early_exit_point(
-        AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
-    aot_options.set_executor(nullptr);
-  } else if (client != nullptr) {
+  if (client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
     aot_options.set_executor(stream_executor);
+  }
+  if (IsEarlyExitCompilation(options)) {
+    // debug_options are always set if IsEarlyExitCompilation is true, either
+    // because the debug_options were explicitly set in the input
+    // CompileOptions, or because we set them in the input options in the
+    // previous call to ApplyAllOptionOverrides.
+    TF_RET_CHECK(options.executable_build_options.has_debug_options());
+    bool early_exit_with_layouts =
+        options.executable_build_options.debug_options()
+            .xla_early_exit_with_layouts();
+    DebugOptions::EarlyExitPoint early_exit =
+        options.executable_build_options.debug_options()
+            .xla_gpu_experimental_early_exit();
+    if (early_exit_with_layouts &&
+        early_exit != DebugOptions::EARLY_EXIT_POINT_UNSET) {
+      return absl::InvalidArgumentError(
+          "xla_early_exit_with_layouts and xla_gpu_experimental_early_exit are "
+          "mutually exclusive.");
+    }
+
+    if (early_exit_with_layouts) {
+      aot_options.set_early_exit_point(
+          AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
+      // Early exit after layout assignment is a deviceless compilation.
+      aot_options.set_executor(nullptr);
+    } else if (early_exit ==
+               DebugOptions::EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT) {
+      aot_options.set_early_exit_point(
+          AotCompilationOptions::EarlyExitPoint::kAfterConfigAssignment);
+    }
   }
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();

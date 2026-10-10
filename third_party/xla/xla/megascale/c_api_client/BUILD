@@ -58,7 +58,7 @@ cc_library(
         "//xla/pjrt/c_api_client:pjrt_c_api_client",
         "//xla/pjrt/c_api_client:pjrt_c_api_multi_slice_config",
         "//xla/pjrt/plugin:plugin_names",
-        "//xla/service:collective_ops_utils",
+        "//xla/service:collective_rendezvous",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",

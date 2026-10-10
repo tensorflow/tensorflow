@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -63,19 +62,18 @@ namespace {
 absl::string_view GetDefaultCollectivePerfTable() {
   const struct FileToc* toc = config::default_collective_perf_table_create();
   for (size_t i = 0; i < config::default_collective_perf_table_size(); ++i) {
-    if (absl::string_view(toc[i].name) ==
-        "default_collective_perf_table.txtpb") {
+    if (absl::string_view(toc[i].name) == "default_collective_perf_table.pb") {
       return absl::string_view(toc[i].data, toc[i].size);
     }
   }
-  LOG(FATAL) << "Embedded file not found: default_collective_perf_table.txtpb";
+  LOG(FATAL) << "Embedded file not found: default_collective_perf_table.pb";
 }
 
 static const DeviceHloInstructionProfiles& Profile() {
   static const DeviceHloInstructionProfiles* profile = []() {
     auto* profile = new DeviceHloInstructionProfiles();
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(
-        GetDefaultCollectivePerfTable(), profile))
+    CHECK(profile->ParseFromArray(GetDefaultCollectivePerfTable().data(),
+                                  GetDefaultCollectivePerfTable().size()))
         << "Cannot parse a default profile.";
     return profile;
   }();

@@ -1210,6 +1210,43 @@ class ParseExampleTest(test.TestCase):
         "features": test_features
     }, expected_output)
 
+  def testSerializedContainingMisalignedRaggedFeatureRowLengths(self):
+    original = [
+        example(
+            features=features({
+                "rt_values": float_feature([]),
+                "rt_lengths": int64_feature([5]),
+            })
+        ),
+        example(
+            features=features({
+                "rt_values": float_feature([1.0, 2.0, 3.0, 4.0, 5.0]),
+                "rt_lengths": int64_feature([]),
+            })
+        ),
+    ]
+    serialized = ops.convert_to_tensor(
+        [m.SerializeToString() for m in original]
+    )
+    test_features = {
+        "rt": parsing_ops.RaggedFeature(
+            value_key="rt_values",
+            partitions=[parsing_ops.RaggedFeature.RowLengths("rt_lengths")],
+            dtype=dtypes.float32,
+            validate=True,
+        ),
+    }
+    self._test(
+        {
+            "serialized": serialized,
+            "features": test_features,
+        },
+        expected_err=(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "Feature rt: values and partitions are not aligned",
+        ),
+    )
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ParseSingleExampleTest(test.TestCase):
@@ -2398,6 +2435,17 @@ class ParseSequenceExampleTest(test.TestCase):
             "|.* do not form a valid RaggedTensor"
             # Message for batch=false in eager mode:
             "|Incompatible shapes|required broadcastable shapes"))
+
+  def testFixedLenSequenceFeatureZeroDimDoesNotCrash(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/123476
+    # ParseSequenceDenseFeatures divided by row_shape.num_elements() without
+    # guarding against the zero case, causing a SIGFPE when shape=[0].
+    # The public Python API now rejects shape=[0] with a recoverable error
+    # rather than crashing the process; verify the error is catchable.
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      parsing_ops.FixedLenSequenceFeature(
+          shape=[0], dtype=dtypes.float32, allow_missing=True
+      )
 
 
 @test_util.run_all_in_graph_and_eager_modes

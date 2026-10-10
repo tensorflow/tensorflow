@@ -1530,6 +1530,18 @@ TEST(OpVersionTest, VersioningCastTest) {
   fake_op_sig.op = BuiltinOperator_CAST;
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt2);
   fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 10);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt4);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 10);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt4);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 10);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt2);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
@@ -1537,7 +1549,7 @@ TEST(OpVersionTest, VersioningCastTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt4);
-  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
@@ -1599,5 +1611,23 @@ TEST(OpVersionTest, VersioningCastTest) {
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
   fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // Packed -> Float8 stays at v9 (Float8 check precedes the v10 branch).
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt4);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat8E4M3FN);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 9);
+
+  // Packed -> packed casts are not supported by the v10 kernel path.
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt4);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt4);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt2);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 }
 }  // namespace tflite

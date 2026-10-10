@@ -35,7 +35,6 @@ class EventPool {
  public:
   class Handle {
    public:
-    Handle() = default;
     ~Handle();
 
     Handle(const Handle&) = delete;
@@ -60,6 +59,8 @@ class EventPool {
 
    private:
     friend class EventPool;
+    Handle(EventPool* pool, std::unique_ptr<se::Event> event)
+        : pool_(pool), event_(std::move(event)) {}
 
     EventPool* pool_ = nullptr;
     std::unique_ptr<se::Event> event_;

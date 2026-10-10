@@ -18,6 +18,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_cuda_or_rocm",
+    "if_not_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -84,6 +85,7 @@ exports_files([
     "decode_image_op.cc",
     "encode_jpeg_op.cc",
     "encode_png_op.cc",
+    "encode_jxl_op.cc",
 ])
 
 # Private support libraries ---------------------------------------------------
@@ -121,6 +123,7 @@ cc_library(
         ":decode_image_op",
         ":draw_bounding_box_op",
         ":encode_jpeg_op",
+        ":encode_jxl_op",
         ":encode_png_op",
         ":extract_image_patches_op",
         ":extract_jpeg_shape_op",
@@ -259,6 +262,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "encode_jxl_op",
+    prefix = "encode_jxl_op",
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:mutex",
+    ],
+)
+
+tf_kernel_library(
     name = "encode_png_op",
     prefix = "encode_png_op",
     deps = IMAGE_DEPS + [
@@ -299,8 +313,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-    deps = ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = [
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+    ] + if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
     ]),
 )
@@ -308,6 +326,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "non_max_suppression_op",
     features = ["-layering_check"],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     prefix = "non_max_suppression_op",
     deps = IMAGE_DEPS + [
         "//tensorflow/core/framework:types_proto_cc",
@@ -561,6 +580,7 @@ filegroup(
             "*_test_*",
             "decode_image_op.*",
             "encode_png_op.*",
+            "encode_jxl_op.*",
             "encode_jpeg_op.*",
             "extract_jpeg_shape_op.*",
             "decode_jpeg_op.*",
