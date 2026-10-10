@@ -102,7 +102,7 @@ def _heartbeat(
         continue
       else:
         _fatal('Heartbeat failure %d, limit of %d reached: %s',
-                      _failure_count, _CONSECUTIVE_FAILURES_LIMIT, e)
+               _failure_count, _CONSECUTIVE_FAILURES_LIMIT, e)
     logging.vlog(2, 'Received heartbeat signal %s', signal)
 
     # Out of sync workers will cause this, crash immediately.
