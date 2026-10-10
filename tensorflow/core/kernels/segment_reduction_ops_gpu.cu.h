@@ -55,13 +55,60 @@ using GPUDevice = Eigen::GpuDevice;
   };
 DEFINE_REDUCE_UPDATE_OP_GPU(AtomicSum, GpuAtomicAdd(dest, value))
 DEFINE_REDUCE_UPDATE_OP_GPU(AtomicProd, GpuAtomicMul(dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(AtomicMax, GpuAtomicMax(dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(AtomicMin, GpuAtomicMin(dest, value))
 DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicSum, *dest += value)
 DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicProd, *dest *= value)
-DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMax, *dest = max(*dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMin, *dest = min(*dest, value))
 #undef DEFINE_REDUCE_UPDATE_OP_GPU
+
+// Unlike Sum/Prod, Max/Min need NaN-propagating semantics to match
+// functor::Max/Min (used by the deterministic segment-reduction path, and by
+// the CPU kernels): a segment containing a NaN must reduce to NaN. Plain
+// max()/min()/GpuAtomicMax/GpuAtomicMin silently drop NaN instead, since any
+// comparison against NaN is false. GpuAtomicMax/Min already implement
+// floating-point types via a CAS loop around a caller-supplied combine
+// function, so reuse that same mechanism with functor::Max/Min's
+// NaN-propagating combine instead of plain max()/min(); integer types have
+// no NaN to worry about, so they keep using the plain atomic.
+struct AtomicMaxOpGpu {
+  template <typename T>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    if constexpr (Eigen::NumTraits<T>::IsInteger) {
+      GpuAtomicMax(dest, value);
+    } else {
+      detail::GpuAtomicCasHelper(
+          dest, [value](T a) { return functor::Max()(a, value); });
+    }
+  }
+};
+
+struct AtomicMinOpGpu {
+  template <typename T>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    if constexpr (Eigen::NumTraits<T>::IsInteger) {
+      GpuAtomicMin(dest, value);
+    } else {
+      detail::GpuAtomicCasHelper(
+          dest, [value](T a) { return functor::Min()(a, value); });
+    }
+  }
+};
+
+struct NonAtomicMaxOpGpu {
+  template <typename T>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest = functor::Max()(*dest, value);
+  }
+};
+
+struct NonAtomicMinOpGpu {
+  template <typename T>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
+    *dest = functor::Min()(*dest, value);
+  }
+};
 
 template <typename ReduceOp>
 struct ReduceUpdateOpFor {};
