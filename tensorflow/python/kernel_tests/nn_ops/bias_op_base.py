@@ -14,6 +14,8 @@
 # ==============================================================================
 """Functional tests for BiasAdd."""
 
+import contextlib
+
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -23,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
@@ -320,3 +323,54 @@ class BiasAddTestBase(test.TestCase):
         self._testGradient(
             np.random.randn(*shape), np.random.randn(shape[-1]), dtypes.float64,
             data_format, use_gpu)
+
+  @contextlib.contextmanager
+  def _skipOnGpuOutOfMemory(self):
+    # The large tensor tests need several GB of GPU memory, so they skip when
+    # the device runs out of it (e.g. on shared runners), and only then.
+    try:
+      yield
+    except errors_impl.ResourceExhaustedError as e:
+      self.skipTest("Skipped due to memory limits: %s" % e)
+    except errors_impl.InternalError as e:
+      if "out of memory" not in str(e).lower():
+        raise
+      self.skipTest("Skipped due to memory limits: %s" % e)
+
+  def testBiasAddInt32Overflow(self):
+    # Regression test for int32 overflow in the BiasAdd GPU kernels. Every
+    # shape has 2 * 1073741825 = 2,147,483,650 > 2**31 - 1 elements, the second
+    # one also as N * H * W in NHWC. GPU reductions over that many elements are
+    # not reliable themselves, so the last elements, which sit past index
+    # 2**31 - 1, are compared directly.
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available to run GPU large tensor tests.")
+
+    n = 1073741825
+    with self.session(use_gpu=True), self._skipOnGpuOutOfMemory():
+      for shape, data_format, bias, expected in [
+          ((n, 2), "NHWC", [0.5, 1.5], [1.5, 2.5, 1.5, 2.5]),
+          ((2, n, 1), "NHWC", [0.5], [1.5] * 4),
+          ((1, 2, n), "NCHW", [0.5, 1.5], [2.5] * 4),
+      ]:
+        out = nn_ops.bias_add(
+            array_ops.ones(shape, dtype=dtypes.float16),
+            constant_op.constant(bias, dtype=dtypes.float16),
+            data_format=data_format)
+        self.assertAllEqual(
+            self.evaluate(array_ops.reshape(out, [-1])[-4:]), expected)
+        del out  # Frees the result before the next shape in eager mode.
+
+  def testBiasAddGradInt32Overflow(self):
+    # BiasAddGrad over 2 * 1073741825 > 2**31 - 1 elements cannot use the int32
+    # reduction kernels, also not while autotuning, and still has to read the
+    # elements past index 2**31 - 1. Every channel sums two ones, which is
+    # exact in float16.
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available to run GPU large tensor tests.")
+
+    n = 1073741825
+    with self.session(use_gpu=True), self._skipOnGpuOutOfMemory():
+      grad = gen_nn_ops.bias_add_grad(
+          array_ops.ones((2, n), dtype=dtypes.float16))
+      self.assertAllEqual(self.evaluate(grad[-4:]), [2.0] * 4)

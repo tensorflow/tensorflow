@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/determinism.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -43,8 +44,18 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
 
+// Narrows a dim to int32, or returns -1 if it does not fit, so that a shape
+// too large for the int32 dims used by the GPU kernels fails the element count
+// check in Compute instead of being used truncated.
+int32_t Int32DimOrNegative(int64_t dim) {
+  if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) return -1;
+  return static_cast<int32_t>(dim);
+}
+
+// batch stays int64: in NHWC it is the product of every dim but the channel,
+// and the kernels only use it as part of the int64 element count.
 void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
-                      int32_t* batch, int32_t* height, int32_t* width,
+                      int64_t* batch, int32_t* height, int32_t* width,
                       int32_t* depth, int32_t* channel) {
   *batch = 1;
   *height = 1;
@@ -53,21 +64,35 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
   *channel = 1;
   if (data_format == FORMAT_NHWC) {
     int32_t channel_dim = value_tensor.dims() - 1;
-    *channel = static_cast<int32_t>(value_tensor.dim_size(channel_dim));
+    *channel = Int32DimOrNegative(value_tensor.dim_size(channel_dim));
     for (int32_t i = 0; i < channel_dim; i++) {
-      *batch *= static_cast<int32_t>(value_tensor.dim_size(i));
+      *batch = MultiplyWithoutOverflow(*batch, value_tensor.dim_size(i));
     }
   } else if (data_format == FORMAT_NCHW) {
-    *batch = static_cast<int32_t>(value_tensor.dim_size(0));
-    *channel = static_cast<int32_t>(value_tensor.dim_size(1));
-    *height = static_cast<int32_t>(value_tensor.dim_size(2));
+    *batch = value_tensor.dim_size(0);
+    *channel = Int32DimOrNegative(value_tensor.dim_size(1));
+    *height = Int32DimOrNegative(value_tensor.dim_size(2));
     if (value_tensor.dims() > 3) {
-      *width = static_cast<int32_t>(value_tensor.dim_size(3));
+      *width = Int32DimOrNegative(value_tensor.dim_size(3));
     }
     if (value_tensor.dims() > 4) {
-      *depth = static_cast<int32_t>(value_tensor.dim_size(4));
+      *depth = Int32DimOrNegative(value_tensor.dim_size(4));
     }
   }
+}
+
+// Products of the dims from GetBiasValueDims. MultiplyWithoutOverflow returns
+// a negative value for a negative operand or an overflowing product, so a dim
+// that did not fit in int32 makes the result negative as well.
+int64_t BiasImageSize(int32_t height, int32_t width, int32_t depth) {
+  return MultiplyWithoutOverflow(MultiplyWithoutOverflow(height, width), depth);
+}
+
+int64_t BiasValueCount(int64_t batch, int32_t height, int32_t width,
+                       int32_t depth, int32_t channel) {
+  return MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(batch, BiasImageSize(height, width, depth)),
+      channel);
 }
 
 template <class T>
@@ -257,9 +282,21 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
                     "Biases must be 1D: ", bias.shape().DebugString())));
-    int32_t batch, height, width, depth, channel;
+    int64_t batch;
+    int32_t height, width, depth, channel;
     GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
                      &channel);
+    // A dim that did not fit in int32 comes back as -1 and makes the count
+    // negative, so such a shape is rejected here rather than reaching the GPU
+    // kernels truncated.
+    OP_REQUIRES(context,
+                BiasValueCount(batch, height, width, depth, channel) ==
+                    input.NumElements(),
+                errors::InvalidArgument(
+                    "BiasAdd: dimension values overflow int32. Got batch=",
+                    batch, ", height=", height, ", width=", width,
+                    ", depth=", depth, ", channel=", channel,
+                    " but tensor has ", input.NumElements(), " elements"));
     OP_REQUIRES(context, bias.shape().dim_size(0) == channel,
                 absl::InvalidArgumentError(absl::StrCat(
                     "Must provide as many biases as the channel dimension "
@@ -397,7 +434,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
   }
 
   void ComputeWithCustomKernel(OpKernelContext* context,
-                               const Tensor& output_backprop, int32_t batch,
+                               const Tensor& output_backprop, int64_t batch,
                                int32_t width, int32_t height, int32_t depth,
                                int32_t channel, Tensor* output) {
     OP_REQUIRES_OK(context, BiasGradGPU<T>::compute(
@@ -408,12 +445,21 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
   }
 
   void ComputeWithReduceSum(OpKernelContext* context,
-                            const Tensor& output_backprop, int32_t batch,
+                            const Tensor& output_backprop, int64_t batch,
                             int32_t width, int32_t height, int32_t depth,
                             int32_t channel, Tensor* output) {
+    // The reduction kernels compute sizes such as rows * cols in int32, so
+    // the element count has to fit, which also bounds every count below.
+    OP_REQUIRES(
+        context,
+        output_backprop.NumElements() <= std::numeric_limits<int32_t>::max(),
+        errors::InvalidArgument(
+            "BiasAddGrad ReduceSum path requires at most int32 max elements. "
+            "Got ",
+            output_backprop.NumElements()));
     if (data_format_ == FORMAT_NCHW) {
-      int32_t row_count = batch * channel;
-      int32_t col_count = height * width * depth;
+      const int64_t row_count = MultiplyWithoutOverflow(batch, channel);
+      const int64_t col_count = BiasImageSize(height, width, depth);
       Tensor temp_grad_outputs;
       // For 'NCHW' format, we perform reduction twice: first HW, then N.
       TensorShape temp_grad_output_shape{row_count, col_count};
@@ -422,21 +468,21 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                                      &temp_grad_outputs));
       BiasGradGPU<T>::DoRowReduction(
           context, temp_grad_outputs.flat<T>().data(),
-          output_backprop.template flat<T>().data(), row_count, col_count);
+          output_backprop.template flat<T>().data(),
+          static_cast<int>(row_count), static_cast<int>(col_count));
 
-      row_count = batch;
-      col_count = channel;
       BiasGradGPU<T>::DoColReduction(context, output->flat<T>().data(),
                                      temp_grad_outputs.flat<T>().data(),
-                                     row_count, col_count);
+                                     static_cast<int>(batch), channel);
     } else {
       // For 'NHWC', we simply apply reduction once on NHW.
-      int32_t row_count = batch * height * width * depth;
+      const int64_t row_count =
+          MultiplyWithoutOverflow(batch, BiasImageSize(height, width, depth));
       int32_t col_count = channel;
       BiasGradGPU<T>::DoColReduction(
           context, const_cast<T*>(output->flat<T>().data()),
           reinterpret_cast<const T*>(output_backprop.template flat<T>().data()),
-          row_count, col_count);
+          static_cast<int>(row_count), col_count);
     }
   }
 
@@ -448,9 +494,22 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("Input tensor must be at least 2D: ",
                                  output_backprop.shape().DebugString())));
-    int32_t batch, height, width, depth, channel;
+    int64_t batch;
+    int32_t height, width, depth, channel;
     GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
                      &depth, &channel);
+    // A dim that did not fit in int32 comes back as -1 and makes the count
+    // negative, so such a shape is rejected here rather than reaching the GPU
+    // kernels truncated.
+    OP_REQUIRES(
+        context,
+        BiasValueCount(batch, height, width, depth, channel) ==
+            output_backprop.NumElements(),
+        errors::InvalidArgument(
+            "BiasAddGrad: dimension values overflow int32. Got batch=", batch,
+            ", height=", height, ", width=", width, ", depth=", depth,
+            ", channel=", channel, " but tensor has ",
+            output_backprop.NumElements(), " elements"));
     Tensor* output = nullptr;
     TensorShape output_shape{channel};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -469,11 +528,18 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                            depth, channel, output);
       return;
     }
+    // ComputeWithReduceSum cannot take more than int32 max elements, which
+    // leaves only the custom kernel and nothing to autotune.
+    if (output_backprop.NumElements() > std::numeric_limits<int32_t>::max()) {
+      ComputeWithCustomKernel(context, output_backprop, batch, width, height,
+                              depth, channel, output);
+      return;
+    }
 
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = output_backprop.dtype();
     BiasAddParams bias_parameters = {
-        {batch, height * width * depth, channel},
+        {batch, BiasImageSize(height, width, depth), channel},
         data_format_,
         dtype,
         device_id,
