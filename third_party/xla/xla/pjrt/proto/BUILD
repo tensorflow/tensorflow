@@ -66,6 +66,16 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "pjrt_build_stamp_proto",
+    srcs = ["pjrt_build_stamp.proto"],
+    protodeps = [
+        ":pjrt_value_type_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
     name = "pjrt_device_dimensions_proto",
     srcs = ["pjrt_device_dimensions.proto"],
     compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
