@@ -23,6 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -501,6 +502,24 @@ class TridiagonalSolveOpTest(test.TestCase):
             y_placeholder: y
         })
 
+  def _testEmpty(self, diags_shape, rhs_shape):
+    for dtype in (dtypes.float32, dtypes.float64, dtypes.complex64,
+                  dtypes.complex128):
+      self._test(
+          diags=constant_op.constant(1, shape=diags_shape, dtype=dtype),
+          rhs=constant_op.constant(0, shape=rhs_shape, dtype=dtype),
+          expected=constant_op.constant(0, shape=rhs_shape, dtype=dtype))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyBatch(self):
+    self._testEmpty(diags_shape=(0, 3, 4), rhs_shape=(0, 4, 1))
+    self._testEmpty(diags_shape=(2, 0, 3, 4), rhs_shape=(2, 0, 4, 1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testZeroRightHandSides(self):
+    self._testEmpty(diags_shape=(2, 3, 4), rhs_shape=(2, 4, 0))
+    self._testEmpty(diags_shape=(3, 4), rhs_shape=(4, 0))
+
   # Invalid input shapes
 
   @flags(FLAG_NO_PARAMETERIZATION)
@@ -513,6 +532,8 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 3, 4), (4, 5))
     test_raises((5, 3, 4), (5))
     test_raises((5), (5, 4))
+    test_raises((5, 3, 4), (4, 4, 1))
+    test_raises((5, 3, 4), (5, 3, 1))
 
   @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesSequenceFormat(self):
@@ -537,6 +558,59 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 4, 7), (5, 4))
     test_raises((5, 4, 4), (3, 4))
     test_raises((5, 4, 4), (5, 3))
+
+  @test_util.run_deprecated_v1
+  def testInvalidShapesWithPlaceholders(self):
+    if context.executing_eagerly():
+      return
+    # Use placeholders to bypass Python static shape checks and trigger C++
+    # validation in TridiagonalSolveOpGpu and CPU LinearAlgebraOp.
+    diags = array_ops.placeholder(dtypes.float64, shape=None)
+    rhs = array_ops.placeholder(dtypes.float64, shape=None)
+    pivoting = getattr(self, "pivoting", True)
+    x = linalg_impl.tridiagonal_solve(
+        diags, rhs, "compact", partial_pivoting=pivoting)
+
+    with self.cached_session(use_gpu=True) as sess:
+      # 1. LHS rank < 2
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"(LHS tensor|Input tensor 0) must have rank >= 2"):
+        sess.run(x, feed_dict={diags: np.ones((5,)), rhs: np.ones((5, 4))})
+
+      # 2. LHS rank != RHS rank
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"(LHS and RHS|All input) tensors must have the same rank"):
+        sess.run(x, feed_dict={
+            diags: np.ones((5, 3, 4)), rhs: np.ones((5, 4))
+        })
+
+      # 3. LHS and RHS batch dimensions mismatch
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"(LHS and RHS tensors must have the same batch dimensions|"
+          r"All input tensors must have the same outer dimensions)"):
+        sess.run(x, feed_dict={
+            diags: np.ones((5, 3, 4)), rhs: np.ones((4, 4, 1))
+        })
+
+      # 4. Expected 3 diagonals
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "Expected diagonals to be provided as a matrix with 3 rows"):
+        sess.run(x, feed_dict={
+            diags: np.ones((5, 4, 4)), rhs: np.ones((5, 4, 1))
+        })
+
+      # 5. Expected same matrix size
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"(Expected same matrix size in both arguments|"
+          r"Expected the same number of left-hand sides and right-hand sides)"):
+        sess.run(x, feed_dict={
+            diags: np.ones((5, 3, 4)), rhs: np.ones((5, 3, 1))
+        })
 
   # Tests with placeholders
 
