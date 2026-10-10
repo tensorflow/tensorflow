@@ -96,10 +96,12 @@ xla_cc_binary(
     ],
     visibility = [":codegen_tests"],
     deps = [
-        "//xla/backends/gpu/codegen/tensor_ir:conversion",
+        "//xla/backends/gpu/codegen/tensor_ir:hlo_to_tensor_ir",
         "//xla/backends/gpu/codegen/tensor_ir:support",
         "//xla/hlo/ir:hlo",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/status:statusor",
         "@cuda_tile//:CudaTileDialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

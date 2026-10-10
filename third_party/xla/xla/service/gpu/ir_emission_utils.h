@@ -130,6 +130,10 @@ inline constexpr absl::string_view kTritonNestedGemmFusionKind =
 // Fusions that use cuDNN have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
+// Fusions codegen'd through the TensorIR/CudaTile pipeline have
+// FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kTensorIrFusionKind = "__tensorir";
+
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 

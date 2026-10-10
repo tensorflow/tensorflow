@@ -802,12 +802,14 @@ cc_binary(
     srcs = ["xla-opt.cc"],
     deps = [
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
+        "//xla/backends/gpu/codegen/tensor_ir/transforms:passes",
         "//xla/backends/gpu/codegen/triton:compilation_pipeline",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/mlir_hlo",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
@@ -825,6 +827,7 @@ cc_binary(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@stablehlo//:stablehlo_ops",
+        "@tensor_ir//:NVTensorIRDialect",
         "@triton//:AllPassesAndDialects",
         "@triton//third_party/amd:TestAMDAnalysis",  # buildcleaner: keep
     ],

@@ -373,18 +373,18 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
       !debug_options.xla_gpu_deterministic_ops() &&
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
 
-  return [do_not_autotune_cublas, do_not_autotune_cudnn,
-          enable_fusion_autotuner,
-          gpu_version](const HloInstruction& instruction) -> bool {
-    AutotuneDecision decision = ShouldAssignConfigToInstruction(
-        do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-        instruction);
-    if (!decision) {
-      VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
-              << decision.Explain();
-    }
-    return decision.IsAllowed();
-  };
+  return
+      [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
+       gpu_version](const HloInstruction& instruction) -> bool {
+        AutotuneDecision decision = ShouldAssignConfigToInstruction(
+            do_not_autotune_cublas, do_not_autotune_cudnn,
+            enable_fusion_autotuner, instruction);
+        if (!decision) {
+          VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
+                  << decision.Explain();
+        }
+        return decision.IsAllowed();
+      };
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
@@ -423,6 +423,10 @@ ConfigAssignerPass::GetEnabledBackends(
   if (debug_options.xla_gpu_exclude_nondeterministic_ops() ||
       debug_options.xla_gpu_deterministic_ops()) {
     disabled_autotune_backends.push_back(autotuner::Backend::TRITON);
+  }
+
+  if (!debug_options.xla_gpu_experimental_enable_tensor_ir()) {
+    disabled_autotune_backends.push_back(autotuner::Backend::TENSOR_IR);
   }
 
   autotune_backends.erase(
@@ -474,26 +478,25 @@ absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
 
   std::unique_ptr<Autotuner> autotuner = nullptr;
   if (!is_deviceless) {
-      // TODO(intel-tf): Enable buffer checking for SYCL once
-      // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
-      // SYCL platform.
-      bool is_buffer_check_supported = stream_executor->GetPlatform()->id() !=
-                                       stream_executor::sycl::kSyclPlatformId;
-      std::unique_ptr<Profiler> profiler = GpuProfiler::Create(
-          stream_executor,
-          GetProfileOptions(debug_options, is_buffer_check_supported),
-          allocator);
-      Autotuner::Options autotuner_options =
-          GetAutotunerOptions(debug_options, is_buffer_check_supported);
-      autotuner_options.cache_context = AutotuneCacheContext::Create(
-          target_config->device_description, orchestrator->codegen_backends());
+    // TODO(intel-tf): Enable buffer checking for SYCL once
+    // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
+    // SYCL platform.
+    bool is_buffer_check_supported = stream_executor->GetPlatform()->id() !=
+                                     stream_executor::sycl::kSyclPlatformId;
+    std::unique_ptr<Profiler> profiler = GpuProfiler::Create(
+        stream_executor,
+        GetProfileOptions(debug_options, is_buffer_check_supported), allocator);
+    Autotuner::Options autotuner_options =
+        GetAutotunerOptions(debug_options, is_buffer_check_supported);
+    autotuner_options.cache_context = AutotuneCacheContext::Create(
+        target_config->device_description, orchestrator->codegen_backends());
 
-      std::vector<std::unique_ptr<Profiler>> profilers;
-      profilers.push_back(std::move(profiler));
+    std::vector<std::unique_ptr<Profiler>> profilers;
+    profilers.push_back(std::move(profiler));
 
-      ABSL_ASSIGN_OR_RETURN(autotuner,
-                       Autotuner::Create(*orchestrator, std::move(profilers),
-                                         autotuner_options, thread_pool));
+    ABSL_ASSIGN_OR_RETURN(autotuner,
+                     Autotuner::Create(*orchestrator, std::move(profilers),
+                                       autotuner_options, thread_pool));
   }
 
   VLOG(1) << "ConfigAssigner options: " << assigner_options.ToString();
