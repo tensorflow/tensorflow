@@ -6475,5 +6475,124 @@ ENTRY main {
   EXPECT_EQ(FindStart(done), pipelined_ctx);
 }
 
+TEST_F(LatencyHidingSchedulerTest,
+       GraphResolvesAsyncStartsAndNestedComputationsWhenBuilt) {
+  // The ready set scan and the comparator read both facts for every candidate
+  // on every step, so the graph answers them from the node.
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT s = f32[] add(x, y)
+}
+
+async_comp {
+  p = f32[8] parameter(0)
+  ROOT r = f32[8] negate(p)
+}
+
+while_cond {
+  state = (f32[8], s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=1
+  limit = s32[] constant(4)
+  ROOT cmp = pred[] compare(iter, limit), direction=LT
+}
+
+while_body {
+  state = (f32[8], s32[], f32[8]) parameter(0)
+  pipelined_ctx = f32[8] get-tuple-element(state), index=0
+  pipelined_done = f32[8] all-reduce-done(pipelined_ctx)
+  iter = s32[] get-tuple-element(state), index=1
+  c1 = s32[] constant(1)
+  next_iter = s32[] add(iter, c1)
+  data = f32[8] get-tuple-element(state), index=2
+  next_start = f32[8] all-reduce-start(data), to_apply=add
+  ROOT next_state = (f32[8], s32[], f32[8]) tuple(next_start, next_iter, pipelined_done)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  c0 = s32[] constant(0)
+  ar_start = f32[8] all-reduce-start(p0), to_apply=add
+  ar_done = f32[8] all-reduce-done(ar_start)
+  neg_start = ((f32[8]), f32[8], s32[]) async-start(p1), calls=async_comp
+  neg_done = f32[8] async-done(neg_start)
+  prologue_start = f32[8] all-reduce-start(neg_done), to_apply=add
+  init_state = (f32[8], s32[], f32[8]) tuple(prologue_start, c0, ar_done)
+  loop = (f32[8], s32[], f32[8]) while(init_state), condition=while_cond, body=while_body
+  epilogue_ctx = f32[8] get-tuple-element(loop), index=0
+  ROOT epilogue_done = f32[8] all-reduce-done(epilogue_ctx)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto setup, SetupScheduler(module.get()));
+  std::shared_ptr<SchedulerCore> scheduler_core = std::move(setup.second);
+  ASSERT_OK(scheduler_core->InitializeScheduler(module.get()));
+
+  // The graphs belong to the scheduling states; keep those alive.
+  std::vector<std::shared_ptr<SchedulerCore::SchedulingState>> graph_states;
+  auto graph_of = [&](const HloComputation* computation)
+      -> absl::StatusOr<const HloScheduleGraph*> {
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<SchedulerCore::SchedulingState> state,
+                     scheduler_core->MakeSchedulingState(computation));
+    auto* default_state =
+        dynamic_cast<DefaultSchedulerCore::SchedulingState*>(state.get());
+    if (default_state == nullptr) {
+      return absl::InternalError("not a DefaultSchedulerCore state");
+    }
+    graph_states.push_back(state);
+    return default_state->sched_graph.get();
+  };
+  auto node = [&](const HloScheduleGraph& graph, absl::string_view name) {
+    const HloInstruction* instr = FindInstruction(module.get(), name);
+    CHECK_NE(instr, nullptr) << name;
+    return &graph.GetNode(instr);
+  };
+
+  ASSERT_OK_AND_ASSIGN(const HloScheduleGraph* main_graph,
+                       graph_of(module->entry_computation()));
+  // A done whose operand is its start links to the start node. A start, a
+  // done whose operand is not a start (the epilogue of a pipelined loop), an
+  // unsupported async op and a non done consuming a start have no link.
+  EXPECT_EQ(main_graph->GetSupportedAsyncStart(*node(*main_graph, "ar_done")),
+            node(*main_graph, "ar_start"));
+  EXPECT_EQ(main_graph->GetSupportedAsyncStart(*node(*main_graph, "ar_start")),
+            nullptr);
+  EXPECT_EQ(
+      main_graph->GetSupportedAsyncStart(*node(*main_graph, "init_state")),
+      nullptr);
+  EXPECT_EQ(
+      main_graph->GetSupportedAsyncStart(*node(*main_graph, "epilogue_done")),
+      nullptr);
+  EXPECT_EQ(main_graph->GetSupportedAsyncStart(*node(*main_graph, "neg_done")),
+            nullptr);
+  // An instruction that calls a computation and is not an async start or done
+  // is a nested synchronous computation; all-reduce-start carries to_apply, so
+  // it counts, as before.
+  EXPECT_TRUE(node(*main_graph, "loop")->IsNestedSyncComputation());
+  EXPECT_TRUE(node(*main_graph, "ar_start")->IsNestedSyncComputation());
+  EXPECT_FALSE(node(*main_graph, "neg_start")->IsNestedSyncComputation());
+  EXPECT_FALSE(node(*main_graph, "ar_done")->IsNestedSyncComputation());
+  EXPECT_FALSE(node(*main_graph, "p0")->IsNestedSyncComputation());
+  // Nodes built directly (latency estimators do this) carry the bit too.
+  EXPECT_TRUE(HloGraphNode(FindInstruction(module.get(), "loop"), 0)
+                  .IsNestedSyncComputation());
+  EXPECT_FALSE(HloGraphNode(FindInstruction(module.get(), "neg_start"), 0)
+                   .IsNestedSyncComputation());
+
+  ASSERT_OK_AND_ASSIGN(const HloScheduleGraph* body_graph,
+                       graph_of(module->GetComputationWithName("while_body")));
+  // The pipelined done consumes a loop parameter element, not a start.
+  EXPECT_EQ(
+      body_graph->GetSupportedAsyncStart(*node(*body_graph, "pipelined_done")),
+      nullptr);
+  EXPECT_EQ(
+      body_graph->GetSupportedAsyncStart(*node(*body_graph, "next_start")),
+      nullptr);
+}
+
 }  // namespace
 }  // namespace xla
