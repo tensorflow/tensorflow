@@ -2741,20 +2741,41 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
-    means = reduce_mean(input_tensor, axis=axis, keepdims=True)
-    if means.dtype.is_integer:
-      raise TypeError(f"Input must be either real or complex. "
-                      f"Received integer type {means.dtype}.")
-    diff = input_tensor - means
-    if diff.dtype.is_complex:
-      # For complex values we need to take the absolute value before squaring.
-      # This is achieved by multiplying with the conjugate.
-      real_dtype = diff.dtype.real_dtype
-      squared_deviations = gen_math_ops.real(
-          gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype)
-    else:
-      squared_deviations = gen_math_ops.square(diff)
-    return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+    is_float16 = input_tensor.dtype == dtypes.float16
+    variance = _reduce_variance_in_stable_dtype(
+        input_tensor, is_float16, axis, keepdims)
+    if is_float16:
+      variance = cast(variance, dtypes.float16)
+    return variance
+
+
+def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis,
+                                     keepdims):
+  """Computes variance, promoting float16 to float32 first.
+
+  The dynamic range of float16 is too limited for the squared deviations
+  computed below, so this performs the computation on 32-bit floats before
+  returning, matching the approach `tf.nn.moments` uses for the same reason.
+  Unlike `reduce_variance`, this does not cast the result back to the
+  original dtype, so that `reduce_std` can take the square root while still
+  in the wider dtype.
+  """
+  if is_float16:
+    input_tensor = cast(input_tensor, dtypes.float32)
+  means = reduce_mean(input_tensor, axis=axis, keepdims=True)
+  if means.dtype.is_integer:
+    raise TypeError(f"Input must be either real or complex. "
+                    f"Received integer type {means.dtype}.")
+  diff = input_tensor - means
+  if diff.dtype.is_complex:
+    # For complex values we need to take the absolute value before squaring.
+    # This is achieved by multiplying with the conjugate.
+    real_dtype = diff.dtype.real_dtype
+    squared_deviations = gen_math_ops.real(
+        gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype)
+  else:
+    squared_deviations = gen_math_ops.square(diff)
+  return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
 @tf_export("math.reduce_std")
@@ -2804,8 +2825,16 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_std"
   with ops.name_scope(name):
     input_tensor = ops.convert_to_tensor(input_tensor)
-    variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
-    return gen_math_ops.sqrt(variance)
+    is_float16 = input_tensor.dtype == dtypes.float16
+    # Preserve the `reduce_variance` sub-scope reduce_std has always had,
+    # rather than calling the private helper directly at this scope level.
+    with ops.name_scope("reduce_variance"):
+      variance = _reduce_variance_in_stable_dtype(
+          input_tensor, is_float16, axis, keepdims)
+    std = gen_math_ops.sqrt(variance)
+    if is_float16:
+      std = cast(std, dtypes.float16)
+    return std
 
 
 @tf_export("math.reduce_prod", "reduce_prod", v1=[])

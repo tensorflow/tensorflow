@@ -145,6 +145,51 @@ class ReduceTest(test_util.TensorFlowTestCase):
                                      []])
     self.assertAllClose(math_ops.reduce_std(x, axis=0), [0., 4., 1., 0.])
 
+  def testReduceStdFloat16LargeMagnitude(self):
+    # Regression test: squared deviations of large-magnitude float16 values
+    # can overflow float16's range even when the standard deviation itself
+    # does not, so reduce_std/reduce_variance need to compute internally in
+    # a wider dtype. Previously this produced NaN on CPU and Inf on GPU for
+    # reduce_std, instead of a finite, correct result on both.
+    rs = np.random.RandomState(0)
+    x_np = rs.randn(1000).astype(np.float32) * 1e4
+    x_f16 = constant_op.constant(x_np.astype(np.float16))
+    expected_std = np.std(x_np.astype(np.float64))
+
+    std = self.evaluate(math_ops.reduce_std(x_f16))
+    self.assertEqual(std.dtype, np.float16)
+    self.assertTrue(np.isfinite(std), f"Expected a finite result, got {std}")
+    self.assertAllClose(std, expected_std, rtol=0.02)
+
+    # The true variance here does exceed float16's range (~65504), so,
+    # unlike the standard deviation, it should consistently overflow to Inf
+    # rather than landing on NaN on some platforms.
+    variance = self.evaluate(math_ops.reduce_variance(x_f16))
+    self.assertEqual(variance.dtype, np.float16)
+    self.assertTrue(np.isposinf(variance), f"Expected Inf, got {variance}")
+
+  def testReduceStdFloat16ModerateMagnitude(self):
+    # Companion to testReduceStdFloat16LargeMagnitude: covers the path where
+    # neither the squared deviations nor the variance overflow float16, so
+    # the float32-promoted computation should still closely match a float64
+    # reference, same as before the promotion was added.
+    rs = np.random.RandomState(0)
+    x_np = rs.randn(1000).astype(np.float32)
+    x_f16 = constant_op.constant(x_np.astype(np.float16))
+    expected_std = np.std(x_np.astype(np.float64))
+    expected_variance = np.var(x_np.astype(np.float64))
+
+    std = self.evaluate(math_ops.reduce_std(x_f16))
+    variance = self.evaluate(math_ops.reduce_variance(x_f16))
+    self.assertEqual(std.dtype, np.float16)
+    self.assertEqual(variance.dtype, np.float16)
+    self.assertTrue(np.isfinite(std), f"Expected a finite result, got {std}")
+    self.assertTrue(
+        np.isfinite(variance), f"Expected a finite result, got {variance}"
+    )
+    self.assertAllClose(std, expected_std, rtol=0.05)
+    self.assertAllClose(variance, expected_variance, rtol=0.05)
+
   def testReduceStdComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
     complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
