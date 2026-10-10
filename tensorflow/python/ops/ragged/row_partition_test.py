@@ -956,7 +956,7 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testFromValueRowidsStaticValidationNrowsExceeded(self):
     with self.assertRaisesRegex(
-        ValueError, r"value_rowids\[-1\] must be < nrows"):
+        ValueError, r"Expected nrows >= value_rowids\[-1\] \+ 1"):
       RowPartition.from_value_rowids([0, 2], nrows=2)
 
   def testFromRowLengthsStaticValidationNegative(self):
@@ -1009,7 +1009,7 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return RowPartition.from_value_rowids([0, 2], nrows=2)
 
     with self.assertRaisesRegex(
-        ValueError, r"value_rowids\[-1\] must be < nrows"):
+        ValueError, r"Expected nrows >= value_rowids\[-1\] \+ 1"):
       fn(constant_op.constant(0))
 
   def testFromRowLengthsStaticValidationUnderJit(self):

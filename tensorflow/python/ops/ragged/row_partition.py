@@ -263,15 +263,21 @@ class RowPartition(composite_tensor.CompositeTensor):
       else:
         nrows = ops.convert_to_tensor(nrows, value_rowids.dtype, "nrows")
         const_nrows = tensor_util.constant_value(nrows)
-        if const_nrows is not None and const_nrows < 0:
-          raise ValueError("Expected nrows >= 0; got %d" % const_nrows)
+        if const_nrows is not None:
+          if const_nrows < 0:
+            raise ValueError("Expected nrows >= 0; got %d" % const_nrows)
+          const_rowids = tensor_util.constant_value(value_rowids)
+          if const_rowids is not None and const_rowids.size > 0:
+            if not const_nrows >= const_rowids[-1] + 1:
+              raise ValueError(
+                  "Expected nrows >= value_rowids[-1] + 1; got nrows=%d, "
+                  "value_rowids[-1]=%d" % (const_nrows, const_rowids[-1]))
 
       value_rowids.shape.assert_has_rank(1)
       nrows.shape.assert_has_rank(0)
 
       if validate:
         value_rowids_const = tensor_util.constant_value(value_rowids)
-        nrows_const = tensor_util.constant_value(nrows)
         if value_rowids_const is not None:
           if len(value_rowids_const) > 0 and value_rowids_const[0] < 0:
             raise ValueError(
@@ -288,12 +294,6 @@ class RowPartition(composite_tensor.CompositeTensor):
                 f"({value_rowids_const[bad_idx]}) > "
                 f"value_rowids[{bad_idx + 1}] "
                 f"({value_rowids_const[bad_idx + 1]})")
-          if nrows_const is not None and len(value_rowids_const) > 0:
-            if value_rowids_const[-1] >= nrows_const:
-              raise ValueError(
-                  "Arguments to from_value_rowids do not form a valid "
-                  "RowPartition: value_rowids[-1] must be < nrows, "
-                  f"got {value_rowids_const[-1]} >= {nrows_const}")
         msg = ("Arguments to from_value_rowids do not form a valid "
                "RowPartition")
         checks = [
