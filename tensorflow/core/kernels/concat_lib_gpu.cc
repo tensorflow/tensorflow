@@ -73,6 +73,26 @@ void ConcatGPU(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs_flat,
     Tensor* output, typename TTypes<T, 2>::Tensor* output_flat) {
+  if (inputs_flat.empty() || output->NumElements() == 0) return;
+
+  // Axis-0 Contiguous fast-path: Since dim0 is the cumulative product of all
+  // dimension sizes preceding axis, dim0 == 1 indicates that each input tensor
+  // is an unbroken contiguous memory buffer. This applies not only to axis == 0
+  // (e.g. batch/sequence concatenation), but also to any higher-rank
+  // concatenation where all prior dimensions are 1 (e.g. shapes [1, 1, K]).
+  // We execute a single unified contiguous kernel, completely bypassing
+  // 2D coordinate calculations and multi-kernel launch overheads.
+  if (inputs_flat[0]->dimension(0) == 1) {
+    if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
+      ConcatGPUContiguous<T, int32_t>(c->eigen_gpu_device(), inputs_flat,
+                                      output_flat);
+    } else {
+      ConcatGPUContiguous<T, int64_t>(c->eigen_gpu_device(), inputs_flat,
+                                      output_flat);
+    }
+    return;
+  }
+
   if (inputs_flat.size() < 16) {
     if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
       ConcatGPUSlice<T, int32_t>(c->eigen_gpu_device(), inputs_flat,
@@ -81,15 +101,16 @@ void ConcatGPU(
       ConcatGPUSlice<T, int64_t>(c->eigen_gpu_device(), inputs_flat,
                                  output_flat);
     }
+    return;
+  }
+
+  // Switching indexing to int64 might cause performance issues.
+  // Hence, we keep int32 indexing in the GPU kernel unless we need to
+  // switch to int64.
+  if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
+    ConcatGPUCall<T, int32_t>(c, inputs_flat, output_flat);
   } else {
-    // Switching indexing to int64 might cause performance issues.
-    // Hence, we keep int32 indexing in the GPU kernel unless we need to
-    // switch to int64.
-    if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
-      ConcatGPUCall<T, int32_t>(c, inputs_flat, output_flat);
-    } else {
-      ConcatGPUCall<T, int64_t>(c, inputs_flat, output_flat);
-    }
+    ConcatGPUCall<T, int64_t>(c, inputs_flat, output_flat);
   }
 }
 

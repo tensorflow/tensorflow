@@ -30,6 +30,13 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T, typename IntType>
+void ConcatGPUContiguous(
+    const Eigen::GpuDevice& gpu_device,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs_flat,
+    typename TTypes<T, 2>::Matrix* output);
+
+template <typename T, typename IntType>
 void ConcatGPUSlice(
     const Eigen::GpuDevice& gpu_device,
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
@@ -40,11 +47,21 @@ template <typename T, typename IntType>
 void ConcatGPUImpl(const Eigen::GpuDevice& d,
                    const GpuDeviceArrayStruct<const T*>& input_ptrs,
                    const GpuDeviceArrayStruct<IntType>& ptr_offsets,
-                   bool same_size, int slice_size,
+                   bool same_size, IntType slice_size,
                    typename TTypes<T, 2>::Matrix* output);
 
 // Explicit instantiations in concat_lib_gpu_impl.cu.cc.
 #define REGISTER(T)                                                           \
+  extern template void ConcatGPUContiguous<T, int32>(                         \
+      const Eigen::GpuDevice& gpu_device,                                     \
+      const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& \
+          inputs_flat,                                                        \
+      typename TTypes<T, 2>::Matrix* output);                                 \
+  extern template void ConcatGPUContiguous<T, int64>(                         \
+      const Eigen::GpuDevice& gpu_device,                                     \
+      const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& \
+          inputs_flat,                                                        \
+      typename TTypes<T, 2>::Matrix* output);                                 \
   extern template void ConcatGPUSlice<T, int32>(                              \
       const Eigen::GpuDevice& gpu_device,                                     \
       const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& \
@@ -59,15 +76,17 @@ void ConcatGPUImpl(const Eigen::GpuDevice& d,
       const Eigen::GpuDevice& d,                                              \
       const GpuDeviceArrayStruct<const T*>& input_ptrs,                       \
       const GpuDeviceArrayStruct<int32>& ptr_offsets, bool fixed_size,        \
-      int split_size, typename TTypes<T, 2>::Matrix* output);                 \
+      int32 split_size, typename TTypes<T, 2>::Matrix* output);               \
   extern template void ConcatGPUImpl<T, int64>(                               \
       const Eigen::GpuDevice& d,                                              \
       const GpuDeviceArrayStruct<const T*>& input_ptrs,                       \
       const GpuDeviceArrayStruct<int64_t>& ptr_offsets, bool fixed_size,      \
-      int split_size, typename TTypes<T, 2>::Matrix* output);
+      int64_t split_size, typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER);  // int32 Needed for TensorLists.
 TF_CALL_GPU_ALL_TYPES(REGISTER);
+TF_CALL_float8_e5m2(REGISTER);
+TF_CALL_float8_e4m3fn(REGISTER);
 #undef REGISTER
 
 }  // namespace tensorflow
