@@ -1,10 +1,15 @@
 // RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
 
-// CHECK-LABEL: @test_brodcast_constant
-// CHECK: %[[OUT:.*]] = constant dense<1.000000e+00> : tensor<8x16xf32>
+// A rank-0 constant is emitted at rank 1: CudaTile's layout propagation
+// rejects a rank-0 constant, so `PromoteRank0Tensors` rebuilds it as `[1]`.
+// The broadcast is still materialised rather than folded into the constant.
+// CHECK-LABEL: @test_broadcast_constant
+// CHECK: %[[CST:.*]] = constant dense<1.000000e+00> : tensor<1xf32>
+// CHECK: %[[TEMP:.*]] = reshape %[[CST]] : tensor<1xf32> -> tensor<1x1xf32>
+// CHECK: %[[OUT:.*]] = broadcast %[[TEMP]] : tensor<1x1xf32> -> tensor<8x16xf32>
 // CHECK: results %[[OUT]]
 
-test_brodcast_constant {
+test_broadcast_constant {
   %c0 = f32[] constant(1)
   %out = f32[8,16] broadcast(%c0), dimensions={}
 }
@@ -38,10 +43,11 @@ test_broadcast_transpose {
 
 // -----
 
+// A rank-0 parameter is declared as `[1]` on the boundary, which leaves the
+// broadcast reading it directly.
 // CHECK-LABEL: @test_broadcast_scalar
 // CHECK-SAME: %[[ARG0:.*]]: tensor<1xf32>
-// CHECK: %[[TEMP:.*]] = reshape %[[ARG0]] : tensor<1xf32> -> tensor<1xf32>
-// CHECK: %[[OUT:.*]] = broadcast %[[TEMP]] : tensor<1xf32> -> tensor<32xf32>
+// CHECK: %[[OUT:.*]] = broadcast %[[ARG0]] : tensor<1xf32> -> tensor<32xf32>
 // CHECK: results %[[OUT]]
 
 test_broadcast_scalar {
