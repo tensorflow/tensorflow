@@ -553,16 +553,51 @@ WarpGrid FactorWarpGrid(int64_t num_warps, int64_t tile_m, int64_t tile_n) {
 
 namespace {
 
+constexpr int64_t kBitsPerRegister = 32;
+
 int CalculateAccumulatorRegisters(const DotProblemInfo& dot_info,
                                   const DotTileSize& dot_tile,
                                   int64_t total_threads) {
   // Hardware accumulates in at least 32-bit precision (64-bit for F64).
   const int64_t acc_bitwidth =
       std::max<int64_t>(32, BitWidth(dot_info.output_element_type));
-  constexpr int kBitsPerRegister = 32;
   return static_cast<int>(
       CeilOfRatio<int64_t>(dot_tile.m * dot_tile.n * acc_bitwidth,
                            total_threads * kBitsPerRegister));
+}
+
+// Calculates registers required for staged input operands per thread.
+int CalculateOperandRegisters(const DotProblemInfo& dot_info,
+                              const DotTileSize& dot_tile,
+                              const BlockLevelParameters& block_params,
+                              int64_t threads_per_warp) {
+  const WarpGrid grid =
+      FactorWarpGrid(block_params.num_warps, dot_tile.m, dot_tile.n);
+  const int64_t m_per_warp = CeilOfRatio<int64_t>(dot_tile.m, grid.warps_m);
+  const int64_t n_per_warp = CeilOfRatio<int64_t>(dot_tile.n, grid.warps_n);
+  const int64_t lhs_bitwidth = BitWidth(dot_info.lhs_element_type);
+  const int64_t rhs_bitwidth = BitWidth(dot_info.rhs_element_type);
+  const int64_t max_op_bitwidth = std::max(lhs_bitwidth, rhs_bitwidth);
+
+  // Cap K unrolling: 8 for 64-bit types, up to 16 otherwise.
+  constexpr int64_t kMaxUnrollStepStandard = 16;
+  constexpr int64_t kMaxUnrollStep64Bit = 8;
+  const int64_t max_unroll_step =
+      max_op_bitwidth >= 64 ? kMaxUnrollStep64Bit : kMaxUnrollStepStandard;
+  const int64_t k_unroll_step =
+      std::min({dot_info.k, dot_tile.k, max_unroll_step});
+
+  // Pipelining requires double-buffering of operands in registers.
+  const int64_t num_operand_buffers =
+      std::min<int64_t>(block_params.num_stages, 2);
+  const int64_t buffered_unroll_steps = k_unroll_step * num_operand_buffers;
+  const int lhs_regs = static_cast<int>(
+      CeilOfRatio<int64_t>(m_per_warp * lhs_bitwidth * buffered_unroll_steps,
+                           threads_per_warp * kBitsPerRegister));
+  const int rhs_regs = static_cast<int>(
+      CeilOfRatio<int64_t>(n_per_warp * rhs_bitwidth * buffered_unroll_steps,
+                           threads_per_warp * kBitsPerRegister));
+  return lhs_regs + rhs_regs;
 }
 
 }  // namespace
@@ -573,19 +608,23 @@ int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
                                 const se::DeviceDescription& device_info) {
   const int64_t num_warps = block_params.num_warps;
   const int64_t threads_per_warp = device_info.threads_per_warp();
-  const int64_t total_threads = num_warps * threads_per_warp;
-  if (total_threads <= 0 || dot_tile.m <= 0 || dot_tile.n <= 0) {
+  if (num_warps <= 0 || threads_per_warp <= 0 || dot_tile.m <= 0 ||
+      dot_tile.n <= 0 || dot_tile.k <= 0 || dot_info.k <= 0 ||
+      block_params.num_stages <= 0) {
     return 0;
   }
+  const int64_t total_threads = num_warps * threads_per_warp;
 
   const int accumulator_regs =
       CalculateAccumulatorRegisters(dot_info, dot_tile, total_threads);
+  const int operand_regs = CalculateOperandRegisters(
+      dot_info, dot_tile, block_params, threads_per_warp);
 
-  // Base register overhead in generated GEMM kernels for loop induction
-  // variables, pointer arithmetic, and barrier synchronization handles.
-  constexpr int kBaseStateRegs = 24;
+  // Base register overhead for steady-state scalar loop control, pointers, and
+  // barriers (estimated as ~19-22 on Ampere, ~22-26 on Hopper/Blackwell).
+  constexpr int kBaseStateRegs = 22;
 
-  return accumulator_regs + kBaseStateRegs;
+  return accumulator_regs + operand_regs + kBaseStateRegs;
 }
 
 double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
