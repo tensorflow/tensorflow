@@ -374,20 +374,23 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       if (op->custom_options()) {
         init_data = reinterpret_cast<const char*>(op->custom_options()->data());
         init_data_size = op->custom_options()->size();
-      } else if (op->large_custom_options_offset() > 1 && allocation_) {
-        if (op->large_custom_options_offset() +
-                op->large_custom_options_size() >
-            allocation_->bytes()) {
-          TF_LITE_REPORT_ERROR(
-              error_reporter_,
-              "Custom Option Offset for opcode_index %d is out of bound\n",
-              index);
-          return kTfLiteError;
+      } else if (allocation_) {
+        const uint64_t offset = op->large_custom_options_offset();
+        if (offset > 1) {
+          const size_t alloc_bytes = allocation_->bytes();
+          const uint64_t size = op->large_custom_options_size();
+          if (offset > alloc_bytes || size > alloc_bytes - offset) {
+            TF_LITE_REPORT_ERROR(
+                error_reporter_,
+                "Custom Option Offset for opcode_index %d is out of bound\n",
+                index);
+            return kTfLiteError;
+          }
+          // If the custom op is storing payloads outside of flatbuffers
+          init_data =
+              reinterpret_cast<const char*>(allocation_->base()) + offset;
+          init_data_size = size;
         }
-        // If the custom op is storing payloads outside of flatbuffers
-        init_data = reinterpret_cast<const char*>(allocation_->base()) +
-                    op->large_custom_options_offset();
-        init_data_size = op->large_custom_options_size();
       }
     } else {
       MallocDataAllocator malloc_allocator;
@@ -811,14 +814,16 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
           *buffer_data = reinterpret_cast<const char*>(array->data());
           return kTfLiteOk;
         } else if (offset > 1 && allocation_) {
-          if (offset + buffer->size() > allocation_->bytes()) {
+          const size_t alloc_bytes = allocation_->bytes();
+          const uint64_t size = buffer->size();
+          if (offset > alloc_bytes || size > alloc_bytes - offset) {
             TF_LITE_REPORT_ERROR(
                 error_reporter_,
                 "Constant buffer %d specified an out of range offset.\n",
                 tensor->buffer());
             return kTfLiteError;
           }
-          *buffer_size = buffer->size();
+          *buffer_size = size;
           *buffer_data =
               reinterpret_cast<const char*>(allocation_->base()) + offset;
           return kTfLiteOk;
