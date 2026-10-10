@@ -15,6 +15,7 @@
 """Helpers to connect to remote servers."""
 
 import copy
+import urllib.parse
 
 from absl import logging
 
@@ -71,6 +72,53 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
       {job_name: [_strip_prefix(host, _GRPC_PREFIX) for host in remote_hosts]})
 
   connect_to_cluster(cluster_spec)
+
+
+def _parse_host_and_port(address):
+  """Splits an address, with or without a scheme, into (host, port).
+
+  Args:
+    address: An address such as `"host:8000"` or `"grpc://host:8000"`.
+
+  Returns:
+    A tuple `(host, port)`. `port` is None if the address has no port, and
+    both are None if the address cannot be parsed.
+  """
+  if "://" not in address:
+    address = "//" + address
+  try:
+    parsed = urllib.parse.urlsplit(address)
+    return parsed.hostname, parsed.port
+  except ValueError:
+    return None, None
+
+
+def _find_master_job_and_task(cluster_spec, master):
+  """Finds the (job_name, task_id) in cluster_spec whose address matches master.
+
+  An address matches when the hosts are equal and, if both addresses specify a
+  port, the ports are equal. Returns the first match found.
+
+  Args:
+    cluster_spec: A `ClusterSpec` describing the cluster.
+    master: The master address to match against.
+
+  Returns:
+    A tuple `(job_name, task_id)` for the first matching task, or
+    `(None, None)` if no task address matches.
+  """
+  master_host, master_port = _parse_host_and_port(master)
+  if not master_host:
+    return None, None
+
+  for job_name in cluster_spec.jobs:
+    for task_id in cluster_spec.task_indices(job_name):
+      task_address = cluster_spec.task_address(job_name, task_id)
+      task_host, task_port = _parse_host_and_port(task_address)
+      if task_host == master_host:
+        if master_port is None or task_port is None or master_port == task_port:
+          return job_name, task_id
+  return None, None
 
 
 @tf_export("config.experimental_connect_to_cluster")
@@ -242,15 +290,8 @@ def connect_to_cluster(cluster_spec_or_resolver,
       cluster_spec_or_resolver,
       cluster_resolver.ClusterResolver) and cluster_spec_or_resolver.master():
     master = cluster_spec_or_resolver.master()
-    master_job_name = None
-    master_task_id = None
-    for job_name in cluster_spec.jobs:
-      for task_id in cluster_spec.task_indices(job_name):
-        task_address = cluster_spec.task_address(job_name, task_id)
-        if master in task_address or task_address in master:
-          master_job_name = job_name
-          master_task_id = task_id
-          break
+    master_job_name, master_task_id = _find_master_job_and_task(
+        cluster_spec, master)
 
     if not master_job_name:
       raise ValueError(
