@@ -329,6 +329,9 @@ class TransposePlan {
   void ExecuteTyped(const char* a, char* b, absl::Span<Node const> nodes,
                     int bits_per_element) const;
 
+  void ExecuteChunkInternal(int chunk_id, const void* a, void* b,
+                            bool input_is_global, bool output_is_global) const;
+
   void ExecuteInternal(
       const void* a, void* b,
       std::optional<absl::FunctionRef<void(std::function<void()>)>>
@@ -448,6 +451,7 @@ struct TransposePlanCacheKey {
   TransposePlan::Transformation transformation;
   std::optional<int> dest_bits_per_element;
   int num_threads;
+  TransposePlan::ChunkContiguity chunk_contiguity;
 
   bool operator==(const TransposePlanCacheKey& other) const;
 };
