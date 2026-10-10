@@ -19,6 +19,7 @@ import math
 import numpy as np
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
@@ -791,6 +792,20 @@ class UnaryOpTest(test.TestCase):
       self.assertAllClose(
           expected, self.evaluate(grad_grad), rtol=1e-14, atol=1e-18
       )
+
+  def testRoundIntXLA(self):
+    # XLA kernel registers int8, int16, int32, int64.
+    @def_function.function(jit_compile=True)
+    def round_fn(x):
+      return gen_math_ops.round(x=x)
+
+    for dtype in [
+        dtypes_lib.int8, dtypes_lib.int16,
+        dtypes_lib.int32, dtypes_lib.int64,
+    ]:
+      for values in ([-3, 1, 0, -1], [], 42):
+        inputs = constant_op.constant(values, dtype=dtype)
+        self.assertAllEqual(values, round_fn(inputs))
 
 
 if __name__ == "__main__":
