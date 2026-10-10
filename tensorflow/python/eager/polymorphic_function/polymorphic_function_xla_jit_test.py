@@ -1257,6 +1257,193 @@ class FunctionTest(xla_test.XLATestCase):
       self._compareTwoMethodsCompilerIROutput(f, [x, y], {})
 
 
+class DevicePlacementValidationTest(test.TestCase):
+  """Tests that tf.device() constraints are enforced under jit_compile=True.
+
+  Standard eager execution soft-places operations onto available devices by
+  default, so unsatisfiable device constraints are only reported with soft
+  device placement disabled. The jit_compile=True validation (see #124880)
+  runs on the same eager execution path and therefore follows the same
+  setting, so these tests run with soft placement strictly disabled.
+  """
+
+  def setUp(self):
+    super().setUp()
+    old_soft_placement = context.context().soft_device_placement
+
+    def restore():
+      context.context().soft_device_placement = old_soft_placement
+
+    self.addCleanup(restore)
+    context.context().soft_device_placement = False
+
+  def testDevicePlacementValidationWithJitCompile(self):
+    """Test that jit_compile=True validates tf.device() constraints.
+
+    When using tf.device() with a device that cannot exist (e.g., a
+    nonexistent device type), eager execution correctly fails with
+    "Could not satisfy device specification". This test ensures
+    jit_compile=True also validates device constraints instead of silently
+    ignoring them.
+
+    See https://github.com/tensorflow/tensorflow/issues/124880
+    """
+    # Use a device type that exists on no machine, so the expectation holds
+    # regardless of whether the test runner has GPUs.
+    invalid_device = '/device:NONEXISTENT:0'
+
+    def compute(x):
+      with ops.device(invalid_device):
+        return math_ops.add(x, x)
+
+    x = constant_op.constant([1.0, 2.0])
+
+    # Eager execution should fail (soft placement is disabled in setUp).
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      compute(x).numpy()
+
+    # jit_compile=True should also fail (this is the fix for #124880)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      polymorphic_function.function(compute, jit_compile=True)(x).numpy()
+
+  def testDevicePlacementValidationInvalidDeviceIdWithJitCompile(self):
+    """Nonexistent device IDs must fail under jit_compile=True.
+
+    A partially-specified constraint with an invalid ID (e.g. 'CPU:99') must
+    not be silently accepted just because the device type exists.
+    """
+
+    def compute(x):
+      with ops.device('/device:CPU:99'):
+        return math_ops.add(x, x)
+
+    x = constant_op.constant([1.0, 2.0])
+
+    # Eager execution should fail (soft placement is disabled in setUp).
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      compute(x).numpy()
+
+    # jit_compile=True should also fail
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      polymorphic_function.function(compute, jit_compile=True)(x).numpy()
+
+  def testDevicePlacementValidationPartialConstraintWithJitCompile(self):
+    """Valid partial device constraints must pass under jit_compile=True."""
+
+    def compute(x):
+      with ops.device('/job:localhost'):
+        return math_ops.add(x, x)
+
+    x = constant_op.constant([1.0, 2.0])
+
+    # Eager execution succeeds
+    self.assertAllClose(compute(x), [2.0, 4.0])
+
+    # jit_compile=True must also succeed: the partial constraint
+    # '/job:localhost' is satisfied by the local devices.
+    self.assertAllClose(
+        polymorphic_function.function(compute, jit_compile=True)(x),
+        [2.0, 4.0])
+
+  def testDevicePlacementValidationLocalDeviceNamesWithJitCompile(self):
+    """Local device names are validated under jit_compile=True."""
+    x = constant_op.constant([1.0, 2.0])
+
+    def compute_valid(x):
+      with ops.device('CPU:0'):
+        return math_ops.add(x, x)
+
+    # Local name 'CPU:0' resolves to the available CPU device.
+    self.assertAllClose(compute_valid(x), [2.0, 4.0])
+    self.assertAllClose(
+        polymorphic_function.function(compute_valid, jit_compile=True)(x),
+        [2.0, 4.0])
+
+    def compute_invalid(x):
+      with ops.device('CPU:99'):
+        return math_ops.add(x, x)
+
+    # A nonexistent local device ID must fail in both modes.
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      compute_invalid(x).numpy()
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      polymorphic_function.function(
+          compute_invalid, jit_compile=True)(x).numpy()
+
+  def testDevicePlacementValidationNestedFunctionWithJitCompile(self):
+    """Device constraints inside nested functions must be validated too.
+
+    The top-level function contains no tf.device() constraint; the invalid
+    constraint lives in a nested @tf.function called from the compiled
+    function, whose nodes reside in a separate FunctionDef reached through a
+    (Stateful)PartitionedCall node in the function library.
+    """
+    invalid_device = '/device:NONEXISTENT:0'
+
+    @polymorphic_function.function
+    def inner(x):
+      with ops.device(invalid_device):
+        return math_ops.add(x, x)
+
+    @polymorphic_function.function(jit_compile=True)
+    def outer(x):
+      return inner(x)
+
+    x = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      outer(x).numpy()
+
+  def testDevicePlacementValidationNestedControlFlowWithJitCompile(self):
+    """Device constraints inside control flow must be validated too.
+
+    tf.cond and tf.while_loop lower to If and While ops whose nested
+    functions live in attributes like 'then_branch'/'else_branch' and
+    'cond'/'body' rather than the 'f' attribute of a PartitionedCall, so an
+    invalid tf.device() constraint inside their bodies must still be
+    reported instead of silently ignored.
+    """
+    invalid_device = '/device:NONEXISTENT:0'
+    x = constant_op.constant([1.0, 2.0])
+
+    @polymorphic_function.function(jit_compile=True)
+    def with_cond(x):
+
+      def true_branch():
+        with ops.device(invalid_device):
+          return math_ops.add(x, x)
+
+      return cond.cond(
+          constant_op.constant(True), true_branch,
+          lambda: array_ops.identity(x))
+
+    @polymorphic_function.function(jit_compile=True)
+    def with_while(x):
+
+      def loop_body(i, v):
+        with ops.device(invalid_device):
+          return i + 1, math_ops.add(v, v)
+
+      return while_loop.while_loop(
+          lambda i, _: i < 1, loop_body,
+          (constant_op.constant(0), x))[1]
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      with_cond(x).numpy()
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      with_while(x).numpy()
+
+
 if __name__ == '__main__':
   ops.enable_eager_execution()
   test.main()
