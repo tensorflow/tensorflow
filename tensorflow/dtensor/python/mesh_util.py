@@ -178,7 +178,7 @@ def create_distributed_mesh(
 
   device_specs, device_type = _make_device_specs(local_devices, device_type)
 
-  if device_type.upper() == 'TPU':
+  if device_type and device_type.upper() == 'TPU':
     # TODO(b/185940495): Allow multi-mesh and partial on TPU.
     # TPU meshes can only be configured through environment variables that
     # reflect the actual TPU topology. Do not let users specify custom args.
