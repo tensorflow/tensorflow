@@ -1,6 +1,6 @@
 --- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -268,7 +268,8 @@ struct ElementwiseInlineAsmOpConversion
+@@ -275,7 +275,8 @@
                             /*asm_string=*/op.getAsmString(),
                             /*constraints=*/op.getConstraints(),
                             /*has_side_effects=*/!op.getPure(),
@@ -10,29 +10,10 @@
                             /*asm_dialect=*/
                             LLVM::AsmDialectAttr::get(rewriter.getContext(),
                                                       LLVM::AsmDialect::AD_ATT),
-@@ -417,6 +418,7 @@ struct InlineAsmOpConversion
-     auto call = LLVM::InlineAsmOp::create(
-         rewriter, loc, returnType, operands, op.getAsmString(),
-         op.getConstraints(), !op.getPure(), false, LLVM::TailCallKind::None,
-+        /*convergent=*/false,
-         LLVM::AsmDialectAttr::get(ctx, LLVM::AsmDialect::AD_ATT), ArrayAttr());
- 
-     SmallVector<Value> elements;
-
---- a/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/MFMA.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/MFMA.cpp
-@@ -152,6 +152,7 @@ struct DotOpMFMAConversionHelper {
-                rewriter, loc, acc.getType(), ValueRange{acc},
-                /*asm_string=*/"", constraints, /*has_side_effects=*/false,
-                /*is_align_stack=*/false, LLVM::TailCallKind::None,
-+               /*convergent=*/false,
-                LLVM::AsmDialectAttr::get(ctx, LLVM::AsmDialect::AD_ATT),
-                /*operand_attrs=*/ArrayAttr())
-         ->getResult(0);
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp
-@@ -83,6 +83,7 @@ mlir::Value GCNBuilder::launch(RewriterBase &rewriter, Location loc, Type resTy,
+@@ -83,6 +83,7 @@
        hasSideEffect,                          // has_side_effects
        isAlignStack,                           // is_align_stack
        LLVM::TailCallKind::None,
@@ -43,7 +24,7 @@
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/TDMUtility.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TDMUtility.cpp
-@@ -37,6 +37,7 @@ Value sequenceGroup0(RewriterBase &rewriter, Location loc, Value group0) {
+@@ -37,6 +37,7 @@
               /*asm_string=*/"", /*constraints=*/"=s,0",
               /*has_side_effects=*/true, /*is_align_stack=*/false,
               LLVM::TailCallKind::None,
@@ -54,7 +35,7 @@
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
-@@ -749,6 +749,7 @@ void TargetInfo::assertFail(RewriterBase &rewriter, Location loc,
+@@ -693,6 +693,7 @@
        "s_trap 2", /*constraints=*/"",
        /*has_side_effects=*/true, /*is_align_stack=*/false,
        LLVM::TailCallKind::None,
@@ -65,7 +46,7 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
-@@ -106,6 +106,7 @@ mlir::Value PTXBuilder::launch(OpBuilder &rewriter, Location loc, Type resTy,
+@@ -106,6 +106,7 @@
        hasSideEffect,                          // has_side_effects
        isAlignStack,                           // is_align_stack
        LLVM::TailCallKind::None,
