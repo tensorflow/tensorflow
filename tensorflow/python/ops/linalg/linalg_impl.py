@@ -482,6 +482,14 @@ def banded_triangular_solve(
         bands, rhs, lower=lower, adjoint=adjoint)
 
 
+def _check_min_rank(tensor, name, min_rank):
+  """Raises a ValueError if the static rank of `tensor` is below `min_rank`."""
+  rank = tensor.shape.rank
+  if rank is not None and rank < min_rank:
+    raise ValueError('Expected {} to have rank at least {}, got {}'.format(
+        name, min_rank, rank))
+
+
 @tf_export('linalg.tridiagonal_solve')
 @dispatch.add_dispatch_support
 def tridiagonal_solve(diagonals,
@@ -615,6 +623,9 @@ def tridiagonal_solve(diagonals,
         diagonals[1], dtype_hint=superdiag.dtype.base_dtype, name='maindiag')
     subdiag = ops.convert_to_tensor(
         diagonals[2], dtype_hint=superdiag.dtype.base_dtype, name='subdiag')
+    for diag, diag_name in ((superdiag, 'superdiag'), (maindiag, 'maindiag'),
+                            (subdiag, 'subdiag')):
+      _check_min_rank(diag, diag_name, 1)
     if (not subdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1]) or
         not superdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1])):
       raise ValueError(
@@ -645,6 +656,7 @@ def tridiagonal_solve(diagonals,
 
   if diagonals_format == 'matrix':
     diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
+    _check_min_rank(diagonals, 'diagonals', 2)
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
     m2 = tensor_shape.dimension_value(diagonals.shape[-2])
     if m1 and m2 and m1 != m2:
@@ -671,7 +683,7 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
   diags_rank, rhs_rank = diagonals.shape.rank, rhs.shape.rank
 
   # If we know the rank of the diagonal tensor, do some static checking.
-  if diags_rank:
+  if diags_rank is not None:
     if diags_rank < 2:
       raise ValueError(
           'Expected diagonals to have rank at least 2, got {}'.format(
@@ -767,6 +779,7 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   """
   if diagonals_format == 'compact':
     diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
+    _check_min_rank(diagonals, 'diagonals', 2)
     superdiag = diagonals[..., 0, :]
     maindiag = diagonals[..., 1, :]
     subdiag = diagonals[..., 2, :]
@@ -777,8 +790,12 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
         maindiag, dtype_hint=superdiag.dtype.base_dtype, name='maindiag')
     subdiag = ops.convert_to_tensor(
         subdiag, dtype_hint=superdiag.dtype.base_dtype, name='subdiag')
+    for diag, diag_name in ((superdiag, 'superdiag'), (maindiag, 'maindiag'),
+                            (subdiag, 'subdiag')):
+      _check_min_rank(diag, diag_name, 1)
   elif diagonals_format == 'matrix':
     diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
+    _check_min_rank(diagonals, 'diagonals', 2)
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
     m2 = tensor_shape.dimension_value(diagonals.shape[-2])
     if m1 and m2 and m1 != m2:

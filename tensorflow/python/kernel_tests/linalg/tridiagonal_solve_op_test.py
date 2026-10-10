@@ -563,6 +563,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 3, 4), (4, 5))
     test_raises((5, 3, 4), (5))
     test_raises((5), (5, 4))
+    test_raises((), (5, 4))
 
   @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesSequenceFormat(self):
@@ -577,6 +578,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises(((5, 6), (5, 4), (5, 3)), (5, 4))
     test_raises(((5, 4), (7, 4), (5, 4)), (5, 4))
     test_raises(((5, 4), (7, 4), (5, 4)), (3, 4))
+    test_raises(((), (), ()), (5, 4))
 
   @flags(FLAG_NO_PARAMETERIZATION)
   def testInvalidShapesMatrixFormat(self):
@@ -587,6 +589,8 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 4, 7), (5, 4))
     test_raises((5, 4, 4), (3, 4))
     test_raises((5, 4, 4), (5, 3))
+    test_raises((5,), (5, 4))
+    test_raises((), (5, 4))
 
   # Tests with placeholders
 

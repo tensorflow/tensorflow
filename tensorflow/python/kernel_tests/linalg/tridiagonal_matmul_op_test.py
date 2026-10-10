@@ -158,6 +158,16 @@ class TridiagonalMulOpTest(test.TestCase):
               diags_input, rhs_input, diagonals_format=diags_format)
           self.assertAllClose(self.evaluate(result), expected)
 
+  def testInvalidRanks(self):
+    rhs = np.ones([4, 1])
+    for diags, diags_format in (([1., 2., 3., 4.], 'compact'),
+                                (1., 'compact'),
+                                ([1., 2., 3., 4.], 'matrix'),
+                                ((1., 1., 1.), 'sequence')):
+      with self.assertRaisesRegex(ValueError, 'Expected .* to have rank'):
+        linalg_impl.tridiagonal_matmul(
+            diags, rhs, diagonals_format=diags_format)
+
   def testComplex(self):
     for dtype in [dtypes.complex64, dtypes.complex128]:
       self._testAllFormats([1j, 1j], [1, -1, 0], [1j, 1j],
