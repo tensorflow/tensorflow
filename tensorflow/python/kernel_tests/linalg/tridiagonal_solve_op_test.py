@@ -562,6 +562,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 4, 4), (5, 4))
     test_raises((5, 3, 4), (4, 5))
     test_raises((5, 3, 4), (5))
+    test_raises((5, 3, 4), ())
     test_raises((5), (5, 4))
     test_raises((), (5, 4))
 
@@ -589,6 +590,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     test_raises((5, 4, 7), (5, 4))
     test_raises((5, 4, 4), (3, 4))
     test_raises((5, 4, 4), (5, 3))
+    test_raises((5, 4, 4), ())
     test_raises((5,), (5, 4))
     test_raises((), (5, 4))
 

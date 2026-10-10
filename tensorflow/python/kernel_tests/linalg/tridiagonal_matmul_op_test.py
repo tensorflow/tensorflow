@@ -167,6 +167,8 @@ class TridiagonalMulOpTest(test.TestCase):
       with self.assertRaisesRegex(ValueError, 'Expected .* to have rank'):
         linalg_impl.tridiagonal_matmul(
             diags, rhs, diagonals_format=diags_format)
+    with self.assertRaisesRegex(ValueError, 'sequence of length 3'):
+      linalg_impl.tridiagonal_matmul(1., rhs, diagonals_format='sequence')
 
   def testComplex(self):
     for dtype in [dtypes.complex64, dtypes.complex128]:

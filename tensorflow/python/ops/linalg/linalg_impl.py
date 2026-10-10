@@ -637,7 +637,7 @@ def tridiagonal_solve(diagonals,
 
     def pad_if_necessary(t, name, last_dim_padding):
       n = tensor_shape.dimension_value(t.shape[-1])
-      if not n or n == m:
+      if n is None or m is None or n == m:
         return t
       if n == m - 1:
         paddings = ([[0, 0] for _ in range(len(t.shape) - 1)] +
@@ -659,11 +659,11 @@ def tridiagonal_solve(diagonals,
     _check_min_rank(diagonals, 'diagonals', 2)
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
     m2 = tensor_shape.dimension_value(diagonals.shape[-2])
-    if m1 and m2 and m1 != m2:
+    if m1 is not None and m2 is not None and m1 != m2:
       raise ValueError(
           'Expected last two dimensions of diagonals to be same, got {} and {}'
           .format(m1, m2))
-    m = m1 or m2
+    m = m1 if m1 is not None else m2
     diagonals = array_ops.matrix_diag_part(
         diagonals, k=(-1, 1), padding_value=0., align='LEFT_RIGHT')
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
@@ -688,25 +688,27 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
       raise ValueError(
           'Expected diagonals to have rank at least 2, got {}'.format(
               diags_rank))
-    if rhs_rank and rhs_rank != diags_rank and rhs_rank != diags_rank - 1:
+    if (rhs_rank is not None and rhs_rank != diags_rank and
+        rhs_rank != diags_rank - 1):
       raise ValueError('Expected the rank of rhs to be {} or {}, got {}'.format(
           diags_rank - 1, diags_rank, rhs_rank))
-    if (rhs_rank and not diagonals.shape[:-2].is_compatible_with(
+    if (rhs_rank is not None and not diagonals.shape[:-2].is_compatible_with(
         rhs.shape[:diags_rank - 2])):
       raise ValueError('Batch shapes {} and {} are incompatible'.format(
           diagonals.shape[:-2], rhs.shape[:diags_rank - 2]))
 
-  if diagonals.shape[-2] and diagonals.shape[-2] != 3:
+  if diagonals.shape[-2] is not None and diagonals.shape[-2] != 3:
     raise ValueError('Expected 3 diagonals got {}'.format(diagonals.shape[-2]))
 
   def check_num_lhs_matches_num_rhs():
-    if (diagonals.shape[-1] and rhs.shape[-2] and
+    if (diagonals.shape[-1] is not None and rhs.shape[-2] is not None and
         diagonals.shape[-1] != rhs.shape[-2]):
       raise ValueError('Expected number of left-hand sided and right-hand '
                        'sides to be equal, got {} and {}'.format(
                            diagonals.shape[-1], rhs.shape[-2]))
 
-  if rhs_rank and diags_rank and rhs_rank == diags_rank - 1:
+  if (rhs_rank is not None and diags_rank is not None and
+      rhs_rank == diags_rank - 1):
     # Rhs provided as a vector, ignoring transpose_rhs
     if conjugate_rhs:
       rhs = math_ops.conj(rhs)
@@ -784,6 +786,8 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
     maindiag = diagonals[..., 1, :]
     subdiag = diagonals[..., 2, :]
   elif diagonals_format == 'sequence':
+    if not isinstance(diagonals, (tuple, list)) or len(diagonals) != 3:
+      raise ValueError('Expected diagonals to be a sequence of length 3.')
     superdiag, maindiag, subdiag = diagonals
     superdiag = ops.convert_to_tensor(superdiag, name='superdiag')
     maindiag = ops.convert_to_tensor(
@@ -798,7 +802,7 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
     _check_min_rank(diagonals, 'diagonals', 2)
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
     m2 = tensor_shape.dimension_value(diagonals.shape[-2])
-    if m1 and m2 and m1 != m2:
+    if m1 is not None and m2 is not None and m1 != m2:
       raise ValueError(
           'Expected last two dimensions of diagonals to be same, got {} and {}'
           .format(m1, m2))
