@@ -53,8 +53,6 @@ def _process_empty_axes(input_tensor, axes):
     axes = _infer_axes_for_fftn(input_tensor)
   else:
     axes = _ops.convert_to_tensor(axes, _dtypes.int32)
-    if axes.shape.ndims is not None and axes.shape.ndims != 1:
-      raise ValueError(f"axes must be 1D, but got shape: {axes.shape}")
   return axes
 
 
@@ -248,7 +246,7 @@ def _fftn_wrapper(fft_n, default_name):
           input_tensor, preferred_dtype=_dtypes.complex64
       )
       axes = _process_empty_axes(input_tensor, axes)
-      fft_rank = axes.shape[0]
+      fft_rank = axes.shape[-1] if axes.shape.ndims else 0
       input_tensor.shape.with_rank_at_least(fft_rank)
       if fft_length is None:
         fft_length = _infer_fft_length_for_fftn(input_tensor)
@@ -290,7 +288,7 @@ def _ifftn_wrapper(ifft_n, default_name):
           input_tensor, preferred_dtype=_dtypes.complex64
       )
       axes = _process_empty_axes(input_tensor, axes)
-      fft_rank = axes.shape[0]
+      fft_rank = axes.shape[-1] if axes.shape.ndims else 0
       input_tensor.shape.with_rank_at_least(fft_rank)
       if fft_length is None:
         fft_length = _infer_fft_length_for_fftn(input_tensor)
@@ -332,7 +330,7 @@ def _rfftn_wrapper(rfft_n, default_name):
           input_tensor, preferred_dtype=_dtypes.float32
       )
       axes = _process_empty_axes(input_tensor, axes)
-      fft_rank = axes.shape[0]
+      fft_rank = axes.shape[-1] if axes.shape.ndims else 0
       if input_tensor.dtype not in (_dtypes.float32, _dtypes.float64):
         raise ValueError(
             "RFFT requires tf.float32 or tf.float64 inputs, got: %s"
@@ -391,7 +389,7 @@ def _irfftn_wrapper(irfft_n, default_name):
           input_tensor, preferred_dtype=_dtypes.complex64
       )
       axes = _process_empty_axes(input_tensor, axes)
-      fft_rank = axes.shape[0]
+      fft_rank = axes.shape[-1] if axes.shape.ndims else 0
       input_tensor.shape.with_rank_at_least(fft_rank)
       if input_tensor.dtype not in (_dtypes.complex64, _dtypes.complex128):
         raise ValueError(

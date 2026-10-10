@@ -538,6 +538,21 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
               r"Dimension must be 0 but is")
 
 
+  def testEmptyOuterDimPassThrough(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([0, 1], dtype=dtypes.complex64)
+    y = gen_spectral_ops.fftnd(x, [2], [-1])
+    self.assertEqual(self.evaluate(y).shape, (0, 2))
+
+  def testEmptyInnerDimZeroFilled(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([1, 0], dtype=dtypes.complex64)
+    y = self.evaluate(gen_spectral_ops.fftnd(x, [2], [-1]))
+    self.assertEqual(y.shape, (1, 2))
+    self.assertTrue(np.all(y == 0))
+
   def testNDEmptyFFTLengthEmptyOutput(self):
     if not test_util.is_gpu_available():
       return
