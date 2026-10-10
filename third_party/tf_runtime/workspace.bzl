@@ -32,6 +32,7 @@ def repo():
         # A patch file can be provided for atomic commits to both TF and TFRT.
         # The job that bumps the TFRT_COMMIT also resets patch_file to 'None'.
         patch_file = [
+            "//third_party/tf_runtime:cxx20.patch",
             "//third_party/tf_runtime:f16_attr.patch",
             "//third_party/tf_runtime:pointer_union.patch",
             "//third_party/tf_runtime:strict_properties.patch",
