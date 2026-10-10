@@ -251,6 +251,13 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
+  def testGrayscaleToRGBNumpyInput(self):
+    x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 2, 1])
+    y_np = np.array([[1, 1, 1], [2, 2, 2]], dtype=np.uint8).reshape([1, 2, 3])
+    with self.cached_session():
+      y_tf = self.evaluate(image_ops.grayscale_to_rgb(x_np))
+      self.assertAllEqual(y_tf, y_np)
+
   def testGrayscaleToRGBInputValidation(self):
     # tests whether the grayscale_to_rgb function raises
     # an exception if the input images' last dimension is
@@ -5548,6 +5555,11 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     # for each image individually and returns the correct array.
     self._test(multi, tot_var * np.array([1.0, 1.1, 1.2]))
 
+  def testTotalVariationNumpyInput(self):
+    a = np.dstack(([[1, 2], [4, 7]], [[11, 18], [29, 47]]))
+    with self.cached_session():
+      self.assertAllClose(self.evaluate(image_ops.total_variation(a)), 84)
+
 
 class FormatTest(test_util.TensorFlowTestCase):
 
@@ -6030,6 +6042,20 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase,
         with test_util.run_functions_eagerly(run_func_eagerly):
           self.assertAllClose(selected_indices, [0, 2, 4])
           self.assertEqual(self.evaluate(num_valid), 3)
+
+  @test_util.disable_xla(
+      "b/141236442: "
+      "non_max_suppression with dynamic output shape unsupported.")
+  def testNumpyInput(self):
+    boxes_np = np.array([[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                         [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]],
+                        dtype=np.float32)
+    scores_np = np.array([0.9, 0.75, 0.6, 0.95, 0.5, 0.3], dtype=np.float32)
+    with self.cached_session():
+      selected_indices, num_valid = image_ops.non_max_suppression_padded(
+          boxes_np, scores_np, 5, 0.5)
+      self.assertAllClose(self.evaluate(selected_indices), [3, 0, 5])
+      self.assertEqual(self.evaluate(num_valid), 3)
 
   def testInvalidDtype(self):
     boxes_np = [[4.0, 6.0, 3.0, 6.0],
@@ -6627,6 +6653,15 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       image_ops.image_gradients(img)
 
+  def testImageGradientsNumpyInput(self):
+    img = np.reshape([[1, 3, 4, 2], [8, 7, 5, 6]], [1, 2, 4, 1])
+    expected_dy = np.reshape([[7, 4, 1, 4], [0, 0, 0, 0]], [1, 2, 4, 1])
+    expected_dx = np.reshape([[2, 1, -2, 0], [-1, -2, 1, 0]], [1, 2, 4, 1])
+    with self.cached_session():
+      dy, dx = image_ops.image_gradients(img)
+      self.assertAllClose(expected_dy, self.evaluate(dy))
+      self.assertAllClose(expected_dx, self.evaluate(dx))
+
 
 class SobelEdgesTest(test_util.TensorFlowTestCase):
 
@@ -6661,6 +6696,15 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       actual_sobel = self.evaluate(sobel)
       self.assertAllClose(expected_batch, actual_sobel)
+
+  def testSobelEdgesNumpyInput(self):
+    img = np.reshape([[1, 3, 6, 2], [4, 1, 5, 7], [2, 5, 1, 4]],
+                     [1, 3, 4, 1]).astype(np.float32)
+    expected = np.reshape([[[0, 0], [0, 12], [0, 10], [0, 0]],
+                           [[6, 0], [0, 6], [-6, 10], [-6, 0]],
+                           [[0, 0], [0, 0], [0, 10], [0, 0]]], [1, 3, 4, 1, 2])
+    with self.cached_session():
+      self.assertAllClose(expected, self.evaluate(image_ops.sobel_edges(img)))
 
 
 @test_util.run_all_in_graph_and_eager_modes
