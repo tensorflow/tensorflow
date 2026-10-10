@@ -943,13 +943,13 @@ class Context:
     return self._coordination_service_config
 
   def set_config_key_value(self, key, value):
-    ensure_initialized()
+    self.ensure_initialized()
     pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
   # If `timeout_in_ms=0`, this will block until the key-value is set or the
   # worker shuts down.
   def get_config_key_value(self, key, timeout_in_ms=0):
-    ensure_initialized()
+    self.ensure_initialized()
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tfe.TFE_GetConfigKeyValue(
           self._context_handle, key, timeout_in_ms, buffer_
@@ -958,7 +958,7 @@ class Context:
     return value
 
   def delete_config_key_value(self, key):
-    ensure_initialized()
+    self.ensure_initialized()
     pywrap_tfe.TFE_DeleteConfigKeyValue(self._context_handle, key)
 
   def report_error_to_cluster(self, error_code, error_message):
@@ -1001,7 +1001,7 @@ class Context:
       barrier_id: Unique string identifying the barrier.
       timeout_in_ms: Duration before the barrier times out and fails.
     """
-    ensure_initialized()
+    self.ensure_initialized()
     pywrap_tfe.TFE_WaitAtBarrier(
         self._context_handle, barrier_id, timeout_in_ms
     )
