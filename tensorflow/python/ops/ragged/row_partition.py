@@ -263,20 +263,37 @@ class RowPartition(composite_tensor.CompositeTensor):
       else:
         nrows = ops.convert_to_tensor(nrows, value_rowids.dtype, "nrows")
         const_nrows = tensor_util.constant_value(nrows)
-        if const_nrows is not None:
-          if const_nrows < 0:
-            raise ValueError("Expected nrows >= 0; got %d" % const_nrows)
-          const_rowids = tensor_util.constant_value(value_rowids)
-          if const_rowids is not None and const_rowids.size > 0:
-            if not const_nrows >= const_rowids[-1] + 1:
-              raise ValueError(
-                  "Expected nrows >= value_rowids[-1] + 1; got nrows=%d, "
-                  "value_rowids[-1]=%d" % (const_nrows, const_rowids[-1]))
+        if const_nrows is not None and const_nrows < 0:
+          raise ValueError("Expected nrows >= 0; got %d" % const_nrows)
 
       value_rowids.shape.assert_has_rank(1)
       nrows.shape.assert_has_rank(0)
 
       if validate:
+        value_rowids_const = tensor_util.constant_value(value_rowids)
+        nrows_const = tensor_util.constant_value(nrows)
+        if value_rowids_const is not None:
+          if len(value_rowids_const) > 0 and value_rowids_const[0] < 0:
+            raise ValueError(
+                "Arguments to from_value_rowids do not form a valid "
+                "RowPartition: value_rowids must be non-negative, "
+                f"got {value_rowids_const[0]}")
+          diff = np.diff(value_rowids_const)
+          if np.any(diff < 0):
+            bad_idx = int(np.argmax(diff < 0))
+            raise ValueError(
+                "Arguments to from_value_rowids do not form a valid "
+                "RowPartition: value_rowids must be monotonic increasing, "
+                f"but value_rowids[{bad_idx}] "
+                f"({value_rowids_const[bad_idx]}) > "
+                f"value_rowids[{bad_idx + 1}] "
+                f"({value_rowids_const[bad_idx + 1]})")
+          if nrows_const is not None and len(value_rowids_const) > 0:
+            if value_rowids_const[-1] >= nrows_const:
+              raise ValueError(
+                  "Arguments to from_value_rowids do not form a valid "
+                  "RowPartition: value_rowids[-1] must be < nrows, "
+                  f"got {value_rowids_const[-1]} >= {nrows_const}")
         msg = ("Arguments to from_value_rowids do not form a valid "
                "RowPartition")
         checks = [
@@ -364,6 +381,23 @@ class RowPartition(composite_tensor.CompositeTensor):
       row_splits.shape.assert_has_rank(1)
 
       if validate:
+        row_splits_const = tensor_util.constant_value(row_splits)
+        if row_splits_const is not None:
+          if len(row_splits_const) == 0:
+            raise ValueError("row_splits tensor may not be empty.")
+          if row_splits_const[0] != 0:
+            raise ValueError(
+                "Arguments to from_row_splits do not form a valid "
+                f"RaggedTensor: row_splits[0] must be zero, "
+                f"got {row_splits_const[0]}")
+          diff = np.diff(row_splits_const)
+          if np.any(diff < 0):
+            bad_idx = int(np.argmax(diff < 0))
+            raise ValueError(
+                "Arguments to from_row_splits do not form a valid "
+                "RaggedTensor: row_splits must be monotonic increasing, "
+                f"but row_splits[{bad_idx}] ({row_splits_const[bad_idx]}) > "
+                f"row_splits[{bad_idx + 1}] ({row_splits_const[bad_idx + 1]})")
         msg = "Arguments to from_row_splits do not form a valid RaggedTensor:"
         checks = [
             check_ops.assert_rank(row_splits, 1, message=(msg + "rank")),
@@ -416,6 +450,12 @@ class RowPartition(composite_tensor.CompositeTensor):
       row_lengths.shape.assert_has_rank(1)
 
       if validate:
+        row_lengths_const = tensor_util.constant_value(row_lengths)
+        if row_lengths_const is not None:
+          if np.any(row_lengths_const < 0):
+            raise ValueError(
+                "Arguments to from_row_lengths do not form a valid "
+                "RowPartition: row_lengths must be nonnegative.")
         msg = "Arguments to from_row_lengths do not form a valid RowPartition"
         checks = [
             check_ops.assert_rank(row_lengths, 1, message=msg),
@@ -469,6 +509,34 @@ class RowPartition(composite_tensor.CompositeTensor):
       # even though they eventually end up the same type.
       nvals = math_ops.cast(nvals, row_starts.dtype)
       if validate:
+        row_starts_const = tensor_util.constant_value(row_starts)
+        nvals_const = tensor_util.constant_value(nvals)
+        if row_starts_const is not None:
+          if len(row_starts_const) > 0 and row_starts_const[0] != 0:
+            raise ValueError(
+                "Arguments to from_row_starts do not form a valid "
+                f"RaggedTensor: row_starts[0] must be zero, "
+                f"got {row_starts_const[0]}")
+          diff = np.diff(row_starts_const)
+          if np.any(diff < 0):
+            bad_idx = int(np.argmax(diff < 0))
+            raise ValueError(
+                "Arguments to from_row_starts do not form a valid "
+                "RaggedTensor: row_starts must be monotonic increasing, "
+                f"but row_starts[{bad_idx}] ({row_starts_const[bad_idx]}) > "
+                f"row_starts[{bad_idx + 1}] "
+                f"({row_starts_const[bad_idx + 1]})")
+          if nvals_const is not None:
+            if len(row_starts_const) > 0 and row_starts_const[-1] > nvals_const:
+              raise ValueError(
+                  "Arguments to from_row_starts do not form a valid "
+                  "RaggedTensor: row_starts[-1] must be <= nvals, "
+                  f"got {row_starts_const[-1]} > {nvals_const}")
+            if len(row_starts_const) == 0 and nvals_const != 0:
+              raise ValueError(
+                  "Arguments to from_row_starts do not form a valid "
+                  "RaggedTensor: nvals must be 0 when row_starts is empty, "
+                  f"got {nvals_const}")
         msg = "Arguments to from_row_starts do not form a valid RaggedTensor"
         checks = [
             check_ops.assert_rank(row_starts, 1, message=msg),
@@ -516,6 +584,22 @@ class RowPartition(composite_tensor.CompositeTensor):
       row_limits.shape.assert_has_rank(1)
 
       if validate:
+        row_limits_const = tensor_util.constant_value(row_limits)
+        if row_limits_const is not None:
+          if len(row_limits_const) > 0 and row_limits_const[0] < 0:
+            raise ValueError(
+                "Arguments to from_row_limits do not form a valid "
+                "RaggedTensor: row_limits must be non-negative, "
+                f"got {row_limits_const[0]}")
+          diff = np.diff(row_limits_const)
+          if np.any(diff < 0):
+            bad_idx = int(np.argmax(diff < 0))
+            raise ValueError(
+                "Arguments to from_row_limits do not form a valid "
+                "RaggedTensor: row_limits must be monotonic increasing, "
+                f"but row_limits[{bad_idx}] ({row_limits_const[bad_idx]}) > "
+                f"row_limits[{bad_idx + 1}] "
+                f"({row_limits_const[bad_idx + 1]})")
         msg = "Arguments to from_row_limits do not form a valid RaggedTensor"
         checks = [
             check_ops.assert_rank(row_limits, 1, message=msg),
@@ -607,7 +691,8 @@ class RowPartition(composite_tensor.CompositeTensor):
 
       checks = []
 
-      if const_nvals is None and const_nrows is not None and const_uniform_row_length is not None:
+      if (const_nvals is None and const_nrows is not None and
+          const_uniform_row_length is not None):
         const_nvals = const_nrows * const_uniform_row_length
         if nvals is not None and validate:
           checks.append(check_ops.assert_equal(nvals, const_nvals))
@@ -886,11 +971,31 @@ class RowPartition(composite_tensor.CompositeTensor):
     if self._nvals is not None:
       nvals = tensor_util.constant_value(self._nvals)
       if nvals is not None:
-        return nvals
+        return int(nvals)
     if self._value_rowids is not None:
       nvals = tensor_shape.dimension_at_index(self._value_rowids.shape, 0)
       if nvals.value is not None:
-        return nvals.value
+        return int(nvals.value)
+    return None
+
+  def _static_nvals_or_constant(self):
+    """The number of values in this partition from shape or constant values."""
+    static_n = self.static_nvals
+    if static_n is not None:
+      return static_n
+    if self._row_splits is not None:
+      row_splits_const = tensor_util.constant_value(self._row_splits)
+      if row_splits_const is not None and len(row_splits_const) > 0:
+        return int(row_splits_const[-1])
+    if self._row_lengths is not None:
+      row_lengths_const = tensor_util.constant_value(self._row_lengths)
+      if row_lengths_const is not None:
+        return int(row_lengths_const.sum())
+    if self._uniform_row_length is not None and self._nrows is not None:
+      nrows = self.static_nrows
+      row_len = self.static_uniform_row_length
+      if nrows is not None and row_len is not None:
+        return int(nrows * row_len)
     return None
 
   @property

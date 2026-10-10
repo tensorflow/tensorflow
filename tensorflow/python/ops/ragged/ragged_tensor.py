@@ -340,10 +340,15 @@ class RaggedTensor(
                       f"Received {validate}.")
     values, row_partition = cls._convert_values_and_partition(
         values, row_partition, "partition")
-    if row_partition._has_precomputed_value_rowids():  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if row_partition._has_precomputed_value_rowids():
       value_rowids_shape = row_partition.value_rowids().shape
       values.shape[:1].assert_is_compatible_with(value_rowids_shape)
     if validate:
+      static_nvals = row_partition._static_nvals_or_constant()
+      if static_nvals is not None:
+        values.shape[:1].assert_is_compatible_with(
+            tensor_shape.TensorShape([static_nvals]))
       msg = "Arguments to _from_row_partition do not form a valid RaggedTensor"
       nvals = _nrows(values, row_partition.dtype)
       checks = [
@@ -354,7 +359,8 @@ class RaggedTensor(
       ]
       if not isinstance(values, RaggedTensor):
         checks.append(check_ops.assert_rank_at_least(values, 1))
-      row_partition = row_partition._with_dependencies(checks)  # pylint: disable=protected-access
+      row_partition = row_partition._with_dependencies(checks)
+    # pylint: enable=protected-access
     return cls(values=values, internal=True, row_partition=row_partition)
 
   @classmethod
