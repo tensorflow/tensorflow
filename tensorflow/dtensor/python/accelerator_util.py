@@ -293,18 +293,9 @@ def initialize_accelerator_system(
 def shutdown_accelerator_system() -> None:
   """Shuts down the accelerator system."""
   global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
-  # Only `async_wait()` is wrapped so that an error from it never gets
-  # silently replaced by a later `raise` below (e.g. "not initialized"),
-  # which would otherwise mask the real failure.
-  try:
-    context.async_wait()
-  except Exception:
-    logging.exception(
-        "Error waiting for async operations to finish before shutting "
-        "down the accelerator system."
-    )
-    raise
 
+  # Validate first, so a validation error can never mask a real failure
+  # from `async_wait()` below.
   if not is_initialized():
     raise ValueError(
         "Accelerator system is not initialized. Call "
@@ -319,10 +310,21 @@ def shutdown_accelerator_system() -> None:
         "not supported."
     )
 
-  if device_type == "TPU":
-    tpu_util.shutdown_tpu_system()
+  try:
+    context.async_wait()
+  except Exception:
+    logging.exception(
+        "Error waiting for async operations to finish before shutting "
+        "down the accelerator system."
+    )
+    raise
+  finally:
+    # Cleanup always runs, even if `async_wait()` raised, so the system
+    # is never left stuck in an "initialized" state.
+    if device_type == "TPU":
+      tpu_util.shutdown_tpu_system()
 
-  # reset TF context to stop gRPC servers.
-  context._reset_context()  # pylint: disable=protected-access
-  context.context()._clear_caches()  # pylint: disable=protected-access
-  _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = None
+    # reset TF context to stop gRPC servers.
+    context._reset_context()  # pylint: disable=protected-access
+    context.context()._clear_caches()  # pylint: disable=protected-access
+    _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = None
