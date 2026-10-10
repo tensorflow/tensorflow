@@ -2180,14 +2180,222 @@ LogicalResult FullyConnectedOp::verify() {
   return mlir::success();
 }
 
+namespace {
+
+std::optional<float> ApplyActivation(StringRef act, float val) {
+  if (act == "NONE") return val;
+  if (act == "RELU") return std::max(0.0f, val);
+  if (act == "RELU_N1_TO_1") return std::min(1.0f, std::max(-1.0f, val));
+  if (act == "RELU6") return std::min(6.0f, std::max(0.0f, val));
+  if (act == "TANH") return std::tanh(val);
+  if (act == "SIGN_BIT") return std::signbit(val) ? 1.0f : 0.0f;
+  return std::nullopt;
+}
+
+bool ExtractDequantizedWeightsFromQConst(QConstOp qconst_op,
+                                         ShapedType weights_type,
+                                         std::vector<float>& weights_values) {
+  if (!qconst_op || !weights_type.hasStaticShape() ||
+      weights_type.getRank() < 1) {
+    return false;
+  }
+  auto quant_type =
+      mlir::dyn_cast<quant::QuantizedType>(weights_type.getElementType());
+  if (!quant_type || !quant_type.getExpressedType().isF32()) {
+    return false;
+  }
+
+  const unsigned bit_width = quant_type.getStorageTypeIntegralWidth();
+  if (bit_width != 8 && bit_width != 4) {
+    return false;
+  }
+  const bool is_signed = quant_type.isSigned();
+
+  const int64_t num_elements = weights_type.getNumElements();
+
+  int32_t quant_dim = -1;
+  ArrayRef<double> scales;
+  ArrayRef<int64_t> zero_points;
+  double single_scale = 0.0;
+  int64_t single_zp = 0;
+
+  if (auto uq_type = mlir::dyn_cast<quant::UniformQuantizedType>(quant_type)) {
+    single_scale = uq_type.getScale();
+    single_zp = uq_type.getZeroPoint();
+    scales = ArrayRef<double>(&single_scale, 1);
+    zero_points = ArrayRef<int64_t>(&single_zp, 1);
+  } else if (auto per_axis_type =
+                 mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+                     quant_type)) {
+    quant_dim = per_axis_type.getQuantizedDimension();
+    if (quant_dim < 0 || quant_dim >= weights_type.getRank()) {
+      return false;
+    }
+    scales = per_axis_type.getScales();
+    zero_points = per_axis_type.getZeroPoints();
+    const int64_t expected_channels = weights_type.getDimSize(quant_dim);
+    if (static_cast<int64_t>(scales.size()) != expected_channels ||
+        static_cast<int64_t>(zero_points.size()) != expected_channels) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  int64_t dim_size = 1;
+  int64_t stride = 1;
+  if (quant_dim >= 0) {
+    dim_size = weights_type.getDimSize(quant_dim);
+    if (dim_size <= 0) return false;
+    for (int i = quant_dim + 1; i < weights_type.getRank(); ++i) {
+      const int64_t d = weights_type.getDimSize(i);
+      if (d <= 0) return false;
+      stride *= d;
+    }
+  }
+
+  auto dequantize_at = [&](int64_t flat_idx, int64_t q) -> float {
+    const int64_t channel =
+        (quant_dim >= 0) ? ((flat_idx / stride) % dim_size) : 0;
+    return static_cast<float>(q - zero_points[channel]) *
+           static_cast<float>(scales[channel]);
+  };
+
+  ElementsAttr value_attr = qconst_op.getValue();
+  if (!value_attr) return false;
+  auto value_shaped_type = mlir::dyn_cast<ShapedType>(value_attr.getType());
+  if (!value_shaped_type || !value_shaped_type.hasStaticShape() ||
+      value_shaped_type.getNumElements() != num_elements ||
+      !value_shaped_type.getElementType().isInteger(bit_width)) {
+    return false;
+  }
+
+  weights_values.resize(num_elements);
+  if (auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(value_attr)) {
+    int64_t idx = 0;
+    for (const APInt& val : dense_attr.getValues<APInt>()) {
+      const int64_t q = is_signed ? val.getSExtValue() : val.getZExtValue();
+      weights_values[idx] = dequantize_at(idx, q);
+      ++idx;
+    }
+    return idx == num_elements;
+  }
+
+  if (auto res_attr = mlir::dyn_cast<DenseResourceElementsAttr>(value_attr)) {
+    AsmResourceBlob* blob = res_attr.getRawHandle().getBlob();
+    if (!blob) return false;
+    ArrayRef<char> raw_data = blob->getData();
+    if (bit_width == 8) {
+      if (static_cast<int64_t>(raw_data.size()) != num_elements) {
+        return false;
+      }
+      for (int64_t idx = 0; idx < num_elements; ++idx) {
+        const int64_t q =
+            is_signed
+                ? static_cast<int64_t>(static_cast<int8_t>(raw_data[idx]))
+                : static_cast<int64_t>(static_cast<uint8_t>(raw_data[idx]));
+        weights_values[idx] = dequantize_at(idx, q);
+      }
+      return true;
+    }
+    if (bit_width == 4) {
+      const int64_t packed_size = (num_elements + 1) / 2;
+      if (static_cast<int64_t>(raw_data.size()) == num_elements) {
+        for (int64_t idx = 0; idx < num_elements; ++idx) {
+          const uint8_t byte = static_cast<uint8_t>(raw_data[idx]) & 0x0F;
+          const int64_t q =
+              is_signed
+                  ? static_cast<int64_t>(static_cast<int8_t>(byte << 4) >> 4)
+                  : static_cast<int64_t>(byte);
+          weights_values[idx] = dequantize_at(idx, q);
+        }
+        return true;
+      }
+      if (static_cast<int64_t>(raw_data.size()) == packed_size) {
+        for (int64_t idx = 0; idx < num_elements; ++idx) {
+          const uint8_t byte = static_cast<uint8_t>(raw_data[idx / 2]);
+          const uint8_t nibble = (byte >> ((idx % 2) * 4)) & 0x0F;
+          const int64_t q =
+              is_signed
+                  ? static_cast<int64_t>(static_cast<int8_t>(nibble << 4) >> 4)
+                  : static_cast<int64_t>(nibble);
+          weights_values[idx] = dequantize_at(idx, q);
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+class FloatElementsAccessor {
+ public:
+  static std::optional<FloatElementsAccessor> Create(ElementsAttr attr) {
+    if (!attr) return std::nullopt;
+    auto shaped_type = mlir::dyn_cast<ShapedType>(attr.getType());
+    if (!shaped_type || !shaped_type.hasStaticShape() ||
+        !shaped_type.getElementType().isF32()) {
+      return std::nullopt;
+    }
+    FloatElementsAccessor accessor;
+    if (auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(attr)) {
+      accessor.dense_values_ = dense_attr.getValues<float>();
+      return accessor;
+    }
+    if (auto res_attr = mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
+      ArrayRef<float> data = GetValues<float>(res_attr);
+      if (static_cast<int64_t>(data.size()) != shaped_type.getNumElements()) {
+        return std::nullopt;
+      }
+      accessor.resource_values_ = data;
+      return accessor;
+    }
+    return std::nullopt;
+  }
+
+  static std::optional<FloatElementsAccessor> CreateFromQConst(
+      QConstOp qconst_op, ShapedType weights_type) {
+    FloatElementsAccessor accessor;
+    if (!ExtractDequantizedWeightsFromQConst(qconst_op, weights_type,
+                                             accessor.owned_values_)) {
+      return std::nullopt;
+    }
+    return accessor;
+  }
+
+  float operator[](int64_t index) const {
+    if (dense_values_.has_value()) {
+      return (*dense_values_)[index];
+    }
+    if (!owned_values_.empty()) {
+      return owned_values_[index];
+    }
+    return resource_values_[index];
+  }
+
+ private:
+  std::optional<mlir::detail::ElementsAttrRange<
+      DenseElementsAttr::ElementIterator<float>>>
+      dense_values_;
+  ArrayRef<float> resource_values_;
+  std::vector<float> owned_values_;
+};
+
+}  // namespace
+
 LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
                                      SmallVectorImpl<OpFoldResult>& results) {
   assert(adaptor.getOperands().size() == 3);
 
-  // Folding not implemented with any activation function or any weight type
-  // besides the default.
-  if (getFusedActivationFunction() != "NONE") return failure();
+  // Folding not implemented with unsupported activation function or any weight
+  // type besides the default.
+  StringRef act_func = getFusedActivationFunction();
+  if (act_func != "NONE" && act_func != "RELU" && act_func != "RELU_N1_TO_1" &&
+      act_func != "RELU6" && act_func != "TANH" && act_func != "SIGN_BIT") {
+    return failure();
+  }
   if (getWeightsFormat() != "DEFAULT") return failure();
+  if (getNumResults() != 1) return failure();
 
   // Bias tensor is optional.
   const bool has_bias =
@@ -2195,32 +2403,37 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
 
   // Get the tensors.
   auto operands = adaptor.getOperands();
-  DenseElementsAttr input_tensor =
-      dyn_cast_or_null<DenseElementsAttr>(operands[0]);
-  DenseElementsAttr weights_tensor =
-      dyn_cast_or_null<DenseElementsAttr>(operands[1]);
-  DenseElementsAttr bias_tensor;
+  ElementsAttr input_tensor = dyn_cast_or_null<ElementsAttr>(operands[0]);
+  ElementsAttr weights_tensor = dyn_cast_or_null<ElementsAttr>(operands[1]);
+  auto weights_qconst_op = getFilter().getDefiningOp<QConstOp>();
+  if (!weights_qconst_op) {
+    if (auto dequant_op = getFilter().getDefiningOp<DequantizeOp>()) {
+      weights_qconst_op = dequant_op.getInput().getDefiningOp<QConstOp>();
+    }
+  }
+  ElementsAttr bias_tensor;
 
-  if (!input_tensor || !weights_tensor) {
+  if (!input_tensor || (!weights_tensor && !weights_qconst_op)) {
     return failure();
   }
 
   if (has_bias) {
-    bias_tensor = dyn_cast_or_null<DenseElementsAttr>(operands[2]);
+    bias_tensor = dyn_cast_or_null<ElementsAttr>(operands[2]);
     if (!bias_tensor) return failure();
   }
 
   // Get the tensor types.
   const auto input_type = mlir::cast<ShapedType>(input_tensor.getType());
-  const auto weights_type = mlir::cast<ShapedType>(weights_tensor.getType());
+  const auto weights_type = mlir::cast<ShapedType>(
+      weights_qconst_op ? weights_qconst_op.getOutput().getType()
+                        : getFilter().getType());
   const auto bias_type =
       has_bias ? mlir::cast<ShapedType>(bias_tensor.getType()) : ShapedType{};
 
   const auto output_type = mlir::cast<ShapedType>(getType(0));
 
-  // Folding only implemented for float tensors.
+  // Folding only implemented for float input/bias/output tensors.
   if (!input_type.getElementType().isF32() ||
-      !weights_type.getElementType().isF32() ||
       !output_type.getElementType().isF32() ||
       (has_bias && !bias_type.getElementType().isF32())) {
     return failure();
@@ -2228,6 +2441,7 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
 
   // Folding only implemented for static shapes
   if (!input_type.hasStaticShape() || !weights_type.hasStaticShape() ||
+      !output_type.hasStaticShape() ||
       (has_bias && !bias_type.hasStaticShape())) {
     return failure();
   }
@@ -2238,6 +2452,10 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
 
   const int64_t in_dim = weights_type.getDimSize(1);
   const int64_t out_dim = weights_type.getDimSize(0);
+  if (in_dim <= 0 || out_dim <= 0 ||
+      input_type.getNumElements() % in_dim != 0) {
+    return failure();
+  }
 
   if (has_bias) {
     if (bias_type.getRank() > 2 ||
@@ -2253,23 +2471,37 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
     return failure();
   }
 
-  auto input_values_range = input_tensor.getValues<float>();
-  auto weights_values_range = weights_tensor.getValues<float>();
-  std::optional<decltype(input_values_range)> bias_values_range;
-  if (has_bias) bias_values_range = bias_tensor.getValues<float>();
+  auto input_values_range = FloatElementsAccessor::Create(input_tensor);
+  if (!input_values_range.has_value()) return failure();
+
+  std::optional<FloatElementsAccessor> weights_values_range;
+  if (weights_tensor && weights_type.getElementType().isF32()) {
+    weights_values_range = FloatElementsAccessor::Create(weights_tensor);
+  } else if (weights_qconst_op &&
+             mlir::isa<quant::QuantizedType>(weights_type.getElementType())) {
+    weights_values_range = FloatElementsAccessor::CreateFromQConst(
+        weights_qconst_op, weights_type);
+  }
+  if (!weights_values_range.has_value()) return failure();
+
+  std::optional<FloatElementsAccessor> bias_values_range;
+  if (has_bias) {
+    bias_values_range = FloatElementsAccessor::Create(bias_tensor);
+    if (!bias_values_range.has_value()) return failure();
+  }
 
   // Do the actual folding, one output at a time.
   std::vector<float> result_values;
   result_values.reserve(batch_size * out_dim);
 
-  for (int b = 0; b < batch_size; ++b) {
-    for (int o = 0; o < out_dim; ++o) {
+  for (int64_t b = 0; b < batch_size; ++b) {
+    for (int64_t o = 0; o < out_dim; ++o) {
       // Dot product with Kahan/Neumaier summation to minimize numeric errors.
       float sum = has_bias ? (*bias_values_range)[o] : 0.0f;
       float compensation = 0.0f;
-      for (int i = 0; i < in_dim; ++i) {
-        const float addend = input_values_range[b * in_dim + i] *
-                             weights_values_range[o * in_dim + i];
+      for (int64_t i = 0; i < in_dim; ++i) {
+        const float addend = (*input_values_range)[b * in_dim + i] *
+                             (*weights_values_range)[o * in_dim + i];
         const float new_sum = sum + addend;
         // DO NOT enable -funsafe-math-optimizations here.
         // There is a test detecting unsafe optimizations.
@@ -2284,7 +2516,10 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
         }
         sum = new_sum;
       }
-      result_values.push_back(sum + compensation);
+      float val = sum + compensation;
+      auto act_val = ApplyActivation(act_func, val);
+      if (!act_val.has_value()) return failure();
+      result_values.push_back(*act_val);
     }
   }
 
@@ -2432,6 +2667,201 @@ int64_t Conv2DOp::GetArithmeticCount(Operation* op) {
   return -1;
 }
 
+OpFoldResult Conv2DOp::fold(FoldAdaptor adaptor) {
+  assert(adaptor.getOperands().size() >= 3);
+
+  StringRef act_func = getFusedActivationFunction();
+  if (act_func != "NONE" && act_func != "RELU" && act_func != "RELU_N1_TO_1" &&
+      act_func != "RELU6" && act_func != "TANH" && act_func != "SIGN_BIT") {
+    return {};
+  }
+
+  const bool has_bias =
+      !(!getBias() || mlir::isa<NoneType>(getBias().getType()));
+
+  auto operands = adaptor.getOperands();
+  ElementsAttr input_tensor = dyn_cast_or_null<ElementsAttr>(operands[0]);
+  ElementsAttr weights_tensor = dyn_cast_or_null<ElementsAttr>(operands[1]);
+  auto weights_qconst_op = getFilter().getDefiningOp<QConstOp>();
+  if (!weights_qconst_op) {
+    if (auto dequant_op = getFilter().getDefiningOp<DequantizeOp>()) {
+      weights_qconst_op = dequant_op.getInput().getDefiningOp<QConstOp>();
+    }
+  }
+
+  if (!input_tensor || (!weights_tensor && !weights_qconst_op)) {
+    return {};
+  }
+
+  ElementsAttr bias_tensor;
+  if (has_bias) {
+    bias_tensor = dyn_cast_or_null<ElementsAttr>(operands[2]);
+    if (!bias_tensor) return {};
+  }
+
+  const auto input_type = mlir::dyn_cast<ShapedType>(input_tensor.getType());
+  const auto weights_type = mlir::dyn_cast<ShapedType>(
+      weights_qconst_op ? weights_qconst_op.getOutput().getType()
+                        : getFilter().getType());
+  const auto bias_type = has_bias
+                             ? mlir::dyn_cast<ShapedType>(bias_tensor.getType())
+                             : ShapedType{};
+  const auto output_type = mlir::dyn_cast<ShapedType>(getType());
+
+  if (!input_type || !weights_type || !output_type ||
+      (has_bias && !bias_type)) {
+    return {};
+  }
+
+  if (!input_type.getElementType().isF32() ||
+      !output_type.getElementType().isF32() ||
+      (has_bias && !bias_type.getElementType().isF32())) {
+    return {};
+  }
+
+  if (!input_type.hasStaticShape() || !weights_type.hasStaticShape() ||
+      !output_type.hasStaticShape() ||
+      (has_bias && !bias_type.hasStaticShape())) {
+    return {};
+  }
+
+  if (input_type.getRank() != 4 || weights_type.getRank() != 4 ||
+      output_type.getRank() != 4) {
+    return {};
+  }
+
+  const int64_t batches = input_type.getDimSize(0);
+  const int64_t input_h = input_type.getDimSize(1);
+  const int64_t input_w = input_type.getDimSize(2);
+  const int64_t input_c = input_type.getDimSize(3);
+
+  const int64_t output_depth = weights_type.getDimSize(0);
+  const int64_t filter_h = weights_type.getDimSize(1);
+  const int64_t filter_w = weights_type.getDimSize(2);
+  const int64_t filter_input_c = weights_type.getDimSize(3);
+
+  if (batches <= 0 || input_h <= 0 || input_w <= 0 || input_c <= 0 ||
+      output_depth <= 0 || filter_h <= 0 || filter_w <= 0 ||
+      filter_input_c <= 0) {
+    return {};
+  }
+
+  if (input_c % filter_input_c != 0) return {};
+  const int64_t groups = input_c / filter_input_c;
+  if (output_depth % groups != 0) return {};
+  const int64_t filters_per_group = output_depth / groups;
+
+  const int64_t stride_h = getStrideH();
+  const int64_t stride_w = getStrideW();
+  const int64_t dilation_h = getDilationHFactor();
+  const int64_t dilation_w = getDilationWFactor();
+  if (stride_h <= 0 || stride_w <= 0 || dilation_h <= 0 || dilation_w <= 0) {
+    return {};
+  }
+
+  tensorflow::Padding padding_enum;
+  if (!GetPaddingFromString(getPadding().str(), &padding_enum).ok()) {
+    return {};
+  }
+
+  int64_t out_h = 0, pad_top = 0, pad_bottom = 0;
+  if (!tensorflow::GetWindowedOutputSizeVerbose(input_h, filter_h, dilation_h,
+                                                stride_h, padding_enum, &out_h,
+                                                &pad_top, &pad_bottom)
+           .ok()) {
+    return {};
+  }
+
+  int64_t out_w = 0, pad_left = 0, pad_right = 0;
+  if (!tensorflow::GetWindowedOutputSizeVerbose(input_w, filter_w, dilation_w,
+                                                stride_w, padding_enum, &out_w,
+                                                &pad_left, &pad_right)
+           .ok()) {
+    return {};
+  }
+
+  if (output_type.getDimSize(0) != batches ||
+      output_type.getDimSize(1) != out_h ||
+      output_type.getDimSize(2) != out_w ||
+      output_type.getDimSize(3) != output_depth) {
+    return {};
+  }
+
+  if (has_bias) {
+    if (bias_type.getNumElements() != output_depth) {
+      return {};
+    }
+  }
+
+  auto input_values_range = FloatElementsAccessor::Create(input_tensor);
+  if (!input_values_range.has_value()) return {};
+
+  std::optional<FloatElementsAccessor> weights_values_range;
+  if (weights_tensor && weights_type.getElementType().isF32()) {
+    weights_values_range = FloatElementsAccessor::Create(weights_tensor);
+  } else if (weights_qconst_op &&
+             mlir::isa<quant::QuantizedType>(weights_type.getElementType())) {
+    weights_values_range = FloatElementsAccessor::CreateFromQConst(
+        weights_qconst_op, weights_type);
+  }
+  if (!weights_values_range.has_value()) return {};
+
+  std::optional<FloatElementsAccessor> bias_values_range;
+  if (has_bias) {
+    bias_values_range = FloatElementsAccessor::Create(bias_tensor);
+    if (!bias_values_range.has_value()) return {};
+  }
+
+  const int64_t total_outputs = batches * out_h * out_w * output_depth;
+  std::vector<float> result_values;
+  result_values.reserve(total_outputs);
+
+  for (int64_t b = 0; b < batches; ++b) {
+    for (int64_t out_y = 0; out_y < out_h; ++out_y) {
+      const int64_t in_y_origin = out_y * stride_h - pad_top;
+      for (int64_t out_x = 0; out_x < out_w; ++out_x) {
+        const int64_t in_x_origin = out_x * stride_w - pad_left;
+        for (int64_t oc = 0; oc < output_depth; ++oc) {
+          const int64_t group = oc / filters_per_group;
+          float sum = has_bias ? (*bias_values_range)[oc] : 0.0f;
+          float compensation = 0.0f;
+          for (int64_t fy = 0; fy < filter_h; ++fy) {
+            const int64_t in_y = in_y_origin + dilation_h * fy;
+            for (int64_t fx = 0; fx < filter_w; ++fx) {
+              const int64_t in_x = in_x_origin + dilation_w * fx;
+              if (in_x >= 0 && in_x < input_w && in_y >= 0 && in_y < input_h) {
+                for (int64_t in_c = 0; in_c < filter_input_c; ++in_c) {
+                  const int64_t ic = in_c + group * filter_input_c;
+                  const int64_t in_idx =
+                      ((b * input_h + in_y) * input_w + in_x) * input_c + ic;
+                  const int64_t filter_idx =
+                      ((oc * filter_h + fy) * filter_w + fx) * filter_input_c +
+                      in_c;
+                  const float addend = (*input_values_range)[in_idx] *
+                                       (*weights_values_range)[filter_idx];
+                  const float new_sum = sum + addend;
+                  if (std::abs(sum) >= std::abs(addend)) {
+                    compensation += (sum - new_sum) + addend;
+                  } else {
+                    compensation += (addend - new_sum) + sum;
+                  }
+                  sum = new_sum;
+                }
+              }
+            }
+          }
+          float val = sum + compensation;
+          auto act_val = ApplyActivation(act_func, val);
+          if (!act_val.has_value()) return {};
+          result_values.push_back(*act_val);
+        }
+      }
+    }
+  }
+
+  return DenseElementsAttr::get(output_type, ArrayRef<float>(result_values));
+}
+
 //===----------------------------------------------------------------------===//
 // DepthwiseConv2DOp
 //===----------------------------------------------------------------------===//
@@ -2450,6 +2880,200 @@ int64_t DepthwiseConv2DOp::GetArithmeticCount(Operation* op) {
     return count;
 
   return -1;
+}
+
+OpFoldResult DepthwiseConv2DOp::fold(FoldAdaptor adaptor) {
+  assert(adaptor.getOperands().size() >= 3);
+
+  StringRef act_func = getFusedActivationFunction();
+  if (act_func != "NONE" && act_func != "RELU" && act_func != "RELU_N1_TO_1" &&
+      act_func != "RELU6" && act_func != "TANH" && act_func != "SIGN_BIT") {
+    return {};
+  }
+
+  const bool has_bias =
+      !(!getBias() || mlir::isa<NoneType>(getBias().getType()));
+
+  auto operands = adaptor.getOperands();
+  ElementsAttr input_tensor = dyn_cast_or_null<ElementsAttr>(operands[0]);
+  ElementsAttr weights_tensor = dyn_cast_or_null<ElementsAttr>(operands[1]);
+  auto weights_qconst_op = getFilter().getDefiningOp<QConstOp>();
+  if (!weights_qconst_op) {
+    if (auto dequant_op = getFilter().getDefiningOp<DequantizeOp>()) {
+      weights_qconst_op = dequant_op.getInput().getDefiningOp<QConstOp>();
+    }
+  }
+
+  if (!input_tensor || (!weights_tensor && !weights_qconst_op)) {
+    return {};
+  }
+
+  ElementsAttr bias_tensor;
+  if (has_bias) {
+    bias_tensor = dyn_cast_or_null<ElementsAttr>(operands[2]);
+    if (!bias_tensor) return {};
+  }
+
+  const auto input_type = mlir::dyn_cast<ShapedType>(input_tensor.getType());
+  const auto weights_type = mlir::dyn_cast<ShapedType>(
+      weights_qconst_op ? weights_qconst_op.getOutput().getType()
+                        : getFilter().getType());
+  const auto bias_type = has_bias
+                             ? mlir::dyn_cast<ShapedType>(bias_tensor.getType())
+                             : ShapedType{};
+  const auto output_type = mlir::dyn_cast<ShapedType>(getType());
+
+  if (!input_type || !weights_type || !output_type ||
+      (has_bias && !bias_type)) {
+    return {};
+  }
+
+  if (!input_type.getElementType().isF32() ||
+      !output_type.getElementType().isF32() ||
+      (has_bias && !bias_type.getElementType().isF32())) {
+    return {};
+  }
+
+  if (!input_type.hasStaticShape() || !weights_type.hasStaticShape() ||
+      !output_type.hasStaticShape() ||
+      (has_bias && !bias_type.hasStaticShape())) {
+    return {};
+  }
+
+  if (input_type.getRank() != 4 || weights_type.getRank() != 4 ||
+      output_type.getRank() != 4) {
+    return {};
+  }
+
+  if (weights_type.getDimSize(0) != 1) {
+    return {};
+  }
+
+  const int64_t batches = input_type.getDimSize(0);
+  const int64_t input_h = input_type.getDimSize(1);
+  const int64_t input_w = input_type.getDimSize(2);
+  const int64_t input_c = input_type.getDimSize(3);
+
+  const int64_t filter_h = weights_type.getDimSize(1);
+  const int64_t filter_w = weights_type.getDimSize(2);
+  const int64_t output_depth = weights_type.getDimSize(3);
+  const int64_t depth_multiplier = getDepthMultiplier();
+
+  if (batches <= 0 || input_h <= 0 || input_w <= 0 || input_c <= 0 ||
+      filter_h <= 0 || filter_w <= 0 || output_depth <= 0 ||
+      depth_multiplier <= 0) {
+    return {};
+  }
+
+  if (output_depth != input_c * depth_multiplier) {
+    return {};
+  }
+
+  const int64_t stride_h = getStrideH();
+  const int64_t stride_w = getStrideW();
+  const int64_t dilation_h = getDilationHFactor();
+  const int64_t dilation_w = getDilationWFactor();
+  if (stride_h <= 0 || stride_w <= 0 || dilation_h <= 0 || dilation_w <= 0) {
+    return {};
+  }
+
+  tensorflow::Padding padding_enum;
+  if (!GetPaddingFromString(getPadding().str(), &padding_enum).ok()) {
+    return {};
+  }
+
+  int64_t out_h = 0, pad_top = 0, pad_bottom = 0;
+  if (!tensorflow::GetWindowedOutputSizeVerbose(input_h, filter_h, dilation_h,
+                                                stride_h, padding_enum, &out_h,
+                                                &pad_top, &pad_bottom)
+           .ok()) {
+    return {};
+  }
+
+  int64_t out_w = 0, pad_left = 0, pad_right = 0;
+  if (!tensorflow::GetWindowedOutputSizeVerbose(input_w, filter_w, dilation_w,
+                                                stride_w, padding_enum, &out_w,
+                                                &pad_left, &pad_right)
+           .ok()) {
+    return {};
+  }
+
+  if (output_type.getDimSize(0) != batches ||
+      output_type.getDimSize(1) != out_h ||
+      output_type.getDimSize(2) != out_w ||
+      output_type.getDimSize(3) != output_depth) {
+    return {};
+  }
+
+  if (has_bias) {
+    if (bias_type.getNumElements() != output_depth) {
+      return {};
+    }
+  }
+
+  auto input_values_range = FloatElementsAccessor::Create(input_tensor);
+  if (!input_values_range.has_value()) return {};
+
+  std::optional<FloatElementsAccessor> weights_values_range;
+  if (weights_tensor && weights_type.getElementType().isF32()) {
+    weights_values_range = FloatElementsAccessor::Create(weights_tensor);
+  } else if (weights_qconst_op &&
+             mlir::isa<quant::QuantizedType>(weights_type.getElementType())) {
+    weights_values_range = FloatElementsAccessor::CreateFromQConst(
+        weights_qconst_op, weights_type);
+  }
+  if (!weights_values_range.has_value()) return {};
+
+  std::optional<FloatElementsAccessor> bias_values_range;
+  if (has_bias) {
+    bias_values_range = FloatElementsAccessor::Create(bias_tensor);
+    if (!bias_values_range.has_value()) return {};
+  }
+
+  const int64_t total_outputs = batches * out_h * out_w * output_depth;
+  std::vector<float> result_values;
+  result_values.reserve(total_outputs);
+
+  for (int64_t b = 0; b < batches; ++b) {
+    for (int64_t out_y = 0; out_y < out_h; ++out_y) {
+      const int64_t in_y_origin = out_y * stride_h - pad_top;
+      for (int64_t out_x = 0; out_x < out_w; ++out_x) {
+        const int64_t in_x_origin = out_x * stride_w - pad_left;
+        for (int64_t oc = 0; oc < output_depth; ++oc) {
+          const int64_t ic = oc / depth_multiplier;
+          float sum = has_bias ? (*bias_values_range)[oc] : 0.0f;
+          float compensation = 0.0f;
+          for (int64_t fy = 0; fy < filter_h; ++fy) {
+            const int64_t in_y = in_y_origin + dilation_h * fy;
+            for (int64_t fx = 0; fx < filter_w; ++fx) {
+              const int64_t in_x = in_x_origin + dilation_w * fx;
+              if (in_x >= 0 && in_x < input_w && in_y >= 0 && in_y < input_h) {
+                const int64_t in_idx =
+                    ((b * input_h + in_y) * input_w + in_x) * input_c + ic;
+                const int64_t filter_idx =
+                    (fy * filter_w + fx) * output_depth + oc;
+                const float addend = (*input_values_range)[in_idx] *
+                                     (*weights_values_range)[filter_idx];
+                const float new_sum = sum + addend;
+                if (std::abs(sum) >= std::abs(addend)) {
+                  compensation += (sum - new_sum) + addend;
+                } else {
+                  compensation += (addend - new_sum) + sum;
+                }
+                sum = new_sum;
+              }
+            }
+          }
+          float val = sum + compensation;
+          auto act_val = ApplyActivation(act_func, val);
+          if (!act_val.has_value()) return {};
+          result_values.push_back(*act_val);
+        }
+      }
+    }
+  }
+
+  return DenseElementsAttr::get(output_type, ArrayRef<float>(result_values));
 }
 
 //===----------------------------------------------------------------------===//
@@ -5169,6 +5793,195 @@ int64_t TransposeConvOp::GetArithmeticCount(Operation* op) {
   }
 
   return count;
+}
+
+OpFoldResult TransposeConvOp::fold(FoldAdaptor adaptor) {
+  assert(adaptor.getOperands().size() >= 3);
+
+  StringRef act_func = getFusedActivationFunction();
+  if (act_func != "NONE" && act_func != "RELU" && act_func != "RELU_N1_TO_1" &&
+      act_func != "RELU6" && act_func != "TANH" && act_func != "SIGN_BIT") {
+    return {};
+  }
+
+  const bool has_bias =
+      !(!getBias() || mlir::isa<NoneType>(getBias().getType()));
+
+  auto operands = adaptor.getOperands();
+  ElementsAttr weights_tensor = dyn_cast_or_null<ElementsAttr>(operands[1]);
+  ElementsAttr input_tensor = dyn_cast_or_null<ElementsAttr>(operands[2]);
+  auto weights_qconst_op = getWeights().getDefiningOp<QConstOp>();
+  if (!weights_qconst_op) {
+    if (auto dequant_op = getWeights().getDefiningOp<DequantizeOp>()) {
+      weights_qconst_op = dequant_op.getInput().getDefiningOp<QConstOp>();
+    }
+  }
+
+  if (!input_tensor || (!weights_tensor && !weights_qconst_op)) {
+    return {};
+  }
+
+  ElementsAttr bias_tensor;
+  if (has_bias) {
+    if (operands.size() < 4) return {};
+    bias_tensor = dyn_cast_or_null<ElementsAttr>(operands[3]);
+    if (!bias_tensor) return {};
+  }
+
+  const auto input_type = mlir::dyn_cast<ShapedType>(input_tensor.getType());
+  const auto weights_type = mlir::dyn_cast<ShapedType>(
+      weights_qconst_op ? weights_qconst_op.getOutput().getType()
+                        : getWeights().getType());
+  const auto bias_type = has_bias
+                             ? mlir::dyn_cast<ShapedType>(bias_tensor.getType())
+                             : ShapedType{};
+  const auto output_type = mlir::dyn_cast<ShapedType>(getType());
+
+  if (!input_type || !weights_type || !output_type ||
+      (has_bias && !bias_type)) {
+    return {};
+  }
+
+  if (!input_type.getElementType().isF32() ||
+      !output_type.getElementType().isF32() ||
+      (has_bias && !bias_type.getElementType().isF32())) {
+    return {};
+  }
+
+  if (!input_type.hasStaticShape() || !weights_type.hasStaticShape() ||
+      !output_type.hasStaticShape() ||
+      (has_bias && !bias_type.hasStaticShape())) {
+    return {};
+  }
+
+  if (input_type.getRank() != 4 || weights_type.getRank() != 4 ||
+      output_type.getRank() != 4) {
+    return {};
+  }
+
+  const int64_t batches = input_type.getDimSize(0);
+  const int64_t input_h = input_type.getDimSize(1);
+  const int64_t input_w = input_type.getDimSize(2);
+  const int64_t input_c = input_type.getDimSize(3);
+
+  const int64_t output_depth = weights_type.getDimSize(0);
+  const int64_t filter_h = weights_type.getDimSize(1);
+  const int64_t filter_w = weights_type.getDimSize(2);
+  const int64_t filter_input_c = weights_type.getDimSize(3);
+
+  const int64_t out_batches = output_type.getDimSize(0);
+  const int64_t out_h = output_type.getDimSize(1);
+  const int64_t out_w = output_type.getDimSize(2);
+  const int64_t out_c = output_type.getDimSize(3);
+
+  if (batches <= 0 || input_h <= 0 || input_w <= 0 || input_c <= 0 ||
+      output_depth <= 0 || filter_h <= 0 || filter_w <= 0 ||
+      filter_input_c <= 0 || out_batches <= 0 || out_h <= 0 || out_w <= 0 ||
+      out_c <= 0) {
+    return {};
+  }
+
+  if (batches != out_batches || output_depth != out_c ||
+      input_c != filter_input_c) {
+    return {};
+  }
+
+  const int64_t stride_h = getStrideH();
+  const int64_t stride_w = getStrideW();
+  if (stride_h <= 0 || stride_w <= 0) {
+    return {};
+  }
+
+  tensorflow::Padding padding_enum;
+  if (!GetPaddingFromString(getPadding().str(), &padding_enum).ok()) {
+    return {};
+  }
+
+  int64_t computed_in_h = 0, pad_top = 0, pad_bottom = 0;
+  if (!tensorflow::GetWindowedOutputSizeVerbose(
+           out_h, filter_h, /*dilation_rate=*/1, stride_h, padding_enum,
+           &computed_in_h, &pad_top, &pad_bottom)
+           .ok()) {
+    return {};
+  }
+  if (computed_in_h != input_h) return {};
+
+  int64_t computed_in_w = 0, pad_left = 0, pad_right = 0;
+  if (!tensorflow::GetWindowedOutputSizeVerbose(
+           out_w, filter_w, /*dilation_rate=*/1, stride_w, padding_enum,
+           &computed_in_w, &pad_left, &pad_right)
+           .ok()) {
+    return {};
+  }
+  if (computed_in_w != input_w) return {};
+
+  if (has_bias) {
+    if (bias_type.getNumElements() != output_depth) {
+      return {};
+    }
+  }
+
+  auto input_values_range = FloatElementsAccessor::Create(input_tensor);
+  if (!input_values_range.has_value()) return {};
+
+  std::optional<FloatElementsAccessor> weights_values_range;
+  if (weights_tensor && weights_type.getElementType().isF32()) {
+    weights_values_range = FloatElementsAccessor::Create(weights_tensor);
+  } else if (weights_qconst_op &&
+             mlir::isa<quant::QuantizedType>(weights_type.getElementType())) {
+    weights_values_range = FloatElementsAccessor::CreateFromQConst(
+        weights_qconst_op, weights_type);
+  }
+  if (!weights_values_range.has_value()) return {};
+
+  std::optional<FloatElementsAccessor> bias_values_range;
+  if (has_bias) {
+    bias_values_range = FloatElementsAccessor::Create(bias_tensor);
+    if (!bias_values_range.has_value()) return {};
+  }
+
+  const int64_t total_outputs = batches * out_h * out_w * output_depth;
+  std::vector<float> result_values(total_outputs, 0.0f);
+
+  for (int64_t b = 0; b < batches; ++b) {
+    for (int64_t in_y = 0; in_y < input_h; ++in_y) {
+      for (int64_t in_x = 0; in_x < input_w; ++in_x) {
+        for (int64_t in_c = 0; in_c < input_c; ++in_c) {
+          const int64_t out_x_origin = in_x * stride_w - pad_left;
+          const int64_t out_y_origin = in_y * stride_h - pad_top;
+          for (int64_t fy = 0; fy < filter_h; ++fy) {
+            for (int64_t fx = 0; fx < filter_w; ++fx) {
+              for (int64_t oc = 0; oc < output_depth; ++oc) {
+                const int64_t out_x = out_x_origin + fx;
+                const int64_t out_y = out_y_origin + fy;
+                if (out_x >= 0 && out_x < out_w && out_y >= 0 &&
+                    out_y < out_h) {
+                  const int64_t in_idx =
+                      ((b * input_h + in_y) * input_w + in_x) * input_c + in_c;
+                  const int64_t filter_idx =
+                      ((oc * filter_h + fy) * filter_w + fx) * input_c + in_c;
+                  const int64_t out_idx =
+                      ((b * out_h + out_y) * out_w + out_x) * output_depth + oc;
+                  result_values[out_idx] += (*input_values_range)[in_idx] *
+                                            (*weights_values_range)[filter_idx];
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (int64_t i = 0; i < total_outputs; ++i) {
+    const int64_t oc = i % output_depth;
+    float val = result_values[i] + (has_bias ? (*bias_values_range)[oc] : 0.0f);
+    auto act_val = ApplyActivation(act_func, val);
+    if (!act_val.has_value()) return {};
+    result_values[i] = *act_val;
+  }
+
+  return DenseElementsAttr::get(output_type, ArrayRef<float>(result_values));
 }
 
 //===----------------------------------------------------------------------===//
