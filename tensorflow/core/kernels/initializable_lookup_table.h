@@ -110,9 +110,9 @@ class InitializableLookupTable : public LookupInterface {
   // This class is Thread-unsafe.
   class InitTableIterator {
    public:
-    InitTableIterator() {}
+    InitTableIterator() = default;
 
-    virtual ~InitTableIterator() {}
+    virtual ~InitTableIterator() = default;
 
     // Prepares the next batch of key and value tensors.
     virtual void Next() = 0;
