@@ -1348,6 +1348,44 @@ class ArrayMethodsTest(test.TestCase):
         [[2, 1, 1, 2, 3, 3, 2], [2, 1, 1, 2, 3, 3, 2], [5, 4, 4, 5, 6, 6, 5],
          [5, 4, 4, 5, 6, 6, 5]])
 
+  def testPadBroadcastPadWidth(self):
+    t = np.arange(12).reshape(3, 4)
+    for pad_width in [1, [1], [1, 2], [[1, 2]], [[1, 2], [2, 1]]]:
+      for mode in ['constant', 'reflect', 'symmetric']:
+        self.assertAllEqual(
+            np_array_ops.pad(t, pad_width, mode),
+            np.pad(t, pad_width, mode))
+
+  def testPadBroadcastPadWidthEdgeCases(self):
+    self.assertAllEqual(
+        np_array_ops.pad(5, 1, 'constant'), np.pad(5, 1, 'constant'))
+    t = np.arange(6)
+    self.assertAllEqual(
+        np_array_ops.pad(t, [1, 2], 'reflect'), np.pad(t, [1, 2], 'reflect'))
+    for empty in (np.zeros((0, 3)), np.zeros((3, 0))):
+      self.assertAllEqual(
+          np_array_ops.pad(empty, 1, 'constant'), np.pad(empty, 1, 'constant'))
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r'broadcast|Incompatible|Dimensions must be equal'):
+      np_array_ops.pad(np.arange(12).reshape(3, 4), [1, 2, 3], 'constant')
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), r'non-negative'):
+      np_array_ops.pad(np.arange(6), -1, 'constant')
+
+  def testPadBroadcastPadWidthStaticShape(self):
+    pad = def_function.function(
+        lambda x: np_array_ops.pad(x, 2, 'constant'),
+        input_signature=[tensor_spec.TensorSpec([3, 4], dtypes.float32)])
+    self.assertEqual(pad.get_concrete_function().output_shapes, [7, 8])
+
+  def testPadBroadcastPadWidthUnknownShape(self):
+    t = np.arange(12, dtype=np.float32).reshape(3, 4)
+    pad = def_function.function(
+        lambda x: np_array_ops.pad(x, [1, 2], 'reflect'),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    self.assertAllEqual(pad(t), np.pad(t, [1, 2], 'reflect'))
+
   def testTake(self):
     a = [4, 3, 5, 7, 6, 8]
     indices = [0, 1, 4]
