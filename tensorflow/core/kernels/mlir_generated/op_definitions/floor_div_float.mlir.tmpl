@@ -9,6 +9,9 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
   %c2 = arith.constant 2 : index
   %4 = shape.const_shape [1] : tensor<1xindex>
   %c1 = arith.constant 1 : index
+  %cst_zero_fd = mhlo.constant dense<0.000000e+00> : tensor<elem_type>
+  %cst_neg_one_fd = mhlo.constant dense<-1.000000e+00> : tensor<output_type>
+  %cst_false_fd = mhlo.constant dense<false> : tensor<i1>
   %5 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
   %6 = shape.shape_of %arg1 : tensor<*xelem_type> -> tensor<?xindex>
   %7 = shape.num_elements %5 : tensor<?xindex> -> index
@@ -21,7 +24,20 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
     %16 = tensor.reshape %arg1(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
     %17 = chlo.broadcast_divide %15, %16 : (tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xoutput_type>
     %18 = mhlo.floor %17 : tensor<?xoutput_type>
-    %cast = tensor.cast %18 : tensor<?xoutput_type> to tensor<*xoutput_type>
+    %rfin_fd1 = mhlo.is_finite %16 : (tensor<?xelem_type>) -> tensor<?xi1>
+    %rnotfin_fd1 = chlo.broadcast_compare %rfin_fd1, %cst_false_fd {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xi1>, tensor<i1>) -> tensor<?xi1>
+    %rord_fd1 = chlo.broadcast_compare %16, %16 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xi1>
+    %rinf_fd1 = chlo.broadcast_and %rnotfin_fd1, %rord_fd1 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+    %lfin_fd1 = mhlo.is_finite %15 : (tensor<elem_type>) -> tensor<i1>
+    %lnz_fd1 = chlo.broadcast_compare %15, %cst_zero_fd {comparison_direction = #chlo<comparison_direction NE>} : (tensor<elem_type>, tensor<elem_type>) -> tensor<i1>
+    %lneg_fd1 = chlo.broadcast_compare %15, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<elem_type>, tensor<elem_type>) -> tensor<i1>
+    %rneg_fd1 = chlo.broadcast_compare %16, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+    %sdiff_fd1 = chlo.broadcast_compare %lneg_fd1, %rneg_fd1 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<i1>, tensor<?xi1>) -> tensor<?xi1>
+    %lok_fd1 = chlo.broadcast_and %lfin_fd1, %lnz_fd1 : (tensor<i1>, tensor<i1>) -> tensor<i1>
+    %m1_fd1 = chlo.broadcast_and %rinf_fd1, %lok_fd1 : (tensor<?xi1>, tensor<i1>) -> tensor<?xi1>
+    %mask_fd1 = chlo.broadcast_and %m1_fd1, %sdiff_fd1 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+    %fdres_fd1 = chlo.broadcast_select %mask_fd1, %cst_neg_one_fd, %18 : (tensor<?xi1>, tensor<output_type>, tensor<?xoutput_type>) -> tensor<?xoutput_type>
+    %cast = tensor.cast %fdres_fd1 : tensor<?xoutput_type> to tensor<*xoutput_type>
     scf.yield %cast : tensor<*xoutput_type>
   } else {
     %14 = shape.num_elements %6 : tensor<?xindex> -> index
@@ -33,7 +49,20 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
       %19 = tensor.reshape %arg1(%c_empty) : (tensor<*xelem_type>, tensor<0xindex>) -> tensor<elem_type>
       %20 = chlo.broadcast_divide %18, %19 : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xoutput_type>
       %21 = mhlo.floor %20 : tensor<?xoutput_type>
-      %cast = tensor.cast %21 : tensor<?xoutput_type> to tensor<*xoutput_type>
+      %rfin_fd2 = mhlo.is_finite %19 : (tensor<elem_type>) -> tensor<i1>
+      %rnotfin_fd2 = chlo.broadcast_compare %rfin_fd2, %cst_false_fd {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+      %rord_fd2 = chlo.broadcast_compare %19, %19 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<elem_type>, tensor<elem_type>) -> tensor<i1>
+      %rinf_fd2 = chlo.broadcast_and %rnotfin_fd2, %rord_fd2 : (tensor<i1>, tensor<i1>) -> tensor<i1>
+      %lfin_fd2 = mhlo.is_finite %18 : (tensor<?xelem_type>) -> tensor<?xi1>
+      %lnz_fd2 = chlo.broadcast_compare %18, %cst_zero_fd {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+      %lneg_fd2 = chlo.broadcast_compare %18, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+      %rneg_fd2 = chlo.broadcast_compare %19, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<elem_type>, tensor<elem_type>) -> tensor<i1>
+      %sdiff_fd2 = chlo.broadcast_compare %lneg_fd2, %rneg_fd2 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xi1>, tensor<i1>) -> tensor<?xi1>
+      %lok_fd2 = chlo.broadcast_and %lfin_fd2, %lnz_fd2 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+      %m1_fd2 = chlo.broadcast_and %rinf_fd2, %lok_fd2 : (tensor<i1>, tensor<?xi1>) -> tensor<?xi1>
+      %mask_fd2 = chlo.broadcast_and %m1_fd2, %sdiff_fd2 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+      %fdres_fd2 = chlo.broadcast_select %mask_fd2, %cst_neg_one_fd, %21 : (tensor<?xi1>, tensor<output_type>, tensor<?xoutput_type>) -> tensor<?xoutput_type>
+      %cast = tensor.cast %fdres_fd2 : tensor<?xoutput_type> to tensor<*xoutput_type>
       scf.yield %cast : tensor<*xoutput_type>
     } else {
       %17 = shape.shape_eq %5, %6 : tensor<?xindex>, tensor<?xindex>
@@ -45,7 +74,20 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
         %22 = tensor.reshape %arg1(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
         %23 = chlo.broadcast_divide %21, %22 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xoutput_type>
         %24 = mhlo.floor %23 : tensor<?xoutput_type>
-        %cast = tensor.cast %24 : tensor<?xoutput_type> to tensor<*xoutput_type>
+        %rfin_fd3 = mhlo.is_finite %22 : (tensor<?xelem_type>) -> tensor<?xi1>
+        %rnotfin_fd3 = chlo.broadcast_compare %rfin_fd3, %cst_false_fd {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xi1>, tensor<i1>) -> tensor<?xi1>
+        %rord_fd3 = chlo.broadcast_compare %22, %22 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xi1>
+        %rinf_fd3 = chlo.broadcast_and %rnotfin_fd3, %rord_fd3 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+        %lfin_fd3 = mhlo.is_finite %21 : (tensor<?xelem_type>) -> tensor<?xi1>
+        %lnz_fd3 = chlo.broadcast_compare %21, %cst_zero_fd {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+        %lneg_fd3 = chlo.broadcast_compare %21, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+        %rneg_fd3 = chlo.broadcast_compare %22, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+        %sdiff_fd3 = chlo.broadcast_compare %lneg_fd3, %rneg_fd3 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+        %lok_fd3 = chlo.broadcast_and %lfin_fd3, %lnz_fd3 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+        %m1_fd3 = chlo.broadcast_and %rinf_fd3, %lok_fd3 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+        %mask_fd3 = chlo.broadcast_and %m1_fd3, %sdiff_fd3 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+        %fdres_fd3 = chlo.broadcast_select %mask_fd3, %cst_neg_one_fd, %24 : (tensor<?xi1>, tensor<output_type>, tensor<?xoutput_type>) -> tensor<?xoutput_type>
+        %cast = tensor.cast %fdres_fd3 : tensor<?xoutput_type> to tensor<*xoutput_type>
         scf.yield %cast : tensor<*xoutput_type>
       } else {
         %19:2 = mhlo.minimum_broadcast_shapes %5, %6 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
@@ -63,7 +105,20 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
           %29 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
           %30 = chlo.broadcast_divide %27, %29 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xoutput_type>
           %31 = mhlo.floor %30 : tensor<?xoutput_type>
-          %cast_1 = tensor.cast %31 : tensor<?xoutput_type> to tensor<*xoutput_type>
+          %rfin_fd4 = mhlo.is_finite %29 : (tensor<?xelem_type>) -> tensor<?xi1>
+          %rnotfin_fd4 = chlo.broadcast_compare %rfin_fd4, %cst_false_fd {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xi1>, tensor<i1>) -> tensor<?xi1>
+          %rord_fd4 = chlo.broadcast_compare %29, %29 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xi1>
+          %rinf_fd4 = chlo.broadcast_and %rnotfin_fd4, %rord_fd4 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+          %lfin_fd4 = mhlo.is_finite %27 : (tensor<?xelem_type>) -> tensor<?xi1>
+          %lnz_fd4 = chlo.broadcast_compare %27, %cst_zero_fd {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+          %lneg_fd4 = chlo.broadcast_compare %27, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+          %rneg_fd4 = chlo.broadcast_compare %29, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+          %sdiff_fd4 = chlo.broadcast_compare %lneg_fd4, %rneg_fd4 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+          %lok_fd4 = chlo.broadcast_and %lfin_fd4, %lnz_fd4 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+          %m1_fd4 = chlo.broadcast_and %rinf_fd4, %lok_fd4 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+          %mask_fd4 = chlo.broadcast_and %m1_fd4, %sdiff_fd4 : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+          %fdres_fd4 = chlo.broadcast_select %mask_fd4, %cst_neg_one_fd, %31 : (tensor<?xi1>, tensor<output_type>, tensor<?xoutput_type>) -> tensor<?xoutput_type>
+          %cast_1 = tensor.cast %fdres_fd4 : tensor<?xoutput_type> to tensor<*xoutput_type>
           scf.yield %cast_1 : tensor<*xoutput_type>
         } else {
           %26 = arith.cmpi ule, %23, %c2 : index
@@ -76,7 +131,20 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
             %31 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
             %32 = chlo.broadcast_divide %29, %31 : (tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xoutput_type>
             %33 = mhlo.floor %32 : tensor<?x?xoutput_type>
-            %cast_1 = tensor.cast %33 : tensor<?x?xoutput_type> to tensor<*xoutput_type>
+            %rfin_fd5 = mhlo.is_finite %31 : (tensor<?x?xelem_type>) -> tensor<?x?xi1>
+            %rnotfin_fd5 = chlo.broadcast_compare %rfin_fd5, %cst_false_fd {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?xi1>, tensor<i1>) -> tensor<?x?xi1>
+            %rord_fd5 = chlo.broadcast_compare %31, %31 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xi1>
+            %rinf_fd5 = chlo.broadcast_and %rnotfin_fd5, %rord_fd5 : (tensor<?x?xi1>, tensor<?x?xi1>) -> tensor<?x?xi1>
+            %lfin_fd5 = mhlo.is_finite %29 : (tensor<?x?xelem_type>) -> tensor<?x?xi1>
+            %lnz_fd5 = chlo.broadcast_compare %29, %cst_zero_fd {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?xelem_type>, tensor<elem_type>) -> tensor<?x?xi1>
+            %lneg_fd5 = chlo.broadcast_compare %29, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?x?xelem_type>, tensor<elem_type>) -> tensor<?x?xi1>
+            %rneg_fd5 = chlo.broadcast_compare %31, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?x?xelem_type>, tensor<elem_type>) -> tensor<?x?xi1>
+            %sdiff_fd5 = chlo.broadcast_compare %lneg_fd5, %rneg_fd5 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?xi1>, tensor<?x?xi1>) -> tensor<?x?xi1>
+            %lok_fd5 = chlo.broadcast_and %lfin_fd5, %lnz_fd5 : (tensor<?x?xi1>, tensor<?x?xi1>) -> tensor<?x?xi1>
+            %m1_fd5 = chlo.broadcast_and %rinf_fd5, %lok_fd5 : (tensor<?x?xi1>, tensor<?x?xi1>) -> tensor<?x?xi1>
+            %mask_fd5 = chlo.broadcast_and %m1_fd5, %sdiff_fd5 : (tensor<?x?xi1>, tensor<?x?xi1>) -> tensor<?x?xi1>
+            %fdres_fd5 = chlo.broadcast_select %mask_fd5, %cst_neg_one_fd, %33 : (tensor<?x?xi1>, tensor<output_type>, tensor<?x?xoutput_type>) -> tensor<?x?xoutput_type>
+            %cast_1 = tensor.cast %fdres_fd5 : tensor<?x?xoutput_type> to tensor<*xoutput_type>
             scf.yield %cast_1 : tensor<*xoutput_type>
           } else {
             %28 = arith.cmpi ule, %23, %c3 : index
@@ -89,7 +157,20 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
               %33 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
               %34 = chlo.broadcast_divide %31, %33 : (tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xoutput_type>
               %35 = mhlo.floor %34 : tensor<?x?x?xoutput_type>
-              %cast_1 = tensor.cast %35 : tensor<?x?x?xoutput_type> to tensor<*xoutput_type>
+              %rfin_fd6 = mhlo.is_finite %33 : (tensor<?x?x?xelem_type>) -> tensor<?x?x?xi1>
+              %rnotfin_fd6 = chlo.broadcast_compare %rfin_fd6, %cst_false_fd {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?xi1>, tensor<i1>) -> tensor<?x?x?xi1>
+              %rord_fd6 = chlo.broadcast_compare %33, %33 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xi1>
+              %rinf_fd6 = chlo.broadcast_and %rnotfin_fd6, %rord_fd6 : (tensor<?x?x?xi1>, tensor<?x?x?xi1>) -> tensor<?x?x?xi1>
+              %lfin_fd6 = mhlo.is_finite %31 : (tensor<?x?x?xelem_type>) -> tensor<?x?x?xi1>
+              %lnz_fd6 = chlo.broadcast_compare %31, %cst_zero_fd {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?xi1>
+              %lneg_fd6 = chlo.broadcast_compare %31, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?xi1>
+              %rneg_fd6 = chlo.broadcast_compare %33, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?xi1>
+              %sdiff_fd6 = chlo.broadcast_compare %lneg_fd6, %rneg_fd6 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?xi1>, tensor<?x?x?xi1>) -> tensor<?x?x?xi1>
+              %lok_fd6 = chlo.broadcast_and %lfin_fd6, %lnz_fd6 : (tensor<?x?x?xi1>, tensor<?x?x?xi1>) -> tensor<?x?x?xi1>
+              %m1_fd6 = chlo.broadcast_and %rinf_fd6, %lok_fd6 : (tensor<?x?x?xi1>, tensor<?x?x?xi1>) -> tensor<?x?x?xi1>
+              %mask_fd6 = chlo.broadcast_and %m1_fd6, %sdiff_fd6 : (tensor<?x?x?xi1>, tensor<?x?x?xi1>) -> tensor<?x?x?xi1>
+              %fdres_fd6 = chlo.broadcast_select %mask_fd6, %cst_neg_one_fd, %35 : (tensor<?x?x?xi1>, tensor<output_type>, tensor<?x?x?xoutput_type>) -> tensor<?x?x?xoutput_type>
+              %cast_1 = tensor.cast %fdres_fd6 : tensor<?x?x?xoutput_type> to tensor<*xoutput_type>
               scf.yield %cast_1 : tensor<*xoutput_type>
             } else {
               %30 = arith.cmpi ule, %23, %c4 : index
@@ -102,7 +183,20 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
                 %35 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
                 %36 = chlo.broadcast_divide %33, %35 : (tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xoutput_type>
                 %37 = mhlo.floor %36 : tensor<?x?x?x?xoutput_type>
-                %cast_1 = tensor.cast %37 : tensor<?x?x?x?xoutput_type> to tensor<*xoutput_type>
+                %rfin_fd7 = mhlo.is_finite %35 : (tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xi1>
+                %rnotfin_fd7 = chlo.broadcast_compare %rfin_fd7, %cst_false_fd {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?x?xi1>, tensor<i1>) -> tensor<?x?x?x?xi1>
+                %rord_fd7 = chlo.broadcast_compare %35, %35 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xi1>
+                %rinf_fd7 = chlo.broadcast_and %rnotfin_fd7, %rord_fd7 : (tensor<?x?x?x?xi1>, tensor<?x?x?x?xi1>) -> tensor<?x?x?x?xi1>
+                %lfin_fd7 = mhlo.is_finite %33 : (tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xi1>
+                %lnz_fd7 = chlo.broadcast_compare %33, %cst_zero_fd {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?x?xi1>
+                %lneg_fd7 = chlo.broadcast_compare %33, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?x?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?x?xi1>
+                %rneg_fd7 = chlo.broadcast_compare %35, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?x?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?x?xi1>
+                %sdiff_fd7 = chlo.broadcast_compare %lneg_fd7, %rneg_fd7 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?x?xi1>, tensor<?x?x?x?xi1>) -> tensor<?x?x?x?xi1>
+                %lok_fd7 = chlo.broadcast_and %lfin_fd7, %lnz_fd7 : (tensor<?x?x?x?xi1>, tensor<?x?x?x?xi1>) -> tensor<?x?x?x?xi1>
+                %m1_fd7 = chlo.broadcast_and %rinf_fd7, %lok_fd7 : (tensor<?x?x?x?xi1>, tensor<?x?x?x?xi1>) -> tensor<?x?x?x?xi1>
+                %mask_fd7 = chlo.broadcast_and %m1_fd7, %sdiff_fd7 : (tensor<?x?x?x?xi1>, tensor<?x?x?x?xi1>) -> tensor<?x?x?x?xi1>
+                %fdres_fd7 = chlo.broadcast_select %mask_fd7, %cst_neg_one_fd, %37 : (tensor<?x?x?x?xi1>, tensor<output_type>, tensor<?x?x?x?xoutput_type>) -> tensor<?x?x?x?xoutput_type>
+                %cast_1 = tensor.cast %fdres_fd7 : tensor<?x?x?x?xoutput_type> to tensor<*xoutput_type>
                 scf.yield %cast_1 : tensor<*xoutput_type>
               } else {
                 %32 = arith.cmpi ule, %23, %c5 : index
@@ -115,7 +209,20 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
                 %36 = tensor.reshape %arg1(%cast_0) : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
                 %37 = chlo.broadcast_divide %34, %36 : (tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xoutput_type>
                 %38 = mhlo.floor %37 : tensor<?x?x?x?x?xoutput_type>
-                %cast_1 = tensor.cast %38 : tensor<?x?x?x?x?xoutput_type> to tensor<*xoutput_type>
+                %rfin_fd8 = mhlo.is_finite %36 : (tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xi1>
+                %rnotfin_fd8 = chlo.broadcast_compare %rfin_fd8, %cst_false_fd {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?x?x?xi1>, tensor<i1>) -> tensor<?x?x?x?x?xi1>
+                %rord_fd8 = chlo.broadcast_compare %36, %36 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xi1>
+                %rinf_fd8 = chlo.broadcast_and %rnotfin_fd8, %rord_fd8 : (tensor<?x?x?x?x?xi1>, tensor<?x?x?x?x?xi1>) -> tensor<?x?x?x?x?xi1>
+                %lfin_fd8 = mhlo.is_finite %34 : (tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xi1>
+                %lnz_fd8 = chlo.broadcast_compare %34, %cst_zero_fd {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?x?x?xi1>
+                %lneg_fd8 = chlo.broadcast_compare %34, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?x?x?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?x?x?xi1>
+                %rneg_fd8 = chlo.broadcast_compare %36, %cst_zero_fd {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?x?x?x?x?xelem_type>, tensor<elem_type>) -> tensor<?x?x?x?x?xi1>
+                %sdiff_fd8 = chlo.broadcast_compare %lneg_fd8, %rneg_fd8 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?x?x?xi1>, tensor<?x?x?x?x?xi1>) -> tensor<?x?x?x?x?xi1>
+                %lok_fd8 = chlo.broadcast_and %lfin_fd8, %lnz_fd8 : (tensor<?x?x?x?x?xi1>, tensor<?x?x?x?x?xi1>) -> tensor<?x?x?x?x?xi1>
+                %m1_fd8 = chlo.broadcast_and %rinf_fd8, %lok_fd8 : (tensor<?x?x?x?x?xi1>, tensor<?x?x?x?x?xi1>) -> tensor<?x?x?x?x?xi1>
+                %mask_fd8 = chlo.broadcast_and %m1_fd8, %sdiff_fd8 : (tensor<?x?x?x?x?xi1>, tensor<?x?x?x?x?xi1>) -> tensor<?x?x?x?x?xi1>
+                %fdres_fd8 = chlo.broadcast_select %mask_fd8, %cst_neg_one_fd, %38 : (tensor<?x?x?x?x?xi1>, tensor<output_type>, tensor<?x?x?x?x?xoutput_type>) -> tensor<?x?x?x?x?xoutput_type>
+                %cast_1 = tensor.cast %fdres_fd8 : tensor<?x?x?x?x?xoutput_type> to tensor<*xoutput_type>
                 scf.yield %cast_1 : tensor<*xoutput_type>
               }
               scf.yield %31 : tensor<*xoutput_type>
