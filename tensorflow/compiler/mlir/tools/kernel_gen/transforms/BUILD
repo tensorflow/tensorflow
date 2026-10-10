@@ -182,11 +182,16 @@ cc_library(
         "@xla//xla/service/gpu:target_constants",
         "@xla//xla/stream_executor:device_description",
     ] + if_cuda_is_configured([
+        "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:cuda_root_path",
         "@xla//xla/stream_executor/cuda:assemble_compilation_provider",
         "@xla//xla/stream_executor/cuda:compilation_provider",
         "@xla//xla/stream_executor/cuda:compilation_provider_options",
         "@xla//xla/stream_executor/cuda:cuda_asm_compiler",
+        "@xla//xla/stream_executor/cuda:ptx_compiler",
+        "@xla//xla/stream_executor/cuda:ptx_compiler_support",
+        "@xla//xla/stream_executor/cuda:subprocess_compilation",
+        "@xla//xla/stream_executor/cuda:subprocess_compilation_provider",
         "@xla//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
     ]) + if_rocm_is_configured([
         "@xla//xla/stream_executor/gpu:asm_compiler",
