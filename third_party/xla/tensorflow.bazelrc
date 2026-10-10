@@ -327,8 +327,8 @@ common:sycl --@rules_ml_toolchain//common:enable_sycl=True
 common:sycl --repo_env=TF_NEED_SYCL=1
 common:sycl --repo_env=ENABLE_INTEL_XPU_TRITON=1
 common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
-common:sycl --cxxopt=-std=c++17
-common:sycl --host_cxxopt=-std=c++17
+common:sycl --cxxopt=-std=c++20
+common:sycl --host_cxxopt=-std=c++20
 common:sycl --repo_env=SYCL_BUILD_HERMETIC=0
 common:sycl --define=build_with_onednn_async=true
 
@@ -406,13 +406,16 @@ common:macos --define=INCLUDEDIR=$(PREFIX)/include
 common:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
-# By default, build TF in C++ 17 mode.
-common:linux --cxxopt=-std=c++17
-common:linux --host_cxxopt=-std=c++17
-common:macos --cxxopt=-std=c++17
-common:macos --host_cxxopt=-std=c++17
-common:windows --cxxopt=/std:c++17
-common:windows --host_cxxopt=/std:c++17
+# Use the glibc 2.31 (manylinux_2_31, gcc-10, C++20) sysroot on Linux.
+common:linux --repo_env=SYSROOT_DIST=linux_glibc_2_31
+
+# By default, build TF in C++ 20 mode.
+common:linux --cxxopt=-std=c++20
+common:linux --host_cxxopt=-std=c++20
+common:macos --cxxopt=-std=c++20
+common:macos --host_cxxopt=-std=c++20
+common:windows --cxxopt=/std:c++20
+common:windows --host_cxxopt=/std:c++20
 
 # On windows, we still link everything into a single DLL.
 common:windows --config=monolithic

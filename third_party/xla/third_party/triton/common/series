@@ -35,5 +35,4 @@ llvm_cl986804242.patch
 useStrictPropertiesInAssemblyFormat.patch
 llvm_cl991819890.patch
 fix_load_ops.patch
-cxx17_support.patch
 llvm_cl996124567.patch

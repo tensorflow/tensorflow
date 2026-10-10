@@ -1,0 +1,96 @@
+--- a/cc/config/aarch64_ubuntu18_gcc8.4/sysroot.BUILD
++++ b/cc/config/aarch64_ubuntu18_gcc8.4/sysroot.BUILD
+@@ -67,7 +67,6 @@
+         "usr/include/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/aarch64-linux-gnu/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/c++/{gcc_version}/backward".format(gcc_version = GCC_VERSION),
+-        "usr/include/c++/{gcc_version}/experimental".format(gcc_version = GCC_VERSION),
+     ],
+     visibility = ["//visibility:public"],
+ )
+--- a/cc/config/aarch64_ubuntu20_gcc10/sysroot.BUILD
++++ b/cc/config/aarch64_ubuntu20_gcc10/sysroot.BUILD
+@@ -67,7 +67,6 @@
+         "usr/include/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/aarch64-linux-gnu/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/c++/{gcc_version}/backward".format(gcc_version = GCC_VERSION),
+-        "usr/include/c++/{gcc_version}/experimental".format(gcc_version = GCC_VERSION),
+     ],
+     visibility = ["//visibility:public"],
+ )
+--- a/cc/config/x86_64_ubuntu18_gcc8.4/sysroot.BUILD
++++ b/cc/config/x86_64_ubuntu18_gcc8.4/sysroot.BUILD
+@@ -67,7 +67,6 @@
+         "usr/include/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/x86_64-linux-gnu/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/c++/{gcc_version}/backward".format(gcc_version = GCC_VERSION),
+-        "usr/include/c++/{gcc_version}/experimental".format(gcc_version = GCC_VERSION),
+     ],
+     visibility = ["//visibility:public"],
+ )
+--- a/cc/config/x86_64_ubuntu20_gcc10/sysroot.BUILD
++++ b/cc/config/x86_64_ubuntu20_gcc10/sysroot.BUILD
+@@ -67,7 +67,6 @@
+         "usr/include/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/x86_64-linux-gnu/c++/{gcc_version}".format(gcc_version = GCC_VERSION),
+         "usr/include/c++/{gcc_version}/backward".format(gcc_version = GCC_VERSION),
+-        "usr/include/c++/{gcc_version}/experimental".format(gcc_version = GCC_VERSION),
+     ],
+     visibility = ["//visibility:public"],
+ )
+--- a/cc/deps/cc_toolchain_deps.bzl
++++ b/cc/deps/cc_toolchain_deps.bzl
+@@ -48,7 +48,7 @@
+     if "sysroot_linux_x86_64" not in native.existing_rules():
+         sysroot(
+             name = "sysroot_linux_x86_64",
+-            default_dist = "linux_glibc_2_27",
++            default_dist = "linux_glibc_2_31",
+             dists = {
+                 "@sysroot_linux_x86_64_glibc_2_27//:startup_libs": "linux_glibc_2_27",
+                 "@sysroot_linux_x86_64_glibc_2_31//:startup_libs": "linux_glibc_2_31",
+@@ -112,7 +112,7 @@
+     if "sysroot_linux_aarch64" not in native.existing_rules():
+         sysroot(
+             name = "sysroot_linux_aarch64",
+-            default_dist = "linux_glibc_2_27",
++            default_dist = "linux_glibc_2_31",
+             dists = {
+                 "@sysroot_linux_aarch64_glibc_2_27//:startup_libs": "linux_glibc_2_27",
+                 "@sysroot_linux_aarch64_glibc_2_31//:startup_libs": "linux_glibc_2_31",
+--- a/cc/impls/linux_x86_64_linux_x86_64_rocm/BUILD
++++ b/cc/impls/linux_x86_64_linux_x86_64_rocm/BUILD
+@@ -273,6 +273,7 @@
+ 
+     # C++ standard flags
+     "//third_party/rules_cc_toolchain/features:c++17",
++    "//third_party/rules_cc_toolchain/features:c++20",
+ 
+     # Other flags
+     "//cc/features:allow_shlib_undefined",
+--- a/cc/impls/linux_x86_64_linux_x86_64_rocm/wrappers/hipcc_wrapper
++++ b/cc/impls/linux_x86_64_linux_x86_64_rocm/wrappers/hipcc_wrapper
+@@ -263,8 +263,8 @@
+     # This ensures proper macro setup before other headers
+     cmd.extend(["--include=hip/hip_runtime.h"])
+ 
+-    # Force C++17 dialect
+-    cmd.extend(["--std=c++17"])
++    # Force C++20 dialect
++    cmd.extend(["--std=c++20"])
+ 
+     # Use -fno-gpu-rdc by default
+     cmd.extend(["-fno-gpu-rdc", "-fcuda-flush-denormals-to-zero"])
+--- a/cc/rocm/features/rocm_hipcc_feature.bzl
++++ b/cc/rocm/features/rocm_hipcc_feature.bzl
+@@ -108,8 +108,8 @@
+ 
+     # C++ only flags
+     cpp_only_flags = [
+-        # Force C++17 for HIP compilation (only valid for C++)
+-        "--std=c++17",
++        # Force C++20 for HIP compilation (only valid for C++)
++        "--std=c++20",
+     ]
+ 
+     return _feature(

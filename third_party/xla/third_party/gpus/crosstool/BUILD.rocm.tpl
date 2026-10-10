@@ -81,7 +81,7 @@ cc_toolchain_config(
     cpu = "local",
     # Include directories detected from local clang + ROCm includes
     cxx_builtin_include_directories = _LOCAL_CLANG.include_directories,
-    cxx_flags = ["-std=c++17"],
+    cxx_flags = ["-std=c++20"],
     dbg_compile_flags = ["-g"],
     host_compiler_path = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
     host_compiler_prefix = "/usr/bin",
