@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_SPARSE_XENT_OP_H_
 // Functor definition for SparseXentOp, must be compilable by nvcc.
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -70,7 +72,7 @@ class SparseXentLossGenerator {
   operator()(const Eigen::array<int, 2>& coords) const {
     const int batch = coords[0];
     const int depth = coords[1];
-    const Index label = tensorflow::internal::SubtleMustCopy(labels_(batch));
+    const Index label = internal::SubtleMustCopy(labels_(batch));
     if (!FastBoundsCheck(label, max_depth_)) {
       return Eigen::NumTraits<T>::quiet_NaN();
     }
@@ -110,7 +112,7 @@ class SparseXentGradGenerator {
   operator()(const Eigen::array<int, 2>& coords) const {
     const int batch = coords[0];
     const int depth = coords[1];
-    const Index label = tensorflow::internal::SubtleMustCopy(labels_(batch));
+    const Index label = internal::SubtleMustCopy(labels_(batch));
     if (!FastBoundsCheck(label, max_depth_)) {
       return Eigen::NumTraits<T>::quiet_NaN();
     }
@@ -222,6 +224,32 @@ struct SparseXentEigenImpl {
         backprop.dimension(1) /* max_depth */);
     To32Bit(backprop).device(d) =
         To32Bit(backprop).generate(sparse_xent_grad_gen);
+
+    // In float64, p(label) can round to 1 while other class probabilities are
+    // still finite. Compute the labeled component from those probabilities so
+    // the small gradient signal is retained.
+    // Limit the extra reduction to double: preserving the existing float,
+    // half, and bfloat16 path avoids adding a full gradient pass to those
+    // performance-sensitive kernels.
+    // Restrict the host-side correction to the CPU thread-pool device.
+    if constexpr (std::is_same_v<T, double> &&
+                  std::is_same_v<Device, Eigen::ThreadPoolDevice>) {
+      // Removing the row sum from the labeled gradient retains the negative
+      // non-label probability sum without a per-element masking generator.
+      To32Bit(scratch).device(d) = To32Bit(backprop).sum(along_class);
+
+      auto backprop_mat = To32Bit(backprop);
+      auto labels_vec = To32Bit(labels);
+      auto scratch_vec = To32Bit(scratch);
+      const Index max_depth = backprop.dimension(1);
+      for (int b = 0; b < batch_size; ++b) {
+        // Recheck the copied label before indexing mutable host memory.
+        const Index label = internal::SubtleMustCopy(labels_vec(b));
+        if (FastBoundsCheck(label, max_depth)) {
+          backprop_mat(b, label) -= scratch_vec(b);
+        }
+      }
+    }
   }
 };
 
