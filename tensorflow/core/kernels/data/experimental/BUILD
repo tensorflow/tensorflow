@@ -849,10 +849,30 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "sliding_window_dataset_op_test",
+    size = "small",
+    srcs = ["sliding_window_dataset_op_test.cc"],
+    deps = [
+        ":sliding_window_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/kernels/data:range_dataset_op",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:status_matchers",
     ],
 )
 

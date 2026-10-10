@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <deque>
 #include <memory>
 #include <string>
@@ -24,7 +25,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -71,22 +73,21 @@ constexpr char kErrorMessage[] = ".error_message";
 class WindowDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t window_size,
-          int64_t window_shift, int64_t window_stride, bool drop_remainder)
+          int64_t window_shift, int64_t window_stride, bool drop_remainder,
+          size_t target_buffer_size)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         window_size_(window_size),
         window_shift_(window_shift),
         window_stride_(window_stride),
         drop_remainder_(drop_remainder),
+        target_buffer_size_(target_buffer_size),
         output_dtypes_(input_->output_dtypes().size(), {DT_VARIANT}),
         output_shapes_(input_->output_shapes().size(), TensorShape({})),
         traceme_metadata_(
-            {{"window_size",
-              absl::StrFormat("%lld", static_cast<long long>(window_size))},
-             {"window_shift",
-              absl::StrFormat("%lld", static_cast<long long>(window_shift))},
-             {"window_stride", absl::StrFormat("%lld", static_cast<long long>(
-                                                           window_stride))}}) {
+            {{"window_size", absl::StrCat(window_size)},
+             {"window_shift", absl::StrCat(window_shift)},
+             {"window_stride", absl::StrCat(window_stride)}}) {
     input_->Ref();
   }
 
@@ -124,7 +125,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // of the initial window. If it is negative, we know that the
       // cardinality is 0. Otherwise, it will be the number of valid shifts
       // over the rest_elements.
-      int64_t rest_elements = n - ((window_size_ - 1) * window_stride_ + 1);
+      int64_t rest_elements = n - static_cast<int64_t>(target_buffer_size_);
       cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
     } else {
       cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
@@ -177,13 +178,12 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     absl::Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) override {
-      const int64_t window_size = dataset()->window_size_;
       const int64_t window_shift = dataset()->window_shift_;
       const int64_t window_stride = dataset()->window_stride_;
       std::vector<std::vector<Tensor>> window_elements;
       absl::Status status = absl::OkStatus();
       {
-        const size_t target_size = TargetBufferSize(window_size, window_stride);
+        const size_t target_size = dataset()->target_buffer_size_;
 
         mutex_lock l(mu_);
         if (!input_impl_ &&
@@ -218,7 +218,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
           return absl::OkStatus();
         }
 
-        int num_elements = 1 + (buffer_.size() - 1) / window_stride;
+        size_t num_elements = 1 + (buffer_.size() - 1) / window_stride;
         window_elements.reserve(num_elements);
         for (size_t i = 0; i < num_elements; ++i) {
           status.Update(buffer_[window_stride * i].status);
@@ -229,7 +229,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         }
 
         // Shift the window, discarding elements if necessary.
-        int buffer_size = buffer_.size();
+        size_t buffer_size = buffer_.size();
         if (window_shift >= buffer_size) {
           for (size_t i = buffer_size; input_impl_ && i < window_shift; ++i) {
             bool end_of_input;
@@ -410,10 +410,6 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       return strings::StrCat(kBuffer, "[", index, "]", kErrorMessage);
     }
 
-    size_t TargetBufferSize(int64_t window_size, int64_t window_stride) {
-      return (window_size - 1) * window_stride + 1;
-    }
-
     mutex mu_;
     std::deque<InvocationResult> buffer_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
@@ -424,6 +420,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   const int64_t window_shift_;
   const int64_t window_stride_;
   const bool drop_remainder_;
+  const size_t target_buffer_size_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
   const TraceMeMetadata traceme_metadata_;
@@ -457,8 +454,21 @@ void WindowDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument<bool>(ctx, kDropRemainder, &drop_remainder));
 
+  int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
+  if (result >= 0) result = AddWithoutOverflow(result, 1);
+  OP_REQUIRES(
+      ctx,
+      result >= 0 &&
+          static_cast<uint64_t>(result) <= std::numeric_limits<size_t>::max(),
+      absl::InvalidArgumentError(absl::StrCat(
+          "Window target buffer size overflow: (window_size=", window_size,
+          " - 1) * window_stride=", window_stride,
+          " + 1 is not representable.")));
+
+  size_t target_buffer_size = static_cast<size_t>(result);
+
   *output = new Dataset(ctx, input, window_size, window_shift, window_stride,
-                        drop_remainder);
+                        drop_remainder, target_buffer_size);
 }
 
 namespace {

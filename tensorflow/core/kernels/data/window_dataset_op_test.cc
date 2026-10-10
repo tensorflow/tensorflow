@@ -16,11 +16,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
-
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -624,6 +625,86 @@ TEST_F(WindowDatasetOpTest, MalformedCheckpoint_TriggersOutOfBoundsRead) {
       "Malformed checkpoint: window elements have inconsistent number of "
       "components"))
       << status.message();
+}
+
+// Regression test: large window_size and window_stride whose target buffer
+// size (window_size - 1) * window_stride + 1 overflows int64. Before the fix,
+// the overflow silently wrapped to a small value and emitted undersized
+// windows. After the fix, dataset initialization must return InvalidArgument.
+WindowDatasetParams WindowDatasetParamsWithOverflowingSizeAndStride() {
+  // (2^32 + 1 - 1) * 2^32 + 1 = 2^64 + 1, which overflows int64/size_t.
+  const int64_t large_size = (static_cast<int64_t>(1) << 32) + 1;
+  const int64_t large_stride = static_cast<int64_t>(1) << 32;
+  return WindowDatasetParams(RangeDatasetParams(0, 3, 1),
+                             /*size=*/large_size,
+                             /*shift=*/1,
+                             /*stride=*/large_stride,
+                             /*drop_remainder=*/true,
+                             /*output_dtypes=*/{DT_VARIANT},
+                             /*output_shapes=*/{PartialTensorShape({})},
+                             /*node_name=*/kNodeName);
+}
+
+TEST_F(WindowDatasetOpTest, OverflowingTargetBufferSize) {
+  auto dataset_params = WindowDatasetParamsWithOverflowingSizeAndStride();
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("overflow")));
+}
+
+// Regression test: addition overflow when (window_size - 1) * window_stride + 1
+// overflows int64 on the addition step with size=2 and stride=int64_max.
+WindowDatasetParams WindowDatasetParamsWithAddOverflowingSizeAndStride() {
+  const int64_t max_stride = std::numeric_limits<int64_t>::max();
+  return WindowDatasetParams(RangeDatasetParams(0, 3, 1),
+                             /*size=*/2,
+                             /*shift=*/1,
+                             /*stride=*/max_stride,
+                             /*drop_remainder=*/true,
+                             /*output_dtypes=*/{DT_VARIANT},
+                             /*output_shapes=*/{PartialTensorShape({})},
+                             /*node_name=*/kNodeName);
+}
+
+TEST_F(WindowDatasetOpTest, AddOverflowingTargetBufferSize) {
+  auto dataset_params = WindowDatasetParamsWithAddOverflowingSizeAndStride();
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("overflow")));
+}
+
+TEST_F(WindowDatasetOpTest, SizeOneWithExtremeStrideDoesNotOverflow) {
+  auto dataset_params = WindowDatasetParams(
+      RangeDatasetParams(0, 3, 1),
+      /*size=*/1,
+      /*shift=*/1,
+      /*stride=*/std::numeric_limits<int64_t>::max(),
+      /*drop_remainder=*/true,
+      /*output_dtypes=*/{DT_VARIANT},
+      /*output_shapes=*/{PartialTensorShape({})},
+      /*node_name=*/kNodeName);
+  TF_EXPECT_OK(Initialize(dataset_params));
+}
+
+WindowDatasetParams WindowDatasetParamsWithSignedInt64Overflow() {
+  return WindowDatasetParams(RangeDatasetParams(0, 3, 1),
+                             /*size=*/3,
+                             /*shift=*/1,
+                             /*stride=*/static_cast<int64_t>(1) << 62,
+                             /*drop_remainder=*/true,
+                             /*output_dtypes=*/{DT_VARIANT},
+                             /*output_shapes=*/{PartialTensorShape({})},
+                             /*node_name=*/kNodeName);
+}
+
+TEST_F(WindowDatasetOpTest, SignedInt64OverflowingTargetBufferSize) {
+  auto dataset_params = WindowDatasetParamsWithSignedInt64Overflow();
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("overflow")));
 }
 
 }  // namespace
