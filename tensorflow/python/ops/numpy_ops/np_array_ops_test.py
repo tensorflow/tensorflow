@@ -1362,13 +1362,16 @@ class ArrayMethodsTest(test.TestCase):
     t = np.arange(6)
     self.assertAllEqual(
         np_array_ops.pad(t, [1, 2], 'reflect'), np.pad(t, [1, 2], 'reflect'))
-    empty = np.zeros((0, 3))
-    self.assertAllEqual(
-        np_array_ops.pad(empty, 1, 'constant'), np.pad(empty, 1, 'constant'))
+    for empty in (np.zeros((0, 3)), np.zeros((3, 0))):
+      self.assertAllEqual(
+          np_array_ops.pad(empty, 1, 'constant'), np.pad(empty, 1, 'constant'))
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
         r'broadcast|Incompatible|Dimensions must be equal'):
       np_array_ops.pad(np.arange(12).reshape(3, 4), [1, 2, 3], 'constant')
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), r'non-negative'):
+      np_array_ops.pad(np.arange(6), -1, 'constant')
 
   def testPadBroadcastPadWidthStaticShape(self):
     pad = def_function.function(
