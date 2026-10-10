@@ -1433,7 +1433,7 @@ class ArrayMethodsTest(test.TestCase):
       return np_array_ops.swapaxes(a, -10, 0)
 
     with self.assertRaises(errors_impl.InvalidArgumentError):
-      f(x)
+      self.evaluate(f(x))
 
   def testMoveaxis(self):
 
@@ -1527,13 +1527,21 @@ class ArrayMethodsTest(test.TestCase):
     )
     self.assertAllEqual(np.flip(a, -1), flip_unknown_rank(a))
 
-    # Unknown-rank inputs raise InvalidArgumentError for out-of-bounds axes.
-    flip_unknown_rank_invalid = def_function.function(
+    # Unknown-rank inputs raise InvalidArgumentError for out-of-bounds axes,
+    # both negative and positive.
+    flip_unknown_rank_invalid_neg = def_function.function(
         lambda x: np_array_ops.flip(x, axis=-4),
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
     )
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
-      self.evaluate(flip_unknown_rank_invalid(a))
+      self.evaluate(flip_unknown_rank_invalid_neg(a))
+
+    flip_unknown_rank_invalid_pos = def_function.function(
+        lambda x: np_array_ops.flip(x, axis=3),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
+    )
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(flip_unknown_rank_invalid_pos(a))
 
   def testRot90OutOfBoundsDynamicRank(self):
     # The dynamic-rank bounds Assert in `rot90` must actually run in graph
@@ -1547,13 +1555,33 @@ class ArrayMethodsTest(test.TestCase):
             tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
         ]
     )
-    def f(a):
+    def f_neg(a):
       return np_array_ops.rot90(a, axes=(0, -5))
 
+    f_neg = def_function.function(
+        f_neg,
+        input_signature=[
+            tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
+        ]
+    )
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError, 'out of range for array of ndim'
     ):
-      f(x)
+      self.evaluate(f_neg(x))
+
+    def f_pos(a):
+      return np_array_ops.rot90(a, axes=(0, 5))
+
+    f_pos = def_function.function(
+        f_pos,
+        input_signature=[
+            tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
+        ]
+    )
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, 'out of range for array of ndim'
+    ):
+      self.evaluate(f_pos(x))
 
   def testRot90DuplicateAxesDynamicRank(self):
     # The dynamic path re-checks for duplicate axes after canonicalization
@@ -1571,7 +1599,7 @@ class ArrayMethodsTest(test.TestCase):
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError, 'Axes must be different'
     ):
-      f(x)
+      self.evaluate(f(x))
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))
