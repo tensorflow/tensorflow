@@ -540,6 +540,20 @@ class DeprecationTest(test.TestCase):
     self.assertRegex(args[0], r"deprecated and will be removed")
     self._assert_subset(set(["after " + date, instructions]), set(args[1:]))
 
+  def test_stacked_deprecated_args_docstring(self):
+    date = "2016-07-04"
+    instructions = "This is how you update..."
+
+    @deprecation.deprecated_args(date, instructions, "arg1")
+    @deprecation.deprecated_args(date, instructions, "arg2")
+    @deprecation.deprecated_args(date, instructions, "arg3")
+    def _fn(arg1=0, arg2=0, arg3=0):  # pylint: disable=unused-argument
+      """fn doc."""
+      pass
+
+    first_line = _fn.__doc__.splitlines()[0]
+    self.assertEqual("fn doc. (deprecated arguments)", first_line)
+
 
 class DeprecatedArgsTest(test.TestCase):
 
