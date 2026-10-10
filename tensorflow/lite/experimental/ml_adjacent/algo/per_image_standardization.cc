@@ -77,13 +77,14 @@ inline void PerImageStandardization(dim_t batches, dim_t height, dim_t width,
 // float datatype.
 void ComputePerImageStandardization(const InputPack& inputs,
                                     const OutputPack& outputs) {
-  TFLITE_CHECK_EQ(inputs.size(), 1);
-  TFLITE_CHECK_EQ(outputs.size(), 1);
+  if (inputs.size() != 1 || outputs.size() != 1) return;
 
   // Extract input image data.
   const DataRef* img = inputs[0];
-  TFLITE_CHECK_EQ(img->Dims().size(), 4);
   MutableDataRef* output = outputs[0];
+  if (img == nullptr || output == nullptr) return;
+
+  if (img->Dims().size() != 4) return;
 
   TFLITE_CHECK_EQ(img->Type(), etype_t::f32);
   TFLITE_CHECK_EQ(output->Type(), etype_t::f32);
