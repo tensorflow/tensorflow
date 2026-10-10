@@ -1298,6 +1298,8 @@ tf_kernel_library(
     deps = ARRAY_DEPS + [
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ] + if_cuda_or_rocm([
         ":gpu_prim_hdrs",
