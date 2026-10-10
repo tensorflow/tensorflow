@@ -121,9 +121,10 @@ shared_name: Identifier that is shared between ops of the same broadcast.
     )doc");
 
 REGISTER_OP("_NcclBroadcastRecv")
-    .Input("shape: int32")
+    .Input("shape: Tshape")
     .Output("output: T")
     .Attr("T: {half, float, float64, int32, int64}")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
     .Attr("num_devices: int")
     .Attr("shared_name: string")
     .SetIsStateful()
