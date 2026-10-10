@@ -1082,6 +1082,29 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
 
     self._testMixedThresholdDtype(nms)
 
+  def testNMSV3NonScalarScoreThreshold(self):
+    # Shape inference can't reject a score_threshold of unknown shape, so the
+    # XLA kernel checks that it is a scalar when it compiles.
+    with self.session() as sess:
+      boxes = array_ops.placeholder(np.float32, shape=[6, 4])
+      scores = array_ops.placeholder(np.float32, shape=[6])
+      score_threshold = array_ops.placeholder(np.float32)
+      with self.device_scope():
+        selected_indices = image_ops.non_max_suppression_v3(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=6,
+            iou_threshold=0.5,
+            score_threshold=score_threshold)
+      with self.assertRaisesOpError("Score Threshold isn't a scalar"):
+        sess.run(
+            selected_indices,
+            feed_dict={
+                boxes: np.zeros([6, 4], np.float32),
+                scores: np.zeros([6], np.float32),
+                score_threshold: [0.4]
+            })
+
   def testNMSV3EmptyInput(self):
     # Regression test for #117245: with no boxes the suppression loop was
     # built from zero-sized dimensions and segfaulted the compiler. The
