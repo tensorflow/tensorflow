@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
@@ -364,10 +365,11 @@ QueueSizeOp::QueueSizeOp(OpKernelConstruction* context)
 
 void QueueSizeOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                                DoneCallback callback) {
+  auto cleanup = gtl::MakeCleanup([&callback]() { callback(); });
   Tensor* Tqueue_size = nullptr;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &Tqueue_size));
+  OP_REQUIRES_OK_ASYNC(
+      ctx, ctx->allocate_output(0, TensorShape({}), &Tqueue_size), []() {});
   Tqueue_size->flat<int32_t>().setConstant(queue->size());
-  callback();
 }
 
 QueueIsClosedOp::QueueIsClosedOp(OpKernelConstruction* context)
@@ -375,11 +377,12 @@ QueueIsClosedOp::QueueIsClosedOp(OpKernelConstruction* context)
 
 void QueueIsClosedOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                                    DoneCallback callback) {
+  auto cleanup = gtl::MakeCleanup([&callback]() { callback(); });
   Tensor* Tqueue_is_closed = nullptr;
-  OP_REQUIRES_OK(ctx,
-                 ctx->allocate_output(0, TensorShape({}), &Tqueue_is_closed));
+  OP_REQUIRES_OK_ASYNC(
+      ctx, ctx->allocate_output(0, TensorShape({}), &Tqueue_is_closed),
+      []() {});
   Tqueue_is_closed->flat<bool>().setConstant(queue->is_closed());
-  callback();
 }
 
 }  // namespace tensorflow
