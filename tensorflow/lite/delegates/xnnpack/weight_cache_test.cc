@@ -19,10 +19,13 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cerrno>
+#include <cinttypes>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -296,6 +299,8 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
   }
 
   ASSERT_TRUE(builder.StopBuildStep());
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
 
   MMapHandle handle;
   ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
@@ -312,6 +317,8 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
   }
 
   ASSERT_TRUE(builder.StopBuildStep());
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
 
   ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
 
@@ -1326,6 +1333,166 @@ TEST_F(MaliciousCacheTest, BufferOffsetPlusSizeOverflowsInt64) {
 
   MMapWeightCacheProvider cache_provider;
   EXPECT_FALSE(cache_provider.Load(fd_.GetCPath()));
+}
+
+#if (defined(__linux__) || defined(__ANDROID__)) && \
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+struct VmaSmapsInfo {
+  bool found = false;
+  bool is_private_readonly = false;
+  bool has_expected_name = false;
+  int64_t rss_kb = -1;
+  int64_t anonymous_kb = -1;
+  int64_t shared_clean_kb = -1;
+  int64_t shared_dirty_kb = -1;
+};
+
+VmaSmapsInfo InspectVmaInProcSmaps(const void* ptr, const char* expected_name) {
+  VmaSmapsInfo info;
+  std::ifstream smaps("/proc/self/smaps");
+  if (!smaps.is_open()) {
+    return info;
+  }
+  const uintptr_t target = reinterpret_cast<uintptr_t>(ptr);
+  std::string line;
+  bool in_target_vma = false;
+  while (std::getline(smaps, line)) {
+    uintptr_t start = 0;
+    uintptr_t end = 0;
+    char perms[5] = {0};
+    if (std::sscanf(line.c_str(), "%zx-%zx %4s", &start, &end, perms) == 3) {
+      if (in_target_vma) {
+        break;
+      }
+      if (target >= start && target < end) {
+        in_target_vma = true;
+        info.found = true;
+        info.is_private_readonly = (std::strcmp(perms, "r--p") == 0);
+        info.has_expected_name =
+            (std::strstr(line.c_str(), expected_name) != nullptr);
+      }
+    } else if (in_target_vma) {
+      int64_t val = -1;
+      if (std::sscanf(line.c_str(), "Rss: %" SCNd64 " kB", &val) == 1) {
+        info.rss_kb = val;
+      } else if (std::sscanf(line.c_str(), "Anonymous: %" SCNd64 " kB", &val) ==
+                 1) {
+        info.anonymous_kb = val;
+      } else if (std::sscanf(line.c_str(), "Shared_Clean: %" SCNd64 " kB",
+                             &val) == 1) {
+        info.shared_clean_kb = val;
+      } else if (std::sscanf(line.c_str(), "Shared_Dirty: %" SCNd64 " kB",
+                             &val) == 1) {
+        info.shared_dirty_kb = val;
+      }
+    }
+  }
+  return info;
+}
+#endif
+
+TEST(InMemoryMultiSubgraphWeightCacheTest,
+     MultiStepAllCacheHitsResetsBuildStepAndDeduplicatesSyntheticBuffers) {
+  if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+    GTEST_SKIP() << "In-memory weight cache isn't supported on this system.";
+  }
+  xnn_set_fingerprint(kDefaultFingerprint);
+
+  const std::string shared_kernel(4 * 1024 * 1024, 'W');
+  TfLiteTensor tensor{};
+  tensor.allocation_type = kTfLiteMmapRo;
+  tensor.data.data = const_cast<char*>(shared_kernel.data());
+  tensor.bytes = shared_kernel.size();
+
+  MMapWeightCacheProvider cache_provider;
+  ASSERT_TRUE(cache_provider.LoadOrStartBuild(kInMemoryCachePath));
+
+  // Subgraph 0 build step: map synthetic constant tensor (empty
+  // tensor_index_to_identifier map) and insert packed weights.
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  ASSERT_TRUE(cache_provider.MapTensorIdentifiers(
+      &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{}));
+  xnn_weights_cache_t cache = &cache_provider.GetCacheProvider();
+  const xnn_weights_cache_look_up_key key{
+      .seed = 0x1234,
+      .kernel = shared_kernel.data(),
+      .bias = nullptr,
+      .fingerprint_id = kDefaultFingerprint.id};
+  void* reserved = cache->reserve_space(cache, shared_kernel.size());
+  ASSERT_NE(reserved, nullptr);
+  std::memcpy(reserved, shared_kernel.data(), shared_kernel.size());
+  const size_t offset_subgraph0 =
+      cache->look_up_or_insert(cache, &key, reserved, shared_kernel.size());
+  ASSERT_NE(offset_subgraph0, SIZE_MAX);
+  // offset_to_addr must resolve during the active build step before
+  // StopBuildStep() finalizes the mapping.
+  EXPECT_NE(cache->offset_to_addr(cache, offset_subgraph0), nullptr);
+  ASSERT_TRUE(cache_provider.StopBuildStep());
+  EXPECT_TRUE(cache_provider.LockMemory());
+
+  const void* mapped_addr = cache->offset_to_addr(cache, offset_subgraph0);
+  ASSERT_NE(mapped_addr, nullptr);
+#if (defined(__linux__) || defined(__ANDROID__)) && \
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  MMapHandle vma_probe;
+  if (std::getenv("QEMU_EXEC_WRAPPER") == nullptr &&
+      vma_probe.MapAnonymous(4096, "xnnpack-probe") &&
+      InspectVmaInProcSmaps(vma_probe.data(), "[anon:xnnpack-probe]")
+          .has_expected_name) {
+    const VmaSmapsInfo smaps_info =
+        InspectVmaInProcSmaps(mapped_addr, "[anon:xnnpack-weights-cache]");
+    EXPECT_TRUE(smaps_info.found);
+    EXPECT_TRUE(smaps_info.is_private_readonly);
+    EXPECT_TRUE(smaps_info.has_expected_name);
+    EXPECT_GE(smaps_info.rss_kb, 4096);
+    EXPECT_EQ(smaps_info.anonymous_kb, smaps_info.rss_kb);
+    EXPECT_EQ(smaps_info.shared_clean_kb, 0);
+    EXPECT_EQ(smaps_info.shared_dirty_kb, 0);
+  }
+#endif
+
+  // Subgraph 1 build step: 100% cache hit (nothing new written to cache).
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  ASSERT_TRUE(cache_provider.MapTensorIdentifiers(
+      &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{}));
+  EXPECT_EQ(cache->look_up(cache, &key), offset_subgraph0);
+  ASSERT_TRUE(cache_provider.StopBuildStep());
+
+  // Subgraph 2 build step: must succeed because StopBuildStep() reset
+  // is_build_step_ even when Subgraph 1 had 0 new writes. Also verify that
+  // remapped buffers (e.g. dequantized/unpacked weights) resolve to the same
+  // cached offset and do not fail when signaling original buffer pages.
+  const std::string unpacked_kernel(shared_kernel.size(), 'U');
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  ASSERT_TRUE(cache_provider.MapTensorIdentifiers(
+      &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 42}}));
+  cache_provider.RemapDataBuffer(shared_kernel.data(), unpacked_kernel.data());
+  const xnn_weights_cache_look_up_key remapped_key{
+      .seed = 0x5678,
+      .kernel = unpacked_kernel.data(),
+      .bias = nullptr,
+      .fingerprint_id = kDefaultFingerprint.id};
+  void* reserved_remapped = cache->reserve_space(cache, unpacked_kernel.size());
+  ASSERT_NE(reserved_remapped, nullptr);
+  std::memcpy(reserved_remapped, unpacked_kernel.data(),
+              unpacked_kernel.size());
+  const size_t offset_remapped = cache->look_up_or_insert(
+      cache, &remapped_key, reserved_remapped, unpacked_kernel.size());
+  EXPECT_NE(offset_remapped, SIZE_MAX);
+  EXPECT_NE(offset_remapped, offset_subgraph0);
+  // Self-remap must be ignored rather than creating a cycle in buffer_remaps_.
+  cache_provider.RemapDataBuffer(unpacked_kernel.data(),
+                                 unpacked_kernel.data());
+  EXPECT_EQ(cache->look_up(cache, &remapped_key), offset_remapped);
+  ASSERT_TRUE(cache_provider.StopBuildStep());
+  // Locking again across multiple build steps must be idempotent on previously
+  // locked segments and lock the newly finalized segment.
+  EXPECT_TRUE(cache_provider.LockMemory());
+  EXPECT_TRUE(cache_provider.UnlockMemory());
+
+  // Restarting a fresh in-memory build on the same provider clears prior keys.
+  ASSERT_TRUE(cache_provider.StartBuild(kInMemoryCachePath));
+  EXPECT_EQ(cache->look_up(cache, &key), SIZE_MAX);
 }
 
 }  // namespace
