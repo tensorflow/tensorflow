@@ -758,12 +758,16 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
     tensors have incorrect shapes.
   """
   if diagonals_format == 'compact':
+    # Convert first: the slicing below is not something a list supports.
+    diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
     superdiag = diagonals[..., 0, :]
     maindiag = diagonals[..., 1, :]
     subdiag = diagonals[..., 2, :]
   elif diagonals_format == 'sequence':
     superdiag, maindiag, subdiag = diagonals
   elif diagonals_format == 'matrix':
+    # Convert first: the shape lookups below read `diagonals.shape`.
+    diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
     m2 = tensor_shape.dimension_value(diagonals.shape[-2])
     if m1 and m2 and m1 != m2:
