@@ -481,10 +481,9 @@ def swish(features, beta=1.0):
       with ops.control_dependencies([dy]):
         logits = beta * features
         if features.dtype == dtypes.float64:
-          # Evaluate the smaller sigmoid tail directly. For large positive
-          # logits, `1 - sigmoid(logits)` rounds to zero and erases finite
-          # higher-order derivatives.
-          use_complement = logits >= 0
+          is_extreme_neg = logits <= -500.0
+          safe_logits = array_ops.where_v2(is_extreme_neg, logits, -500.0)
+          use_complement = logits >= 0.0
           sigmoid_tail = math_ops.sigmoid(
               array_ops.where_v2(use_complement, -logits, logits)
           )
@@ -492,14 +491,70 @@ def swish(features, beta=1.0):
               use_complement, 1.0 - sigmoid_tail, sigmoid_tail
           )
           sigmoid_grad = sigmoid_tail * (1.0 - sigmoid_tail)
+          half_exp = math_ops.exp(safe_logits / 2.0)
+
+          @custom_gradient.custom_gradient
+          def _float64_activation_grad(
+              logits_inner, safe_logits_inner, sigmoid_tail_inner,
+              sigmoid_features_inner, sigmoid_grad_inner, half_exp_inner):
+
+            standard_act_grad = (
+                sigmoid_features_inner + logits_inner * sigmoid_grad_inner
+            )
+            extreme_neg_act_grad = (
+                (1.0 + safe_logits_inner) * half_exp_inner
+            ) * half_exp_inner
+            act_grad = array_ops.where_v2(
+                is_extreme_neg, extreme_neg_act_grad, standard_act_grad
+            )
+
+            def act_grad_fn(d_act):
+              tail_factor = array_ops.where_v2(
+                  use_complement,
+                  2.0 * sigmoid_tail_inner - 1.0,
+                  1.0 - 2.0 * sigmoid_tail_inner,
+              )
+              standard_d_act = sigmoid_grad_inner * (
+                  2.0 + logits_inner * tail_factor
+              )
+              extreme_neg_d_act = (
+                  (2.0 + safe_logits_inner) * half_exp_inner
+              ) * half_exp_inner
+              d_logits = array_ops.where_v2(
+                  is_extreme_neg, extreme_neg_d_act, standard_d_act
+              )
+              # Return gradient for logits_inner, and None for all precomputed
+              # intermediate tensors to prevent double-counting gradients.
+              return d_act * d_logits, None, None, None, None, None
+
+            return act_grad, act_grad_fn
+
+          activation_grad = _float64_activation_grad(
+              logits, safe_logits, sigmoid_tail,
+              sigmoid_features, sigmoid_grad, half_exp
+          )
+
+          extreme_neg_beta_grad_terms = (
+              (dy * math_ops.square(features)) * half_exp
+          ) * half_exp
+          standard_beta_grad_terms = (
+              dy * math_ops.square(features) * sigmoid_grad
+          )
+          beta_grad = math_ops.reduce_sum(
+              array_ops.where_v2(
+                  is_extreme_neg,
+                  extreme_neg_beta_grad_terms,
+                  standard_beta_grad_terms,
+              )
+          )
         else:
           sigmoid_features = math_ops.sigmoid(logits)
           sigmoid_grad = sigmoid_features * (1.0 - sigmoid_features)
+          activation_grad = sigmoid_features + logits * sigmoid_grad
+          beta_grad = math_ops.reduce_sum(
+              dy * math_ops.square(features) * sigmoid_grad
+          )
 
-      activation_grad = sigmoid_features + logits * sigmoid_grad
-      beta_grad = math_ops.reduce_sum(
-          dy * math_ops.square(features) * sigmoid_grad
-      )
       return (dy * activation_grad, beta_grad)
 
     return features * math_ops.sigmoid(beta * features), grad
