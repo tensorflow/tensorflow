@@ -1818,6 +1818,40 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 r"\w+ must be a scalar"):
       self.evaluate(gen_list_ops.TensorListResize(input_handle=l, size=size))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testReserveExceedingMaxElementsFails(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "exceeds maximum allowed elements"):
+      l = list_ops.tensor_list_reserve(
+          element_shape=[], num_elements=(1 << 24) + 1,
+          element_dtype=dtypes.float32)
+      self.evaluate(l)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReserveAtModerateElementsSucceeds(self):
+    l = list_ops.tensor_list_reserve(
+        element_shape=[], num_elements=100000, element_dtype=dtypes.float32)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 100000)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testResizeExceedingMaxElementsFails(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "exceeds maximum allowed elements"):
+      l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
+      l = list_ops.tensor_list_resize(l, (1 << 24) + 1)
+      self.evaluate(l)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testResizeShrinkingSucceeds(self):
+    l = list_ops.tensor_list_from_tensor(
+        [1., 2., 3., 4., 5.], element_shape=[])
+    l = list_ops.tensor_list_resize(l, 2)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 2)
+    self.assertAllEqual(
+        self.evaluate(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)),
+        [1., 2.])
+
   @test_util.run_deprecated_v1
   @test_util.enable_control_flow_v2
   def testSkipEagerResizeGrad(self):
