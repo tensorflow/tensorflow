@@ -268,3 +268,67 @@ tf_cc_fuzz_test(
         "@xla//xla/tsl/platform:env",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "tflite_runtime_input_fuzz",
+    srcs = [
+        "model_bytes.h",
+        "tflite_runtime_input_fuzz.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "tflite_readvar_fuzz",
+    srcs = [
+        "model_bytes_readvar.h",
+        "tflite_readvar_fuzz.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "tflite_transpose_dupperm_fuzz",
+    srcs = [
+        "model_bytes_transpose_dupperm.h",
+        "tflite_transpose_dupperm_fuzz.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "tflite_rfft2d_fuzz",
+    srcs = [
+        "model_bytes_rfft2d.h",
+        "tflite_rfft2d_fuzz.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
