@@ -601,9 +601,35 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
     if np.issubdtype(dtype.as_numpy_dtype, np.inexact):
       rtol_ = ops.convert_to_tensor(rtol, dtype.real_dtype)
       atol_ = ops.convert_to_tensor(atol, dtype.real_dtype)
-      result = math_ops.abs(a - b) <= atol_ + rtol_ * math_ops.abs(b)
+
+      b_abs = math_ops.abs(b)
+      result = math_ops.abs(a - b) <= atol_ + rtol_ * b_abs
+
+      # Infinities must be handled separately. The finite tolerance formula
+      # evaluates to True for mixed finite/infinite pairs like (1.0, inf)
+      # because inf <= inf. Match NumPy: elements are close if they are
+      # both finite and within tolerance, or if they are equal.
+      if dtype.is_floating or dtype.is_complex:
+        if dtype.is_complex:
+          a_check = math_ops.abs(a)
+          b_check = b_abs
+        else:
+          a_check = a
+          b_check = b
+        both_finite = math_ops.is_finite(a_check) & math_ops.is_finite(b_check)
+        result = (both_finite & result) | math_ops.equal(a, b)
+
       if equal_nan:
-        result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
+        if dtype.is_complex:
+          a_nan = math_ops.is_nan(math_ops.real(a)) | math_ops.is_nan(
+              math_ops.imag(a)
+          )
+          b_nan = math_ops.is_nan(math_ops.real(b)) | math_ops.is_nan(
+              math_ops.imag(b)
+          )
+          result = result | (a_nan & b_nan)
+        else:
+          result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
     elif np.issubdtype(dtype.as_numpy_dtype, np.integer):
       # Use the operands' own arithmetic instead of casting to float, so
