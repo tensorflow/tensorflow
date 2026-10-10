@@ -137,6 +137,21 @@ TEST_F(TensorScatterUpdateOpTest, HigherRank) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(TensorScatterUpdateOpTest, Error_MismatchedOuterDimensions) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  AddInputFromArray<float>(TensorShape({5}), {0, 0, 0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({5, 1, 1}), {0, 1, 2, 3, 4});
+  AddInputFromArray<float>(TensorShape({5}), {1, 2, 3, 4, 5});
+
+  absl::Status status = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      status.ToString(),
+      "Dimensions [0,2) of indices[shape=[5,1,1]] must match dimensions "
+      "[0,2) of updates[shape=[5]]"))
+      << status;
+}
+
 TEST_F(TensorScatterUpdateOpTest, Error_IndexOutOfRange) {
   MakeOp(DT_FLOAT, DT_INT32);
 
