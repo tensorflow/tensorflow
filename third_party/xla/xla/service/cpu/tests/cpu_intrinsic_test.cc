@@ -207,15 +207,15 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
 
     IntrinsicTestSpec{
         HloOpcode::kLog, F32, true, kTriple_x86_64, "",
-        R"(CHECK: fadd fast <4 x float> splat (float f0x3DEF251A)"},
+        R"(CHECK: @llvm.fma.v4f32(<4 x float> {{.*}}, <4 x float> splat (float f0x3ECB0C97)"},
 
     IntrinsicTestSpec{
         HloOpcode::kLog, F32, true, kTriple_x86_64, "+avx",
-        R"(CHECK: fadd fast <8 x float> splat (float f0x3DEF251A)"},
+        R"(CHECK: @llvm.fma.v8f32(<8 x float> {{.*}}, <8 x float> splat (float f0x3ECB0C97)"},
 
     IntrinsicTestSpec{
         HloOpcode::kLog, F32, true, kTriple_android_arm, "",
-        R"(CHECK: fadd fast <4 x float> splat (float f0x3DEF251A)"}};
+        R"(CHECK: @llvm.fma.v4f32(<4 x float> {{.*}}, <4 x float> splat (float f0x3ECB0C97)"}};
 
 INSTANTIATE_TEST_SUITE_P(CpuUnaryIntrinsicTestInstantiation,
                          CpuUnaryIntrinsicTest,
