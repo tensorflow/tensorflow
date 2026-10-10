@@ -158,14 +158,26 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
       if (sampled_indices.empty()) return rng.Uniform64(num_points);
       int64_t index = 0;
       do {
-        // If v is drawn from Uniform[0, distances.sum()), then
-        // Prob[cumsum(distances)(i - 1) <= v < cumsum(distances)(i)] is
-        // proportional to distances(i).
-        index = std::upper_bound(
-                    min_distances_cumsum.data(),
-                    min_distances_cumsum.data() + num_points,
-                    rng.RandFloat() * min_distances_cumsum(num_points - 1)) -
-                min_distances_cumsum.data();
+        const float total = min_distances_cumsum(num_points - 1);
+        if (!(total > 0.0f)) {
+          // total is zero, negative, or NaN (e.g. all points identical or NaN
+          // distances). Fall back to uniform sampling to avoid upper_bound
+          // receiving a non-positive value, which would return end-of-range
+          // and produce an out-of-bounds index.
+          index = rng.Uniform64(num_points);
+        } else {
+          // If v is drawn from Uniform[0, distances.sum()), then
+          // Prob[cumsum(distances)(i - 1) <= v < cumsum(distances)(i)] is
+          // proportional to distances(i).
+          index = std::upper_bound(
+                      min_distances_cumsum.data(),
+                      min_distances_cumsum.data() + num_points,
+                      rng.RandFloat() * total) -
+                  min_distances_cumsum.data();
+          // upper_bound guarantees index < num_points when total > 0, but
+          // clamp defensively against floating-point rounding edge cases.
+          index = std::min(index, num_points - 1);
+        }
       } while (sampled_indices.find(index) != sampled_indices.end());
       return index;
     };
