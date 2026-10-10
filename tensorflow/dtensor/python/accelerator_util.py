@@ -293,27 +293,36 @@ def initialize_accelerator_system(
 def shutdown_accelerator_system() -> None:
   """Shuts down the accelerator system."""
   global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+  # Only `async_wait()` is wrapped so that an error from it never gets
+  # silently replaced by a later `raise` below (e.g. "not initialized"),
+  # which would otherwise mask the real failure.
   try:
     context.async_wait()
-  finally:
-    if not is_initialized():
-      raise ValueError(
-          "Accelerator system is not initialized. Call "
-          "tf.experimental.dtensor.initialize_accelerator_system first."
-      )
+  except Exception:
+    logging.exception(
+        "Error waiting for async operations to finish before shutting "
+        "down the accelerator system."
+    )
+    raise
 
-    device_type = _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+  if not is_initialized():
+    raise ValueError(
+        "Accelerator system is not initialized. Call "
+        "tf.experimental.dtensor.initialize_accelerator_system first."
+    )
 
-    if not config.is_local_mode():
-      raise ValueError(
-          "Shutting down accelerator system under multi-client mode is "
-          "not supported."
-      )
+  device_type = _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
 
-    if device_type == "TPU":
-      tpu_util.shutdown_tpu_system()
+  if not config.is_local_mode():
+    raise ValueError(
+        "Shutting down accelerator system under multi-client mode is "
+        "not supported."
+    )
 
-    # reset TF context to stop gRPC servers.
-    context._reset_context()  # pylint: disable=protected-access
-    context.context()._clear_caches()  # pylint: disable=protected-access
-    _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = None
+  if device_type == "TPU":
+    tpu_util.shutdown_tpu_system()
+
+  # reset TF context to stop gRPC servers.
+  context._reset_context()  # pylint: disable=protected-access
+  context.context()._clear_caches()  # pylint: disable=protected-access
+  _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = None
