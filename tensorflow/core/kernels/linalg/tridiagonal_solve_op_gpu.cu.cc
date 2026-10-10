@@ -375,18 +375,16 @@ class TridiagonalSolveOpGpu : public OpKernel {
     for (int index : perm) {
       dims.push_back(lhs.dim_size(index));
     }
-    TensorShape lhs_transposed_shape(
-        absl::Span<const int64_t>(dims.data(), ndims));
+    TensorShape lhs_transposed_shape(absl::MakeConstSpan(dims).first(ndims));
 
     std::unique_ptr<GpuSolver> cublas_solver(new GpuSolver(context));
     OP_REQUIRES_OK(context, cublas_solver->allocate_scoped_tensor(
                                 DataTypeToEnum<Scalar>::value,
                                 lhs_transposed_shape, &lhs_transposed));
     auto device = context->eigen_device<Eigen::GpuDevice>();
-    OP_REQUIRES_OK(
-        context,
-        DoTranspose(device, lhs, absl::Span<const int>(perm.data(), ndims),
-                    &lhs_transposed));
+    OP_REQUIRES_OK(context, DoTranspose(device, lhs,
+                                        absl::MakeConstSpan(perm).first(ndims),
+                                        &lhs_transposed));
   }
 
   TridiagonalSolveOpGpuLinalg<Scalar> linalgOp_;
