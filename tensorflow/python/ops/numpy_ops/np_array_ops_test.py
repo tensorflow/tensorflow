@@ -1365,7 +1365,8 @@ class ArrayMethodsTest(test.TestCase):
     empty = np.zeros((0, 3))
     self.assertAllEqual(
         np_array_ops.pad(empty, 1, 'constant'), np.pad(empty, 1, 'constant'))
-    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                'Incompatible shapes'):
       np_array_ops.pad(np.arange(12).reshape(3, 4), [1, 2, 3], 'constant')
 
   def testPadBroadcastPadWidthStaticShape(self):
