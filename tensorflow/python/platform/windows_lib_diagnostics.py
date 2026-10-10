@@ -27,6 +27,22 @@ ERROR_BAD_EXE_FORMAT = 0xC1
 ERROR_DLL_INIT_FAILED = 0x45A
 
 
+def _safe_print(text, end="\n"):
+  """Prints `text`, escaping characters the console encoding cannot represent.
+
+  This runs while an import failure is being handled, so it must never raise:
+  paths (e.g. under a non-ASCII user directory) may not be encodable on a
+  console that uses a legacy code page.
+  """
+  try:
+    encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+    print(text.encode(encoding, errors="backslashreplace").decode(encoding),
+          end=end)
+  except Exception:  # pylint: disable=broad-exception-caught
+    # A diagnostic message must never mask the original import error.
+    pass
+
+
 def get_dll_dependencies(path):
   """Parses PE header to find direct DLL dependencies."""
   deps = []
@@ -118,7 +134,7 @@ def diagnose_dll_load(path, depth=0, visited=None):
 
   indent = "  " * depth
   if depth == 0:
-    print(f"\n[TensorFlow DLL Diagnostic] Analyzing: {path}")
+    _safe_print(f"\n[TensorFlow DLL Diagnostic] Analyzing: {path}")
 
   # If file doesn't exist, it might be a system DLL
   if not os.path.exists(path):
@@ -145,7 +161,7 @@ def diagnose_dll_load(path, depth=0, visited=None):
     if not dll_name.lower().startswith(
         ("kernel32", "user32", "api-ms-win-", "msvcrt", "ucrtbase")
     ):
-      for p in [target_dir] + os.environ["PATH"].split(os.pathsep):
+      for p in [target_dir] + os.environ.get("PATH", "").split(os.pathsep):
         full_p = os.path.join(p, dll_name)
         if os.path.exists(full_p):
           diagnose_dll_load(full_p, depth + 1, visited)
@@ -183,7 +199,7 @@ def diagnose_dll_load(path, depth=0, visited=None):
             " outdated/missing."
         )
       else:
-        print(f"UNKNOWN ERROR ({err}): {e}")
+        _safe_print(f"UNKNOWN ERROR ({err}): {e}")
       visited.add(dll_name.lower())
 
 
@@ -205,9 +221,11 @@ def run_diagnosis(path=None):
     if os.name == "nt" and os.path.exists(path):
       diagnose_dll_load(path)
     else:
-      print(f"Error: Path does not exist or not on Windows: {path}")
-  except OSError as e:
-    print(f"Diagnostic failed: {e}")
+      _safe_print(f"Error: Path does not exist or not on Windows: {path}")
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    # This runs while handling an ImportError, so no diagnostic failure may
+    # escape and replace the original error.
+    _safe_print(f"Diagnostic failed: {e}")
 
 
 if __name__ == "__main__":
