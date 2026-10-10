@@ -146,6 +146,126 @@ TEST(TensorListTest, DecodeValidRoundTripCompatibility) {
   EXPECT_EQ(decoded.tensors()[3].scalar<int32_t>()(), 9);
 }
 
+TEST(TensorListTest, DecodeRejectsElementLargerThanFullyDefinedShape) {
+  // element_shape is fully defined as [1], but the stored element holds 4
+  // values. Consumers (e.g. TensorListStack) skip the per-element shape check
+  // when element_shape is fully defined and size the output from element_shape,
+  // so this element would overrun the output buffer.
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(1);
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = Tensor(DT_FLOAT, TensorShape({4}));
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsElementDtypeMismatch) {
+  TensorShapeProto shape;
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = ScalarInt32Tensor(1);
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeAcceptsElementCompatibleWithPartialShape) {
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(-1);
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = Tensor(DT_FLOAT, TensorShape({4}));
+  EXPECT_TRUE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsMalformedElementShapeProto) {
+  // A dimension size below -1 is invalid. The PartialTensorShape constructor
+  // would fatally CHECK on it, so Decode must reject it and return false rather
+  // than aborting the process.
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(-2);
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsConcreteElementWhenDtypeInvalid) {
+  // element_dtype is DT_INVALID but a concrete tensor is stored. A concrete
+  // element cannot belong to a list without a dtype, so it must be rejected.
+  TensorShapeProto shape;
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_INVALID),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = ScalarInt32Tensor(1);
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsShapeRankMismatchWithMatchingCount) {
+  // element_shape [2, 3] and element shape [6] have the same element count but
+  // different rank, so they are not compatible and must be rejected.
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(2);
+  shape.add_dim()->set_size(3);
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = Tensor(DT_FLOAT, TensorShape({6}));
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsEmptyTensorMismatchedShape) {
+  // A zero-element tensor still has a shape. element_shape [1] and element shape
+  // [0] share no common count and are incompatible, so an empty element must be
+  // rejected just like a non-empty one.
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(1);
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_FLOAT),
+      std::numeric_limits<uint64_t>::max(), shape.SerializeAsString()));
+  *data.add_tensors() = Tensor(DT_FLOAT, TensorShape({0}));
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsNumInvalidTensorsLargerThanMetadata) {
+  // Each invalid index takes at least one byte of metadata, so a count far
+  // larger than the metadata itself is malformed. Decode must reject it up
+  // front instead of reserving storage for that many elements.
+  TensorShapeProto shape;
+  std::string metadata;
+  core::PutVarint64(&metadata, uint64_t{1} << 40);  // num_invalid_tensors
+  core::PutVarint64(&metadata, static_cast<uint64_t>(DT_FLOAT));
+  core::PutVarint64(&metadata, std::numeric_limits<uint64_t>::max());
+  metadata.append(shape.SerializeAsString());
+  VariantTensorData data;
+  data.set_metadata(metadata);
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
+TEST(TensorListTest, DecodeRejectsMoreElementsThanMaxNumElements) {
+  // A list filled exactly to max_num_elements is valid; one more element
+  // exceeds the list's own capacity and must be rejected.
+  TensorShapeProto shape;
+  VariantTensorData data;
+  data.set_metadata(TensorListMetadata(
+      /*invalid_indices=*/{}, static_cast<uint64_t>(DT_INT32),
+      /*max_num_elements=*/2, shape.SerializeAsString()));
+  *data.add_tensors() = ScalarInt32Tensor(1);
+  *data.add_tensors() = ScalarInt32Tensor(2);
+  EXPECT_TRUE(TensorList().Decode(data));
+
+  *data.add_tensors() = ScalarInt32Tensor(3);
+  EXPECT_FALSE(TensorList().Decode(data));
+}
+
 TEST(TensorListTest, DecodeRejectsOutOfRangeMaxNumElements) {
   TensorShapeProto shape;
   VariantTensorData data;

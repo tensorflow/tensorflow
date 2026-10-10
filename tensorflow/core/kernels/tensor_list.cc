@@ -64,6 +64,10 @@ bool TensorList::Decode(const VariantTensorData& data) {
   if (!core::GetVarint64(&iter, &scratch)) return false;
   if (scratch > std::numeric_limits<size_t>::max()) return false;
   const size_t num_invalid_tensors = static_cast<size_t>(scratch);
+  // Each invalid index takes at least one byte of the remaining metadata, so a
+  // larger count is malformed. Reject it here, before storage is reserved for
+  // that many elements below.
+  if (num_invalid_tensors > iter.size()) return false;
 
   if (num_invalid_tensors >
       std::numeric_limits<size_t>::max() - data.tensors().size()) {
@@ -121,11 +125,45 @@ bool TensorList::Decode(const VariantTensorData& data) {
     if (scratch > std::numeric_limits<int>::max()) return false;
     decoded_max_num_elements = static_cast<int>(scratch);
   }
+  // When max_num_elements is set it caps the list size (TensorListPushBack and
+  // TensorListSetItem enforce it on insertion), so reject a list that already
+  // exceeds its own cap.
+  if (decoded_max_num_elements != -1 &&
+      total_num_tensors > static_cast<size_t>(decoded_max_num_elements)) {
+    return false;
+  }
 
   TensorShapeProto element_shape_proto;
   if (!element_shape_proto.ParseFromString(iter)) return false;
-
+  // The PartialTensorShape constructor calls AddDim(), which fatally CHECKs on a
+  // malformed rank or dimension size. BuildPartialTensorShape is not a safe
+  // substitute here: for partial shapes it silently coerces any dimension below
+  // -1 to unknown instead of rejecting it. The proto is untrusted, so validate
+  // it with IsValid (which also rejects dims < -1 and excessive rank) before
+  // constructing the shape.
+  if (!PartialTensorShape::IsValid(element_shape_proto)) return false;
   const PartialTensorShape decoded_element_shape(element_shape_proto);
+
+  // Every element stored in a list must match its element_dtype and be
+  // compatible with its element_shape; the mutation paths (TensorListPushBack,
+  // TensorListSetItem) enforce this on insertion. The serialized data is
+  // untrusted, so re-establish the same invariant here. Consumers such as
+  // TensorListStack and TensorListGather skip the per-element shape check when
+  // element_shape is fully defined and then treat each element's count as the
+  // output element count, so a decoded element that does not match would
+  // overrun the output buffer.
+  for (const Tensor& t : decoded_tensors) {
+    if (t.dtype() == DT_INVALID) continue;  // Unset element placeholder.
+    // Any element reaching here is a concrete tensor, so it must match the
+    // list's dtype. If decoded_element_dtype is DT_INVALID a concrete element is
+    // itself inconsistent, so reject it rather than letting it through.
+    if (t.dtype() != decoded_element_dtype) {
+      return false;
+    }
+    if (!decoded_element_shape.IsCompatibleWith(t.shape())) {
+      return false;
+    }
+  }
 
   element_dtype = decoded_element_dtype;
   max_num_elements = decoded_max_num_elements;
