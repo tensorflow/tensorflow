@@ -113,4 +113,28 @@ TEST(PjRtCommonTest, PjRtValueTypeFromProtoIntVector) {
               testing::ElementsAre(1, 2, 3));
 }
 
+TEST(PjRtCommonTest, PjRtValueTypeCaseName) {
+  EXPECT_EQ(xla::PjRtValueTypeCaseName(xla::PjRtValueTypeProto::kBoolValue),
+            "bool");
+  EXPECT_EQ(xla::PjRtValueTypeCaseName(xla::PjRtValueTypeProto::kFloatValue),
+            "float");
+  EXPECT_EQ(xla::PjRtValueTypeCaseName(xla::PjRtValueTypeProto::kIntValue),
+            "int64_t");
+  EXPECT_EQ(xla::PjRtValueTypeCaseName(xla::PjRtValueTypeProto::kIntVector),
+            "std::vector<int64_t>");
+  EXPECT_EQ(xla::PjRtValueTypeCaseName(xla::PjRtValueTypeProto::kStringValue),
+            "string");
+  EXPECT_EQ(xla::PjRtValueTypeCaseName(xla::PjRtValueTypeProto::VALUE_NOT_SET),
+            "unset");
+}
+
+TEST(PjRtCommonTest, PjRtTypeName) {
+  EXPECT_EQ(xla::PjRtTypeName<bool>(), "bool");
+  EXPECT_EQ(xla::PjRtTypeName<float>(), "float");
+  EXPECT_EQ(xla::PjRtTypeName<int64_t>(), "int64_t");
+  EXPECT_EQ(xla::PjRtTypeName<std::vector<int64_t>>(), "std::vector<int64_t>");
+  EXPECT_EQ(xla::PjRtTypeName<std::string>(), "string");
+  EXPECT_EQ(xla::PjRtTypeName<int>(), "unknown");
+}
+
 }  // namespace

@@ -264,10 +264,23 @@ StreamExecutorGpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
     int memory_space_kind_id, xla::Shape shape,
     const xla::Layout* layout) const {
   if (shape.IsToken()) {
+    if (layout != nullptr) {
+      return absl::InvalidArgumentError(
+          "Layout is not supported for token shapes.");
+    }
     return shape;
   }
+  if (!shape.IsArray()) {
+    return InvalidArgument(
+        "MakeCanonicalShapeForMemorySpace only supports array or token shapes, "
+        "got %s",
+        shape.ToString());
+  }
+  shape.clear_layout();
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
   if (layout != nullptr) {
+    ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(*layout, shape));
     *shape.mutable_layout() = *layout;
     if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
       ABSL_ASSIGN_OR_RETURN(

@@ -1,0 +1,88 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+edition = "2024";
+
+package xla;
+
+import "google/protobuf/timestamp.proto";
+import "xla/pjrt/proto/pjrt_value_type.proto";
+
+// Represents a compile-time component (such as a custom call handler, an FFI
+// compile-time Instantiate handler, or a dialect lowering engine).
+message PjRtComponentBuildStampProto {
+  // Category or subsystem of the component, e.g. "xla.ffi.handler".
+  string kind = 1;
+
+  // Target or symbol identifier, e.g. "custom_matmul".
+  string name = 2;
+
+  // Build target or package owning the component, e.g.
+  // "@openxla//xla/backends/gpu:custom_kernel".
+  string owner = 3;
+
+  string hash = 4;
+}
+
+// Represents a versioned compiler interface, dialect, or runtime component
+// (e.g. Mosaic, TPU runtime).
+message PjRtVersionProto {
+  // Identifier of the versioned component, e.g. "mosaic", "tpu_runtime".
+  string name = 1;
+
+  int64 major_version = 2;
+  int64 minor_version = 3;
+}
+
+// Represents the build stamp of a PjRt plugin or compiler.
+message PjRtBuildStampProto {
+  // The build label with which the binary was built.
+  string build_label = 1;
+
+  // The timestamp at which the binary was built. Unset defaults to
+  // absl::InfinitePast().
+  google.protobuf.Timestamp build_timestamp = 2;
+
+  // The VCS revision (Git commit SHA or Piper source URI) from which the
+  // binary was built.
+  string vcs_revision = 3;
+
+  // Hash of the PjRt plugin or compiler, but not including components that are
+  // specified separately in `components` or `versions`.
+  string source_hash = 4;
+
+  // Deterministic hash of `source_hash`, `components`, and `versions`. Two
+  // compilers with the same full source hash are guaranteed to have equivalent
+  // behavior. They have the same source_hash, same components, and same
+  // versions, after deduping. They can have different build_label,
+  // build_timestamp, vcs_revision, and/or attributes.
+  string full_source_hash = 5;
+
+  // Compile-time components (such as a custom call handler, an FFI compile-time
+  // Instantiate handler, or a dialect lowering engine) that are not linked
+  // into the compiler binary and must be included to get a comprehensive
+  // source hash of the compiler.
+  repeated PjRtComponentBuildStampProto components = 6;
+
+  // Environment-specific attributes using dot-separated namespaces, e.g.
+  // "vendor.candidate" -> "xla_tpu_candidate_1".
+  // Attributes are informational-only metadata and do NOT affect compilation
+  // semantics or the full source hash.
+  map<string, PjRtValueTypeProto> attributes = 7;
+
+  // Versioned compiler interfaces, dialects, or runtime components (such as
+  // Mosaic IR version). Included in `full_source_hash`.
+  repeated PjRtVersionProto versions = 8;
+}

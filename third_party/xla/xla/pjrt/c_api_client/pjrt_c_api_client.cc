@@ -906,7 +906,8 @@ PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateErrorBuffer(
-    absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
+    absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+    const Layout* layout) {
   if (c_api_->pjrt_api_version.major_version == 0 &&
       c_api_->pjrt_api_version.minor_version < 82) {
     return absl::UnimplementedError(
@@ -923,17 +924,34 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateErrorBuffer(
   args.error_message = error.message().data();
   args.error_message_size = error.message().size();
 
-  args.shape_dims = shape.dimensions().data();
-  args.shape_num_dims = shape.dimensions().size();
+  if (shape.IsArray()) {
+    args.shape_dims = shape.dimensions().data();
+    args.shape_num_dims = shape.dimensions().size();
+  } else if (shape.IsToken()) {
+    args.shape_dims = nullptr;
+    args.shape_num_dims = 0;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("PjRtCApiClient::CreateErrorBuffer only supports array "
+                     "or token shapes, got ",
+                     shape.ToString()));
+  }
   args.shape_element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+  args.shape_layout = nullptr;
 
   pjrt::BufferMemoryLayoutData c_layout_data;
-  if (shape.has_layout()) {
+  if (layout != nullptr) {
+    if (c_api_->pjrt_api_version.major_version == 0 &&
+        c_api_->pjrt_api_version.minor_version < 117) {
+      return absl::UnimplementedError(
+          "PJRT_Client_CreateErrorBuffer with a custom layout requires PJRT "
+          "C API version 0.117 or higher.");
+    }
     ABSL_ASSIGN_OR_RETURN(c_layout_data,
-                     pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
-    args.shape_layout = &c_layout_data.c_layout;
+                     pjrt::ConvertToBufferMemoryLayoutData(*layout));
+    args.device_layout = &c_layout_data.c_layout;
   } else {
-    args.shape_layout = nullptr;
+    args.device_layout = nullptr;
   }
 
   args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory)->c_memory();
@@ -4491,8 +4509,18 @@ PjRtCApiTopologyDescription::MakeCanonicalShapeForMemorySpace(
   args.extension_start = nullptr;
   args.topology = c_topology_;
   args.memory_space_kind_id = memory_space_kind_id;
-  args.dims = shape.dimensions().data();
-  args.num_dims = shape.dimensions().size();
+  if (shape.IsArray()) {
+    args.dims = shape.dimensions().data();
+    args.num_dims = shape.dimensions().size();
+  } else if (shape.IsToken()) {
+    args.dims = nullptr;
+    args.num_dims = 0;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("MakeCanonicalShapeForMemorySpace only supports array or "
+                     "token shapes, got ",
+                     shape.ToString()));
+  }
   args.element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
 
   pjrt::BufferMemoryLayoutData layout_data;

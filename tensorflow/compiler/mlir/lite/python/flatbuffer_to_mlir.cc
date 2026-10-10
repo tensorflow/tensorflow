@@ -75,7 +75,7 @@ std::string FlatBufferFileToMlir(const std::string& model_file_or_buffer,
                                  bool input_is_filepath, bool bytecode,
                                  const std::vector<std::string>& cl_options) {
   ABSL_CONST_INIT static absl::Mutex cl_mutex(absl::kConstInit);
-  absl::MutexLock lock(&cl_mutex);
+  absl::MutexLock lock(cl_mutex);
 
   // Reset options from any previous invocation.
   llvm::cl::ResetAllOptionOccurrences();

@@ -668,6 +668,20 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // The backend-specific options selected for the algebraic simplifier.
   const AlgebraicSimplifierOptions& options_;
 
+  // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
+  absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(
+      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dnums);
+
+  // Rewrites a dot as
+  // reduce(mul(broadcast(transpose(x)),broadcast(transpose(y)))), where the
+  // reduction is over the contracting dimensions. Supports arbitrary dots: the
+  // lhs and rhs may each have any number of batch, contracting and
+  // non-contracting dimensions.
+  absl::Status RewriteBatchPlusContractingAsReduce(
+      HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dnums);
+
  private:
   // Returns whether the dot precision config is supported by simplifier.
   virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config,
@@ -682,11 +696,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleAllReduceOrReduceScatter(HloInstruction* collective);
 
-  // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
-  absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(
-      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
-      const DotDimensionNumbers& dnums);
-
   enum class RewriteResult {
     kNoRewrite,
     kRewritten,
@@ -697,12 +706,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Could return kStopRewrites if the rewrite is too expensive.
   absl::StatusOr<RewriteResult> AssociativeReorderNestedDot(
       HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs);
-
-  // If the lhs or rhs have only batch and contracting dimensions, a dot can be
-  // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
-  absl::Status RewriteBatchPlusContractingAsReduce(
-      HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
-      const DotDimensionNumbers& dnums);
 
   // Removes degenerate dimension from dot.
   absl::StatusOr<bool> RemoveDegenerateDimensionFromDot(HloDotInstruction* dot);
