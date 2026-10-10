@@ -1005,12 +1005,21 @@ class ArrayMethodsTest(test.TestCase):
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
     self.assertRaises(ValueError, np_array_ops.var, np.ones([2, 2]), out=[])
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                'out of bounds'):
-      np_array_ops.var(np.ones([2, 2]), axis=-3, ddof=1)
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                'out of bounds'):
-      np_array_ops.var(np.ones([2, 2]), axis=(-3, 0), ddof=1)
+    out_of_bounds = 'out of bounds|not in|Invalid reduction dimension'
+    for axis in (-3, (-3, 0), 3, (0, 3)):
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError), out_of_bounds):
+        np_array_ops.var(np.ones([2, 2]), axis=axis, ddof=1)
+
+    # With an unknown rank, the axis is only checked at run time.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    def var_fn(a):
+      return np_array_ops.var(a, axis=-3, ddof=1)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), out_of_bounds):
+      var_fn(np.ones([2, 2], dtype=np.float32))
 
   def testProd(self):
 
