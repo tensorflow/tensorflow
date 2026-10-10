@@ -3648,6 +3648,7 @@ name=None))
         samples starts off as the user intends, but may change as input datasets
         become empty. This can be difficult to detect since the dataset starts
         off looking correct. Default to `False` for backward compatibility.
+        Set it to `True` when `weights` is a dataset that can contain zeros.
       rerandomize_each_iteration: An optional `bool`. The boolean argument
       controls whether the sequence of random numbers used to determine which
       dataset to sample from will be rerandomized each epoch. That is, it
@@ -3661,7 +3662,10 @@ name=None))
     Raises:
       TypeError: If the `datasets` or `weights` arguments have the wrong type.
       ValueError:
-        - If `datasets` is empty, or
+        - If `datasets` is empty,
+        - If `weights` contains a negative, NaN or infinite value (raised as
+          a `tf.errors.InvalidArgumentError` when its values are only known at
+          runtime), or
         - If `weights` is specified and does not match the length of `datasets`.
     """
     # Loaded lazily due to a circular dependency
