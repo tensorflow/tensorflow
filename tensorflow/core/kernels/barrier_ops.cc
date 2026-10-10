@@ -98,7 +98,14 @@ class Barrier : public ResourceBase {
                          ": received shape ", element_shape.DebugString())),
         callback);
     if (element_shape.dims() > 0) element_shape.RemoveDim(0);
-    const std::size_t num_inserted = keys.NumElements();
+    const int64_t num_inserted = keys.NumElements();
+    OP_REQUIRES_ASYNC(
+        ctx, values.dims() > 0 && values.dim_size(0) == num_inserted,
+        absl::InvalidArgumentError(absl::StrCat(
+            "keys and values must have the same batch size. Got ", num_inserted,
+            " keys but values has shape ", values.shape().DebugString(),
+            " in barrier ", name_, ".")),
+        callback);
 
     // For each key, update the corresponding incomplete tuple with the
     // the corresponding given value at component_index.
@@ -128,7 +135,7 @@ class Barrier : public ResourceBase {
       // them in a vector
       std::vector<Tuple> ready_tuples;
 
-      for (int i = 0; i < num_inserted; ++i) {
+      for (int64_t i = 0; i < num_inserted; ++i) {
         OP_REQUIRES_OK_ASYNC(
             ctx,
             InsertOneLocked<T>(ctx, keys, values, element_shape,
@@ -158,12 +165,12 @@ class Barrier : public ResourceBase {
       // tuple by slicing entries into new Tensors.  This part is slow
       // but seems the cleanest solution for now.
       insert_tuple.reserve(2 + num_components());  // indices, keys, rest
-      int insertion_size = ready_tuples.size();
-      for (int i = 0; i < 2 + num_components(); ++i) {
+      int64_t insertion_size = ready_tuples.size();
+      for (int64_t i = 0; i < 2 + num_components(); ++i) {
         TensorShape component_shape(ready_tuples[0][i].shape());
         component_shape.InsertDim(0, insertion_size);
         Tensor component(ready_tuples[0][i].dtype(), component_shape);
-        for (int b = 0; b < insertion_size; ++b) {
+        for (int64_t b = 0; b < insertion_size; ++b) {
           OP_REQUIRES_OK_ASYNC(
               ctx,
               batch_util::CopyElementToSlice(std::move(ready_tuples[b][i]),
@@ -307,7 +314,7 @@ class Barrier : public ResourceBase {
   absl::Status InsertOneLocked(OpKernelContext* ctx, const Tensor& keys,
                                const Tensor& values,
                                const TensorShape& element_shape,
-                               int component_index, int i,
+                               int component_index, int64_t i,
                                std::vector<Tuple>* ready_tuples,
                                bool* new_elements)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -525,6 +532,8 @@ class InsertManyOp : public BarrierOpKernel {
       : BarrierOpKernel(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("component_index", &component_index_));
+    OP_REQUIRES(context, component_index_ >= 0,
+                absl::InvalidArgumentError("component_index must be >= 0"));
   }
 
  protected:
@@ -546,6 +555,11 @@ class InsertManyOp : public BarrierOpKernel {
     const Tensor* keys;
     const Tensor* values;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("keys", &keys), callback);
+    OP_REQUIRES_ASYNC(
+        ctx, TensorShapeUtils::IsVector(keys->shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "keys must be 1-D, got shape ", keys->shape().DebugString())),
+        callback);
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("values", &values), callback);
     barrier->TryInsertMany<T>(*keys, component_index_, *values, ctx, callback);
   }
