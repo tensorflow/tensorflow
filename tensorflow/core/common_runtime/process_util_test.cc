@@ -52,5 +52,13 @@ TEST(ProcessUtilTest, ThreadPoolNegative) {
   EXPECT_GT(pool->NumThreads(), 0);
 }
 
+TEST(ProcessUtilTest, ComputePoolNegativeInterOpThreadsUsesDefault) {
+  SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(-1);
+
+  thread::ThreadPool* pool = ComputePool(opts);
+  EXPECT_GT(pool->NumThreads(), 0);
+}
+
 }  // anonymous namespace
 }  // namespace tensorflow
