@@ -399,7 +399,8 @@ REGISTER_OP("Conv2D")
     .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding);
+    .SetShapeFn(
+        shape_inference::Conv2DShapeWithExplicitPaddingAllowZero);
 
 REGISTER_OP("Conv2DBackpropInput")
     .Input("input_sizes: int32")
