@@ -190,7 +190,8 @@ def InvokeNvcc(argv, log=False):
   nvcc_std_map = {}
   if int(NVCC_VERSION.split('.')[0]) >= 11:
       nvcc_std_map["c++1z"] = "c++17"
-      nvcc_allowed_std_options += ["c++17", "c++1z"]
+      nvcc_std_map["c++2a"] = "c++20"
+      nvcc_allowed_std_options += ["c++17", "c++1z", "c++20", "c++2a"]
   std_options = ''.join([' -std=' +
       (nvcc_std_map[define] if define in nvcc_std_map else define)
       for define in std_options if define in nvcc_allowed_std_options][-1:])
@@ -250,8 +251,8 @@ def InvokeNvcc(argv, log=False):
   nvccopts += std_options
   nvccopts += m_options
   nvccopts += warning_options
-  # Force C++17 dialect (note, everything in just one string!)
-  nvccopts += ' --std c++17 '
+  # Force C++20 dialect (note, everything in just one string!)
+  nvccopts += ' --std c++20 '
   nvccopts += fatbin_options
   # The option `-allow-unsupported-compiler` is required for the combination of
   # NVCC+clang compilers. 

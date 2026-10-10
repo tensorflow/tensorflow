@@ -179,8 +179,8 @@ def InvokeNvcc(argv, log=False):
   # Provide a unique dir for each compiling action to avoid conflicts.
   tempdir = tempfile.mkdtemp(dir = NVCC_TEMP_DIR)
   nvccopts += ['--keep', '--keep-dir', tempdir]
-  # Force C++17 dialect (note, everything in just one string!)
-  nvccopts += ['--std c++17']
+  # Force C++20 dialect (note, everything in just one string!)
+  nvccopts += ['--std c++20']
   # This is so that nvcc does not complain about MSVC or CLANG.
   nvccopts += ['-allow-unsupported-compiler']
   nvccopts += ['--expt-extended-lambda', '--expt-relaxed-constexpr']

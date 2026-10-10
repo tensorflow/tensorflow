@@ -60,7 +60,7 @@ def GetHostCompilerOptions(argv):
   parser = ArgumentParser()
   args, leftover = parser.parse_known_args(argv)
   sycl_host_compile_flags = leftover
-  sycl_host_compile_flags.append('-std=c++17')
+  sycl_host_compile_flags.append('-std=c++20')
   host_flags = ['-fsycl-host-compiler-options=\'%s\'' % (' '.join(sycl_host_compile_flags))]
   return host_flags
 
@@ -92,7 +92,7 @@ def call_compiler(argv, link = False, sycl_compile = True):
 
   compile_flags = []
   compile_flags.append('-DDNNL_GRAPH_WITH_SYCL=1')
-  compile_flags.append("-std=c++17")
+  compile_flags.append("-std=c++20")
 
   link_flags = ['-fPIC']
   link_flags.append('-lsycl')
