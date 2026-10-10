@@ -135,6 +135,41 @@ class TridiagonalMulOpTest(test.TestCase):
                            [[3, 3], [12, 12], [5, 5]],
                            dtype=dtype)
 
+  def testNumpyAndListInputs(self):
+    superdiag, maindiag, subdiag = [1., 2.], [1., 2., 1.], [2., 1.]
+    diags_compact = np.stack(
+        [np.pad(superdiag, [0, 1]), maindiag,
+         np.pad(subdiag, [1, 0])])
+    diags_matrix = np.diag(superdiag, 1) + np.diag(maindiag) + np.diag(
+        subdiag, -1)
+    rhs = np.array([[1., 1.], [2., 2.], [3., 3.]])
+    expected = [[3., 3.], [12., 12.], [5., 5.]]
+    diags_sequence = (np.pad(superdiag, [0, 1]), np.array(maindiag),
+                      np.pad(subdiag, [1, 0]))
+    with self.cached_session():
+      for diags, diags_list, diags_format in (
+          (diags_compact, diags_compact.tolist(), 'compact'),
+          (diags_matrix, diags_matrix.tolist(), 'matrix'),
+          (diags_sequence, [d.tolist() for d in diags_sequence], 'sequence')):
+        for diags_input, rhs_input in ((diags, rhs),
+                                       (diags_list, rhs.tolist()),
+                                       (diags, rhs.tolist())):
+          result = linalg_impl.tridiagonal_matmul(
+              diags_input, rhs_input, diagonals_format=diags_format)
+          self.assertAllClose(self.evaluate(result), expected)
+
+  def testInvalidRanks(self):
+    rhs = np.ones([4, 1])
+    for diags, diags_format in (([1., 2., 3., 4.], 'compact'),
+                                (1., 'compact'),
+                                ([1., 2., 3., 4.], 'matrix'),
+                                ((1., 1., 1.), 'sequence')):
+      with self.assertRaisesRegex(ValueError, 'Expected .* to have rank'):
+        linalg_impl.tridiagonal_matmul(
+            diags, rhs, diagonals_format=diags_format)
+    with self.assertRaisesRegex(ValueError, 'sequence of length 3'):
+      linalg_impl.tridiagonal_matmul(1., rhs, diagonals_format='sequence')
+
   def testComplex(self):
     for dtype in [dtypes.complex64, dtypes.complex128]:
       self._testAllFormats([1j, 1j], [1, -1, 0], [1j, 1j],
