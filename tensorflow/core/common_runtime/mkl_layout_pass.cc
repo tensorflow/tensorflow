@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/mkl_heuristics.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
@@ -3721,10 +3722,10 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
     ret_status = RewriteNodeForJustOpNameChange(g, orig_node, &new_node, ri);
   } else {
     ret_status = Status(absl::StatusCode::kInvalidArgument,
-                        "Unsupported rewrite cause found."
+                        "Unsupported rewrite cause found. "
                         "RewriteNode will fail.");
   }
-  TF_CHECK_OK(ret_status);
+  TF_RETURN_IF_ERROR(ret_status);
 
   // Copy the runtime device assigned from original code to new node.
   new_node->set_assigned_device_name(orig_node->assigned_device_name());
