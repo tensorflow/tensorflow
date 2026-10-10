@@ -169,14 +169,8 @@ class ExpandDimsOp : public OpKernel {
       dim = std::min<Tdim>(dim + input_dims + 1, input_dims);
     }
 
-    OP_REQUIRES(
-        ctx, input_dims < TensorShape::MaxDimensions(),
-        errors::InvalidArgument(
-            "Cannot expand a tensor of rank ", input_dims,
-            ": expanding would exceed the maximum supported rank of ",
-            TensorShape::MaxDimensions(), "."));
-
-    // Compute new shape with an additional dimension.
+    // Compute new shape with an additional dimension. BuildTensorShape
+    // rejects a result whose rank exceeds TensorShape::MaxDimensions().
     absl::InlinedVector<int64_t, 8> output_shape_vec(input_dims + 1);
     for (int64_t i = 0; i < dim; ++i) {
       output_shape_vec[i] = input_shape.dim_size(i);

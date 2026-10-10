@@ -61,13 +61,6 @@ class PackOp : public XlaOpKernel {
                                         -expanded_num_dims, ", ",
                                         expanded_num_dims, ")"));
 
-    OP_REQUIRES(
-        ctx, shapes[0].dims() < TensorShape::MaxDimensions(),
-        errors::InvalidArgument(
-            "Cannot pack tensors of rank ", shapes[0].dims(),
-            ": packing would exceed the maximum supported rank of ",
-            TensorShape::MaxDimensions(), "."));
-
     std::vector<xla::XlaOp> reshaped_inputs(num);
 
     TensorShape child_shape(shapes[0]);

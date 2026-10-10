@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -410,19 +409,7 @@ absl::Status ValidateStridedSliceOp(
   // new_axis will increase dimension by 1 (with a one-size dimension)
   // slices like foo[3,...] will reduce dimension by 1.
   // This cannot be done earlier, because it depends on Step 3.
-  int output_rank = 0;
-  for (int32_t gather_index : dense_spec.final_shape_gather_indices) {
-    if (gather_index != kShrinkAxis) {
-      ++output_rank;
-    }
-  }
-  if (output_rank > TensorShape::MaxDimensions()) {
-    return errors::InvalidArgument(
-        "StridedSlice would produce a tensor of rank ", output_rank,
-        ", which exceeds the maximum supported rank of ",
-        TensorShape::MaxDimensions(), ".");
-  }
-
+  // AddDimWithStatus rejects a result past TensorShape::MaxDimensions().
   final_shape->Clear();
   if (shape_spec != nullptr) {
     shape_spec->output_to_sparse_mapping.clear();

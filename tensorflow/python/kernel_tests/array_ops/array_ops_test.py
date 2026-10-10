@@ -798,7 +798,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         [0] + [1] * 224,
         constant_op.constant(0.0, dtype=dtypes.float32))
     with self.assertRaisesRegex(
-        (errors.InvalidArgumentError, ValueError), "maximum supported rank"):
+        (errors.InvalidArgumentError, ValueError), "Too many dimensions"):
       # Public slice syntax, not the generated op wrapper. evaluate() covers
       # graph mode, where shape inference may defer the error until execution.
       sliced = value[tuple([array_ops.newaxis] * 30 + [Ellipsis])]
