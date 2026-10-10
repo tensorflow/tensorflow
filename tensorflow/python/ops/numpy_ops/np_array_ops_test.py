@@ -1034,6 +1034,15 @@ class ArrayMethodsTest(test.TestCase):
         (ValueError, errors_impl.InvalidArgumentError), out_of_bounds):
       var_fn_tuple(np.ones([2, 2], dtype=np.float32))
 
+    # In-bounds negative axes with an unknown rank are normalized at run time.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    def var_fn_tuple_in_bounds(a):
+      return np_array_ops.var(a, axis=(-1, 0), ddof=1)
+
+    x = np.arange(24, dtype=np.float32).reshape((2, 3, 4))
+    self.match(var_fn_tuple_in_bounds(x), np.var(x, axis=(-1, 0), ddof=1))
+
   def testProd(self):
 
     def run_test(arr, *args, **kwargs):
