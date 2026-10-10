@@ -652,6 +652,97 @@ class CropAndResizeOpTestBase(test.TestCase):
                     err = max(err1, err2)
                     self.assertLess(err, 2e-3)
 
+  def testGradOpsWithNonFiniteBoxes(self):
+    # The forward CPU kernel rejects non-finite boxes, so call the gradient
+    # ops directly to reach the backward kernels (#124955).
+    grads = np.ones((1, 2, 2, 1), dtype=np.float32)
+    box_ind = np.array([0], dtype=np.int32)
+    image_size = np.array([1, 4, 4, 1], dtype=np.int32)
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      image = np.ones((1, 4, 4, 1), dtype=dtype.as_numpy_dtype)
+      for bad_val in [np.nan, np.inf, -np.inf]:
+        for col in range(4):
+          boxes_np = np.array([[0.0, 0.0, 1.0, 1.0]], dtype=np.float32)
+          boxes_np[0, col] = bad_val
+          grad_image = self.evaluate(
+              gen_image_ops.crop_and_resize_grad_image(
+                  grads, boxes_np, box_ind, image_size, T=dtype))
+          grad_boxes = self.evaluate(
+              gen_image_ops.crop_and_resize_grad_boxes(
+                  grads, image, boxes_np, box_ind))
+          self.assertAllEqual(np.zeros((1, 4, 4, 1)), grad_image)
+          self.assertAllEqual(np.zeros((1, 4)), grad_boxes)
+
+
+  def testEmptyTensorRankCheck(self):
+    grads = np.ones((0, 2, 2, 1), dtype=np.float32)
+    image = np.ones((1, 4, 4, 1), dtype=np.float32)
+    image_size = np.array([1, 4, 4, 1], dtype=np.int32)
+
+    raw_grad_boxes = gen_image_ops.crop_and_resize_grad_boxes
+    raw_grad_image = gen_image_ops.crop_and_resize_grad_image
+
+    # 1. 0 elements, invalid boxes columns.
+    boxes_bad_cols = np.zeros((0, 5), dtype=np.float32)
+    box_ind_valid = np.zeros((0,), dtype=np.int32)
+
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "boxes must have 4 columns",
+    ):
+      self.evaluate(
+          raw_grad_boxes(
+              grads=grads,
+              image=image,
+              boxes=boxes_bad_cols,
+              box_ind=box_ind_valid,
+          )
+      )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "boxes must have 4 columns",
+    ):
+      self.evaluate(
+          raw_grad_image(
+              grads=grads,
+              boxes=boxes_bad_cols,
+              box_ind=box_ind_valid,
+              image_size=image_size,
+              T=dtypes.float32,
+          )
+      )
+
+    # 2. 0 elements, invalid box_index rank.
+    boxes_valid = np.zeros((0, 4), dtype=np.float32)
+    box_ind_bad_rank = np.zeros((0, 6), dtype=np.int32)
+
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "box_index must be 1-D",
+    ):
+      self.evaluate(
+          raw_grad_boxes(
+              grads=grads,
+              image=image,
+              boxes=boxes_valid,
+              box_ind=box_ind_bad_rank,
+          )
+      )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "box_index must be 1-D",
+    ):
+      self.evaluate(
+          raw_grad_image(
+              grads=grads,
+              boxes=boxes_valid,
+              box_ind=box_ind_bad_rank,
+              image_size=image_size,
+              T=dtypes.float32,
+          )
+      )
+
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RGBToHSVOpTestBase(test.TestCase):
