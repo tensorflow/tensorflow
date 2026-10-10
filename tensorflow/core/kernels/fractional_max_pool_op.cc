@@ -292,6 +292,39 @@ class FractionalMaxPoolGradOp : public OpKernel {
                     "col_pooling_sequence must be a vector, received shape ",
                     width_seq_tensor.shape().DebugString())));
 
+    OP_REQUIRES(
+        context, tensor_in.dim_size(0) == tensor_out.dim_size(0),
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_input batch (", tensor_in.dim_size(0),
+            ") must equal orig_output batch (", tensor_out.dim_size(0),
+            ")")));
+    OP_REQUIRES(
+        context, tensor_in.dim_size(3) == tensor_out.dim_size(3),
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_input depth (", tensor_in.dim_size(3),
+            ") must equal orig_output depth (", tensor_out.dim_size(3),
+            ")")));
+    OP_REQUIRES(
+        context, tensor_out.shape() == out_backprop.shape(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "orig_output shape (", tensor_out.shape().DebugString(),
+            ") must equal out_backprop shape (",
+            out_backprop.shape().DebugString(), ")")));
+    OP_REQUIRES(
+        context,
+        height_seq_tensor.dim_size(0) - 1 == tensor_out.dim_size(1),
+        absl::InvalidArgumentError(absl::StrCat(
+            "row_pooling_sequence must have length orig_output height + 1 (",
+            tensor_out.dim_size(1) + 1, "), received ",
+            height_seq_tensor.dim_size(0))));
+    OP_REQUIRES(
+        context,
+        width_seq_tensor.dim_size(0) - 1 == tensor_out.dim_size(2),
+        absl::InvalidArgumentError(absl::StrCat(
+            "col_pooling_sequence must have length orig_output width + 1 (",
+            tensor_out.dim_size(2) + 1, "), received ",
+            width_seq_tensor.dim_size(0))));
+
     //
     std::vector<int64_t> input_size(tensor_in_and_out_dims);
     std::vector<int64_t> output_size(tensor_in_and_out_dims);

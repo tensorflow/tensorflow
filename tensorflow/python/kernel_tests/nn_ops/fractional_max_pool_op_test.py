@@ -719,17 +719,11 @@ class FractionalMaxPoolGradTest(test.TestCase):
     ):
       with self.cached_session():
         overlapping = False
-        orig_input = constant_op.constant(
-            1.0, shape=[1, 2, 2, 1], dtype=dtypes.float32
-        )
-        orig_output = constant_op.constant(
-            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32
-        )
-        out_backprop = constant_op.constant(
-            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32
-        )
-        row_pooling_sequence = [-0x4000000, 2]
-        col_pooling_sequence = [0, 2]
+        orig_input = array_ops.zeros([1, 3, 3, 1])
+        orig_output = array_ops.zeros([1, 2, 2, 1])
+        out_backprop = array_ops.zeros([1, 2, 2, 1])
+        row_pooling_sequence = [-0x4000000, 1, 1]
+        col_pooling_sequence = [-0x4000000, 1, 1]
         t = gen_nn_ops.FractionalMaxPoolGrad(
             orig_input=orig_input,
             orig_output=orig_output,
@@ -791,7 +785,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
   def testBatchMismatchRaisesErrorForFractionalMaxPoolGrad(self):
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "orig_input and orig_output must have the same batch size",
+        r"orig_input batch \(2\) must equal orig_output batch \(1\)",
     ):
       with self.cached_session():
         t = gen_nn_ops.FractionalMaxPoolGrad(
@@ -807,7 +801,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
   def testDepthMismatchRaisesErrorForFractionalMaxPoolGrad(self):
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "orig_input and orig_output must have the same depth",
+        r"orig_input depth \(2\) must equal orig_output depth \(1\)",
     ):
       with self.cached_session():
         t = gen_nn_ops.FractionalMaxPoolGrad(
@@ -826,7 +820,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
     # bounds.
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "orig_output and out_backprop must have the same shape",
+        r"orig_output shape .* must equal out_backprop shape",
     ):
       with self.cached_session():
         orig_input = constant_op.constant(
@@ -874,6 +868,41 @@ class FractionalMaxPoolGradTest(test.TestCase):
             overlapping=True,
         )
         self.evaluate(t)
+
+
+  def testGradMismatchedBatchAndDepth(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"orig_input batch \(3\) must equal orig_output batch \(2\)"):
+      self.evaluate(gen_nn_ops.fractional_max_pool_grad(
+          orig_input=array_ops.zeros([3, 2, 2, 2]),
+          orig_output=array_ops.zeros([2, 2, 2, 2]),
+          out_backprop=array_ops.zeros([2, 2, 2, 2]),
+          row_pooling_sequence=[0, 1, 2],
+          col_pooling_sequence=[0, 1, 2],
+          overlapping=False))
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"orig_input depth \(3\) must equal orig_output depth \(2\)"):
+      self.evaluate(gen_nn_ops.fractional_max_pool_grad(
+          orig_input=array_ops.zeros([2, 2, 2, 3]),
+          orig_output=array_ops.zeros([2, 2, 2, 2]),
+          out_backprop=array_ops.zeros([2, 2, 2, 2]),
+          row_pooling_sequence=[0, 1, 2],
+          col_pooling_sequence=[0, 1, 2],
+          overlapping=False))
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"orig_output shape .* must equal out_backprop shape"):
+      self.evaluate(gen_nn_ops.fractional_max_pool_grad(
+          orig_input=array_ops.zeros([2, 2, 2, 2]),
+          orig_output=array_ops.zeros([2, 2, 2, 2]),
+          out_backprop=array_ops.zeros([3, 2, 2, 2]),
+          row_pooling_sequence=[0, 1, 2],
+          col_pooling_sequence=[0, 1, 2],
+          overlapping=False))
 
 
 if __name__ == "__main__":
