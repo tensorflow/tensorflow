@@ -680,7 +680,8 @@ class Interpreter {
   /// The complete index list is validated before any subgraph is modified.
   /// Duplicate indices are ignored and subgraphs are visited in model order.
   /// The caller is responsible for including any required callee subgraphs;
-  /// this method does not perform transitive dependency discovery.
+  /// this method does not perform transitive dependency discovery. See
+  /// `GetReachableSubgraphIndices` for computing such a closure.
   /// \warning This is an experimental API and subject to change. \n
   TfLiteStatus ModifyGraphWithDelegate(
       TfLiteDelegate* delegate,
@@ -688,6 +689,70 @@ class Interpreter {
   TfLiteStatus ModifyGraphWithDelegate(
       TfLiteOpaqueDelegateStruct* delegate,
       const std::vector<int>& active_subgraph_indices);
+
+  /// \brief Applies a delegate only to the subgraphs that the signature
+  /// `signature_key` can execute.
+  ///
+  /// The delegated set is the signature's entry subgraph plus every subgraph
+  /// reachable from it, as computed by `GetReachableSubgraphIndices`. Other
+  /// signatures' entry subgraphs, and helper subgraphs (control-flow bodies,
+  /// composite decompositions, etc.) reachable only from other signatures, are
+  /// left undelegated. For multi-signature models this avoids per-signature
+  /// delegate costs (e.g. weight repacking, workspace allocation) for
+  /// signatures that the caller does not intend to run on this interpreter.
+  ///
+  /// Default delegates: once this method has been called with a valid
+  /// `signature_key`, TFLite default delegates (e.g. XNNPACK), which are
+  /// applied lazily on the first `AllocateTensors()` or
+  /// `GetSignatureRunner()` call, are likewise restricted to the subgraphs
+  /// reachable from the signature(s) passed to this method. They are skipped
+  /// entirely if every such signature's entry subgraph is already fully
+  /// delegated. To take effect, this method must be called before default
+  /// delegates are applied. The selection is recorded even if `delegate`
+  /// itself fails to apply. Signatures that were not passed to this method
+  /// remain runnable, but execute on the default CPU kernels.
+  ///
+  /// Returns one of the following status codes:
+  /// 1. kTfLiteOk: Success.
+  /// 2. kTfLiteApplicationError: `signature_key` is null or is not one of
+  /// `signature_keys()`. The interpreter is unchanged. Also returned for the
+  /// same reasons as `ModifyGraphWithDelegate`.
+  /// 3. kTfLiteError: The model references an invalid callee subgraph index
+  /// (see `GetReachableSubgraphIndices`); the interpreter is unchanged. Also
+  /// returned for the same reasons as `ModifyGraphWithDelegate`.
+  /// 4. kTfLiteDelegateError, kTfLiteUnresolvedOps: As for
+  /// `ModifyGraphWithDelegate`.
+  /// \warning Calling this method has the same tensor-pointer invalidation
+  /// caveats as `ModifyGraphWithDelegate`. \n
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus ModifyGraphWithDelegateForSignature(TfLiteDelegate* delegate,
+                                                   const char* signature_key);
+  TfLiteStatus ModifyGraphWithDelegateForSignature(
+      TfLiteOpaqueDelegateStruct* delegate, const char* signature_key);
+
+  /// \brief Computes the subgraphs that can execute when running any of
+  /// `root_subgraph_indices`.
+  ///
+  /// On success, `reachable_subgraph_indices` holds the roots plus every
+  /// subgraph transitively referenced by a node of a reachable subgraph via
+  /// the builtin ops IF, WHILE, CALL_ONCE, STABLEHLO_CASE,
+  /// STABLEHLO_COMPOSITE, STABLEHLO_REDUCE_WINDOW or STABLEHLO_SCATTER, sorted
+  /// ascending without duplicates. Nodes are read from each subgraph's
+  /// pre-delegation execution plan, so the result does not depend on which
+  /// delegates have already been applied. Subgraph references made by custom
+  /// ops are not visible to this analysis.
+  ///
+  /// Returns one of the following status codes:
+  /// 1. kTfLiteOk: Success.
+  /// 2. kTfLiteApplicationError: `reachable_subgraph_indices` is null,
+  /// `root_subgraph_indices` is empty, or a root is out of range.
+  /// 3. kTfLiteError: A reachable node references an out-of-range subgraph
+  /// index (i.e. the model is malformed).
+  /// On failure, `reachable_subgraph_indices` is left unmodified.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus GetReachableSubgraphIndices(
+      const std::vector<int>& root_subgraph_indices,
+      std::vector<int>* reachable_subgraph_indices) const;
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
@@ -717,6 +782,20 @@ class Interpreter {
   /// how to delete C++ objects deriving from TfLiteDelegate.
   TfLiteStatus ModifyGraphWithDelegate(
       std::unique_ptr<TfLiteDelegate> delegate) = delete;
+
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Same as ModifyGraphWithDelegateForSignature except this interpreter
+  /// takes ownership of the provided delegate.
+  template <typename Delegate, typename Deleter>
+  TfLiteStatus ModifyGraphWithDelegateForSignature(
+      std::unique_ptr<Delegate, Deleter> delegate, const char* signature_key) {
+    return ModifyGraphWithDelegateForSignature(
+        TakeDelegateOwnership(std::move(delegate)), signature_key);
+  }
+
+  TfLiteStatus ModifyGraphWithDelegateForSignature(
+      std::unique_ptr<TfLiteDelegate> delegate,
+      const char* signature_key) = delete;
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Ensure the data in `tensor.data` is readable. If a
@@ -960,6 +1039,15 @@ class Interpreter {
   template <typename Delegate, typename Deleter>
   inline TfLiteStatus ModifyGraphWithDelegateImpl(
       std::unique_ptr<Delegate, Deleter>&& delegate) {
+    return ModifyGraphWithDelegateImpl(
+        TakeDelegateOwnership(std::move(delegate)));
+  }
+
+  // Transfers ownership of `delegate` to this interpreter and returns the
+  // (still valid) raw pointer.
+  template <typename Delegate, typename Deleter>
+  TfLiteDelegate* TakeDelegateOwnership(
+      std::unique_ptr<Delegate, Deleter>&& delegate) {
     Deleter deleter = std::move(delegate.get_deleter());
 
     // Note that we retain ownership of the delegate even if graph modification
@@ -970,8 +1058,15 @@ class Interpreter {
               static_cast<typename std::unique_ptr<Delegate, Deleter>::pointer>(
                   delegate_to_delete));
         });
-    return ModifyGraphWithDelegateImpl(owned_delegates_.back().get());
+    return owned_delegates_.back().get();
   }
+
+  // Private non-experimental implementation of GetReachableSubgraphIndices,
+  // defined in interpreter.cc so that it can be used by
+  // ApplyLazyDelegateProviders.
+  TfLiteStatus GetReachableSubgraphIndicesImpl(
+      const std::vector<int>& root_subgraph_indices,
+      std::vector<int>* reachable_subgraph_indices) const;
 
   // Overrides execution plan. ImplThis bounds checks indices sent in.
   // Note: Only used during initialization.
@@ -1089,6 +1184,12 @@ class Interpreter {
       std::function<TfLiteDelegatePtr(TfLiteContext* /*context*/)>;
   using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
   TfLiteDelegateCreators lazy_delegate_providers_;
+
+  // Sorted, deduplicated entry subgraph indices of the signatures passed to
+  // ModifyGraphWithDelegateForSignature. When non-empty, default delegates
+  // applied by ApplyLazyDelegateProviders are restricted to the subgraphs
+  // reachable from these roots instead of being applied to all subgraphs.
+  std::vector<int> delegation_scope_root_subgraph_indices_;
 
   // List of SignatureDefs obtained from the model.
   std::vector<internal::SignatureDef> signature_defs_;

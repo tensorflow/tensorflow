@@ -17,6 +17,7 @@
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
     * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
+    * Adds `Interpreter::ModifyGraphWithDelegateForSignature` and `Interpreter::GetReachableSubgraphIndices` to scope delegate application to subgraphs reachable from selected signatures.
 
 ### Bug Fixes and Other Changes
 
