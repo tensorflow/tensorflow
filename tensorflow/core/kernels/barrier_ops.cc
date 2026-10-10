@@ -99,6 +99,15 @@ class Barrier : public ResourceBase {
         callback);
     if (element_shape.dims() > 0) element_shape.RemoveDim(0);
     const std::size_t num_inserted = keys.NumElements();
+    OP_REQUIRES_ASYNC(
+        ctx,
+        num_inserted == 0 || (values.dims() > 0 &&
+                               values.dim_size(0) == (int64_t)num_inserted),
+        absl::InvalidArgumentError(absl::StrCat(
+            "keys and values must have the same batch size. Got ", num_inserted,
+            " keys but values has shape ", values.shape().DebugString(),
+            " in barrier ", name_, ".")),
+        callback);
 
     // For each key, update the corresponding incomplete tuple with the
     // the corresponding given value at component_index.
