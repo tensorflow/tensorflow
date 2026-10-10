@@ -242,6 +242,11 @@ void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,
 template <typename Device, typename T>
 absl::Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
                                      bool copy_on_read_mode) {
+  if (tensor->IsInitialized() && tensor->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+        " but got ", DataTypeString(tensor->dtype())));
+  }
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before
     // updating.
@@ -293,6 +298,13 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     ResourceHandle handle;
     TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
+    if ((var->is_initialized || var->tensor()->IsInitialized()) &&
+        var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+          " but got ", DataTypeString(var->tensor()->dtype()),
+          " (resource variable dtype)"));
+    }
     if (sparse) {
       var->mu()->assert_held_shared();
       *out = *var->tensor();
@@ -305,6 +317,11 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     return absl::OkStatus();
   }
   *out = ctx->mutable_input(input, lock_held);
+  if (out->IsInitialized() && out->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+        " but got ", DataTypeString(out->dtype())));
+  }
   return absl::OkStatus();
 }
 
