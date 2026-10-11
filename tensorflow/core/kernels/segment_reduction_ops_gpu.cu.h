@@ -574,7 +574,7 @@ absl::Status SegmentReduceGPUImplNoInnerDim(
   // when Tvec != Treducevec; the result is only used if Tvec == Treducevec.
   Treducevec* output_raw_ptr = reinterpret_cast<Treducevec*>(output_vec);
   Tensor output_raw;
-  bool need_temp_output = !std::is_same<Tvec, Treducevec>::value;
+  bool need_temp_output = !std::is_same_v<Tvec, Treducevec>;
   if (need_temp_output) {
     // Note: We must allocate and reinterpret as bytes because Treducevec may
     // be a vector type and they are not supported as Tensor dtypes.
@@ -591,7 +591,7 @@ absl::Status SegmentReduceGPUImplNoInnerDim(
   TF_RETURN_IF_ERROR(GpuSegmentedReduce(ctx, nsegments, reduce_op,
                                         Treducevec(initial_value), input_iter,
                                         segment_offsets, output_raw_ptr));
-  bool need_epilogue = !std::is_same<Tvec, Treducevec>::value ||
+  bool need_epilogue = !std::is_same_v<Tvec, Treducevec> ||
                        initial_value != empty_segment_value || is_mean ||
                        is_sqrtn;
   if (need_epilogue) {
@@ -1321,7 +1321,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
     using TindicesCompact = int32_t;
     Tensor tmp_indices_internal;
     const TindicesCompact* indices_internal_ptr;
-    if constexpr (std::is_same<Tindices, TindicesCompact>::value) {
+    if constexpr (std::is_same_v<Tindices, TindicesCompact>) {
       indices_internal_ptr = indices_vec.data();
     } else {
       OP_REQUIRES_OK_ASYNC(

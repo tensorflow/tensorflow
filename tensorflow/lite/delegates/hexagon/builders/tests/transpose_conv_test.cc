@@ -89,9 +89,9 @@ class QuantizedTransposeConvOpModel : public SingleOpModelWithHexagon {
   }
 
   void SetBias(std::initializer_list<float> bias) {
-    if (std::is_same<InputType, uint8_t>::value) {
+    if (std::is_same_v<InputType, uint8_t>) {
       QuantizeAndPopulate<int32_t>(bias_, bias);
-    } else if (std::is_same<InputType, int8_t>::value) {
+    } else if (std::is_same_v<InputType, int8_t>) {
       PerChannelQuantizeBias(bias_, bias);
     }
     // Set allocation type to MmapRo to simulate a 'constant' tensor.

@@ -80,7 +80,7 @@ namespace tfg {
 #include "tensorflow/core/transforms/passes.h.inc"
 
 template <typename T>
-static std::enable_if_t<std::is_integral<T>::value, ElementsAttr>
+static std::enable_if_t<std::is_integral_v<T>, ElementsAttr>
 CreateElementsAttrOfTypeValues(Type element_type, ArrayRef<int64_t> shape,
                                ArrayRef<T> values) {
   auto tensor_shape = RankedTensorType::get(shape, element_type);

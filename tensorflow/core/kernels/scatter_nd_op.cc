@@ -93,7 +93,7 @@ class ScatterOpBase : public OpKernel {
         BadIndicesPolicyFromString(bad_indices_policy_str);
     OP_REQUIRES_OK(c, bad_indices_policy.status());
     bad_indices_policy_ = *bad_indices_policy;
-    if constexpr (std::is_same<Device, GPUDevice>::value) {
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(
           c, bad_indices_policy_ != BadIndicesPolicy::kError,
           absl::InvalidArgumentError(
@@ -260,7 +260,7 @@ class TensorScatterOp : public ScatterOpBase<Device> {
 
     AllocatorAttributes alloc_attr;
     MemoryType memory_type = DEVICE_MEMORY;
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       alloc_attr.set_on_host(true);
       memory_type = HOST_MEMORY;
     } else {
@@ -971,7 +971,7 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
 
   if (allocate) {
     AllocatorAttributes alloc_attr;
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       alloc_attr.set_on_host(true);
     }
     TF_RETURN_IF_ERROR(
@@ -1030,7 +1030,7 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
     }
   }
   const bool check_bad_indices =
-      ((std::is_same<Device, CPUDevice>::value &&
+      ((std::is_same_v<Device, CPUDevice> &&
         bad_indices_policy == BadIndicesPolicy::kDefault) ||
        bad_indices_policy == BadIndicesPolicy::kError);
   if (check_bad_indices && bad_i >= 0) {
@@ -1145,7 +1145,7 @@ absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
                          Tensor* out, bool allocate,
                          BadIndicesPolicy bad_indices_policy) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  if (std::is_same<Device, GPUDevice>::value &&
+  if (std::is_same_v<Device, GPUDevice> &&
       tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
     return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
                                           allocate);
@@ -1154,8 +1154,7 @@ absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
 
   // Run on the CPU for integer types, since the GPU implementation uses
   // atomics, which are not supported for all integer types.
-  if constexpr (std::is_same<Device, GPUDevice>::value &&
-                std::is_integral<T>::value) {
+  if constexpr (std::is_same_v<Device, GPUDevice> && std::is_integral_v<T>) {
     return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
                                           allocate, bad_indices_policy);
   } else {

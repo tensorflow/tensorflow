@@ -757,7 +757,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
     }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       ConcatGPU<T>(ctx, input_tensors_flat, output_tensor, &output_flat);
       return;
     }
@@ -984,7 +984,7 @@ class TensorArrayConcatOp : public OpKernel {
       auto output_flat =
           output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      if (std::is_same<Device, GPUDevice>::value) {
+      if (std::is_same_v<Device, GPUDevice>) {
         ConcatGPU<T>(ctx, input_tensors_flat, output_tensor, &output_flat);
         return;
       }
