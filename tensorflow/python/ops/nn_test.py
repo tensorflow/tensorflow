@@ -1180,6 +1180,7 @@ class SwishTest(test_lib.TestCase, parameterized.TestCase):
       self.assertEqual(g_beta.dtype, dtype)
       self.assertEqual(g_features.shape.as_list(), [2, 2])
       self.assertEqual(g_beta.shape.as_list(), [2])
+      self.evaluate([g_features, g_beta])
 
 
 class MomentsTest(test_lib.TestCase):
