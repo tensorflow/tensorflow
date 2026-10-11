@@ -611,12 +611,14 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
       # both finite and within tolerance, or if they are equal.
       if dtype.is_floating or dtype.is_complex:
         if dtype.is_complex:
-          a_check = math_ops.abs(a)
-          b_check = b_abs
+          both_finite = (
+              math_ops.is_finite(math_ops.real(a))
+              & math_ops.is_finite(math_ops.imag(a))
+              & math_ops.is_finite(math_ops.real(b))
+              & math_ops.is_finite(math_ops.imag(b))
+          )
         else:
-          a_check = a
-          b_check = b
-        both_finite = math_ops.is_finite(a_check) & math_ops.is_finite(b_check)
+          both_finite = math_ops.is_finite(a) & math_ops.is_finite(b)
         result = (both_finite & result) | math_ops.equal(a, b)
 
       if equal_nan:
