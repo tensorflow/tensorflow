@@ -96,6 +96,26 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
     self.assertLess(err_x, 1e-3)
     self.assertLess(err_w, 1e-3)
 
+def test_empty_batch(self):
+  with self.cached_session():
+    # Test batch_size = 0
+    features = tf.constant([], shape=[0, 4], dtype=tf.float32)
+    weights = tf.constant([], shape=[4, 3], dtype=tf.float32)
+    labels = tf.constant([], shape=[0, 3], dtype=tf.float32)
+    
+    loss = nn_ops.fused_linear_cross_entropy(labels, features, weights)
+    self.assertEqual(loss.shape, (0,))
+
+def test_invalid_ranks_and_bounds(self):
+  with self.cached_session():
+    # Test rank mismatch (e.g., 1-D instead of 2-D)
+    features = tf.constant([1.0, 2.0], dtype=tf.float32) # 1-D
+    weights = tf.constant([[1.0, 2.0], [3.0, 4.0]], dtype=tf.float32)
+    labels = tf.constant([[1.0, 0.0]], dtype=tf.float32)
+    
+    with self.assertRaises(tf.errors.InvalidArgumentError):
+      self.evaluate(nn_ops.fused_linear_cross_entropy(labels, features, weights))
+
 
 if __name__ == "__main__":
   test.main()
