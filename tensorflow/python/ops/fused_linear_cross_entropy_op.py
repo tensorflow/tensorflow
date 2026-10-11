@@ -19,9 +19,9 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("nn.fused_linear_cross_entropy")
+@tf_export("nn.fused_linear_cross_entropy", v1=[])
 def fused_linear_cross_entropy(
-    labels, features, weights, biases=None, name=None
+    labels, features, weights, name=None
 ):
   """Computes softmax cross entropy loss directly from linear projection weights.
 
@@ -33,7 +33,6 @@ def fused_linear_cross_entropy(
     labels: Tensor of shape [batch_size, num_classes] or class indices.
     features: Input tensor of shape [batch_size, hidden_dim].
     weights: Weight tensor of shape [hidden_dim, num_classes].
-    biases: Optional bias tensor of shape [num_classes].
     name: A name for the operation (optional).
 
   Returns:
@@ -42,21 +41,11 @@ def fused_linear_cross_entropy(
   with ops.name_scope(
       name,
       "fused_linear_cross_entropy",
-      [labels, features, weights, biases],
+      [labels, features, weights],
   ):
     features = ops.convert_to_tensor(features, name="features")
     weights = ops.convert_to_tensor(weights, name="weights")
     labels = ops.convert_to_tensor(labels, name="labels")
-
-    if biases is not None:
-      biases = ops.convert_to_tensor(biases, name="biases")
-      return gen_nn_ops.fused_linear_cross_entropy(
-          x=features,
-          w=weights,
-          labels=labels,
-          biases=biases,
-          name=name,
-      )
 
     return gen_nn_ops.fused_linear_cross_entropy(
         x=features,
