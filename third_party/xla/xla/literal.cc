@@ -946,18 +946,27 @@ void MutableLiteralBase::PopulateR1(const tsl::core::Bitmap& values) {
   }
 }
 
-void MutableLiteralBase::PopulateInplaceInternal(
+absl::Status MutableLiteralBase::PopulateInplaceInternal(
     absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator,
-    bool parallel) {
+    bool parallel, PrimitiveType element_type) {
   const Shape& this_shape = shape();
+  TF_RET_CHECK(this_shape.IsArray())
+      << __func__ << " is only supported for dense arrays: " << this_shape;
+  if (element_type != PRIMITIVE_TYPE_INVALID) {
+    TF_RET_CHECK(this_shape.element_type() == element_type)
+        << "Failing to populate literal with element type "
+        << primitive_util::LowercasePrimitiveTypeName(this_shape.element_type())
+        << " using data of type "
+        << primitive_util::LowercasePrimitiveTypeName(element_type);
+  }
   const int64_t rank = this_shape.dimensions().size();
-  DCHECK(this_shape.IsArray());
   char* const dest_base = static_cast<char*>(untyped_data());
   if (rank > 0) {
     StrideConfig stride_config(this_shape, this_shape, this_shape.dimensions());
     const int64_t primitive_size =
         ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
     const int64_t num_elements = ShapeUtil::ElementsIn(shape());
+    parallel = parallel && num_elements > 32;
     // If we are rank-1 and we are `parallel`, it is better to use a smaller
     // `step` than what `StrideConfig` does: stick the entire dimension in the
     // inner-most loop.
@@ -1009,17 +1018,30 @@ void MutableLiteralBase::PopulateInplaceInternal(
     // For scalars.
     populator(dest_base, {}, /*thread_id=*/-1);
   }
+  return absl::OkStatus();
 }
 
-void MutableLiteralBase::PopulateLinearInplaceInternal(
-    absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel) {
+absl::Status MutableLiteralBase::PopulateLinearInplaceInternal(
+    absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel,
+    PrimitiveType element_type) {
   const Shape& this_shape = shape();
+  TF_RET_CHECK(this_shape.IsArray())
+      << __func__ << " is only supported for dense arrays: " << this_shape;
+  if (element_type != PRIMITIVE_TYPE_INVALID) {
+    TF_RET_CHECK(this_shape.element_type() == element_type)
+        << "Failing to populate literal with element type "
+        << primitive_util::LowercasePrimitiveTypeName(this_shape.element_type())
+        << " using data of type "
+        << primitive_util::LowercasePrimitiveTypeName(element_type);
+  }
   const int64_t rank = this_shape.dimensions().size();
-  DCHECK(this_shape.IsArray());
   char* const dest_base = static_cast<char*>(untyped_data());
 
   const int64_t num_elements = ShapeUtil::ElementsIn(shape());
-  if (num_elements == 0) return;
+  if (num_elements == 0) {
+    return absl::OkStatus();
+  }
+  parallel = parallel && num_elements > 32;
 
   if (rank > 0) {
     // Compute initialization function partitioning.
@@ -1072,6 +1094,7 @@ void MutableLiteralBase::PopulateLinearInplaceInternal(
     // For scalars.
     populator(dest_base, 0, /*thread_id=*/-1);
   }
+  return absl::OkStatus();
 }
 
 Literal LiteralBase::Relayout(const Layout& new_layout,
