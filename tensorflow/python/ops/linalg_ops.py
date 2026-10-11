@@ -830,11 +830,16 @@ def norm(tensor,
                     array_ops.where_v2(math_ops.equal(perm_before, i))),
                 dtype=dtypes.int32), axes)
         permed = array_ops.transpose(tensor, perm=perm_before)
+        # reduce_max over an empty axis is -inf. Norms are non-negative, so
+        # clamp the result at zero.
         matrix_2_norm = array_ops.expand_dims(
-            math_ops.reduce_max(
-                math_ops.abs(gen_linalg_ops.svd(permed, compute_uv=False)[0]),
-                axis=-1,
-                keepdims=True),
+            math_ops.maximum(
+                math_ops.reduce_max(
+                    math_ops.abs(
+                        gen_linalg_ops.svd(permed, compute_uv=False)[0]),
+                    axis=-1,
+                    keepdims=True),
+                0),
             axis=-1)
         result = array_ops.transpose(matrix_2_norm, perm=perm_after)
       else:
@@ -872,12 +877,14 @@ def norm(tensor,
         sum_axis = None if axis is None else axis[0]
         result = math_ops.reduce_sum(result, sum_axis, keepdims=True)
         if is_matrix_norm:
-          result = math_ops.reduce_max(result, axis[-1], keepdims=True)
+          result = math_ops.maximum(
+              math_ops.reduce_max(result, axis[-1], keepdims=True), 0)
       elif ord == np.inf:
         if is_matrix_norm:
           result = math_ops.reduce_sum(result, axis[1], keepdims=True)
         max_axis = None if axis is None else axis[0]
-        result = math_ops.reduce_max(result, max_axis, keepdims=True)
+        result = math_ops.maximum(
+            math_ops.reduce_max(result, max_axis, keepdims=True), 0)
       else:
         # General p-norms (positive p only)
         result = math_ops.pow(

@@ -69,6 +69,25 @@ class NormOpTest(test_lib.TestCase):
     self.evaluate(linalg_ops.norm(matrix, axis=-1))
     self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1)))
 
+  def testEmptyInputIsZero(self):
+    # reduce_max over an empty axis is -inf. A norm of an empty input should be
+    # 0, as it is for the other norms and in numpy.
+    cases = [
+        (np.zeros([0]), np.inf, None),
+        (np.zeros([0, 3]), 2, (0, 1)),
+        (np.zeros([3, 0]), 1, (0, 1)),
+        (np.zeros([3, 0]), np.inf, (0, 1)),
+        (np.zeros([0, 3]), np.inf, (0, 1)),
+        (np.zeros([2, 3, 0]), 1, (1, 2)),
+    ]
+    for value, ord_, axis_ in cases:
+      result = self.evaluate(
+          linalg_ops.norm(
+              constant_op.constant(value, dtype=np.float32),
+              ord=ord_,
+              axis=axis_))
+      self.assertTrue(np.all(result == 0), msg=(value.shape, ord_, axis_))
+
 
 def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
 
