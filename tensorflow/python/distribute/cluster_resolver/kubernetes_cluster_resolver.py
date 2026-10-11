@@ -137,6 +137,7 @@ class KubernetesClusterResolver(ClusterResolver):
     self._job_to_label_mapping = job_to_label_mapping
     self._tf_server_port = tf_server_port
     self._override_client = override_client
+    self._executable_location = executable_location
 
     self.task_type = None
     self.task_id = None
@@ -189,7 +190,13 @@ class KubernetesClusterResolver(ClusterResolver):
       from kubernetes import config as k8sconfig  # pylint: disable=g-import-not-at-top
       from kubernetes import client as k8sclient  # pylint: disable=g-import-not-at-top
 
-      k8sconfig.load_kube_config()
+      # Objects created before executable_location existed have no such
+      # attribute. For them, keep loading the kubeconfig file as before.
+      executable_location = getattr(self, '_executable_location', None)
+      if executable_location == ExecutableLocation.WITHIN_CLUSTER:
+        k8sconfig.load_incluster_config()
+      else:
+        k8sconfig.load_kube_config()
       client = k8sclient.CoreV1Api()
 
     cluster_map = {}

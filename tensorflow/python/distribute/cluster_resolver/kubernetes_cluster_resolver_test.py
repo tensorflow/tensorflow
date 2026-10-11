@@ -209,6 +209,59 @@ class KubernetesClusterResolverTest(test.TestCase):
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, str(expected_proto))
 
+  def testClusterSpecLoadsInClusterConfigWithinCluster(self):
+    # The constructor loads the in-cluster config. cluster_spec() must load the
+    # same config, not a kubeconfig file, which does not exist inside a pod.
+    _mock_kubernetes_module()
+    k8s_module = sys.modules['kubernetes']
+    k8s_module.client.CoreV1Api.return_value = _mock_kubernetes_client({
+        'job-name=tensorflow': _create_pod_list(
+            ('tensorflow-abc123', 'Running', '10.1.2.3')),
+    })
+
+    cluster_resolver = KubernetesClusterResolver(
+        executable_location=ExecutableLocation.WITHIN_CLUSTER)
+    k8s_module.config.reset_mock()
+
+    actual_cluster_spec = cluster_resolver.cluster_spec()
+    self.assertEqual(actual_cluster_spec.as_dict(),
+                     {'worker': ['10.1.2.3:8470']})
+    k8s_module.config.load_incluster_config.assert_called_once_with()
+    k8s_module.config.load_kube_config.assert_not_called()
+
+  def testClusterSpecLoadsKubeConfigOffCluster(self):
+    _mock_kubernetes_module()
+    k8s_module = sys.modules['kubernetes']
+    k8s_module.client.CoreV1Api.return_value = _mock_kubernetes_client({
+        'job-name=tensorflow': _create_pod_list(
+            ('tensorflow-abc123', 'Running', '10.1.2.3')),
+    })
+
+    cluster_resolver = KubernetesClusterResolver(
+        executable_location=ExecutableLocation.OFF_CLUSTER)
+    k8s_module.config.reset_mock()
+
+    cluster_resolver.cluster_spec()
+    k8s_module.config.load_kube_config.assert_called_once_with()
+    k8s_module.config.load_incluster_config.assert_not_called()
+
+  def testClusterSpecWithoutExecutableLocationAttribute(self):
+    # Objects created before executable_location existed keep the old behavior.
+    _mock_kubernetes_module()
+    k8s_module = sys.modules['kubernetes']
+    k8s_module.client.CoreV1Api.return_value = _mock_kubernetes_client({
+        'job-name=tensorflow': _create_pod_list(
+            ('tensorflow-abc123', 'Running', '10.1.2.3')),
+    })
+
+    cluster_resolver = KubernetesClusterResolver()
+    del cluster_resolver._executable_location
+    k8s_module.config.reset_mock()
+
+    cluster_resolver.cluster_spec()
+    k8s_module.config.load_kube_config.assert_called_once_with()
+    k8s_module.config.load_incluster_config.assert_not_called()
+
 
 if __name__ == '__main__':
   test.main()
