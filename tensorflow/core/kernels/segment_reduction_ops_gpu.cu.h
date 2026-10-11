@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
@@ -1394,6 +1395,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
             const Tsegmentids_internal* segment_ids,
             const TensorShape& dense_output_shape,
             typename AsyncOpKernel::DoneCallback done) {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     const int64_t dense_output_dim0 = dense_output_shape.dim_size(0);
 
     // Allocate and compute segment weights (for Mean/SqrtN operations only).
@@ -1401,7 +1403,8 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
     Tweights* weights_ptr = nullptr;
     if (operation != SparseSegmentReductionOperation::kSum) {
       ComputeSegmentWeights(context, operation, nsegments, nouter, segment_ids,
-                            &tmp_weights, done);
+                            &tmp_weights);
+      if (!context->status().ok()) return;
       weights_ptr = tmp_weights.flat<Tweights>().data();
     }
 
@@ -1415,14 +1418,14 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
           context,
           context->allocate_temp(DataTypeToEnum<TindicesCompact>::value,
                                  TensorShape({nouter}), &tmp_sorted_indices),
-          done);
+          []() {});
       TindicesCompact* tmp_sorted_indices_ptr =
           tmp_sorted_indices.flat<TindicesCompact>().data();
       OP_REQUIRES_OK_ASYNC(
           context,
           context->allocate_temp(DataTypeToEnum<Tsegmentids_internal>::value,
                                  TensorShape({nouter}), &tmp_permuted_segment),
-          done);
+          []() {});
       Tsegmentids_internal* tmp_permuted_segment_ptr =
           tmp_permuted_segment.flat<Tsegmentids_internal>().data();
       OP_REQUIRES_OK_ASYNC(
@@ -1433,7 +1436,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                        /*indices_in=*/segment_ids,
                        /*indices_out=*/tmp_permuted_segment_ptr,
                        /*num_bits=*/Log2Ceiling64(dense_output_dim0)),
-          done);
+          []() {});
       sorted_indices_ptr = tmp_sorted_indices_ptr;
       permuted_segment_ptr = tmp_permuted_segment_ptr;
       // The original tensors are no longer needed.
@@ -1455,18 +1458,18 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                          context->allocate_temp(DataTypeToEnum<Toffsets>::value,
                                                 TensorShape({nouter}),
                                                 &tmp_sorted_indices_unique_ids),
-                         done);
+                         []() {});
     Toffsets* sorted_indices_unique_ids_ptr =
         tmp_sorted_indices_unique_ids.flat<Toffsets>().data();
     OP_REQUIRES_OK_ASYNC(
         context,
         GpuInclusivePrefixSum(context, nouter, sorted_indices_edge_indicator,
                               sorted_indices_unique_ids_ptr),
-        done);
+        []() {});
 
     se::Stream* stream = context->op_device_context()->stream();
     OP_REQUIRES_ASYNC(context, stream,
-                      absl::InternalError("No GPU stream available."), done);
+                      absl::InternalError("No GPU stream available."), []() {});
 
     // Copy the last element of sorted_indices_unique_ids back to the host to
     // obtain num_unique.
@@ -1480,7 +1483,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                     (nouter - 1),
                 sizeof(*last_idx_host.data())),
             sizeof(*last_idx_host.data())),
-        done);
+        []() {});
 
     auto async_finish_computation =
         [this, context, dense_output_shape, nouter, ninner, input,
@@ -1489,6 +1492,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
          segment_ids_tensor, tmp_permuted_segment, permuted_segment_ptr,
          sorted_indices_edge_indicator, tmp_weights, weights_ptr, last_idx_host,
          done]() -> void {
+      auto cb_cleanup = gtl::MakeCleanup([&done]() { done(); });
       const GPUDevice& device = context->eigen_gpu_device();
       Toffsets num_unique = (*last_idx_host.data()) + 1;
 
@@ -1496,12 +1500,12 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
           context->op_device_context()->stream()->parent()->Activate();
 
       TensorShape output_shape = dense_output_shape;
-      OP_REQUIRES_OK_ASYNC(context,
-                           output_shape.SetDimWithStatus(0, num_unique), done);
+      OP_REQUIRES_OK_ASYNC(
+          context, output_shape.SetDimWithStatus(0, num_unique), []() {});
       Tensor* output = nullptr;
       T* output_ptr;
       OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_output(0, output_shape, &output), done);
+          context, context->allocate_output(0, output_shape, &output), []() {});
       output_ptr = output->flat<T>().data();
 
       // Compute the gradient using a weighted SegmentReduceGPU with the segment
@@ -1522,7 +1526,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                                /*indices=*/permuted_segment_ptr,
                                /*weights=*/weights_ptr,
                                /*output=*/output_ptr),
-                           done);
+                           []() {});
 
       Tensor* sorted_unique_indices = nullptr;
       Tindices* sorted_unique_indices_ptr;
@@ -1530,7 +1534,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
           context,
           context->allocate_output(1, TensorShape({num_unique}),
                                    &sorted_unique_indices),
-          done);
+          []() {});
       sorted_unique_indices_ptr =
           sorted_unique_indices->flat<Tindices>().data();
 
@@ -1539,11 +1543,10 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
           LaunchScatterUniqueIndicesKernel(
               device, nouter, sorted_indices_edge_indicator, sorted_indices_ptr,
               sorted_indices_unique_ids_ptr, sorted_unique_indices_ptr),
-          done);
-
-      done();
+          []() {});
     };
 
+    cleanup.release();
     context->device()
         ->tensorflow_accelerator_device_info()
         ->event_mgr->ThenExecute(stream, async_finish_computation);
@@ -1554,14 +1557,13 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                              SparseSegmentReductionOperation operation,
                              Tsegmentids_internal nsegments, Toffsets nouter,
                              const Tsegmentids_internal* segment_ids,
-                             Tensor* tmp_weights,
-                             typename AsyncOpKernel::DoneCallback done) {
+                             Tensor* tmp_weights) {
     const GPUDevice& device = context->eigen_gpu_device();
     OP_REQUIRES_OK_ASYNC(
         context,
         context->allocate_temp(DataTypeToEnum<Tweights>::value,
                                TensorShape({nsegments}), tmp_weights),
-        done);
+        []() {});
     Tweights* weights_ptr = tmp_weights->flat<Tweights>().data();
     // Allocate and compute segment_offsets.
     Tensor tmp_segment_offsets;
@@ -1569,19 +1571,19 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                          context->allocate_temp(DataTypeToEnum<Toffsets>::value,
                                                 TensorShape({nsegments + 1}),
                                                 &tmp_segment_offsets),
-                         done);
+                         []() {});
     Toffsets* segment_offsets_ptr = tmp_segment_offsets.flat<Toffsets>().data();
     OP_REQUIRES_OK_ASYNC(
         context,
         LaunchSegmentOffsetsKernel(device, nouter, nsegments, segment_ids,
                                    segment_offsets_ptr),
-        done);
+        []() {});
     // Compute the weights based on the segment sizes using segment_offsets.
     OP_REQUIRES_OK_ASYNC(
         context,
         LaunchSegmentWeightsKernel(device, nsegments, operation,
                                    segment_offsets_ptr, weights_ptr),
-        done);
+        []() {});
   }
 };
 

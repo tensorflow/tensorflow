@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
@@ -35,19 +38,58 @@ void LaunchAsyncOpKernel(
     const tfrt_stub::OpKernelRunState& run_state,
     const OpKernelContext::Params& params, mlrt::RegisterSpan results,
     std::shared_ptr<tensorflow::DeviceBase> custom_device) {
+  struct DeferredOpsGuard {
+    explicit DeferredOpsGuard(const OpKernelContext::Params& params)
+        : dec_fn(params.dec_num_deferred_ops_function) {
+      if (params.inc_num_deferred_ops_function) {
+        params.inc_num_deferred_ops_function();
+      }
+    }
+    DeferredOpsGuard(const DeferredOpsGuard&) = delete;
+    DeferredOpsGuard& operator=(const DeferredOpsGuard&) = delete;
+    ~DeferredOpsGuard() {
+      if (dec_fn) {
+        dec_fn();
+      }
+    }
+    std::function<void()> dec_fn;
+  };
+
   struct AsyncState {
     explicit AsyncState(const tfrt_stub::OpKernelRunState& rs,
                         const OpKernelContext::Params& params, int num_outputs,
                         std::shared_ptr<tensorflow::DeviceBase> device)
-        : run_state(rs.input_tf_tensor_values, params, device.get()),
+        : deferred_ops_guard(params),
+          run_state(rs.input_tf_tensor_values, params, device.get()),
           context(&run_state.params, num_outputs),
           custom_device(std::move(device)) {}
 
+    ~AsyncState() {
+      if (!done_called) {
+        LOG(ERROR) << "AsyncOpKernel " << context.op_kernel().name()
+                   << " did not invoke DoneCallback; context status: "
+                   << context.status();
+        absl::Status status =
+            !context.status().ok()
+                ? context.status()
+                : absl::InternalError(
+                      absl::StrCat("AsyncOpKernel ", context.op_kernel().name(),
+                                   " did not invoke DoneCallback"));
+        for (auto& result : results) {
+          std::move(result).SetError(status);
+        }
+      }
+    }
+
+    // Declared first so its destructor runs last, after `context` and
+    // `run_state` have been destroyed.
+    DeferredOpsGuard deferred_ops_guard;
     tfrt_stub::OpKernelRunState run_state;
     OpKernelContext context;
 
     std::vector<mlrt::Promise> results;
     std::shared_ptr<tensorflow::DeviceBase> custom_device;
+    bool done_called = false;
   };
 
   DCHECK_EQ(results.size(), kernel_runner.op_kernel()->num_outputs());
@@ -65,17 +107,11 @@ void LaunchAsyncOpKernel(
 
   auto* op_kernel_context_ptr = &async_state->context;
 
-  if (params.inc_num_deferred_ops_function) {
-    params.inc_num_deferred_ops_function();
-  }
-
-  auto done_callback = [async_state = std::move(async_state),
-                        dec_fn = params.dec_num_deferred_ops_function]() {
-    auto cleanup = absl::MakeCleanup([dec_fn] {
-      if (dec_fn) {
-        dec_fn();
-      }
-    });
+  auto done_callback = [async_state = std::move(async_state)]() {
+    if (async_state->done_called) {
+      return;
+    }
+    async_state->done_called = true;
 
     auto& op_kernel_context = async_state->context;
 

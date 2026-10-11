@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 #include "absl/base/attributes.h"
@@ -50,11 +51,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
 
@@ -931,14 +934,14 @@ class UnbatchResource : public ResourceBase {
       const uint64_t deadline_micros =
           Env::Default()->NowMicros() + timeout_micros_;
 
-      // Add ourselves to the waitlist for tensors.
-      if (!waiting_callbacks_
-               .emplace(batch_key,
-                        WaitingCallback{deadline_micros, context, done})
-               .second) {
+      if (waiting_callbacks_.find(batch_key) != waiting_callbacks_.end()) {
         return absl::AlreadyExistsError(
             "Multiple session runs with the same batch key.");
       }
+
+      // Add ourselves to the waitlist for tensors.
+      waiting_callbacks_.emplace(
+          batch_key, WaitingCallback{deadline_micros, context, done});
 
       // If we have a non-empty tensor, finish the waitlisted runs,
       // and store any remaining pieces.
@@ -1054,6 +1057,7 @@ class UnbatchKernel : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     UnbatchResource* ubr;
     std::function<absl::Status(UnbatchResource**)> creator =
         [this](UnbatchResource** r) {
@@ -1063,11 +1067,10 @@ class UnbatchKernel : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
                              container_, shared_name_, &ubr, creator),
-                         done);
-    auto status = ubr->Compute(c, done);
-    ubr->Unref();
-    OP_REQUIRES_OK_ASYNC(c, status, done);
-    // Assume ubr calls done, so nothing to do here.
+                         []() {});
+    core::ScopedUnref unref_ubr(ubr);
+    OP_REQUIRES_OK_ASYNC(c, ubr->Compute(c, done), []() {});
+    cleanup.release();
   }
 
  private:
@@ -1187,12 +1190,11 @@ class UnbatchGradResource : public ResourceBase {
       }
     } else {
       // If we don't have a valid input tensor we can output an empty tensor and
-      // call our done closure.
+      // call our done closure once all bookkeeping succeeds.
       TensorShape output_shape(grad_t.shape());
       output_shape.set_dim(0, 0);
       Tensor* output = nullptr;
       TF_RETURN_IF_ERROR(context->allocate_output(0, output_shape, &output));
-      done();
     }
 
     // Search to see whether our tensor is desired by any existing batch.
@@ -1208,10 +1210,18 @@ class UnbatchGradResource : public ResourceBase {
       // If all tensors are available we should concatenate them and dispatch
       // the batch.
       if (batch_it->second.missing_tensors.empty()) {
-        TF_RETURN_IF_ERROR(
-            OutputBatch(batch_it->second.context, batch_it->second.done));
+        OpKernelContext* batch_context = batch_it->second.context;
+        AsyncOpKernel::DoneCallback batch_done = batch_it->second.done;
         available_batches_.erase(batch_it);
+        absl::Status batch_status = OutputBatch(batch_context, batch_done);
+        if (!batch_status.ok()) {
+          batch_context->CtxFailureWithWarning(batch_status);
+          batch_done();
+        }
       }
+    }
+    if (data_t.NumElements() == 0) {
+      done();
     }
     return absl::OkStatus();
   }
@@ -1259,6 +1269,7 @@ class UnbatchGradKernel : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
+    auto cleanup = gtl::MakeCleanup([&done]() { done(); });
     UnbatchGradResource* ubr;
     std::function<absl::Status(UnbatchGradResource**)> creator =
         [](UnbatchGradResource** r) {
@@ -1268,11 +1279,10 @@ class UnbatchGradKernel : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
                              container_, shared_name_, &ubr, creator),
-                         done);
-    absl::Status status = ubr->Compute(c, done);
-    ubr->Unref();
-    OP_REQUIRES_OK_ASYNC(c, status, done);
-    // Assume ubr calls done, so nothing to do here.
+                         []() {});
+    core::ScopedUnref unref_ubr(ubr);
+    OP_REQUIRES_OK_ASYNC(c, ubr->Compute(c, done), []() {});
+    cleanup.release();
   }
 
  private:
