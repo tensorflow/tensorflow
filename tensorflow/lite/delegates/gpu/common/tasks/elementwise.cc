@@ -253,7 +253,7 @@ ElementwiseDescriptor CreateElementwiseOneRuntimeOneScalar(
     const OperationDef& definition, const OperationType& op_type,
     T scalar_parameter, bool swap_inputs) {
   ElementwiseDescriptor op_desc;
-  if (std::is_same<T, int32_t>::value) {
+  if (std::is_same_v<T, int32_t>) {
     op_desc.args.AddInt("scalar", scalar_parameter);
     op_desc.code =
         "int4 second_val = CONVERT_TO_INT4(INIT_FLT4(args.scalar));\n";
