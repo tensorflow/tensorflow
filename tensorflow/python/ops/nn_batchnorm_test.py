@@ -343,6 +343,27 @@ class BatchNormalizationTest(test.TestCase):
     self._testBatchNormArbitraryShapes((3, 3), (1, 3), dtype=dtypes.float16,
                                        param_dtype=dtypes.float32, atol=0.001)
 
+  def testBatchNormLargeConstantInputPreservesOffset(self):
+    # Regression test for GH #128753: when the batch is a large constant,
+    # mean*inv >> offset in magnitude. The algebraically equivalent form
+    # x*inv + (offset - mean*inv) drops the offset to roundoff; the
+    # numerically stable form (x - mean)*inv + offset keeps it.
+    for dtype in (dtypes.float32, dtypes.bfloat16):
+      for magnitude in (1.0, 1e10, 1e20):
+        x = array_ops.fill([2, 2], math_ops.cast(magnitude, dtype))
+        mean = math_ops.reduce_mean(x, axis=0)
+        variance = math_ops.reduce_mean(
+            math_ops.square(x - mean), axis=0)
+        offset = constant_op.constant([5.0, 5.0], dtype=dtype)
+        y = nn_impl.batch_normalization(
+            x, mean, variance, offset, scale=None, variance_epsilon=1e-3)
+        atol = 1e-2 if dtype == dtypes.bfloat16 else 1e-4
+        self.assertAllClose(
+            self.evaluate(y),
+            [[5.0, 5.0], [5.0, 5.0]],
+            atol=atol,
+            msg=f"dtype={dtype.name}, magnitude={magnitude}")
+
 
 class SufficientStatisticsTest(test.TestCase):
 
