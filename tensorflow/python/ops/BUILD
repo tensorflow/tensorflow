@@ -4870,6 +4870,17 @@ tf_py_strict_test(
     ],
 )
 
+py_library(
+    name = "fused_linear_cross_entropy_op",
+    srcs = ["fused_linear_cross_entropy_op.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:gen_nn_ops",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
  py_library(
      name = "nn_ops",
      srcs = ["nn_ops.py"],
@@ -4900,3 +4911,5 @@ tf_py_strict_test(
          "//tensorflow/python/util:dispatch",
      ],
  )
+
+
