@@ -80,7 +80,7 @@ class ReaderInterface : public ResourceBase {
   std::string DebugString() const override { return "a reader"; }
 
  protected:
-  ~ReaderInterface() override {}
+  ~ReaderInterface() override = default;
 };
 
 }  // namespace tensorflow

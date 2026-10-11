@@ -62,7 +62,7 @@ class LegacyVar : public ResourceBase {
   mutex mu_;
   Tensor tensor_;
 
-  ~LegacyVar() override {}
+  ~LegacyVar() override = default;
 };
 
 VariableOp::VariableOp(OpKernelConstruction* context) : OpKernel(context) {

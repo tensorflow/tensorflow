@@ -41,7 +41,7 @@ std::vector<testing::Matcher<float>> ArrayFloatNear(
 
 class CopyArrayDataTest : public ::testing::Test {
  public:
-  CopyArrayDataTest() {}
+  CopyArrayDataTest() = default;
 
   void PrepareBuffers(Model* model, std::initializer_list<float> src_data,
                       int src_dim_1, int src_dim_2,

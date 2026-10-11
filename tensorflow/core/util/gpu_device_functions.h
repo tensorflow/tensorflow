@@ -620,7 +620,7 @@ __device__ long long GpuAtomicCasHelper(long long* ptr, F accumulate) {
 
 template <typename From, typename To>
 using ToTypeIfConvertible =
-    typename std::enable_if<std::is_convertible<From, To>::value, To>::type;
+    std::enable_if_t<std::is_convertible_v<From, To>, To>;
 
 template <typename T>
 struct CudaSupportedTypeImpl {
@@ -634,9 +634,8 @@ struct CudaSupportedTypeImpl<long long> {
 
 template <>
 struct CudaSupportedTypeImpl<unsigned long> {
-  using type =
-      typename std::conditional<sizeof(unsigned long) == sizeof(unsigned int),
-                                unsigned int, unsigned long long>::type;
+  using type = std::conditional_t<sizeof(unsigned long) == sizeof(unsigned int),
+                                  unsigned int, unsigned long long>;
 };
 
 template <>

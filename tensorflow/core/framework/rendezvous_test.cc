@@ -395,7 +395,7 @@ TEST_F(LocalRendezvousTest, AbortThenRecvOrSend) {
 class DummyDeviceContext : public DeviceContext {
  public:
   explicit DummyDeviceContext(int stream_id) : stream_id_(stream_id) {}
-  ~DummyDeviceContext() override {}
+  ~DummyDeviceContext() override = default;
   int stream_id() const { return stream_id_; }
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,

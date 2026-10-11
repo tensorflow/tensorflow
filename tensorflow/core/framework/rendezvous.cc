@@ -118,7 +118,7 @@ absl::Status Rendezvous::ParseKey(absl::string_view key, ParsedKey* out) {
       absl::StrCat("Invalid  rendezvous key: ", key));
 }
 
-RendezvousInterface::~RendezvousInterface() {}
+RendezvousInterface::~RendezvousInterface() = default;
 
 absl::Status RendezvousInterface::Recv(const ParsedKey& key,
                                        const Args& recv_args, Tensor* val,

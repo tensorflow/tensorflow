@@ -63,7 +63,7 @@ class StatsPublisherInterface {
   virtual std::unique_ptr<ProfileHandler> GetProfileHandler(
       uint64_t step, int64_t execution_count, const RunOptions& ropts) = 0;
 
-  virtual ~StatsPublisherInterface() {}
+  virtual ~StatsPublisherInterface() = default;
 
   static void RegisterStatsPublisher(StatsPublisherFactory factory_fn);
 

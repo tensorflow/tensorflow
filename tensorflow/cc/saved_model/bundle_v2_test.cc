@@ -41,7 +41,7 @@ constexpr char kTestData[] = "cc/saved_model/testdata";
 
 class BundleV2Test : public ::testing::Test {
  protected:
-  BundleV2Test() {}
+  BundleV2Test() = default;
 
   void RestoreVarsAndVerify(SavedModelV2Bundle* bundle,
                             std::vector<std::string> expected_names) {

@@ -420,7 +420,7 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
         absl::InvalidArgumentError("image_size and grads are incompatible"),
         done);
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES_ASYNC(
           context, !OpDeterminismRequired(),
           absl::UnimplementedError(
@@ -642,7 +642,7 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
         absl::InvalidArgumentError("boxes and grads have incompatible shape"),
         done);
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES_ASYNC(
           context, !OpDeterminismRequired(),
           absl::UnimplementedError(

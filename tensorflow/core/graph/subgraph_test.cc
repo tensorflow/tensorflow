@@ -47,7 +47,7 @@ class SubgraphTest : public ::testing::Test {
     device_info_.set_incarnation(0);
   }
 
-  ~SubgraphTest() override {}
+  ~SubgraphTest() override = default;
 
   void ExpectOK(const std::string& gdef_ascii) {
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef_));

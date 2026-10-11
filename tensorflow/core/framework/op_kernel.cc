@@ -188,7 +188,7 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
                                              context->graph_def_version()));
 }
 
-OpKernel::~OpKernel() {}
+OpKernel::~OpKernel() = default;
 
 absl::Status OpKernel::InputRange(absl::string_view input_name, int* start,
                                   int* stop) const {
