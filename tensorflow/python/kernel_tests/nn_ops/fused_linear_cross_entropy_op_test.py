@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#      http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -97,23 +97,26 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
     self.assertLess(err_x, 1e-3)
     self.assertLess(err_w, 1e-3)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_empty_batch(self):
-    with self.cached_session():
-      features = constant_op.constant([], shape=[0, 4], dtype=dtypes.float32)
-      weights = constant_op.constant([], shape=[4, 3], dtype=dtypes.float32)
-      labels = constant_op.constant([], shape=[0, 3], dtype=dtypes.float32)
-      
-      loss = nn_ops.fused_linear_cross_entropy(labels, features, weights)
-      self.assertEqual(loss.shape, (0,))
+    features = constant_op.constant([], shape=[0, 4], dtype=dtypes.float32)
+    weights = constant_op.constant([], shape=[4, 3], dtype=dtypes.float32)
+    labels = constant_op.constant([], shape=[0, 3], dtype=dtypes.float32)
+    
+    loss = nn_ops.fused_linear_cross_entropy(labels, features, weights)
+    self.assertEqual(self.evaluate(loss).shape, (0,))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_invalid_ranks_and_bounds(self):
-    with self.cached_session():
-      features = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
-      weights = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
-      labels = constant_op.constant([[1.0, 0.0]], dtype=dtypes.float32)
-      
-    with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(nn_ops.fused_linear_cross_entropy(labels, features, weights))
+    features = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
+    weights = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
+    labels = constant_op.constant([[1.0, 0.0]], dtype=dtypes.float32)
+    
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"features must be 2-D|Shape must be rank 2",
+    ):
+      self.evaluate(nn_ops.fused_linear_cross_entropy(labels, features, weights))
 
 
 if __name__ == "__main__":
