@@ -213,7 +213,7 @@ absl::Status ReplaceArgUsageWithConstNode(
     std::string new_name;
     do {
       new_name = g->NewName(const_def.name());
-    } while (node_name_index.contains(new_name));
+    } while (node_name_index.find(new_name) != node_name_index.end());
     const_def.set_name(new_name);
     TF_ASSIGN_OR_RETURN(Node * const_node, g->AddNode(const_def));
     node_name_index[new_name] = const_node;
