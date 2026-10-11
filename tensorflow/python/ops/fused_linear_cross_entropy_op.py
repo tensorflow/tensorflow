@@ -21,14 +21,14 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("nn.fused_linear_cross_entropy", v1=[])
 def fused_linear_cross_entropy(labels, features, weights, name=None):
- """Computes the fused linear cross entropy loss.
+  """Computes the fused linear cross entropy loss.
 
   Args:
-    labels: A `Tensor` of shape `[batch_size, num_classes]` containing 
+    labels: A `Tensor` of shape `[batch_size, num_classes]` containing
       target probabilities or one-hot encoded classes.
-    features: A `Tensor` of shape `[batch_size, hidden_dim]` representing 
+    features: A `Tensor` of shape `[batch_size, hidden_dim]` representing
       the input features.
-    weights: A `Tensor` of shape `[hidden_dim, num_classes]` representing 
+    weights: A `Tensor` of shape `[hidden_dim, num_classes]` representing
       the linear layer weights.
     name: A name for the operation (optional).
 
@@ -36,10 +36,7 @@ def fused_linear_cross_entropy(labels, features, weights, name=None):
     A 1-D `Tensor` of shape `[batch_size]` containing the loss per batch item.
   """
   with ops.name_scope(
-      name,
-      "fused_linear_cross_entropy",
-      [labels, features, weights],
-  ):
+      name, "fused_linear_cross_entropy", [labels, features, weights]):
     features = ops.convert_to_tensor(features, name="features")
     weights = ops.convert_to_tensor(weights, name="weights")
     labels = ops.convert_to_tensor(labels, name="labels")
