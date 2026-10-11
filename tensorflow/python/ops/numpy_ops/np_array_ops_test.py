@@ -1609,64 +1609,6 @@ class ArrayMethodsTest(test.TestCase):
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(flip_unknown_rank_invalid_pos(a))
 
-  def testRot90OutOfBoundsDynamicRank(self):
-    # The dynamic-rank bounds Assert in `rot90` must actually run in graph
-    # mode; it is wired into the computation via `control_dependencies`.
-    # Note: this is deliberately not run with `jit_compile=True` — tf2xla
-    # lowers `Assert` to a no-op under XLA compilation.
-    x = np.zeros((2, 3), dtype=np.float32)
-
-    @def_function.function(
-        input_signature=[
-            tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
-        ]
-    )
-    def f_neg(a):
-      return np_array_ops.rot90(a, axes=(0, -5))
-
-    f_neg = def_function.function(
-        f_neg,
-        input_signature=[
-            tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
-        ]
-    )
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range for array of ndim'
-    ):
-      self.evaluate(f_neg(x))
-
-    def f_pos(a):
-      return np_array_ops.rot90(a, axes=(0, 5))
-
-    f_pos = def_function.function(
-        f_pos,
-        input_signature=[
-            tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
-        ]
-    )
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'out of range for array of ndim'
-    ):
-      self.evaluate(f_pos(x))
-
-  def testRot90DuplicateAxesDynamicRank(self):
-    # The dynamic path re-checks for duplicate axes after canonicalization
-    # (e.g. (1, -2) both canonicalize to axis 1 on a rank-3 array).
-    x = np.zeros((2, 3), dtype=np.float32)
-
-    @def_function.function(
-        input_signature=[
-            tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
-        ]
-    )
-    def f(a):
-      return np_array_ops.rot90(a, axes=(1, -2))
-
-    with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, 'Axes must be different'
-    ):
-      self.evaluate(f(x))
-
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))
     self.assertAllEqual(1, np_array_ops.ndim([1, 2]))

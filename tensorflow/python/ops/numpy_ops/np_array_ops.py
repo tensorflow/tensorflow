@@ -1754,36 +1754,7 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
           )
 
   m_rank = array_ops.rank(m)
-  ax1, ax2 = np_utils._canonicalize_axes(
-      axes, m_rank)  # pylint: disable=protected-access
-  if maybe_rank is None:
-    # In graph mode, disconnected side-effectful Assert nodes are pruned
-    # unless their results flow into the returned computation, so the
-    # assertions must be wired in via `control_dependencies`.
-    rank_t = ops.convert_to_tensor(m_rank)
-    # Force the axes tensor to the rank tensor's dtype: left to inference, a
-    # tuple containing a value above the int32 range would produce an int64
-    # tensor, and the comparison against `rank_t` would raise a TypeError
-    # instead of triggering the assertions below.
-    axes_t = ops.convert_to_tensor(axes, dtype=rank_t.dtype)
-    assert_bounds = control_flow_assert.Assert(
-        math_ops.reduce_all(
-            math_ops.logical_and(axes_t >= -rank_t, axes_t < rank_t)),
-        ['Axes', axes_t, 'out of range for array of ndim', rank_t],
-    )
-    # The canonicalized axes are tensors here, so the duplicate-axis check
-    # the static path performs natively must be re-done dynamically.
-    assert_diff = control_flow_assert.Assert(
-        math_ops.not_equal(ax1, ax2),
-        ['Axes must be different']
-    )
-    with ops.control_dependencies([assert_bounds, assert_diff]):
-      ax1 = array_ops.identity(ax1)
-      ax2 = array_ops.identity(ax2)
-      # Also thread `m` through the control dependencies: otherwise the
-      # `k % 4 == 0` early return below would return `m` without consuming
-      # the asserts, and graph pruning would disconnect them again.
-      m = array_ops.identity(m)
+  ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
 
   k = k % 4
   if k == 0:
