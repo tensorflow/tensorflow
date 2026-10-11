@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -31,21 +32,19 @@ class FusedLinearCrossEntropyOp : public OpKernel {
     const Tensor& weights = ctx->input(1);
     const Tensor& labels = ctx->input(2);
 
-    
-        OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(features.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(features.shape()),
                 errors::InvalidArgument("features must be 2-D"));
-        OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(weights.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(weights.shape()),
                 errors::InvalidArgument("weights must be 2-D"));
-        OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(labels.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(labels.shape()),
                 errors::InvalidArgument("labels must be 2-D"));
-        OP_REQUIRES(ctx, features.dim_size(1) == weights.dim_size(0),
+    OP_REQUIRES(ctx, features.dim_size(1) == weights.dim_size(0),
                 errors::InvalidArgument("features inner dim must match weights"));
-        OP_REQUIRES(ctx, features.dim_size(0) == labels.dim_size(0),
+    OP_REQUIRES(ctx, features.dim_size(0) == labels.dim_size(0),
                 errors::InvalidArgument("features batch size must match labels"));
-        OP_REQUIRES(ctx, weights.dim_size(1) == labels.dim_size(1),
+    OP_REQUIRES(ctx, weights.dim_size(1) == labels.dim_size(1),
                 errors::InvalidArgument("weights classes must match labels"));
 
-     const int64_t batch_size = features.dim_size(0);
     const int64_t batch_size = features.dim_size(0);
     const int64_t hidden_dim = features.dim_size(1);
     const int64_t num_classes = weights.dim_size(1);
@@ -93,8 +92,8 @@ class FusedLinearCrossEntropyOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU_KERNEL(T)                                    \
-  REGISTER_KERNEL_BUILDER(                                        \
+#define REGISTER_CPU_KERNEL(T)                                      \
+  REGISTER_KERNEL_BUILDER(                                          \
       Name("FusedLinearCrossEntropy").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       FusedLinearCrossEntropyOp<T>);
 
