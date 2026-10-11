@@ -112,7 +112,7 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
       weights = constant_op.constant([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
       labels = constant_op.constant([[1.0, 0.0]], dtype=dtypes.float32)
       
-      with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(nn_ops.fused_linear_cross_entropy(labels, features, weights))
 
 
