@@ -79,18 +79,18 @@ class FusedLinearCrossEntropyOp : public OpKernel {
         if (logit > max_logit) max_logit = logit;
       }
 
-      T sum_exp = static_cast<T>(0);
+      float sum_exp = 0.0f;
       for (int64_t j = 0; j < num_classes; ++j) {
-        sum_exp += std::exp(logits[j] - max_logit);
+        sum_exp += std::exp(static_cast<float>(logits[j] - max_logit));
       }
 
-      T log_sum_exp = max_logit + std::log(sum_exp);
-      T sample_loss = static_cast<T>(0);
+      float log_sum_exp = static_cast<float>(max_logit) + std::log(sum_exp);
+      float sample_loss = 0.0f;
 
       for (int64_t j = 0; j < num_classes; ++j) {
-        sample_loss -= labels_flat(i, j) * (logits[j] - log_sum_exp);
+        sample_loss -= static_cast<float>(labels_flat(i, j)) * (static_cast<float>(logits[j]) - log_sum_exp);
       }
-      loss_flat(i) = sample_loss;
+      loss_flat(i) = static_cast<T>(sample_loss);
     }
   }
 };
