@@ -254,6 +254,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, np_arrays.ndarray)
+    expected = np.asarray(expected)
     if check_dtype:
       self.assertEqual(
           actual.dtype, expected.dtype,
