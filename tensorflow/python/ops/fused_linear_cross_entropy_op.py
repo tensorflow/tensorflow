@@ -20,23 +20,20 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("nn.fused_linear_cross_entropy", v1=[])
-def fused_linear_cross_entropy(
-    labels, features, weights, name=None
-):
-  """Computes softmax cross entropy loss directly from linear projection weights.
-
-  Fuses matrix multiplication with cross entropy computation to prevent
-  materializing massive intermediate logit tensors in GPU memory during
-  large-vocabulary LLM training.
+def fused_linear_cross_entropy(labels, features, weights, name=None):
+ """Computes the fused linear cross entropy loss.
 
   Args:
-    labels: Tensor of shape [batch_size, num_classes] or class indices.
-    features: Input tensor of shape [batch_size, hidden_dim].
-    weights: Weight tensor of shape [hidden_dim, num_classes].
+    labels: A `Tensor` of shape `[batch_size, num_classes]` containing 
+      target probabilities or one-hot encoded classes.
+    features: A `Tensor` of shape `[batch_size, hidden_dim]` representing 
+      the input features.
+    weights: A `Tensor` of shape `[hidden_dim, num_classes]` representing 
+      the linear layer weights.
     name: A name for the operation (optional).
 
   Returns:
-    A 1-D Tensor of length batch_size containing the cross entropy loss.
+    A 1-D `Tensor` of shape `[batch_size]` containing the loss per batch item.
   """
   with ops.name_scope(
       name,
