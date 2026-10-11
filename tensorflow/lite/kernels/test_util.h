@@ -976,7 +976,7 @@ class SingleOpModel {
       tensor_size = GetTensorSize(index);
     }
 
-    if (tensor->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+    if (tensor->type == kTfLiteInt4 && std::is_same_v<T, uint8_t>) {
       tensor_size = (tensor_size + 1) / 2;
     }
 
