@@ -220,7 +220,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     }
   }
 
-  void ComputeAsync(OpKernelContext* c, DoneCallback done) {
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     const Tensor& data = c->input(0);
     const Tensor& partitions = c->input(1);
 

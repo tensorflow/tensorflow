@@ -80,12 +80,12 @@ struct Im2ColBufferResource : public ResourceBase {
   Im2ColBufferResource<T, size>() {
     data = static_cast<T*>(port::Malloc(size * sizeof(T)));
   }
-  ~Im2ColBufferResource<T, size>() { port::Free(data); }
+  ~Im2ColBufferResource<T, size>() override { port::Free(data); }
   // This mutex ensures that only a single operation at a time is able to use
   // the buffer memory held by this resource.
   mutex mu;
   T* data;
-  std::string DebugString() const { return "Im2ColBufferResource"; }
+  std::string DebugString() const override { return "Im2ColBufferResource"; }
 };
 
 // Convolution parameters specified by Op attributes.
