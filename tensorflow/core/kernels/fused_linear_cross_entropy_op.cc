@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <limits>
+#include <vector>
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -53,24 +57,23 @@ class FusedLinearCrossEntropyOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, TensorShape({batch_size}), &loss_output));
 
+    if (batch_size == 0) return;
+
     auto features_flat = features.matrix<T>();
     auto weights_flat = weights.matrix<T>();
     auto labels_flat = labels.matrix<T>();
     auto loss_flat = loss_output->flat<T>();
 
-    // Fused MatMul + Softmax Cross Entropy without saving intermediate logits
+    // Hoisted outside the batch loop to prevent allocation thrashing
+    std::vector<T> logits(num_classes);
+
     for (int64_t i = 0; i < batch_size; ++i) {
       T max_logit = -std::numeric_limits<T>::infinity();
-      std::vector<T> logits(num_classes, static_cast<T>(0));
 
       for (int64_t j = 0; j < num_classes; ++j) {
         T logit = static_cast<T>(0);
         for (int64_t k = 0; k < hidden_dim; ++k) {
           logit += features_flat(i, k) * weights_flat(k, j);
-        }
-        if (ctx->num_inputs() > 3) {
-          const Tensor& biases = ctx->input(3);
-          logit += biases.flat<T>()(j);
         }
         logits[j] = logit;
         if (logit > max_logit) max_logit = logit;
@@ -99,6 +102,7 @@ class FusedLinearCrossEntropyOp : public OpKernel {
 
 REGISTER_CPU_KERNEL(float);
 REGISTER_CPU_KERNEL(double);
+REGISTER_CPU_KERNEL(bfloat16);
 #undef REGISTER_CPU_KERNEL
 
 }  // namespace tensorflow
