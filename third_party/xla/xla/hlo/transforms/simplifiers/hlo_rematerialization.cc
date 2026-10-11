@@ -243,30 +243,14 @@ bool FusedParameterUsesBuffer(const HloInstruction* fusion, int64_t op_idx,
   }
   const HloValue& value =
       dataflow_analysis.GetValueDefinedAt(fused_param, shape_idx);
-  for (const HloPosition& alias : value.positions()) {
-    // If an alias of the buffer is the root of the fusion, the buffer is
-    // an output of the fusion and therefore assumed to be used.
-    if (alias.instruction == fusion->fused_expression_root()) {
+  if (value.IsRootOf(fusion->fused_instructions_computation())) {
+    return true;
+  }
+  for (const HloUse& use : value.GetUses()) {
+    if (!use.instruction->IsLoopFusion() ||
+        FusedParameterUsesBuffer(use.instruction, use.operand_number,
+                                 use.operand_index, dataflow_analysis)) {
       return true;
-    }
-    for (const HloInstruction* alias_user : alias.instruction->users()) {
-      if (alias_user->opcode() == HloOpcode::kGetTupleElement &&
-          !alias.index.empty()) {
-        // GetTupleElement instructions only access the top-level buffer of
-        // their operand.
-        continue;
-      }
-      if (!alias_user->IsLoopFusion()) {
-        return true;
-      }
-      for (int64_t nested_op_idx = 0;
-           nested_op_idx < alias_user->operand_count(); ++nested_op_idx) {
-        if (alias_user->operand(nested_op_idx) == alias.instruction &&
-            FusedParameterUsesBuffer(alias_user, nested_op_idx, alias.index,
-                                     dataflow_analysis)) {
-          return true;
-        }
-      }
     }
   }
   return false;
@@ -2573,12 +2557,13 @@ absl::Status HloRematerialization::UpdateDataflowAnalysis(HloModule* module) {
   if (dataflow_analysis_ == nullptr) {
     ABSL_ASSIGN_OR_RETURN(
         dataflow_analysis_,
-        HloDataflowAnalysis::Run(*module, /*ssa_form=*/false,
-                                 /*bitcast_defines_value=*/false,
-                                 /*execution_threads=*/{},
-                                 /*propagate_through_calls=*/false,
-                                 /*precompute_uses=*/std::nullopt,
-                                 /*propagate_through_control_flow=*/false));
+        HloDataflowAnalysis::Run(
+            *module, /*ssa_form=*/false,
+            /*bitcast_defines_value=*/false,
+            /*execution_threads=*/{},
+            /*propagate_through_calls=*/false,
+            /*precompute_uses=*/[](const HloValue&) { return true; },
+            /*propagate_through_control_flow=*/false));
   }
   return absl::OkStatus();
 }
