@@ -862,6 +862,24 @@ class HessianTest(test_util.TensorFlowTestCase):
     self.assertAllEqual((m, n, m, n), hess_actual.shape)
     self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
 
+  def testHessianNameScope(self):
+    # `name` is documented as grouping all the gradient ops together, so the
+    # ops hessians() adds must land under it rather than in the enclosing
+    # scope.
+    for name, expected in [(None, "hessians"), ("my_hessians", "my_hessians")]:
+      with ops.Graph().as_default() as g:
+        x = constant_op.constant([1.0, 2.0, 3.0])
+        y = math_ops.reduce_sum(x * x * x)
+        if name is None:
+          gradients.hessians(y, x)
+        else:
+          gradients.hessians(y, x, name=name)
+      added = [op.name for op in g.get_operations()
+               if not op.name.startswith(("Const", "mul", "Sum"))]
+      self.assertNotEmpty(added)
+      for op_name in added:
+        self.assertEqual(expected, op_name.split("/")[0])
+
 
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 

@@ -417,7 +417,10 @@ def hessians(ys,
     LookupError: if one of the operations between `xs` and `ys` does not
       have a registered gradient function.
   """
-  xs = gradients_util._AsList(xs)  # pylint: disable=protected-access
+  # pylint: disable=protected-access
+  ys_list = gradients_util._AsList(ys)
+  xs = gradients_util._AsList(xs)
+  # pylint: enable=protected-access
   kwargs = {
       "colocate_gradients_with_ops": colocate_gradients_with_ops,
       "gate_gradients": gate_gradients,
@@ -425,30 +428,31 @@ def hessians(ys,
   }
   # Compute first-order derivatives and iterate for each x in xs.
   hessians = []
-  _gradients = gradients(ys, xs, **kwargs)
-  for gradient, x in zip(_gradients, xs):
-    # change shape to one-dimension without graph branching
-    gradient = array_ops.reshape(gradient, [-1])
+  with ops.name_scope(name, "hessians", list(ys_list) + list(xs)):
+    _gradients = gradients(ys, xs, **kwargs)
+    for gradient, x in zip(_gradients, xs):
+      # change shape to one-dimension without graph branching
+      gradient = array_ops.reshape(gradient, [-1])
 
-    # Declare an iterator and tensor array loop variables for the gradients.
-    n = array_ops.size(x)
-    loop_vars = [
-        array_ops.constant(0, dtypes.int32),
-        tensor_array_ops.TensorArray(x.dtype, n)
-    ]
-    # Iterate over all elements of the gradient and compute second order
-    # derivatives.
-    _, hessian = while_loop.while_loop(
-        lambda j, _: j < n,
-        lambda j, result: (j + 1,
-                           result.write(j, gradients(gradient[j], x)[0])),
-        loop_vars
-    )
+      # Declare an iterator and tensor array loop variables for the gradients.
+      n = array_ops.size(x)
+      loop_vars = [
+          array_ops.constant(0, dtypes.int32),
+          tensor_array_ops.TensorArray(x.dtype, n)
+      ]
+      # Iterate over all elements of the gradient and compute second order
+      # derivatives.
+      _, hessian = while_loop.while_loop(
+          lambda j, _: j < n,
+          lambda j, result: (j + 1,
+                             result.write(j, gradients(gradient[j], x)[0])),
+          loop_vars
+      )
 
-    _shape = array_ops.shape(x)
-    _reshaped_hessian = array_ops.reshape(hessian.stack(),
-                                          array_ops.concat((_shape, _shape), 0))
-    hessians.append(_reshaped_hessian)
+      _shape = array_ops.shape(x)
+      _reshaped_hessian = array_ops.reshape(
+          hessian.stack(), array_ops.concat((_shape, _shape), 0))
+      hessians.append(_reshaped_hessian)
   return hessians
 
 
