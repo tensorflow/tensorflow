@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import flat_map_op
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -333,7 +334,6 @@ def _from_generator(generator, output_types, output_shapes, args,
   # callbacks. Eager execution would only retain the transient dataset's variant
   # tensor, allowing those callbacks to be garbage collected during iteration.
   # The user-provided generator still executes in Python.
-  from . import flat_map_op  # pylint: disable=g-import-not-at-top
   return flat_map_op._FlatMapDataset(  # pylint: disable=protected-access
       id_dataset, flat_map_fn, name=name, debug_mode_flag=False)
 

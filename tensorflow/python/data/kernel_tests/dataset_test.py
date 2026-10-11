@@ -677,9 +677,13 @@ class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.eager_only_combinations(),
-          combinations.combine(signature=["scalar", "nested", "legacy"])))
-  def testDebugModeGeneratorGarbageCollection(self, signature):
-    data = [(1, 2), (3, 4)] if signature == "nested" else [1, 2]
+          combinations.combine(
+              signature=["scalar", "nested", "legacy"], empty=[True, False])))
+  def testDebugModeGeneratorGarbageCollection(self, signature, empty):
+    if empty:
+      data = []
+    else:
+      data = [(1, 2), (3, 4)] if signature == "nested" else [1, 2]
     iterator_refs = []
 
     def gen():
@@ -730,13 +734,17 @@ class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           gen, output_signature=tensor_spec.TensorSpec((), dtypes.int64))
       self.assertDatasetProduces(ds, [0, 1])
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testDebugModeGeneratorMapEagerExecution(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(empty=[True, False])))
+  def testDebugModeGeneratorMapEagerExecution(self, empty):
+    num_elements = 0 if empty else 2
     generated = []
     mapped = []
 
     def gen():
-      for value in range(2):
+      for value in range(num_elements):
         generated.append(context.executing_eagerly())
         yield value
 
@@ -750,7 +758,7 @@ class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = iter(ds)
     self.assertEmpty(generated)
     self.assertEqual(mapped, [False])  # Output structure inference only.
-    for value in range(2):
+    for value in range(num_elements):
       gc.collect()
       self.assertEqual(self.evaluate(next(iterator)), value + 1)
       self.assertEqual(generated, [True] * (value + 1))
@@ -758,6 +766,8 @@ class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     gc.collect()
     with self.assertRaises(StopIteration):
       next(iterator)
+    self.assertEqual(generated, [True] * num_elements)
+    self.assertEqual(mapped, [False] + [True] * num_elements)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDebugModeSequentialExecution(self):
