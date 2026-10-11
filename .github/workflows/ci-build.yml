@@ -26,7 +26,7 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   # Don't cancel in-progress jobs for master branches.
-  cancel-in-progress: ${{ github.ref != 'master' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
   build-linux-x86-cpu:
