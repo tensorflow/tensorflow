@@ -410,6 +410,18 @@ class SparseBincountOp : public OpKernel {
                             indices, values, dense_shape,
                             sparse_utils::IndexValidation::kUnordered));
 
+    // The 2-D path below reads `weights(i)` with the value index `i`, so a
+    // `weights` shorter than `values` would read past its buffer. The 1-D
+    // path and DenseBincount already enforce this; mirror it here.
+    OP_REQUIRES(
+        ctx, weights_size == 0 || weights_size == values.NumElements(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "`weights` must be the same length as `values` or a length-0 "
+            "`Tensor`, in which case it acts as all weights equal to 1. Got a "
+            "length-",
+            weights_size, " `weights` for ", values.NumElements(),
+            " values.")));
+
     OP_REQUIRES(ctx, dense_shape.NumElements() > 0,
                 absl::InvalidArgumentError(absl::StrCat(
                     "dense_shape must have at least 1 dimension, got ",
@@ -518,6 +530,17 @@ class RaggedBincountOp : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Splits must end with the number of values, got ",
                     splits(num_rows), " instead of ", num_values)));
+
+    // The loop below reads `weights(idx)` with the value index `idx`, so a
+    // `weights` shorter than `values` would read past its buffer. The 1-D
+    // path and DenseBincount already enforce this; mirror it here.
+    OP_REQUIRES(
+        ctx, weights_size == 0 || weights_size == num_values,
+        absl::InvalidArgumentError(absl::StrCat(
+            "`weights` must be the same length as `values` or a length-0 "
+            "`Tensor`, in which case it acts as all weights equal to 1. Got a "
+            "length-",
+            weights_size, " `weights` for ", num_values, " values.")));
 
     Tensor* out_t;
     OP_REQUIRES_OK(
