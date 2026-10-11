@@ -46,25 +46,6 @@ using ::llvm::ArrayRef;
 // support/legality checking
 //===----------------------------------------------------------------------===//
 
-bool IsShapeFullyStatic(ArrayRef<int64_t> shape) {
-  return llvm::all_of(shape, [](int64_t d) { return d >= 0; });
-}
-
-bool NonBatchDimsFullyStatic(ArrayRef<int64_t> shape) {
-  return IsShapeFullyStatic(shape.drop_front());
-}
-
-bool AreShapesFullyStatic(const ConvView& data) {
-  return IsShapeFullyStatic(data.InputShape()) &&
-         IsShapeFullyStatic(data.KernelShape()) &&
-         IsShapeFullyStatic(data.OutputShape());
-}
-
-bool InputOutputNonBatchDimsFullyStatic(const ConvView& data) {
-  return NonBatchDimsFullyStatic(data.InputShape()) &&
-         IsShapeFullyStatic(data.KernelShape()) &&
-         NonBatchDimsFullyStatic(data.OutputShape());
-}
 
 bool IsPaddingSupported(const ConvView& data) {
   return llvm::all_of(data.Padding(), [](const DimPadding& p) {
@@ -453,7 +434,7 @@ LogicalResult ConvertNonTrivialConvToTransposeConvOp::matchAndRewrite(
 
 //===----------------------------------------------------------------------===//
 
-class SliceDepthwiseTransposedConvolution
+class SliceGroupedTransposedConvolution
     : public OpRewritePattern<mhlo::ConvolutionOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -461,12 +442,12 @@ class SliceDepthwiseTransposedConvolution
                                 PatternRewriter& rewriter) const final;
 };
 
-// Pattern rewriter to match a depthwise transposed convolution and rewrite it
-// to depth-times slices of input and filter to perform the transposed
-// convolution on individual slices of tensors and concatenate the results of.
-// the convolutions. This is a. workaround because the TFLite runtime doesn't
-// support depthwise-transposed-conv op natively.
-LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
+// Pattern rewriter to match a grouped (or depthwise) transposed convolution and
+// rewrite it to group-times slices of input and filter to perform the
+// transposed convolution on individual slices of tensors and concatenate the
+// results of the convolutions. This is a workaround because the TFLite runtime
+// doesn't support grouped or depthwise-transposed-conv op natively.
+LogicalResult SliceGroupedTransposedConvolution::matchAndRewrite(
     mhlo::ConvolutionOp conv_op, PatternRewriter& rewriter) const {
   const ConvView data(conv_op);
 
@@ -478,7 +459,13 @@ LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
                                        "Not a non-trivial convolution.");
   }
 
-  // These checks narrow down the support to depthwise transpose conv2d.
+  if (!mlir::cast<ShapedType>(conv_op.getLhs().getType()).hasStaticShape() ||
+      !mlir::cast<ShapedType>(conv_op.getRhs().getType()).hasStaticShape() ||
+      !mlir::cast<ShapedType>(conv_op.getType()).hasStaticShape()) {
+    return rewriter.notifyMatchFailure(conv_op, "Requires static shapes.");
+  }
+
+  // These checks narrow down the support to grouped transpose conv2d.
   mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
   const int64_t input_feature_dimension = dnums.getInputFeatureDimension();
   const int64_t input_channels =
@@ -496,60 +483,49 @@ LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
       mlir::cast<ShapedType>(conv_op.getRhs().getType())
           .getDimSize(kernel_output_feature_dimension);
 
-  // To support a depthwise convolution, we need-
-  // 1. feature_group_count != 1 (except when input_channels==1)
-  // 2. feature_group_count == input_channels
-  // 3. kernel_input_channels == 1
-  // 4. kernel_output_channels % kernel_input_channels == 0
-  if (feature_group_count == 1) {
-    return rewriter.notifyMatchFailure(conv_op, "Not a depthwise convolution");
+  if (feature_group_count <= 1) {
+    return rewriter.notifyMatchFailure(conv_op,
+                                       "Not a grouped transposed convolution");
   }
 
-  if (input_channels != feature_group_count) {
+  if (input_channels % feature_group_count != 0) {
     return rewriter.notifyMatchFailure(
-        conv_op, "Not a detphwise transposed convolution");
+        conv_op, "Input channels not divisible by feature group count");
   }
+
+  const int64_t in_channels_per_group = input_channels / feature_group_count;
+  if (kernel_input_channels != in_channels_per_group) {
+    return rewriter.notifyMatchFailure(
+        conv_op,
+        "Kernel input channels does not match input channels per group");
+  }
+
+  if (kernel_output_channels % feature_group_count != 0) {
+    return rewriter.notifyMatchFailure(
+        conv_op, "Kernel output channels not divisible by feature group count");
+  }
+
+  const int64_t out_channels_per_group =
+      kernel_output_channels / feature_group_count;
 
   if (MatchWithResizeBilinearOp(data)) {
     return rewriter.notifyMatchFailure(
         conv_op, "Op will be legalized to ResizeBilinearOp");
   }
 
-  if ((kernel_output_channels % feature_group_count != 0) ||
-      (kernel_input_channels != 1)) {
-    return rewriter.notifyMatchFailure(
-        conv_op, "Not a supported detphwise transposed convolution");
-  }
-
-  // This needs to be checked because the TFLite runtime generated incorrect
-  // results for depthwise transpose convolutions with non-1 channel
-  // multiplier.
-  if ((kernel_output_channels / feature_group_count) != 1) {
-    return rewriter.notifyMatchFailure(
-        conv_op,
-        "Unsupported detphwise transpose convolution with non-1 channel "
-        "multiplier");
-  }
-
   // Slicing with dynamic offsets (helper method advised)
-  auto create_slice = [&](mlir::Value tensor, int64_t depth_idx,
+  auto create_slice = [&](mlir::Value tensor, int64_t group_idx,
                           int64_t channel_idx,
-                          bool is_kernel = false) -> mlir::Value {
+                          int64_t channels_per_group) -> mlir::Value {
     auto tensor_shape =
         mlir::cast<ShapedType>(tensor.getType()).getShape().vec();
 
-    // Calculate offsets based on depth_idx, channel_idx and tensor_shape
+    // Calculate offsets based on group_idx, channel_idx and tensor_shape
     llvm::SmallVector<int64_t> start_indices(tensor_shape.size(), 0);
     auto limit_indices = tensor_shape;
     const llvm::SmallVector<int64_t> strides(tensor_shape.size(), 1);
-    start_indices[channel_idx] = depth_idx;
-    if (is_kernel) {
-      // kernel can have a channel_multiplier that needs to be accounted for
-      limit_indices[channel_idx] =
-          depth_idx + (kernel_output_channels / feature_group_count);
-    } else {
-      limit_indices[channel_idx] = depth_idx + 1;
-    }
+    start_indices[channel_idx] = group_idx * channels_per_group;
+    limit_indices[channel_idx] = (group_idx + 1) * channels_per_group;
     return mhlo::SliceOp::create(rewriter, conv_op.getLoc(), tensor,
                                  rewriter.getI64TensorAttr(start_indices),
                                  rewriter.getI64TensorAttr(limit_indices),
@@ -561,16 +537,18 @@ LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
 
   // Iterative Slicing and Convolutions
   for (int i = 0; i < feature_group_count; ++i) {
-    auto sliced_input =
-        create_slice(conv_op.getLhs(), i, input_feature_dimension);
-    auto sliced_kernel = create_slice(conv_op.getRhs(), i,
-                                      kernel_output_feature_dimension, true);
+    auto sliced_input = create_slice(
+        conv_op.getLhs(), i, input_feature_dimension, in_channels_per_group);
+    auto sliced_kernel =
+        create_slice(conv_op.getRhs(), i, kernel_output_feature_dimension,
+                     out_channels_per_group);
 
     // Calculate convolution output_type based on sliced_input and
     // sliced_kernel
     auto output_type = mlir::cast<ShapedType>(conv_op->getResult(0).getType());
     auto new_output_shape = output_type.getShape().vec();
-    new_output_shape[dnums.getOutputFeatureDimension()] /= feature_group_count;
+    new_output_shape[dnums.getOutputFeatureDimension()] =
+        out_channels_per_group;
     auto new_output_type =
         RankedTensorType::get(new_output_shape, output_type.getElementType());
 
@@ -766,6 +744,6 @@ void PopulateLegalizeConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
 
 void PopulatePrepareConvPatterns(MLIRContext* ctx,
                                  RewritePatternSet& patterns) {
-  patterns.add<Conv1DToConv2D, SliceDepthwiseTransposedConvolution>(ctx);
+  patterns.add<Conv1DToConv2D, SliceGroupedTransposedConvolution>(ctx);
 }
 }  // namespace mlir::odml

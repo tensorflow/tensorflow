@@ -25,8 +25,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -51,8 +49,7 @@ TEST_F(CpuGpuShapeVerifierTest, InvalidElementSize) {
     p0 = u8[2,5]{1,0:E(8)} parameter(0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -80,11 +77,10 @@ TEST_F(CpuGpuShapeVerifierTest, Int4SupportedInstruction) {
     ROOT out = u4[3, 3] call(p0, p1), to_apply=select_bcast
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
-  TF_EXPECT_OK(status);
+  EXPECT_OK(status);
 }
 
 TEST_F(CpuGpuShapeVerifierTest, Int4ShardingCustomCall) {
@@ -96,11 +92,10 @@ TEST_F(CpuGpuShapeVerifierTest, Int4ShardingCustomCall) {
     ROOT sharded = u4[] custom-call(p0), custom_call_target="Sharding"
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
-  TF_EXPECT_OK(status);
+  EXPECT_OK(status);
 }
 
 }  // namespace

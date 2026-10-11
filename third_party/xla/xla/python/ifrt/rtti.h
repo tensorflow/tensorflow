@@ -89,23 +89,22 @@ class RTTIExtends : public ParentT {
   static_assert(ParentT::kDepth + 1 < internal::kMaxRTTIDepth,
                 "Exceeded maximum supported IFRT RTTI inheritance depth.");
 
-  // TODO(hyeontaek): Add a `static_assert` that `&ThisT::ID is different from
-  // `&ParentT::ID`. While not defining `ID` is handy when dynamic casting is
-  // not expected (e.g., classes defined for testing), it is error-prone in
-  // general. Thus, it would be safer to require `ID` to be defined. Note that
-  // we cannot enforce this requirement yet because the user code must be first
-  // migrated to define `ID`.
-
   RTTIExtends& operator=(const RTTIExtends&) = default;
   RTTIExtends& operator=(RTTIExtends&&) = default;
 
   // Returns the static class ID for `ThisT`.
-  static const void* classID() { return &ThisT::ID; }
+  static const void* classID() {
+    static_assert(&ThisT::ID != &ParentT::ID,
+                  "ThisT must define its own ID: static char ID;");
+    return &ThisT::ID;
+  }
 
  private:
   template <size_t... Is>
   static constexpr internal::RTTITypeInfo MakeTypeInfo(
       std::index_sequence<Is...>) {
+    static_assert(&ThisT::ID != &ParentT::ID,
+                  "ThisT must define its own ID: static char ID;");
     return {&ThisT::ID,
             {(Is < kDepth ? ParentT::kTypeInfo.ancestors[Is]
                           : (Is == kDepth ? &ThisT::ID : nullptr))...}};

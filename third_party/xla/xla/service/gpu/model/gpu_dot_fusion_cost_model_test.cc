@@ -51,11 +51,14 @@ using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
 using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
 using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
 using gpu_dot_fusion_cost_model::detail::DotTileSize;
+using gpu_dot_fusion_cost_model::detail::FactorWarpGrid;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveFlopsPerNsForTileSize;
 using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
 using gpu_dot_fusion_cost_model::detail::HbmEstimates;
 using gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+using gpu_dot_fusion_cost_model::detail::LaunchConfig;
 using gpu_dot_fusion_cost_model::detail::SmOccupancy;
+using ::testing::FieldsAre;
 using ::xla::xtile::BlockLevelParameters;
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
@@ -389,54 +392,110 @@ TEST_F(GpuDotFusionCostModelTest, CalculateSharedMemoryPerBlockBytes) {
 
 TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ShmemLimited) {
   // Large shared memory should limit the occupancy to 1 block per SM.
-  const SmOccupancy occupancy = CalculateSmOccupancy(
-      /*shared_memory_per_block_bytes=*/200000,
-      /*num_warps=*/4, ddh100_);
+  LaunchConfig config;
+  config.shared_memory_per_block_bytes = 200000;
+  config.num_warps = 4;
+  const SmOccupancy occupancy = CalculateSmOccupancy(config, ddh100_);
   EXPECT_EQ(occupancy.active_blocks_per_sm, 1);
   EXPECT_EQ(occupancy.active_warps_per_sm, 4);
 }
 
 TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_ThreadLimited) {
-  const SmOccupancy occupancy = CalculateSmOccupancy(
-      /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+  LaunchConfig config;
+  config.shared_memory_per_block_bytes = 1024;
+  config.num_warps = 4;
+  const SmOccupancy occupancy = CalculateSmOccupancy(config, ddh100_);
   // H100 has 2048 threads per SM. 4 warps * 32 threads/warp = 128
   // threads/block. 2048 / 128 = 16 blocks per SM maximum.
   EXPECT_EQ(occupancy.active_blocks_per_sm, 16);
   EXPECT_EQ(occupancy.active_warps_per_sm, 64);
 }
 
+TEST_F(GpuDotFusionCostModelTest, CalculateSmOccupancy_RegsLimited) {
+  // H100 has 65536 registers per SM. 4 warps * 32 threads/warp = 128
+  // threads/block.
+  // At 128 registers/thread, 1 block requires 16384 registers.
+  // 65536 / 16384 = 4 blocks per SM (16 active warps).
+  LaunchConfig config_128;
+  config_128.shared_memory_per_block_bytes = 1024;
+  config_128.num_warps = 4;
+  config_128.registers_per_thread = 128;
+  const SmOccupancy occupancy_128 = CalculateSmOccupancy(config_128, ddh100_);
+  EXPECT_EQ(occupancy_128.active_blocks_per_sm, 4);
+  EXPECT_EQ(occupancy_128.active_warps_per_sm, 16);
+
+  // At 129 registers/thread, 1 block requires 16512 registers.
+  // 65536 / 16512 = 3 blocks per SM (12 active warps, boundary cliff).
+  LaunchConfig config_129;
+  config_129.shared_memory_per_block_bytes = 1024;
+  config_129.num_warps = 4;
+  config_129.registers_per_thread = 129;
+  const SmOccupancy occupancy_129 = CalculateSmOccupancy(config_129, ddh100_);
+  EXPECT_EQ(occupancy_129.active_blocks_per_sm, 3);
+  EXPECT_EQ(occupancy_129.active_warps_per_sm, 12);
+
+  // Out-of-distribution edge test beyond physical 255 registers/thread limit to
+  // verify mathematical stability and graceful degradation. Results of these
+  // cases might change in the future.
+  // At 256 registers/thread, 1 block requires 32768 registers. 65536 / 32768 =
+  // 2 blocks per SM (8 active warps).
+  LaunchConfig config_256;
+  config_256.shared_memory_per_block_bytes = 1024;
+  config_256.num_warps = 4;
+  config_256.registers_per_thread = 256;
+  const SmOccupancy occupancy_256 = CalculateSmOccupancy(config_256, ddh100_);
+  EXPECT_EQ(occupancy_256.active_blocks_per_sm, 2);
+  EXPECT_EQ(occupancy_256.active_warps_per_sm, 8);
+
+  // At 257 registers/thread, 1 block requires 32896 registers.
+  // 65536 / 32896 = 1 block per SM (4 active warps, boundary cliff).
+  LaunchConfig config_257;
+  config_257.shared_memory_per_block_bytes = 1024;
+  config_257.num_warps = 4;
+  config_257.registers_per_thread = 257;
+  const SmOccupancy occupancy_257 = CalculateSmOccupancy(config_257, ddh100_);
+  EXPECT_EQ(occupancy_257.active_blocks_per_sm, 1);
+  EXPECT_EQ(occupancy_257.active_warps_per_sm, 4);
+}
+
 TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_ZeroBlocks) {
   // Zero threadblocks should require zero waves.
-  EXPECT_EQ(0,
-            CalculateHardwareLaunchWaves(/*threadblock_count=*/0,
-                                         /*shared_memory_per_block_bytes=*/1024,
-                                         /*num_warps=*/4, ddh100_));
+  LaunchConfig config;
+  config.threadblock_count = 0;
+  config.shared_memory_per_block_bytes = 1024;
+  config.num_warps = 4;
+  EXPECT_EQ(0, CalculateHardwareLaunchWaves(config, ddh100_));
 }
 
 TEST_F(GpuDotFusionCostModelTest,
        CalculateHardwareLaunchWaves_SmallShmemFewBlocks) {
   // Small shared memory with few threadblocks should require 1 wave.
-  int64_t small_shmem_waves = CalculateHardwareLaunchWaves(
-      /*threadblock_count=*/1000, /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+  LaunchConfig config;
+  config.threadblock_count = 1000;
+  config.shared_memory_per_block_bytes = 1024;
+  config.num_warps = 4;
+  int64_t small_shmem_waves = CalculateHardwareLaunchWaves(config, ddh100_);
   EXPECT_EQ(1, small_shmem_waves);
 }
 
 TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_LargeShmem) {
   // Large shared memory should require more waves to execute the same
   // number of blocks.
-  int64_t large_shmem_waves = CalculateHardwareLaunchWaves(
-      /*threadblock_count=*/1000, /*shared_memory_per_block_bytes=*/200000,
-      /*num_warps=*/4, ddh100_);
+  LaunchConfig config;
+  config.threadblock_count = 1000;
+  config.shared_memory_per_block_bytes = 200000;
+  config.num_warps = 4;
+  int64_t large_shmem_waves = CalculateHardwareLaunchWaves(config, ddh100_);
   EXPECT_GE(large_shmem_waves, 4);
 }
 
 TEST_F(GpuDotFusionCostModelTest, CalculateHardwareLaunchWaves_MoreBlocks) {
   // More threadblocks requires more waves.
-  int64_t more_blocks_waves = CalculateHardwareLaunchWaves(
-      /*threadblock_count=*/5000, /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+  LaunchConfig config;
+  config.threadblock_count = 5000;
+  config.shared_memory_per_block_bytes = 1024;
+  config.num_warps = 4;
+  int64_t more_blocks_waves = CalculateHardwareLaunchWaves(config, ddh100_);
   EXPECT_GT(more_blocks_waves, 1);
 }
 
@@ -471,15 +530,17 @@ TEST_F(GpuDotFusionCostModelTest,
   hbm_timing.read_time = absl::Microseconds(100);
   hbm_timing.write_time = absl::Microseconds(50);
   absl::Duration compute_time = absl::Microseconds(200);
-  const int64_t k_loop_iterations = 10;
 
   // A configuration with no threadblocks should result in zero execution time.
-  EXPECT_EQ(
-      absl::ZeroDuration(),
-      CalculatePipelinedLoopTimeWithLaunchWaves(
-          /*num_stages=*/3, k_loop_iterations, /*threadblock_count=*/0,
-          compute_time, hbm_timing, /*shared_memory_per_block_bytes=*/1024,
-          /*num_warps=*/4, ddh100_));
+  LaunchConfig config;
+  config.num_stages = 3;
+  config.k_loop_iterations = 10;
+  config.threadblock_count = 0;
+  config.shared_memory_per_block_bytes = 1024;
+  config.num_warps = 4;
+  EXPECT_EQ(absl::ZeroDuration(),
+            CalculatePipelinedLoopTimeWithLaunchWaves(config, compute_time,
+                                                      hbm_timing, ddh100_));
 }
 
 TEST_F(GpuDotFusionCostModelTest,
@@ -488,25 +549,36 @@ TEST_F(GpuDotFusionCostModelTest,
   hbm_timing.read_time = absl::Microseconds(100);
   hbm_timing.write_time = absl::Microseconds(50);
   absl::Duration compute_time = absl::Microseconds(200);
-  const int64_t k_loop_iterations = 10;
 
   // Wave boundary execution overhead. Many waves should be slower than
   // a perfectly scheduled 1-wave pipeline.
+  LaunchConfig config_one_wave;
+  config_one_wave.num_stages = 3;
+  config_one_wave.k_loop_iterations = 10;
+  config_one_wave.threadblock_count = 1;
+  config_one_wave.shared_memory_per_block_bytes = 1024;
+  config_one_wave.num_warps = 4;
   absl::Duration result_one_wave = CalculatePipelinedLoopTimeWithLaunchWaves(
-      /*num_stages=*/3, k_loop_iterations, /*threadblock_count=*/1,
-      compute_time, hbm_timing, /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+      config_one_wave, compute_time, hbm_timing, ddh100_);
 
+  LaunchConfig config_more_blocks;
+  config_more_blocks.num_stages = 3;
+  config_more_blocks.k_loop_iterations = 10;
+  config_more_blocks.threadblock_count = 1000;
+  config_more_blocks.shared_memory_per_block_bytes = 1024;
+  config_more_blocks.num_warps = 4;
   absl::Duration result_more_blocks_still_one_wave =
       CalculatePipelinedLoopTimeWithLaunchWaves(
-          /*num_stages=*/3, k_loop_iterations, /*threadblock_count=*/1000,
-          compute_time, hbm_timing, /*shared_memory_per_block_bytes=*/1024,
-          /*num_warps=*/4, ddh100_);
+          config_more_blocks, compute_time, hbm_timing, ddh100_);
 
+  LaunchConfig config_many_waves;
+  config_many_waves.num_stages = 3;
+  config_many_waves.k_loop_iterations = 10;
+  config_many_waves.threadblock_count = 5000;
+  config_many_waves.shared_memory_per_block_bytes = 1024;
+  config_many_waves.num_warps = 4;
   absl::Duration result_many_waves = CalculatePipelinedLoopTimeWithLaunchWaves(
-      /*num_stages=*/3, k_loop_iterations, /*threadblock_count=*/5000,
-      compute_time, hbm_timing, /*shared_memory_per_block_bytes=*/1024,
-      /*num_warps=*/4, ddh100_);
+      config_many_waves, compute_time, hbm_timing, ddh100_);
 
   EXPECT_EQ(result_one_wave, result_more_blocks_still_one_wave);
   EXPECT_GT(result_many_waves, result_one_wave);
@@ -765,6 +837,25 @@ BlockLevelParameters CreateBlockParams(int64_t num_warps) {
   return params;
 }
 
+TEST_F(GpuDotFusionCostModelTest, FactorWarpGrid) {
+  // Non-positive inputs fall back to 1x1.
+  EXPECT_THAT(FactorWarpGrid(0, 128, 128), FieldsAre(1, 1));
+  EXPECT_THAT(FactorWarpGrid(4, 0, 128), FieldsAre(1, 1));
+  EXPECT_THAT(FactorWarpGrid(4, 128, 0), FieldsAre(1, 1));
+
+  // Square tiles factor evenly.
+  EXPECT_THAT(FactorWarpGrid(1, 64, 64), FieldsAre(1, 1));
+  EXPECT_THAT(FactorWarpGrid(2, 64, 64), FieldsAre(1, 2));
+  EXPECT_THAT(FactorWarpGrid(4, 64, 64), FieldsAre(2, 2));
+  EXPECT_THAT(FactorWarpGrid(8, 64, 64), FieldsAre(2, 4));
+  EXPECT_THAT(FactorWarpGrid(16, 64, 64), FieldsAre(4, 4));
+
+  // Asymmetric tiles allocate warps along the larger dimension.
+  EXPECT_THAT(FactorWarpGrid(4, 256, 32), FieldsAre(4, 1));
+  EXPECT_THAT(FactorWarpGrid(4, 32, 256), FieldsAre(1, 4));
+  EXPECT_THAT(FactorWarpGrid(16, 32, 128), FieldsAre(2, 8));
+}
+
 TEST_F(GpuDotFusionCostModelTest,
        CalculateRegistersPerThreadIncreasesWithTileSize) {
   const DotProblemInfo dot_info = CreateDotInfo(PrimitiveType::F32);
@@ -805,7 +896,8 @@ TEST_F(GpuDotFusionCostModelTest,
   const int regs_f64 = CalculateRegistersPerThread(
       CreateDotInfo(PrimitiveType::F64), tile, block_params, ddh100_);
 
-  EXPECT_GT(regs_f32, regs_f16);
+  // F16 and F32 use 32-bit hardware accumulators, while F64 uses 64-bit.
+  EXPECT_EQ(regs_f16, regs_f32);
   EXPECT_GT(regs_f64, regs_f32);
 }
 

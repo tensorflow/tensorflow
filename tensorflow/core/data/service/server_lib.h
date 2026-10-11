@@ -124,7 +124,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
  private:
   const experimental::DispatcherConfig config_;
   // Owned. We use a raw pointer because GrpcDispatcherImpl is forward-declared.
-  GrpcDispatcherImpl* service_;
+  GrpcDispatcherImpl* service_ = nullptr;
 };
 
 // A wrapper for `SnapshotTaskProgress` for use with pybind.
@@ -170,7 +170,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
 
   const experimental::WorkerConfig config_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
-  GrpcWorkerImpl* service_;
+  GrpcWorkerImpl* service_ = nullptr;
   std::shared_ptr<DataTransferServer> transfer_server_;
 };
 

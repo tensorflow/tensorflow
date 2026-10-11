@@ -33,37 +33,37 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 template <typename T>
-__global__ void PopulationCountKernel(const int size,
+__global__ void PopulationCountKernel(const int64_t size,
                                       const T* __restrict__ input,
                                       uint8_t* __restrict__ output) {
-  GPU_1D_KERNEL_LOOP(i, size) { output[i] = __popc(ldg(input + i)); }
+  GPU_1D_KERNEL_LOOP(i, size, int64_t) { output[i] = __popc(ldg(input + i)); }
 }
 
 template <>
-__global__ void PopulationCountKernel(const int size,
+__global__ void PopulationCountKernel(const int64_t size,
                                       const int8_t* __restrict__ input,
                                       uint8_t* __restrict__ output) {
   // For some reason, __popc on a negative int8 gets confused.
-  GPU_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size, int64_t) {
     output[i] = __popc(ldg(reinterpret_cast<const uint8_t*>(input + i)));
   }
 }
 
 template <>
-__global__ void PopulationCountKernel(const int size,
+__global__ void PopulationCountKernel(const int64_t size,
                                       const int16_t* __restrict__ input,
                                       uint8_t* __restrict__ output) {
   // For some reason, __popc on a negative int16 gets confused.
-  GPU_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size, int64_t) {
     output[i] = __popc(ldg(reinterpret_cast<const uint16_t*>(input + i)));
   }
 }
 
 template <>
 __global__ void PopulationCountKernel<int64_t>(
-    const int size, const int64_t* __restrict__ input,
+    const int64_t size, const int64_t* __restrict__ input,
     uint8_t* __restrict__ output) {
-  GPU_1D_KERNEL_LOOP(i, size) { output[i] = __popcll(ldg(input + i)); }
+  GPU_1D_KERNEL_LOOP(i, size, int64_t) { output[i] = __popcll(ldg(input + i)); }
 }
 
 #define DEFINE_GPU_SPECS(T)                                                   \
@@ -72,13 +72,18 @@ __global__ void PopulationCountKernel<int64_t>(
       OpKernelContext* c, typename TTypes<T>::ConstFlat input,                \
       TTypes<uint8>::Flat output) {                                           \
     const GPUDevice& d = c->eigen_device<GPUDevice>();                        \
-    int64 total_count = input.size();                                         \
+    const int64_t total_count = input.size();                                 \
     if (total_count == 0) {                                                   \
       /* Return on empty input. Output is empty for empty inputs,             \
        similar to CPU kernel.   */                                            \
       return;                                                                 \
     }                                                                         \
-    GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);              \
+    auto config_or = GetGpuLaunchConfig64(total_count, d);                    \
+    if (!config_or.ok()) {                                                    \
+      c->SetStatus(config_or.status());                                       \
+      return;                                                                 \
+    }                                                                         \
+    const GpuLaunchConfig64& config = *config_or;                             \
     TF_CHECK_OK(GpuLaunchKernel(PopulationCountKernel<T>, config.block_count, \
                                 config.thread_per_block, 0, d.stream(),       \
                                 total_count, input.data(), output.data()));   \

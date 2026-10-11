@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
 
 #include <cstdint>
-#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -56,44 +57,37 @@ absl::Status BuffersDebugChecksumThunk::Initialize(
     return absl::OkStatus();
   }
 
-  {
-    absl::MutexLock lock(kernels_mutex_);
-    if (!kernels_.contains(params.executor)) {
-      se::gpu::GpuKernelRegistry registry =
-          se::gpu::GpuKernelRegistry::GetGlobalRegistry();
-      ABSL_ASSIGN_OR_RETURN(
-          auto kernel,
-          registry.LoadKernel<se::gpu::BufferDebugXorChecksumKernel>(
-              params.executor));
-      kernels_[params.executor] =
-          std::make_unique<se::gpu::BufferDebugXorChecksumKernel::KernelType>(
-              std::move(kernel));
-      VLOG(1) << "Checksum kernel loaded on device "
-              << params.executor->device_ordinal()
-              << " (stream_executor: " << params.executor
-              << "), kernel: " << kernels_[params.executor].get();
-    }
-  }
-  return absl::OkStatus();
+  return kernels_.GetOrCreateAndInitialize(
+      params.executor->device_ordinal(),
+      [&](std::optional<KernelType>* state) -> absl::Status {
+        se::gpu::GpuKernelRegistry registry =
+            se::gpu::GpuKernelRegistry::GetGlobalRegistry();
+        ABSL_ASSIGN_OR_RETURN(
+            auto kernel,
+            registry.LoadKernel<se::gpu::BufferDebugXorChecksumKernel>(
+                params.executor));
+        state->emplace(std::move(kernel));
+        VLOG(1) << "Checksum kernel loaded on device "
+                << params.executor->device_ordinal()
+                << " (stream_executor: " << params.executor
+                << "), kernel: " << &**state;
+        return absl::OkStatus();
+      });
 }
 
 absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
-  se::gpu::BufferDebugXorChecksumKernel::KernelType* kernel = nullptr;
-  {
-    absl::MutexLock lock(kernels_mutex_);
-    auto kernel_it = kernels_.find(executor);
-    if (kernel_it == kernels_.end()) {
-      // Initialize didn't load the kernel. This can happen when we're running
-      // on an unsupported platform.
-      VLOG(1) << "Checksum kernel not loaded on device "
-              << executor->device_ordinal() << ", skipping";
-      return absl::OkStatus();
-    }
-    kernel = kernel_it->second.get();
+  std::optional<KernelType>* state = kernels_.Find(executor->device_ordinal());
+  if (state == nullptr || !state->has_value()) {
+    // Initialize didn't load the kernel. This can happen when we're running
+    // on an unsupported platform.
+    VLOG(1) << "Checksum kernel not loaded on device "
+            << executor->device_ordinal() << ", skipping";
+    return absl::OkStatus();
   }
+  KernelType* kernel = &**state;
 
   VLOG(1) << "BuffersDebugChecksumThunk::ExecuteOnStream, device "
           << executor->device_ordinal() << " (stream_executor: " << executor

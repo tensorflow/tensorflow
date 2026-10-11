@@ -153,6 +153,11 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
     return true;
   }
 
+  if (hero->shape().element_type() == PrimitiveType::F64) {
+    VLOG(1) << "cuDNN GEMM fusion does not support F64.";
+    return false;
+  }
+
   stream_executor::CudaComputeCapability compute_capability =
       target_config.device_description.cuda_compute_capability();
   if ((compute_capability.IsAtLeastAmpere() &&
@@ -264,11 +269,6 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
       break;
   }
   if (use_deviceless) {
-    if (target_config.device_description.dnn_version() <
-        se::SemanticVersion(9, 8, 0)) {
-      return absl::FailedPreconditionError(
-          "Deviceless cuDNN compilation requires cuDNN >= 9.8.");
-    }
     stream_executor = nullptr;
   } else if (stream_executor == nullptr) {
     return absl::InvalidArgumentError(

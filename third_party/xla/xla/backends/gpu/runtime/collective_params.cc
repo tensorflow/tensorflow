@@ -19,12 +19,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/collectives.h"

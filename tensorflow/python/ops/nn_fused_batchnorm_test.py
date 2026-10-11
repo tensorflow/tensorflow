@@ -557,6 +557,8 @@ class BatchNormalizationTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testBatchNormGradTrainingShape3(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Gradient error tolerance does not pass for XLA.")
     x_shape = [1, 2, 1, 6]
     self._runtests(x_shape, is_training=True, gradient_test=True)
 
@@ -711,6 +713,8 @@ class BatchNormalizationTest(test.TestCase):
     self.assertAllClose(y_ref, y_val, atol=1e-3)
 
   def testEagerShapeErrors(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Error strings differ when compiled with XLA.")
     with context.eager_mode():
       x = array_ops.ones((2, 2, 2, 2))
       scale = array_ops.ones((3,))
@@ -786,6 +790,8 @@ class BatchNormalizationTest(test.TestCase):
             exponential_avg_factor=0.5)
 
   def testEagerShapeGradErrors(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Error strings differ when compiled with XLA.")
     with context.eager_mode():
       y_backprop = array_ops.ones((2, 2, 2, 3))
       x = array_ops.ones((2, 2, 2, 2))

@@ -29,8 +29,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -827,7 +825,7 @@ TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
 }
 
 TEST_F(InstructionFusionTest, DoesNotFuseInsideScanBody) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   add_abs {
     carry = f32[] parameter(0)
@@ -842,7 +840,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideScanBody) {
     ROOT scan = (f32[128]{0}, f32[]) scan(input, init), dimensions={0},
         num_carries=1, is_reverse=false, to_apply=add_abs, is_associative=true
   })"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
                         /*may_duplicate=*/true)
@@ -873,7 +871,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideScanBody) {
 }
 
 TEST_F(InstructionFusionTest, DoesNotFuseInsideNonAssociativeScanBody) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   add_abs {
     carry = f32[] parameter(0)
@@ -888,7 +886,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideNonAssociativeScanBody) {
     ROOT scan = (f32[128]{0}, f32[]) scan(input, init), dimensions={0},
         num_carries=1, is_reverse=false, to_apply=add_abs, is_associative=false
   })"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
                         /*may_duplicate=*/true)
@@ -933,7 +931,7 @@ static void ExpectNoFusionInBody(const HloComputation* body,
 }
 
 TEST_F(InstructionFusionTest, DoesNotFuseInsideSortComparator) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   cmp {
     a = f32[] parameter(0)
@@ -948,7 +946,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideSortComparator) {
     input = f32[128]{0} parameter(0)
     ROOT sorted = f32[128]{0} sort(input), dimensions={0}, to_apply=cmp
   })"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
                         /*may_duplicate=*/true)
@@ -958,7 +956,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideSortComparator) {
 }
 
 TEST_F(InstructionFusionTest, DoesNotFuseInsideMapBody) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   mapper {
     x = f32[] parameter(0)
@@ -969,7 +967,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideMapBody) {
     input = f32[128]{0} parameter(0)
     ROOT mapped = f32[128]{0} map(input), dimensions={0}, to_apply=mapper
   })"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
                         /*may_duplicate=*/true)
@@ -979,7 +977,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideMapBody) {
 }
 
 TEST_F(InstructionFusionTest, DoesNotFuseInsideReduceReducer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   reducer {
     a = f32[] parameter(0)
@@ -993,15 +991,15 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideReduceReducer) {
     init = f32[] constant(0)
     ROOT reduced = f32[] reduce(input, init), dimensions={0}, to_apply=reducer
   })"));
-  TF_ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
-                                 /*may_duplicate=*/true)
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                              /*may_duplicate=*/true)
+                .Run(module.get())
+                .status());
   ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "reducer"), "reduce");
 }
 
 TEST_F(InstructionFusionTest, DoesNotFuseInsideReduceWindowReducer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   reducer {
     a = f32[] parameter(0)
@@ -1016,16 +1014,16 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideReduceWindowReducer) {
     ROOT rw = f32[127]{0} reduce-window(input, init),
         window={size=2}, to_apply=reducer
   })"));
-  TF_ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
-                                 /*may_duplicate=*/true)
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                              /*may_duplicate=*/true)
+                .Run(module.get())
+                .status());
   ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "reducer"),
                        "reduce-window");
 }
 
 TEST_F(InstructionFusionTest, DoesNotFuseInsideSelectAndScatter) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ge_select {
     a = f32[] parameter(0)
@@ -1048,10 +1046,10 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideSelectAndScatter) {
     ROOT sas = f32[6]{0} select-and-scatter(operand, source, init),
         window={size=2 stride=2}, select=ge_select, scatter=add_scatter
   })"));
-  TF_ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
-                                 /*may_duplicate=*/true)
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                              /*may_duplicate=*/true)
+                .Run(module.get())
+                .status());
   ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "ge_select"),
                        "select-and-scatter select");
   ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "add_scatter"),
@@ -1059,7 +1057,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideSelectAndScatter) {
 }
 
 TEST_F(InstructionFusionTest, DoesNotFuseInsideScatterUpdate) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   update_computation {
     a = f32[] parameter(0)
@@ -1077,7 +1075,7 @@ TEST_F(InstructionFusionTest, DoesNotFuseInsideScatterUpdate) {
         scatter_dims_to_operand_dims={0}, index_vector_dim=1,
         to_apply=update_computation
   })"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
                         /*may_duplicate=*/true)

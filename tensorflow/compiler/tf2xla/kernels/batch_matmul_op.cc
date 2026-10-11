@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <optional>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -22,6 +25,8 @@ limitations under the License.
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
@@ -47,6 +52,21 @@ class BatchMatMulOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
+    // TensorFlow's BatchMatMul requires the inner dimensions to match, but
+    // xla::BatchDot broadcasts one of size 1, so check them here.
+    const TensorShape x_shape = ctx->InputShape(0);
+    const TensorShape y_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, x_shape.dims() >= 2 && y_shape.dims() >= 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "In[0] and In[1] ndims must be >= 2: ",
+                    x_shape.DebugString(), " vs. ", y_shape.DebugString())));
+    const int64_t x_inner = x_shape.dim_size(x_shape.dims() - (adj_x_ ? 2 : 1));
+    const int64_t y_inner = y_shape.dim_size(y_shape.dims() - (adj_y_ ? 1 : 2));
+    OP_REQUIRES(ctx, x_inner == y_inner,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Matrix size-incompatible: In[0]: ", x_shape.DebugString(),
+                    ", In[1]: ", y_shape.DebugString())));
+
     xla::PrecisionConfig::Precision precision =
         tsl::tensor_float_32_execution_enabled()
             ? xla::PrecisionConfig::DEFAULT

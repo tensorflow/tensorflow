@@ -16,10 +16,12 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -40,6 +42,9 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
+#include "xla/stream_executor/cuda/assemble_compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
@@ -143,6 +148,20 @@ class GpuKernelToBlobPass
     llvmModule->setDataLayout(xla::gpu::nvptx::DataLayout());
     llvmModule->setTargetTriple(llvm::Triple(xla::gpu::nvptx::TargetTriple()));
 
+    std::optional<int> max_ptx_isa_version;
+    absl::StatusOr<std::unique_ptr<tensorflow::se::cuda::CompilationProvider>>
+        compilation_provider =
+            tensorflow::se::cuda::AssembleCompilationProvider(
+                tensorflow::se::cuda::CompilationProviderOptions::
+                    FromDebugOptions(options));
+    if (compilation_provider.ok()) {
+      absl::StatusOr<int> ptx_isa_version =
+          (*compilation_provider)->GetLatestPtxIsaVersion();
+      if (ptx_isa_version.ok()) {
+        max_ptx_isa_version = *ptx_isa_version;
+      }
+    }
+
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;
     auto gpu_asm_opts = xla::gpu::PtxOptsFromDebugOptions(options);
@@ -157,15 +176,11 @@ class GpuKernelToBlobPass
       // Generate PTX code.
       // Module may be changed by CompileToPtx.
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
-      auto enable_fusion = [](llvm::TargetMachine* target) {
-        target->Options.AllowFPOpFusion =
-            llvm::FPOpFusion::FPOpFusionMode::Fast;
-      };
       TF_ASSIGN_OR_RETURN(
           std::string ptx,
           xla::gpu::nvptx::CompileToPtx(
               llvm_module_copy.get(), stream_executor::GpuComputeCapability(cc),
-              options, enable_fusion));
+              options, /*configure_target=*/nullptr, max_ptx_isa_version));
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"
                      << gpu_module.getName() << "' on architecture sm_" << arch

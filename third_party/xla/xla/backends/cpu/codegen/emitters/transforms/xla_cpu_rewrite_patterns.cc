@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <numeric>
 #include <string>
 
 #include "absl/strings/str_cat.h"
@@ -48,7 +49,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-static mlir::LLVM::LLVMStructType getNewOrExistingStruct(
+mlir::LLVM::LLVMStructType getNewOrExistingStruct(
     mlir::MLIRContext* ctx, absl::string_view name,
     llvm::ArrayRef<mlir::Type> types) {
   mlir::LLVM::LLVMStructType struct_type =
@@ -59,18 +60,18 @@ static mlir::LLVM::LLVMStructType getNewOrExistingStruct(
   return mlir::LLVM::LLVMStructType::getNewIdentified(ctx, name, types);
 }
 
-static mlir::LLVM::LLVMStructType KernelDim3Type(mlir::MLIRContext* ctx) {
+mlir::LLVM::LLVMStructType KernelDim3Type(mlir::MLIRContext* ctx) {
   auto i64 = mlir::IntegerType::get(ctx, 64);
   return getNewOrExistingStruct(ctx, "kernel_dim3", {i64, i64, i64});
 }
 
-static mlir::LLVM::LLVMStructType KernelArgType(mlir::MLIRContext* ctx) {
+mlir::LLVM::LLVMStructType KernelArgType(mlir::MLIRContext* ctx) {
   auto ptr = mlir::LLVM::LLVMPointerType::get(ctx);
   auto i64 = mlir::IntegerType::get(ctx, 64);
   return getNewOrExistingStruct(ctx, "XLA_CPU_KernelArg", {ptr, i64});
 }
 
-static mlir::LLVM::LLVMStructType KernelCallFrameType(mlir::MLIRContext* ctx) {
+mlir::LLVM::LLVMStructType KernelCallFrameType(mlir::MLIRContext* ctx) {
   auto ptr = mlir::LLVM::LLVMPointerType::get(ctx);
   auto i64 = mlir::IntegerType::get(ctx, 64);
   return getNewOrExistingStruct(ctx, "XLA_CPU_KernelCallFrame",
@@ -256,6 +257,14 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
         rewriter, op.getLoc(), func_type.getInput(0), op.getArgument(0));
     op.getArgument(0).replaceAllUsesExcept(cast.getResult(0), cast);
     op.setFunctionType(rewriter.getFunctionType(new_operands, {ptr}));
+
+    // Annotations for the kernel call frame. Must match the annotations in
+    // KernelApiIrBuilder::SetKernelFunctionAttributes.
+    op.setArgAttr(0, mlir::LLVM::LLVMDialect::getNoUndefAttrName(),
+                  rewriter.getUnitAttr());
+    op.setArgAttr(0, mlir::LLVM::LLVMDialect::getNonNullAttrName(),
+                  rewriter.getUnitAttr());
+
     auto& entry = op->getRegion(0).front();
     for (auto [arg, arg_type] : llvm::zip(entry.getArguments(), new_operands)) {
       arg.setType(arg_type);
@@ -526,9 +535,9 @@ struct LowerVector2DTransposeOp
     int64_t m = srcType.getDimSize(std::get<0>(src_gt_one_dims.value()));
     int64_t n = srcType.getDimSize(std::get<1>(src_gt_one_dims.value()));
 
-    if (!(m == 8 && n == 8)) {
+    if (!((m == 8 && n == 8) || (m == 16 && n == 8) || (m == 8 && n == 16))) {
       return rewriter.notifyMatchFailure(
-          op, "expected transposition on a 8x8 vector");
+          op, "expected transposition on a 8x8, 16x8, or 8x16 vector");
     }
 
     // Reshape the n-D input vector with only two dimensions greater than one
@@ -539,14 +548,86 @@ struct LowerVector2DTransposeOp
     auto reshInput = mlir::vector::ShapeCastOp::create(
         rewriter, loc, reshInputType, op.getVector());
 
-    auto output_type = mlir::VectorType::get({n, m}, srcType.getElementType());
+    mlir::Type elemType = srcType.getElementType();
+    bool is_16bit_float = elemType.isBF16() || elemType.isF16();
+    mlir::Type shuffleElemType =
+        is_16bit_float ? rewriter.getIntegerType(16) : elemType;
 
-    auto res = Shuffle8x8(rewriter, loc, output_type, reshInput, m, n);
-
+    mlir::Value shuffleInput = reshInput;
+    if (is_16bit_float) {
+      auto intVecType = mlir::VectorType::get({m, n}, shuffleElemType);
+      shuffleInput =
+          mlir::vector::BitCastOp::create(rewriter, loc, intVecType, reshInput);
+    }
+    auto block8x8_type = mlir::VectorType::get({8, 8}, shuffleElemType);
+    mlir::Value res = InsertShuffles(rewriter, loc, shuffleInput, m, n,
+                                     shuffleElemType, block8x8_type);
+    if (is_16bit_float) {
+      auto floatVecType = mlir::VectorType::get({n, m}, elemType);
+      res = mlir::vector::BitCastOp::create(rewriter, loc, floatVecType, res);
+    }
     rewriter.replaceOpWithNewOp<mlir::vector::ShapeCastOp>(
         op, op.getResultVectorType(), res);
-
     return mlir::success();
+  }
+
+  mlir::Value InsertShuffles(mlir::PatternRewriter& rewriter,
+                             mlir::Location loc, mlir::Value shuffleInput,
+                             int m, int n, mlir::Type shuffleElemType,
+                             mlir::VectorType block8x8_type) const {
+    if (m == 8 && n == 8) {
+      auto output_type = mlir::VectorType::get({n, m}, shuffleElemType);
+      return Shuffle8x8(rewriter, loc, output_type, shuffleInput, 8, 8);
+    }
+    if (m == 16 && n == 8) {
+      // Decompose 16x8 -> 8x16 into two 8x8 transposes: [A; B]^T = [A^T, B^T].
+      auto blockA = mlir::vector::ExtractStridedSliceOp::create(
+          rewriter, loc, shuffleInput, llvm::ArrayRef<int64_t>{0, 0},
+          llvm::ArrayRef<int64_t>{8, 8}, llvm::ArrayRef<int64_t>{1, 1});
+      auto blockB = mlir::vector::ExtractStridedSliceOp::create(
+          rewriter, loc, shuffleInput, llvm::ArrayRef<int64_t>{8, 0},
+          llvm::ArrayRef<int64_t>{8, 8}, llvm::ArrayRef<int64_t>{1, 1});
+
+      auto transA = Shuffle8x8(rewriter, loc, block8x8_type, blockA, 8, 8);
+      auto transB = Shuffle8x8(rewriter, loc, block8x8_type, blockB, 8, 8);
+
+      // Concatenate each row of transA and transB to form 8 rows of length 16.
+      auto output_type = mlir::VectorType::get({8, 16}, shuffleElemType);
+      mlir::Value res = mlir::ub::PoisonOp::create(rewriter, loc, output_type);
+      for (int i = 0; i < 8; ++i) {
+        auto rowA = mlir::vector::ExtractOp::create(rewriter, loc, transA, i);
+        auto rowB = mlir::vector::ExtractOp::create(rewriter, loc, transB, i);
+        // Shuffle rowA and rowB: indices [0..7, 8..15]
+        std::array<int64_t, 16> concatMask;
+        std::iota(concatMask.begin(), concatMask.end(), 0);
+        auto row16 = mlir::vector::ShuffleOp::create(rewriter, loc, rowA, rowB,
+                                                     concatMask);
+        res = mlir::vector::InsertOp::create(rewriter, loc, row16, res, i);
+      }
+      return res;
+    }
+
+    // m == 8 && n == 16: Decompose [A, B]^T = [A^T; B^T].
+    auto blockA = mlir::vector::ExtractStridedSliceOp::create(
+        rewriter, loc, shuffleInput, llvm::ArrayRef<int64_t>{0, 0},
+        llvm::ArrayRef<int64_t>{8, 8}, llvm::ArrayRef<int64_t>{1, 1});
+    auto blockB = mlir::vector::ExtractStridedSliceOp::create(
+        rewriter, loc, shuffleInput, llvm::ArrayRef<int64_t>{0, 8},
+        llvm::ArrayRef<int64_t>{8, 8}, llvm::ArrayRef<int64_t>{1, 1});
+
+    auto transA = Shuffle8x8(rewriter, loc, block8x8_type, blockA, 8, 8);
+    auto transB = Shuffle8x8(rewriter, loc, block8x8_type, blockB, 8, 8);
+
+    // Stack transA (rows 0..7) and transB (rows 8..15) to form 16 rows of
+    // length 8.
+    auto output_type = mlir::VectorType::get({16, 8}, shuffleElemType);
+    mlir::Value res = mlir::ub::PoisonOp::create(rewriter, loc, output_type);
+    res = mlir::vector::InsertStridedSliceOp::create(
+        rewriter, loc, transA, res, llvm::ArrayRef<int64_t>{0, 0},
+        llvm::ArrayRef<int64_t>{1, 1});
+    return mlir::vector::InsertStridedSliceOp::create(
+        rewriter, loc, transB, res, llvm::ArrayRef<int64_t>{8, 0},
+        llvm::ArrayRef<int64_t>{1, 1});
   }
 };
 
@@ -554,10 +635,11 @@ struct LowerVector2DTransposeOp
 
 void PopulateXlaCpuConversionPatterns(mlir::RewritePatternSet& patterns,
                                       int32_t vector_width) {
+  mlir::MLIRContext* context = patterns.getContext();
   patterns.add<LowerLoadOp, LowerWorkGroupIdOp, LowerSuccessOp,
                RewriteFunctionSignatures, LowerExtractWorkgroupIdOp,
-               LowerVector2DTransposeOp>(patterns.getContext());
-  patterns.add<WrapEntryWithCallFrame>(patterns.getContext(), vector_width);
+               LowerVector2DTransposeOp>(context);
+  patterns.add<WrapEntryWithCallFrame>(context, vector_width);
 }
 
 }  // namespace xla::cpu

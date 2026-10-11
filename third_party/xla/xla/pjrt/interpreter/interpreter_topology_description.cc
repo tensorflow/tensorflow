@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/primitive_util.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"

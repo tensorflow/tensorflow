@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/pjrt/c_api_client/pjrt_c_api_phase_compiler.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
@@ -37,9 +38,6 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/string_utils.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -55,9 +53,8 @@ absl::Status ValidatePhases(
   }
 
   for (const auto& partial_program : partial_programs_in) {
-    auto consumer_phases = partial_program.consumer_phases();
-    if (std::find(consumer_phases.begin(), consumer_phases.end(),
-                  phases_to_run[0]) == consumer_phases.end()) {
+    if (!absl::c_contains(partial_program.consumer_phases(),
+                          phases_to_run[0])) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Input partial programs cannot be compiled by a phase with name \"",
           phases_to_run[0], "\""));
@@ -149,9 +146,10 @@ PjRtCApiPhaseCompiler::RunPhases(
           ->c_topology();
 
   const size_t* programs_in_buffer_sizes;
-  ABSL_ASSIGN_OR_RETURN(const char** programs_in_buffers,
-                   xla::ConvertPjRtPartialProgramProtosToCharBuffers(
-                       partial_programs_in, programs_in_buffer_sizes));
+  ABSL_ASSIGN_OR_RETURN(
+      const char** programs_in_buffers,
+      xla::ConvertPjRtPartialProgramProtosToCharBuffers(
+          absl::MakeSpan(partial_programs_in), programs_in_buffer_sizes));
   size_t num_programs_in = partial_programs_in.size();
 
   // We no longer need this form of the input, so free it to save memory.
@@ -198,15 +196,22 @@ PjRtCApiPhaseCompiler::RunPhases(
   RETURN_STATUS_IF_PJRT_ERROR(
       phase_compile_extension_->phase_compile_run_phases(&run_args), api_);
 
+  // Free caller-allocated input buffers before deserializing the output buffers
+  // to avoid holding both input and output C buffers simultaneously in memory.
+  std::move(cleanup_programs_in_buffers).Invoke();
+  std::move(cleanup_phases_to_run_buffers).Invoke();
+
+  absl::Cleanup cleanup_output_buffers = [this, &run_args] {
+    CleanUpPluginDefinedCBuffers(
+        run_args.output_programs, run_args.output_programs_sizes,
+        run_args.num_output_programs, phase_compile_extension_);
+  };
   ABSL_ASSIGN_OR_RETURN(std::vector<xla::PjRtPartialProgramProto> output_programs,
                    xla::ConvertCharBuffersToPjRtPartialProgramProtos(
                        absl::MakeSpan(run_args.output_programs,
                                       run_args.num_output_programs),
                        absl::MakeConstSpan(run_args.output_programs_sizes,
                                            run_args.num_output_programs)));
-  CleanUpPluginDefinedCBuffers(
-      run_args.output_programs, run_args.output_programs_sizes,
-      run_args.num_output_programs, phase_compile_extension_);
 
   return output_programs;
 }

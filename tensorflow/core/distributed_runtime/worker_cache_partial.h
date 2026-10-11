@@ -38,7 +38,7 @@ class WorkerCachePartial : public WorkerCacheInterface {
                               DeviceLocality* locality,
                               StatusCallback) override;
 
-  ~WorkerCachePartial() override {}
+  ~WorkerCachePartial() override = default;
 
   // Clear all entries from the DeviceStatus cache.
   void FlushStatusCache();

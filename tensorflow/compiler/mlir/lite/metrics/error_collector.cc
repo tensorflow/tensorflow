@@ -17,13 +17,11 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-ErrorCollector* ErrorCollector::error_collector_instance_ = nullptr;
-
 ErrorCollector* ErrorCollector::GetErrorCollector() {
-  if (error_collector_instance_ == nullptr) {
-    error_collector_instance_ = new ErrorCollector();
-  }
-  return error_collector_instance_;
+  // Function-local static initialization is thread-safe.
+  static ErrorCollector* const error_collector = new ErrorCollector();
+
+  return error_collector;
 }
 
 }  // namespace TFL

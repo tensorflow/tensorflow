@@ -129,7 +129,6 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
   };
 
   llvm::TargetOptions target_options;
-  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 
   std::unique_ptr<IrCompiler> ir_compiler =
       IrCompiler::Create(target_options, std::move(ir_compiler_options),

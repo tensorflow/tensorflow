@@ -53,6 +53,10 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
 
+namespace xla {
+class CustomOptions;
+}  // namespace xla
+
 namespace xla::gpu {
 
 // Thunk to run an XLA FFI custom call on a GPU.
@@ -213,12 +217,14 @@ class CustomCallThunk : public TracedCommand {
       const CollectiveCliques* absl_nullable collective_cliques,
       const CollectiveMemory* absl_nullable collective_memory,
       const ffi::ExecutionContext* absl_nullable execution_context,
+      const CustomOptions* absl_nullable custom_options,
       absl::Span<se::Stream* const> computation_streams);
 
   absl::Status ExecuteFfiHandler(
       RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
       se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
       const ffi::ExecutionContext* execution_context,
+      const CustomOptions* custom_options,
       const BufferAllocations* buffer_allocations,
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
@@ -232,6 +238,7 @@ class CustomCallThunk : public TracedCommand {
       RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
       se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
       const ffi::ExecutionContext* execution_context,
+      const CustomOptions* custom_options,
       const BufferAllocations* buffer_allocations,
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,

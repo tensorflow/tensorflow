@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/thin_pointwise_fuser.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -24,8 +25,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/flops_util.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"

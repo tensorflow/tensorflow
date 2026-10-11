@@ -49,12 +49,13 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
 #include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
-#include "xla/backends/gpu/runtime/collective_kernel_api.h"
+#include "xla/backends/gpu/runtime/multi_gpu_barrier.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_address.h"
@@ -626,6 +627,45 @@ absl::Status NcclCommunicator::LaunchBroadcast(
   return absl::OkStatus();
 }
 
+absl::Status NcclCommunicator::LaunchReduce(se::DeviceAddressBase send_buffer,
+                                            se::DeviceAddressBase recv_buffer,
+                                            PrimitiveType dtype, size_t count,
+                                            ReductionKind reduction_kind,
+                                            RankId root,
+                                            const Executor& executor) {
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  se::Stream* stream = ToStream(executor);
+
+  {
+    absl::MutexLock lock(comm_->mutex);
+    XLA_VLOG_DEVICE(3, stream->parent()->device_ordinal())
+        << absl::StreamFormat(
+               "Launch NCCL Reduce operation; send_buffer=%p; "
+               "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; "
+               "root=%d; comm=%p; stream=%p",
+               send_buffer.opaque(), recv_buffer.opaque(),
+               primitive_util::LowercasePrimitiveTypeName(dtype), count,
+               reduction_kind, root.value(), comm_->comm, stream);
+
+    ABSL_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype,
+                     ToNcclDataType(dtype, /*is_reduction_op=*/true,
+                                    stream->parent()
+                                        ->GetDeviceDescription()
+                                        .cuda_compute_capability()));
+
+    ABSL_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclReduce(
+        send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+        nccl_dtype, ToNcclReduction(reduction_kind), root.value(), comm_->comm,
+        AsCudaStream(stream))));
+  }
+  if (!IsInsideNcclGroupLaunch()) {
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
+  }
+  return absl::OkStatus();
+}
+
 absl::Status NcclCommunicator::LaunchReduceScatter(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
@@ -1106,6 +1146,27 @@ absl::Status NcclCommunicator::LaunchMultiGpuBarrier(const Executor& executor) {
       stream, num_ranks, RankId(current_rank),
       tied_cross_device_barrier_symmetric_memory_.Lock().get(),
       tied_cross_device_barrier_signal_value_.Lock()->address());
+}
+
+absl::StatusOr<const XLA_FFI_Command*> NcclCommunicator::RecordMultiGpuBarrier(
+    xla::ffi::RecordContext& record_ctx,
+    const XLA_FFI_Command* absl_nullable cmd) {
+  if (!IsCrossDeviceBarrierInitiated()) {
+    return FailedPrecondition(
+        "Cross device barrier buffers are not set on this communicator. Did "
+        "you set use_cross_device_barrier=true in BarrierRequirements?");
+  }
+  absl::MutexLock lock(barrier_mu_);
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  ABSL_ASSIGN_OR_RETURN(size_t num_ranks, NumRanks());
+  ABSL_ASSIGN_OR_RETURN(size_t current_rank, CurrentRank());
+
+  return xla::gpu::RecordMultiGpuBarrierWithNccl(
+      stream_executor_, record_ctx, num_ranks, RankId(current_rank),
+      tied_cross_device_barrier_symmetric_memory_.Lock().get(),
+      tied_cross_device_barrier_signal_value_.Lock()->address(), cmd);
 }
 
 void NcclCommunicator::InitializeCrossDeviceBarrier(

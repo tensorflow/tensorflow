@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/debug_options_flags.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -262,6 +264,25 @@ TEST(DebugOptions, CollectiveKernelsFlagShortEnumNameUppercase) {
               ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE));
 }
 
+TEST(DebugOptions, CollectiveKernelsFlagAllCollectives) {
+  DebugOptions opts = ParseCollectiveKernelsFlag("ALL_COLLECTIVES");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
+}
+
+TEST(DebugOptions, CollectiveKernelsFlagLowercaseAllCollectives) {
+  DebugOptions opts = ParseCollectiveKernelsFlag("all_collectives");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
+}
+
+TEST(DebugOptions, CollectiveKernelsFlagFullEnumNameAllCollectives) {
+  DebugOptions opts =
+      ParseCollectiveKernelsFlag("COLLECTIVE_KERNEL_ALL_COLLECTIVES");
+  EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(),
+              ElementsAre(DebugOptions::COLLECTIVE_KERNEL_ALL_COLLECTIVES));
+}
+
 TEST(DebugOptions, CollectiveKernelsFlagEmptyDisablesAll) {
   DebugOptions opts = ParseCollectiveKernelsFlag("");
   EXPECT_THAT(opts.xla_gpu_experimental_use_collective_kernels(), IsEmpty());
@@ -460,6 +481,22 @@ TEST(DebugOptions, DisableHloPassesRejectsMalformedEntries) {
   EXPECT_FALSE(ParseDisableHloPassesFlag("@notanumber").first);
   EXPECT_FALSE(ParseDisableHloPassesFlag("algsimp:notanumber").first);
   EXPECT_FALSE(ParseEnableHloPassesOnlyFlag("@").first);
+}
+
+TEST(DebugOptions, DeduplicateBackendConfigsMinSizeDefaultIsMaxInt) {
+  DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_EQ(opts.xla_deduplicate_backend_configs_min_size(),
+            std::numeric_limits<int64_t>::max());
+}
+
+TEST(DebugOptions, DeduplicateBackendConfigsMinSizeFlagsParsing) {
+  DebugOptions opts;
+  std::vector<tsl::Flag> flags;
+  MakeDebugOptionsFlags(&flags, &opts);
+  std::vector<std::string> flag_args = {
+      "--xla_deduplicate_backend_configs_min_size=128"};
+  EXPECT_TRUE(tsl::Flags::Parse(flag_args, flags));
+  EXPECT_EQ(opts.xla_deduplicate_backend_configs_min_size(), 128);
 }
 
 }  // namespace

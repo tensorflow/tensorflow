@@ -29,11 +29,9 @@ fusion {
 
 // NEW-VECTOR: scf.for %[[IV0:.*]] = %[[C0]] to %{{.*}} step %[[C1]] {
 // NEW-VECTOR:   %[[LOOP_RES:.*]] = scf.for %[[IV1:.*]] = %[[C0]] to %[[C8]] step %[[C1]] iter_args(%[[ACC:.*]] = %[[CST_0]]) -> (vector<1x32xf32>) {
-// NEW-VECTOR:     %[[READ:.*]] = vector.transfer_read %arg0[%[[IV0]], %{{.*}}], %{{.*}} {in_bounds = [true]} : memref<128x256xf32>, vector<32xf32>
-// NEW-VECTOR:     %[[ACC_CAST:.*]] = vector.shape_cast %[[ACC]] : vector<1x32xf32> to vector<32xf32>
-// NEW-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC_CAST]], %[[READ]] : vector<32xf32>
-// NEW-VECTOR:     %[[ACC_NEXT_CAST:.*]] = vector.shape_cast %[[ACC_NEXT]] : vector<32xf32> to vector<1x32xf32>
-// NEW-VECTOR:     scf.yield %[[ACC_NEXT_CAST]] : vector<1x32xf32>
+// NEW-VECTOR:     %[[READ:.*]] = vector.transfer_read %arg0[%[[IV0]], %{{.*}}], %{{.*}} {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x32xf32>
+// NEW-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[READ]] : vector<1x32xf32>
+// NEW-VECTOR:     scf.yield %[[ACC_NEXT]] : vector<1x32xf32>
 // NEW-VECTOR:   %[[TRANSPOSE:.*]] = vector.transpose %[[LOOP_RES]], [1, 0] : vector<1x32xf32> to vector<32x1xf32>
 // NEW-VECTOR:   vector.extract %[[TRANSPOSE]][0] : vector<1xf32> from vector<32x1xf32>
 

@@ -50,6 +50,7 @@ class ConfigAssigner {
     // Fallback options include first supported config, default config or best
     // config estimated by by cost-model if enabled.
     bool allow_autotuning = true;
+    bool prefer_estimated_configs = false;
     bool expect_all_instructions_in_cache = false;
     // If true, the config-assigner will dump HLO modules before and after
     // applying the best config.
@@ -60,6 +61,9 @@ class ConfigAssigner {
     // When autotuning is disabled, if true, compiles all supported configs in
     // parallel before returning the first successful one.
     bool compile_all_supported_configs = false;
+    // Single serialized config to override config of all instructions,
+    // bypassing cache and autotuning.
+    std::string force_config = "";
 
     std::string ToString() const;
   };
@@ -93,12 +97,14 @@ class ConfigAssigner {
                  absl_nonnull std::unique_ptr<AutotunerCacheInterface> cache,
                  absl_nonnull std::unique_ptr<CodegenOrchestrator> orchestrator,
                  absl_nullable std::unique_ptr<Autotuner> autotuner,
-                 tsl::thread::ThreadPool* thread_pool)
+                 tsl::thread::ThreadPool* thread_pool,
+                 std::optional<Config> forced_config = std::nullopt)
       : options_(options),
         optimal_config_cache_(std::move(cache)),
         orchestrator_(std::move(orchestrator)),
         autotuner_(std::move(autotuner)),
-        thread_pool_(thread_pool) {}
+        thread_pool_(thread_pool),
+        forced_config_(std::move(forced_config)) {}
 
   using InstructionGroup = std::vector<HloInstruction*>;
 
@@ -111,15 +117,28 @@ class ConfigAssigner {
   // instruction. The config could be one of the following depending on the
   // options:
   // 1. Check the cache.
-  // 2. Check the default config.
-  // 3. Check the first supported config.
+  // 2. Check the first compilable estimated config (if cost model is enabled).
+  // 3. Check the first compilable config or the default config (if
+  //    autotuning is disabled).
   // 4. Tune the instruction.
   // Tuned config is updated in the cache if it is provided.
   tsl::Future<Config> GetConfig(const HloInstruction* instr);
 
   // Gets the first compilable config under the supported configurations for the
   // given HLO instruction.
-  absl::StatusOr<Config> GetFirstSupportedAndCompilableConfig(
+  absl::StatusOr<Config> GetFirstCompilableConfig(
+      const HloInstruction* instr, std::vector<Config> supported_configs);
+
+  // Attempts to compile estimated configs in sorted order with fastest first.
+  // If only_with_estimates is set, stops at the first config without an
+  // estimated runtime. Returns the first compilable config found, or an error
+  // status.
+  absl::StatusOr<Config> GetFirstCompilableEstimatedConfig(
+      const HloInstruction* instr, bool only_with_estimates);
+
+  // Gets the first compilable supported config or default config for the given
+  // HLO instruction when autotuning is disabled.
+  absl::StatusOr<Config> GetFirstCompilableConfigOrDefault(
       const HloInstruction* instr);
 
   // Returns the cached config for the given HLO instruction, if any.
@@ -137,6 +156,7 @@ class ConfigAssigner {
   absl_nullable std::unique_ptr<Autotuner> autotuner_;
   tsl::thread::ThreadPool* thread_pool_ = nullptr;
   int dump_counter_ = 0;
+  std::optional<Config> forced_config_;
 };
 
 }  // namespace xla

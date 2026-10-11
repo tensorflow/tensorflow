@@ -63,6 +63,10 @@ uint64_t GetSchedulerMemoryLimit(const HloModule& module,
                                  const se::DeviceDescription& gpu_device_info,
                                  int pointer_size);
 
+// Determines whether Latency Hiding Scheduler (LHS) is enabled for a module.
+bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
+                  const se::DeviceDescription& gpu_device_info);
+
 // Determines the schedule of HLO instructions for a module run on the GPU.
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,

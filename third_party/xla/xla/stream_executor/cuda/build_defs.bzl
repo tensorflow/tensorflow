@@ -20,6 +20,7 @@ This module contains custom build rules for CUDA assembly compiler tests.
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 
 # Internally this loads a macro, but in OSS this is a function
 # buildifier: disable=out-of-order-load
@@ -76,6 +77,11 @@ def embeddable_cuda_library(**kwargs):
         kwargs["deps"] = deps
     else:
         kwargs["deps"] = [registry_dep] + deps
+
+    copts = kwargs.pop("copts", [])
+    no_compress_opts = if_oss(["-no-compress", "-Xcuda-fatbinary=--compress=false"])
+    kwargs["copts"] = copts + no_compress_opts
+    kwargs.update(if_google({"cuda_compress": False}, {}))
 
     cuda_library(**kwargs)
 

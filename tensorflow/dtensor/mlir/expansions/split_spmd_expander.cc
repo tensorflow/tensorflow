@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project

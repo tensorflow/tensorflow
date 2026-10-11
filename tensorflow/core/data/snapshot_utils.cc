@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -275,9 +276,10 @@ absl::Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
     tensor.shape().AsProto(tensor_metadata->mutable_tensor_shape());
     int64_t size = 0;
     if (simple_tensor_mask_[i]) {
+      // As in the reader below, a tensor with no elements has no buffer.
       auto tensor_buffer = DMAHelper::buffer(&tensor);
       tensor_buffers.push_back(tensor_buffer);
-      size = tensor_buffer->size();
+      size = tensor_buffer != nullptr ? tensor_buffer->size() : 0;
     } else {
       TensorProto proto;
       tensor.AsProtoTensorContent(&proto);
@@ -295,8 +297,12 @@ absl::Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   for (int i = 0, end = tensors.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata.tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
-      memcpy(position, tensor_buffers[buffer_index]->data(),
-             tensor_metadata.tensor_size_bytes());
+      // Skip the copy for an empty tensor: its buffer is null, and passing a
+      // null pointer to memcpy is undefined even when the length is zero.
+      if (tensor_metadata.tensor_size_bytes() > 0) {
+        memcpy(position, tensor_buffers[buffer_index]->data(),
+               tensor_metadata.tensor_size_bytes());
+      }
       buffer_index++;
     } else {
       tensor_protos[proto_index].SerializeToArray(
@@ -966,11 +972,20 @@ absl::Status CustomReader::SnappyUncompress(
   for (int i = 0, end = simple_tensor_mask_.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata->tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
-      TensorShape shape(tensor_metadata.tensor_shape());
+      // The shape comes from the snapshot file. Build it through the checked
+      // API: constructing a TensorShape directly from an unvalidated proto
+      // CHECK-fails on a negative or overflowing dimension, which aborts the
+      // process instead of reporting a corrupt snapshot.
+      TensorShape shape;
+      TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(
+          tensor_metadata.tensor_shape(), &shape));
       Tensor simple_tensor(dtypes_[i], shape);
+      // A zero dimension is a valid shape, but Tensor does not allocate a
+      // buffer for a tensor with no elements, so `buffer` is null in that case
+      // and must not be dereferenced.
       TensorBuffer* buffer = DMAHelper::buffer(&simple_tensor);
-      iov[index].iov_base = buffer->data();
-      iov[index].iov_len = buffer->size();
+      iov[index].iov_base = buffer ? buffer->data() : nullptr;
+      iov[index].iov_len = buffer ? buffer->size() : 0;
       simple_tensors->push_back(std::move(simple_tensor));
     } else {
       int64_t tensor_size = tensor_metadata.tensor_size_bytes();
@@ -978,8 +993,11 @@ absl::Status CustomReader::SnappyUncompress(
         return absl::InvalidArgumentError(
             absl::StrCat("Tensor size is negative: ", tensor_size));
       }
-      std::unique_ptr<char[]> tensor_proto_str =
-          std::make_unique<char[]>(tensor_size);
+      // Allocate without throwing so the check below is reachable: with
+      // make_unique a huge `tensor_size` from a corrupt snapshot would abort
+      // the process, since these targets are built with -fno-exceptions.
+      std::unique_ptr<char[]> tensor_proto_str(
+          new (std::nothrow) char[tensor_size]);
       if (tensor_proto_str == nullptr) {
         return absl::ResourceExhaustedError(absl::StrCat(
             "Failed to allocate memory for tensor of size ", tensor_size));

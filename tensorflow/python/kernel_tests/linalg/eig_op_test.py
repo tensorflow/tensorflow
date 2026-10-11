@@ -115,6 +115,100 @@ class EigTest(test.TestCase):
       with self.assertRaisesRegex(ValueError, "must have dtype"):
         linalg_ops.eigvals(tensor)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testAcceptsNonTensorInput(self):
+    # The dtype check reads `tensor.dtype` off the argument, so anything not
+    # already a tensor used to fail with AttributeError. linalg.eigh and the
+    # rest of linalg_ops take these, because they pass the argument straight
+    # to the generated op.
+    matrix = [[1.0, 2.0], [3.0, 4.0]]
+    expected = SortEigenValues(
+        np.linalg.eigvals(np.array(matrix, dtype=np.float32)).astype(
+            np.complex64
+        )
+    )
+
+    for arg in (
+        matrix,
+        tuple(tuple(row) for row in matrix),
+        np.array(matrix, dtype=np.float32),
+    ):
+      e, v = linalg_ops.eig(arg)
+      self.assertEqual(e.dtype, dtypes_lib.complex64)
+      self.assertEqual(v.dtype, dtypes_lib.complex64)
+      self.assertEqual(v.shape, (2, 2))
+      self.assertAllClose(
+          SortEigenValues(self.evaluate(e)), expected, atol=1e-5
+      )
+      e = linalg_ops.eigvals(arg)
+      self.assertEqual(e.dtype, dtypes_lib.complex64)
+      self.assertAllClose(
+          SortEigenValues(self.evaluate(e)), expected, atol=1e-5
+      )
+
+    # A complex list converts to complex128, exercising the other branch of
+    # the dtype check.
+    complex_matrix = [[1j, 2j], [3j, 4j]]
+    complex_expected = SortEigenValues(
+        np.linalg.eigvals(np.array(complex_matrix, dtype=np.complex128))
+    )
+    e, v = linalg_ops.eig(complex_matrix)
+    self.assertEqual(e.dtype, dtypes_lib.complex128)
+    self.assertEqual(v.dtype, dtypes_lib.complex128)
+    self.assertEqual(v.shape, (2, 2))
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), complex_expected, atol=1e-5
+    )
+    e = linalg_ops.eigvals(complex_matrix)
+    self.assertEqual(e.dtype, dtypes_lib.complex128)
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), complex_expected, atol=1e-5
+    )
+
+    # A batched list, to cover rank > 2 coming in unconverted.
+    batched_matrix = [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]
+    batched_expected = SortEigenValues(
+        np.linalg.eigvals(np.array(batched_matrix, dtype=np.float32)).astype(
+            np.complex64
+        )
+    )
+    e, v = linalg_ops.eig(batched_matrix)
+    self.assertEqual(e.dtype, dtypes_lib.complex64)
+    self.assertEqual(v.dtype, dtypes_lib.complex64)
+    self.assertEqual(v.shape, (2, 2, 2))
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), batched_expected, atol=1e-5
+    )
+    e = linalg_ops.eigvals(batched_matrix)
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), batched_expected, atol=1e-5
+    )
+
+    # 64-bit float input. A plain Python float list cannot cover this: it
+    # converts to float32, so the double precision case needs an array.
+    matrix64 = np.array(matrix, dtype=np.float64)
+    expected64 = SortEigenValues(
+        np.linalg.eigvals(matrix64).astype(np.complex128)
+    )
+    e, v = linalg_ops.eig(matrix64)
+    self.assertEqual(e.dtype, dtypes_lib.complex128)
+    self.assertEqual(v.dtype, dtypes_lib.complex128)
+    self.assertEqual(v.shape, (2, 2))
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), expected64, atol=1e-10
+    )
+    e = linalg_ops.eigvals(matrix64)
+    self.assertEqual(e.dtype, dtypes_lib.complex128)
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), expected64, atol=1e-10
+    )
+
+    # A list that converts to an unsupported dtype still reports that.
+    with self.assertRaisesRegex(ValueError, "must have dtype"):
+      linalg_ops.eig([[1, 2], [3, 4]])
+    with self.assertRaisesRegex(ValueError, "must have dtype"):
+      linalg_ops.eigvals([[1, 2], [3, 4]])
+
 
 def SortEigenValues(e):
   perm = np.argsort(e.real + e.imag, -1)

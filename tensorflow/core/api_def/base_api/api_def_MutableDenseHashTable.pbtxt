@@ -19,6 +19,7 @@ END
     description: <<END
 If non-empty, this table is placed in the given container.
 Otherwise, a default container is used.
+A non-empty `container` name must start with `'.'`, a letter, or a digit, and may contain only `'-'`, `'.'`, `'/'`, letters, and digits.
 END
   }
   attr {

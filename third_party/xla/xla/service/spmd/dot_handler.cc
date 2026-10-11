@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/convolution_handler.h"
 #include "xla/service/spmd/custom_call_handler.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -147,14 +148,22 @@ class CreateShardedDotFunctor final
                                                 const Window&) const override {
     HloInstruction* l = ll.hlo();
     HloInstruction* r = rr.hlo();
+    CHECK(!dot_->sparsity_config().has_lhs() &&
+          !dot_->sparsity_config().has_rhs());
+    CHECK(!dot_->block_scaling_config().has_lhs() &&
+          !dot_->block_scaling_config().has_rhs());
     ABSL_ASSIGN_OR_RETURN(
         auto sharded_dot_shape,
         ShapeInference::InferDotOpShape(
             l->shape(), r->shape(), dot_->dot_dimension_numbers(),
             /*preferred_element_type=*/dot_->shape().element_type()));
-    return b->AddInstruction(HloInstruction::CreateDot(
+    HloInstruction* sharded_dot = b->AddInstruction(HloInstruction::CreateDot(
         sharded_dot_shape, l, r, dot_->dot_dimension_numbers(),
         dot_->precision_config()));
+    if (dot_->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+      sharded_dot->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+    }
+    return sharded_dot;
   }
 
  private:
@@ -162,6 +171,15 @@ class CreateShardedDotFunctor final
 };
 
 absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
+  if (hlo->sharding().IsSingleDevice()) {
+    return DefaultAction(hlo);
+  }
+  // TODO(b/535773961): Support sharding for scaled / sparse dots.
+  if (hlo->block_scaling_config().has_lhs() ||
+      hlo->block_scaling_config().has_rhs() ||
+      hlo->sparsity_config().has_lhs() || hlo->sparsity_config().has_rhs()) {
+    return DefaultAction(hlo);
+  }
   if (!options_.need_resolve_conflicts &&
       !options_.enable_windowed_einsum_for_all_gather &&
       !options_.enable_windowed_einsum_for_reduce_scatter) {
@@ -206,6 +224,9 @@ absl::Status SpmdPartitioningVisitor::HandleDotWithoutConflicts(
   Shape pshape = MakePartitionedShape(hlo->shape(), hlo->sharding());
   HloInstruction* phlo = b_.AddInstruction(HloInstruction::CreateDot(
       pshape, lhs.hlo(), rhs.hlo(), dot_dnums, hlo->precision_config()));
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    phlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   if (!sharded_lhs_contracting_dims.empty()) {
     phlo = lhs.state().partitioner->AllReduceAlongShardingDims(

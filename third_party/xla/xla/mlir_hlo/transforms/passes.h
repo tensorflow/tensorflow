@@ -51,27 +51,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc = {},
     BufferizePatternsCallback pc = {});
 
-// Creates a TileLoopsPass with tiles sizes provided through `tile_sizes`
-// and unroll factors provided through `unroll_factors`.
-inline std::unique_ptr<Pass> createTileLoopsPass(
-    ArrayRef<int64_t> tileSizes, ArrayRef<int64_t> unrollFactors) {
-  TileLoopsPassOptions options;
-  options.tile_sizes_ =
-      SmallVector<int64_t>(tileSizes.begin(), tileSizes.end());
-  options.unroll_factors_ =
-      SmallVector<int64_t>(unrollFactors.begin(), unrollFactors.end());
-  return createTileLoopsPass(options);
-}
-
 namespace hlo {
-using mlir::createAllocToArgPass;
-using mlir::createGenericHostToLLVMPass;
-using mlir::createUnbufferizePass;
-
-inline std::unique_ptr<Pass> createOneShotBufferizePass() {
-  return mlir::createOneShotBufferize();
-}
-
 #define GEN_PASS_REGISTRATION
 #include "transforms/passes.h.inc"
 

@@ -1,8 +1,5 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
-
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
 fusion {
   p = f32[32,4]{1,0} parameter(0)
@@ -14,11 +11,10 @@ fusion {
 // CHECK: xtile.entry_func @triton_fn(
 // CHECK-SAME: %[[ARG0:.*]]: memref<32x4xf32>,
 // CHECK-SAME: %[[ARG1:.*]]: memref<32xf32>,
-// CHECK-SAME: %[[PID:.*]]: index)
+// CHECK-SAME: %[[PID:.*]]: index{{( \{xla.range = \[0 : index, 1 : index\]\})?}})
 // CHECK: %[[CONSTANT_0:.*]] = arith.constant 0 : index
 // CHECK: %[[OFFSET:.*]] = xla.apply_indexing #[[$MAP_0]](%[[PID]])
-// CHECK-OLD: %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[OFFSET]], %[[CONSTANT_0]]] [16, 1] [1, 0] : memref<32x4xf32> -> tensor<16x1xf32>
-// CHECK-NEW: %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[OFFSET]], %[[CONSTANT_0]]] [16, 1] [1, 1] : memref<32x4xf32> -> tensor<16x1xf32>
+// CHECK: %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[OFFSET]], %[[CONSTANT_0]]] [16, 1] [1, 1] : memref<32x4xf32> -> tensor<16x1xf32>
 // CHECK: %[[RESHAPE:.*]] = tt.reshape %[[EXTRACT]] : tensor<16x1xf32> -> tensor<16xf32>
 // CHECK: xtile.insert %[[RESHAPE]] into %[[ARG1]][%[[OFFSET]]] [16] [1] : tensor<16xf32> -> memref<32xf32>
 // CHECK: xtile.return

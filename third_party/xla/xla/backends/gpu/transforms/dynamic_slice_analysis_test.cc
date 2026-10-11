@@ -33,7 +33,12 @@ namespace xla::gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::FieldsAre;
 using ::testing::SizeIs;
+using ::testing::VariantWith;
+
+using Linear = DynamicSliceDescriptor::Linear;
+using Table = DynamicSliceDescriptor::Table;
 
 using DynamicSliceAnalysisTest = HloHardwareIndependentTestBase;
 
@@ -43,7 +48,7 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeByName(
     HloModule* module, absl::string_view name) {
   auto* instr =
       module->GetComputationWithName("body")->GetInstructionWithName(name);
-  return AnalyzeDynamicSlice(instr);
+  return AnalyzeDynamicSlice(instr, /*enable_table_offsets=*/true);
 }
 
 // DS with init=0, step=1 on dim0 of s32[4,8,8].
@@ -84,8 +89,7 @@ TEST_F(DynamicSliceAnalysisTest, DsForwardStep1) {
   ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
-  EXPECT_EQ(desc->byte_offset, 0);
-  EXPECT_EQ(desc->byte_stride, 256);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(0, 256)));
 }
 
 // DUS with init=0, step=1, offset at dim0 (ivar) and dim1=constant(1).
@@ -126,8 +130,7 @@ TEST_F(DynamicSliceAnalysisTest, DusForwardStep1) {
   ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "updated"));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
-  EXPECT_EQ(desc->byte_offset, 32);
-  EXPECT_EQ(desc->byte_stride, 256);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(32, 256)));
 }
 
 // DS with init=2, step=3 on s32[8,8,8]. dim0 stride=256.
@@ -168,8 +171,7 @@ TEST_F(DynamicSliceAnalysisTest, NonTrivialInitAndStep) {
   ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
-  EXPECT_EQ(desc->byte_offset, 2 * 256);
-  EXPECT_EQ(desc->byte_stride, 3 * 256);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(2 * 256, 3 * 256)));
 }
 
 // Backward: init=3, step=-1 on s32[4,8,8]. dim0 stride=256.
@@ -210,8 +212,7 @@ TEST_F(DynamicSliceAnalysisTest, BackwardStep) {
   ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
-  EXPECT_EQ(desc->byte_offset, 3 * 256);
-  EXPECT_EQ(desc->byte_stride, -256);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(3 * 256, -256)));
 }
 
 // Forward step=2: init=0, step=2 on s32[8,8,8]. stride = 2*256 = 512.
@@ -251,8 +252,7 @@ TEST_F(DynamicSliceAnalysisTest, ForwardStepTwo) {
   ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
-  EXPECT_EQ(desc->byte_offset, 0);
-  EXPECT_EQ(desc->byte_stride, 2 * 256);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(0, 2 * 256)));
 }
 
 // Backward step=-2: init=6, step=-2 on s32[8,8,8].
@@ -293,8 +293,7 @@ TEST_F(DynamicSliceAnalysisTest, BackwardStepTwo) {
   ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
-  EXPECT_EQ(desc->byte_offset, 6 * 256);
-  EXPECT_EQ(desc->byte_stride, -2 * 256);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(6 * 256, -2 * 256)));
 }
 
 // Staggered induction variable after loop pipelining. DUS offset comes from
@@ -343,8 +342,7 @@ TEST_F(DynamicSliceAnalysisTest, StaggeredInductionVariable) {
   ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus"));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
-  EXPECT_EQ(desc->byte_offset, 0);
-  EXPECT_EQ(desc->byte_stride, 16);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(0, 16)));
 }
 
 // DS with all constant offsets inside a while loop body returns a static
@@ -387,8 +385,7 @@ TEST_F(DynamicSliceAnalysisTest, AllConstantOffsetsInLoop) {
   EXPECT_FALSE(desc->while_loop.has_value());
   EXPECT_FALSE(desc->loop_index.has_value());
   // s32[4,8,8] dim0 byte_stride = 8*8*4 = 256. offset = 1*256 = 256.
-  EXPECT_EQ(desc->byte_offset, 256);
-  EXPECT_EQ(desc->byte_stride, 0);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(256, 0)));
 }
 
 // DUS with all constant offsets inside a while loop body returns a static
@@ -431,8 +428,7 @@ TEST_F(DynamicSliceAnalysisTest, AllConstantDusOffsetsInLoop) {
   EXPECT_FALSE(desc->while_loop.has_value());
   EXPECT_FALSE(desc->loop_index.has_value());
   // s32[4,8] dim0 byte_stride = 8*4 = 32. offset = 1*32 = 32.
-  EXPECT_EQ(desc->byte_offset, 32);
-  EXPECT_EQ(desc->byte_stride, 0);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(32, 0)));
 }
 
 // DS with constant offsets (not in a while loop) returns a static descriptor.
@@ -448,13 +444,13 @@ TEST_F(DynamicSliceAnalysisTest, StaticDsOutsideLoop) {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   auto* slice = module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeDynamicSlice(slice));
+  ASSERT_OK_AND_ASSIGN(
+      auto desc, AnalyzeDynamicSlice(slice, /*enable_table_offsets=*/true));
   ASSERT_TRUE(desc.has_value());
   EXPECT_FALSE(desc->while_loop.has_value());
   EXPECT_FALSE(desc->loop_index.has_value());
   // s32[4,8] dim0 byte_stride = 8*4 = 32. offset = 1*32 = 32.
-  EXPECT_EQ(desc->byte_offset, 32);
-  EXPECT_EQ(desc->byte_stride, 0);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(32, 0)));
 }
 
 // DS with data-dependent offset (not an ivar) returns nullopt.
@@ -470,7 +466,8 @@ TEST_F(DynamicSliceAnalysisTest, DataDependentDsReturnsNullopt) {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   auto* slice = module->entry_computation()->root_instruction();
-  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeDynamicSlice(slice));
+  ASSERT_OK_AND_ASSIGN(
+      auto desc, AnalyzeDynamicSlice(slice, /*enable_table_offsets=*/true));
   EXPECT_FALSE(desc.has_value());
 }
 
@@ -816,11 +813,11 @@ TEST_F(DynamicSliceAnalysisTest, ParameterIsFunctionOfInductionVariable) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   auto* slice = module->GetComputationWithName("async_slice")
                     ->GetInstructionWithName("slice");
-  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeDynamicSlice(slice));
+  ASSERT_OK_AND_ASSIGN(
+      auto desc, AnalyzeDynamicSlice(slice, /*enable_table_offsets=*/true));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
-  EXPECT_EQ(desc->byte_offset, 3 * 256);
-  EXPECT_EQ(desc->byte_stride, -256);
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(3 * 256, -256)));
 }
 
 TEST_F(DynamicSliceAnalysisTest,
@@ -1032,6 +1029,352 @@ TEST_F(DynamicSliceAnalysisTest, ClassifiesLoopCarriedVariables) {
   EXPECT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
                    body->GetInstructionWithName("from_regular"))
                    .has_value());
+}
+
+TEST_F(DynamicSliceAnalysisTest, ConstantOffsetsClampedPerDimension) {
+  constexpr absl::string_view kHlo = R"(
+    ENTRY main {
+      p0 = s32[3,1,33] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      c1 = s32[] constant(1)
+      c31 = s32[] constant(31)
+      ROOT dus = s32[3,1,33] dynamic-update-slice(p0, p1, c1, c1, c31)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  auto* dus = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(auto desc,
+                       AnalyzeDynamicSlice(dus, /*enable_table_offsets=*/true));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_EQ(desc->loop_index, std::nullopt);
+  // dim 0: min(1, 3 - 1) = 1 (stride 33 * 4 = 132)
+  // dim 1: min(1, 1 - 1) = 0 (stride 33 * 4 = 132)
+  // dim 2: min(31, 33 - 8) = 25 (stride 4)
+  // Total byte offset = 1 * 132 + 0 * 132 + 25 * 4 = 232.
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(232, 0)));
+}
+
+TEST_F(DynamicSliceAnalysisTest,
+       LoopDependentWithOutOfBoundsConstantOffsetClamped) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,1,33]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = s32[4,1,33] get-tuple-element(p0), index=1
+      upd = s32[1,1,8] broadcast(s32[] constant(7)), dimensions={}
+      c1 = s32[] constant(1)
+      c31 = s32[] constant(31)
+      dus = s32[4,1,33] dynamic-update-slice(buf, upd, ivar, c1, c31)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,1,33]) tuple(next_ivar, dus)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,1,33]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,1,33] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,1,33]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,1,33]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus"));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
+  // At iter 0: dim 0 = 0, dim 1 = min(1, 0) = 0, dim 2 = min(31, 25) = 25 ->
+  // 100
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(100, 132)));
+}
+
+TEST_F(DynamicSliceAnalysisTest,
+       UsesTableWhen1DClampMismatchesPerDimensionClamp) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,8,8], s32[1,1,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8] get-tuple-element(p0), index=1
+      c1 = s32[] constant(1)
+      slice = s32[1,1,8] dynamic-slice(input, ivar, c1, c1),
+          dynamic_slice_sizes={1,1,8}
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,8,8], s32[1,1,8])
+          tuple(next_ivar, input, slice)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8], s32[1,1,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(ivar, c6), direction=LT
+    }
+
+    ENTRY main {
+      p0 = s32[4,8,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8,8], s32[1,1,8]) tuple(c0, p0, p1)
+      ROOT while = (s32[], s32[4,8,8], s32[1,1,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
+  EXPECT_THAT(
+      desc->offsets,
+      VariantWith<Table>(FieldsAre(ElementsAre(32, 288, 544, 800, 800, 800))));
+}
+
+// DS whose loop-dependent offset clamps to the same value on every iteration is
+// loop-invariant: zero stride and no loop.
+TEST_F(DynamicSliceAnalysisTest, LoopDependentOffsetClampedToConstant) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8] get-tuple-element(p0), index=1
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      slice = s32[4,8,8] dynamic-slice(input, ivar, c0, c0),
+          dynamic_slice_sizes={4,8,8}
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,8,8]) tuple(next_ivar, input)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,8,8] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8,8]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,8,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_FALSE(desc->while_loop.has_value());
+  EXPECT_FALSE(desc->loop_index.has_value());
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(0, 0)));
+}
+
+TEST_F(DynamicSliceAnalysisTest,
+       ClampedOffsetsLinearWhenDynamicInnerDimensionAlwaysClampsToMax) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,1,33]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = s32[4,1,33] get-tuple-element(p0), index=1
+      upd = s32[1,1,8] broadcast(s32[] constant(7)), dimensions={}
+      c1 = s32[] constant(1)
+      c31 = s32[] constant(31)
+      dyn_oob = s32[] add(ivar, c31)
+      dus = s32[4,1,33] dynamic-update-slice(buf, upd, ivar, c1, dyn_oob)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,1,33]) tuple(next_ivar, dus)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,1,33]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,1,33] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,1,33]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,1,33]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus"));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
+  // dyn_oob = ivar + 31 clamps to 25 on all 4 iterations, so the clamped byte
+  // offsets are 100 + iter * 132.
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(100, 132)));
+}
+
+TEST_F(DynamicSliceAnalysisTest, NonLinearDusOffsets) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[3,5]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = s32[3,5] get-tuple-element(p0), index=1
+      val = s32[1,1] constant({{7}})
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      square = s32[] multiply(ivar, ivar)
+      dus0 = s32[3,5] dynamic-update-slice(buf, val, ivar, ivar)
+      dus1 = s32[3,5] dynamic-update-slice(dus0, val, c1, square)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[3,5]) tuple(next_ivar, dus1)
+    }
+    condition {
+      p0 = (s32[], s32[3,5]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(ivar, c6), direction=LT
+    }
+    ENTRY main {
+      input = s32[3,5] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[3,5]) tuple(c0, input)
+      ROOT while = (s32[], s32[3,5]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc0, AnalyzeByName(module.get(), "dus0"));
+  ASSERT_TRUE(desc0.has_value());
+  EXPECT_THAT(
+      desc0->offsets,
+      VariantWith<Table>(FieldsAre(ElementsAre(0, 24, 48, 52, 56, 56))));
+
+  ASSERT_OK_AND_ASSIGN(auto desc1, AnalyzeByName(module.get(), "dus1"));
+  ASSERT_TRUE(desc1.has_value());
+  EXPECT_THAT(
+      desc1->offsets,
+      VariantWith<Table>(FieldsAre(ElementsAre(20, 24, 36, 36, 36, 36))));
+
+  auto* dus0 =
+      module->GetComputationWithName("body")->GetInstructionWithName("dus0");
+  ASSERT_OK_AND_ASSIGN(auto chain, FindDynamicSliceChain(dus0));
+  // The updates are disjoint at iteration zero, but both write (1, 1) at
+  // iteration one.
+  EXPECT_THAT(IsNonOverlapping(chain), ::testing::Optional(false));
+}
+
+TEST_F(DynamicSliceAnalysisTest, OverlappingTwoDusAfterClamping) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = s32[4,8] get-tuple-element(p0), index=1
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      c2 = s32[] constant(2)
+      idx0 = s32[] multiply(ivar, c2)
+      idx1 = s32[] add(idx0, c1)
+      val = s32[1,8] constant({{1,2,3,4,5,6,7,8}})
+      dus0 = s32[4,8] dynamic-update-slice(buf, val, idx0, c0)
+      dus1 = s32[4,8] dynamic-update-slice(dus0, val, idx1, c0)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,8]) tuple(next_ivar, dus1)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c3 = s32[] constant(3)
+      ROOT cmp = pred[] compare(ivar, c3), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,8] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"3"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus0"));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(0, 64)));
+  auto* dus0 =
+      module->GetComputationWithName("body")->GetInstructionWithName("dus0");
+  ASSERT_OK_AND_ASSIGN(auto chain, FindDynamicSliceChain(dus0));
+  EXPECT_EQ(chain.updates.size(), 2);
+  // On iter 2, idx0 = 4 and idx1 = 5 both clamp to row 3 of s32[4,8], so the
+  // two DUS updates overlap after clamping.
+  auto result = IsNonOverlapping(chain);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(*result);
+}
+
+// A loop-invariant DUS (constant offsets) and a loop-dependent DUS on the same
+// buffer: the loop-invariant update writes row 3 on every iteration, while the
+// loop-dependent update writes rows 0..2.
+TEST_F(DynamicSliceAnalysisTest,
+       NonOverlappingLoopInvariantAndLoopDependentDus) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = s32[4,8] get-tuple-element(p0), index=1
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      c3 = s32[] constant(3)
+      val = s32[1,8] constant({{1,2,3,4,5,6,7,8}})
+      dus0 = s32[4,8] dynamic-update-slice(buf, val, c3, c0)
+      dus1 = s32[4,8] dynamic-update-slice(dus0, val, ivar, c0)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,8]) tuple(next_ivar, dus1)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c3 = s32[] constant(3)
+      ROOT cmp = pred[] compare(ivar, c3), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,8] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"3"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc0, AnalyzeByName(module.get(), "dus0"));
+  ASSERT_TRUE(desc0.has_value());
+  EXPECT_FALSE(desc0->while_loop.has_value());
+  auto* dus0 =
+      module->GetComputationWithName("body")->GetInstructionWithName("dus0");
+  ASSERT_OK_AND_ASSIGN(auto chain, FindDynamicSliceChain(dus0));
+  EXPECT_EQ(chain.updates.size(), 2);
+  EXPECT_THAT(IsNonOverlapping(chain), ::testing::Optional(true));
 }
 
 }  // namespace

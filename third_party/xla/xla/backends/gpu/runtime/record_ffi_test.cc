@@ -26,8 +26,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/multi_gpu_barrier.h"
+#include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -39,14 +43,19 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+absl::StatusOr<void*> LoadNativeFunctionPtr(se::StreamExecutor* executor,
+                                            absl::Span<const uint8_t> binary,
+                                            absl::string_view name);
+
 namespace {
 
 struct KernelBinary {
@@ -131,17 +140,7 @@ struct DeviceMemoryBundle {
   }
 };
 
-TEST(RecordFfiTest, KernelLaunchBoundFfi) {
-  ASSERT_OK_AND_ASSIGN(auto platform,
-                       stream_executor::PlatformManager::PlatformWithName(
-                           stream_executor::GpuPlatformName()));
-  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
-  const auto* cuda_cc = executor->GetDeviceDescription()
-                            .gpu_compute_capability()
-                            .cuda_compute_capability();
-  if (cuda_cc && !cuda_cc->IsAtLeastAmpere()) {
-    GTEST_SKIP() << "Skipping test for compute capability less than Ampere.";
-  }
+void RunRecordFfiTest(se::StreamExecutor* executor, ffi::Ffi& handler) {
   ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   std::vector<int32_t> a = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -178,15 +177,7 @@ TEST(RecordFfiTest, KernelLaunchBoundFfi) {
 
   ffi::CallFrame call_frame = builder.Build();
 
-  std::unique_ptr<ffi::Ffi> handler =
-      ffi::Ffi::BindRecord()
-          .Ctx<ffi::Extension<ffi::RecordExtension>>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .To(RecordFfiHandler);
-  ASSERT_OK(ffi::Invoke(ffi::GetXlaFfiApi(), *handler, call_frame,
+  ASSERT_OK(ffi::Invoke(ffi::GetXlaFfiApi(), handler, call_frame,
                         invoke_context, ffi::ExecutionStage::kRecord));
   ASSERT_OK(cmd_buffer->Finalize());
   ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -218,7 +209,7 @@ TEST(RecordFfiTest, KernelLaunchBoundFfi) {
   ffi::InvokeContext update_context;
   update_context.extension_start = &record_extension.extension_base;
   ASSERT_OK(cmd_buffer->Update());  // Begin command buffer update.
-  ASSERT_OK(ffi::Invoke(ffi::GetXlaFfiApi(), *handler, call_frame,
+  ASSERT_OK(ffi::Invoke(ffi::GetXlaFfiApi(), handler, call_frame,
                         update_context, ffi::ExecutionStage::kRecord));
   ASSERT_OK(cmd_buffer->Finalize());
   ASSERT_OK(cmd_buffer->Submit(stream.get()));
@@ -229,6 +220,189 @@ TEST(RecordFfiTest, KernelLaunchBoundFfi) {
   std::vector<int32_t> expected_update = {101, 202, 303, 404,
                                           505, 606, 707, 808};
   EXPECT_EQ(c, expected_update);
+}
+
+TEST(RecordFfiTest, KernelLaunchBoundFfi) {
+  ASSERT_OK_AND_ASSIGN(auto platform,
+                       stream_executor::PlatformManager::PlatformWithName(
+                           stream_executor::GpuPlatformName()));
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  const auto* cuda_cc = executor->GetDeviceDescription()
+                            .gpu_compute_capability()
+                            .cuda_compute_capability();
+  if (cuda_cc && !cuda_cc->IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Skipping test for compute capability less than Ampere.";
+  }
+
+  std::unique_ptr<ffi::Ffi> handler =
+      ffi::Ffi::BindRecord()
+          .Ctx<ffi::Extension<ffi::RecordExtension>>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .To(RecordFfiHandler);
+  RunRecordFfiTest(executor, *handler);
+}
+
+TEST(RecordFfiTest, KernelLaunchWithCuFunc) {
+  ASSERT_OK_AND_ASSIGN(auto platform,
+                       stream_executor::PlatformManager::PlatformWithName(
+                           stream_executor::GpuPlatformName()));
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  const auto* cuda_cc = executor->GetDeviceDescription()
+                            .gpu_compute_capability()
+                            .cuda_compute_capability();
+  if (cuda_cc && !cuda_cc->IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Skipping test for compute capability less than Ampere.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(KernelBinary binary, GetKernelSpec());
+  absl::StatusOr<void*> func_ptr =
+      LoadNativeFunctionPtr(executor, binary.bytes, "AddI32");
+  if (absl::IsUnimplemented(func_ptr.status())) {
+    GTEST_SKIP() << func_ptr.status().message();
+  }
+  ASSERT_OK(func_ptr.status());
+
+  std::unique_ptr<ffi::Ffi> handler =
+      ffi::Ffi::BindRecord()
+          .Ctx<ffi::Extension<ffi::RecordExtension>>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .To([func_ptr = *func_ptr](
+                  ffi::RecordContext record_ctx, ffi::AnyBuffer input_0,
+                  ffi::AnyBuffer input_1, ffi::AnyBuffer buffer_scratch,
+                  ffi::AnyBuffer result) -> absl::Status {
+            void* in0 = input_0.untyped_data();
+            void* in1 = input_1.untyped_data();
+            void* scratch = buffer_scratch.untyped_data();
+            void* res = result.untyped_data();
+            size_t size = 8 * sizeof(int32_t);
+
+            if (record_ctx.action() == ffi::RecordAction::kCreate) {
+              ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Command* memcpy_d2d,
+                               record_ctx.CreateMemcpyD2D(scratch, in0, size));
+              ABSL_RETURN_IF_ERROR(
+                  record_ctx
+                      .CreateLaunch(
+                          "AddI32", func_ptr, /*kernel_size=*/0,
+                          ffi::SourceFormat::kFunctionPtr,
+                          /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}},
+                          /*shared_mem_bytes=*/1024,
+                          /*uses_pdl=*/false,
+                          std::vector<ffi::KernelArg>{
+                              ffi::DevicePointer{scratch},
+                              ffi::DevicePointer{in1}, ffi::DevicePointer{res}},
+                          /*dependencies=*/{memcpy_d2d})
+                      .status());
+            } else if (record_ctx.action() == ffi::RecordAction::kUpdate) {
+              auto cmds = record_ctx.commands();
+              TF_RET_CHECK(cmds.size() == 2) << "Expected 2 commands recorded.";
+              ABSL_RETURN_IF_ERROR(
+                  record_ctx.UpdateMemcpyD2D(cmds[0], scratch, in0, size));
+              ABSL_RETURN_IF_ERROR(record_ctx.UpdateLaunch(
+                  cmds[1],
+                  std::vector<ffi::KernelArg>{ffi::DevicePointer{scratch},
+                                              ffi::DevicePointer{in1},
+                                              ffi::DevicePointer{res}}));
+            }
+            return absl::OkStatus();
+          });
+  RunRecordFfiTest(executor, *handler);
+}
+
+class FakeSymmetricMemory : public xla::SymmetricMemory {
+ public:
+  se::DeviceAddressBase addr() const override {
+    return se::DeviceAddressBase();
+  }
+  std::string ToString() const override { return "FakeSymmetricMemory"; }
+  PackedKernelArg PackKernelArg() const override { return nullptr; }
+};
+
+TEST(RecordFfiTest, RecordMultiGpuBarrierWithNccl) {
+  ASSERT_OK_AND_ASSIGN(auto platform,
+                       stream_executor::PlatformManager::PlatformWithName(
+                           stream_executor::GpuPlatformName()));
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  if (!executor->GetDeviceDescription()
+           .gpu_compute_capability()
+           .cuda_compute_capability()) {
+    GTEST_SKIP() << "MultiGpuBarrierWithNcclKernel is only supported on CUDA.";
+  }
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  FakeSymmetricMemory sym_mem;
+  std::unique_ptr<ffi::Ffi> handler =
+      ffi::Ffi::BindRecord()
+          .Ctx<ffi::Extension<ffi::RecordExtension>>()
+          .Arg<ffi::AnyBuffer>()
+          .To([executor, &sym_mem](ffi::RecordContext record_ctx,
+                                   ffi::AnyBuffer counter) -> absl::Status {
+            const XLA_FFI_Command* cmd =
+                record_ctx.action() == ffi::RecordAction::kUpdate
+                    ? record_ctx.commands()[0]
+                    : nullptr;
+            return RecordMultiGpuBarrierWithNccl(executor, record_ctx,
+                                                 /*num_devices=*/0, RankId(0),
+                                                 &sym_mem,
+                                                 counter.device_memory(), cmd)
+                .status();
+          });
+
+  se::DeviceAddress<uint32_t> counter_1 = executor->AllocateArray<uint32_t>(1);
+  ASSERT_OK(stream->MemZero(&counter_1, sizeof(uint32_t)));
+
+  ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                       executor->CreateCommandBuffer(
+                           stream_executor::CommandBuffer::Mode::kPrimary));
+
+  const XLA_FFI_RecordApi* ffi_api = GetXlaFfiRecordApi();
+  int64_t num_commands = 0;
+  const XLA_FFI_Command* commands_storage[1] = {nullptr};
+
+  XLA_FFI_RecordContext record_ctx_c = {cmd_buffer.get(), executor, {}, false};
+  XLA_FFI_RecordFrame record_frame = {
+      &record_ctx_c,    ffi_api,       XLA_FFI_RecordAction_Create,
+      commands_storage, &num_commands, 1};
+  auto record_extension = ffi::BuildRecordCExtension(&record_frame);
+
+  ffi::InvokeContext invoke_context = {};
+  invoke_context.extension_start = &record_extension.extension_base;
+
+  ffi::CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
+  builder.AddBufferArg(counter_1, PrimitiveType::U32, {1});
+  ffi::CallFrame call_frame = builder.Build();
+
+  ASSERT_OK(ffi::Invoke(ffi::GetXlaFfiApi(), *handler, call_frame,
+                        invoke_context, ffi::ExecutionStage::kRecord));
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+
+  uint32_t host_counter = 0;
+  ASSERT_OK(stream->Memcpy(&host_counter, counter_1, sizeof(uint32_t)));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(host_counter, 1);
+
+  // Update with new buffer.
+  se::DeviceAddress<uint32_t> counter_2 = executor->AllocateArray<uint32_t>(1);
+  ASSERT_OK(stream->MemZero(&counter_2, sizeof(uint32_t)));
+
+  record_frame.action = XLA_FFI_RecordAction_Update;
+  ASSERT_OK(call_frame.UpdateWithBuffers({counter_2}, /*rets=*/{}));
+  ASSERT_OK(cmd_buffer->Update());
+  ASSERT_OK(ffi::Invoke(ffi::GetXlaFfiApi(), *handler, call_frame,
+                        invoke_context, ffi::ExecutionStage::kRecord));
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+
+  host_counter = 0;
+  ASSERT_OK(stream->Memcpy(&host_counter, counter_2, sizeof(uint32_t)));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(host_counter, 1);
 }
 
 }  // namespace

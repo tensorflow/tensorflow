@@ -110,5 +110,100 @@ ENTRY test {
   RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
 }
 
+TEST_F(AddOriginalValueTest, WhileLoop) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+body {
+  p_body = (f32[2], f32[2]) parameter(0)
+  gte0 = f32[2] get-tuple-element(p_body), index=0
+  gte1 = f32[2] get-tuple-element(p_body), index=1
+  ROOT root = (f32[2], f32[2]) tuple(gte0, gte1)
+}
+
+cond {
+  p_cond = (f32[2], f32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+// CHECK-LABEL: test
+ENTRY test {
+  p = f32[2] parameter(0)
+  init = (f32[2], f32[2]) tuple(p, p)
+  // CHECK: ROOT %while0 = (f32[2]{{.*}}, f32[2]{{.*}}) while(%init), condition=%cond, body=%body, origin={{[{]}}({{.*}}),["while0#$"]{{[}]}}
+  ROOT while0 = (f32[2], f32[2]) while(init), condition=cond, body=body
+}
+)";
+
+  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
+}
+
+TEST_F(AddOriginalValueTest, NestedWhileLoop) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+inner_body {
+  p_inner = (f32[2], f32[2]) parameter(0)
+  gte_in0 = f32[2] get-tuple-element(p_inner), index=0
+  gte_in1 = f32[2] get-tuple-element(p_inner), index=1
+  ROOT root_inner = (f32[2], f32[2]) tuple(gte_in0, gte_in1)
+}
+
+inner_cond {
+  p_inner_cond = (f32[2], f32[2]) parameter(0)
+  ROOT result_inner = pred[] constant(true)
+}
+
+// CHECK-LABEL: %body
+body {
+  p_body = (f32[2], f32[2]) parameter(0)
+  // CHECK: %inner_while = (f32[2]{{.*}}, f32[2]{{.*}}) while(%p_body), condition=%inner_cond, body=%inner_body, origin={{[{]}}({{.*}}),["inner_while#$"]{{[}]}}
+  inner_while = (f32[2], f32[2]) while(p_body), condition=inner_cond, body=inner_body
+  gte_b0 = f32[2] get-tuple-element(inner_while), index=0
+  gte_b1 = f32[2] get-tuple-element(inner_while), index=1
+  ROOT root = (f32[2], f32[2]) tuple(gte_b0, gte_b1)
+}
+
+cond {
+  p_cond = (f32[2], f32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+// CHECK-LABEL: test
+ENTRY test {
+  p = f32[2] parameter(0)
+  init = (f32[2], f32[2]) tuple(p, p)
+  // CHECK: ROOT %while0 = (f32[2]{{.*}}, f32[2]{{.*}}) while(%init), condition=%cond, body=%body, origin={{[{]}}({{.*}}),["while0#$"]{{[}]}}
+  ROOT while0 = (f32[2], f32[2]) while(init), condition=cond, body=body
+}
+)";
+
+  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
+}
+
+TEST_F(AddOriginalValueTest, Token) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+// CHECK-LABEL: test
+ENTRY test {
+  // CHECK: %[[AFTER_ALL:.*]] = token[] after-all()
+  // CHECK-NOT: origin=
+  after_all = token[] after-all()
+  // CHECK: %[[INFEED:.*]] = (f32[], token[]) infeed(%[[AFTER_ALL]]), origin={{[{]}}({"[[INFEED]]" {0}}, {}){{[}]}}
+  infeed = (f32[], token[]) infeed(after_all)
+  // CHECK: %[[GTE_DATA:.*]] = f32[] get-tuple-element(%[[INFEED]]), index=0, origin={{[{]}}{"[[INFEED]]" {0}}{{[}]}}
+  gte_data = f32[] get-tuple-element(infeed), index=0
+  // CHECK: %[[GTE_TOKEN:.*]] = token[] get-tuple-element(%[[INFEED]]), index=1
+  // CHECK-NOT: origin=
+  gte_token = token[] get-tuple-element(infeed), index=1
+  // CHECK: ROOT %[[TUPLE:.*]] = (f32[], token[]) tuple(%[[GTE_DATA]], %[[GTE_TOKEN]]), origin={{[{]}}({"[[INFEED]]" {0}}, {}){{[}]}}
+  ROOT tuple = (f32[], token[]) tuple(gte_data, gte_token)
+}
+)";
+
+  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
+}
+
 }  // namespace
 }  // namespace xla

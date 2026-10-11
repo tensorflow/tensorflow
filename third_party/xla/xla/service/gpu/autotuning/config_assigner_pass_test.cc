@@ -34,10 +34,12 @@ limitations under the License.
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/config_assigner.h"
+#include "xla/backends/autotuner/in_memory_store.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
 #include "xla/backends/gpu/autotuner/triton.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -57,7 +60,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -84,6 +86,16 @@ class ConfigAssignerPassTest : public HloHardwareIndependentTestBase {
         allocator_(
             std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
                 stream_executor_)) {}
+
+  void SetUp() override {
+    AutotunerCache::ClearAutotuneResults();
+    InMemoryStore::Clear();
+  }
+
+  void TearDown() override {
+    AutotunerCache::ClearAutotuneResults();
+    InMemoryStore::Clear();
+  }
 
   absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> CreatePass(
       const DebugOptions& debug_options) {
@@ -351,8 +363,8 @@ TEST_F(ConfigAssignerPassTest, CublasGemmIsAutotunedAndCached) {
   // Verify that the backend config in the HLO matches the cache.
   const HloInstruction* gemm =
       module_2->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_gpu_backend_config,
-                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto hlo_gpu_backend_config,
+                       gemm->backend_config<GpuBackendConfig>());
   const GemmBackendConfig& hlo_backend_config =
       hlo_gpu_backend_config.gemm_backend_config();
   EXPECT_TRUE(hlo_backend_config.has_selected_algorithm());
@@ -486,6 +498,51 @@ TEST_F(ConfigAssignerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
                        gemm->backend_config<GpuBackendConfig>());
   ASSERT_TRUE(
       gpu_backend_config.gemm_backend_config().has_selected_algorithm());
+}
+
+TEST_F(ConfigAssignerPassTest, AutotuneLevel0UsesDefaultConfig) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+
+  module->mutable_config().mutable_debug_options().set_xla_gpu_autotune_level(
+      0);
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<CublasLtBackend>(
+      stream_executor_, &module->config().debug_options(), &compiler_,
+      &target_config));
+
+  auto get_backends_fn =
+      [backends =
+           std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
+               std::move(backends))]() mutable { return std::move(*backends); };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssignerPass> pass,
+      ConfigAssignerPass::Create(
+          std::move(get_backends_fn), module->config().debug_options(),
+          target_config.device_description.gpu_compute_capability(),
+          stream_executor_, &thread_pool, &target_config,
+          /*alias_info=*/nullptr, /*mlir_context=*/nullptr,
+          /*shape_size_fn=*/[](const Shape& shape) { return 0; },
+          allocator_.get()));
+  EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
+              absl_testing::IsOkAndHolds(true));
+
+  // Verify that the backend config has been updated in the HLO with default
+  // config.
+  auto gemm =
+      module->entry_computation()->GetInstructionWithName("custom-call.1");
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config,
+                       gemm->backend_config<GpuBackendConfig>());
+  EXPECT_TRUE(
+      gpu_backend_config.gemm_backend_config().has_selected_algorithm());
+  EXPECT_EQ(gpu_backend_config.gemm_backend_config().selected_algorithm(), 0);
+  EXPECT_EQ(gpu_backend_config.gemm_backend_config().autotune_workspace_size(),
+            80000);
 }
 
 TEST_F(ConfigAssignerPassTest, CublasGemmInNonDefaultStreamIsAutotuned) {
@@ -643,13 +700,15 @@ TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {
   GpuAliasInfo alias_info(stream_executor_->GetDeviceDescription());
   mlir::MLIRContext mlir_context;
   RegisterSymbolicExprStorage(&mlir_context);
+  MlirContextPool mlir_context_pool(CreateMlirContext);
 
   ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<CodegenBackend>> backends,
                        ConfigAssignerPass::GetEnabledBackends(
                            stream_executor_, allocator_.get(), &target_config,
                            &alias_info, debug_options, &mlir_context,
                            /*shape_size_fn=*/[](const Shape&) { return 0; },
-                           &compiler_, stream_executor_->GetPlatform()->id()));
+                           &compiler_, stream_executor_->GetPlatform()->id(),
+                           /*thread_pool=*/nullptr, &mlir_context_pool));
 
   for (const auto& backend : backends) {
     EXPECT_NE(backend->backend(), autotuner::Backend::TRITON);
@@ -661,8 +720,9 @@ TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {
 TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
   absl::SetVLogLevel("config_assigner*", 10);
   AutotunerCache::ClearAutotuneResults();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  InMemoryStore::Clear();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
   module->mutable_config()
       .mutable_debug_options()
@@ -679,8 +739,8 @@ TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
 
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto supported_configs,
-                          cublaslt_backend->GetSupportedConfigs(*gemm));
+  ASSERT_OK_AND_ASSIGN(auto supported_configs,
+                       cublaslt_backend->GetSupportedConfigs(*gemm));
   ASSERT_GT(supported_configs.size(), 1);
   auto expected_config = std::move(supported_configs[0]);
 
@@ -712,8 +772,8 @@ TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
 
   log.StopCapturingLogs();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
-                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
+                       gemm->backend_config<GpuBackendConfig>());
 
   ASSERT_TRUE(expected_config->has_gemm());
   EXPECT_EQ(gpu_backend_config_after.gemm_backend_config().selected_algorithm(),
@@ -742,8 +802,9 @@ TEST_F(ConfigAssignerPassTest, TritonSelectFirstConfig) {
   )hlo";
 
   AutotunerCache::ClearAutotuneResults();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kTritonGemmFusionHlo));
+  InMemoryStore::Clear();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kTritonGemmFusionHlo));
 
   module->mutable_config()
       .mutable_debug_options()
@@ -759,14 +820,15 @@ TEST_F(ConfigAssignerPassTest, TritonSelectFirstConfig) {
   GpuAliasInfo alias_info(stream_executor_->GetDeviceDescription());
   mlir::MLIRContext mlir_context;
   RegisterSymbolicExprStorage(&mlir_context);
+  MlirContextPool mlir_context_pool(CreateMlirContext);
 
   auto triton_backend = std::make_unique<TritonBackend>(
       &module->config().debug_options(), &compiler_, &target_config,
-      &alias_info, &mlir_context);
+      &alias_info, &mlir_context_pool);
 
   auto fusion = module->entry_computation()->GetInstructionWithName("fusion");
-  TF_ASSERT_OK_AND_ASSIGN(auto supported_configs,
-                          triton_backend->GetSupportedConfigs(*fusion));
+  ASSERT_OK_AND_ASSIGN(auto supported_configs,
+                       triton_backend->GetSupportedConfigs(*fusion));
   ASSERT_GT(supported_configs.size(), 1);
   auto expected_config = std::move(supported_configs[0]);
 
@@ -800,8 +862,8 @@ TEST_F(ConfigAssignerPassTest, TritonSelectFirstConfig) {
               absl_testing::IsOkAndHolds(true));
 
   log.StopCapturingLogs();
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
-                          fusion->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
+                       fusion->backend_config<GpuBackendConfig>());
 
   ASSERT_TRUE(expected_config->has_triton());
   EXPECT_THAT(
@@ -824,6 +886,7 @@ TEST_F(ConfigAssignerPassTest, CudnnSelectFirstConfig) {
   )hlo";
 
   AutotunerCache::ClearAutotuneResults();
+  InMemoryStore::Clear();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kCudnnConvForwardHlo));
 
@@ -839,8 +902,8 @@ TEST_F(ConfigAssignerPassTest, CudnnSelectFirstConfig) {
       &target_config);
 
   auto conv = module->entry_computation()->GetInstructionWithName("result");
-  TF_ASSERT_OK_AND_ASSIGN(auto supported_configs,
-                          cudnn_backend->GetSupportedConfigs(*conv));
+  ASSERT_OK_AND_ASSIGN(auto supported_configs,
+                       cudnn_backend->GetSupportedConfigs(*conv));
   ASSERT_GT(supported_configs.size(), 1);
   auto expected_config = std::move(supported_configs[0]);
 
@@ -886,8 +949,8 @@ TEST_F(ConfigAssignerPassTest, CudnnSelectFirstConfig) {
   }
   ASSERT_NE(conv_after, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
-                          conv_after->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after,
+                       conv_after->backend_config<GpuBackendConfig>());
 
   ASSERT_TRUE(expected_config->has_algorithm());
   EXPECT_EQ(gpu_backend_config_after.cudnn_conv_backend_config()
@@ -984,6 +1047,38 @@ TEST_F(ConfigAssignerPassTest, CudnnFusionForbidsSpills) {
   )hlo"));
   auto* instr = module->entry_computation()->root_instruction();
   EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
+}
+
+TEST_F(ConfigAssignerPassTest, ForceConfigPropagatesToConfigAssignerOptions) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  const std::string forced_config =
+      "backend: TRITON\n"
+      "backend_config {\n"
+      "  triton {\n"
+      "    block_m: 64\n"
+      "    block_n: 64\n"
+      "  }\n"
+      "}";
+  debug_options.set_xla_force_config(forced_config);
+  auto options =
+      GetConfigAssignerOptions(debug_options, /*is_deviceless=*/false);
+  EXPECT_EQ(options.force_config, forced_config);
+}
+
+TEST_F(ConfigAssignerPassTest,
+       CandidateConfigsFilePropagatesToCodegenOrchestratorOptions) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_candidate_configs_file("/tmp/candidates.pbtxt");
+  auto options = GetCodegenOrchestratorOptions(debug_options);
+  EXPECT_EQ(options.candidate_configs_file, "/tmp/candidates.pbtxt");
+}
+
+TEST_F(ConfigAssignerPassTest, PreferredBackendPropagatesToAutotunerOptions) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_autotuner_preferred_backend(autotuner::Backend::CUDNN);
+  auto options = GetAutotunerOptions(debug_options,
+                                     /*is_buffer_check_supported=*/false);
+  EXPECT_EQ(options.preferred_backend, autotuner::Backend::CUDNN);
 }
 
 TEST_F(ConfigAssignerPassTest, CustomFusionForbidsSpills) {

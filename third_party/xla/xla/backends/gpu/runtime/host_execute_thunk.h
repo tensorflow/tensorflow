@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/host_async_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -37,8 +38,11 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -76,23 +80,18 @@ using HostExecuteAsyncEventsMap =
     absl::flat_hash_map<AsyncEventsUniqueId,
                         std::shared_ptr<HostExecuteAsyncEvents>>;
 
-class HostExecuteStartThunk : public HostAsyncThunk {
+class HostExecuteStartThunk : public Command {
  public:
-  struct SliceAndShape {
-    BufferAllocation::Slice slice;
-    Shape shape;
-  };
-
   HostExecuteStartThunk(Thunk::ThunkInfo thunk_info,
                         const HloModule& hlo_module,
-                        absl::InlinedVector<SliceAndShape, 4> args,
-                        absl::InlinedVector<SliceAndShape, 4> results);
+                        absl::InlinedVector<ShapedSlice, 4> args,
+                        absl::InlinedVector<ShapedSlice, 4> results);
 
   static absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>> Create(
       Thunk::ThunkInfo thunk_info,
       const HostOffloadingExecutableProto& host_offloading_executable_proto,
-      absl::InlinedVector<SliceAndShape, 4> args,
-      absl::InlinedVector<SliceAndShape, 4> results);
+      absl::InlinedVector<ShapedSlice, 4> args,
+      absl::InlinedVector<ShapedSlice, 4> results);
 
   HostExecuteStartThunk(const HostExecuteStartThunk&) = delete;
   HostExecuteStartThunk& operator=(const HostExecuteStartThunk&) = delete;
@@ -113,9 +112,23 @@ class HostExecuteStartThunk : public HostAsyncThunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  // TODO(b/527907619): Implement this properly once we have figured out how
-  // buffer uses should look like for async thunks.
-  BufferUses buffer_uses() const override { return {}; }
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+  bool requires_update_on_execute() const override { return true; }
+
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(args_.size() + results_.size());
+    for (const ShapedSlice& slice : args_) {
+      res.push_back(BufferUse::Read(slice.slice, slice.shape));
+    }
+    for (const ShapedSlice& slice : results_) {
+      res.push_back(BufferUse::Write(slice.slice, slice.shape));
+    }
+    return res;
+  }
 
   // Returns the async events for the host offloading execution. This is
   // intended to be shared with the corresponding HostExecuteDoneThunk.
@@ -133,30 +146,30 @@ class HostExecuteStartThunk : public HostAsyncThunk {
     return &executable_proto_;
   }
 
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const;
 
   HostExecuteStartThunk(
       Thunk::ThunkInfo thunk_info,
       const HostOffloadingExecutableProto& host_offloading_executable_proto,
-      absl::InlinedVector<SliceAndShape, 4> args,
-      absl::InlinedVector<SliceAndShape, 4> results,
+      absl::InlinedVector<ShapedSlice, 4> args,
+      absl::InlinedVector<ShapedSlice, 4> results,
       std::shared_ptr<HostExecuteAsyncEvents> async_events = nullptr);
 
  private:
   absl::once_flag executable_init_flag_;
   std::unique_ptr<HostOffloadingExecutable> executable_;
-  absl::InlinedVector<SliceAndShape, 4> args_;
-  absl::InlinedVector<SliceAndShape, 4> results_;
+  absl::InlinedVector<ShapedSlice, 4> args_;
+  absl::InlinedVector<ShapedSlice, 4> results_;
   HostOffloadingExecutableProto executable_proto_;
   HostOffloadingAllocator* allocator_ = nullptr;
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;
 };
 
-class HostExecuteDoneThunk : public HostAsyncThunk {
+class HostExecuteDoneThunk : public Command {
  public:
-  explicit HostExecuteDoneThunk(
-      Thunk::ThunkInfo thunk_info,
-      std::shared_ptr<HostExecuteAsyncEvents> async_events);
+  HostExecuteDoneThunk(Thunk::ThunkInfo thunk_info,
+                       std::shared_ptr<HostExecuteAsyncEvents> async_events,
+                       absl::InlinedVector<ShapedSlice, 4> results);
   HostExecuteDoneThunk(const HostExecuteDoneThunk&) = delete;
   HostExecuteDoneThunk& operator=(const HostExecuteDoneThunk&) = delete;
   ~HostExecuteDoneThunk() override = default;
@@ -172,14 +185,26 @@ class HostExecuteDoneThunk : public HostAsyncThunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  // TODO(b/527907619): Implement this properly once we have figured out how
-  // buffer uses should look like for async thunks.
-  BufferUses buffer_uses() const override { return {}; }
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
 
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(results_.size() * 2);
+    for (const ShapedSlice& slice : results_) {
+      res.push_back(BufferUse::Read(slice.slice, slice.shape));
+      res.push_back(BufferUse::Write(slice.slice, slice.shape));
+    }
+    return res;
+  }
+
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const;
 
  private:
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;
+  absl::InlinedVector<ShapedSlice, 4> results_;
 };
 
 }  // namespace xla::gpu

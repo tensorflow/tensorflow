@@ -114,6 +114,8 @@ class IndexingAnalysisTest : public IndexingTestBase,
 
             "GetTupleElementOp/1",
             "ScanOp/1",
+            "ScanOpMultiDimensional/1",
+            "ScanOpMultiDimensionalLeadingScanDimension/1",
         };
 
     if (GetParam()) {
@@ -752,9 +754,101 @@ TEST_P(IndexingAnalysisTest, ScanOp) {
   auto input_indexing_1 = GetOutputToInputIndexing(root, /*output_id=*/1);
   EXPECT_THAT(input_indexing_1.ToString(), MatchIndexingString(R"(
                             operand id = 0
-                              () -> ()
+                              ()[s0] -> (s0),
+                              domain:
+                              s0 in [0, 9]
                             operand id = 1
                               () -> ()
+                          )"));
+}
+
+TEST_P(IndexingAnalysisTest, ScanOpMultiDimensional) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    scan_computation {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      ROOT t = (f32[8], f32[8]) tuple(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[8, 10] parameter(0)
+      p1 = f32[8] parameter(1)
+      ROOT scan = (f32[8, 10], f32[8]) scan(p0, p1), dimensions={1},
+        num_carries=1, to_apply=scan_computation
+    }
+  )");
+
+  // The carry has the shape of the output with the scan dimension removed, so
+  // it is indexed by the non-scan dimensions rather than as a scalar.
+  auto input_indexing_0 = GetOutputToInputIndexing(root, /*output_id=*/0);
+  EXPECT_THAT(input_indexing_0.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d0, d1),
+                              domain:
+                              d0 in [0, 7],
+                              d1 in [0, 9]
+                            operand id = 1
+                              (d0, d1) -> (d0),
+                              domain:
+                              d0 in [0, 7],
+                              d1 in [0, 9]
+                          )"));
+
+  auto input_indexing_1 = GetOutputToInputIndexing(root, /*output_id=*/1);
+  EXPECT_THAT(input_indexing_1.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0)[s0] -> (d0, s0),
+                              domain:
+                              d0 in [0, 7],
+                              s0 in [0, 9]
+                            operand id = 1
+                              (d0) -> (d0),
+                              domain:
+                              d0 in [0, 7]
+                          )"));
+}
+
+TEST_P(IndexingAnalysisTest, ScanOpMultiDimensionalLeadingScanDimension) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    scan_computation {
+      p0 = f32[10] parameter(0)
+      p1 = f32[10] parameter(1)
+      ROOT t = (f32[10], f32[10]) tuple(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[8, 10] parameter(0)
+      p1 = f32[10] parameter(1)
+      ROOT scan = (f32[8, 10], f32[10]) scan(p0, p1), dimensions={0},
+        num_carries=1, to_apply=scan_computation
+    }
+  )");
+
+  auto input_indexing_0 = GetOutputToInputIndexing(root, /*output_id=*/0);
+  EXPECT_THAT(input_indexing_0.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d0, d1),
+                              domain:
+                              d0 in [0, 7],
+                              d1 in [0, 9]
+                            operand id = 1
+                              (d0, d1) -> (d1),
+                              domain:
+                              d0 in [0, 7],
+                              d1 in [0, 9]
+                          )"));
+
+  auto input_indexing_1 = GetOutputToInputIndexing(root, /*output_id=*/1);
+  EXPECT_THAT(input_indexing_1.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0)[s0] -> (s0, d0),
+                              domain:
+                              d0 in [0, 9],
+                              s0 in [0, 7]
+                            operand id = 1
+                              (d0) -> (d0),
+                              domain:
+                              d0 in [0, 9]
                           )"));
 }
 
@@ -1558,11 +1652,7 @@ TEST_P(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
         rt2 in [0, 25],
         rt3 in [0, 16]
       runtime variables:
-        rt0: parameter(3); (d0, d1) -> (),
-          domain: d0 in [0, 24], d1 in [0, 15]
-        rt1: parameter(4); (d0, d1) -> (),
-          domain: d0 in [0, 24], d1 in [0, 15]
-        rt2: parameter(1); (d0, d1){rt0, rt1} -> (),
+        rt0: parameter(1); (d0, d1){rt0, rt1} -> (),
           domain:
             d0 in [0, 24],
             d1 in [0, 15],
@@ -1570,12 +1660,16 @@ TEST_P(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
             rt1 in [0, 16],
             d0 + rt0 in [0, 49],
             d1 + rt1 in [0, 31]
-        rt3: parameter(2); (d0, d1){rt0, rt1} -> (),
+        rt1: parameter(2); (d0, d1){rt0, rt1} -> (),
           domain:
             d0 in [0, 24], d1 in [0, 15],
             rt0 in [0, 25], rt1 in [0, 16],
             d0 + rt0 in [0, 49],
             d1 + rt1 in [0, 31]
+        rt2: parameter(3); (d0, d1) -> (),
+          domain: d0 in [0, 24], d1 in [0, 15]
+        rt3: parameter(4); (d0, d1) -> (),
+          domain: d0 in [0, 24], d1 in [0, 15]
     operand id = 1
       (d0, d1) -> (),
       domain:
@@ -3157,6 +3251,97 @@ TEST_P(IndexingAnalysisTest, NestedDotFusionWithDynamicUpdateSlice) {
       domain: d0 in [0, 3], d1 in [0, 4]
     operand id = 4 (d0, d1) -> (),
       domain: d0 in [0, 3], d1 in [0, 4]
+  )"));
+}
+
+TEST_P(IndexingAnalysisTest, FusionOpWithDynamicUpdateSliceAndDynamicSlice) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
+    HloModule m
+    fused_computation {
+      dst = s32[7,11] parameter(0)
+      upd = s32[2,4] parameter(1)
+      dus_i0 = s32[] parameter(2)
+      dus_i1 = s32[] parameter(3)
+      dus = s32[7,11] dynamic-update-slice(dst, upd, dus_i0, dus_i1)
+      ds_i0 = s32[] parameter(4)
+      ds_i1 = s32[] parameter(5)
+      ROOT ds = s32[3,5] dynamic-slice(dus, ds_i0, ds_i1),
+        dynamic_slice_sizes={3,5}
+    }
+    ENTRY main {
+      p0 = s32[7,11] parameter(0)
+      p1 = s32[2,4] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      p4 = s32[] parameter(4)
+      p5 = s32[] parameter(5)
+      ROOT fusion = s32[3,5] fusion(p0, p1, p2, p3, p4, p5), kind=kLoop,
+        calls=fused_computation
+    }
+  )hlo"));
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+    operand id = 0
+      (d0, d1){rt0, rt1} -> (d0 + rt0, d1 + rt1),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4],
+        rt0 in [0, 4],
+        rt1 in [0, 6]
+      runtime variables:
+        rt0: parameter(4); (d0, d1) -> (),
+          domain: d0 in [0, 2], d1 in [0, 4]
+        rt1: parameter(5); (d0, d1) -> (),
+          domain: d0 in [0, 2], d1 in [0, 4]
+    operand id = 1
+      (d0, d1){rt0, rt1, rt2, rt3} -> (-rt0 + d0 + rt2, -rt1 + d1 + rt3),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4],
+        rt0 in [0, 5],
+        rt1 in [0, 7],
+        rt2 in [0, 4],
+        rt3 in [0, 6]
+      runtime variables:
+        rt0: parameter(2); (d0, d1){rt0, rt1} -> (),
+          domain:
+            d0 in [0, 2],
+            d1 in [0, 4],
+            rt0 in [0, 4],
+            rt1 in [0, 6],
+            d0 + rt0 in [0, 6],
+            d1 + rt1 in [0, 10]
+        rt1: parameter(3); (d0, d1){rt0, rt1} -> (),
+          domain:
+            d0 in [0, 2],
+            d1 in [0, 4],
+            rt0 in [0, 4],
+            rt1 in [0, 6],
+            d0 + rt0 in [0, 6],
+            d1 + rt1 in [0, 10]
+        rt2: parameter(4); (d0, d1) -> (),
+          domain: d0 in [0, 2], d1 in [0, 4]
+        rt3: parameter(5); (d0, d1) -> (),
+          domain: d0 in [0, 2], d1 in [0, 4]
+    operand id = 2
+      (d0, d1) -> (),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4]
+    operand id = 3
+      (d0, d1) -> (),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4]
+    operand id = 4
+      (d0, d1) -> (),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4]
+    operand id = 5
+      (d0, d1) -> (),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4]
   )"));
 }
 

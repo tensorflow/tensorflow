@@ -19,7 +19,7 @@ package tensorflow.converter;
 
 // Additional parameters that control the debug behavior of the Converter.
 //
-// Next ID: 9
+// Next ID: 10
 message DebugOptions {
   // If not empty, dumps MLIR to the specified directory. The initial state of
   // the MLIR after import will be dumped at the beginning of each pass manager
@@ -58,4 +58,7 @@ message DebugOptions {
   // Elide ElementsAttrs with \"...\" that have more elements than the given
   // upper limit.
   optional int64 elide_elementsattrs_if_larger = 8;
+
+  // If true, log RSS memory usage (in MB) before and after each MLIR pass.
+  optional bool log_rss = 9 [default = false];
 }

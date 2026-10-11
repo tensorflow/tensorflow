@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -41,7 +42,8 @@ class MaxpoolingWithArgMaxOpModel : public SingleOpModel {
                               int stride_width, int filter_height,
                               int filter_width, TfLitePadding padding,
                               const TensorData& output,
-                              const TensorData& indices) {
+                              const TensorData& indices,
+                              bool allocate_and_delegate = true) {
     input_ = AddInput(input);
     output_ = AddOutput(output);
     indices_ = AddOutput(indices);
@@ -49,7 +51,9 @@ class MaxpoolingWithArgMaxOpModel : public SingleOpModel {
     std::vector<uint8_t> custom_option = CreateCustomOptions(
         stride_height, stride_width, filter_height, filter_width, padding);
     SetCustomOp("MaxPoolWithArgmax", custom_option, RegisterMaxPoolWithArgmax);
-    BuildInterpreter({GetShape(input_)});
+    BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
   }
 
   void SetInput(const std::vector<float>& data) {
@@ -101,6 +105,21 @@ class MaxpoolingWithArgMaxOpModel : public SingleOpModel {
     return flex_builder->GetBuffer();
   }
 };
+
+TEST(MaxpoolWithArgMaxPrepareTest, RejectsPaddingOutsideInt16Range) {
+  constexpr int kFilterWidth =
+      2 * (std::numeric_limits<int16_t>::max() + 1) + 1;
+  MaxpoolingWithArgMaxOpModel model(
+      /*input=*/{TensorType_FLOAT32, {1, 1, 1, 1}},
+      /*stride_height=*/1, /*stride_width=*/1,
+      /*filter_height=*/1, /*filter_width=*/kFilterWidth,
+      /*padding=*/kTfLitePaddingSame,
+      /*output=*/{TensorType_FLOAT32, {}},
+      /*indices=*/{TensorType_INT32, {}},
+      /*allocate_and_delegate=*/false);
+
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
 
 TEST(MaxpoolWithArgMaxTest, UnsupportedInt64Test) {
   EXPECT_DEATH_IF_SUPPORTED(MaxpoolingWithArgMaxOpModel model(

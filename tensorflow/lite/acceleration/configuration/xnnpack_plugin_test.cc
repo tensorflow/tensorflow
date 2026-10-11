@@ -59,7 +59,7 @@ class XnnpackPluginTest : public tflite::testing::Test {
     ASSERT_NE(delegate_plugin_, nullptr);
   }
   void TearDown() override { delegate_plugin_.reset(); }
-  ~XnnpackPluginTest() override {}
+  ~XnnpackPluginTest() override = default;
 
  protected:
   // settings_ points into storage owned by flatbuffer_builder_.

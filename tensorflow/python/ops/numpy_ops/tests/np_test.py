@@ -26,9 +26,7 @@ from absl.testing import parameterized
 import numpy as onp
 import six
 
-from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
-from tensorflow.python.ops.numpy_ops import np_config
+from tensorflow.python.framework import errors
 from tensorflow.python.ops.numpy_ops.tests.config import config
 from tensorflow.python.ops.numpy_ops.tests.config import FLAGS
 import tensorflow.python.ops.numpy_ops.tests.extensions as nje
@@ -40,7 +38,14 @@ from tensorflow.python.util.numpy_compat import np_where
 config.parse_flags_with_absl()
 
 
-nonempty_nonscalar_array_shapes = [(4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)]
+nonempty_nonscalar_array_shapes = [
+    (4,),
+    (3, 4),
+    (3, 1),
+    (1, 4),
+    (2, 1, 4),
+    (2, 3, 4),
+]
 nonempty_array_shapes = [()] + nonempty_nonscalar_array_shapes
 empty_array_shapes = [(0,), (0, 4), (3, 0),]
 
@@ -65,6 +70,7 @@ all_dtypes = number_dtypes + bool_dtypes
 
 python_scalar_dtypes = [tnp.bool_, tnp.int_, tnp.float64, tnp.complex128]
 # pylint: disable=unnecessary-lambda,g-long-lambda,expression-not-assigned
+# pylint: disable=line-too-long,used-before-assignment,function-redefined
 
 def _valid_dtypes_for_shape(shape, dtypes):
   # Not all (shape, dtype) pairs are valid. In particular, Python scalars only
@@ -747,6 +753,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
       ]
       for lhs_dtype, rhs_dtype in CombosWithReplacement(
           minus(number_dtypes, complex_dtypes), 2)))
+  @unittest.skipIf(onp.__version__ >= onp.lib.NumpyVersion('2.0.0'),
+                   'tf numpy is implemented to be numpy 1.x compatible')
   def testCross(self, lhs_shape, lhs_dtype, rhs_shape, rhs_dtype, axes, rng_factory):
     rng = rng_factory()
     args_maker = lambda: [rng(lhs_shape, lhs_dtype), rng(rhs_shape, rhs_dtype)]
@@ -930,7 +938,13 @@ class LaxBackedNumpyTests(jtu.TestCase):
     check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
         (onp.int32, onp.int64))
 
-    tol = {onp.float64: 1e-14, onp.float16: 0.04, onp.complex128: 6e-15}
+    tol = {
+        onp.float32: 1e-4,
+        onp.complex64: 1e-4,
+        onp.float64: 1e-14,
+        onp.float16: 0.04,
+        onp.complex128: 6e-15,
+    }
     tol = max(jtu.tolerance(lhs_dtype, tol), jtu.tolerance(rhs_dtype, tol))
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True,
                           check_incomplete_shape=True,
@@ -1785,10 +1799,16 @@ class LaxBackedNumpyTests(jtu.TestCase):
     try:
       self._CheckAgainstNumpy(
           onp_fun, lnp_fun, args_maker, check_dtypes=check_dtypes, tol=tol)
-    except ZeroDivisionError:
+      self._CompileAndCheck(
+          lnp_fun,
+          args_maker,
+          check_dtypes=check_dtypes,
+          rtol=tol,
+          atol=tol,
+          check_incomplete_shape=True,
+      )
+    except (ZeroDivisionError, errors.InvalidArgumentError):
       self.skipTest("don't support checking for ZeroDivisionError")
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=check_dtypes,
-                          rtol=tol, atol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_arg{}_ndmin={}".format(i, ndmin),
@@ -2054,6 +2074,50 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
     self._CompileAndCheck(
         lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
+
+  @new_test
+  def testRot90InvalidAxes(self):
+    a = tnp.ones((2, 3))
+    # Out-of-bounds axes must be rejected, matching NumPy's ValueError.
+    with self.assertRaisesRegex(ValueError, "out of range"):
+      tnp.rot90(a, axes=(0, 3))
+    with self.assertRaisesRegex(ValueError, "out of range"):
+      tnp.rot90(a, axes=(0, -5))
+    # Duplicate axes (after negative normalization) must be rejected.
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(a, axes=(0, 0))
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(a, axes=(0, -2))
+    # axes must have exactly two entries.
+    with self.assertRaisesRegex(ValueError, "must be 2"):
+      tnp.rot90(a, axes=(0,))
+    with self.assertRaisesRegex(ValueError, "must be 2"):
+      tnp.rot90(a, axes=(0, 1, 2))
+    # Sub-2D inputs are invalid with the default axes=(0, 1), matching
+    # NumPy's check order: the vector's default axes trip the duplicate
+    # check (abs(0 - 1) == ndim), and a scalar trips the bounds check.
+    with self.assertRaisesRegex(ValueError, "out of range"):
+      tnp.rot90(tnp.ones(()))
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(tnp.ones(3))
+    # Unsigned NumPy integers must not wrap around in the duplicate
+    # check (unsigned scalar subtraction is modular).
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(tnp.ones(3), axes=(onp.uint32(0), onp.uint32(0)))
+    with self.assertRaisesRegex(ValueError, "must be different"):
+      tnp.rot90(tnp.ones(3), axes=(onp.uint32(0), onp.uint32(1)))
+    # In-bounds negative axes remain valid.
+    self.assertAllClose(
+        tnp.rot90(a, axes=(-2, -1)),
+        onp.rot90(onp.ones((2, 3)), axes=(-2, -1)),
+        check_dtypes=False,
+    )
+    # Valid unsigned integer axes still work.
+    self.assertAllClose(
+        tnp.rot90(tnp.ones((2, 3)), axes=(onp.uint32(0), onp.uint32(1))),
+        onp.rot90(onp.ones((2, 3)), axes=(0, 1)),
+        check_dtypes=False,
+    )
 
   # TODO(mattjj): test infix operator overrides
 
@@ -2587,9 +2651,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   def testReductionOfOutOfBoundsAxis(self):  # Issue 888
     x = tnp.ones((3, 4))
-    self.assertRaises(
-        errors_impl.InvalidArgumentError, lambda: tnp.sum(x, axis=2)
-    )
+    self.assertRaises(ValueError, lambda: tnp.sum(x, axis=2))
 
   @jtu.disable
   def testIssue956(self):
@@ -2823,7 +2885,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
                               check_dtypes=False, atol=atol, rtol=tol,
                               check_incomplete_shape=True)
 
-
   @named_parameters(
       jtu.cases_from_list(
           {
@@ -2944,6 +3005,19 @@ class LaxBackedNumpyTests(jtu.TestCase):
     def foo(x):
       return tnp.concatenate(x)
     foo(onp.zeros((2, 2)))  # doesn't crash
+
+  def testStackInvalidAxis(self):
+    # NumPy raises AxisError for out-of-bounds stack axes. `axis` is an
+    # insertion position, so rank itself is in bounds.
+    a = onp.ones((2, 3))
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=3)
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=-4)
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=4)
+    # In-bounds boundaries still work.
+    self.assertEqual(tnp.stack([a, a], axis=2).shape, (2, 3, 2))
 
   @jtu.disable
   def testReluGradientConstants(self):
@@ -3163,4 +3237,3 @@ class NumpyGradTests(jtu.TestCase):
 
 if __name__ == "__main__":
   absltest.main()
-  

@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -438,53 +439,65 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
   return prologue_time + overlap_time + epilogue_time + hbm_timing.write_time;
 }
 
-SmOccupancy CalculateSmOccupancy(int64_t shared_memory_per_block_bytes,
-                                 int64_t num_warps,
+SmOccupancy CalculateSmOccupancy(const LaunchConfig& config,
                                  const se::DeviceDescription& device_info) {
   const int64_t hardware_max_shmem = device_info.shared_memory_per_core();
   const int64_t hardware_max_threads = device_info.threads_per_core_limit();
+  const int64_t hardware_max_registers = device_info.registers_per_core_limit();
+  const int64_t threads_per_block =
+      config.num_warps * device_info.threads_per_warp();
+
   const int64_t max_blocks_by_shmem =
-      shared_memory_per_block_bytes > 0
-          ? hardware_max_shmem / shared_memory_per_block_bytes
+      config.shared_memory_per_block_bytes > 0
+          ? hardware_max_shmem / config.shared_memory_per_block_bytes
           : hardware_max_threads;
   const int64_t max_blocks_by_threads =
-      hardware_max_threads / (num_warps * device_info.threads_per_warp());
+      threads_per_block > 0 ? hardware_max_threads / threads_per_block : 0;
+  const int64_t registers_per_block =
+      config.registers_per_thread * threads_per_block;
+  const int64_t max_blocks_by_registers =
+      (registers_per_block > 0 && hardware_max_registers > 0)
+          ? hardware_max_registers / registers_per_block
+          : hardware_max_threads;
 
-  int64_t active_blocks_per_sm = std::max<int64_t>(
-      1, std::min(max_blocks_by_shmem, max_blocks_by_threads));
+  int64_t active_blocks_per_sm =
+      std::max<int64_t>(1, std::min({max_blocks_by_shmem, max_blocks_by_threads,
+                                     max_blocks_by_registers}));
 
   // Clamp to the physical limit of blocks per SM, if the device provides it.
   if (device_info.max_blocks_per_multiprocessor() > 0) {
     active_blocks_per_sm = std::min(
-        active_blocks_per_sm, device_info.max_blocks_per_multiprocessor());
+        active_blocks_per_sm,
+        static_cast<int64_t>(device_info.max_blocks_per_multiprocessor()));
   }
 
-  return SmOccupancy{active_blocks_per_sm, active_blocks_per_sm * num_warps};
+  return SmOccupancy{active_blocks_per_sm,
+                     active_blocks_per_sm * config.num_warps};
 }
 
-int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
-                                     int64_t shared_memory_per_block_bytes,
-                                     int64_t num_warps,
+int64_t CalculateHardwareLaunchWaves(const LaunchConfig& config,
                                      const se::DeviceDescription& device_info) {
-  const SmOccupancy occupancy = CalculateSmOccupancy(
-      shared_memory_per_block_bytes, num_warps, device_info);
+  const SmOccupancy occupancy = CalculateSmOccupancy(config, device_info);
 
   const int64_t total_gpu_capacity =
       occupancy.active_blocks_per_sm * device_info.core_count();
-  return CeilOfRatio<int64_t>(threadblock_count, total_gpu_capacity);
+  // Prevent division by zero; returning max() safely saturates
+  // the absl::Duration arithmetic downstream to infinity.
+  if (total_gpu_capacity == 0) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  return CeilOfRatio<int64_t>(config.threadblock_count, total_gpu_capacity);
 }
 
 absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
-    int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
-    absl::Duration compute_time, const HbmEstimates& hbm_timing,
-    int64_t shared_memory_per_block_bytes, int64_t num_warps,
-    const se::DeviceDescription& device_info) {
-  if (threadblock_count == 0) {
+    const LaunchConfig& config, absl::Duration compute_time,
+    const HbmEstimates& hbm_timing, const se::DeviceDescription& device_info) {
+  if (config.threadblock_count == 0) {
     return absl::ZeroDuration();
   }
 
-  const int64_t launch_waves = CalculateHardwareLaunchWaves(
-      threadblock_count, shared_memory_per_block_bytes, num_warps, device_info);
+  const int64_t launch_waves =
+      CalculateHardwareLaunchWaves(config, device_info);
 
   // Evaluate the pipeline loop per-wave so the latency tax isn't diluted.
   // The total execution time is then the cost of a single wave multiplied by
@@ -495,7 +508,7 @@ absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
   single_wave_hbm.read_time = hbm_timing.read_time / launch_waves;
   single_wave_hbm.write_time = hbm_timing.write_time / launch_waves;
 
-  return CalculatePipelinedLoopTime(num_stages, k_loop_iterations,
+  return CalculatePipelinedLoopTime(config.num_stages, config.k_loop_iterations,
                                     single_wave_compute, single_wave_hbm) *
          launch_waves;
 }
@@ -522,24 +535,51 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
   return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
 }
 
+WarpGrid FactorWarpGrid(int64_t num_warps, int64_t tile_m, int64_t tile_n) {
+  if (num_warps <= 1 || tile_m <= 0 || tile_n <= 0) {
+    return {1, 1};
+  }
+  int64_t warps_m = 1;
+  int64_t warps_n = 1;
+  while (warps_m * warps_n < num_warps) {
+    if (tile_m * warps_n >= 2 * tile_n * warps_m) {
+      warps_m *= 2;
+    } else {
+      warps_n *= 2;
+    }
+  }
+  return {warps_m, warps_n};
+}
+
+namespace {
+
+int CalculateAccumulatorRegisters(const DotProblemInfo& dot_info,
+                                  const DotTileSize& dot_tile,
+                                  int64_t total_threads) {
+  // Hardware accumulates in at least 32-bit precision (64-bit for F64).
+  const int64_t acc_bitwidth =
+      std::max<int64_t>(32, BitWidth(dot_info.output_element_type));
+  constexpr int kBitsPerRegister = 32;
+  return static_cast<int>(
+      CeilOfRatio<int64_t>(dot_tile.m * dot_tile.n * acc_bitwidth,
+                           total_threads * kBitsPerRegister));
+}
+
+}  // namespace
+
 int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
                                 const DotTileSize& dot_tile,
                                 const BlockLevelParameters& block_params,
                                 const se::DeviceDescription& device_info) {
   const int64_t num_warps = block_params.num_warps;
   const int64_t threads_per_warp = device_info.threads_per_warp();
-  constexpr int kBitsPerRegister = 32;
   const int64_t total_threads = num_warps * threads_per_warp;
   if (total_threads <= 0 || dot_tile.m <= 0 || dot_tile.n <= 0) {
     return 0;
   }
 
-  const int64_t acc_bitwidth = BitWidth(dot_info.output_element_type);
-  // Safe to cast: The numerator represents the total bits for the accumulator
-  // tile, which will always fit in an int due to hardware limits on tile size.
-  const int accumulator_regs = static_cast<int>(
-      CeilOfRatio<int64_t>(dot_tile.m * dot_tile.n * acc_bitwidth,
-                           total_threads * kBitsPerRegister));
+  const int accumulator_regs =
+      CalculateAccumulatorRegisters(dot_info, dot_tile, total_threads);
 
   // Base register overhead in generated GEMM kernels for loop induction
   // variables, pointer arithmetic, and barrier synchronization handles.
@@ -723,6 +763,8 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.shared_memory_per_block_bytes =
       detail::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
                                                  num_stages);
+  estimates.registers_per_thread = detail::CalculateRegistersPerThread(
+      dot_info, dot_tile, block_params, device_info);
 
   // Calculate L2 time.
   ABSL_ASSIGN_OR_RETURN(absl::Duration l2_time,
@@ -737,18 +779,23 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   const int64_t k_loop_iterations =
       CeilOfRatio<int64_t>(dot_info.k, block_k_val);
 
+  detail::LaunchConfig launch_config;
+  launch_config.num_stages = num_stages;
+  launch_config.num_warps = block_params.num_warps;
+  launch_config.k_loop_iterations = k_loop_iterations;
+  launch_config.threadblock_count = threadblock_count;
+  launch_config.shared_memory_per_block_bytes =
+      estimates.shared_memory_per_block_bytes;
+  launch_config.registers_per_thread = estimates.registers_per_thread;
+
   absl::Duration pipelined_loop_time =
       detail::CalculatePipelinedLoopTimeWithLaunchWaves(
-          num_stages, k_loop_iterations, threadblock_count,
-          compute_and_flops.compute_time, hbm_timing,
-          estimates.shared_memory_per_block_bytes, block_params.num_warps,
+          launch_config, compute_and_flops.compute_time, hbm_timing,
           device_info);
 
   // Assuming perfect overlap between compute and memory for the rest,
   // but main loop is now modeled precisely.
   estimates.exec_time = std::max({pipelined_loop_time, l2_time});
-  estimates.registers_per_thread = detail::CalculateRegistersPerThread(
-      dot_info, dot_tile, block_params, device_info);
   estimates.compute_utilization = detail::CalculateComputeUtilization(
       estimates, device_info, dot_info.output_element_type);
   estimates.memory_utilization =

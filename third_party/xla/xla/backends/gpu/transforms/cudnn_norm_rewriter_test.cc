@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {

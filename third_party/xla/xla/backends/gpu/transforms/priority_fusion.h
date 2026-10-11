@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -85,13 +86,15 @@ class PriorityFusion : public HloModulePass {
                  const se::DeviceDescription& device,
                  const AliasInfo* alias_info,
                  GpuHloCostAnalysis::Options cost_analysis_options,
-                 mlir::MLIRContext* mlir_context)
+                 mlir::MLIRContext* mlir_context,
+                 MlirContextPool* mlir_context_pool = nullptr)
       : thread_pool_(thread_pool),
         device_info_(device),
         alias_info_(alias_info),
         cost_analysis_options_(std::move(cost_analysis_options)),
         fusion_analysis_cache_(device_info_),
-        mlir_context_(mlir_context) {}
+        mlir_context_(mlir_context),
+        mlir_context_pool_(mlir_context_pool) {}
 
   absl::string_view name() const override { return "priority-fusion"; }
 
@@ -129,6 +132,10 @@ class PriorityFusion : public HloModulePass {
   HloFusionAnalysisCache fusion_analysis_cache_;
 
   mlir::MLIRContext* mlir_context_;
+
+  // Currently passed to the cost model to conduct parallel tiling evaluation.
+  // If null, this evaluation is done serially.
+  MlirContextPool* mlir_context_pool_ = nullptr;
 };
 
 }  // namespace gpu

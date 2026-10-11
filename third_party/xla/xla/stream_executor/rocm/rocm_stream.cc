@@ -104,7 +104,7 @@ absl::StatusOr<hipStream_t> CreateStream(StreamExecutor* executor,
   // Check the cache for an idle handle with matching (device, flags, priority).
   {
     auto& cache = GetHipStreamHandleCache();
-    absl::MutexLock lock(&cache.mu);
+    absl::MutexLock lock(cache.mu);
     auto key = std::make_tuple(executor->device_ordinal(), kFlags, priority);
     auto it = cache.handles.find(key);
     if (it != cache.handles.end() && !it->second.empty()) {
@@ -328,7 +328,7 @@ void DestroyStream(StreamExecutor* executor, hipStream_t stream) {
 
   // Insert the verified, idle handle into the cache for reuse.
   auto& cache = GetHipStreamHandleCache();
-  absl::MutexLock lock(&cache.mu);
+  absl::MutexLock lock(cache.mu);
   auto key =
       std::make_tuple(executor->device_ordinal(), flags, stream_priority);
   cache.handles[key].push_back(stream);

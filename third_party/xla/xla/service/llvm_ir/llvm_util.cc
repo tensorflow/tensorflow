@@ -51,6 +51,7 @@ limitations under the License.
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
@@ -61,15 +62,11 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/TypeSize.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
@@ -692,6 +689,44 @@ llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   flags.setAllowReciprocal(!options.xla_cpu_fast_math_honor_division());
   flags.setApproxFunc(!options.xla_cpu_fast_math_honor_functions());
   return flags;
+}
+
+void SetAllowContractOnFpArithmetic(llvm::Module& module) {
+  for (llvm::Function& function : module) {
+    for (llvm::Instruction& instruction : llvm::instructions(function)) {
+      const unsigned opcode = instruction.getOpcode();
+      if (opcode == llvm::Instruction::FAdd ||
+          opcode == llvm::Instruction::FSub ||
+          opcode == llvm::Instruction::FMul) {
+        instruction.setHasAllowContract(true);
+      }
+    }
+  }
+}
+
+void SinkContractableFMulToFAddFSub(llvm::Module& module) {
+  for (llvm::Function& function : module) {
+    for (llvm::Instruction& instruction : llvm::instructions(function)) {
+      const unsigned opcode = instruction.getOpcode();
+      if ((opcode != llvm::Instruction::FAdd &&
+           opcode != llvm::Instruction::FSub) ||
+          !instruction.hasAllowContract()) {
+        continue;
+      }
+      for (llvm::Value* operand : instruction.operands()) {
+        auto* fmul = llvm::dyn_cast<llvm::BinaryOperator>(operand);
+        // `fmul` is an operand of `instruction` and has exactly one use, so it
+        // dominates and (being in the same block) precedes `instruction`.
+        // Moving it forward therefore never disturbs the iteration above.
+        if (fmul != nullptr && fmul->getOpcode() == llvm::Instruction::FMul &&
+            fmul->hasAllowContract() && fmul->hasOneUse() &&
+            fmul->getParent() == instruction.getParent() &&
+            fmul->getNextNode() != &instruction) {
+          fmul->moveBefore(instruction.getIterator());
+        }
+      }
+    }
+  }
 }
 
 std::map<int, llvm::MDNode*> MergeMetadata(

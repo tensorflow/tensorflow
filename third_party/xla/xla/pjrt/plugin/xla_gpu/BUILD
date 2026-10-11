@@ -45,6 +45,7 @@ cc_library(
         ":xla_gpu_allocator_config",
         "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "@com_google_absl//absl/time",
     ],
 )
 

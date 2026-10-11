@@ -271,6 +271,7 @@ tf_cc_test(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/framework:versions_proto_cc",
         "//tensorflow/core/grappler/utils:grappler_test",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:status",

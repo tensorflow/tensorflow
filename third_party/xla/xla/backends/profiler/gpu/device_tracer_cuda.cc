@@ -48,6 +48,18 @@ using tensorflow::ProfileOptions;
 using tensorflow::profiler::XSpace;
 using tsl::ReadBoolFromEnvVar;
 
+static void MaybeEnableHES() {
+  bool enable_hes = false;
+  tsl::ReadBoolFromEnvVar("TF_GPU_CUPTI_ENABLE_ACTIVITY_HW_TRACING", false,
+                          &enable_hes)
+      .IgnoreError();
+  if (enable_hes) {
+    if (auto status = CuptiTracer::EnableHES(); !status.ok()) {
+      LOG(WARNING) << "Failed to enable HES: " << status.message();
+    }
+  }
+}
+
 // GpuTracer for GPU.
 class GpuTracer : public tsl::profiler::ProfilerInterface {
  public:
@@ -102,11 +114,6 @@ absl::Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
-
-  // TODO: Change default to true once we have more confidence in HES.
-  ReadBoolFromEnvVar("TF_GPU_CUPTI_ENABLE_ACTIVITY_HW_TRACING", false,
-                     &options_.enable_activity_hardware_tracing)
-      .IgnoreError();
 
 // CUDA/CUPTI 10 have issues (leaks and crashes) with cuptiFinalize.
 #if CUDA_VERSION >= 11000
@@ -243,6 +250,7 @@ std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
 }
 
 auto register_gpu_tracer_factory = [] {
+  MaybeEnableHES();
   RegisterProfilerFactory(&CreateGpuTracer);
   return 0;
 }();

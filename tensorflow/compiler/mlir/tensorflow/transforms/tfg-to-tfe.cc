@@ -184,11 +184,8 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     Location loc = graph_func.getLoc();
     FunctionType ftype = graph_func.getFunctionType();
 
-    func::FuncOp func = func::FuncOp::create(
-        rewriter, graph_func.getLoc(),
-        graph_func->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
-            .getValue(),
-        ftype);
+    func::FuncOp func = func::FuncOp::create(rewriter, graph_func.getLoc(),
+                                             graph_func.getName(), ftype);
 
     func->setAttrs(graph_func->getAttrs());
 
@@ -503,9 +500,7 @@ void LegalizeTFGToTFE::runOnOperation() {
   DenseSet<StringRef> func_symbols;
   for (auto &op : module.getBodyRegion().getOps()) {
     if (auto func = llvm::dyn_cast<tfg::GraphFuncOp>(op)) {
-      func_symbols.insert(
-          func->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
-              .getValue());
+      func_symbols.insert(func.getName());
     }
   }
 

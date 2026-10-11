@@ -205,8 +205,13 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
     : public BufferAllocationsManagerForComputationsWithoutOrdering {
  public:
   FastMergeBufferAllocationsManagerForComputationsWithoutOrdering(
-      BufferAssignment* assignment, BufferAssigner* assigner)
-      : assignment_(assignment), assigner_(assigner) {}
+      BufferAssignment* assignment, BufferAssigner* assigner,
+      std::optional<BufferAssignment::LiveRangeInterferenceOptions>
+          live_range_interference_options = std::nullopt)
+      : assignment_(assignment),
+        assigner_(assigner),
+        live_range_interference_options_(
+            std::move(live_range_interference_options)) {}
 
   void RegisterAliasedEntryParameterAllocation(
       BufferAllocation::Index index) override {
@@ -238,30 +243,85 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
       ABSL_ASSIGN_OR_RETURN(bool success, assigner_->MaybeAssignBuffer(
                                          allocation, *hlo_buffer, assignment_));
       if (success) {
-        active_allocations_.emplace(
-            ActiveAllocation({live_range.max_end, index}));
+        RecordAllocationUse(allocation, live_range.max_end);
         VLOG(3) << "Reusing allocation #" << allocation->index()
                 << " via "
                    "FastMergeBufferAllocationsManagerForComputationsWithout"
                    "Ordering "
                    "for: "
                 << *hlo_buffer;
-        pool.erase(it);
         return true;
       }
       ++it;
     }
+
+    if (live_range_interference_options_.has_value()) {
+      bool has_custom_interference =
+          absl::c_any_of(hlo_buffer->values(), [&](const HloValue* hlo_value) {
+            return live_range_interference_options_->has_custom_interference(
+                assignment_->alias_analysis(), *hlo_value);
+          });
+      if (has_custom_interference) {
+        // Collect active allocations that are of the same color, have
+        // sufficient size, and are not in the free pool (which was already
+        // searched above). When custom interference rules are present, active
+        // allocations may be safely reusable if custom interference returns
+        // false.
+        std::vector<BufferAllocation*> candidates;
+        for (BufferAllocation::Index index : allocation_indices_) {
+          BufferAllocation* allocation =
+              assignment_->GetMutableAllocation(index);
+          if (allocation->color() == buffer_color &&
+              allocation->size() >= required_size &&
+              !pool.contains({allocation->size(), index})) {
+            candidates.push_back(allocation);
+          }
+        }
+        // Sort candidates by size (best-fit) to preserve larger allocations for
+        // future large buffers.
+        absl::c_sort(candidates,
+                     [](const BufferAllocation* a, const BufferAllocation* b) {
+                       if (a->size() != b->size()) {
+                         return a->size() < b->size();
+                       }
+                       return a->index() < b->index();
+                     });
+        for (BufferAllocation* allocation : candidates) {
+          ABSL_ASSIGN_OR_RETURN(bool success,
+                           assigner_->MaybeAssignBuffer(allocation, *hlo_buffer,
+                                                        assignment_));
+          if (success) {
+            RecordAllocationUse(allocation, live_range.max_end);
+            return true;
+          }
+        }
+      }
+    }
+
     return false;
   }
 
   // Registers a new standalone allocation to be tracked.
   void RegisterNewAllocation(const HloBuffer* hlo_buffer,
                              BufferAllocation::Index index) override {
+    allocation_indices_.push_back(index);
     BufferLiveRange live_range = GetBufferLiveRange(hlo_buffer);
+    allocation_max_end_time_[index] = live_range.max_end;
     active_allocations_.emplace(ActiveAllocation({live_range.max_end, index}));
   }
 
  private:
+  void RecordAllocationUse(BufferAllocation* allocation, int64_t max_end_time) {
+    BufferAllocation::Index index = allocation->index();
+    size_t erased =
+        free_pool_[allocation->color()].erase({allocation->size(), index});
+    int64_t& current_max_end = allocation_max_end_time_[index];
+    if (erased > 0 || max_end_time > current_max_end) {
+      current_max_end = std::max(current_max_end, max_end_time);
+      active_allocations_.emplace(ActiveAllocation({current_max_end, index}));
+    }
+  }
+
   BufferLiveRange GetBufferLiveRange(const HloBuffer* hlo_buffer) const {
     return GetHloBufferLiveRange(
         hlo_buffer, assignment_->hlo_live_range().buffer_live_ranges());
@@ -276,6 +336,11 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
            active_allocations_.top().max_end_time <= current_start_time) {
       auto top = active_allocations_.top();
       active_allocations_.pop();
+      auto it = allocation_max_end_time_.find(top.index);
+      if (it != allocation_max_end_time_.end() &&
+          top.max_end_time < it->second) {
+        continue;
+      }
       BufferAllocation* alloc = assignment_->GetMutableAllocation(top.index);
       free_pool_[alloc->color()].emplace(alloc->size(), top.index);
     }
@@ -294,10 +359,14 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
 
   BufferAssignment* const assignment_;
   BufferAssigner* const assigner_;
+  std::optional<BufferAssignment::LiveRangeInterferenceOptions>
+      live_range_interference_options_;
   int64_t prev_start_time_ = 0;
   std::priority_queue<ActiveAllocation, std::vector<ActiveAllocation>,
                       std::greater<ActiveAllocation>>
       active_allocations_;
+  absl::flat_hash_map<BufferAllocation::Index, int64_t>
+      allocation_max_end_time_;
   absl::flat_hash_map<
       LogicalBuffer::Color,
       absl::btree_set<std::pair<int64_t, BufferAllocation::Index>>>
@@ -310,7 +379,7 @@ BufferAssigner::CreateFastMergeManagerForTest(BufferAssignment* assignment,
                                               BufferAssigner* assigner) {
   return std::make_unique<
       FastMergeBufferAllocationsManagerForComputationsWithoutOrdering>(
-      assignment, assigner);
+      assignment, assigner, assigner->opts_.live_range_interference_options);
 }
 
 namespace {
@@ -328,6 +397,13 @@ std::optional<bool> CompareSize(
   const int64_t a_size = size_of(*a);
   const int64_t b_size = size_of(*b);
   if (a_size != b_size) {
+    // Unbounded size is considered larger than any bounded size.
+    if (a_size == Shape::kUnboundedSize) {
+      return true;
+    }
+    if (b_size == Shape::kUnboundedSize) {
+      return false;
+    }
     return a_size > b_size;  // use ">" for decreasing size.
   }
   return std::nullopt;
@@ -524,6 +600,7 @@ absl::Status GatherComputationsByAllocationType(
           case HloOpcode::kCustomCall:
           case HloOpcode::kAllReduce:
           case HloOpcode::kReduceScatter:
+          case HloOpcode::kCollectiveReduce:
           case HloOpcode::kAllReduceStart:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:
@@ -621,9 +698,9 @@ absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
   // offset, since -1 <= size_ is true for any non-negative allocation size.
   TF_RET_CHECK(offset >= 0)
       << "LogicalBuffer " << buffer << " has a negative offset: " << offset;
-  TF_RET_CHECK(size >= 0) << "LogicalBuffer " << buffer
-                          << " has a negative size: " << size;
-  TF_RET_CHECK(offset <= size_)
+  TF_RET_CHECK(size >= 0 || size == Shape::kUnboundedSize)
+      << "LogicalBuffer " << buffer << " has a negative size: " << size;
+  TF_RET_CHECK(offset <= size_ || size == Shape::kUnboundedSize)
       << "LogicalBuffer " << buffer << " offset out of range";
   TF_RET_CHECK(offset + size <= size_)
       << "LogicalBuffer " << buffer
@@ -673,7 +750,19 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   }
   proto.set_is_constant(is_constant_);
   proto.set_maybe_live_out(maybe_live_out_);
-  for (const auto& buffer_offset_size : assigned_buffers_) {
+  using Entry = std::pair<const HloValue* const, OffsetSize>;
+  std::vector<const Entry*> sorted;
+  sorted.reserve(assigned_buffers_.size());
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& kv : assigned_buffers_) {
+    sorted.push_back(&kv);
+  }
+  absl::c_sort(sorted, [](const Entry* a, const Entry* b) {
+    return a->first->id() < b->first->id();
+  });
+  proto.mutable_assigned()->Reserve(sorted.size());
+  for (const Entry* ptr : sorted) {
+    const auto& buffer_offset_size = *ptr;
     BufferAllocationProto::Assigned* proto_assigned = proto.add_assigned();
     proto_assigned->set_logical_buffer_id(buffer_offset_size.first->id());
     proto_assigned->set_offset(buffer_offset_size.second.offset);
@@ -681,12 +770,6 @@ BufferAllocationProto BufferAllocation::ToProto() const {
     proto_assigned->set_element_type(
         buffer_offset_size.first->shape().element_type());
   }
-  absl::c_sort(*proto.mutable_assigned(),
-               [](const BufferAllocationProto::Assigned& assign1,
-                  const BufferAllocationProto::Assigned& assign2) {
-                 return assign1.logical_buffer_id() <
-                        assign2.logical_buffer_id();
-               });
   return proto;
 }
 
@@ -1082,7 +1165,6 @@ absl::Status BufferAssignment::AddAssignment(BufferAllocation* allocation,
 // Combines allocations of temporary buffers of the same color into one big
 // BufferAllocation.
 absl::Status BufferAssignment::CombineTempAllocations(
-    const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
     std::optional<BufferValue::Color> temp_buffer_color) {
   VLOG(1) << "CombineTempAllocations()";
 
@@ -1138,20 +1220,10 @@ absl::Status BufferAssignment::CombineTempAllocations(
 
     // Each temp allocation is placed end-to-end, accounting for alignment.
     // The offset of each buffer in the combined allocation is computed from
-    // the base offset of the allocation. For private stack color, we assume
-    // each allocation object corresponds to one of the independent executions
-    // of the private stack computations, so it is safe to reuse offsets in
-    // that case.
+    // the base offset of the allocation.
     int64_t alignment = color_alignment_(color);
-    int64_t base;
-    bool is_private_stack = private_stack_colors.contains(color);
-    if (is_private_stack) {
-      base = 0;
-      combined_allocation->set_size(std::max(base, temp_allocation.size()));
-    } else {
-      base = RoundUpTo(combined_allocation->size(), alignment);
-      combined_allocation->set_size(base + temp_allocation.size());
-    }
+    const int64_t base = RoundUpTo(combined_allocation->size(), alignment);
+    combined_allocation->set_size(base + temp_allocation.size());
     for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
       const HloValue* value = buffer_offset_size.first;
       const int64_t offset = buffer_offset_size.second.offset;
@@ -1164,16 +1236,10 @@ absl::Status BufferAssignment::CombineTempAllocations(
       combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
     }
 
-    if (is_private_stack) {
-      if (temp_allocation.size() == combined_allocation->size()) {
-        combined_allocation->peak_buffers_ = temp_allocation.peak_buffers_;
-      }
-    } else {
-      combined_allocation->peak_buffers_.insert(
-          combined_allocation->peak_buffers_.end(),
-          temp_allocation.peak_buffers_.begin(),
-          temp_allocation.peak_buffers_.end());
-    }
+    combined_allocation->peak_buffers_.insert(
+        combined_allocation->peak_buffers_.end(),
+        temp_allocation.peak_buffers_.begin(),
+        temp_allocation.peak_buffers_.end());
 
     // Carry over the cross-color reuse reporting info from the absorbed
     // allocation so the combined allocation's dump still reflects it.
@@ -1602,11 +1668,21 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
   // because we need to do the HasAllocation check for each buffer. Otherwise
   // the buffer_size_ call might fail for some backends.
   const HloDataflowAnalysis& dataflow = this->dataflow_analysis();
+  proto->mutable_logical_buffers()->Reserve(dataflow.values().size());
   for (BufferValue::Id id = 0; id < dataflow.values().size(); id++) {
     auto& value = dataflow.values().at(id);
     if (HasAllocation(*value)) {
-      LogicalBufferProto proto_buffer = value->ToProto(buffer_size_);
-      proto->add_logical_buffers()->Swap(&proto_buffer);
+      LogicalBufferProto* pb = proto->add_logical_buffers();
+      pb->set_id(value->id());
+      pb->set_size(buffer_size_(*value));
+      LogicalBufferProto::Location* loc = pb->mutable_defined_at();
+      loc->set_instruction_id(value->instruction()->unique_id());
+      for (int64_t i : value->index()) {
+        loc->add_shape_index(i);
+      }
+      if (value->has_color()) {
+        pb->set_color(value->color());
+      }
 
       // Fill buffer aliases.
       for (const HloValue* alias :
@@ -1617,13 +1693,17 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
             proto->add_buffer_aliases();
-        LogicalBufferProto::Location proto_alias_location =
-            BufferValue::ToLocationProto(*alias->instruction(), alias->index());
         proto_alias->set_source_buffer_id(value->id());
-        proto_alias->mutable_location()->Swap(&proto_alias_location);
+        LogicalBufferProto::Location* aloc = proto_alias->mutable_location();
+        aloc->set_instruction_id(alias->instruction()->unique_id());
+        for (int64_t i : alias->index()) {
+          aloc->add_shape_index(i);
+        }
       }
     }
   }
+  proto->mutable_buffer_allocations()->Reserve(Allocations().size());
+  proto->mutable_peak_buffers()->Reserve(Allocations().size());
   for (const BufferAllocation& allocation : Allocations()) {
     BufferAllocationProto proto_allocation = allocation.ToProto();
     proto->add_buffer_allocations()->Swap(&proto_allocation);
@@ -1846,6 +1926,20 @@ bool BufferAssigner::LiveRangeInterferes(
     const HloValue* buffer1, const HloLiveRange::LiveRangeBounds& live_range1,
     const HloValue* buffer2, const HloLiveRange::LiveRangeBounds& live_range2,
     BufferAssignment* assignment) {
+  if (opts_.live_range_interference_options.has_value()) {
+    const auto& options = *opts_.live_range_interference_options;
+    if (options.has_custom_interference(assignment->alias_analysis(),
+                                        *buffer1) &&
+        options.has_custom_interference(assignment->alias_analysis(),
+                                        *buffer2)) {
+      std::optional<bool> custom_interference =
+          options.interferes(assignment->alias_analysis(), *buffer1, *buffer2);
+      if (custom_interference.has_value()) {
+        return *custom_interference;
+      }
+    }
+  }
+
   CHECK((assignment->hlo_live_range().total_order_scheduled()));
 
   // An HloValue can hold multiple instruction positions during its lifetime
@@ -2034,14 +2128,34 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
                   << new_value->ToShortString();
           return false;
         }
-      } else if (assignment->hlo_ordering().MayInterfere(
-                     assigned_buffer, *new_value,
-                     assignment->dataflow_analysis(), alias_info_)) {
-        // Fallback to partial order based interference detection (slower) when
-        // we don't have a total order scheduled module.
-        VLOG(4) << "Can't assign: assignee " << assigned_buffer
-                << " may interfere with " << new_value->ToShortString();
-        return false;
+      } else {
+        std::optional<bool> custom_interference;
+        if (opts_.live_range_interference_options.has_value()) {
+          const auto& options = *opts_.live_range_interference_options;
+          if (options.has_custom_interference(assignment->alias_analysis(),
+                                              *new_value) &&
+              options.has_custom_interference(assignment->alias_analysis(),
+                                              assigned_buffer)) {
+            custom_interference = options.interferes(
+                assignment->alias_analysis(), *new_value, assigned_buffer);
+          }
+        }
+        if (custom_interference.has_value()) {
+          if (*custom_interference) {
+            VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                    << " custom interference with "
+                    << new_value->ToShortString();
+            return false;
+          }
+        } else if (assignment->hlo_ordering().MayInterfere(
+                       assigned_buffer, *new_value,
+                       assignment->dataflow_analysis(), alias_info_)) {
+          // Fallback to partial order based interference detection (slower)
+          // when we don't have a total order scheduled module.
+          VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                  << " may interfere with " << new_value->ToShortString();
+          return false;
+        }
       }
 
       // Copy instruction don't share a buffer with their input operand.
@@ -2076,10 +2190,8 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
   return true;
 }
 
-absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
-    const HloBuffer* hlo_buffer, bool is_thread_local,
-    BufferAllocationsManagerForComputationsWithoutOrdering* allocation_manager,
-    BufferAssignment* assignment) {
+absl::StatusOr<bool> BufferAssigner::AssignViewOrConstantBuffer(
+    const HloBuffer* hlo_buffer, BufferAssignment* assignment) {
   // "View" buffers are pointer stand-ins that alias into another allocation, so
   // they get no allocation of their own.
   if (opts_.dus_view_color.has_value()) {
@@ -2090,12 +2202,13 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
     }
   }
 
-  const int64_t buffer_size = assignment->HloBufferSize(*hlo_buffer);
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->instruction()->opcode() == HloOpcode::kConstant) {
       if (opts_.allocate_buffers_for_constants) {
-        ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
-                         assignment->NewAllocation(*hlo_buffer, buffer_size));
+        ABSL_ASSIGN_OR_RETURN(
+            BufferAllocation * allocation,
+            assignment->NewAllocation(*hlo_buffer,
+                                      assignment->HloBufferSize(*hlo_buffer)));
         allocation->set_constant(true);
         VLOG(3) << "New allocation #" << allocation->index() << " for constant "
                 << *hlo_buffer << " value ptr: " << value;
@@ -2103,7 +2216,21 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
       VLOG(3) << "Not allocating buffer for constant";
       return true;
     }
+  }
+  return false;
+}
 
+absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
+    const HloBuffer* hlo_buffer,
+    BufferAllocationsManagerForComputationsWithoutOrdering* allocation_manager,
+    BufferAssignment* assignment) {
+  ABSL_ASSIGN_OR_RETURN(bool handled,
+                   AssignViewOrConstantBuffer(hlo_buffer, assignment));
+  if (handled) {
+    return true;
+  }
+
+  for (const HloValue* value : hlo_buffer->values()) {
     const HloInstruction* instruction = value->instruction();
     const bool is_entry_parameter =
         instruction->opcode() == HloOpcode::kParameter &&
@@ -2117,8 +2244,10 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
       // allocation and sets its parameter number. Parameters of non-entry
       // computations do not need special allocations because they live inside
       // callers.
-      ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
-                       assignment->NewAllocation(*hlo_buffer, buffer_size));
+      ABSL_ASSIGN_OR_RETURN(
+          BufferAllocation * allocation,
+          assignment->NewAllocation(*hlo_buffer,
+                                    assignment->HloBufferSize(*hlo_buffer)));
 
       allocation->set_entry_computation_parameter(
           instruction->parameter_number(), value->index(), parameter_has_alias);
@@ -2132,19 +2261,12 @@ absl::StatusOr<bool> BufferAssigner::AssignSpecialHloBuffer(
     }
   }
 
-  if (is_thread_local) {
-    ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
-                     assignment->NewAllocation(*hlo_buffer, buffer_size));
-    allocation->set_is_thread_local(true);
-    VLOG(3) << "New allocation #" << allocation->index()
-            << " for thread-local: " << *hlo_buffer;
-    return true;
-  }
-
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->shape().IsTuple()) {
-      ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
-                       assignment->NewAllocation(*hlo_buffer, buffer_size));
+      ABSL_ASSIGN_OR_RETURN(
+          BufferAllocation * allocation,
+          assignment->NewAllocation(*hlo_buffer,
+                                    assignment->HloBufferSize(*hlo_buffer)));
       allocation->set_is_tuple(true);
       VLOG(3) << "New allocation #" << allocation->index()
               << " for tuple-shaped buffer: " << *hlo_buffer;
@@ -2166,6 +2288,19 @@ bool BufferAssigner::DelayTemporaryBufferAssignment(
     return false;
   }
 
+  // Buffers with custom interference overrides must bypass heap simulation,
+  // which only checks interval overlap. Being pessimistic here by only
+  // checking if the buffer is subject to overrides is fine - bypassing delay
+  // simply falls back to standard sequential assignment, where exact pairwise
+  // interference is checked before any reuse and downstream buffers can still
+  // reuse this allocation.
+  if (opts_.live_range_interference_options.has_value() &&
+      absl::c_any_of(hlo_buffer->values(), [&](const HloValue* hlo_value) {
+        return opts_.live_range_interference_options->has_custom_interference(
+            assignment->alias_analysis(), *hlo_value);
+      })) {
+    return false;
+  }
   bool all_computations_have_sequential_order = true;
   for (const HloValue* hlo_value : hlo_buffer->values()) {
     HloComputation* computation = hlo_value->instruction()->parent();
@@ -2182,8 +2317,8 @@ bool BufferAssigner::DelayTemporaryBufferAssignment(
       // decide to create a new allocation, to ensure we've exhausted all
       // the buffer re-use cases above.
       //
-      // Entry parameters and thread local buffers were already handled
-      // earlier in this loop iteration.  See
+      // Special buffers (entry parameters, constants, tuples) were already
+      // handled earlier in this loop iteration.  See
       // BufferAllocation::IsPreallocatedTempBuffer for the definition of
       // temp buffers.
       (*buffers_to_assign_sequentially)[computation].insert(hlo_value);
@@ -2195,7 +2330,7 @@ bool BufferAssigner::DelayTemporaryBufferAssignment(
 }
 
 absl::Status BufferAssigner::AssignSingleHloBuffer(
-    const HloBuffer* hlo_buffer, bool is_thread_local,
+    const HloBuffer* hlo_buffer,
     absl::flat_hash_map<const HloComputation*,
                         absl::flat_hash_set<const HloValue*>>*
         buffers_to_assign_sequentially,
@@ -2250,9 +2385,42 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
   return absl::OkStatus();
 }
 
-absl::Status BufferAssigner::AssignBuffersForComputations(
+absl::Status BufferAssigner::AssignBuffersForThreadLocalComputations(
     const std::vector<const HloComputation*>& computations,
-    bool is_thread_local,
+    BufferAssignment* assignment) {
+  if (computations.empty()) {
+    return absl::OkStatus();
+  }
+
+  const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
+  absl::flat_hash_set<const HloComputation*> computations_set(
+      computations.begin(), computations.end());
+
+  for (const HloBuffer& buffer : alias_analysis.buffers()) {
+    TF_RET_CHECK(!buffer.values().empty());
+    const HloComputation* comp = buffer.values()[0]->instruction()->parent();
+    if (!computations_set.contains(comp) || assignment->HasAllocation(buffer)) {
+      continue;
+    }
+
+    ABSL_ASSIGN_OR_RETURN(bool handled,
+                     AssignViewOrConstantBuffer(&buffer, assignment));
+    if (handled) {
+      continue;
+    }
+
+    ABSL_ASSIGN_OR_RETURN(
+        BufferAllocation * allocation,
+        assignment->NewAllocation(buffer, assignment->HloBufferSize(buffer)));
+    allocation->set_is_thread_local(true);
+    VLOG(3) << "New allocation #" << allocation->index()
+            << " for thread-local: " << buffer;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status BufferAssigner::AssignBuffersForGlobalComputations(
+    const std::vector<const HloComputation*>& computations,
     absl::flat_hash_map<const HloComputation*,
                         absl::flat_hash_set<const HloValue*>>*
         buffers_to_assign_sequentially,
@@ -2262,6 +2430,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
   if (computations.empty()) {
     return absl::OkStatus();
   }
+  TF_RET_CHECK(buffers_to_assign_sequentially != nullptr);
   std::vector<const HloBuffer*> sorted_buffers;
 
   // First assign the preset allocations.
@@ -2312,7 +2481,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
     const HloInstructionSequence* instruction_sequence =
         assignment->hlo_ordering().SequentialOrder(*computation);
     const bool has_sequential_order = instruction_sequence != nullptr;
-    if (has_sequential_order && buffers_to_assign_sequentially != nullptr) {
+    if (has_sequential_order) {
       // Every sequential computation must get an entry in the
       // buffers_to_assign_sequentially map, even if we end up with an empty
       // set of buffers. This ensures we can correctly determine whether to
@@ -2371,7 +2540,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
                });
 
   FastMergeBufferAllocationsManagerForComputationsWithoutOrdering fast_manager(
-      assignment, this);
+      assignment, this, opts_.live_range_interference_options);
   DefaultBufferAllocationsManagerForComputationsWithoutOrdering default_manager(
       assignment, this);
 
@@ -2395,11 +2564,10 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
     BufferAllocationsManagerForComputationsWithoutOrdering* allocation_manager =
         get_manager(color);
 
-    ABSL_ASSIGN_OR_RETURN(bool special,
-                     AssignSpecialHloBuffer(buffer, is_thread_local,
-                                            allocation_manager, assignment));
+    ABSL_ASSIGN_OR_RETURN(bool special, AssignSpecialHloBuffer(
+                                       buffer, allocation_manager, assignment));
     if (!special) {
-      ABSL_RETURN_IF_ERROR(AssignSingleHloBuffer(buffer, is_thread_local,
+      ABSL_RETURN_IF_ERROR(AssignSingleHloBuffer(buffer,
                                             buffers_to_assign_sequentially,
                                             allocation_manager, assignment));
     }
@@ -2415,28 +2583,6 @@ BufferAssigner::SplitBuffersByColor(
     color_map[buffer->color()].insert(buffer);
   }
   return color_map;
-}
-
-absl::flat_hash_map<const HloComputation*, absl::flat_hash_set<const HloValue*>>
-BufferAssigner::SplitBuffersByPrivateStackComputation(
-    const absl::flat_hash_set<const HloValue*>& buffers,
-    absl::Span<const HloComputation* const> private_stack_computations,
-    const CallGraph& call_graph) const {
-  absl::flat_hash_map<const HloComputation*,
-                      absl::flat_hash_set<const HloValue*>>
-      computation_map;
-  for (const HloValue* value : buffers) {
-    bool found_computation = false;
-    for (const HloComputation* computation : private_stack_computations) {
-      if (call_graph.InstructionIsNestedIn(value->instruction(), computation)) {
-        found_computation = true;
-        computation_map[computation].insert(value);
-        break;
-      }
-    }
-    CHECK(found_computation);
-  }
-  return computation_map;
 }
 
 std::vector<LogicalBuffer::Color> BufferAssigner::SortColorsForCanUseAllocation(
@@ -2577,6 +2723,16 @@ absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
     // `values`), has the color we are currently processing, and has a known
     // live range.
     auto is_moveable = [&](const HloValue* buffer_value) {
+      // Exclude values with custom interference rules. By the
+      // LiveRangeInterferenceOptions invariant, `interferes(a, b)` can only
+      // return non-nullopt when both `a` and `b` have custom interference, so
+      // excluding them here also guarantees standard live-range checks suffice
+      // in `candidate_interferes_with`.
+      if (opts_.live_range_interference_options.has_value() &&
+          opts_.live_range_interference_options->has_custom_interference(
+              assignment->alias_analysis(), *buffer_value)) {
+        return false;
+      }
       return values->contains(buffer_value) &&
              buffer_value->color() == buffer_color &&
              live_ranges.contains(buffer_value);
@@ -2722,7 +2878,6 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     bool run_whole_module_heap_simulation, BufferAssignment* assignment,
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
         buffer_assignment_algorithm,
-    const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare,
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
@@ -2862,49 +3017,16 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
       options.alloc_constants = opts_.allocate_buffers_for_constants;
-      auto private_stacks_it = private_stacks.find(color);
-      if (private_stacks_it != private_stacks.end()) {
-        // For private stack colors, we collect all of the buffers that are
-        // dominated by the private stack computation and run heap simulation on
-        // that computation. The reason why we don't perform a whole-module heap
-        // simulation is that all buffers that participate in an async operation
-        // are treated as live for the duration of the async operation in
-        // whole-module heap simulation. Performing heap simulation from the
-        // private stack computation allows better temporal reuse of buffers.
-        auto computation_map = SplitBuffersByPrivateStackComputation(
-            color_map[color], private_stacks_it->second,
-            assignment->alias_analysis().dataflow_analysis().call_graph());
-        for (const HloComputation* private_stack_computation :
-             private_stacks_it->second) {
-          VLOG(2) << "private stack computation: "
-                  << private_stack_computation->name();
-          auto computation_map_it =
-              computation_map.find(private_stack_computation);
-          CHECK(computation_map_it != computation_map.end());
-          options.buffers_to_assign = &computation_map_it->second;
-          const HloInstructionSequence* instruction_sequence =
-              hlo_ordering.SequentialOrder(*private_stack_computation);
-          HeapSimulator::Result<HloValue> result;
-          ABSL_ASSIGN_OR_RETURN(
-              result, HeapSimulator::Run(
-                          get_heap_algorithm(alignment, color),
-                          *private_stack_computation, *instruction_sequence,
-                          assignment->alias_analysis(), alias_info_,
-                          &assignment->buffer_size_, &schedule, options));
-          ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
-              result, assignment, color, isolation_options));
-        }
-      } else {
-        options.buffers_to_assign = &color_map[color];
-        HeapSimulator::Result<HloValue> result;
-        ABSL_ASSIGN_OR_RETURN(result, HeapSimulator::Run(
-                                     get_heap_algorithm(alignment, color),
+      options.view_color = opts_.dus_view_color;
+      options.buffers_to_assign = &color_map[color];
+      HeapSimulator::Result<HloValue> result;
+      ABSL_ASSIGN_OR_RETURN(
+          result, HeapSimulator::Run(get_heap_algorithm(alignment, color),
                                      assignment->module(), schedule,
                                      assignment->alias_analysis(), alias_info_,
                                      &assignment->buffer_size_, options));
-        ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
-            result, assignment, color, isolation_options));
-      }
+      ABSL_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(result, assignment, color,
+                                                     isolation_options));
     }
   } else {
     // Run the heap-simulation on a per-computation basis. Buffers for
@@ -2925,6 +3047,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         int64_t alignment = assignment->color_alignment_(color);
         HeapSimulator::Options options;
         options.buffers_to_assign = &color_map[color];
+        options.view_color = opts_.dus_view_color;
         HeapSimulator::Result<HloValue> result;
         ABSL_ASSIGN_OR_RETURN(
             result, HeapSimulator::Run(
@@ -3191,6 +3314,15 @@ BufferAssigner::CreateAssignment(
                    HloLiveRange::Run(schedule, *alias_analysis,
                                      module->entry_computation(), true));
 
+  // A view base's storage is read through the view by the view's consumers,
+  // so its live range must reach the last transitive reader; allocation reuse
+  // decisions below consult these live ranges.
+  if (opts_.dus_view_color.has_value()) {
+    ExtendViewBaseLiveRanges(hlo_live_range.get(),
+                             alias_analysis->dataflow_analysis(),
+                             *opts_.dus_view_color);
+  }
+
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(3, module->ToString());
   XLA_VLOG_LINES(3, alias_analysis->ToString());
@@ -3276,28 +3408,15 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     // Ensure we account for alignment fragmentation exactly the way
     // CombineTempAllocations will.
     absl::btree_map<LogicalBuffer::Color, int64_t> allocated_bytes_by_color;
-    absl::flat_hash_set<BufferValue::Color> private_stack_colors;
-    if (opts_.private_stacks) {
-      for (const auto& [color, computations] :
-           tsl::KeySortedRange(*opts_.private_stacks)) {
-        private_stack_colors.insert(color);
-      }
-    }
 
     for (const BufferAllocation& alloc : assignment->Allocations()) {
       LogicalBuffer::Color color = alloc.color();
       if (alloc.IsPreallocatedTempBuffer()) {
         int64_t alignment = assignment->color_alignment_(color);
-        int64_t base;
         int64_t& allocated_bytes = allocated_bytes_by_color[color];
-        if (private_stack_colors.contains(color)) {
-          base = 0;
-          allocated_bytes = std::max(base, allocated_bytes);
-        } else {
-          base = RoundUpTo(allocated_bytes, alignment);
-          allocated_bytes = base + alloc.size();
-        }
-      } else {
+        int64_t base = RoundUpTo(allocated_bytes, alignment);
+        allocated_bytes = base + alloc.size();
+      } else if (!alloc.is_thread_local()) {
         allocated_bytes_by_color[color] += alloc.size();
       }
     }
@@ -3358,9 +3477,9 @@ absl::Status BufferAssigner::RunAssignBuffers(
   // 'buffers_to_assign_sequentially'.
   flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>
       buffers_to_assign_sequentially;
-  ABSL_RETURN_IF_ERROR(AssignBuffersForComputations(
-      global_computations, /*is_thread_local=*/false,
-      &buffers_to_assign_sequentially, assignment, non_sequential_algorithm));
+  ABSL_RETURN_IF_ERROR(AssignBuffersForGlobalComputations(
+      global_computations, &buffers_to_assign_sequentially, assignment,
+      non_sequential_algorithm));
   // Assign buffers with sequential ordering, if any. If all global
   // computations are sequential, we can run heap simulation on the whole
   // module, which reduces memory usage.
@@ -3372,12 +3491,10 @@ absl::Status BufferAssigner::RunAssignBuffers(
       module->config().debug_options().xla_multiheap_size_constraint_per_heap();
   VLOG(2) << "Multiheap per heap size limit: "
           << multiheap_size_constraint_per_heap;
-  const PrivateStacks private_stacks;
   ABSL_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
-      assignment, sequential_algorithm,
-      opts_.private_stacks ? *opts_.private_stacks : private_stacks,
-      opts_.heap_buffer_interval_compare, opts_.isolation_options));
+      assignment, sequential_algorithm, opts_.heap_buffer_interval_compare,
+      opts_.isolation_options));
 
   std::vector<const HloComputation*> thread_local_computations_no_fusion;
   // Now assign buffers for thread-local computations. All LogicalBuffers get
@@ -3391,11 +3508,8 @@ absl::Status BufferAssigner::RunAssignBuffers(
     thread_local_computations_no_fusion.push_back(computation);
   }
 
-  ABSL_RETURN_IF_ERROR(AssignBuffersForComputations(
-      thread_local_computations_no_fusion, /*is_thread_local=*/true,
-      /*buffers_to_assign_sequentially=*/nullptr, assignment,
-      non_sequential_algorithm));
-
+  ABSL_RETURN_IF_ERROR(AssignBuffersForThreadLocalComputations(
+      thread_local_computations_no_fusion, assignment));
   // Mark all buffers which may be live out of the entry computation as
   // "liveout".
   for (const HloBuffer* buffer :
@@ -3414,16 +3528,7 @@ absl::Status BufferAssigner::RunAssignBuffers(
   // performed after all buffers have been assigned, and after maybe_live_out
   // is marked, since it is used to determine whether an allocation contains
   // temporary buffers or not.
-  absl::flat_hash_set<BufferValue::Color> private_stack_colors;
-  if (opts_.private_stacks) {
-    for (const auto& [color, computations] :
-         tsl::KeySortedRange(*opts_.private_stacks)) {
-      private_stack_colors.insert(color);
-    }
-  }
-
-  ABSL_RETURN_IF_ERROR(assignment->CombineTempAllocations(private_stack_colors,
-                                                     opts_.temp_buffer_color));
+  ABSL_RETURN_IF_ERROR(assignment->CombineTempAllocations(opts_.temp_buffer_color));
   return absl::OkStatus();
 }
 

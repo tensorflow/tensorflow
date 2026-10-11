@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
@@ -78,6 +80,11 @@ class SegmentReduce : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntScalar(
                        2, &num_segments, xla::ValueInferenceMode::kUpperBound));
+    // Reject a negative num_segments like the TensorFlow kernels, before it
+    // reaches TensorShape, which CHECK-fails on negative sizes.
+    OP_REQUIRES(ctx, num_segments >= 0,
+                errors::InvalidArgument("Input num_segments == ", num_segments,
+                                        " must not be negative."));
     OP_REQUIRES(ctx, data_shape.dims() >= indices_shape.dims(),
                 errors::InvalidArgument(type_string(),
                                         " requires that indices' rank be"
@@ -114,10 +121,12 @@ class SegmentReduce : public XlaOpKernel {
       const int64_t indices_bound = indices_shape.dim_size(d);
       if (data_bound > indices_bound &&
           data_xla_shape.is_dynamic_dimension(d)) {
+        // Dimension sizes are S32, so clamp the bound before narrowing it.
+        const int32_t size_bound = static_cast<int32_t>(std::min<int64_t>(
+            indices_bound, std::numeric_limits<int32_t>::max()));
         xla::XlaOp size =
             xla::Min(xla::GetDimensionSize(data, d),
-                     xla::ConstantR0<int32_t>(
-                         ctx->builder(), static_cast<int32_t>(indices_bound)));
+                     xla::ConstantR0<int32_t>(ctx->builder(), size_bound));
         data = xla::SliceInDim(data, /*start_index=*/0,
                                /*limit_index=*/indices_bound, /*stride=*/1,
                                /*dimno=*/d);
@@ -125,10 +134,11 @@ class SegmentReduce : public XlaOpKernel {
         data_shape.set_dim(d, indices_bound);
       } else if (indices_bound > data_bound &&
                  indices_xla_shape.is_dynamic_dimension(d)) {
+        const int32_t size_bound = static_cast<int32_t>(
+            std::min<int64_t>(data_bound, std::numeric_limits<int32_t>::max()));
         xla::XlaOp size =
             xla::Min(xla::GetDimensionSize(indices, d),
-                     xla::ConstantR0<int32_t>(
-                         ctx->builder(), static_cast<int32_t>(data_bound)));
+                     xla::ConstantR0<int32_t>(ctx->builder(), size_bound));
         indices = xla::SliceInDim(indices, /*start_index=*/0,
                                   /*limit_index=*/data_bound, /*stride=*/1,
                                   /*dimno=*/d);
@@ -169,7 +179,22 @@ class SegmentReduce : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->ResolveInputDynamismIntoPred(2, &num_segments_is_dynamic));
 
-    buffer_dims.insert(buffer_dims.begin(), ctx->Input(2));
+    xla::XlaOp num_segments_size = ctx->Input(2);
+    if (num_segments_is_dynamic) {
+      // SetDimensionSize takes an S32 size. The check above only sees the
+      // bound of a num_segments known only at run time, so clamp a negative
+      // one at 0 rather than set it as the dimension size. Clamp in the
+      // original width, so that an int64 size doesn't wrap when narrowed.
+      num_segments_size =
+          xla::Clamp(xla::ScalarLike(num_segments_size, 0), num_segments_size,
+                     xla::ScalarLike(num_segments_size,
+                                     std::numeric_limits<int32_t>::max()));
+      if (ctx->input_xla_type(2) != xla::S32) {
+        num_segments_size =
+            xla::ConvertElementType(num_segments_size, xla::S32);
+      }
+    }
+    buffer_dims.insert(buffer_dims.begin(), num_segments_size);
     buffer_dims_are_dynamic.insert(buffer_dims_are_dynamic.begin(),
                                    num_segments_is_dynamic);
     // Build the segment shape part.
@@ -184,6 +209,14 @@ class SegmentReduce : public XlaOpKernel {
         // For each dynamic dimension, call set-dimension-size on it.
         buffer = xla::SetDimensionSize(buffer, buffer_dims[i], i);
       }
+    }
+
+    // With no segments, every segment id is dropped and the result is empty.
+    // XlaScatter rejects a scatter into a dimension of size zero, so return
+    // the empty buffer as is.
+    if (num_segments == 0) {
+      ctx->SetOutput(0, buffer);
+      return;
     }
 
     if (FilterNaNs() && xla::primitive_util::IsFloatingPointType(type_)) {

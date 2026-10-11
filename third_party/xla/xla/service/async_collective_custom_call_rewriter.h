@@ -17,34 +17,64 @@ limitations under the License.
 #define XLA_SERVICE_ASYNC_COLLECTIVE_CUSTOM_CALL_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
+class AsyncComputeOnHelper {
+ public:
+  virtual ~AsyncComputeOnHelper() = default;
+  virtual absl::Status AddBackendSpecializations(
+      HloInstruction* custom_call_start, HloInstruction* async_start) {
+    return absl::OkStatus();
+  }
+};
+
 // Convert fake async collective custom calls to async collective instructions.
 // The fake async collective custom calls are temporary workaround to unblock
 // the development of async collective operations. This pass should be removed
-// once the stable HLO async collective are fully supported.
+// as soon as possible.
 class AsyncCollectiveCustomCallRewriter : public HloModulePass {
  public:
   explicit AsyncCollectiveCustomCallRewriter(
-      bool use_legacy_collectives = false)
-      : use_legacy_collectives_(use_legacy_collectives) {}
+      bool use_legacy_collectives = false,
+      AsyncComputeOnHelper* compute_on_helper = nullptr)
+      : use_legacy_collectives_(use_legacy_collectives),
+        compute_on_helper_(compute_on_helper) {}
 
   absl::string_view name() const override {
     return "async-collective-custom-call-rewriter";
   }
 
- protected:
+  using HloPassInterface::Run;
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  absl::StatusOr<bool> ProcessPair(
+      HloComputation* computation, HloInstruction* start_call,
+      HloInstruction* done_call,
+      absl::Span<const hlo_instruction_utils::async::AsyncTraceStep>
+          forward_path,
+      bool use_legacy_collectives);
+
+  absl::StatusOr<bool> ProcessComputeOn(
+      HloComputation* computation, HloInstruction* start_call,
+      HloInstruction* done_call,
+      absl::Span<const hlo_instruction_utils::async::AsyncTraceStep>
+          forward_path,
+      bool use_legacy_collectives);
+
  private:
   bool use_legacy_collectives_;
+  AsyncComputeOnHelper* compute_on_helper_;
 };
 
 }  // namespace xla

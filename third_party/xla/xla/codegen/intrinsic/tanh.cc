@@ -177,6 +177,9 @@ absl::StatusOr<llvm::Function*> Tanh::CreateDefinition(llvm::Module* module,
   llvm::BasicBlock* entry_bb =
       llvm::BasicBlock::Create(module->getContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
+  llvm::FastMathFlags fmf;
+  fmf.setAllowContract(true);
+  builder.setFastMathFlags(fmf);
 
   llvm::Value* result;
   if (type.element_type() == F64) {

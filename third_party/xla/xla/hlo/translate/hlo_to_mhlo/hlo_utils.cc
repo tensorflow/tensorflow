@@ -17,10 +17,11 @@ limitations under the License.
 
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 
+#include <algorithm>
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -54,10 +55,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using mlir::AffineMap;
-using mlir::Builder;
-using mlir::DenseElementsAttr;
-using mlir::ShapedType;
+using ::mlir::AffineMap;
+using ::mlir::Builder;
+using ::mlir::DenseElementsAttr;
+using ::mlir::ShapedType;
 
 template <typename CppType>
 ::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
@@ -72,34 +73,33 @@ template <typename CppType>
   }
 
   if constexpr (is_intN_v<CppType>) {
-    // DenseElementsAttr::get() does not support being passed an i4 array.
-    // Instead, create buffer of padded, packed values and call
-    // DenseElementsAttr::getFromRawBuffer()
-    std::vector<char> packed_padded_data;
-    packed_padded_data.reserve(literal.element_count());
-    for (size_t i = 0; i < literal.element_count(); i++) {
-      packed_padded_data.push_back(static_cast<char>(data_span[i]));
-    }
-    return ::mlir::DenseElementsAttr::getFromRawBuffer(type,
-                                                       packed_padded_data);
+    // DenseElementsAttr::get() does not accept intN arrays, so build the raw
+    // buffer for DenseElementsAttr::getFromRawBuffer(): one byte per element.
+    // static_cast<char> extends the value to the full byte (sign extended for
+    // signed types); MLIR reads an element from the low bits of its byte.
+    llvm::SmallVector<char, 0> raw_data;
+    raw_data.resize_for_overwrite(data_span.size());
+    std::transform(data_span.begin(), data_span.end(), raw_data.begin(),
+                   [](CppType value) { return static_cast<char>(value); });
+    return DenseElementsAttr::getFromRawBuffer(type, raw_data);
   } else if constexpr (std::is_same_v<CppType, tsl::float4_e2m1fn>) {
     // DenseElementsAttr::get() does not support being passed an array of
     // tsl::float4_e2m1fn. So convert each element to APFloat first.
     std::vector<llvm::APFloat> apfloats;
-    apfloats.reserve(literal.element_count());
-    for (size_t i = 0; i < literal.element_count(); i++) {
-      llvm::APFloat apfloat{static_cast<float>(data_span[i])};
+    apfloats.reserve(data_span.size());
+    for (const CppType value : data_span) {
+      llvm::APFloat apfloat{static_cast<float>(value)};
       bool losesInfo;
       llvm::APFloat::opStatus status =
           apfloat.convert(llvm::APFloat::Float4E2M1FN(),
                           llvm::APFloat::rmNearestTiesToEven, &losesInfo);
       CHECK_EQ(status, llvm::APFloat::opOK)
-          << "Failed to convert " << data_span[i] << " to Float4E2M1FN APFloat";
-      CHECK(!losesInfo) << "Lost info when converting " << data_span[i]
+          << "Failed to convert " << value << " to Float4E2M1FN APFloat";
+      CHECK(!losesInfo) << "Lost info when converting " << value
                         << " to Float4E2M1FN APFloat";
       apfloats.push_back(apfloat);
     }
-    return ::mlir::DenseElementsAttr::get(type, apfloats);
+    return DenseElementsAttr::get(type, apfloats);
   } else {
     return ::mlir::DenseElementsAttr::get(
         type, llvm::ArrayRef(data_span.data(), data_span.size()));

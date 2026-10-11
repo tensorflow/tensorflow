@@ -38,7 +38,7 @@ class ResourceUsageAnalysis {
     std::string node_name_;
     std::string op_;
 
-    NodeInfo() {}
+    NodeInfo() = default;
 
     NodeInfo(const std::optional<std::string>& function_name,
              std::string node_name, std::string op)

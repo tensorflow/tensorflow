@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"

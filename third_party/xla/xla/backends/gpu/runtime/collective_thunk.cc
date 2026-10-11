@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
@@ -70,8 +71,6 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
-
-static constexpr int64_t kCollectiveMemorySpaceColor = 1;
 
 bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
   switch (element_type) {
@@ -327,11 +326,11 @@ absl::StatusOr<std::vector<CollectiveThunk::Buffer>> GetCollectiveBuffers(
   } else {
     // For other operations simply zip operands with results.
     //
-    // A collective-broadcast with a dynamic root carries an extra trailing
-    // operand: a 1-D S32 vector holding the runtime-selected root rank for each
-    // data operand. That operand has no corresponding output, so it is not
-    // zipped with a result; instead it is mapped to its own allocation and
-    // consumed separately by the thunk.
+    // A collective-broadcast or collective-reduce with a dynamic root carries
+    // an extra trailing operand: a 1-D S32 vector holding the runtime-selected
+    // root rank for each data operand. That operand has no corresponding
+    // output, so it is not zipped with a result; instead it is mapped to its
+    // own allocation and consumed separately by the thunk.
     int64_t num_data_operands =
         has_dynamic_root ? operand_count - 1 : operand_count;
     for (int64_t i = 0; i < num_data_operands; i++) {
@@ -404,13 +403,13 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
 
   if (CanUseSymmetricBuffer() && config().use_symmetric_buffer) {
     for (const Buffer& buffer : buffers_) {
-      if (buffer.source_memory_space == kCollectiveMemorySpaceColor) {
+      if (buffer.source_memory_space == Layout::kCollectiveMemorySpace) {
         ABSL_RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.source_buffer.slice.index()));
       }
 
-      if (buffer.destination_memory_space == kCollectiveMemorySpaceColor) {
+      if (buffer.destination_memory_space == Layout::kCollectiveMemorySpace) {
         ABSL_RETURN_IF_ERROR(
             params.collective_memory_requests->RequestSymmetricAllocation(
                 clique_key, buffer.destination_buffer.slice.index()));

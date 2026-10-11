@@ -50,6 +50,16 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
     self.assertEqual(mod.name, "bar")
     self.assertEqual(mod.name_scope.name, "foo/bar/")
 
+  def test_scope_nesting_behavior(self):
+    mod = module.Module(name="bar")
+    with ops.name_scope("foo", skip_on_eager=False):
+      # mod.name_scope is absolute and anchored to instantiation time.
+      with mod.name_scope:
+        self.assertEqual(get_name_scope(), "bar/")
+      # Using mod.name creates a relative scope that nests inside ambient scopes.
+      with ops.name_scope(mod.name, skip_on_eager=False):
+        self.assertEqual(get_name_scope(), "foo/bar/")
+
   def test_enters_name_scope_in_call(self):
     mod = ReturnsNameScopeModule()
     for _ in range(3):

@@ -20,7 +20,7 @@ from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 
-from xla.benchmarks.core import flag_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import flag_utils
 
 
 class FlagsTest(parameterized.TestCase):

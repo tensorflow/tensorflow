@@ -65,7 +65,8 @@ void VerifyPluginCanLoadAndCreateDelegate(const TFLiteSettings& settings) {
 }
 
 // Verifies that the plugin initialization handles dlopen failures gracefully
-// when provided with an invalid path (i.e. it doesn't crash).
+// when provided with an invalid path (i.e. it doesn't crash) and logs a
+// warning.
 TEST_F(GpuModulePluginTest, DlopenFlags) {
   const ComputeSettings* settings = nullptr;
   auto fbb =
@@ -73,8 +74,25 @@ TEST_F(GpuModulePluginTest, DlopenFlags) {
   ASSERT_NE(settings, nullptr);
   ASSERT_NE(settings->tflite_settings(), nullptr);
 
+  // Stderr capture using GTest is only reliable on host platforms. While
+  // TFLITE_LOG_PROD also writes to stderr on Android, GTest's stream capture
+  // relies on creating a temporary file. Android does not have /tmp and
+  // /data/local/tmp may not be writable, so CaptureStderr silently fails
+  // unless TMPDIR is explicitly set to a writable location.
+#if !defined(__ANDROID__)
+  testing::internal::CaptureStderr();
+#endif
   auto plugin = GpuModulePlugin::New(*settings->tflite_settings());
-  ASSERT_NE(plugin.get(), nullptr);
+#if !defined(__ANDROID__)
+  std::string captured_stderr = testing::internal::GetCapturedStderr();
+#endif
+
+  ASSERT_NE(plugin, nullptr);
+#if !defined(__ANDROID__)
+  EXPECT_NE(captured_stderr.find("Failed to load Gpu Module from "
+                                 "invalid_path_to_force_dlopen_fail.so"),
+            std::string::npos);
+#endif
 }
 
 // Verifies that the plugin can be successfully loaded from a shared library

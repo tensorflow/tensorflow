@@ -171,6 +171,9 @@ FallbackState::CreateGraphExecutionState(GraphDef graph_def, bool run_placer,
   options.session_handle = "tfrt_fallback_handle";
   options.run_placer = run_placer;
   options.enable_tf2xla_mlir_bridge = enable_tf2xla_mlir_bridge;
+  if (tensorflow::ProtoMemoryOptimizationsEnabled()) {
+    options.flib_def = &func_lib_def_;
+  }
 
   std::unique_ptr<GraphExecutionState> execution_state;
   TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(

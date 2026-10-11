@@ -94,6 +94,7 @@ limitations under the License.
 #define TF_CALL_float8_e4m3fnuz(m) m(::tensorflow::float8_e4m3fnuz)
 #define TF_CALL_float8_e4m3b11fnuz(m) m(::tensorflow::float8_e4m3b11fnuz)
 #define TF_CALL_float8_e5m2fnuz(m) m(::tensorflow::float8_e5m2fnuz)
+#define TF_CALL_float8_e8m0fnu(m) m(::tensorflow::float8_e8m0fnu)
 #define TF_CALL_float4_e2m1fn(m) m(::tensorflow::float4_e2m1fn)
 
 #define TF_CALL_int4(m) m(::tensorflow::int4)
@@ -138,6 +139,7 @@ limitations under the License.
 #define TF_CALL_float8_e4m3fnuz(m)
 #define TF_CALL_float8_e4m3b11fnuz(m)
 #define TF_CALL_float8_e5m2fnuz(m)
+#define TF_CALL_float8_e8m0fnu(m)
 #define TF_CALL_float4_e2m1fn(m)
 
 #define TF_CALL_int4(m)
@@ -181,6 +183,7 @@ limitations under the License.
 #define TF_CALL_float8_e4m3fnuz(m)
 #define TF_CALL_float8_e4m3b11fnuz(m)
 #define TF_CALL_float8_e5m2fnuz(m)
+#define TF_CALL_float8_e8m0fnu(m)
 #define TF_CALL_float4_e2m1fn(m)
 
 #define TF_CALL_int4(m)

@@ -11,6 +11,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//tensorflow/lite/toco:api_visibility.bzl", "TOCO_API_VISIBILITY")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -68,7 +69,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     linkstatic = 1,
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -87,7 +88,7 @@ cc_library(
         "model.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":model_flags_proto_cc",
         ":runtime",
@@ -106,7 +107,7 @@ cc_library(
         "toco_graphviz_dump_options.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
 )
 
 cc_library(
@@ -118,7 +119,7 @@ cc_library(
         "toco_cmdline_flags.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":model_cmdline_flags",
         ":toco_flags_proto_cc",
@@ -144,7 +145,7 @@ cc_library(
         "model_cmdline_flags.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":model_flags_proto_cc",
         ":toco_graphviz_dump_options",
@@ -169,6 +170,7 @@ cc_library(
         "toco_types.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
@@ -293,7 +295,7 @@ cc_library(
         "graph_transformations/lstm_utils.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":model",
         ":model_flags_proto_cc",
@@ -336,7 +338,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":graph_transformations",
         ":model",
@@ -390,7 +392,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":model",
         ":model_flags_proto_cc",
@@ -432,7 +434,7 @@ cc_library(
     srcs = ["toco_convert.cc"],
     hdrs = ["toco_convert.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":model",
         ":model_cmdline_flags",
@@ -455,7 +457,7 @@ cc_library(
 tf_cc_binary(
     name = "toco",
     srcs = ["toco.cc"],
-    visibility = ["//visibility:public"],
+    visibility = TOCO_API_VISIBILITY,
     deps = [
         ":model",
         ":model_cmdline_flags",

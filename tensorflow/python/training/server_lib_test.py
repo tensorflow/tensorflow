@@ -505,6 +505,16 @@ class ServerDefTest(test.TestCase):
     cluster_spec = server_lib.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
+  def testNegativeInterOpParallelismThreads(self):
+    config = config_pb2.ConfigProto(inter_op_parallelism_threads=-1)
+    server = server_lib.Server.create_local_server(config=config)
+    self.assertIsNotNone(server.target)
+
+  def testNegativeIntraOpParallelismThreads(self):
+    config = config_pb2.ConfigProto(intra_op_parallelism_threads=-1)
+    server = server_lib.Server.create_local_server(config=config)
+    self.assertIsNotNone(server.target)
+
 
 class ClusterSpecTest(test.TestCase):
 

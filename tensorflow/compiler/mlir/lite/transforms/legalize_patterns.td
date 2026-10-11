@@ -565,10 +565,10 @@ def LegalizeConv2DBackpropInput : Pat<
      /*fused_activation_function=*/TFL_AF_None)>;
 
 def IsRankZeroAttr
-  : CPred<"llvm::cast<DenseElementsAttr>($_self).getType().getRank() == 0">;
+  : CPred<"llvm::isa<DenseElementsAttr>($_self) && llvm::cast<DenseElementsAttr>($_self).getType().getRank() == 0">;
 
 def HasValueZero
-  : CPred<"llvm::cast<DenseElementsAttr>($_self)."
+  : CPred<"llvm::isa<DenseElementsAttr>($_self) && llvm::cast<DenseElementsAttr>($_self)."
           "getSplatValue<::mlir::IntegerAttr>().getInt() == 0">;
 
 // TFLite only supports MatrixSetDiag ops with scalar zero k attribute.

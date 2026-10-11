@@ -142,13 +142,37 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "llvm_kernel_autotuner",
-    srcs = ["llvm_kernel_autotuner.cc"],
-    hdrs = ["llvm_kernel_autotuner.h"],
+    name = "ynnpack_backend",
+    srcs = ["ynnpack_backend.cc"],
+    hdrs = ["ynnpack_backend.h"],
     deps = [
+        ":cpu_codegen_backend",
+        "//xla:util",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/cpu:custom_fusion_configs",
+        "//xla/backends/cpu:ynn_fusion_options_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "cpu_autotuner",
+    srcs = ["cpu_autotuner.cc"],
+    hdrs = ["cpu_autotuner.h"],
+    deps = [
+        ":block_level_emitter_backend",
         ":cpu_codegen_backend",
         ":cpu_profiler",
         ":llvm_kernel_backend",
+        ":ynnpack_backend",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/autotuner",
@@ -171,14 +195,73 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "llvm_kernel_autotuner_test",
-    srcs = ["llvm_kernel_autotuner_test.cc"],
+    name = "cpu_autotuner_test",
+    srcs = ["cpu_autotuner_test.cc"],
     deps = [
-        ":llvm_kernel_autotuner",
+        ":cpu_autotuner",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/cpu:cpu_compiler",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "ynnpack_backend_test",
+    srcs = ["ynnpack_backend_test.cc"],
+    deps = [
+        ":cpu_codegen_backend",
+        ":ynnpack_backend",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/cpu:ynn_fusion_options_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:cpu_compiler",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "block_level_emitter_backend",
+    srcs = ["block_level_emitter_backend.cc"],
+    hdrs = ["block_level_emitter_backend.h"],
+    deps = [
+        ":cpu_codegen_backend",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/cpu:custom_fusion_configs",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "block_level_emitter_backend_test",
+    srcs = ["block_level_emitter_backend_test.cc"],
+    deps = [
+        ":block_level_emitter_backend",
+        ":cpu_codegen_backend",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/cpu:custom_fusion_configs",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:cpu_compiler",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

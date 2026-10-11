@@ -16,31 +16,11 @@
 """Rocm distribution list, used as a hermetic rocm dependency."""
 
 rocm_redist = {
-    "rocm_7.13.0_gfx94X": struct(
+    "rocm_latest_multiarch": struct(
         packages = [
             {
-                "url": "https://repo.amd.com/rocm/tarball/therock-dist-linux-gfx94X-dcgpu-7.13.0.tar.gz",
-                "sha256": "db5543de096fb175ff2ece19dacc28b2a3201df48b38051cc505e508d84e35ab",
-            },
-        ],
-        required_softlinks = [],
-        rocm_root = "",
-    ),
-    "rocm_7.13.0_gfx908": struct(
-        packages = [
-            {
-                "url": "https://repo.amd.com/rocm/tarball/therock-dist-linux-gfx908-7.13.0.tar.gz",
-                "sha256": "5d84753a8d8895ff2f6137a2a922ee8f36ce9c2e01b60a99d3ee776a683bfc34",
-            },
-        ],
-        required_softlinks = [],
-        rocm_root = "",
-    ),
-    "rocm_7.13.0_gfx90a": struct(
-        packages = [
-            {
-                "url": "https://repo.amd.com/rocm/tarball/therock-dist-linux-gfx90a-7.13.0.tar.gz",
-                "sha256": "b2d3c49ef936b3b24b10a25bae3e60df7ccc9c5134095a080bbc721d5062b4c7",
+                "url": "https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-multiarch-10.0.0.tar.gz",
+                "sha256": "1c5e807875d26a2470ecc7323daa5b5b9009208a55c3290ac255a909cde15fc6",
             },
         ],
         required_softlinks = [],

@@ -42,6 +42,7 @@ class FpTrunc : public Intrinsic<FpTrunc> {
         {Type::V(xla::F32, 2), Type::V(xla::BF16, 2)},
         {Type::V(xla::F32, 4), Type::V(xla::BF16, 4)},
         {Type::V(xla::F32, 8), Type::V(xla::BF16, 8)},
+        {Type::V(xla::F32, 16), Type::V(xla::BF16, 16)},
         {Type::S(F8E5M2), Type::S(F16)},
         {Type::V(F8E5M2, 2), Type::V(F16, 2)},
         {Type::V(F8E5M2, 4), Type::V(F16, 4)},

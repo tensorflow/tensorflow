@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/tile.h"
 
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace tflite {

@@ -1,0 +1,54 @@
+diff --git a/include/tensor_ir/Runtime/CudaTile/CudaTileRuntimeKernel.h b/include/tensor_ir/Runtime/CudaTile/CudaTileRuntimeKernel.h
+--- a/include/tensor_ir/Runtime/CudaTile/CudaTileRuntimeKernel.h
++++ b/include/tensor_ir/Runtime/CudaTile/CudaTileRuntimeKernel.h
+@@ -116,6 +116,16 @@
+ 
+   const TensorIRArtifact &getArtifact() const { return *artifact_; }
+ 
++  // XLA integration contract: exposes the launch grid when the compiler fixed
++  // it at compile time. Returns std::nullopt when the grid depends on runtime
++  // operand shapes, or when no grid computer has been set yet.
++  std::optional<::tensor_ir::rt::GridDims> staticGrid() const {
++    if (!gridComputer_) {
++      return std::nullopt;
++    }
++    return gridComputer_->staticGrid();
++  }
++
+ private:
+   explicit CudaTileRuntimeKernel(
+       std::unique_ptr<const TensorIRArtifact> artifact)
+diff --git a/include/tensor_ir/Runtime/CudaTile/KernelLaunchHelpers.h b/include/tensor_ir/Runtime/CudaTile/KernelLaunchHelpers.h
+--- a/include/tensor_ir/Runtime/CudaTile/KernelLaunchHelpers.h
++++ b/include/tensor_ir/Runtime/CudaTile/KernelLaunchHelpers.h
+@@ -40,6 +40,7 @@
+ #include <cstdint>
+ #include <cstring>
+ #include <limits>
++#include <optional>
+ 
+ namespace tensor_ir::rt {
+ 
+@@ -309,6 +310,11 @@
+ 
+   /// Compute grid dimensions from runtime tensor operands.
+   virtual GridDims computeGrid(const Accessor &operands) const = 0;
++
++  /// Returns the grid dimensions when they are fixed at compile time, and
++  /// std::nullopt when they depend on runtime operand shapes. Lets an ahead-of-
++  /// time host (e.g. XLA) record the launch grid without an operand accessor.
++  virtual std::optional<GridDims> staticGrid() const { return std::nullopt; }
+ };
+ 
+ /// Returns fixed grid dimensions that were determined at compile time.
+@@ -321,6 +327,10 @@
+ 
+   GridDims computeGrid(const Accessor & /*operands*/) const override {
+     return {tiles_[0], tiles_[1], tiles_[2]};
++  }
++
++  std::optional<GridDims> staticGrid() const override {
++    return GridDims{tiles_[0], tiles_[1], tiles_[2]};
+   }
+ 
+ private:

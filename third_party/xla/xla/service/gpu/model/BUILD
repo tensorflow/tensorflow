@@ -11,6 +11,7 @@ load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla/tsl/util:cc_embed_data.bzl", "cc_embed_data")
+load("//xla/util:build_defs.bzl", "text_to_binary_proto")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -289,8 +290,8 @@ cc_library(
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -446,6 +447,8 @@ cc_library(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/concurrency:future",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -579,6 +582,7 @@ cc_library(
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/codegen/xtile:tiling_from_block_parameters",
         "//xla/codegen/xtile/codegen:emitter_helpers",
@@ -587,10 +591,12 @@ cc_library(
         "//xla/service:decision",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:instruction_fusion",
-        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:mlir_context_pool",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -607,6 +613,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -622,11 +629,9 @@ xla_cc_test(
         ":gpu_performance_model_base",
         "//xla:shape_util",
         "//xla:util",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiled_hlo_computation",
-        "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/hlo/analysis:symbolic_map",
@@ -634,13 +639,14 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
         "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -661,6 +667,7 @@ cc_library(
         "//xla/codegen/tiling:symbolic_tile",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
+        "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/codegen/xtile/codegen:tiled_emitter_constraints",
         "//xla/hlo/analysis:interval",
@@ -750,10 +757,6 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiled_hlo_computation",
-        "//xla/codegen/tiling:tiled_hlo_schedule",
-        "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/hlo/analysis:symbolic_map",
@@ -1151,7 +1154,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -1369,9 +1371,17 @@ cc_embed_data(
     flatten = True,
 )
 
+text_to_binary_proto(
+    name = "default_collective_perf_table_binary",
+    src = "default_collective_perf_table.txtpb",
+    out = "default_collective_perf_table.pb",
+    proto_deps = [":hlo_op_profile_proto"],
+    proto_name = "xla.gpu.DeviceHloInstructionProfiles",
+)
+
 cc_embed_data(
     name = "default_collective_perf_table",
-    srcs = ["default_collective_perf_table.txtpb"],
+    srcs = [":default_collective_perf_table_binary"],
     outs = [
         "default_collective_perf_table.cc",
         "default_collective_perf_table.h",

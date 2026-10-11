@@ -332,6 +332,7 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
     DeviceCompilationProfiler* profiler, mutex* mu) {
   tensorflow::Env* env = tensorflow::Env::Default();
   const uint64_t compile_start_us = env->NowMicros();
+  metrics::UpdateXlaCompilationStartTime(compile_start_us);
 
   TfGraphToHloCompiler compiler(options);
   cache_value.compile_state = DeviceCompileState::kCompiled;
@@ -390,7 +391,8 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
 
   device_compiler_internal::LogOnceXlaCompiledFirstCluster();
   TF_RETURN_IF_ERROR(profiler->RegisterCompilation(
-      function, compile_time_us, loaded_executable.has_value()));
+      function, compile_time_us, loaded_executable.has_value(),
+      compile_end_us));
   return cache_value;
 }
 

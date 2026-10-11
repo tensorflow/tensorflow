@@ -26,5 +26,5 @@ gpu.module @test_module attributes {dlti.dl_spec = #dlti.dl_spec<index = 32 : i3
 // CHECK-LABEL:  gpu.module @test_module
 // CHECK-SAME:     attributes {dlti.dl_spec = #dlti.dl_spec<index = 32 : i32>} {
 // CHECK-NEXT:    llvm.func @test_kernel
-// CHECK-SAME         attributes {gpu.kernel, nvvm.kernel}
+// CHECK-SAME:        attributes {gpu.kernel, nvvm.kernel}
 // CHECK:           %[[VAR:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32

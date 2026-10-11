@@ -13,12 +13,14 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_pcie_bandwidth.h"
 
 #include <cstdint>
-#include <optional>
 
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "rocm/include/rocm_smi/rocm_smi.h"
-#include "xla/stream_executor/rocm/rocm_smi_util.h"
+#include "xla/stream_executor/rocm/smi_util.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
@@ -49,43 +51,22 @@ constexpr int64_t ComputePcieBandwidthFromSpeedAndWidth(
 
 }  // namespace
 
-std::optional<int64_t> GetRocmPcieBandwidth(absl::string_view pci_bus_id) {
-  absl::MutexLock lock(rocm_smi_mutex);
+absl::StatusOr<int64_t> GetRocmPcieBandwidth(absl::string_view pci_bus_id) {
+  absl::MutexLock lock(smi_mutex);
 
-  if (!InitRocmSmi()) return std::nullopt;
+  ABSL_RETURN_IF_ERROR(InitSmi());
 
-  std::optional<BdfComponents> bdf = ParseBdf(pci_bus_id);
-  if (!bdf.has_value()) {
-    LOG(WARNING) << "Failed to parse PCI bus ID: " << pci_bus_id;
-    return std::nullopt;
-  }
+  ABSL_ASSIGN_OR_RETURN(BdfComponents bdf, ParseBdf(pci_bus_id));
+  ABSL_ASSIGN_OR_RETURN(SmiDeviceHandle device, FindDevice(bdf));
+  ABSL_ASSIGN_OR_RETURN(PcieLinkStatus link, QueryPcieLinkStatus(device));
 
-  std::optional<uint32_t> dev_idx = FindDeviceIndex(*bdf);
-  if (!dev_idx.has_value()) {
-    LOG(WARNING) << "rocm_smi: could not find device for PCI bus ID "
-                 << pci_bus_id;
-    return std::nullopt;
-  }
-
-  rsmi_gpu_metrics_t gpu_metrics = {};
-  rsmi_status_t status = rsmi_dev_gpu_metrics_info_get(*dev_idx, &gpu_metrics);
-  if (status != RSMI_STATUS_SUCCESS) {
-    const char* err_str = nullptr;
-    rsmi_status_string(status, &err_str);
-    LOG(WARNING) << "rsmi_dev_gpu_metrics_info_get failed for " << pci_bus_id
-                 << ": " << (err_str ? err_str : "unknown error");
-    return std::nullopt;
-  }
-
-  uint32_t speed_mt_per_sec =
-      static_cast<uint32_t>(gpu_metrics.pcie_link_speed) * 100;
-  uint16_t width = gpu_metrics.pcie_link_width;
+  uint32_t speed_mt_per_sec = link.speed_mt_per_sec;
+  uint16_t width = link.width;
 
   if (speed_mt_per_sec == 0 || width == 0) {
-    LOG(WARNING) << "rocm_smi gpu_metrics reported zero PCIe speed ("
-                 << speed_mt_per_sec << " MT/s) or width (" << width
-                 << " lanes) for " << pci_bus_id;
-    return std::nullopt;
+    return absl::InternalError(
+        absl::StrCat("SMI reported zero PCIe speed (", speed_mt_per_sec,
+                     " MT/s) or width (", width, " lanes)"));
   }
 
   int64_t bandwidth =

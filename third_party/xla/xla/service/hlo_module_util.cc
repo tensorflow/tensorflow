@@ -286,11 +286,18 @@ void UpdateEntryComputationLayout(
     ShapeUtil::ForEachMutableSubshape(
         shape, [&shape_representation_fn, empty_tiles_only](
                    Shape* subshape, const ShapeIndex& index) {
-          if (subshape->IsArray() && subshape->has_layout()) {
-            if (!empty_tiles_only ||
-                (empty_tiles_only && subshape->layout().tiles().empty())) {
-              *subshape = shape_representation_fn(*subshape);
-            }
+          if (!subshape->IsArray() || !subshape->has_layout()) {
+            return;
+          }
+          if (subshape->layout().minor_to_major().empty() &&
+              subshape->layout().memory_space() != 0) {
+            // AUTO layout with non-default memory space.
+            return;
+          }
+
+          if (!empty_tiles_only ||
+              (empty_tiles_only && subshape->layout().tiles().empty())) {
+            *subshape = shape_representation_fn(*subshape);
           }
         });
   };

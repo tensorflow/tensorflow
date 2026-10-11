@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "xla/codegen/xtile/xtile_config.pb.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla::xtile {
 

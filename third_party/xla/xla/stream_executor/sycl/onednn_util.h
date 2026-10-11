@@ -17,10 +17,13 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_SYCL_ONEDNN_UTIL_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "dnnl.hpp"
 #include "dnnl_sycl.hpp"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/str_util.h"
 
 namespace stream_executor {
@@ -43,6 +46,14 @@ dnnl::fpmath_mode GetFP32MathMode();
 dnnl::memory CreateDnnlMemory(const dnnl::memory::desc& md,
                               const dnnl::engine& engine,
                               void* data_handle = nullptr);
+
+// Converts XLA primitive type to oneDNN data type.
+absl::StatusOr<dnnl::memory::data_type> ToOneDnnDataType(
+    xla::PrimitiveType xla_type);
+
+// Converts DNN protobuf data type to oneDNN data type.
+absl::StatusOr<dnnl::memory::data_type> ToOneDnnDataType(
+    dnn::DataType dnn_type);
 }  // namespace sycl
 }  // namespace stream_executor
 #endif  // XLA_STREAM_EXECUTOR_SYCL_ONEDNN_UTIL_H_

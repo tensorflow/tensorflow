@@ -46,12 +46,8 @@ TfLiteStatus IsSoftmaxSupported(const TfLiteRegistration* registration,
 TfLiteStatus DefineSoftmaxNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                                TensorToValueIdMap& tensor_to_value_id,
                                const NodeInfo& node) {
-  TfLiteNode* tflite_node;
-  TfLiteRegistration* reg;
-  TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-      context, node.node_index, &tflite_node, &reg));
   const auto* params =
-      static_cast<const TfLiteSoftmaxParams*>(tflite_node->builtin_data);
+      static_cast<const TfLiteSoftmaxParams*>(node.builtin_data);
   float beta = params ? params->beta : 1.0f;
 
   return DefineDecomposedUnaryNode(

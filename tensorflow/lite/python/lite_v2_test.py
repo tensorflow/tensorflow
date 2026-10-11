@@ -3169,6 +3169,47 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       model = converter.convert()
       self.assertIsNotNone(model)
 
+  @test_util.run_v2_only
+  def testConvertDoesNotCallLoad(self):
+    """Regression test for https://github.com/tensorflow/tensorflow/issues/122598.
+
+    TFLiteSavedModelConverterV2.convert() used to call _load() internally just
+    to obtain graph_debug_info. For large models like DenseNet121, _load()
+    allocates ~25 MB of variable tensors and registers function defs in TF's
+    EagerContext. Reference cycles in the loaded object caused this memory to
+    leak across convert() calls (~22 MB/iter). The fix reads debug info directly
+    from the SavedModel directory via _parse_saved_model_with_debug_info()
+    instead of loading the full model.
+    """
+    from unittest import mock
+
+    root = autotrackable.AutoTrackable()
+    root.f = tf.function(lambda x: x * 2.0)
+    to_save = root.f.get_concrete_function(tf.TensorSpec([10], tf.float32))
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model_no_load')
+    save.save(root, save_dir, to_save)
+
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    # Patch _load at the lite module level to detect if it's called during
+    # convert(). The converter should NOT call _load() — it should read debug
+    # info directly from disk instead.
+    with mock.patch.object(lite, '_load', wraps=lite._load) as mock_load:
+      tflite_model = converter.convert()
+      mock_load.assert_not_called()
+
+    self.assertIsNotNone(tflite_model)
+    # Verify the converted model is runnable.
+    interp = interpreter.Interpreter(model_content=tflite_model)
+    interp.allocate_tensors()
+    input_details = interp.get_input_details()
+    output_details = interp.get_output_details()
+    interp.set_tensor(
+        input_details[0]['index'], np.ones([10], dtype=np.float32)
+    )
+    interp.invoke()
+    output = interp.get_tensor(output_details[0]['index'])
+    np.testing.assert_array_almost_equal(output, np.full([10], 2.0))
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
@@ -5549,6 +5590,86 @@ class BufferOffsetTest(lite_v2_test_util.ModelTest):
     # Check output value from converted model.
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testUseBufferOffsetAlignment(self):
+    """Test that all external constant buffers are aligned to 16 bytes."""
+
+    class MultiConstantModel(tf.Module):
+
+      def __init__(self):
+        super().__init__()
+        # Constants with non-multiple-of-16 byte sizes to test padding alignment
+        self.w1 = tf.Variable(
+            tf.ones([3, 1], dtype=tf.float32), name='w1'
+        )  # 3 * 4 = 12 bytes
+        self.w2 = tf.Variable(
+            tf.ones([5, 1], dtype=tf.float32), name='w2'
+        )  # 5 * 4 = 20 bytes
+        self.w3 = tf.Variable(
+            tf.ones([1, 1], dtype=tf.float32), name='w3'
+        )  # 1 * 4 = 4 bytes
+        self.w4 = tf.Variable(
+            tf.ones([7, 1], dtype=tf.float32), name='w4'
+        )  # 7 * 4 = 28 bytes
+        self.w5 = tf.Variable(
+            tf.ones([6, 1], dtype=tf.float32), name='w5'
+        )  # 6 * 4 = 24 bytes
+
+      @tf.function
+      def __call__(self, x1, x2, x3, x4, x5):
+        return (
+            tf.matmul(x1, self.w1)
+            + tf.matmul(x2, self.w2)
+            + tf.matmul(x3, self.w3)
+            + tf.matmul(x4, self.w4)
+            + tf.matmul(x5, self.w5)
+        )
+
+    root = MultiConstantModel()
+    inputs = [
+        tf.constant([[1.0, 2.0, 3.0]], dtype=tf.float32),
+        tf.constant([[1.0, 2.0, 3.0, 4.0, 5.0]], dtype=tf.float32),
+        tf.constant([[1.0]], dtype=tf.float32),
+        tf.constant([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]], dtype=tf.float32),
+        tf.constant([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]], dtype=tf.float32),
+    ]
+    concrete_func = root.__call__.get_concrete_function(*inputs)
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], root
+    )
+    converter._experimental_use_buffer_offset = True
+    tflite_model = converter.convert()
+
+    # Parse flatbuffer model and check all buffer offsets
+    model_obj = schema_fb.Model.GetRootAsModel(tflite_model, 0)
+    external_buffer_count = 0
+    for i in range(model_obj.BuffersLength()):
+      buf = model_obj.Buffers(i)
+      if buf.Offset() > 1:
+        external_buffer_count += 1
+        self.assertEqual(
+            buf.Offset() % 16,
+            0,
+            f'Buffer {i} offset {buf.Offset()} is not 16-byte aligned (offset %'
+            f' 16 = {buf.Offset() % 16})',
+        )
+    self.assertGreaterEqual(external_buffer_count, 5)
+
+    # Evaluate converted model
+    expected_value = root(*inputs)
+    interp = interpreter.Interpreter(model_content=tflite_model)
+    runner = interp.get_signature_runner()
+    output = runner(
+        x1=inputs[0],
+        x2=inputs[1],
+        x3=inputs[2],
+        x4=inputs[3],
+        x5=inputs[4],
+    )
+    actual_value = list(output.values())[0]
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only

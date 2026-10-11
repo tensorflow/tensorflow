@@ -63,8 +63,7 @@ ENTRY %e () -> s32[1,3] {
   int64_t reported_callback_id = -1;
   std::vector<std::optional<Literal>> reported_literals;
 
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     call_count++;
     reported_callback_id = callback_id;
@@ -152,8 +151,7 @@ ENTRY %e () -> s32[1,3] {
       std::shared_ptr<const HloOriginalValueAnalysis>(std::move(analysis));
 
   std::vector<int64_t> reported_callback_ids;
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     reported_callback_ids.push_back(callback_id);
   };
@@ -237,8 +235,7 @@ ENTRY %e () -> s32[1,3] {
 
   int call_count = 0;
   std::vector<std::optional<Literal>> reported_literals;
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     call_count++;
     for (const auto& lit : literals) {
@@ -326,8 +323,7 @@ ENTRY %e () -> s32[1,3] {
       std::shared_ptr<const HloOriginalValueAnalysis>(std::move(analysis));
 
   std::vector<int64_t> reported_callback_ids;
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     reported_callback_ids.push_back(callback_id);
   };
@@ -433,8 +429,7 @@ ENTRY %e () -> s32[1,3] {
 
   int call_count = 0;
   std::vector<std::optional<Literal>> reported_literals;
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     call_count++;
     for (const auto& lit : literals) {
@@ -499,8 +494,7 @@ ENTRY %e () -> s32[1,3] {
 
   int call_count = 0;
   std::vector<std::optional<Literal>> reported_literals;
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     call_count++;
     for (const auto& lit : literals) {
@@ -567,8 +561,7 @@ ENTRY %e () -> s32[1,3] {
   int call_count = 0;
   std::vector<bool> received_null;
   std::vector<std::optional<Literal>> reported_literals;
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     call_count++;
     for (const auto& lit : literals) {
@@ -648,8 +641,7 @@ ENTRY %e () -> s32[2] {
   int64_t reported_callback_id = -1;
   std::vector<std::optional<Literal>> reported_literals;
 
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     call_count++;
     reported_callback_id = callback_id;
@@ -709,8 +701,7 @@ ENTRY %e () -> s32[1,3] {
       std::shared_ptr<const HloOriginalValueAnalysis>(std::move(analysis));
 
   int call_count = 0;
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     call_count++;
   };
@@ -752,8 +743,7 @@ ENTRY %e () -> s32[1,3] {
 
   int call_count = 0;
   std::vector<std::optional<Literal>> reported_literals;
-  auto callback = [&](int64_t callback_id, int64_t replica_id,
-                      int64_t partition_id,
+  auto callback = [&](int64_t callback_id, int64_t partition_id,
                       absl::Span<std::shared_ptr<Literal> const> literals) {
     call_count++;
     for (const auto& lit : literals) {

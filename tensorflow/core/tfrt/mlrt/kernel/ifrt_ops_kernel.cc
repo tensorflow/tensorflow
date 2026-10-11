@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/ifrt/checkpoint_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
@@ -301,35 +302,75 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
       return absl::FailedPreconditionError(
           "LoadVariableOp: failed to fetch IfrtModelContext: ");
     }
-    ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
-        (*ifrt_model_context)->GetRestoreTensorRegistry();
-    if (ifrt_restore_tensor_registry.SetUsedByHost(runtime_name).ok()) {
-      tsl::Future<tensorflow::Tensor> restored_tensor_future =
-          ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
+    auto* resource_manager = context()
+                                 .fallback_request_state()
+                                 .device_manager()
+                                 .HostCPU()
+                                 ->resource_manager();
+    auto& registry = (*ifrt_model_context)->GetRestoreTensorRegistry();
 
-      restored_tensor_future.OnReady(
-          [tensor_promise = std::move(tensor_promise)](
-              absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
-            if (!restored_tensor.ok()) {
-              std::move(tensor_promise).SetError(restored_tensor.status());
-              return;
-            }
-            std::move(tensor_promise)
-                .Set<tensorflow::tfrt_stub::FallbackTensor>(
-                    tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
-          });
+    bool materialize_variables = false;
+    auto model_restore_context =
+        context()
+            .resource_context()
+            .GetResource<ifrt_serving::IfrtModelRestoreContext>(
+                ifrt_serving::kIfrtModelRestoreContextName);
+    if (model_restore_context.has_value() &&
+        *model_restore_context != nullptr &&
+        (*model_restore_context)->checkpoint_loader()) {
+      materialize_variables = (*model_restore_context)
+                                  ->checkpoint_loader()
+                                  ->materialize_variables_in_resource_manager();
+    }
+
+    if (registry.SetUsedByHost(runtime_name).ok()) {
+      registry.GetRestoredTensor(runtime_name)
+          .OnReady(
+              [tensor_promise = std::move(tensor_promise), resource_handle,
+               resource_manager, runtime_name, materialize_variables](
+                  absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
+                if (!restored_tensor.ok()) {
+                  std::move(tensor_promise).SetError(restored_tensor.status());
+                  return;
+                }
+
+                if (materialize_variables) {
+                  // Prefer Var from ResourceManager because it holds the
+                  // mutable runtime state (which can be modified after restore,
+                  // e.g. via AssignVariableOp), unlike the static checkpoint
+                  // snapshot in IfrtRestoreTensorRegistry.
+                  Var* raw_var = nullptr;
+                  if (resource_manager &&
+                      resource_manager
+                          ->Lookup(resource_handle.container(),
+                                   resource_handle.name(), &raw_var)
+                          .ok()) {
+                    core::ScopedUnref unref(raw_var);
+                    if (raw_var->tensor()) {
+                      std::move(tensor_promise)
+                          .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                              tensorflow::tfrt_stub::FallbackTensor(
+                                  *raw_var->tensor()));
+                      return;
+                    }
+                  }
+                }
+
+                // Fallback to Registry (e.g. when materialization in
+                // ResourceManager is disabled).
+                std::move(tensor_promise)
+                    .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                        tensorflow::tfrt_stub::FallbackTensor(
+                            *restored_tensor));
+              });
     } else {
-      // If not at IfrtRestoreTensorRegistry, try ResourceManager
-      auto resource_manager = context()
-                                  .fallback_request_state()
-                                  .device_manager()
-                                  .HostCPU()
-                                  ->resource_manager();
+      // If not in IfrtRestoreTensorRegistry, look up in ResourceManager.
       DCHECK(resource_manager);
-      Var* variable;
+      Var* raw_var = nullptr;
       TF_RETURN_IF_ERROR(resource_manager->Lookup(
-          resource_handle.container(), resource_handle.name(), &variable));
-      if (tensorflow::Tensor* t = variable->tensor(); t != nullptr) {
+          resource_handle.container(), resource_handle.name(), &raw_var));
+      core::ScopedUnref unref(raw_var);
+      if (tensorflow::Tensor* t = raw_var->tensor(); t != nullptr) {
         std::move(tensor_promise)
             .Set<tensorflow::tfrt_stub::FallbackTensor>(
                 tensorflow::tfrt_stub::FallbackTensor(*t));

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 
+#include <limits>
+
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
@@ -908,9 +910,32 @@ class TensorListScatterIntoExistingList : public OpKernel {
               "non-negative; got ",
               *minmax.first)));
       max_index = *minmax.second;
+      // TensorListLength returns int32, so max_index + 1 must be representable
+      // as int32 before the list is resized.
+      OP_REQUIRES(
+          c, max_index < std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "TensorListScatterIntoExistingList: index ", max_index,
+              " would produce a list length that is not representable as "
+              "int32")));
+      // Also honor the list's declared capacity. TensorListPushBack already
+      // enforces `size() < max_num_elements`; mirror it here so a scatter
+      // cannot silently grow the list past its cap. This also bounds the
+      // resize below by an attacker-controlled index.
+      OP_REQUIRES(c,
+                  output_list->max_num_elements == -1 ||
+                      max_index < output_list->max_num_elements,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "TensorListScatterIntoExistingList: index ", max_index,
+                      " is beyond the list's max_num_elements ",
+                      output_list->max_num_elements)));
     }
-    if (max_index + 1 > output_list->tensors().size()) {
-      output_list->tensors().resize(max_index + 1);
+    // Compute the required size as size_t: max_index is >= 0 here, but
+    // max_index == INT32_MAX would overflow the signed `max_index + 1`
+    // (undefined behavior) before the comparison/resize below.
+    const size_t needed = static_cast<size_t>(max_index) + 1;
+    if (needed > output_list->tensors().size()) {
+      output_list->tensors().resize(needed);
     }
 
     // Scatter the values.
@@ -987,8 +1012,24 @@ class TensorListScatter : public OpKernel {
           highest_index = i;
         }
       }
-      output_list.tensors().resize(std::max(highest_index + 1, num_elements),
-                                   Tensor(DT_INVALID));
+      // TensorListLength returns int32, so highest_index + 1 must be
+      // representable as int32 before the list is resized. Same guard as
+      // TensorListScatterIntoExistingList (#list_kernels.h).
+      OP_REQUIRES(
+          c, highest_index < std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "TensorListScatter: index ", highest_index,
+              " would produce a list length that is not representable as "
+              "int32")));
+      // Compute the required size as size_t: highest_index == INT32_MAX would
+      // overflow the signed `highest_index + 1` (undefined behavior).
+      const size_t needed_from_indices =
+          highest_index < 0 ? 0 : static_cast<size_t>(highest_index) + 1;
+      const size_t needed =
+          num_elements > 0
+              ? std::max(needed_from_indices, static_cast<size_t>(num_elements))
+              : needed_from_indices;
+      output_list.tensors().resize(needed, Tensor(DT_INVALID));
     }
 
     OP_REQUIRES_OK(c,

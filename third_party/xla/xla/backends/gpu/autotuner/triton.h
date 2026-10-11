@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -41,14 +43,18 @@ class TritonBackend : public GpuCodegenBackend {
   explicit TritonBackend(const DebugOptions* debug_options, Compiler* compiler,
                          const Compiler::GpuTargetConfig* target_config,
                          const AliasInfo* alias_info,
-                         mlir::MLIRContext* mlir_context)
+                         MlirContextPool* absl_nonnull mlir_context_pool)
       : GpuCodegenBackend(autotuner::Backend::TRITON, debug_options, compiler,
                           target_config),
         alias_info_(alias_info),
-        mlir_context_(mlir_context) {}
+        mlir_context_pool_(mlir_context_pool) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
+
+  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
+      const HloInstruction& instr) override;
+
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
@@ -61,19 +67,24 @@ class TritonBackend : public GpuCodegenBackend {
  private:
   bool IsSupported(const HloInstruction& instr) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigsForDot(const HloInstruction* instr);
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigsForScaledDot(const HloInstruction* instr);
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetOverriddenConfigs(const HloInstruction* instr);
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetSupportedGemmConfigs(
+      const HloInstruction& instr);
+
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetSupportedConfigsForDot(
+      const HloInstruction* instr);
+
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetSupportedConfigsForScaledDot(
+      const HloInstruction* instr);
+
+  absl::StatusOr<std::vector<TritonGemmConfig>> GetOverriddenConfigs(
+      const HloInstruction* instr);
 
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
       const Compiler::CompileOptions& options) override;
 
   const AliasInfo* alias_info_;
-  mlir::MLIRContext* mlir_context_;
+  MlirContextPool* absl_nonnull mlir_context_pool_;
 };
 
 }  // namespace gpu

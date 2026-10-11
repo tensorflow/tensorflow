@@ -291,7 +291,8 @@ absl::Status CpuExecutable::ExecuteThunks(
       Thunk::ExecuteSession(Thunk::ExecuteSession::kMaxWorkers,
                             Thunk::ExecuteSession::kSplitThreshold),
       /*rng_seed=*/
-      run_options ? static_cast<uint64_t>(run_options->rng_seed()) : 0};
+      run_options ? static_cast<uint64_t>(run_options->rng_seed()) : 0,
+      /*custom_options=*/run_options ? run_options->custom_options() : nullptr};
 
   auto executed_event = thunks_->Execute(execute_params);
 

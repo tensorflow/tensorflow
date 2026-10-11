@@ -19,7 +19,7 @@ on:
   pull_request:
 jobs:
   clang-tidy-cuda:
-    runs-on: "linux-x86-n2-16"
+    runs-on: "linux-x86-n4-16"
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"  # zizmor: ignore[unpinned-images]
     defaults:
@@ -27,9 +27,6 @@ jobs:
         shell: bash
     timeout-minutes: 30
     continue-on-error: true
-    if: |
-      github.event.sender.type == 'User' ||
-      contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

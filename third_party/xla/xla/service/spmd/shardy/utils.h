@@ -194,15 +194,21 @@ mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
                                         const Mesh& mesh,
                                         mlir::MLIRContext* context);
 
-// Converts a non-tuple XLA HloSharding to an SDY TensorShardingAttr.
+// Converts a non-tuple XLA HloSharding to an SDY TensorShardingAttr, where
+// `rank` is the rank of the value the sharding applies to.
+//
+// The rank is needed because HLO omits the dimension shardings of a fully
+// manual tensor, whereas `TensorShardingAttr` always has one per dimension.
 mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
-    const HloSharding& hloSharding, int64_t rank,
-    mlir::sdy::MeshOp globalMeshOp, mlir::MLIRContext* context);
+    const HloSharding& hloSharding, int64_t rank, mlir::MLIRContext* context);
 
-// Converts a tuple XLA HloSharding to an SDY TensorShardingPerValueAttr.
+// Converts an XLA HloSharding to an SDY TensorShardingPerValueAttr, where
+// `types` are the types of the values the sharding applies to.
+//
+// See `convertToSdyShardingAttr` for why the types are needed.
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::TypeRange types,
-    mlir::sdy::MeshOp globalMeshOp, mlir::MLIRContext* context);
+    mlir::MLIRContext* context);
 
 // Returns whether the call is on a manual computation.
 bool isManualComputation(mlir::func::CallOp callOp);

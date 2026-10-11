@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: gpu_fusion_to_mlir %s | FileCheck %s
 // RUN: gpu_test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
 
 add {

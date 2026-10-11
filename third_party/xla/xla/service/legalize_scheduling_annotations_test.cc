@@ -1561,5 +1561,34 @@ ENTRY %entry (p0: f32[16,64]) -> (f32[64,64], f32[16,64]) {
               "1");
   }
 }
+
+TEST_F(LegalizeSchedulingAnnotationsTest, KeepTrivialSyncAnnotationConfig) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %main.1 {
+  %p0 = f32[8,128]{1,0} parameter(0)
+  %add.1 = f32[8,128]{1,0} add(%p0, %p0), frontend_attributes={_scheduling_group_id="0"}
+  %add.2 = f32[8,128]{1,0} add(%p0, %p0), frontend_attributes={_scheduling_group_id="0"}
+  ROOT %tuple = (f32[8,128]{1,0}, f32[8,128]{1,0}) tuple(%add.1, %add.2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.keep_trivial_sync_annotation = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kAdd;
+  };
+
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_OK(result);
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  HloInstruction* add1 = FindInstruction(hlo_module.get(), "add.1");
+  HloInstruction* add2 = FindInstruction(hlo_module.get(), "add.2");
+  ASSERT_OK_AND_ASSIGN(auto annotation1, GetSchedulingAnnotation(add1));
+  EXPECT_TRUE(annotation1.has_value());
+  ASSERT_OK_AND_ASSIGN(auto annotation2, GetSchedulingAnnotation(add2));
+  EXPECT_TRUE(annotation2.has_value());
+}
 }  // namespace
 }  // namespace xla

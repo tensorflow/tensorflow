@@ -396,9 +396,9 @@ class Env {
   ///
   /// Caller takes ownership of the result and must delete it eventually
   /// (the deletion will block until fn() stops running).
-  virtual Thread* StartThread(
+  TF_MUST_USE_RESULT virtual Thread* StartThread(
       const ThreadOptions& thread_options, const std::string& name,
-      absl::AnyInvocable<void()> fn) TF_MUST_USE_RESULT = 0;
+      absl::AnyInvocable<void()> fn) = 0;
 
   /// \brief Starts a new detached thread that runs fn() and is identified
   /// (for debugging/performance-analysis) by "name".

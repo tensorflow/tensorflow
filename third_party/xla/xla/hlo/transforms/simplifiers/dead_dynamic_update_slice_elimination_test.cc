@@ -136,5 +136,56 @@ ENTRY main {
   }
 }
 
+TEST_F(DeadDynamicUpdateSliceEliminationTest, NegativeStartIndicesClamped) {
+  const absl::string_view kHlo = R"(
+HloModule negative_start
+
+ENTRY main {
+  %param = f32[10] parameter(0)
+  %update = f32[4] parameter(1)
+  %start = s32[] constant(-5)
+  %dus = f32[10] dynamic-update-slice(%param, %update, %start)
+  ROOT %slice = f32[4] slice(%dus), slice={[0:4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  DeadDynamicUpdateSliceElimination dds;
+  ASSERT_OK_AND_ASSIGN(bool changed, dds.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(DeadDynamicUpdateSliceEliminationTest, LargeU64StartIndicesClamped) {
+  const absl::string_view kHlo = R"(
+HloModule large_u64_start
+
+ENTRY main {
+  %param = f32[10] parameter(0)
+  %update = f32[4] parameter(1)
+  %start = u64[] constant(9223372036854775808)
+  %dus = f32[10] dynamic-update-slice(%param, %update, %start)
+  ROOT %slice = f32[4] slice(%dus), slice={[6:10]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  DeadDynamicUpdateSliceElimination dds;
+  ASSERT_OK_AND_ASSIGN(bool changed, dds.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(DeadDynamicUpdateSliceEliminationTest, RootDusPreserved) {
+  const absl::string_view kHlo = R"(
+HloModule root_dus
+
+ENTRY main {
+  %param = f32[10] parameter(0)
+  %update = f32[4] parameter(1)
+  %start = s32[] constant(0)
+  ROOT %dus = f32[10] dynamic-update-slice(%param, %update, %start)
+  %unused_slice = f32[4] slice(%dus), slice={[6:10]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  DeadDynamicUpdateSliceElimination dds;
+  ASSERT_OK_AND_ASSIGN(bool changed, dds.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

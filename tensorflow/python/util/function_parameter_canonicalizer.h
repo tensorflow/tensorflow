@@ -36,28 +36,28 @@ class FunctionParameterCanonicalizer {
                                  absl::Span<PyObject*> defaults);
 
   // Returns the total number of arguments.
-  ABSL_MUST_USE_RESULT
-  int GetArgSize() const { return interned_arg_names_.size(); }
+  [[nodiscard]]
+  int GetArgSize() const {
+    return interned_arg_names_.size();
+  }
 
   // Canonicalizes `args` and `kwargs` by the spec specified at construction.
   // It's written to `result`. Returns `true` if Canonicalization was
   // successful, and `false` otherwise. When it fails, it also sets CPython
   // error status.
-  // This function does not update reference counter of any Python objects.
-  // `PyObject*`s in `result` are borrowed references from `args`, `kwargs`, and
-  // possibly `defaults_`, and will be only valid if `args` and `kwargs` are
-  // still alive.
-  ABSL_MUST_USE_RESULT
-  ABSL_ATTRIBUTE_HOT
-  bool Canonicalize(PyObject* args, PyObject* kwargs,
-                    absl::Span<PyObject*> result);
+  //
+  // On success, every populated entry in `result` owns a strong reference to
+  // the canonicalized Python argument. This keeps the result valid even if a
+  // caller concurrently mutates `kwargs` after canonicalization.
+  [[nodiscard]]
+  ABSL_ATTRIBUTE_HOT bool Canonicalize(PyObject* args, PyObject* kwargs,
+                                       absl::Span<Safe_PyObjectPtr> result);
 
  private:
   // Simple linear search of `name` in `interned_arg_names`. If found, returns
   // the index. If not found, returns `interned_arg_names.size()`.
-  ABSL_MUST_USE_RESULT
-  ABSL_ATTRIBUTE_HOT
-  std::size_t InternedArgNameLinearSearch(PyObject* name);
+  [[nodiscard]]
+  ABSL_ATTRIBUTE_HOT std::size_t InternedArgNameLinearSearch(PyObject* name);
 
   // Check if `interned_arg_names_` is unique.
   bool AreInternedArgNamesUnique();

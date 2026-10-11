@@ -62,7 +62,7 @@ se::DeviceDescription B200WithCUDA129() {
 class GpuFusibleTest : public HloHardwareIndependentTestBase {
  public:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+    ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
     alias_info_ = std::make_unique<GpuAliasInfo>(device_description_);
   }
 
@@ -564,8 +564,8 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest, CustomFusionIsNotFusibleAsConsumer) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 triton_fusion {
   p = s32[20,3] parameter(0)
   ROOT neg = s32[20,3] negate(p)
@@ -1597,7 +1597,7 @@ TEST_F(GpuFusibleTest, GetSharedMemoryUsageForPackedTranspose) {
 }
 
 TEST_F(GpuFusibleTest, GetSharedMemoryUsageVariadicReduction) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
         reducer {
           p0 = pred[] parameter(0)
@@ -1629,7 +1629,7 @@ TEST_F(GpuFusibleTest, GetSharedMemoryUsageVariadicReduction) {
 }
 
 TEST_F(GpuFusibleTest, IsConsumerTheOnlyNonRootUser) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 e {
   p = s8[] parameter(0)
   n = s8[] negate(p)
@@ -1644,7 +1644,7 @@ e {
 }
 
 TEST_F(GpuFusibleTest, MayCausePerformanceDropIfUnrolledSmallReduceWindowIsOk) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 add {
@@ -1666,7 +1666,7 @@ ENTRY main {
 
 TEST_F(GpuFusibleTest,
        MayCausePerformanceDropIfUnrolledLargerReduceWindowIsNotOk) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 add {
@@ -1687,7 +1687,7 @@ ENTRY main {
 }
 
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -1715,7 +1715,7 @@ ENTRY main {
 }
 
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfig32Bit) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -1743,7 +1743,7 @@ ENTRY main {
 }
 
 TEST_F(GpuFusibleTest, FourBitTypeUnrolled16or32xOnBlackwell) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 e {
   n = s4[1024000] negate(s4[1024000] parameter(0))
 })"));
@@ -1765,7 +1765,7 @@ e {
 }
 
 TEST_F(GpuFusibleTest, FourBitConcatenationUnrolled16or32xOnBlackwell) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 e {
   ROOT c = s4[2048000] concatenate(s4[1024000] parameter(0), s4[1024000] parameter(1)), dimensions={0}
 })"));
@@ -1787,7 +1787,7 @@ e {
 }
 
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopReduce) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 max {
@@ -1817,7 +1817,7 @@ ENTRY main {
 }
 
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopPadFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -1843,7 +1843,7 @@ ENTRY main {
 }
 
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopTransposeSmallMinorDim) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -1866,7 +1866,7 @@ ENTRY main {
 }
 
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopTransposeLargerMinorDim) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -1890,7 +1890,7 @@ ENTRY main {
 
 TEST_F(GpuFusibleTest,
        ComputeLoopFusionConfigForLoopTransposeEffectiveLargerMinorDim) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {

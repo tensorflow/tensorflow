@@ -76,6 +76,12 @@ absl::Status RaggedComponentsFromVariant(
             "Ragged splits must have rank 1; encoded scalar element at index ",
             i, " has splits Tensor ", splits.DebugString()));
       }
+      if (splits.NumElements() < 1) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Ragged splits must have at least one element; encoded scalar "
+            "element at index ",
+            i, " has splits Tensor ", splits.DebugString()));
+      }
     }
   }
   return absl::OkStatus();

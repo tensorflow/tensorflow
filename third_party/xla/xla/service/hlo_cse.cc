@@ -112,12 +112,38 @@ absl::StatusOr<bool> CombineConstants(
   return combined > 0;
 }
 
-// An instruction is considered to be equivalent to another only if they
-// share the exact same set of operands.
+constexpr absl::string_view kAllocateBufferTarget = "AllocateBuffer";
+
+// Returns true if operand `operand_index` of `instruction` may be a fresh
+// output buffer.
+bool MayBeFreshRaggedAllToAllOutputBuffer(const HloInstruction* instruction,
+                                          int64_t operand_index) {
+  const HloInstruction* operand = instruction->operand(operand_index);
+  return instruction->opcode() == HloOpcode::kRaggedAllToAll &&
+         operand_index == 1 && operand->operand_count() == 0 &&
+         operand->IsCustomCall(kAllocateBufferTarget);
+}
+
+// Returns true if `instruction` is an AllocateBuffer that is only used as the
+// output buffer of a single ragged-all-to-all.
+bool IsFreshRaggedAllToAllOutputBuffer(const HloInstruction* instruction) {
+  if (instruction->user_count() != 1 || instruction->HasControlDependencies()) {
+    return false;
+  }
+  const HloInstruction* user = instruction->users().front();
+  return user->OperandIndices(instruction).size() == 1 &&
+         user->operand_index(instruction) == 1 &&
+         MayBeFreshRaggedAllToAllOutputBuffer(user, 1);
+}
+
+// This differs from "normal" HLO Instruction hashing because it takes the
+// operands of an instruction into account. For the purposes of CSEs, two
+// instructions that have different operands are never equivalent, so
+// disambiguating by operands is always useful - but not always sufficient.
 struct CseKey {
   template <typename H>
-  friend H AbslHashValue(H h, const CseKey& key) {
-    auto instruction = key.hlo;
+  static H HashInstruction(H h, const HloInstruction* instruction,
+                           bool hash_operands) {
     h = instruction->shape().IsArray()
             ? H::combine(std::move(h), instruction->opcode(),
                          instruction->shape().dimensions())
@@ -144,26 +170,31 @@ struct CseKey {
     h = result_accuracy_hash(std::move(h), instruction->result_accuracy());
 
     // Hash operands, ignoring operand order on commutative ops.
-    if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
-      CHECK_EQ(instruction->operand_count(), 2);
-      auto id0 = instruction->operand(0)->unique_id();
-      if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
-        id0 = 0;
-      }
-      auto id1 = instruction->operand(1)->unique_id();
-      if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
-        id1 = 0;
-      }
-      if (id0 > id1) {
-        std::swap(id0, id1);
-      }
-      h = H::combine(std::move(h), id0, id1);
-    } else {
-      for (auto operand : instruction->operands()) {
-        if (operand->opcode() == HloOpcode::kIota) {
-          continue;
+    if (hash_operands) {
+      if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
+        CHECK_EQ(instruction->operand_count(), 2);
+        auto id0 = instruction->operand(0)->unique_id();
+        if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
+          id0 = 0;
         }
-        h = H::combine(std::move(h), operand->unique_id());
+        auto id1 = instruction->operand(1)->unique_id();
+        if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
+          id1 = 0;
+        }
+        if (id0 > id1) {
+          std::swap(id0, id1);
+        }
+        h = H::combine(std::move(h), id0, id1);
+      } else {
+        for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+          // Equivalent iotas and fresh output buffers may be distinct
+          // instructions (see `eq_instructions` in RunOnComputation).
+          if (instruction->operand(i)->opcode() == HloOpcode::kIota ||
+              MayBeFreshRaggedAllToAllOutputBuffer(instruction, i)) {
+            continue;
+          }
+          h = H::combine(std::move(h), instruction->operand(i)->unique_id());
+        }
       }
     }
 
@@ -171,6 +202,31 @@ struct CseKey {
       h = H::combine(std::move(h), c->root_instruction()->opcode());
     }
     switch (instruction->opcode()) {
+      case HloOpcode::kFusion:
+        // The return post-order for two equal computations will always be the
+        // same, since it's determined purely by operand order, so we should
+        // never expect to hash two equal computations to different values. Note
+        // that the reasons this works are somewhat subtle: (a) We never
+        // consider kFusion commutative, so a dependency on operand order is
+        // safe. (b) Control dependencies may make the post-order traversal
+        // order depend on insertion order, but that's not an issue for fusion
+        // computations. (c) The post-order returned by
+        // HloComputation::MakeInstructionPostOrder() can depend on insertion
+        // order if dead instructions are present, which is why we use
+        // MakeInstructionPostOrderFrom() on the root.
+        for (const HloInstruction* fused_instruction :
+             instruction->fused_instructions_computation()
+                 ->MakeInstructionPostOrderFrom(
+                     *instruction->fused_instructions_computation()
+                          ->root_instruction())) {
+          // Internal instructions of equivalent fusions belong to different
+          // HloComputations (whose IDs are encoded into
+          // HloInstruction::unique_id()), so we can only hash operand
+          // unique_ids for top-level instructions.
+          h = HashInstruction(std::move(h), fused_instruction,
+                              /*hash_operands=*/false);
+        }
+        return H::combine(std::move(h), instruction->fusion_kind());
       case HloOpcode::kSlice:
         return H::combine(std::move(h), instruction->slice_starts(),
                           instruction->slice_strides());
@@ -227,6 +283,11 @@ struct CseKey {
         return std::move(h);
     }
   }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CseKey& key) {
+    return HashInstruction(std::move(h), key.hlo, /*hash_operands=*/true);
+  }
   HloInstruction* hlo;
 };
 
@@ -279,13 +340,19 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     if (a == b) {
       return true;
     }
+    const auto eq_shapes = [&] {
+      return is_layout_sensitive_
+                 ? ShapeUtil::Equal(a->shape(), b->shape())
+                 : ShapeUtil::Compatible(a->shape(), b->shape());
+    };
+    if (IsFreshRaggedAllToAllOutputBuffer(a) &&
+        IsFreshRaggedAllToAllOutputBuffer(b)) {
+      return eq_shapes();
+    }
     if (a->opcode() != b->opcode() || a->opcode() != HloOpcode::kIota) {
       return false;
     }
-    return a->dimensions(0) == b->dimensions(0) &&
-           (is_layout_sensitive_
-                ? ShapeUtil::Equal(a->shape(), b->shape())
-                : ShapeUtil::Compatible(a->shape(), b->shape()));
+    return a->dimensions(0) == b->dimensions(0) && eq_shapes();
   };
   const auto eq_computations = [](const HloComputation* lhs,
                                   const HloComputation* rhs) {

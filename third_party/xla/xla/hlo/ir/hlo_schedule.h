@@ -73,12 +73,10 @@ class HloInstructionSequence {
 
   // Removes the instruction from the sequence.
   void remove_instruction(HloInstruction* instruction) {
-    auto instruction_it = std::find(instruction_sequence_.begin(),
-                                    instruction_sequence_.end(), instruction);
+    auto instruction_it = absl::c_find(instruction_sequence_, instruction);
     if (instruction_it != instruction_sequence_.end() &&
         instruction->parent() != nullptr) {
-      auto id_it = std::find(id_sequence_.begin(), id_sequence_.end(),
-                             instruction->unique_id());
+      auto id_it = absl::c_find(id_sequence_, instruction->unique_id());
       instruction_sequence_.erase(instruction_it);
       id_sequence_.erase(id_it);
     }
@@ -87,11 +85,8 @@ class HloInstructionSequence {
   // Replaces the old instruction with the new instruction in the sequence.
   void replace_instruction(HloInstruction* old_instruction,
                            HloInstruction* new_instruction) {
-    auto instruction_it =
-        std::find(instruction_sequence_.begin(), instruction_sequence_.end(),
-                  old_instruction);
-    auto id_it = std::find(id_sequence_.begin(), id_sequence_.end(),
-                           old_instruction->unique_id());
+    auto instruction_it = absl::c_find(instruction_sequence_, old_instruction);
+    auto id_it = absl::c_find(id_sequence_, old_instruction->unique_id());
     CHECK(instruction_it != instruction_sequence_.end())
         << "Do not find instruction id " << old_instruction->unique_id();
     CHECK(id_it != id_sequence_.end());

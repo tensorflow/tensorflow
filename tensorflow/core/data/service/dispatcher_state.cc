@@ -203,6 +203,9 @@ void DispatcherState::AcquireIterationClient(
   iteration->num_clients++;
   next_available_iteration_client_id_ =
       std::max(next_available_iteration_client_id_, iteration_client_id + 1);
+  VLOG(3) << "Acquired iteration client for iteration "
+          << iteration->iteration_id
+          << " num_clients: " << iteration->num_clients;
 }
 
 void DispatcherState::ReleaseIterationClient(
@@ -215,6 +218,9 @@ void DispatcherState::ReleaseIterationClient(
   DCHECK_GE(iteration->num_clients, 0);
   iteration->last_client_released_micros =
       release_iteration_client.time_micros();
+  VLOG(3) << "Released iteration client for iteration "
+          << iteration->iteration_id
+          << " num_clients: " << iteration->num_clients;
   iterations_for_client_ids_.erase(iteration_client_id);
 }
 

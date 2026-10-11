@@ -193,7 +193,7 @@ def is_tpu_present() -> bool:
 
 
 def is_gpu_present() -> bool:
-  """Returns true if TPU devices are present."""
+  """Returns true if GPU devices are present."""
   return bool(tf_config.list_physical_devices("GPU"))
 
 

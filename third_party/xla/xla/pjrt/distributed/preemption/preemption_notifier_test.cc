@@ -24,31 +24,11 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
-#if defined(PLATFORM_GOOGLE)
-#include "thread/executor.h"
-#include "thread/signal.h"
-#endif
-
 namespace xla {
 namespace {
 
-class PreemptNotifierTest : public ::testing::Test {
- public:
-  PreemptNotifierTest() {
-#if defined(PLATFORM_GOOGLE)
-    // Override default test SIGTERM handler so that test does not exit
-    // prematurely.
-    thread::signal::Token unused_token;
-
-    thread::signal::AddHandler(
-        SIGTERM, thread::Executor::DefaultExecutor(), []() {},
-        thread::signal::kOverrideDefault, &unused_token);
-#endif
-  }
-};
+class PreemptNotifierTest : public ::testing::Test {};
 
 TEST_F(PreemptNotifierTest, WillBePreemptedAt) {
   auto env = tsl::Env::Default();
@@ -144,7 +124,9 @@ TEST_F(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
 
   // Raise second signal.
   std::raise(SIGTERM);
-  absl::Time preempt_time_2 = preempt_notifier->WillBePreemptedAt().value();
+  absl::StatusOr<absl::Time> result_2 = preempt_notifier->WillBePreemptedAt();
+  CHECK_OK(result_2.status());
+  absl::Time preempt_time_2 = result_2.value();
 
   // Verify that two different preempt times are recorded.
   EXPECT_NE(preempt_time, preempt_time_2);

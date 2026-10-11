@@ -17,13 +17,13 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/numeric/bits.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -297,8 +297,12 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
     // trunc (extractelement <4 x i8> %X, i64 0) to i2 ->
     // extractelement <16 x i2> (bitcast <4 x i8> %X to <16 x i2>), i64 0. The
     // sub-byte vector types are not supported in the LLVM SPIR-V backend.
+    llvm::DenseSet<mlir::Operation*> visited;
     std::function<bool(mlir::Operation*)> has_sub_byte_trunc_user =
         [&](mlir::Operation* op) {
+          if (!visited.insert(op).second) {
+            return false;
+          }
           return absl::c_any_of(op->getUsers(), [&](mlir::Operation* user) {
             auto trunc = mlir::dyn_cast<mlir::arith::TruncIOp>(user);
             if (trunc && IsSubByteIntOrFloatType(trunc.getResult().getType()))

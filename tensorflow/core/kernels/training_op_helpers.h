@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -66,6 +67,13 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
   // All other threads can then exit this critical section immediately.
   if (var->copy_on_read_mode.load()) {
     return absl::OkStatus();
+  }
+
+  if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+        " but got ", DataTypeString(var->tensor()->dtype()),
+        " (resource variable dtype)"));
   }
 
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can

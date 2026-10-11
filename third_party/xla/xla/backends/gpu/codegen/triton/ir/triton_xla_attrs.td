@@ -82,7 +82,23 @@ def TTXLA_ComparatorEnum : I32Enum<"Comparator",
     ]> {
   let cppNamespace = "::mlir::triton::xla";
 }
-def TTXLA_ComparatorAttr : EnumAttr<XlaTritonDialect, TTXLA_ComparatorEnum, "">;
+def TTXLA_ComparatorAttr : EnumAttr<XlaTritonDialect, TTXLA_ComparatorEnum, ""> {
+  let assemblyFormat = "$value";
+}
 
+def TTXLA_BarrierModeEnum : I32EnumAttr<"BarrierMode",
+    "Synchronization mode for triton_xla.block_barrier.",
+    [
+      I32EnumAttrCase<"kSymmetric", 0, "symmetric">,
+      I32EnumAttrCase<"kConsumerSymmetric", 1, "consumer_symmetric">,
+      I32EnumAttrCase<"kProducerSymmetric", 2, "producer_symmetric">,
+    ]> {
+  let cppNamespace = "::mlir::triton::xla";
+  let genSpecializedAttr = 0;
+}
+def TTXLA_BarrierModeAttr
+    : EnumAttr<XlaTritonDialect, TTXLA_BarrierModeEnum, "barrier_mode"> {
+  let assemblyFormat = "`<` $value `>`";
+}
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_ATTRS_TD_

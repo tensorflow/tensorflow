@@ -68,11 +68,23 @@ static Platform* CudaPlatform() {
 
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
-TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
+// CUDA command buffers are built with graph APIs that require CUDA 12.3.
+class CudaCommandBufferTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    StreamExecutor* executor = CudaPlatform()->ExecutorForDevice(0).value();
+    if (executor->GetDeviceDescription().driver_version() <
+        SemanticVersion{12, 3, 0}) {
+      GTEST_SKIP() << "CUDA command buffers require CUDA driver >= 12.3";
+    }
+  }
+};
+
+TEST_F(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   Platform* platform = CudaPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                          executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
   dnn::DnnSupport& dnn_support = *executor->AsDnn();
 
   if (dnn_support.GetVersion().value_or(dnn::VersionInfo{0, 0, 0}) <
@@ -130,9 +142,9 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
     workspace = executor->Allocate(graph.Graph().get_workspace_size());
     operands.push_back(workspace);
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
-                          executor->CreateCommandBuffer(primary));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+  ASSERT_OK_AND_ASSIGN(
       auto* dnn_command,
       cmd_buffer->CreateDnnGraphCommand(
           graph, *stream, absl::Span<DeviceAddressBase>(operands), {}));
@@ -181,7 +193,7 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   EXPECT_THAT(host_buffer, Each(0));
 }
 
-TEST(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
+TEST_F(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
   Platform* platform = CudaPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   if (!executor->GetDeviceDescription()
@@ -244,19 +256,14 @@ TEST(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
   EXPECT_EQ(edge_data.type, CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC);
 }
 
-TEST(CudaCommandBufferTest, TraceDisallowsForbiddenOpsOnCaptureStream) {
+TEST_F(CudaCommandBufferTest, TraceDisallowsForbiddenOpsOnCaptureStream) {
   Platform* platform = CudaPlatform();
   ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                        platform->ExecutorForDevice(0));
-  if (executor->GetDeviceDescription().driver_version() <
-      SemanticVersion{12, 3, 0}) {
-    GTEST_SKIP() << "Command buffer tracing is not supported";
-  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                          executor->CreateStream());
-
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CommandBuffer> cmd_buffer,
       TraceCommandBufferFactory::Create(
           executor,
@@ -273,7 +280,7 @@ TEST(CudaCommandBufferTest, TraceDisallowsForbiddenOpsOnCaptureStream) {
           CommandBuffer::Mode::kPrimary));
 }
 
-TEST(CudaCommandBufferTest, LaunchClusterKernelWithClusterDimsSucceeds) {
+TEST_F(CudaCommandBufferTest, LaunchClusterKernelWithClusterDimsSucceeds) {
   Platform* platform = CudaPlatform();
   ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                        platform->ExecutorForDevice(0));
@@ -304,5 +311,88 @@ TEST(CudaCommandBufferTest, LaunchClusterKernelWithClusterDimsSucceeds) {
   ASSERT_OK(stream->BlockHostUntilDone());
 }
 
+TEST_F(CudaCommandBufferTest, LaunchHostCallback) {
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastVolta()) {
+    GTEST_SKIP() << "Requires at least a Volta GPU.";
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+
+  int counter = 0;
+  ASSERT_OK_AND_ASSIGN(const CommandBuffer::Command* cmd,
+                       cmd_buffer->CreateHost([&]() { counter++; }, {}));
+  ASSERT_NE(cmd, nullptr);
+
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(counter, 1);
+
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(counter, 2);
+}
+
+TEST_F(CudaCommandBufferTest, MemcpyH2D2H) {
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+  DeviceAddress<int32_t> device_buf = executor->AllocateArray<int32_t>(1);
+
+  int32_t src = 123;
+  ASSERT_OK_AND_ASSIGN(
+      const CommandBuffer::Command* h2d_cmd,
+      cmd_buffer->CreateMemcpyH2D(&device_buf, &src, sizeof(int32_t), {}));
+  ASSERT_NE(h2d_cmd, nullptr);
+
+  int32_t dst = 0;
+  ASSERT_OK_AND_ASSIGN(const CommandBuffer::Command* d2h_cmd,
+                       cmd_buffer->CreateMemcpyD2H(&dst, device_buf,
+                                                   sizeof(int32_t), {h2d_cmd}));
+  ASSERT_NE(d2h_cmd, nullptr);
+
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(dst, 123);
+
+  int32_t src2 = 456;
+  int32_t dst2 = 0;
+  ASSERT_OK(cmd_buffer->Update());
+  ASSERT_OK(cmd_buffer->UpdateMemcpyH2D(h2d_cmd, &device_buf, &src2,
+                                        sizeof(int32_t)));
+  ASSERT_OK(
+      cmd_buffer->UpdateMemcpyD2H(d2h_cmd, &dst2, device_buf, sizeof(int32_t)));
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(dst, 123);
+  EXPECT_EQ(dst2, 456);
+
+  DeviceAddress<int32_t> device_buf2 = executor->AllocateArray<int32_t>(1);
+  int32_t src3 = 789;
+  int32_t dst3 = 0;
+  ASSERT_OK(cmd_buffer->Update());
+  ASSERT_OK(cmd_buffer->UpdateMemcpyH2D(h2d_cmd, &device_buf2, &src3,
+                                        sizeof(int32_t)));
+  ASSERT_OK(cmd_buffer->UpdateMemcpyD2H(d2h_cmd, &dst3, device_buf2,
+                                        sizeof(int32_t)));
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(dst2, 456);
+  EXPECT_EQ(dst3, 789);
+}
 }  // namespace
 }  // namespace stream_executor::cuda

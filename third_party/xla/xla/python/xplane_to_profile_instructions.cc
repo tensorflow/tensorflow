@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/python/xplane_to_profile_instructions.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -64,10 +65,35 @@ using tsl::profiler::XLineVisitor;
 using tsl::profiler::XPlaneVisitor;
 using tsl::profiler::XStatVisitor;
 
+struct HloLatencySpan {
+  int64_t start_ps, end_ps;
+};
+
+struct HloOpInstance {
+  std::string name_and_fingerprint;
+  int64_t instance_id;
+
+  bool operator==(const HloOpInstance& other) const {
+    return name_and_fingerprint == other.name_and_fingerprint &&
+           instance_id == other.instance_id;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const HloOpInstance& op_instance) {
+    return H::combine(std::move(h), op_instance.name_and_fingerprint,
+                      op_instance.instance_id);
+  }
+};
+
+struct SumAndTotal {
+  double sum = 0.0;
+  int64_t total = 0;
+};
+
 void GetXPlaneLatencyInfo(
     const XPlaneVisitor& xplane,
     const absl::flat_hash_map<std::string, std::string>& hlo_module_info,
-    absl::flat_hash_map<std::string, HloLatencyInfo>* hlo_latency_info) {
+    absl::flat_hash_map<HloOpInstance, HloLatencySpan>* hlo_latency_info) {
   // Iterate events.
   xplane.ForEachLine([hlo_latency_info,
                       &hlo_module_info](const XLineVisitor& xline) {
@@ -83,6 +109,7 @@ void GetXPlaneLatencyInfo(
       std::optional<std::string> hlo_module_name = std::nullopt;
       std::optional<std::string> fingerprint = std::nullopt;
       std::optional<int64_t> program_id = std::nullopt;
+      std::optional<int64_t> scope_range_id = std::nullopt;
 
       auto for_each_stat = [&](const XStatVisitor& stat) {
         if (stat.ValueCase() == tsl::profiler::XStat::VALUE_NOT_SET) return;
@@ -95,6 +122,9 @@ void GetXPlaneLatencyInfo(
         }
         if (stat.Name() == GetStatTypeStr(StatType::kHloModule)) {
           hlo_module_name = stat.ToString();
+        }
+        if (stat.Name() == GetStatTypeStr(StatType::kScopeRangeId)) {
+          scope_range_id = stat.IntValue();
         }
       };
       xevent.Metadata().ForEachStat(for_each_stat);
@@ -113,12 +143,25 @@ void GetXPlaneLatencyInfo(
           fingerprint = hlo_module_info.at(fingerprint_key);
         }
       }
-      double latency = static_cast<double>(xevent.DurationNs()) / 1e3;
       std::string key = hlo_name.value();
       if (fingerprint.has_value()) {
         key = absl::StrCat(fingerprint.value(), kCostNameSep, hlo_name.value());
       }
-      (*hlo_latency_info)[key].durations.push_back(latency);
+      // Store the enclosing [start, end] range for device activity with this
+      // fingerprint + name + scope_id. This ensures that ops that produce >1
+      // activity fragment are accounted for properly, as the fragments will
+      // share a scope_id but separate instances of the op will not. If there
+      // is no scope_range_id, use the timestamp as a ~unique key to disable
+      // merging spans.
+      auto [it, inserted] = hlo_latency_info->try_emplace(
+          HloOpInstance{key, scope_range_id.value_or(xevent.TimestampPs())},
+          HloLatencySpan{xevent.TimestampPs(), xevent.EndTimestampPs()});
+      if (!inserted) {
+        it->second.start_ps =
+            std::min(it->second.start_ps, xevent.TimestampPs());
+        it->second.end_ps =
+            std::max(it->second.end_ps, xevent.EndTimestampPs());
+      }
     });
   });
 }
@@ -207,8 +250,8 @@ absl::Status ConvertXplaneToProfiledInstructionsProto(
     std::vector<tensorflow::profiler::XSpace> xspaces,
     tensorflow::profiler::ProfiledInstructionsProto*
         profiled_instructions_proto) {
-  absl::flat_hash_map<std::string, HloLatencyInfo> hlo_latency_info;
   absl::flat_hash_map<std::string, std::string> hlo_module_info;
+  absl::flat_hash_map<std::string, SumAndTotal> duration_stats;
   // Iterate through each host.
   for (const XSpace& xspace : xspaces) {
     const XPlane* metadata_plane =
@@ -229,20 +272,25 @@ absl::Status ConvertXplaneToProfiledInstructionsProto(
       device_planes =
           FindPlanesWithPrefix(xspace, tsl::profiler::kCustomPlanePrefix);
     }
-    // Go over each device plane.
+    // Go over each device plane; hlo_latency_info is per-host to avoid
+    // assuming scope_range_id is unique across hosts.
+    absl::flat_hash_map<HloOpInstance, HloLatencySpan> hlo_latency_info;
     for (const XPlane* device_plane : device_planes) {
       XPlaneVisitor xplane = CreateTfXPlaneVisitor(device_plane);
       GetXPlaneLatencyInfo(xplane, hlo_module_info, &hlo_latency_info);
     }
+    for (const auto& [key, span] : hlo_latency_info) {
+      SumAndTotal& stats = duration_stats[key.name_and_fingerprint];
+      stats.sum += static_cast<double>(span.end_ps - span.start_ps) / 1e6;
+      ++stats.total;
+    }
   }
 
   // Get the mean duration for each hlo and store into the proto.
-  for (const auto& iter : hlo_latency_info) {
+  for (const auto& [name, stats] : duration_stats) {
     auto* cost = profiled_instructions_proto->add_costs();
-    std::vector<double> durations = iter.second.durations;
-    double sum = std::accumulate(durations.begin(), durations.end(), 0.0);
-    cost->set_cost_us(sum / durations.size());
-    cost->set_name(iter.first);
+    cost->set_name(name);
+    cost->set_cost_us(stats.sum / stats.total);
   }
 
   return absl::OkStatus();

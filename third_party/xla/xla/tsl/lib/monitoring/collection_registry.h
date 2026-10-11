@@ -235,10 +235,9 @@ class CollectionRegistry {
   //     }
   //   });
   class RegistrationHandle;
-  std::unique_ptr<RegistrationHandle> Register(
+  [[nodiscard]] std::unique_ptr<RegistrationHandle> Register(
       const AbstractMetricDef* metric_def,
-      const CollectionFunction& collection_function)
-      ABSL_LOCKS_EXCLUDED(mu_) ABSL_MUST_USE_RESULT;
+      const CollectionFunction& collection_function) ABSL_LOCKS_EXCLUDED(mu_);
 
   // Options for collecting metrics.
   struct CollectMetricsOptions {
@@ -562,8 +561,8 @@ class ExporterRegistrar {
 #define REGISTER_TF_METRICS_EXPORTER_UNIQ_HELPER(ctr, exporter) \
   REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)
 
-#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)                  \
-  ABSL_ATTRIBUTE_UNUSED static ::tsl::monitoring::exporter_registration:: \
+#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)             \
+  [[maybe_unused]] static ::tsl::monitoring::exporter_registration:: \
       ExporterRegistrar exporter_registrar_##ctr(new exporter())
 
 }  // namespace monitoring

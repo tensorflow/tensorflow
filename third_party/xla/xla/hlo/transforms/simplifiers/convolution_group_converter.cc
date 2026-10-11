@@ -219,6 +219,14 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
     return absl::OkStatus();
   }
 
+  // Do not expand if we have block scaling or structured sparsity.
+  if (convolution->block_scaling_config().has_lhs() ||
+      convolution->block_scaling_config().has_rhs() ||
+      convolution->sparsity_config().has_lhs() ||
+      convolution->sparsity_config().has_rhs()) {
+    return absl::OkStatus();
+  }
+
   VLOG(2) << "Dealing with batch_group_count " << batch_group_count
           << " for convolution " << convolution->ToString() << "\n";
 
@@ -316,7 +324,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
             /*batch_group_count=*/1, window, dim_numbers,
             convolution->precision_config(),
             /*preferred_element_type=*/convolution->shape().element_type(),
-            convolution->sparsity_config())
+            convolution->sparsity_config(), convolution->block_scaling_config())
             .value();
     convolution->SetupDerivedInstruction(new_convolution);
     CHECK_OK(computation_->ReplaceInstruction(
@@ -441,6 +449,13 @@ absl::Status ConvolutionVisitor::HandleConvolution(
 
   int64_t group_count = convolution->feature_group_count();
   if (group_count == 1 || (should_expand_ && !should_expand_(convolution))) {
+    return absl::OkStatus();
+  }
+
+  if (convolution->block_scaling_config().has_lhs() ||
+      convolution->block_scaling_config().has_rhs() ||
+      convolution->sparsity_config().has_lhs() ||
+      convolution->sparsity_config().has_rhs()) {
     return absl::OkStatus();
   }
 
@@ -677,7 +692,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
           /*batch_group_count=*/1, window, dim_numbers,
           convolution->precision_config(),
           /*preferred_element_type=*/convolution->shape().element_type(),
-          convolution->sparsity_config())
+          convolution->sparsity_config(), convolution->block_scaling_config())
           .value();
   convolution->SetupDerivedInstruction(new_convolution);
   changed_ = true;

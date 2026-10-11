@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -87,11 +87,11 @@ TEST_F(ScanExpanderTest, ExpandsScanComplex) {
   )";
 
   HloModuleConfig config;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
 
   ScanExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto hlo_string = module->ToString();
@@ -155,10 +155,10 @@ TEST_F(ScanExpanderTest, DoesNotExpandAssociativeScanWhenDisabled) {
   )";
 
   HloModuleConfig config;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   ScanExpander expander(/*expand_associative_scans=*/false);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 

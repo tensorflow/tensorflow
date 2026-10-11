@@ -442,8 +442,9 @@ def _MatrixDiagGrad(_, grad):
 
 @ops.RegisterGradient("MatrixDiagV2")
 def _MatrixDiagV2Grad(op: ops.Operation, grad):
+  # MatrixDiagV2 always left-aligns; it has no align attr.
   return (
-      array_ops.matrix_diag_part(grad, k=op.inputs[1]),
+      array_ops.matrix_diag_part(grad, k=op.inputs[1], align="LEFT_LEFT"),
       None,
       None,
       None,
@@ -484,6 +485,7 @@ def _MatrixDiagPartV2Grad(op: ops.Operation, grad):
             k=op.inputs[1],
             num_rows=matrix_shape[0],
             num_cols=matrix_shape[1],
+            align="LEFT_LEFT",
         ),
         None,
         None,
@@ -491,7 +493,10 @@ def _MatrixDiagPartV2Grad(op: ops.Operation, grad):
   else:
     return (
         array_ops.matrix_set_diag(
-            array_ops.zeros_like(op.inputs[0]), grad, k=op.inputs[1]
+            array_ops.zeros_like(op.inputs[0]),
+            grad,
+            k=op.inputs[1],
+            align="LEFT_LEFT",
         ),
         None,
         None,
@@ -586,7 +591,9 @@ def _MatrixSetDiagGradV2(op: ops.Operation, grad):
   grad_input = array_ops.matrix_set_diag(
       grad, array_ops.zeros(diag_shape, dtype=grad.dtype), k=op.inputs[2]
   )
-  grad_diag = array_ops.matrix_diag_part(grad, k=op.inputs[2])
+  grad_diag = array_ops.matrix_diag_part(
+      grad, k=op.inputs[2], align="LEFT_LEFT"
+  )
   return (grad_input, grad_diag, None)
 
 

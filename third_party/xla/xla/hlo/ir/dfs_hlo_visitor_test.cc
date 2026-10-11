@@ -14,6 +14,7 @@
  ==============================================================================*/
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -39,6 +40,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using DfsHloVisitorWithDefaultTest = HloHardwareIndependentTestBase;
+using DfsHloVisitorTest = HloHardwareIndependentTestBase;
 
 TEST_F(DfsHloVisitorWithDefaultTest, DefaultElementwiseTest) {
   // Verify that HandleElementwiseBinary and HandleElementwiseUnary are called
@@ -126,6 +128,189 @@ TEST(FilteredDfsHloVisitorTest, FiltersInstructions) {
 
   // Check that the recording visitor only visited the Add instruction.
   EXPECT_THAT(visited_instructions, ElementsAre(add));
+}
+
+// Records the names of the instructions it is called on.
+class RecordingVisitor : public DfsHloVisitorWithDefault {
+ public:
+  absl::Status DefaultAction(HloInstruction* hlo) override {
+    visited_.emplace_back(hlo->name());
+    return absl::OkStatus();
+  }
+
+  const std::vector<std::string>& visited() const { return visited_; }
+  void ClearVisited() { visited_.clear(); }
+
+ private:
+  std::vector<std::string> visited_;
+};
+
+TEST(DfsHloVisitorVisitStateTest, ResetVisitStatesClearsEveryState) {
+  RecordingVisitor visitor;
+  visitor.SetVisitState(1, DfsHloVisitor::kVisiting);
+  visitor.SetVisitState(2, DfsHloVisitor::kVisited);
+  EXPECT_EQ(visitor.GetVisitState(1), DfsHloVisitor::kVisiting);
+  EXPECT_EQ(visitor.GetVisitState(2), DfsHloVisitor::kVisited);
+  EXPECT_EQ(visitor.GetVisitState(3), DfsHloVisitor::kNotVisited);
+
+  visitor.ResetVisitStates();
+  EXPECT_EQ(visitor.GetVisitState(1), DfsHloVisitor::kNotVisited);
+  EXPECT_EQ(visitor.GetVisitState(2), DfsHloVisitor::kNotVisited);
+  EXPECT_EQ(visitor.GetVisitState(3), DfsHloVisitor::kNotVisited);
+
+  // States set after a reset are visible and stay independent of ids that
+  // were only set before the reset.
+  visitor.SetVisitState(2, DfsHloVisitor::kVisiting);
+  EXPECT_EQ(visitor.GetVisitState(1), DfsHloVisitor::kNotVisited);
+  EXPECT_EQ(visitor.GetVisitState(2), DfsHloVisitor::kVisiting);
+  visitor.SetVisitState(2, DfsHloVisitor::kVisited);
+  EXPECT_EQ(visitor.GetVisitState(2), DfsHloVisitor::kVisited);
+
+  // Back to back resets keep clearing, including states set in between.
+  for (int i = 0; i < 3; ++i) {
+    visitor.SetVisitState(1, DfsHloVisitor::kVisited);
+    visitor.ResetVisitStates();
+    EXPECT_EQ(visitor.GetVisitState(1), DfsHloVisitor::kNotVisited);
+    EXPECT_EQ(visitor.GetVisitState(2), DfsHloVisitor::kNotVisited);
+  }
+}
+
+TEST(DfsHloVisitorVisitStateTest, DestroyVisitStateReleasesStorage) {
+  constexpr int64_t kNumIds = 1000;
+  RecordingVisitor visitor;
+  for (int64_t id = 0; id < kNumIds; ++id) {
+    visitor.SetVisitState(id, DfsHloVisitor::kVisited);
+  }
+  EXPECT_GE(visitor.VisitStateCapacity(), kNumIds);
+
+  visitor.DestroyVisitState();
+  // An empty flat_hash_map may keep a small inline capacity, so only check
+  // that the storage shrank.
+  EXPECT_LT(visitor.VisitStateCapacity(), kNumIds);
+  EXPECT_EQ(visitor.GetVisitState(1), DfsHloVisitor::kNotVisited);
+  visitor.SetVisitState(1, DfsHloVisitor::kVisiting);
+  EXPECT_EQ(visitor.GetVisitState(1), DfsHloVisitor::kVisiting);
+}
+
+TEST_F(DfsHloVisitorTest, ResetVisitStatesDropsStaleEntriesOnceTheyDominate) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  arg = f32[] parameter(0)
+  neg = f32[] negate(arg)
+  ROOT abs = f32[] abs(neg)
+})"));
+  HloComputation* computation = module->entry_computation();
+  // Ids that no instruction of the module has, standing in for instructions
+  // that a pass deleted after visiting them.
+  constexpr int64_t kNumStaleIds = 1000;
+  constexpr int64_t kFirstStaleId = int64_t{1} << 40;
+
+  RecordingVisitor visitor;
+  for (int64_t i = 0; i < kNumStaleIds; ++i) {
+    visitor.SetVisitState(kFirstStaleId + i, DfsHloVisitor::kVisited);
+  }
+  visitor.ResetVisitStates();
+  EXPECT_GE(visitor.VisitStateCapacity(), kNumStaleIds);
+
+  // Writing the same ids again in the next generation is not growth, so the
+  // storage is kept.
+  for (int64_t i = 0; i < kNumStaleIds; ++i) {
+    visitor.SetVisitState(kFirstStaleId + i, DfsHloVisitor::kVisited);
+  }
+  visitor.ResetVisitStates();
+  EXPECT_GE(visitor.VisitStateCapacity(), kNumStaleIds);
+
+  // A visit that touches far fewer ids leaves the stale entries in the
+  // majority, so the next reset releases them. Every id still reads as after
+  // any other reset, and the visitor keeps working.
+  ASSERT_OK(computation->Accept(&visitor));
+  EXPECT_THAT(visitor.visited(), ElementsAre("arg", "neg", "abs"));
+  visitor.ResetVisitStates();
+  EXPECT_LT(visitor.VisitStateCapacity(), kNumStaleIds);
+  EXPECT_EQ(visitor.GetVisitState(kFirstStaleId), DfsHloVisitor::kNotVisited);
+  EXPECT_EQ(visitor.GetVisitState(kFirstStaleId + kNumStaleIds - 1),
+            DfsHloVisitor::kNotVisited);
+  EXPECT_TRUE(visitor.NotVisited(*computation->root_instruction()));
+
+  visitor.ClearVisited();
+  ASSERT_OK(computation->Accept(&visitor));
+  EXPECT_THAT(visitor.visited(), ElementsAre("arg", "neg", "abs"));
+  EXPECT_TRUE(visitor.DidVisit(*computation->root_instruction()));
+  visitor.SetVisitState(kFirstStaleId, DfsHloVisitor::kVisiting);
+  EXPECT_EQ(visitor.GetVisitState(kFirstStaleId), DfsHloVisitor::kVisiting);
+  EXPECT_EQ(visitor.GetVisitState(kFirstStaleId + 1),
+            DfsHloVisitor::kNotVisited);
+}
+
+TEST_F(DfsHloVisitorTest, ResetVisitStatesLetsTheSameVisitorTraverseAgain) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  arg = f32[] parameter(0)
+  neg = f32[] negate(arg)
+  ROOT abs = f32[] abs(neg)
+})"));
+  HloComputation* computation = module->entry_computation();
+
+  RecordingVisitor visitor;
+  ASSERT_OK(computation->Accept(&visitor));
+  EXPECT_THAT(visitor.visited(), ElementsAre("arg", "neg", "abs"));
+
+  // Without a reset every instruction is still marked visited.
+  visitor.ClearVisited();
+  ASSERT_OK(computation->Accept(&visitor));
+  EXPECT_THAT(visitor.visited(), ElementsAre());
+
+  visitor.ResetVisitStates();
+  ASSERT_OK(computation->Accept(&visitor));
+  EXPECT_THAT(visitor.visited(), ElementsAre("arg", "neg", "abs"));
+}
+
+TEST_F(DfsHloVisitorTest, SetVisitedSkipsInstructionUntilReset) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  arg = f32[] parameter(0)
+  neg = f32[] negate(arg)
+  ROOT abs = f32[] abs(neg)
+})"));
+  HloComputation* computation = module->entry_computation();
+  HloInstruction* neg = FindInstruction(module.get(), "neg");
+
+  RecordingVisitor visitor;
+  visitor.SetVisited(*neg);
+  EXPECT_TRUE(visitor.DidVisit(*neg));
+  // Neither neg nor arg, which is only reachable through neg, is visited.
+  ASSERT_OK(computation->Accept(&visitor));
+  EXPECT_THAT(visitor.visited(), ElementsAre("abs"));
+
+  visitor.ResetVisitStates();
+  EXPECT_TRUE(visitor.NotVisited(*neg));
+  visitor.ClearVisited();
+  ASSERT_OK(computation->Accept(&visitor));
+  EXPECT_THAT(visitor.visited(), ElementsAre("arg", "neg", "abs"));
+
+  // States set after a reset are marked with a later generation and must
+  // still be visible to the traversal.
+  visitor.ResetVisitStates();
+  visitor.SetVisited(*neg);
+  EXPECT_TRUE(visitor.DidVisit(*neg));
+  visitor.ClearVisited();
+  ASSERT_OK(computation->Accept(&visitor));
+  EXPECT_THAT(visitor.visited(), ElementsAre("abs"));
+
+  visitor.ResetVisitStates();
+  visitor.SetVisiting(*neg);
+  EXPECT_TRUE(visitor.IsVisiting(*neg));
+  EXPECT_FALSE(visitor.DidVisit(*neg));
+  EXPECT_FALSE(visitor.NotVisited(*neg));
 }
 
 }  // namespace

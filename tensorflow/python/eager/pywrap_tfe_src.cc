@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -1253,6 +1254,23 @@ DataType PyTensor_DataType(PyObject* tensor) {
       return DT_INVALID;
     }
 
+    if (PyUnicode_Check(dtype_field.get())) {
+      Py_ssize_t dtype_size;
+      const char* dtype_name =
+          PyUnicode_AsUTF8AndSize(dtype_field.get(), &dtype_size);
+      if (dtype_name == nullptr) {
+        return DT_INVALID;
+      }
+      DataType dtype;
+      if (DataTypeFromString(absl::string_view(dtype_name, dtype_size),
+                             &dtype)) {
+        return dtype;
+      }
+      PyErr_Format(PyExc_TypeError, "Invalid TensorFlow dtype: %R",
+                   dtype_field.get());
+      return DT_INVALID;
+    }
+
     Safe_PyObjectPtr enum_field(
         PyObject_GetAttr(dtype_field.get(), type_enum_attr));
     if (!enum_field) {
@@ -1870,14 +1888,15 @@ class AccumulatorSet {
     return true;
   }
 
-  void erase(TFE_Py_ForwardAccumulator* element) {
+  bool erase(TFE_Py_ForwardAccumulator* element) {
     MapType::iterator existing = map_.find(element);
     if (existing == map_.end()) {
-      return;
+      return false;
     }
     ListType::iterator list_position = existing->second;
     map_.erase(existing);
     ordered_.erase(list_position);
+    return true;
   }
 
   bool empty() const { return ordered_.empty(); }
@@ -2110,7 +2129,9 @@ bool TensorShapesAndDtypes(PyObject* tensors, std::vector<int64_t>* tensor_ids,
   for (int i = 0; i < len; ++i) {
     PyObject* item = seq_array[i];
     tensor_ids->push_back(FastTensorId(item));
-    dtypes->push_back(tensorflow::PyTensor_DataType(item));
+    tensorflow::DataType dtype = tensorflow::PyTensor_DataType(item);
+    if (dtype == tensorflow::DT_INVALID && PyErr_Occurred()) return false;
+    dtypes->push_back(dtype);
   }
   return true;
 }
@@ -2379,6 +2400,10 @@ void TFE_Py_TapeVariableAccessed(PyObject* variable) {
 }
 
 void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return;
+  }
   if (!CouldBackprop()) {
     return;
   }
@@ -2386,6 +2411,10 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
 }
 
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return nullptr;
+  }
   return reinterpret_cast<TFE_Py_Tape*>(tape)->tape->GetVariablesAsPyTuple();
 }
 
@@ -2410,11 +2439,23 @@ PyObject* TFE_Py_VariableWatcherNew() {
 }
 
 void TFE_Py_VariableWatcherRemove(PyObject* variable_watcher) {
+  if (!PyObject_TypeCheck(variable_watcher, &TFE_Py_VariableWatcher_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_VariableWatcher object");
+    return;
+  }
   auto* stack = GetVariableWatcherSet();
-  stack->erase(reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher));
+  bool erased = false;
+  if (stack != nullptr) {
+    auto* vw = reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher);
+    erased = stack->erase(vw) > 0;
+  }
   // We kept a reference to the variable watcher in the set to ensure it
   // wouldn't get deleted under us; cleaning it up here.
-  Py_DECREF(variable_watcher);
+  // We only decref if the variable watcher was actually erased from the set.
+  if (erased) {
+    Py_DECREF(variable_watcher);
+  }
 }
 
 void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable) {
@@ -2424,6 +2465,11 @@ void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable) {
 }
 
 PyObject* TFE_Py_VariableWatcherWatchedVariables(PyObject* variable_watcher) {
+  if (!PyObject_TypeCheck(variable_watcher, &TFE_Py_VariableWatcher_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_VariableWatcher object");
+    return nullptr;
+  }
   return reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher)
       ->variable_watcher->GetVariablesAsPyTuple();
 }
@@ -2440,7 +2486,9 @@ std::vector<tensorflow::DataType> MakeTensorDtypeList(PyObject* tensors) {
   list.reserve(len);
   for (int i = 0; i < len; ++i) {
     PyObject* tensor = seq_array[i];
-    list.push_back(tensorflow::PyTensor_DataType(tensor));
+    tensorflow::DataType dtype = tensorflow::PyTensor_DataType(tensor);
+    if (dtype == tensorflow::DT_INVALID && PyErr_Occurred()) break;
+    list.push_back(dtype);
   }
   Py_DECREF(seq);
   return list;
@@ -2908,6 +2956,10 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources_raw,
                               PyObject* unconnected_gradients,
                               TF_Status* status) {
+  if (!PyObject_TypeCheck(tape, &TFE_Py_Tape_Type)) {
+    PyErr_SetString(PyExc_TypeError, "Expected a TFE_Py_Tape object");
+    return nullptr;
+  }
   TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!tape_obj->tape->IsPersistent()) {
     auto* tape_set = GetTapeSet();
@@ -2993,21 +3045,41 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   if (!result.empty()) {
     PyObject* py_result = PyList_New(result.size());
     tensorflow::gtl::FlatSet<PyObject*> seen_results(result.size());
-    for (int i = 0; i < result.size(); ++i) {
+    if (py_result == nullptr) {
+      for (PyObject* gradient : result) {
+        if (gradient != nullptr && seen_results.insert(gradient).second) {
+          Py_DECREF(gradient);
+        }
+      }
+      return nullptr;
+    }
+    for (size_t i = 0; i < result.size(); ++i) {
       if (result[i] == nullptr) {
         if (unconnected_gradients_zero) {
           // generate a zeros tensor in the shape of sources[i]
           tensorflow::DataType dtype =
               tensorflow::PyTensor_DataType(sources_obj[i]);
-          PyTapeTensor tensor =
-              PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
-          result[i] = tensor.ZerosLike();
+          if (dtype != tensorflow::DT_INVALID || !PyErr_Occurred()) {
+            PyTapeTensor tensor =
+                PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
+            result[i] = tensor.ZerosLike();
+          }
         } else {
           Py_INCREF(Py_None);
           result[i] = Py_None;
         }
       } else if (seen_results.find(result[i]) != seen_results.end()) {
         Py_INCREF(result[i]);
+      }
+      if (result[i] == nullptr) {
+        // Release gradients not yet transferred to py_result.
+        for (size_t j = i + 1; j < result.size(); ++j) {
+          if (result[j] != nullptr && seen_results.insert(result[j]).second) {
+            Py_DECREF(result[j]);
+          }
+        }
+        Py_DECREF(py_result);
+        return nullptr;
       }
       seen_results.insert(result[i]);
       PyList_SET_ITEM(py_result, i, reinterpret_cast<PyObject*>(result[i]));
@@ -3042,6 +3114,11 @@ PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
 }
 
 PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return nullptr;
+  }
   TFE_Py_ForwardAccumulator* c_accumulator(
       reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
   c_accumulator->nesting_id = tape_nesting_id_counter.fetch_add(1);
@@ -3058,16 +3135,29 @@ PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
 }
 
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return;
+  }
   auto* accumulator_set = GetAccumulatorSet();
+  bool erased = false;
   if (accumulator_set != nullptr) {
-    accumulator_set->erase(
+    erased = accumulator_set->erase(
         reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
   }
-  Py_DECREF(accumulator);
+  if (erased) {
+    Py_DECREF(accumulator);
+  }
 }
 
 void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
                                     PyObject* tangent) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return;
+  }
   int64_t tensor_id = FastTensorId(tensor);
   reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)
       ->accumulator->Watch(tensor_id, tangent);
@@ -3077,6 +3167,11 @@ void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
 // Returns a new reference to the JVP Tensor.
 PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator,
                                        PyObject* tensor) {
+  if (!PyObject_TypeCheck(accumulator, &TFE_Py_ForwardAccumulator_Type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "Expected a TFE_Py_ForwardAccumulator object");
+    return nullptr;
+  }
   PyObject* jvp = reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)
                       ->accumulator->FetchJVP(FastTensorId(tensor));
   if (jvp == nullptr) {
@@ -3302,15 +3397,18 @@ tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
     if (input_info.is_list) {
       tensorflow::Safe_PyObjectPtr fast_item(
           PySequence_Fast(item, "Unable to allocate"));
+      if (fast_item == nullptr) return tensorflow::DT_INVALID;
       int len = PySequence_Fast_GET_SIZE(fast_item.get());
       PyObject** fast_item_array = PySequence_Fast_ITEMS(fast_item.get());
       for (int i = 0; i < len; i++) {
         auto dtype = MaybeGetDType(fast_item_array[i]);
         if (dtype != tensorflow::DT_INVALID) return dtype;
+        if (PyErr_Occurred()) return tensorflow::DT_INVALID;
       }
     } else {
       auto dtype = MaybeGetDType(item);
       if (dtype != tensorflow::DT_INVALID) return dtype;
+      if (PyErr_Occurred()) return tensorflow::DT_INVALID;
     }
   }
 
@@ -3598,6 +3696,7 @@ bool ConvertToTensor(
 
   // The hint comes from a supposedly similarly typed tensor.
   tensorflow::DataType dtype_hint = dtype_hint_getter();
+  if (PyErr_Occurred()) return false;
 
   TFE_TensorHandle* handle = tensorflow::ConvertToEagerTensor(
       op_exec_info.ctx, input, dtype_hint, op_exec_info.device_name);

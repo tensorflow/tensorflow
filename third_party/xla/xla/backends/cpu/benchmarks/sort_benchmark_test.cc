@@ -87,14 +87,84 @@ static void BM_PermutationSort_FP32(benchmark::State& state,
       {{"$batch", absl::StrCat(batch)}, {"$dim", absl::StrCat(dim)}}, options));
 }
 
-#define BENCHMARK_PERMUTATION_SORT(name) \
-  XLA_CPU_BENCHMARK(name)                \
-      ->MeasureProcessCPUTime()          \
-      ->ArgNames({"batch", "dim"})       \
-      ->Args({64, 8732})                 \
-      ->Args({1, 8732})                  \
+static void BM_Sort_WeakOrder_FP32(benchmark::State& state,
+                                   HloBenchmarkOptions options) {
+  int64_t batch = state.range(0);
+  int64_t dim = state.range(1);
+
+  absl::string_view hlo = R"(
+    HloModule text_sort_weak_order_benchmark_fp32
+
+    compare {
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=WEAK
+    }
+
+    ENTRY sort_computation {
+      keys = f32[$batch,$dim]{1,0} parameter(0)
+      values = s32[$batch,$dim]{1,0} iota(), iota_dimension=1
+      ROOT sort = (f32[$batch,$dim]{1,0}, s32[$batch,$dim]{1,0}) sort(keys, values), dimensions={1}, to_apply=compare
+    }
+  )";
+
+  std::minstd_rand0 engine(/*seed=*/0xCAFEFEED);
+  auto keys_or = LiteralUtil::CreateRandomLiteral<F32>(
+      ShapeUtil::MakeShape(F32, {batch, dim}), &engine, 1.0f, 0.1f);
+  CHECK_OK(keys_or.status());
+  Literal& keys = *keys_or;
+
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, {&keys},
+      {{"$batch", absl::StrCat(batch)}, {"$dim", absl::StrCat(dim)}}, options));
+}
+
+static void BM_Sort_TotalOrder_S32(benchmark::State& state,
+                                   HloBenchmarkOptions options) {
+  int64_t batch = state.range(0);
+  int64_t dim = state.range(1);
+
+  absl::string_view hlo = R"(
+    HloModule text_sort_total_order_benchmark_s32
+
+    compare {
+      p.0.lhs = s32[] parameter(0)
+      p.0.rhs = s32[] parameter(1)
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    ENTRY sort_computation {
+      keys = s32[$batch,$dim]{1,0} parameter(0)
+      values = s32[$batch,$dim]{1,0} iota(), iota_dimension=1
+      ROOT sort = (s32[$batch,$dim]{1,0}, s32[$batch,$dim]{1,0}) sort(keys, values), dimensions={1}, to_apply=compare
+    }
+  )";
+
+  std::minstd_rand0 engine(/*seed=*/0xCAFEFEED);
+  auto keys_or = LiteralUtil::CreateRandomLiteral<S32>(
+      ShapeUtil::MakeShape(S32, {batch, dim}), &engine, 10000, 5000);
+  CHECK_OK(keys_or.status());
+  Literal& keys = *keys_or;
+
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, {&keys},
+      {{"$batch", absl::StrCat(batch)}, {"$dim", absl::StrCat(dim)}}, options));
+}
+
+#define BENCHMARK_SORT(name)       \
+  XLA_CPU_BENCHMARK(name)          \
+      ->MeasureProcessCPUTime()    \
+      ->ArgNames({"batch", "dim"}) \
+      ->Args({64, 8732})           \
+      ->Args({1, 8732})            \
       ->Args({64, 1024})
 
-BENCHMARK_PERMUTATION_SORT(BM_PermutationSort_FP32);
+BENCHMARK_SORT(BM_PermutationSort_FP32);
+BENCHMARK_SORT(BM_Sort_WeakOrder_FP32);
+BENCHMARK_SORT(BM_Sort_TotalOrder_S32);
 
 }  // namespace xla::cpu

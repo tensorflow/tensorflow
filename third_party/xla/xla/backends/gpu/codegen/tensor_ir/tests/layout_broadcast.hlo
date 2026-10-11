@@ -1,0 +1,63 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_brodcast_constant
+// CHECK: %[[OUT:.*]] = constant dense<1.000000e+00> : tensor<8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_brodcast_constant {
+  %c0 = f32[] constant(1)
+  %out = f32[8,16] broadcast(%c0), dimensions={}
+}
+
+// -----
+
+// CHECK-LABEL: @test_broadcast_normal
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[TEMP:.*]] = reshape %[[ARG0]] : tensor<8x16xf32> -> tensor<1x8x16x1xf32>
+// CHECK: %[[OUT:.*]] = broadcast %[[TEMP]] : tensor<1x8x16x1xf32> -> tensor<4x8x16x32xf32>
+// CHECK: results %[[OUT]]
+
+test_broadcast_normal {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[4,8,16,32] broadcast(%p0), dimensions={1,2}
+}
+
+// -----
+
+// CHECK-LABEL: @test_broadcast_transpose
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[T1:.*]] = transpose %[[ARG0]] permutation = [1, 0] : tensor<8x16xf32> -> tensor<16x8xf32>
+// CHECK: %[[T2:.*]] = reshape %[[T1]] : tensor<16x8xf32> -> tensor<16x1x1x8xf32>
+// CHECK: %[[OUT:.*]] = broadcast %[[T2]] : tensor<16x1x1x8xf32> -> tensor<16x4x2x8xf32>
+// CHECK: results %[[OUT]]
+
+test_broadcast_transpose {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[16,4,2,8] broadcast(%p0), dimensions={3,0}
+}
+
+// -----
+
+// CHECK-LABEL: @test_broadcast_scalar
+// CHECK-SAME: %[[ARG0:.*]]: tensor<1xf32>
+// CHECK: %[[TEMP:.*]] = reshape %[[ARG0]] : tensor<1xf32> -> tensor<1xf32>
+// CHECK: %[[OUT:.*]] = broadcast %[[TEMP]] : tensor<1xf32> -> tensor<32xf32>
+// CHECK: results %[[OUT]]
+
+test_broadcast_scalar {
+  %p0 = f32[] parameter(0)
+  %out = f32[32] broadcast(%p0), dimensions={}
+}
+
+// -----
+
+// CHECK-LABEL: @test_broadcast_unit
+// CHECK-SAME: %[[ARG0:.*]]: tensor<1xf32>
+// CHECK: %[[TEMP:.*]] = reshape %[[ARG0]] : tensor<1xf32> -> tensor<1x1xf32>
+// CHECK: %[[OUT:.*]] = broadcast %[[TEMP]] : tensor<1x1xf32> -> tensor<1x32xf32>
+// CHECK: results %[[OUT]]
+
+test_broadcast_unit {
+  %p0 = f32[1] parameter(0)
+  %out = f32[1,32] broadcast(%p0), dimensions={0}
+}

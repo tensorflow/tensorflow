@@ -21,9 +21,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/transforms/simplifiers/hlo_rewrite_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -56,6 +59,12 @@ absl::StatusOr<bool> DegenerateDimensionRewriter::RunImpl(
         if (std::optional<Shape> target_shape =
                 FindElementwiseSubgraphSurroundedByReshapesAndBroadcasts(
                     hlo, shape_to_use, &finds)) {
+          if (!ConsumeFuel(name(), [&] {
+                return absl::StrCat("Removing degenerate dimensions for ",
+                                    hlo->ToString());
+              })) {
+            continue;
+          }
           absl::flat_hash_map<HloInstruction*, HloInstruction*> replacements;
           ABSL_ASSIGN_OR_RETURN(
               HloInstruction * reshaped_hlo,

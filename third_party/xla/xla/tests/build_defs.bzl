@@ -259,6 +259,11 @@ def xla_test(
         }.items():
             this_backend_env[k] = v
 
+        if not use_legacy_runtime:
+            if "XLA_ALLOW_GET_DEFAULT_PLATFORM" in env:
+                fail("XLA_ALLOW_GET_DEFAULT_PLATFORM should not be set multiple times.")
+            this_backend_env["XLA_ALLOW_GET_DEFAULT_PLATFORM"] = "false"
+
         xla_cc_test(
             name = test_name,
             srcs = srcs,
@@ -283,6 +288,10 @@ def xla_test(
                 "XLA_TEST_MODIFIERS": ",".join(modifiers),
             }.items():
                 fast_compile_env[k] = v
+            if not use_legacy_runtime:
+                if "XLA_ALLOW_GET_DEFAULT_PLATFORM" in env:
+                    fail("XLA_ALLOW_GET_DEFAULT_PLATFORM should not be set multiple times.")
+                fast_compile_env["XLA_ALLOW_GET_DEFAULT_PLATFORM"] = "false"
             if "XLA_FLAGS" in fast_compile_env:
                 fast_compile_env["XLA_FLAGS"] += " --xla_cpu_opt_preset=FAST_COMPILE"
             else:

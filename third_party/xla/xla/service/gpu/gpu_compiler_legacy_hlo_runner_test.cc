@@ -241,8 +241,8 @@ class KernelCacheTest : public HloLegacyGpuTestBase {
       return 0;
     }
     std::string serialized;
-    TF_EXPECT_OK(tsl::ReadFileToString(tsl::Env::Default(), cache_file_name_,
-                                       &serialized));
+    EXPECT_OK(tsl::ReadFileToString(tsl::Env::Default(), cache_file_name_,
+                                    &serialized));
     CompilationCacheProto proto;
     EXPECT_TRUE(proto.ParseFromString(serialized));
     return proto.entries_size();

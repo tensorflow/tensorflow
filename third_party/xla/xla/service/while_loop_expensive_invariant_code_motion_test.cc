@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -72,7 +71,7 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
   auto m =
       ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
           /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)
@@ -91,7 +90,7 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
   auto m =
       ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
           /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot,
@@ -110,10 +109,10 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
   auto m =
       ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopExpensiveInvariantCodeMotion(
-                              /*worth_hoisting_individually=*/HloPredicateFalse)
-                              .Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopExpensiveInvariantCodeMotion(
+                           /*worth_hoisting_individually=*/HloPredicateFalse)
+                           .Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -155,7 +154,7 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest, DoesNotHoistsInflating) {
   auto m =
       ParseAndReturnVerifiedModule(kModuleWithInflatingInvariantDot).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
           /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)
@@ -168,7 +167,7 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
   auto m =
       ParseAndReturnVerifiedModule(kModuleWithInflatingInvariantDot).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
           /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot,
@@ -216,7 +215,7 @@ ENTRY entry {
 )";
   auto m = ParseAndReturnVerifiedModule(kModuleWithDuplicateOperands).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
           /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)
@@ -260,7 +259,7 @@ ENTRY entry {
 )";
   auto m = ParseAndReturnVerifiedModule(kModuleWithShardingCustomCalls).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
           /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)
@@ -295,12 +294,12 @@ ENTRY entry {
   ROOT while0 = (f32[8,8], f32[16, 8]) while(while_init), condition=condition, body=body, origin={({"while.5" {0}},{"while.5" {1}})}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* body = m->GetComputationWithName("body");
   HloInstruction* dot = body->GetInstructionWithName("dot");
   HloInstruction* lhs = body->GetInstructionWithName("lhs");
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
           /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)

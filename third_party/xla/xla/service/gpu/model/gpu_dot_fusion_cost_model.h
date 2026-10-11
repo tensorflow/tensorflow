@@ -101,15 +101,24 @@ absl::Duration CalculatePipelinedLoopTime(int64_t num_stages,
                                           absl::Duration compute_time,
                                           const HbmEstimates& hbm_timing);
 
+// Configuration parameters describing kernel launch dimensions and resource
+// footprints for wave and occupancy calculations.
+struct LaunchConfig {
+  int64_t num_stages = 1;
+  int64_t num_warps = 1;
+  int64_t k_loop_iterations = 0;
+  int64_t threadblock_count = 0;
+  int64_t shared_memory_per_block_bytes = 0;
+  int64_t registers_per_thread = 0;
+};
+
 // Estimates main loop and epilogue execution time, accounting for
 // memory/compute pipelining. Unlike CalculatePipelinedLoopTime, this restricts
 // pipeline overlap potential by evaluating latency overhead per hardware wave,
 // assuming discrete waves execute sequentially.
 absl::Duration CalculatePipelinedLoopTimeWithLaunchWaves(
-    int64_t num_stages, int64_t k_loop_iterations, int64_t threadblock_count,
-    absl::Duration compute_time, const HbmEstimates& hbm_timing,
-    int64_t shared_memory_per_block_bytes, int64_t num_warps,
-    const se::DeviceDescription& device_info);
+    const LaunchConfig& config, absl::Duration compute_time,
+    const HbmEstimates& hbm_timing, const se::DeviceDescription& device_info);
 
 // Represents the occupancy of a single Streaming Multiprocessor (SM) for a
 // given kernel launch configuration.
@@ -118,16 +127,14 @@ struct SmOccupancy {
   int64_t active_warps_per_sm = 0;
 };
 
-// Calculates the SM occupancy based on shared memory and thread limits.
-SmOccupancy CalculateSmOccupancy(int64_t shared_memory_per_block_bytes,
-                                 int64_t num_warps,
+// Calculates the SM occupancy based on shared memory, register, and thread
+// limits.
+SmOccupancy CalculateSmOccupancy(const LaunchConfig& config,
                                  const se::DeviceDescription& device_info);
 
 // Calculates the estimated number of hardware launch waves required to execute
 // the threadblocks.
-int64_t CalculateHardwareLaunchWaves(int64_t threadblock_count,
-                                     int64_t shared_memory_per_block_bytes,
-                                     int64_t num_warps,
+int64_t CalculateHardwareLaunchWaves(const LaunchConfig& config,
                                      const se::DeviceDescription& device_info);
 
 // Calculates the bytes read from HBM for one inner loop iteration.
@@ -138,6 +145,16 @@ int64_t CalculateLoopIterBytes(const DotProblemInfo& dot,
 int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
                                            const DotTileSize& dot_tile,
                                            int64_t num_stages);
+
+// Represents a 2D warp grid factorization (warps_m x warps_n).
+struct WarpGrid {
+  int64_t warps_m = 1;
+  int64_t warps_n = 1;
+};
+
+// Heuristic to factor `num_warps` into a 2D warp grid (warps_m x warps_n)
+// matching the tile aspect ratio to balance per-warp tile dimensions.
+WarpGrid FactorWarpGrid(int64_t num_warps, int64_t tile_m, int64_t tile_n);
 
 // Estimates physical PTX register usage per thread for a GPU dot fusion kernel,
 // accounting for output accumulator registers and base state overhead.

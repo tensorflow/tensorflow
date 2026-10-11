@@ -1,8 +1,8 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false --xla_gpu_unsupported_enable_triton_multi_output_fusion %s | FileCheck %s
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false --xla_gpu_unsupported_enable_triton_multi_output_fusion %s
+// RUN: fusion_to_triton --xla_gpu_unsupported_enable_triton_multi_output_fusion %s 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
+// CHECK-ERROR: Only single-result fusions are supported for now. Received 2 roots.
 // TODO: b/502910372 - support multi-output fusion.
-// RUN-NOT: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation --xla_gpu_unsupported_enable_triton_multi_output_fusion %s | FileCheck %s
-// RUN-NOT: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --xla_gpu_unsupported_enable_triton_multi_output_fusion %s
+// RUN-NOT: fusion_to_triton --xla_gpu_unsupported_enable_triton_multi_output_fusion %s | FileCheck %s
+// RUN-NOT: triton_test_correctness --xla_gpu_unsupported_enable_triton_multi_output_fusion %s
 
 region {
   param_0.1 = f32[] parameter(0)

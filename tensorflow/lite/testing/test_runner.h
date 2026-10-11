@@ -30,8 +30,8 @@ namespace testing {
 // (e.g. TF Lite's interpreter, or the NNAPI).
 class TestRunner {
  public:
-  TestRunner() {}
-  virtual ~TestRunner() {}
+  TestRunner() = default;
+  virtual ~TestRunner() = default;
 
   // Loads the given model, as a path relative to SetModelBaseDir().
   // DEPRECATED: use LoadModel with signature instead.

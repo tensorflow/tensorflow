@@ -27,6 +27,11 @@ package(
     licenses = ["notice"],
 )
 
+exports_files([
+    "webp_io.cc",
+    "webp_io.h",
+])
+
 filegroup(
     name = "hdrs",
     srcs = ["webp_io.h"],
@@ -34,7 +39,7 @@ filegroup(
 )
 
 cc_library(
-    name = "webp_io",
+    name = "webp_io_impl",
     srcs = ["webp_io.cc"],
     hdrs = ["webp_io.h"],
     features = ["-layering_check"],
@@ -50,6 +55,14 @@ cc_library(
     ] + if_google([
         "@libwebp//:webp_demux",
     ]),
+)
+
+alias(
+    name = "webp_io",
+    actual = if_google(
+        "//tensorflow/core/lib/webp/google:sandboxed_webp_io",
+        ":webp_io_impl",
+    ),
 )
 
 alias(

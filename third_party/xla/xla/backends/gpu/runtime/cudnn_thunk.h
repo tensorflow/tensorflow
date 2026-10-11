@@ -22,11 +22,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -62,7 +63,6 @@ class CuDnnThunk : public TracedCommand {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  std::shared_ptr<se::dnn::LazyDnnGraph> graph() const { return graph_; }
   const std::vector<ShapedSlice>& arguments() const { return args_; }
 
   BufferUses buffer_uses() const override {
@@ -85,10 +85,18 @@ class CuDnnThunk : public TracedCommand {
       ThunkInfo thunk_info, const CudnnThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
+ protected:
+  // Creates the executable graph for the device.
+  virtual absl::StatusOr<std::unique_ptr<se::dnn::DnnGraph>> CreateGraph(
+      const InitializeParams& params);
+
  private:
-  absl::once_flag once_flag_;
+  // Returns the already initialized graph for a given device (executor).
+  absl::StatusOr<se::dnn::DnnGraph*> GetGraph(
+      const se::StreamExecutor* executor) const;
+
   std::string fingerprint_;
-  std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
+  PerDeviceState<std::unique_ptr<se::dnn::DnnGraph>> graphs_;
   std::vector<ShapedSlice> args_;
   std::vector<bool> output_args_;
   bool should_memzero_;

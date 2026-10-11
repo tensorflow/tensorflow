@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -26,8 +27,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -88,9 +91,57 @@ bool IsGPUSyncCollective(const HloInstruction& instr);
 // Returns true if all devices are within the same NVLink domain (slice).
 bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size);
 
+// Returns true if the target GPU supports load-store accessible (LSA)
+// symmetric memory.
+bool IsLsaPossible(const GpuTopology& gpu_topology);
+
+// Returns the size of the block of consecutive global device ids that a
+// collective kernel may span: one NVLink partition (slice) if LSA is supported,
+// xla_gpu_unsupported_use_cross_host_one_shot_kernel is enabled for `op_type`,
+// and a partition spans multiple processes, otherwise one process. All devices
+// of a replica group must be in the same block, i.e. have the same `id / size`.
+int64_t GetCollectiveKernelDomainSize(
+    const GpuTopology& gpu_topology, const DebugOptions& debug_options,
+    std::optional<DebugOptions::CollectiveOpType> op_type);
+
 // Returns true if all replicas in every replica group of the collective
 // are located on the same host (node).
 bool IsAllReplicasLocal(int64_t gpus_per_host,
+                        absl::Span<const ReplicaGroup> replica_groups,
+                        CollectiveOpGroupMode group_mode,
+                        const DeviceAssignment* device_assignment = nullptr);
+
+// Returns true if all replicas in every replica group of `instruction` are
+// within a single process/host (`gpu_topology.num_devices_per_process()`).
+absl::StatusOr<bool> IsCollectiveSingleHost(
+    const GpuTopology& gpu_topology, const HloInstruction& instruction,
+    const DeviceAssignment* device_assignment = nullptr);
+
+// Returns true if cross-host one-shot collective kernel is enabled for
+// `instruction` and all replicas in every replica group are within a single
+// NVLink slice (`gpu_topology.slice_size()`).
+absl::StatusOr<bool> IsCrossHostCollectiveKernelPossible(
+    const GpuTopology& gpu_topology, const HloInstruction& instruction,
+    const DeviceAssignment* device_assignment = nullptr);
+
+// Returns true if all replicas in every replica group of the collective
+// are located on the same host, or within the same NVLink slice when
+// cross-host collective kernels and LSA are supported.
+bool AreAllReplicasOnSameSlice(
+    const GpuTopology& gpu_topology, const DebugOptions& debug_options,
+    std::optional<DebugOptions::CollectiveOpType> op_type,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode,
+    const DeviceAssignment* device_assignment = nullptr);
+
+// Returns true if all replicas in every replica group of `instruction` are on
+// the same host, or within the same NVLink slice when cross-host collective
+// kernels and LSA are supported.
+absl::StatusOr<bool> AreAllReplicasOnSameSlice(
+    const GpuTopology& gpu_topology, const HloInstruction& instruction,
+    const DeviceAssignment* device_assignment = nullptr);
+
+bool IsAllReplicasLocal(const GpuTopology& gpu_topology,
                         absl::Span<const ReplicaGroup> replica_groups,
                         CollectiveOpGroupMode group_mode,
                         const DeviceAssignment* device_assignment = nullptr);

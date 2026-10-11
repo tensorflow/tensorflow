@@ -38,17 +38,33 @@ NativeCustomCallHandlerRegistry::Lookup(absl::string_view target) const {
   if (it == handlers_.end()) {
     return std::nullopt;
   }
-  return it->second;
+  return it->second.emit_thunks;
+}
+
+std::optional<NativeCustomCallScratchHandlerRef>
+NativeCustomCallHandlerRegistry::LookupScratchHandler(
+    absl::string_view target) const {
+  auto it = handlers_.find(target);
+  if (it == handlers_.end() || it->second.request_scratch_buffers == nullptr) {
+    return std::nullopt;
+  }
+  return it->second.request_scratch_buffers;
 }
 
 absl::Status NativeCustomCallHandlerRegistry::Register(
     absl::string_view target, NativeCustomCallHandler handler) {
-  if (handler == nullptr) {
+  return Register(target, NativeCustomCallHandlerBundle{
+                              /*emit_thunks=*/std::move(handler)});
+}
+
+absl::Status NativeCustomCallHandlerRegistry::Register(
+    absl::string_view target, NativeCustomCallHandlerBundle bundle) {
+  if (bundle.emit_thunks == nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("Null native custom-call handler for target: ", target));
   }
   auto [_, inserted] =
-      handlers_.emplace(std::string(target), std::move(handler));
+      handlers_.emplace(std::string(target), std::move(bundle));
   if (!inserted) {
     return absl::AlreadyExistsError(absl::StrCat(
         "Native custom-call handler already registered for target: ", target));

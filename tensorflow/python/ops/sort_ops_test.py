@@ -181,6 +181,45 @@ class SortTest(test.TestCase):
               placeholder.shape.as_list(),
               sort_ops.argsort(placeholder, axis=axis).shape.as_list())
 
+  def testSortWithNaN(self) -> None:
+    arr = constant_op.constant(
+        [np.nan, 3.0, 1.0, np.nan, 2.0, np.nan, 0.5], dtype=dtypes.float32
+    )
+    with self.cached_session():
+      sorted_asc = self.evaluate(sort_ops.sort(arr, direction='ASCENDING'))
+      sorted_desc = self.evaluate(sort_ops.sort(arr, direction='DESCENDING'))
+      argsort_asc = self.evaluate(sort_ops.argsort(arr, direction='ASCENDING'))
+      argsort_desc = self.evaluate(
+          sort_ops.argsort(arr, direction='DESCENDING')
+      )
+
+      # NaNs go last in ascending order and first in descending order.
+      self.assertAllClose(sorted_asc[:4], [0.5, 1.0, 2.0, 3.0])
+      self.assertTrue(np.all(np.isnan(sorted_asc[4:])))
+      self.assertAllEqual(argsort_asc, [6, 2, 4, 1, 0, 3, 5])
+
+      self.assertTrue(np.all(np.isnan(sorted_desc[:3])))
+      self.assertAllClose(sorted_desc[3:], [3.0, 2.0, 1.0, 0.5])
+      self.assertAllEqual(argsort_desc, [0, 3, 5, 1, 4, 2, 6])
+
+  def testSortWithNegativeNaNAndInf(self) -> None:
+    # +NaN sorts above +Inf and -NaN below -Inf, as on GPU.
+    neg_nan = np.copysign(np.nan, -1.0)
+    pos_nan = np.nan
+    arr = constant_op.constant(
+        [-np.inf, pos_nan, 0.0, np.inf, -0.0, neg_nan], dtype=dtypes.float32
+    )
+    with self.cached_session():
+      sorted_desc = self.evaluate(sort_ops.sort(arr, direction='DESCENDING'))
+      argsort_desc = self.evaluate(
+          sort_ops.argsort(arr, direction='DESCENDING')
+      )
+
+      self.assertTrue(np.isnan(sorted_desc[0]))
+      self.assertAllEqual(sorted_desc[1:5], [np.inf, 0.0, -0.0, -np.inf])
+      self.assertTrue(np.isnan(sorted_desc[5]))
+      self.assertAllEqual(argsort_desc, [1, 3, 2, 4, 0, 5])
+
 
 if __name__ == '__main__':
   test.main()

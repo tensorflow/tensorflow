@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -279,7 +278,7 @@ TEST_P(GpuProfilerTestWithRedzonePadding, CheckInputBuffers) {
   auto profiler = GpuProfiler::Create(stream_exec_, options, allocator_.get());
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
                        profiler->CreateInputBuffers(&mock_executable));
-  TF_EXPECT_OK(profiler->CheckInputBuffers(*buffers));
+  EXPECT_OK(profiler->CheckInputBuffers(*buffers));
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuProfilerTestWithRedzonePadding,
@@ -317,8 +316,9 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreDifferent) {
   ASSERT_OK_AND_ASSIGN(ScopedShapedBuffer reference,
                        CreateTestBuffer(allocator.get(), stream_exec_,
                                         stream.get(), /*value=*/2));
-  EXPECT_THAT(profiler->CheckOutputBuffer(output, reference, /*rtol=*/0.0),
-              StatusIs(absl::StatusCode::kInternal));
+  auto status = profiler->CheckOutputBuffer(output, reference, /*rtol=*/0.0);
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Mismatch count:"));
 }
 
 TEST_F(GpuProfilerTest, CheckOutputBufferWithTupleShapeAreSame) {
