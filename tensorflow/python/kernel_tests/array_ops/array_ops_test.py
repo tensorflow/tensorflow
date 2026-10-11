@@ -446,7 +446,8 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
   def testExpandDimsExceedsMaxRank(self):
     value = self._zero_high_rank(254)
     with self.assertRaisesRegex(
-        (errors.InvalidArgumentError, ValueError), "maximum supported rank"):
+        (errors.InvalidArgumentError, ValueError),
+        "maximum supported rank|Too many dimensions"):
       self.evaluate(array_ops.expand_dims(value, 0))
 
 

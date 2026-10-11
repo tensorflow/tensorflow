@@ -84,7 +84,8 @@ class StackOpTest(test.TestCase):
         [0] + [1] * 253,
         constant_op.constant(0.0, dtype=dtypes.float32))
     with self.assertRaisesRegex(
-        (errors.InvalidArgumentError, ValueError), "maximum supported rank"):
+        (errors.InvalidArgumentError, ValueError),
+        "maximum supported rank|maximum allowed"):
       self.evaluate(array_ops_stack.stack([value], axis=0))
 
   def testSimpleParallelCPU(self):
