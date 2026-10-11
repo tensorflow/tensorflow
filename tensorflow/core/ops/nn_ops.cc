@@ -3409,6 +3409,9 @@ REGISTER_OP("FusedLinearCrossEntropy")
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(x, 1), c->Dim(w, 0), &unused));
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(x, 0), c->Dim(labels, 0), &unused));
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(w, 1), c->Dim(labels, 1), &unused));
+        
       c->set_output(0, c->Vector(c->Dim(x, 0)));
       return absl::OkStatus();
-    }); // namespace tensorflow
+    });
+
+}  // namespace tensorflow
