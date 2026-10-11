@@ -3386,11 +3386,17 @@ REGISTER_OP("IsotonicRegression")
     .Output("segments: int32")
     .Attr("T: realnumbertype")
     .Attr("output_dtype: {half, bfloat16, float, double} = DT_FLOAT")
-    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* context) {
-      context->set_output(0, context->input(0));
-      context->set_output(1, context->input(0));
-      return absl::OkStatus();
-    });
+    .SetShapeFn([](tensorflow::shape_inference::InferenceContext* c) {
++      tensorflow::shape_inference::ShapeHandle x;
++      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &x));
++      tensorflow::shape_inference::ShapeHandle w;
++      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &w));
++      tensorflow::shape_inference::ShapeHandle labels;
++      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &labels));
+-      c->set_output(0, c->Vector(c->Dim(c->input(0), 0)));
++      c->set_output(0, c->Vector(c->Dim(x, 0)));
+       return ::tensorflow::OkStatus();
+     });
 
 // tensorflow/core/ops/nn_ops.cc
  REGISTER_OP("FusedLinearCrossEntropy")
