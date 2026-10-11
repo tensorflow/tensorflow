@@ -31,6 +31,21 @@ class FusedLinearCrossEntropyOp : public OpKernel {
     const Tensor& weights = ctx->input(1);
     const Tensor& labels = ctx->input(2);
 
+    
+        OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(features.shape()),
+                errors::InvalidArgument("features must be 2-D"));
+        OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(weights.shape()),
+                errors::InvalidArgument("weights must be 2-D"));
+        OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(labels.shape()),
+                errors::InvalidArgument("labels must be 2-D"));
+        OP_REQUIRES(ctx, features.dim_size(1) == weights.dim_size(0),
+                errors::InvalidArgument("features inner dim must match weights"));
+        OP_REQUIRES(ctx, features.dim_size(0) == labels.dim_size(0),
+                errors::InvalidArgument("features batch size must match labels"));
+        OP_REQUIRES(ctx, weights.dim_size(1) == labels.dim_size(1),
+                errors::InvalidArgument("weights classes must match labels"));
+
+     const int64_t batch_size = features.dim_size(0);
     const int64_t batch_size = features.dim_size(0);
     const int64_t hidden_dim = features.dim_size(1);
     const int64_t num_classes = weights.dim_size(1);
