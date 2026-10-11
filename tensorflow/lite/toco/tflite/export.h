@@ -93,7 +93,7 @@ using TensorsMap = std::unordered_map<std::string, int>;
 // identify which operation is used.
 class OperatorKey {
  public:
-  OperatorKey() {}
+  OperatorKey() = default;
 
   // Construct OperatorKey by Toco op.
   OperatorKey(
