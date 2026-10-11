@@ -947,15 +947,19 @@ py_library(
     ],
 )
 
-tf_py_strict_test(
+cuda_py_strict_test(
     name = "fused_linear_cross_entropy_op_test",
     srcs = ["fused_linear_cross_entropy_op_test.py"],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:for_generated_tests",
+        "//tensorflow/python/framework:math_ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
