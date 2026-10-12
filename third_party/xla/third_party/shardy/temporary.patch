@@ -1,0 +1,826 @@
+diff --git a/shardy/dialect/sdy/ir/canonicalization.cc b/shardy/dialect/sdy/ir/canonicalization.cc
+index 55f7ebcf..9af43e32 100644
+--- a/shardy/dialect/sdy/ir/canonicalization.cc
++++ b/shardy/dialect/sdy/ir/canonicalization.cc
+@@ -25,6 +25,7 @@ limitations under the License.
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Support/MathExtras.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OperationSupport.h"
+@@ -203,6 +204,42 @@ std::optional<ReduceScatterFusionInfo> matchAndComputeReduceScatterFusionAxes(
+   SmallVector<DimensionShardingAttr> reduceScatterOutDimShardings;
+   reduceScatterOutDimShardings.reserve(rank);
+ 
++  // TODO(b/553078138): This is a conservative workaround. The proper fix is to
++  // make a reduce-scatter with unreduced axes exportable for the non-divisible
++  // case (in `convertReduceScatter`); once that lands, this bail-out (which
++  // falls back to the less efficient `all_reduce` + `all_slice` form) can be
++  // removed so these cases fuse as well.
++  // Bail out of the fusion if it would create an `sdy.reduce_scatter` that
++  // scatters a dimension by a group size that does not evenly divide the local
++  // (already-sharded) dimension size. Exporting a reduce-scatter with unreduced
++  // axes (see `convertReduceScatter` in export_manual_reduction_collectives)
++  // requires the scattered dimension to be divisible by the group size, and
++  // would otherwise fail. Keeping the `all_reduce` + `all_slice` form preserves
++  // correct behavior for these non-divisible cases.
++  if (auto operandType =
++          dyn_cast<RankedTensorType>(allReduceOp.getTensor().getType())) {
++    // Local (per-device) shape of the all-reduce operand under its existing
++    // sharding. `allowNonDivisible=true` handles the case where the existing
++    // sharding does not evenly divide a dimension: the local size is rounded up
++    // (ceil), matching how Shardy pads such dimensions.
++    RankedTensorType localType = allReduceInSharding.getLocalTensorType(
++        operandType, mesh, /*allowNonDivisible=*/true);
++    for (int64_t dim = 0; dim < rank; ++dim) {
++      int64_t groupSize =
++          getTotalAxesSize(reduceScatterAxes[dim].getValue(), mesh);
++      if (groupSize <= 1) {
++        continue;
++      }
++      int64_t localDimSize = localType.getDimSize(dim);
++      if (ShapedType::isDynamic(localDimSize)) {
++        continue;
++      }
++      if (localDimSize % groupSize != 0) {
++        return std::nullopt;
++      }
++    }
++  }
++
+   for (auto [operandDimSharding, reduceScatterAxesPerDim] : llvm::zip_equal(
+            allReduceInSharding.getDimShardings(), reduceScatterAxes)) {
+     SmallVector<AxisRefAttr> expectedDimShardingAxes =
+diff --git a/shardy/dialect/sdy/ir/extensions/stablehlo_extensions.cc b/shardy/dialect/sdy/ir/extensions/stablehlo_extensions.cc
+index d4825b2e..75aac4e0 100644
+--- a/shardy/dialect/sdy/ir/extensions/stablehlo_extensions.cc
++++ b/shardy/dialect/sdy/ir/extensions/stablehlo_extensions.cc
+@@ -70,20 +70,20 @@ struct WhileShardableDataFlowOpInterface
+   }
+ };
+ 
+-template <typename OpTy>
+-struct RegionBranchShardableDataFlowOpInterface
++struct CaseShardableDataFlowOpInterface
+     : public ShardableDataFlowOpInterface::ExternalModel<
+-          RegionBranchShardableDataFlowOpInterface<OpTy>, OpTy> {
++          CaseShardableDataFlowOpInterface, stablehlo::CaseOp> {
+   ResultRange getOpResultEdgeOwners(Operation *op) const {
+     return op->getResults();
+   }
+ 
+   SmallVector<OpOperand *> getEdgeSources(Operation *op, Value owner) const {
++    auto caseOp = cast<stablehlo::CaseOp>(op);
+     auto opResult = dyn_cast<OpResult>(owner);
+     assert(opResult && opResult.getOwner() == op);
+     SmallVector<OpOperand *> sources;
+-    sources.reserve(op->getNumRegions());
+-    for (Region& branch : op->getRegions()) {
++    sources.reserve(caseOp.getBranches().size());
++    for (Region &branch : caseOp.getBranches()) {
+       sources.push_back(&branch.front().getTerminator()->getOpOperand(
+           opResult.getResultNumber()));
+     }
+@@ -132,10 +132,7 @@ void registerStablehloExtensions(MLIRContext *ctx) {
+   // Ensure dialect is loaded before attaching interfaces.
+   ctx->loadDialect<stablehlo::StablehloDialect>();
+   stablehlo::WhileOp::attachInterface<WhileShardableDataFlowOpInterface>(*ctx);
+-  stablehlo::CaseOp::attachInterface<
+-      RegionBranchShardableDataFlowOpInterface<stablehlo::CaseOp>>(*ctx);
+-  stablehlo::IfOp::attachInterface<
+-      RegionBranchShardableDataFlowOpInterface<stablehlo::IfOp>>(*ctx);
++  stablehlo::CaseOp::attachInterface<CaseShardableDataFlowOpInterface>(*ctx);
+   stablehlo::OptimizationBarrierOp::attachInterface<
+       OptBarrierShardableDataFlowOpInterface>(*ctx);
+ }
+diff --git a/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir b/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
+index de616ede..14b0acf3 100644
+--- a/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
++++ b/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
+@@ -115,15 +115,33 @@ func.func @reduce_scatter_fusion4(%arg0 : tensor<64x8xf32> {sdy.sharding=#sdy.sh
+   return %1 : tensor<64x8xf32>
+ }
+ 
++// The local size of dim 0 is 2 / size("x"=2) = 1, which is not divisible by the
++// reduce-scatter group size (size("y"=2)). The fusion must be skipped and the
++// original `all_reduce` + `all_slice` preserved, otherwise the resulting
++// `reduce_scatter` cannot be exported (see `convertReduceScatter` in
++// export_manual_reduction_collectives).
+ // CHECK-LABEL: func @reduce_scatter_fusion_non_divisible
+ func.func @reduce_scatter_fusion_non_divisible(%arg0 : tensor<2x4xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<2x4xf32> {
+-  // CHECK-NEXT: %0 = sdy.reduce_scatter [{"y"}, {}] %arg0 out_sharding=<@mesh, [{"x", "y"}, {}]> : tensor<2x4xf32>
+-  // CHECK-NEXT: return %0 : tensor<2x4xf32>
++  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh, [{"x"}, {}]> : tensor<2x4xf32>
++  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"y"}, {}] %[[ALL_REDUCE]] out_sharding=<@mesh, [{"x", "y"}, {}]> : tensor<2x4xf32>
++  // CHECK-NEXT: return %[[ALL_SLICE]] : tensor<2x4xf32>
+   %0 = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh, [{"x"}, {}]> : tensor<2x4xf32>
+   %1 = sdy.all_slice [{"y"}, {}] %0 out_sharding=<@mesh, [{"x", "y"}, {}]> : tensor<2x4xf32>
+   return %1 : tensor<2x4xf32>
+ }
+ 
++// The `all_reduce` operand is sharded indivisibly: dim 0 size 7 with
++// size("x"=2), so its local size is ceil(7 / 2) = 4, which is divisible by
++// the reduce-scatter group size (size("y"=2)). Therefore, fusion happens.
++// CHECK-LABEL: func @reduce_scatter_fusion_non_divisible_all_reduce
++func.func @reduce_scatter_fusion_non_divisible_all_reduce(%arg0 : tensor<7x4xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<7x4xf32> {
++  // CHECK-NEXT: %0 = sdy.reduce_scatter [{"y"}, {}] %arg0 out_sharding=<@mesh, [{"x", "y"}, {}]> : tensor<7x4xf32>
++  // CHECK-NEXT: return %0 : tensor<7x4xf32>
++  %0 = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh, [{"x"}, {}]> : tensor<7x4xf32>
++  %1 = sdy.all_slice [{"y"}, {}] %0 out_sharding=<@mesh, [{"x", "y"}, {}]> : tensor<7x4xf32>
++  return %1 : tensor<7x4xf32>
++}
++
+ // CHECK-LABEL: func @reduce_scatter_fusion_missing_in_sharding
+ func.func @reduce_scatter_fusion_missing_in_sharding(%arg0 : tensor<16x8xf32>) -> tensor<16x8xf32> {
+   // CHECK-NEXT: %0 = sdy.reduce_scatter [{"x"}, {"y"}] %arg0 out_sharding=<@mesh2, [{"x"}, {"y"}]> : tensor<16x8xf32>
+diff --git a/shardy/dialect/sdy/ir/utils.cc b/shardy/dialect/sdy/ir/utils.cc
+index 590f7149..f6623986 100644
+--- a/shardy/dialect/sdy/ir/utils.cc
++++ b/shardy/dialect/sdy/ir/utils.cc
+@@ -247,13 +247,10 @@ TensorShardingPerValueAttr inlineMesh(
+                                          inlinedShardings);
+ }
+ 
+-namespace {
+-
+-template <typename SymbolTableOrOp>
+-std::pair<Attribute, MeshAttr> getCommonMeshAndRef(
+-    ArrayRef<TensorShardingAttr> operandShardings,
+-    ArrayRef<TensorShardingAttr> resultsShardings,
+-    SymbolTableOrOp symbolTableOrOp, const bool ignoreDeviceIds) {
++Attribute getCommonMeshOrRef(ArrayRef<TensorShardingAttr> operandShardings,
++                             ArrayRef<TensorShardingAttr> resultsShardings,
++                             const SymbolTable& symbolTable,
++                             const bool ignoreDeviceIds) {
+   Attribute meshOrRef;
+   MeshAttr mesh;
+   for (TensorShardingAttr sharding : llvm::concat<const TensorShardingAttr>(
+@@ -261,7 +258,7 @@ std::pair<Attribute, MeshAttr> getCommonMeshAndRef(
+     if (!sharding || sharding.getMeshOrRef() == meshOrRef) {
+       continue;
+     }
+-    MeshAttr otherMesh = sharding.getMesh(symbolTableOrOp);
++    MeshAttr otherMesh = sharding.getMesh(symbolTable);
+     if (!mesh || mesh.empty()) {
+       mesh = otherMesh;
+       meshOrRef = sharding.getMeshOrRef();
+@@ -272,7 +269,7 @@ std::pair<Attribute, MeshAttr> getCommonMeshAndRef(
+     }
+     if (!otherMesh.equals(mesh, ignoreDeviceIds)) {
+       // Found more than one mesh name.
+-      return {nullptr, nullptr};
++      return nullptr;
+     }
+     // Prefer iota device id over non-iota.
+     if (ignoreDeviceIds && otherMesh.getDeviceIds().empty()) {
+@@ -281,18 +278,7 @@ std::pair<Attribute, MeshAttr> getCommonMeshAndRef(
+     }
+   }
+ 
+-  return {meshOrRef, mesh};
+-}
+-
+-}  // namespace
+-
+-Attribute getCommonMeshOrRef(ArrayRef<TensorShardingAttr> operandShardings,
+-                             ArrayRef<TensorShardingAttr> resultsShardings,
+-                             const SymbolTable& symbolTable,
+-                             const bool ignoreDeviceIds) {
+-  return getCommonMeshAndRef(operandShardings, resultsShardings, symbolTable,
+-                             ignoreDeviceIds)
+-      .first;
++  return meshOrRef;
+ }
+ 
+ MeshAttr getCommonMesh(ArrayRef<TensorShardingAttr> shardings,
+@@ -300,24 +286,21 @@ MeshAttr getCommonMesh(ArrayRef<TensorShardingAttr> shardings,
+   return getCommonMesh(shardings, {}, symbolTable);
+ }
+ 
+-MeshAttr getCommonMesh(ArrayRef<TensorShardingAttr> shardings, Operation* op) {
+-  return getCommonMesh(shardings, {}, op);
+-}
+-
+ MeshAttr getCommonMesh(ArrayRef<TensorShardingAttr> operandShardings,
+                        ArrayRef<TensorShardingAttr> resultsShardings,
+                        const SymbolTable& symbolTable) {
+-  return getCommonMeshAndRef(operandShardings, resultsShardings, symbolTable,
+-                             /*ignoreDeviceIds=*/false)
+-      .second;
++  if (Attribute meshOrRef =
++          getCommonMeshOrRef(operandShardings, resultsShardings, symbolTable)) {
++    return getMeshOrLookup(symbolTable, meshOrRef);
++  }
++  return nullptr;
+ }
+ 
+ MeshAttr getCommonMesh(ArrayRef<TensorShardingAttr> operandShardings,
+                        ArrayRef<TensorShardingAttr> resultsShardings,
+                        Operation* op) {
+-  return getCommonMeshAndRef(operandShardings, resultsShardings, op,
+-                             /*ignoreDeviceIds=*/false)
+-      .second;
++  return getCommonMesh(operandShardings, resultsShardings,
++                       SymbolTable(op->getParentOfType<ModuleOp>()));
+ }
+ 
+ std::optional<StringRef> getCommonMeshName(
+diff --git a/shardy/dialect/sdy/ir/utils.h b/shardy/dialect/sdy/ir/utils.h
+index 3b56a553..22e4d9cc 100644
+--- a/shardy/dialect/sdy/ir/utils.h
++++ b/shardy/dialect/sdy/ir/utils.h
+@@ -195,12 +195,6 @@ Attribute getCommonMeshOrRef(ArrayRef<TensorShardingAttr> operandShardings,
+ MeshAttr getCommonMesh(ArrayRef<TensorShardingAttr> shardings,
+                        const SymbolTable& symbolTable);
+ 
+-// Returns the common `MeshAttr` bound by all the `TensorShardingAttr`s or
+-// nullptr if there is none.
+-//
+-// Ignores empty meshes unless all meshes are empty.
+-MeshAttr getCommonMesh(ArrayRef<TensorShardingAttr> shardings, Operation* op);
+-
+ // Returns the common `MeshAttr` bound by all the `TensorShardingAttr`s or
+ // nullptr if there is none.
+ //
+diff --git a/shardy/dialect/sdy/ir/utils_test.cc b/shardy/dialect/sdy/ir/utils_test.cc
+index f76d2b16..8dbaf619 100644
+--- a/shardy/dialect/sdy/ir/utils_test.cc
++++ b/shardy/dialect/sdy/ir/utils_test.cc
+@@ -81,27 +81,11 @@ class UtilsTest : public ShardyTestBase {
+     return symbolTableCollection.getSymbolTable(moduleOp.get());
+   }
+ 
+-  Operation* getModuleOp() { return moduleOp.get(); }
+-  Operation* getNestedOp() {
+-    return moduleOp->lookupSymbol<func::FuncOp>("main");
+-  }
+-
+  private:
+   OwningOpRef<ModuleOp> moduleOp;
+   mlir::SymbolTableCollection symbolTableCollection;
+ };
+ 
+-TEST_F(UtilsTest, GetCommonMesh_SingleListWithOperation) {
+-  EXPECT_NE(getCommonMesh({createTensorSharding("mesh_ab_23")}, getModuleOp()),
+-            nullptr);
+-  EXPECT_EQ(
+-      getCommonMesh({createTensorSharding("mesh_ab_23")}, getModuleOp()),
+-      getCommonMesh({createTensorSharding("mesh_ab_23")}, getSymbolTable()));
+-  EXPECT_EQ(
+-      getCommonMesh({createTensorSharding("mesh_ab_23")}, getNestedOp()),
+-      getCommonMesh({createTensorSharding("mesh_ab_23")}, getSymbolTable()));
+-}
+-
+ TEST_F(UtilsTest, GetCommonMeshName_AllSame) {
+   EXPECT_EQ(getCommonMeshName({createTensorSharding("mesh_ab_23")},
+                               {createTensorSharding("mesh_ab_23")},
+diff --git a/shardy/dialect/sdy/ir/verifiers.cc b/shardy/dialect/sdy/ir/verifiers.cc
+index 09f70f28..65c6212b 100644
+--- a/shardy/dialect/sdy/ir/verifiers.cc
++++ b/shardy/dialect/sdy/ir/verifiers.cc
+@@ -1186,7 +1186,8 @@ LogicalResult verifyPropagationEdgesShardingAttr(
+         "expected propagation edges attr to reference a sharding.");
+   }
+ 
+-  MeshAttr mesh = getCommonMesh(shardings, op);
++  MeshAttr mesh =
++      getCommonMesh(shardings, SymbolTable(op->getParentOfType<ModuleOp>()));
+   if (!mesh) {
+     return op->emitOpError(
+         "expected a common mesh for propagation edges attr.");
+@@ -1195,7 +1196,12 @@ LogicalResult verifyPropagationEdgesShardingAttr(
+   for (PropagationOneStepAttr propagationEdge : propagationEdges) {
+     for (AxisToPropagationDetailsAttr axisEntry :
+          propagationEdge.getAxisEntries()) {
+-      if (!mesh.hasAxis(axisEntry.getAxisName().getName())) {
++      bool meshContainsAxis = false;
++      if (mesh.hasAxis(axisEntry.getAxisName().getName())) {
++        meshContainsAxis = true;
++      }
++
++      if (!meshContainsAxis) {
+         return op->emitOpError("expected axis ref to be in one of the meshes");
+       }
+ 
+@@ -1284,8 +1290,8 @@ LogicalResult NamedComputationOp::verifySymbolUses(
+ 
+   // TODO(pxy): remove this once the `ShardableDataFlowOpInterface` is verified.
+   // Verify the in/out shardings.
+-  const SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(
+-      getOperation()->getParentOfType<ModuleOp>());
++  const SymbolTable& symbolTable =
++      SymbolTable(getOperation()->getParentOfType<ModuleOp>());
+   if (inShardings && failed(verifyTensorShardingPerValueAttr(
+                          *inShardings, getOperandTypes(), *this, symbolTable,
+                          [this](StringRef msg) {
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/data_flow_ops.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/data_flow_ops.mlir
+index f287d6de..f2891d04 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/data_flow_ops.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/data_flow_ops.mlir
+@@ -48,25 +48,6 @@ func.func @case_argument_used_outside_block(%arg0: tensor<210xf32> {sdy.sharding
+   return %3 : tensor<210xf32>
+ }
+ 
+-// CHECK-LABEL: func @if
+-func.func @if(%arg0: tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(1)2}]>}, %arg1: tensor<i1>) -> (tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) {
+-  %0 = "stablehlo.if"(%arg1) ({
+-    // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}]> : tensor<210xf32>
+-    // CHECK-NEXT: stablehlo.abs %[[RESHARD]]
+-    %2 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : tensor<210xf32>
+-    // CHECK: %[[RESHARD:.*]] = sdy.reshard %{{.*}} <@mesh, [{"y"}]> : tensor<210xf32>
+-    // CHECK-NEXT: stablehlo.return %[[RESHARD]] : tensor<210xf32>
+-    stablehlo.return %2 : tensor<210xf32>
+-  }, {
+-    %2 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}]>]>} : tensor<210xf32>
+-    // CHECK: %[[RESHARD:.*]] = sdy.reshard %{{.*}} <@mesh, [{"y"}]> : tensor<210xf32>
+-    // CHECK-NEXT: stablehlo.return %[[RESHARD]] : tensor<210xf32>
+-    stablehlo.return %2 : tensor<210xf32>
+-  }) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : (tensor<i1>) -> tensor<210xf32>
+-  %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<210xf32>
+-  return %1 : tensor<210xf32>
+-}
+-
+ // CHECK-LABEL: func @while
+ func.func @while(%arg0: tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<210xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) {
+   %c = stablehlo.constant dense<0> : tensor<i32>
+diff --git a/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir b/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
+index 6b080b16..bd472047 100644
+--- a/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
+@@ -55,24 +55,6 @@ func.func @case_token_result_skipped(
+   return %0#0, %0#1 : !stablehlo.token, tensor<4xi64>
+ }
+ 
+-// CHECK-LABEL: func @if
+-func.func @if(%arg0: tensor<i1>, %arg1: tensor<8xi64>, %arg2: tensor<8xi64>,
+-              %arg3: tensor<8xi64>, %arg4: tensor<8xi64>)
+-    -> (tensor<8xi64>, tensor<8xi64>) {
+-  // CHECK-NEXT: %[[IF:.*]]:2 = "stablehlo.if"(%arg0)
+-  // CHECK:      %[[EDGE_1:.*]] = sdy.data_flow_edge %[[IF]]#0 : tensor<8xi64>
+-  // CHECK-NEXT: %[[EDGE_2:.*]] = sdy.data_flow_edge %[[IF]]#1 : tensor<8xi64>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[EDGE_2]], %[[EDGE_2]]
+-  // CHECK-NEXT: return %[[EDGE_1]], %[[ADD]]
+-  %0:2 = "stablehlo.if"(%arg0) ({
+-    stablehlo.return %arg1, %arg2 : tensor<8xi64>, tensor<8xi64>
+-  }, {
+-    stablehlo.return %arg3, %arg4 : tensor<8xi64>, tensor<8xi64>
+-  }) : (tensor<i1>) -> (tensor<8xi64>, tensor<8xi64>)
+-  %1 = stablehlo.add %0#1, %0#1 : tensor<8xi64>
+-  return %0#0, %1 : tensor<8xi64>, tensor<8xi64>
+-}
+-
+ // CHECK-LABEL: func @optimization_barrier
+ func.func @optimization_barrier(%arg0: tensor<32x96xf32>, %arg1: tensor<32x96xf32>)
+     -> (tensor<32x96xf32>, tensor<32x96xf32>) {
+diff --git a/shardy/dialect/sdy/transforms/import/test/apply_sharding_constraints.mlir b/shardy/dialect/sdy/transforms/import/test/apply_sharding_constraints.mlir
+index 445f25fd..11d064d5 100644
+--- a/shardy/dialect/sdy/transforms/import/test/apply_sharding_constraints.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/apply_sharding_constraints.mlir
+@@ -652,275 +652,6 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+ 
+ // -----
+ 
+-// A flat call graph (@main -> @foo) without func data flow edges, applying a
+-// single sharding constraint to the argument and call result. Without func data
+-// flow edges, closed shardings are attached directly to the function argument
+-// and call result and other uses are not replaced with the sharding constraint.
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// CHECK-LABEL: func @foo(
+-// CHECK-SAME:    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>}) -> tensor<8x8xf32> {
+-func.func @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{"a"}, {}]> {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=8}>} : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
+-  %1 = sdy.sharding_constraint %arg0 <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  return %0 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[CALL:.*]] = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"b"}]>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CALL]], %[[CALL]] : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %[[CALL]] <@mesh, [{}, {"b"}]> {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=8}>} : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = stablehlo.add %0, %0 : tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %0 <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  return %1 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-// A flat call graph (@main -> @foo) applying a single sharding constraint to
+-// the func data flow edges. The func data flow edges is left unsharded, the
+-// constraint is moved right after the edge, and other uses are replaced with
+-// the constraint.
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// CHECK-LABEL: func @foo
+-func.func @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE:.*]] = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  // CHECK-NOT: sdy.sharding
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %[[FUNC_DATA_FLOW_EDGE]] <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[WSC]], %[[WSC]] : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  %1 = stablehlo.add %0, %0 : tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %0 <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  return %1 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[CALL:.*]] = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE:.*]] = sdy.func_data_flow_edge %[[CALL]] : tensor<8x8xf32>
+-  // CHECK-NOT: sdy.sharding
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %[[FUNC_DATA_FLOW_EDGE]] <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[WSC]], %[[WSC]] : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = sdy.func_data_flow_edge %0 : tensor<8x8xf32>
+-  %2 = stablehlo.add %1, %1 : tensor<8x8xf32>
+-  %3 = sdy.sharding_constraint %1 <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  return %2 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-// A non-flat call graph (@main -> @foo -> @bar and @main -> @bar) without
+-// func data flow edges, applying a single sharding constraint to the argument
+-// and the call results. Without func data flow edges, closed shardings are
+-// attached directly to the argument and both results, and other uses are not
+-// replaced with the sharding constraint.
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// CHECK-LABEL: func @bar(
+-// CHECK-SAME:    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>}) -> tensor<8x8xf32> {
+-func.func @bar(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{"a"}, {}]> {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=8}>} : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
+-  %1 = sdy.sharding_constraint %arg0 <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  return %0 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @foo
+-func.func @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[CALL:.*]] = call @bar(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"b"}]>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CALL]], %[[CALL]] : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %[[CALL]] <@mesh, [{}, {"b"}]> {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=8}>} : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = call @bar(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = stablehlo.add %0, %0 : tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %0 <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  return %1 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[CALL_0:.*]] = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[CALL_1:.*]] = call @bar(%[[CALL_0]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {"b"}]>]>} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CALL_1]], %[[CALL_1]] : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %[[CALL_1]] <@mesh, [{"a"}, {"b"}]> {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=8}>} : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = call @bar(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %2 = stablehlo.add %1, %1 : tensor<8x8xf32>
+-  %3 = sdy.sharding_constraint %1 <@mesh, [{"a"}, {"b"}]> : tensor<8x8xf32>
+-  return %2 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-// A non-flat call graph (@main -> @foo -> @bar and @main -> @bar) applying a
+-// single sharding constraint to the func data flow edges on @bar's argument
+-// and the call results in @foo and @main. Each func data flow edges is left
+-// unsharded, the constraint is moved right after the edge, and other uses are
+-// replaced with the constraint.
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// CHECK-LABEL: func @bar
+-func.func @bar(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE:.*]] = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  // CHECK-NOT: sdy.sharding
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %[[FUNC_DATA_FLOW_EDGE]] <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[WSC]], %[[WSC]] : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  %1 = stablehlo.add %0, %0 : tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %0 <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  return %1 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @foo
+-func.func @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE_0:.*]] = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[CALL:.*]] = call @bar(%[[FUNC_DATA_FLOW_EDGE_0]])
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE_1:.*]] = sdy.func_data_flow_edge %[[CALL]] : tensor<8x8xf32>
+-  // CHECK-NOT: sdy.sharding
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %[[FUNC_DATA_FLOW_EDGE_1]] <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[WSC]], %[[WSC]] : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  %1 = call @bar(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %2 = sdy.func_data_flow_edge %1 : tensor<8x8xf32>
+-  %3 = stablehlo.add %2, %2 : tensor<8x8xf32>
+-  %4 = sdy.sharding_constraint %2 <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  return %3 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[CALL_0:.*]] = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE_0:.*]] = sdy.func_data_flow_edge %[[CALL_0]] : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[CALL_1:.*]] = call @bar(%[[FUNC_DATA_FLOW_EDGE_0]]) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE_1:.*]] = sdy.func_data_flow_edge %[[CALL_1]] : tensor<8x8xf32>
+-  // CHECK-NOT: sdy.sharding
+-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %[[FUNC_DATA_FLOW_EDGE_1]] <@mesh, [{"a"}, {"b"}]> : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[WSC]], %[[WSC]] : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[ADD]] : tensor<8x8xf32>
+-  %0 = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = sdy.func_data_flow_edge %0 : tensor<8x8xf32>
+-  %2 = call @bar(%1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %3 = sdy.func_data_flow_edge %2 : tensor<8x8xf32>
+-  %4 = stablehlo.add %3, %3 : tensor<8x8xf32>
+-  %5 = sdy.sharding_constraint %3 <@mesh, [{"a"}, {"b"}]> : tensor<8x8xf32>
+-  return %4 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-// Non-flat call graph (@main -> @foo -> @bar and @main -> @bar) without
+-// func data flow edges, applying a chain of two sharding constraints
+-// to stablehlo.add in @bar and @foo. Verifies that the head constraint's
+-// sharding is attached to `stablehlo.add` and uses after the chain (including
+-// the func returns in @bar and @foo) are replaced with the tail of the chain.
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// CHECK-LABEL: func @bar
+-func.func @bar(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}]>]>}
+-  // CHECK-NEXT: %[[WSC_0:.*]] = sdy.sharding_constraint %[[ADD]] <@mesh, [{"a"}, {}]>
+-  // CHECK-NEXT: %[[WSC_1:.*]] = sdy.sharding_constraint %[[WSC_0]] <@mesh, [{}, {"b"}]>
+-  // CHECK-NEXT: return %[[WSC_1]] : tensor<8x8xf32>
+-  %0 = stablehlo.add %arg0, %arg0 : tensor<8x8xf32>
+-  %1 = sdy.sharding_constraint %0 <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %1 <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  return %0 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @foo
+-func.func @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[CALL:.*]] = call @bar(%arg0)
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CALL]], %[[CALL]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}]>]>}
+-  // CHECK-NEXT: %[[WSC_0:.*]] = sdy.sharding_constraint %[[ADD]] <@mesh, [{"a"}, {}]>
+-  // CHECK-NEXT: %[[WSC_1:.*]] = sdy.sharding_constraint %[[WSC_0]] <@mesh, [{}, {"b"}]>
+-  // CHECK-NEXT: return %[[WSC_1]] : tensor<8x8xf32>
+-  %0 = call @bar(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = stablehlo.add %0, %0 : tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %1 <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  %3 = sdy.sharding_constraint %2 <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  return %1 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[CALL_0:.*]] = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[CALL_1:.*]] = call @bar(%[[CALL_0]]) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[CALL_1]] : tensor<8x8xf32>
+-  %0 = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = call @bar(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  return %1 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+-// A non-flat call graph (@main -> @foo -> @bar and @main -> @bar) with func
+-// data flow edges on function arguments and call results, applying a chain of
+-// two sharding constraints to stablehlo.add in @bar and @foo.
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// CHECK-LABEL: func @bar
+-func.func @bar(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE:.*]] = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[FUNC_DATA_FLOW_EDGE]], %[[FUNC_DATA_FLOW_EDGE]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}]>]>}
+-  // CHECK-NEXT: %[[WSC_0:.*]] = sdy.sharding_constraint %[[ADD]] <@mesh, [{"a"}, {}]>
+-  // CHECK-NEXT: %[[WSC_1:.*]] = sdy.sharding_constraint %[[WSC_0]] <@mesh, [{}, {"b"}]>
+-  // CHECK-NEXT: return %[[WSC_1]] : tensor<8x8xf32>
+-  %0 = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  %1 = stablehlo.add %0, %0 : tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %1 <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  %3 = sdy.sharding_constraint %2 <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  return %1 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @foo
+-func.func @foo(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE_0:.*]] = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[CALL:.*]] = call @bar(%[[FUNC_DATA_FLOW_EDGE_0]])
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE_1:.*]] = sdy.func_data_flow_edge %[[CALL]] : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[FUNC_DATA_FLOW_EDGE_1]], %[[FUNC_DATA_FLOW_EDGE_1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}]>]>}
+-  // CHECK-NEXT: %[[WSC_0:.*]] = sdy.sharding_constraint %[[ADD]] <@mesh, [{"a"}, {}]>
+-  // CHECK-NEXT: %[[WSC_1:.*]] = sdy.sharding_constraint %[[WSC_0]] <@mesh, [{}, {"b"}]>
+-  // CHECK-NEXT: return %[[WSC_1]] : tensor<8x8xf32>
+-  %0 = sdy.func_data_flow_edge %arg0 : tensor<8x8xf32>
+-  %1 = call @bar(%0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %2 = sdy.func_data_flow_edge %1 : tensor<8x8xf32>
+-  %3 = stablehlo.add %2, %2 : tensor<8x8xf32>
+-  %4 = sdy.sharding_constraint %3 <@mesh, [{"a"}, {}]> : tensor<8x8xf32>
+-  %5 = sdy.sharding_constraint %4 <@mesh, [{}, {"b"}]> : tensor<8x8xf32>
+-  return %3 : tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+-  // CHECK-NEXT: %[[CALL_0:.*]] = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE_0:.*]] = sdy.func_data_flow_edge %[[CALL_0]] : tensor<8x8xf32>
+-  // CHECK-NEXT: %[[CALL_1:.*]] = call @bar(%[[FUNC_DATA_FLOW_EDGE_0]]) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  // CHECK-NEXT: %[[FUNC_DATA_FLOW_EDGE_1:.*]] = sdy.func_data_flow_edge %[[CALL_1]] : tensor<8x8xf32>
+-  // CHECK-NEXT: return %[[FUNC_DATA_FLOW_EDGE_1]] : tensor<8x8xf32>
+-  %0 = call @foo(%arg0) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %1 = sdy.func_data_flow_edge %0 : tensor<8x8xf32>
+-  %2 = call @bar(%1) : (tensor<8x8xf32>) -> tensor<8x8xf32>
+-  %3 = sdy.func_data_flow_edge %2 : tensor<8x8xf32>
+-  return %3 : tensor<8x8xf32>
+-}
+-
+-// -----
+-
+ sdy.mesh @mesh = <["a"=2, "b"=2]>
+ 
+ // CHECK-LABEL: func @main
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
+index dc069471..e88aa109 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
++++ b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
+@@ -1321,7 +1321,7 @@ OpShardingRuleAttr createOpShardingRule(Operation* op,
+             PropagationBarrierOp, ShardableDataFlowOpInterface, ShardingGroupOp,
+             ReshardOp, stablehlo::AfterAllOp, stablehlo::CaseOp,
+             stablehlo::ConstantOp, stablehlo::CreateTokenOp,
+-            stablehlo::GetTupleElementOp, stablehlo::IfOp, stablehlo::InfeedOp,
++            stablehlo::GetTupleElementOp, stablehlo::InfeedOp,
+             stablehlo::IotaOp, stablehlo::OutfeedOp,
+             stablehlo::OptimizationBarrierOp, stablehlo::PartitionIdOp,
+             stablehlo::RecvOp, stablehlo::SendOp, stablehlo::WhileOp>(
+diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_group_map.cc b/shardy/dialect/sdy/transforms/propagation/sharding_group_map.cc
+index f61c0dd3..2035990f 100644
+--- a/shardy/dialect/sdy/transforms/propagation/sharding_group_map.cc
++++ b/shardy/dialect/sdy/transforms/propagation/sharding_group_map.cc
+@@ -15,10 +15,12 @@ limitations under the License.
+ 
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
+ 
++#include <algorithm>
++#include <cassert>
+ #include <cstdint>
+ 
+ #include "llvm/ADT/DenseMap.h"
+-#include "llvm/ADT/MapVector.h"
++#include "llvm/ADT/STLExtras.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/Diagnostics.h"
+@@ -34,19 +36,21 @@ namespace sdy {
+ 
+ ShardingGroupMap::ShardingGroupMap(ModuleOp moduleOp) {
+   moduleOp.walk([&](ShardingGroupOp op) {
+-    int64_t groupId = op.getGroupId();
++    // After canonicalization all group ids will take distinct values in the
++    // range 0,1,...,N. Because of this we can directly index these group ids
++    // into the shardingGroupToValues vector (resizing when necessary).
++    shardingGroupToValues.resize(
++        std::max(op.getGroupId() + 1,
++                 static_cast<uint64_t>(shardingGroupToValues.size())));
+     // Each value can only map to one sharding group id after
+     // canonicalization.
+     auto [it, inserted] =
+-        valueToShardingGroup.try_emplace(op.getInput(), groupId);
+-    if (!inserted) {
+-      if (it->getSecond() != groupId) {
+-        llvm::report_fatal_error(
+-            "Value can only map to one sharding group id after import.");
+-      }
+-      return;
++        valueToShardingGroup.try_emplace(op.getInput(), op.getGroupId());
++    if (!inserted && it->getSecond() != op.getGroupId()) {
++      llvm::report_fatal_error(
++          "Value can only map to one sharding group id after import.");
+     }
+-    shardingGroupToValues[groupId].push_back(op.getInput());
++    shardingGroupToValues[op.getGroupId()].push_back(op.getInput());
+   });
+ }
+ 
+@@ -96,7 +100,7 @@ CommonSharding findCommonSharding(int64_t groupId, ValueRange groupMembers) {
+ }  // namespace
+ 
+ void ShardingGroupMap::syncGroupMemberShardings(ModuleOp module) {
+-  for (auto& [groupId, groupMembers] : shardingGroupToValues) {
++  for (auto [groupId, groupMembers] : llvm::enumerate(shardingGroupToValues)) {
+     auto [sharding, hasConflict] = findCommonSharding(groupId, groupMembers);
+     if (!sharding) {
+       continue;
+@@ -130,7 +134,8 @@ void ShardingGroupMap::syncGroupMemberShardings(ModuleOp module) {
+ ValueRange ShardingGroupMap::getGroupMembers(const Value& value) const {
+   if (auto it = valueToShardingGroup.find(value);
+       it != valueToShardingGroup.end()) {
+-    return shardingGroupToValues.find(it->getSecond())->second;
++    int64_t shardingGroupId = it->getSecond();
++    return shardingGroupToValues[shardingGroupId];
+   }
+   return {};
+ }
+diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_group_map.h b/shardy/dialect/sdy/transforms/propagation/sharding_group_map.h
+index b924ca1a..90b38bd4 100644
+--- a/shardy/dialect/sdy/transforms/propagation/sharding_group_map.h
++++ b/shardy/dialect/sdy/transforms/propagation/sharding_group_map.h
+@@ -19,7 +19,6 @@ limitations under the License.
+ #include <cstdint>
+ 
+ #include "llvm/ADT/DenseMap.h"
+-#include "llvm/ADT/MapVector.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/Value.h"
+ #include "mlir/IR/ValueRange.h"
+@@ -46,7 +45,7 @@ class ShardingGroupMap {
+   ValueRange getGroupMembers(const Value& value) const;
+ 
+  private:
+-  llvm::MapVector<int64_t, SmallVector<Value>> shardingGroupToValues;
++  SmallVector<SmallVector<Value>> shardingGroupToValues;
+   llvm::SmallDenseMap<Value, int64_t> valueToShardingGroup;
+ };
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/sharding_group_propagation.mlir b/shardy/dialect/sdy/transforms/propagation/test/sharding_group_propagation.mlir
+index 36ae5341..b9edf866 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/sharding_group_propagation.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/sharding_group_propagation.mlir
+@@ -131,31 +131,6 @@ func.func @different_group_ids_greater_group_id_first(
+   return %arg0, %arg1, %arg2, %arg3 : tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>
+ }
+ 
+-// -----
+-sdy.mesh @mesh = <["a"=2, "b"=2]>
+-
+-// CHECK-LABEL: func @undensified_negative_and_large_group_ids
+-// CHECK-SAME:    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {?}]>},
+-// CHECK-SAME:    %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {?}]>},
+-// CHECK-SAME:    %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"b", ?}]>},
+-// CHECK-SAME:    %arg3: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"b", ?}]>})
+-// CHECK-SAME:    -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {?}]>},
+-// CHECK-SAME:        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {?}]>},
+-// CHECK-SAME:        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"b", ?}]>},
+-// CHECK-SAME:        tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"b", ?}]>})
+-func.func @undensified_negative_and_large_group_ids(
+-  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {?}]>},
+-  %arg1: tensor<8x8xf32>,
+-  %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"b", ?}]>},
+-  %arg3: tensor<8x8xf32>)
+-   -> (tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>) {
+-  sdy.sharding_group %arg0 group_id=-1 : tensor<8x8xf32>
+-  sdy.sharding_group %arg1 group_id=-1 : tensor<8x8xf32>
+-  sdy.sharding_group %arg2 group_id=100000000000 : tensor<8x8xf32>
+-  sdy.sharding_group %arg3 group_id=100000000000 : tensor<8x8xf32>
+-  return %arg0, %arg1, %arg2, %arg3 : tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>
+-}
+-
+ // -----
+ 
+ // Tests for initial member sharding sync
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index e9c206ce..509398da 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,12 +1 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/autohvx/xqf-postra-conv-double2.ll b/llvm/test/CodeGen/Hexagon/autohvx/xqf-postra-conv-double2.ll
+---- a/llvm/test/CodeGen/Hexagon/autohvx/xqf-postra-conv-double2.ll
+-+++ b/llvm/test/CodeGen/Hexagon/autohvx/xqf-postra-conv-double2.ll
+-@@ -1,5 +1,7 @@
+- ; Checks if conversion is only inserted for the spilled register
+- ; instead of 2 conversions for the W register
+-+
+-+; REQUIRES: asserts
+- ; RUN: llc -O2 -march=hexagon -mcpu=hexagonv81 -enable-xqf-gen=true \
+- ; RUN: -hexagon-qfloat-mode=ieee -mattr=+hvxv81,+hvx-length128B \
+- ; RUN: -enable-postra-xqf-check -debug-only=handle-qfp 2>&1 < %s -o /dev/null | FileCheck %s
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index 68a14533..e42d7dbd 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "b08e005995ed29a2f89aa9a3f599a9d45db65523"
+-    LLVM_SHA256 = "3f4f1765816e22a21ac41dbf71d91d519b0b371b05d7e33ef2a0a862c838420c"
++    LLVM_COMMIT = "2e0d9e12b36e853d9b108c4da09509cd54d1f3f9"
++    LLVM_SHA256 = "8e4a851780af109d623fa6d6db9b1e62d7126272d17268fed1b149f0e737c1d7"
+ 
+     tf_http_archive(
+         name = name,
