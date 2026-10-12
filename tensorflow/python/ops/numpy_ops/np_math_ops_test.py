@@ -442,8 +442,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np_math_ops.isclose(a, b, rtol=9, atol=0),
         np.isclose(a, b, rtol=9, atol=0),
     )
-    self.assertEqual(
-        bool(np_math_ops.allclose(a, b, rtol=9, atol=0)),
+    self.match(
+        np_math_ops.allclose(a, b, rtol=9, atol=0),
         np.allclose(a, b, rtol=9, atol=0),
     )
     c = np.array([100, 200, -300, 0], dtype)
