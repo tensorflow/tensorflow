@@ -36,7 +36,7 @@ struct GrapplerItem;
 class GraphOptimizer {
  public:
   GraphOptimizer() : deadline_usec_(0) {}
-  virtual ~GraphOptimizer() {}
+  virtual ~GraphOptimizer() = default;
 
   virtual std::string name() const = 0;
 
