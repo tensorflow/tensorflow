@@ -18,8 +18,8 @@
 module @module_1 {
   // CHECK: sdy.mesh @mesh = <["a"=8, "b"=8, "c"=8]>
   // CHECK: sdy.mesh @mesh_0 = <["a"=2, "b"=2]>
-  // CHECK: sdy.mesh @maximal_mesh_5 = <[], device_ids=[5]>
-  // CHECK: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
+  // CHECK: sdy.mesh @single_device_5 = <[], device_ids=[5]>
+  // CHECK: sdy.mesh @single_device_0 = <[], device_ids=[0]>
 
   // CHECK-LABEL: func @results_with_sharding
   // CHECK-SAME:    %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}]>},
@@ -156,7 +156,7 @@ module @module_1 {
 
   // CHECK-LABEL: func @inlined_mesh(
   // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>},
-  // CHECK-SAME: %arg1: tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>})
+  // CHECK-SAME: %arg1: tensor<32xi32> {sdy.sharding = #sdy.sharding<@single_device_5, []>})
   // CHECK-SAME: -> tensor<32xi32> {
   func.func @inlined_mesh(
     %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"},
@@ -236,8 +236,8 @@ module @module_1 {
     %arg0: tensor<16x8xf32> {mhlo.sharding = "{mesh['a'=1,'b'=4,'c'=1], [{'b'},{?}]}"},
     %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},
     %arg2: !stablehlo.token) -> tensor<16x8xf32> {
-    // CHECK-NEXT: %[[SEND:.*]] = "stablehlo.send"(%arg0, %arg2) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
-    // CHECK-NEXT: %[[RECV:.*]]:2 = "stablehlo.recv"(%[[SEND]]) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>, <@maximal_mesh_0, []>]>} : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
+    // CHECK-NEXT: %[[SEND:.*]] = "stablehlo.send"(%arg0, %arg2) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>} : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token
+    // CHECK-NEXT: %[[RECV:.*]]:2 = "stablehlo.recv"(%[[SEND]]) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 3>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>, <@single_device_0, []>]>} : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
     // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[RECV]]#0, %arg1 : tensor<16x8xf32>
     // CHECK-NEXT: return %[[ADD]] : tensor<16x8xf32>
     %0 = "stablehlo.send"(%arg0, %arg2) {
@@ -265,7 +265,7 @@ module @maximal_sharding_module {
     // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
     // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
     // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
-    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
+    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>, xla_shape = "()"
     // CHECK-SAME: } : (tensor<2xi64>) -> ()
     // CHECK-NEXT: return %arg0 : tensor<2xi64>
     %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
@@ -282,7 +282,7 @@ module @maximal_sharding_module {
     // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
     // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
     // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
-    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
+    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@single_device_0, []>]>, xla_shape = "()"
     // CHECK-SAME: } : (tensor<2xi64>) -> ()
     // CHECK-NEXT: return %arg0 : tensor<2xi64>
     %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
