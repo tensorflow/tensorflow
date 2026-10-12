@@ -156,6 +156,27 @@ class MeshUtilTest(test_util.DTensorBaseTest):
             mesh_dims=[('x', 1)],
             local_devices=['CPU:0'])
 
+  def test_create_distributed_mesh_tpu_with_local_devices_raises_error(self):
+    self.skipForDeviceType(['GPU', 'TPU'], reason='Test is intended for CPUs')
+    with mock.patch.object(accelerator_util, 'is_initialized', return_value=True):
+      with self.assertRaisesRegex(
+          ValueError, 'Do not specify devices for TPU meshes'
+      ):
+        mesh_util.create_distributed_mesh(
+            mesh_name='tpu_mesh',
+            mesh_dims=[('x', 1)],
+            local_devices=['TPU:0'],
+        )
+      with self.assertRaisesRegex(
+          ValueError, 'Do not specify devices for TPU meshes'
+      ):
+        mesh_util.create_distributed_mesh(
+            mesh_name='tpu_mesh',
+            mesh_dims=[('x', 1)],
+            local_devices=['TPU:0'],
+            device_type='TPU',
+        )
+
   def test_single_client_mesh_creation_wrong_shape(self):
     self.skipForDeviceType(['GPU', 'TPU'], reason='Test is intended for CPUs')
     num_devices = len(test_util.list_local_logical_devices('CPU'))
