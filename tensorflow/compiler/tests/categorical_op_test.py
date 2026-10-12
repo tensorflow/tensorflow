@@ -138,6 +138,30 @@ class CategoricalTest(xla_test.XLATestCase):
       chi2 = self._chi2(probs, freqs)
       self.assertLess(chi2, 1e-3)
 
+  def testHalfPrecisionLargeLogits(self):
+    # Regression test for GitHub issue 128958: half-precision logits were
+    # sampled in their own type, where the spacing between values (32 at 4096
+    # for bfloat16) rounds the Gumbel noise away, so equal logits always gave
+    # the first class.
+    num_samples = 40000
+    probs = [[.5, .5]]
+    for dtype in self.float_types:
+      if dtypes.as_dtype(dtype) not in (dtypes.float16, dtypes.bfloat16):
+        continue
+      logits = np.array([[4096., 4096.]], dtype=dtype)
+      with self.subTest(dtype=dtypes.as_dtype(dtype).name):
+        freqs = self._do_sampling(logits, num_samples)
+        self.assertLess(self._chi2(probs, freqs), 1e-3)
+        if dtypes.as_dtype(dtype) == dtypes.bfloat16:
+          with self.session() as sess:
+            with self.test_scope():
+              seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+              x = stateless_random_ops.stateless_multinomial(
+                  logits, num_samples, seed_t, output_dtype=dtypes.int32)
+            y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+          freqs = [[np.mean(y == k) for k in range(2)]]
+          self.assertLess(self._chi2(probs, freqs), 1e-3)
+
   def testStatelessMultinomialIsInRange(self):
     for dtype in self.float_types.intersection(
         [dtypes.float32, dtypes.bfloat16]):
