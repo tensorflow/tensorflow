@@ -241,11 +241,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kHostExecuteStartThunk:
       return HostExecuteStartThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_start_thunk(),
-          buffer_allocations, host_executable_async_events_map);
+          buffer_allocations, host_executable_async_events_map,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kHostExecuteDoneThunk:
       return HostExecuteDoneThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_done_thunk(),
-          buffer_allocations, host_executable_async_events_map);
+          buffer_allocations, host_executable_async_events_map,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     // TODO: Remove this case on Apr 30, 2027
     case ThunkProto::kSelectKThunk:
       return DeserializeSelectKThunkProto(

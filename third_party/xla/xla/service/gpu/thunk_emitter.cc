@@ -2675,12 +2675,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostExecuteStart(
   host_offloading_executable_proto.set_executable_type(
       HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
-  ABSL_ASSIGN_OR_RETURN(auto thunk,
-                   HostExecuteStartThunk::Create(
-                       Thunk::ThunkInfo::WithProfileAnnotation(
-                           async_start, ir_emitter_context_->GetNextThunkId()),
-                       std::move(host_offloading_executable_proto),
-                       std::move(operand_slices), std::move(result_slices)));
+  ABSL_ASSIGN_OR_RETURN(
+      auto thunk,
+      HostExecuteStartThunk::Create(
+          Thunk::ThunkInfo::WithProfileAnnotation(
+              async_start, ir_emitter_context_->GetNextThunkId()),
+          std::move(host_offloading_executable_proto),
+          std::move(operand_slices), std::move(result_slices),
+          ir_emitter_context_->gpu_topology().num_devices_per_host()));
 
   auto [it, inserted] = GetInstructionToHostExecuteAsyncEvents().emplace(
       host_execute, thunk->async_events());
