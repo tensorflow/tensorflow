@@ -720,7 +720,12 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
       TransposeTestCase(/*dims=*/{257, 255, 3}, /*permutation=*/{2, 0, 1}),
       TransposeTestCase(/*dims=*/{5, 3, 64, 64}, /*permutation=*/{2, 3, 0, 1}),
       TransposeTestCase(/*dims=*/{5, 3, 64, 64}, /*permutation=*/{0, 2, 3, 1}),
-      TransposeTestCase(/*dims=*/{5, 64, 64, 3}, /*permutation=*/{0, 3, 1, 2})};
+      TransposeTestCase(/*dims=*/{5, 64, 64, 3}, /*permutation=*/{0, 3, 1, 2}),
+
+      // Other small stride-1 sizes, including one coalesced from 2 x 3.
+      TransposeTestCase(/*dims=*/{5, 256, 256}, /*permutation=*/{1, 2, 0}),
+      TransposeTestCase(/*dims=*/{256, 256, 6}, /*permutation=*/{2, 0, 1}),
+      TransposeTestCase(/*dims=*/{2, 3, 64, 64}, /*permutation=*/{2, 3, 0, 1})};
   return cases;
 }
 
@@ -1330,6 +1335,51 @@ static void* benchmarks = []() {
   return nullptr;
 }();
 
+// Sweeps the size K of a small stride-1 dimension on either side.
+static void* small_dim_benchmarks = []() {
+  using BenchmarkFn =
+      void (*)(const TransposeTestCase&, int, testing::benchmark::State&);
+  const std::vector<std::pair<std::string, BenchmarkFn>> variants = {
+      {"u8", BM_Transpose<uint8_t>},         {"u16", BM_Transpose<uint16_t>},
+      {"u32", BM_Transpose<uint32_t>},       {"u64", BM_Transpose<uint64_t>},
+      {"u128", BM_Transpose<absl::uint128>},
+  };
+  std::vector<std::pair<std::string, TransposeTestCase>> cases;
+  for (int64_t k = 2; k <= 16; ++k) {
+    cases.push_back({absl::StrCat("K_", k, "_interleave"),
+                     TransposeTestCase(/*dims=*/{k, 256, 256},
+                                       /*permutation=*/{1, 2, 0})});
+    cases.push_back({absl::StrCat("K_", k, "_deinterleave"),
+                     TransposeTestCase(/*dims=*/{256, 256, k},
+                                       /*permutation=*/{2, 0, 1})});
+  }
+  // The 2 and 3 dimensions are coalesced into K = 6.
+  cases.push_back(
+      {"K_2x3_interleave", TransposeTestCase(/*dims=*/{2, 3, 256, 256},
+                                             /*permutation=*/{2, 3, 0, 1})});
+  cases.push_back(
+      {"K_2x3_deinterleave", TransposeTestCase(/*dims=*/{256, 256, 2, 3},
+                                               /*permutation=*/{2, 3, 0, 1})});
+  // The small W is coalesced with H on the large side.
+  cases.push_back({"HWC_256x4x3_deinterleave",
+                   TransposeTestCase(/*dims=*/{256, 4, 3},
+                                     /*permutation=*/{2, 0, 1})});
+  cases.push_back(
+      {"CHW_3x256x4_interleave", TransposeTestCase(/*dims=*/{3, 256, 4},
+                                                   /*permutation=*/{1, 2, 0})});
+  for (const auto& [type_name, fn] : variants) {
+    for (const auto& [suffix, testcase] : cases) {
+      const std::string name =
+          absl::StrCat("BM_TransposeSmallDim_", type_name, "_", suffix);
+      benchmark::RegisterBenchmark(name.c_str(), [fn = fn, testcase = testcase](
+                                                     benchmark::State& state) {
+        fn(testcase, /*parallelism=*/1, state);
+      });
+    }
+  }
+  return nullptr;
+}();
+
 enum class StrideMode {
   kTight,          // lda = ldb <= 64B (exercises SseSquare / 128-bit kernel)
   kWideSymmetric,  // lda = ldb > 64B (exercises AvxRectangular gather)
@@ -1842,30 +1892,57 @@ TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
     std::string expected_kernel;
   };
   const SelectionCase cases[] = {
-      {{3, 8}, {1, 0}, 1, {}, {}, {}, "inner_kernel=interleave"},
-      {{3, 8}, {1, 0}, 2, {}, {}, {}, "inner_kernel=interleave"},
-      {{3, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave"},
-      {{3, 8}, {1, 0}, 8, {}, {}, {}, "inner_kernel=interleave"},
-      {{3, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
+      {{3, 8}, {1, 0}, 1, {}, {}, {}, "inner_kernel=interleave(3)"},
+      {{3, 8}, {1, 0}, 2, {}, {}, {}, "inner_kernel=interleave(3)"},
+      {{3, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(3)"},
+      {{3, 8}, {1, 0}, 8, {}, {}, {}, "inner_kernel=interleave(3)"},
+      {{3, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=interleave(3)"},
       {{3, 7}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{8, 3}, {1, 0}, 1, {}, {}, {}, "inner_kernel=deinterleave"},
-      {{8, 3}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave"},
-      {{8, 3}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave"},
-      {{8, 3}, {1, 0}, 8, {}, {}, {}, "inner_kernel=deinterleave"},
+      {{8, 3}, {1, 0}, 1, {}, {}, {}, "inner_kernel=deinterleave(3)"},
+      {{8, 3}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(3)"},
+      {{8, 3}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(3)"},
+      {{8, 3}, {1, 0}, 8, {}, {}, {}, "inner_kernel=deinterleave(3)"},
       {{8, 3}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
       {{7, 3}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{2, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(2)"},
+      {{5, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(5)"},
+      {{6, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(6)"},
+      {{7, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=interleave(7)"},
+      {{7, 8}, {1, 0}, 16, {}, {}, {}, "inner_kernel=interleave(7)"},
+      {{4, 8}, {1, 0}, 1, {}, {}, {}, "inner_kernel=interleave(4)"},
+      {{4, 8}, {1, 0}, 2, {}, {}, {}, "inner_kernel=interleave(4)"},
+      {{4, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{8, 16}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{8, 2}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(2)"},
+      {{8, 2}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
+      {{8, 5}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(5)"},
+      {{8, 6}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(6)"},
+      {{8, 6}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{8, 7}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(7)"},
+      {{8, 7}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{8, 4}, {1, 0}, 1, {}, {}, {}, "inner_kernel=default"},
+      {{8, 4}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{16, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{2, 3, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=interleave(6)"},
+      {{8, 2, 3}, {1, 2, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(6)"},
+      {{2, 2, 8}, {2, 0, 1}, 1, {}, {}, {}, "inner_kernel=interleave(4)"},
+      {{2, 2, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{2, 4, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{3, 2, 4}, {1, 2, 0}, 4, {}, {}, {}, "inner_kernel=interleave(3)"},
+      {{3, 256, 4}, {1, 2, 0}, 4, {}, {}, {}, "inner_kernel=interleave(3)"},
+      {{256, 4, 3}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=deinterleave(3)"},
       {{3, 4, 16}, {2, 1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
       {{16, 4, 3}, {2, 1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{3, 8}, {1, 0}, 4, {32, 4}, {}, {}, "inner_kernel=interleave"},
-      {{3, 8}, {1, 0}, 4, {-32, 4}, {}, {}, "inner_kernel=interleave"},
-      {{8, 3}, {1, 0}, 4, {12, 4}, {}, {}, "inner_kernel=deinterleave"},
+      {{3, 8}, {1, 0}, 4, {32, 4}, {}, {}, "inner_kernel=interleave(3)"},
+      {{3, 8}, {1, 0}, 4, {-32, 4}, {}, {}, "inner_kernel=interleave(3)"},
+      {{8, 3}, {1, 0}, 4, {12, 4}, {}, {}, "inner_kernel=deinterleave(3)"},
       {{2, 8, 3},
        {0, 2, 1},
        4,
        {-128, 12, 4},
        {},
        {},
-       "inner_kernel=deinterleave"},
+       "inner_kernel=deinterleave(3)"},
       {{8, 3}, {1, 0}, 4, {32, 4}, {}, {}, "inner_kernel=default"},
       {{8, 3}, {1, 0}, 4, {-32, 4}, {}, {}, "inner_kernel=default"},
       {{32, 224, 224, 3},
@@ -1874,16 +1951,18 @@ TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
        {},
        {},
        {8, 128},
-       "inner_kernel=deinterleave"},
+       "inner_kernel=deinterleave(3)"},
       {{32, 3, 224, 224},
        {0, 2, 3, 1},
        4,
        {},
        {8, 128},
        {},
-       "inner_kernel=interleave"},
-      {{6, 8}, {1, 0}, 4, {}, {}, {3}, "inner_kernel=default"},
-      {{8, 6}, {1, 0}, 4, {}, {3}, {}, "inner_kernel=default"},
+       "inner_kernel=interleave(3)"},
+      {{6, 8}, {1, 0}, 4, {}, {}, {3}, "inner_kernel=interleave(6)"},
+      {{8, 6}, {1, 0}, 2, {}, {3}, {}, "inner_kernel=deinterleave(6)"},
+      {{7, 8}, {1, 0}, 4, {}, {}, {3}, "inner_kernel=default"},
+      {{8, 7}, {1, 0}, 4, {}, {3}, {}, "inner_kernel=default"},
   };
   for (const auto& tc : cases) {
     TransposePlan::Options o;
@@ -1905,6 +1984,44 @@ TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
     }
     EXPECT_THAT((*status_or_plan)->ToString(),
                 testing::HasSubstr(tc.expected_kernel));
+  }
+}
+
+TEST(TransposeTest, InterleaveAndDeinterleaveAllSizes) {
+  for (int e : {1, 2, 4, 8, 16}) {
+    std::vector<TransposeTestCase> cases = {
+        TransposeTestCase({6, 8}, {1, 0}, {}, /*output_tiling=*/{3}),
+        TransposeTestCase({8, 6}, {1, 0}, /*input_tiling=*/{3}),
+        TransposeTestCase({3, 2, 4}, {1, 2, 0}),
+        TransposeTestCase({16, 4, 3}, {2, 0, 1}),
+        TransposeTestCase({3, 16, 4}, {1, 2, 0}),
+    };
+    for (int64_t h : {1, 3}) {
+      for (int64_t w : {8, 9, 37}) {
+        for (int64_t k = 2; k <= 16; ++k) {
+          cases.push_back(TransposeTestCase({k, h, w}, {1, 2, 0}));
+          cases.push_back(TransposeTestCase({h, w, k}, {2, 0, 1}));
+        }
+        cases.push_back(TransposeTestCase({2, 3, h, w}, {2, 3, 0, 1}));
+        cases.push_back(TransposeTestCase({h, w, 2, 3}, {2, 3, 0, 1}));
+      }
+    }
+    for (int64_t k : {2, 5, 7}) {
+      cases.push_back(TransposeTestCase({k, 9}, {1, 0}, {}, {},
+                                        /*input_striding=*/{-9 * e, e}));
+      cases.push_back(TransposeTestCase({9, k}, {1, 0}, {}, {},
+                                        /*input_striding=*/{k * e, -e}));
+      cases.push_back(TransposeTestCase({k, 37}, {1, 0}, /*input_tiling=*/{8}));
+      cases.push_back(
+          TransposeTestCase({37, k}, {1, 0}, {}, /*output_tiling=*/{8}));
+    }
+    for (const TransposeTestCase& test : cases) {
+      SCOPED_TRACE(absl::StrCat(test.ToString(), ",elem_size=", e));
+      ExecuteTest(test, e, /*parallelism=*/1,
+                  TransposePlan::Transformation::kNone,
+                  TransposePlan::ChunkContiguity::kNone,
+                  /*use_execute_chunk=*/false);
+    }
   }
 }
 

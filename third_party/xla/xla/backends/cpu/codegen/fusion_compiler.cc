@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
