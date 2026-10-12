@@ -121,7 +121,6 @@ xla_test(
     use_legacy_runtime = True,
     deps = [
         ":block_level_emitter",
-        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",

@@ -148,6 +148,12 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":stream_executor_hdrs",
-        "//tensorflow/c:tf_status",
-    ],
+    ] + select({
+        # Windows DLLs cannot leave TF_SetStatus undefined. The plugin is never
+        # loaded on Windows, so embedding tf_status there is harmless.
+        "//tensorflow:windows": ["//tensorflow/c:tf_status"],
+        # Elsewhere the host provides TF_SetStatus. Linking tf_status would
+        # embed a second copy of TF core protos into plugins.
+        "//conditions:default": ["//tensorflow/c:tf_status_headers"],
+    }),
 )
