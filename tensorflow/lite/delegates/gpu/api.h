@@ -72,6 +72,10 @@ enum class DataLayout {
   DHWC4,
   HWDC4,
   HDWC4,
+  // Unpadded channels (1 <= C <= 4) with batch interleaved inside width:
+  // element (b, h, w, c) is stored at ((h * W + w) * B + b) * C + c.
+  // Identical to BHWC when B == 1 or when H == W == 1.
+  HWBC,
 };
 
 enum class ObjectType {
