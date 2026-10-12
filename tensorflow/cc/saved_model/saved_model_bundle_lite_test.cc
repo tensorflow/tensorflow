@@ -42,7 +42,7 @@ constexpr char kTestDataInitOpV2[] =
 
 class LoaderTest : public ::testing::Test {
  protected:
-  LoaderTest() {}
+  LoaderTest() = default;
 
   string MakeSerializedExample(float x) {
     tensorflow::Example example;

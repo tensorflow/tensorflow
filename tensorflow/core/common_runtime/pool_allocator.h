@@ -35,7 +35,7 @@ namespace tensorflow {
 // Interface of an object that rounds up integers.
 class RoundUpInterface {
  public:
-  virtual ~RoundUpInterface() {}
+  virtual ~RoundUpInterface() = default;
   virtual size_t RoundUp(size_t num_bytes) = 0;
 };
 
@@ -157,7 +157,7 @@ class BasicCPUAllocator : public SubAllocator {
                     const std::vector<Visitor>& free_visitors)
       : SubAllocator(alloc_visitors, free_visitors), numa_node_(numa_node) {}
 
-  ~BasicCPUAllocator() override {}
+  ~BasicCPUAllocator() override = default;
 
   void* Alloc(size_t alignment, size_t num_bytes,
               size_t* bytes_received) override;

@@ -71,7 +71,7 @@ inline int64_t FloatToQuantizedUnclamped<float>(float input, float range_min,
 // any over or underflows.
 template <class T>
 T FloatToQuantized(float input, float range_min, float range_max) {
-  if (std::is_same<T, float>::value) {
+  if (std::is_same_v<T, float>) {
     // Specialization for float. This is used in reference implementation
     // for float which is useful to compare performance between float
     // and quantized type.
@@ -89,7 +89,7 @@ T FloatToQuantized(float input, float range_min, float range_max) {
 
 template <class T>
 float QuantizedToFloat(T input, float range_min, float range_max) {
-  if (std::is_same<T, float>::value) {
+  if (std::is_same_v<T, float>) {
     // Specialization for float. This is used in reference implementation
     // for float which is useful to compare performance between float
     // and quantized type.

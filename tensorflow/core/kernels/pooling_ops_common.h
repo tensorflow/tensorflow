@@ -164,8 +164,7 @@ class MaxPoolingOp : public OpKernel {
     } else {
       // MaxPoolingOp is only called on the GPU when the eigen_tensor label
       // is used. In this case, explicit padding is not supported
-      if (std::is_same<Device, GPUDevice>::value &&
-          padding_ == Padding::EXPLICIT) {
+      if (std::is_same_v<Device, GPUDevice> && padding_ == Padding::EXPLICIT) {
         context->SetStatus(absl::UnimplementedError(
             "MaxPoolingOp does not support explicit padding."));
         return;
@@ -202,7 +201,7 @@ class MaxPoolingOp : public OpKernel {
     // Spatial MaxPooling implementation.
     //
     // TODO(vrv): Remove this once we no longer need it.
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       Eigen::PaddingType pt = BrainPadding2EigenPadding(padding);
       functor::SpatialMaxPooling<Device, T>()(
           context->eigen_device<Device>(), output->tensor<T, 4>(),
@@ -469,9 +468,9 @@ class MaxPoolingV2Op : public OpKernel {
     //
     // TODO(vrv): Remove this once we no longer need it.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       Eigen::PaddingType pt = BrainPadding2EigenPadding(padding);
-      if (std::is_same<T, qint8>::value) {
+      if (std::is_same_v<T, qint8>) {
         LaunchMaxPoolingNoMask_NCHW_VECT_C<GPUDevice>::launch(
             context, params, tensor_in, output);
       } else {

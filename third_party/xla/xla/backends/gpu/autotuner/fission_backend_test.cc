@@ -280,7 +280,9 @@ class FissionTest : public HloHardwareIndependentTestBase,
   std::unique_ptr<FissionBackend> fission_backend_;
 
   FissionTest()
-      : platform_(PlatformUtil::GetDefaultPlatform().value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        platform_(PlatformUtil::GetDefaultPlatform().value()),
         stream_executor_(platform_->ExecutorForDevice(0).value()),
         compiler_(Compiler::GetForPlatform(platform_->id()).value()),
         target_config_(stream_executor_),
@@ -496,7 +498,9 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
   std::unique_ptr<FissionBackend> fission_backend_;
 
   CublasFissionBackendTest()
-      : platform_(PlatformUtil::GetDefaultPlatform().value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        platform_(PlatformUtil::GetDefaultPlatform().value()),
         stream_executor_(platform_->ExecutorForDevice(0).value()),
         compiler_(Compiler::GetForPlatform(platform_->id()).value()),
         target_config_(stream_executor_),
@@ -687,8 +691,9 @@ TEST_F(CublasFissionBackendTest, CublasFallbackForBf16Bf16F32Algorithm) {
 //     returned.
 TEST_F(CublasFissionBackendTest,
        GetSupportedConfigsRespectsUserGemmRewriteSizeThreshold) {
-  // Confirm the fixture's debug options use the proto default (0), which
-  // differs from DefaultDebugOptionsIgnoringFlags() that sets it to 100.
+  // Set the fixture's debug options threshold to 0, which differs from
+  // DefaultDebugOptionsIgnoringFlags() that sets it to 100.
+  debug_options_.set_xla_gpu_gemm_rewrite_size_threshold(0);
   EXPECT_EQ(debug_options_.xla_gpu_gemm_rewrite_size_threshold(), 0);
 
   // A tiny f32 fusion whose dot's combined size is 50 < 100

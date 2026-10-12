@@ -27,9 +27,11 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -4005,54 +4007,81 @@ absl::StatusOr<Literal> ExtractFromIndexPositions(
 void IterateThroughWindow(
     const Shape& window_shape, const Window& window, const Shape& base_shape,
     const absl::Span<const int64_t> window_count_index,
-    const std::function<void(absl::Span<const int64_t>)>& f) {
+    absl::FunctionRef<void(absl::Span<const int64_t>)> f) {
   const size_t rank = base_shape.dimensions().size();
-  DimensionVector window_index(rank);
-  absl::Span<int64_t> window_index_span = absl::MakeSpan(window_index);
-  std::fill(window_index_span.begin(), window_index_span.end(), 0);
+  if (rank == 0) {
+    if (!ShapeUtil::IsZeroElementArray(window_shape) &&
+        !ShapeUtil::IsZeroElementArray(base_shape)) {
+      f({});
+    }
+    return;
+  }
+  DimensionVector first_base(rank);
+  DimensionVector base_step(rank);
+  DimensionVector count(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    const int64_t win_size = window_shape.dimensions(i);
+    const int64_t base_limit = base_shape.dimensions(i);
+    if (win_size <= 0 || base_limit <= 0) {
+      return;
+    }
+    const WindowDimension& dim = window.dimensions(i);
+    const int64_t win_dilation = dim.window_dilation();
+    const int64_t base_dilation = dim.base_dilation();
+    const int64_t start_unscaled =
+        window_count_index[i] * dim.stride() - dim.padding_low();
 
-  do {
-    DimensionVector base_index(rank);
-    absl::Span<int64_t> base_index_span = absl::MakeSpan(base_index);
-    bool out_of_bound = false;
-    for (size_t i = 0; i < rank; ++i) {
-      // Padding is applied to the dilated base. Say that padding is 3 and
-      // dilation is 2 for some dimension. After applying base dilation and
-      // padding, the dimension looks like:
-      // P P P E D D E D D ... E D D E P P P
-      // where E are the elements and D are the holes. So, the elements are
-      // located in indices: padding + k*base_dilation for k = {0, 1, 2, ...}.
-      // We are accessing elements in the transformed base at indices:
-      // window_count_index * stride + window_index * window_dilation.
-      // Solving for k gives us
-      // (win_count_i * stride + win_i * win_dilation - pad) / base_dilation
-      // When this is a natural number, we index an original element.
-      // Otherwise, we index a 0 (pad or hole), and we don't need to apply
-      // the callback f.
-      const xla::WindowDimension& window_dimension = window.dimensions(i);
-      int64_t base_index_i =
-          window_count_index[i] * window_dimension.stride() +
-          window_index_span[i] * window_dimension.window_dilation() -
-          window_dimension.padding_low();
-      const int64_t base_dilation = window_dimension.base_dilation();
-      if (base_dilation != 1) {
-        if (base_index_i % base_dilation != 0) {
-          out_of_bound = true;
-          base_index_span[i] = base_index_i;
-          break;
-        }
-        base_index_i /= base_dilation;
+    int64_t w_min = 0;
+    if (start_unscaled < 0) {
+      w_min = (-start_unscaled + win_dilation - 1) / win_dilation;
+    }
+    if (base_dilation != 1) {
+      const int64_t w_search_limit = std::min(win_size, w_min + base_dilation);
+      while (w_min < w_search_limit &&
+             (start_unscaled + w_min * win_dilation) % base_dilation != 0) {
+        ++w_min;
       }
-      base_index_span[i] = base_index_i;
-      if (base_index_i < 0 || base_index_i >= base_shape.dimensions(i)) {
-        out_of_bound = true;
+      if (w_min >= w_search_limit) {
+        return;
+      }
+    }
+    if (w_min >= win_size) {
+      return;
+    }
+    const int64_t first_base_i =
+        (start_unscaled + w_min * win_dilation) / base_dilation;
+    if (first_base_i >= base_limit) {
+      return;
+    }
+    const int64_t g = std::gcd(win_dilation, base_dilation);
+    const int64_t w_step = base_dilation / g;
+    const int64_t base_step_i = win_dilation / g;
+    const int64_t count_by_win = (win_size - 1 - w_min) / w_step + 1;
+    const int64_t count_by_base =
+        (base_limit - 1 - first_base_i) / base_step_i + 1;
+    first_base[i] = first_base_i;
+    base_step[i] = base_step_i;
+    count[i] = std::min(count_by_win, count_by_base);
+  }
+  DimensionVector base_index = first_base;
+  absl::Span<const int64_t> base_index_span(base_index);
+  DimensionVector idx(rank, 0);
+  while (true) {
+    f(base_index_span);
+    int64_t d = static_cast<int64_t>(rank) - 1;
+    while (d >= 0) {
+      if (++idx[d] < count[d]) {
+        base_index[d] += base_step[d];
         break;
       }
+      idx[d] = 0;
+      base_index[d] = first_base[d];
+      --d;
     }
-    if (!out_of_bound) {
-      f(base_index_span);
+    if (d < 0) {
+      break;
     }
-  } while (IndexUtil::BumpIndices(window_shape, window_index_span));
+  }
 }
 
 template <typename Fp, typename Uint, typename ResultT>
@@ -4862,6 +4891,126 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+namespace {
+
+std::optional<HloOpcode> MatchSimpleBinaryReducer(
+    const HloComputation* computation, PrimitiveType elem_type) {
+  if (computation->num_parameters() != 2) {
+    return std::nullopt;
+  }
+  const HloInstruction* op = computation->root_instruction();
+  if (op->operand_count() != 2 ||
+      op->operand(0) != computation->parameter_instruction(0) ||
+      op->operand(1) != computation->parameter_instruction(1) ||
+      !ShapeUtil::IsScalarWithElementType(op->shape(), elem_type)) {
+    return std::nullopt;
+  }
+  const auto op_code = std::make_optional(op->opcode());
+  switch (op->opcode()) {
+    case HloOpcode::kAdd:
+    case HloOpcode::kMultiply:
+      return elem_type != PRED ? op_code : std::nullopt;
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+      return !primitive_util::IsComplexType(elem_type) ? op_code : std::nullopt;
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+      return (primitive_util::IsIntegralType(elem_type) || elem_type == PRED)
+                 ? op_code
+                 : std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+template <typename ReturnT, typename ElementwiseT>
+ReturnT ApplyBinaryOp(HloOpcode opcode, ReturnT a, ReturnT b) {
+  ElementwiseT lhs = static_cast<ElementwiseT>(a);
+  ElementwiseT rhs = static_cast<ElementwiseT>(b);
+  switch (opcode) {
+    case HloOpcode::kAdd:
+      return static_cast<ReturnT>(
+          ElementwiseT(ToArithmeticSafeType(lhs) + ToArithmeticSafeType(rhs)));
+    case HloOpcode::kMultiply:
+      return static_cast<ReturnT>(
+          ElementwiseT(ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs)));
+    case HloOpcode::kMaximum:
+      if constexpr (!is_complex_v<ElementwiseT>) {
+        if constexpr (std::numeric_limits<ElementwiseT>::has_quiet_NaN) {
+          if (std::isnan(lhs)) {
+            return static_cast<ReturnT>(lhs);
+          }
+          if (std::isnan(rhs)) {
+            return static_cast<ReturnT>(rhs);
+          }
+        }
+        return static_cast<ReturnT>(std::max(lhs, rhs));
+      }
+      break;
+    case HloOpcode::kMinimum:
+      if constexpr (!is_complex_v<ElementwiseT>) {
+        if constexpr (std::numeric_limits<ElementwiseT>::has_quiet_NaN) {
+          if (std::isnan(lhs)) {
+            return static_cast<ReturnT>(lhs);
+          }
+          if (std::isnan(rhs)) {
+            return static_cast<ReturnT>(rhs);
+          }
+        }
+        return static_cast<ReturnT>(std::min(lhs, rhs));
+      }
+      break;
+    case HloOpcode::kAnd:
+      if constexpr (std::is_integral_v<ElementwiseT>) {
+        return static_cast<ReturnT>(lhs & rhs);
+      }
+      break;
+    case HloOpcode::kOr:
+      if constexpr (std::is_integral_v<ElementwiseT>) {
+        return static_cast<ReturnT>(lhs | rhs);
+      }
+      break;
+    case HloOpcode::kXor:
+      if constexpr (std::is_integral_v<ElementwiseT>) {
+        return static_cast<ReturnT>(lhs ^ rhs);
+      }
+      break;
+    default:
+      break;
+  }
+  LOG(FATAL) << "Unsupported opcode in ApplyBinaryOp: "
+             << HloOpcodeString(opcode);
+}
+
+template <PrimitiveType kType>
+absl::Status EvaluateSimpleReduceWindowTyped(
+    HloOpcode opcode, const Literal& input, const Literal& init,
+    const Shape& window_shape, const Window& window, Literal& result) {
+  using ReturnT = NativeTypeOf<kType>;
+  using ElementwiseT = std::conditional_t<
+      primitive_util::IsSignedIntegralType(kType), int64_t,
+      std::conditional_t<
+          primitive_util::IsUnsignedIntegralType(kType), uint64_t,
+          std::conditional_t<primitive_util::IsFloatingPointType(kType) &&
+                                 sizeof(ReturnT) < sizeof(float),
+                             float, ReturnT>>>;
+  const ReturnT init_val = init.Get<ReturnT>({});
+  return result.PopulateParallel<ReturnT>(
+      [&](absl::Span<const int64_t> output_index, int) -> ReturnT {
+        ReturnT acc = init_val;
+        IterateThroughWindow(window_shape, window, input.shape(), output_index,
+                             [&](absl::Span<const int64_t> input_index) {
+                               acc = ApplyBinaryOp<ReturnT, ElementwiseT>(
+                                   opcode, acc,
+                                   input.Get<ReturnT>(input_index));
+                             });
+        return acc;
+      });
+}
+
+}  // namespace
+
 absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
   const Window& window = reduce_window->window();
@@ -4898,6 +5047,23 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   }
   const Shape window_shape = ShapeUtil::MakeShape(
       input_arrays[0]->shape().element_type(), window_dimension_sizes);
+
+  if (!inferred_return_shape.IsTuple() && num_args == 1) {
+    if (std::optional<HloOpcode> fast_op = MatchSimpleBinaryReducer(
+            function, inferred_return_shape.element_type())) {
+      Literal result(inferred_return_shape);
+      ABSL_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
+          [&](auto type) {
+            return EvaluateSimpleReduceWindowTyped<type>(
+                *fast_op, *input_literal_vec[0], *init_literal_vec[0],
+                window_shape, window, result);
+          },
+          inferred_return_shape.element_type()));
+      VLOG(2) << "Final result is:" << result.ToString() << "\n";
+      SetEvaluatedLiteralFor(reduce_window, std::move(result));
+      return absl::OkStatus();
+    }
+  }
 
   const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
   std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;

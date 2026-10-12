@@ -20,15 +20,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_async_thunk.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
@@ -67,6 +65,9 @@ namespace xla::gpu {
 // runtime, as it has name conflict.
 class HostSendRecvAsyncEvents {
  public:
+  explicit HostSendRecvAsyncEvents(int devices_per_host = 0)
+      : device_events_(devices_per_host) {}
+
   // Emplace a new send/recv completion event.
   absl::Status Emplace(se::StreamExecutor* executor, int32_t channel_id,
                        tsl::AsyncValueRef<std::unique_ptr<se::Event>> event);
@@ -76,11 +77,15 @@ class HostSendRecvAsyncEvents {
       se::StreamExecutor* executor, int32_t channel_id);
 
  private:
-  using Key = std::pair<se::StreamExecutor*, /*channel_id=*/int64_t>;
+  // Not internally synchronized. Relies on the caller serializing host-side
+  // thunk execution per device (e.g., PJRT per-device execute_thread).
+  struct DeviceEvents {
+    absl::flat_hash_map</*channel_id=*/int64_t,
+                        tsl::AsyncValueRef<std::unique_ptr<se::Event>>>
+        events;
+  };
 
-  absl::Mutex mutex_;
-  absl::flat_hash_map<Key, tsl::AsyncValueRef<std::unique_ptr<se::Event>>>
-      events_ ABSL_GUARDED_BY(mutex_);
+  PerDeviceState<DeviceEvents> device_events_;
 };
 
 // A map from a unique id to a shared pointer to HostSendRecvAsyncEvents.
@@ -99,7 +104,7 @@ class HostSendThunk : public HostAsyncThunk {
   static absl::StatusOr<std::unique_ptr<HostSendThunk>> FromProto(
       ThunkInfo thunk_info, const HostSendThunkProto& proto,
       absl::Span<const BufferAllocation> allocations,
-      HostSendRecvAsyncEventsMap& async_events_map);
+      HostSendRecvAsyncEventsMap& async_events_map, int devices_per_host = 0);
 
   HostSendThunk(ThunkInfo thunk_info, ShapedSlice buffer, int64_t channel_id,
                 std::shared_ptr<HostSendRecvAsyncEvents> events,
@@ -139,7 +144,7 @@ class HostSendDoneThunk : public HostAsyncThunk {
   static absl::StatusOr<std::unique_ptr<HostSendDoneThunk>> FromProto(
       ThunkInfo thunk_info, const HostSendDoneThunkProto& proto,
       absl::Span<const BufferAllocation> allocations,
-      HostSendRecvAsyncEventsMap& async_events_map);
+      HostSendRecvAsyncEventsMap& async_events_map, int devices_per_host = 0);
 
   HostSendDoneThunk(ThunkInfo thunk_info, std::optional<ShapedSlice> slice,
                     int64_t channel_id,
@@ -180,7 +185,7 @@ class HostRecvThunk : public HostAsyncThunk {
   static absl::StatusOr<std::unique_ptr<HostRecvThunk>> FromProto(
       ThunkInfo thunk_info, const HostRecvThunkProto& proto,
       absl::Span<const BufferAllocation> allocations,
-      HostSendRecvAsyncEventsMap& async_events_map);
+      HostSendRecvAsyncEventsMap& async_events_map, int devices_per_host = 0);
 
   HostRecvThunk(ThunkInfo thunk_info, Shape shape,
                 BufferAllocation::Slice buffer, int64_t channel_id,
@@ -222,7 +227,7 @@ class HostRecvDoneThunk : public HostAsyncThunk {
   static absl::StatusOr<std::unique_ptr<HostRecvDoneThunk>> FromProto(
       ThunkInfo thunk_info, const HostRecvDoneThunkProto& proto,
       absl::Span<const BufferAllocation> allocations,
-      HostSendRecvAsyncEventsMap& async_events_map);
+      HostSendRecvAsyncEventsMap& async_events_map, int devices_per_host = 0);
 
   HostRecvDoneThunk(ThunkInfo thunk_info, std::optional<ShapedSlice> slice,
                     int64_t channel_id,

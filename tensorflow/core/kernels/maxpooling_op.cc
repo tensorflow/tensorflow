@@ -1122,7 +1122,7 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
   explicit MaxPoolingGradWithArgmaxOp(OpKernelConstruction* context)
       : OpKernel(context) {
     std::string data_format_str;
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
                   absl::UnimplementedError("Determinism is not yet supported "
                                            "for MaxPoolGradWithArgmax."));
@@ -1339,7 +1339,7 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
     }
 
     // Assuming qint8 <--> NCHW_VECT_C (int8x4) here.
-    constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
+    constexpr bool is_int8x4 = std::is_same_v<T, qint8>;
     OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
                 absl::InvalidArgumentError(
                     "qint8 should be used with data_format NCHW_VECT_C."));
