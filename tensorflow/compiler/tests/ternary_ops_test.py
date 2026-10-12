@@ -19,6 +19,7 @@ import numpy as np
 import scipy.special as sps
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -75,6 +76,34 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           dtype(2),
           expected=np.array([1, 3, 5], dtype=dtype),
       )
+
+  def _rangeOfMaskedSize(self, args):
+    # n is the number of true entries in mask, a size only known at run time,
+    # and args maps it to the range's start, limit and delta.
+    @def_function.function(jit_compile=True)
+    def f(mask):
+      indices = array_ops.reshape(array_ops.where(mask), [-1])
+      n = array_ops.size(array_ops.gather(math_ops.range(6), indices))
+      return math_ops.range(*args(n))
+
+    with self.session() as session:
+      with self.device_scope():
+        mask = array_ops.placeholder(dtypes.bool, [6])
+        output = f(mask)
+      return session.run(output,
+                         {mask: [True, False, True, False, True, False]})
+
+  def testRangeDynamicBounds(self):
+    # Regression test for GitHub issue 128950: with a negative delta, the
+    # output was sized from the wrong bounds of start and limit, and with a
+    # dynamic start, its values began at start's bound. Here n is 3, bound 6.
+    self.assertAllEqual(
+        self._rangeOfMaskedSize(lambda n: (n - 1, -1, -1)), [2, 1, 0])
+    self.assertAllEqual(
+        self._rangeOfMaskedSize(lambda n: (6, n, -1)), [6, 5, 4])
+    self.assertAllEqual(self._rangeOfMaskedSize(lambda n: (n, 5, 1)), [3, 4])
+    self.assertAllEqual(
+        self._rangeOfMaskedSize(lambda n: (n, -n, -2)), [3, 1, -1])
 
   def testSelect(self):
     for dtype in self.numeric_types:

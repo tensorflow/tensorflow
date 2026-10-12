@@ -40,7 +40,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// The type-specific part of the implementation of Range.
+// The type-specific part of the implementation of Range: checks the arguments
+// and returns delta * [0, 1, ..., size - 1] for the range's size.
 template <typename T>
 absl::StatusOr<xla::XlaOp> CreateRangeTensor(
     const xla::LiteralSlice& start_literal,
@@ -80,10 +81,9 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
         std::ceil(std::abs((limit_f - start_f) / delta_f)));
   }
 
-  return xla::ConstantR0(builder, start) +
-         xla::ConstantR0(builder, delta) *
-             xla::Iota(builder, xla::primitive_util::NativeToPrimitiveType<T>(),
-                       size);
+  return xla::ConstantR0(builder, delta) *
+         xla::Iota(builder, xla::primitive_util::NativeToPrimitiveType<T>(),
+                   size);
 }
 
 class RangeOp : public XlaOpKernel {
@@ -104,11 +104,24 @@ class RangeOp : public XlaOpKernel {
                 errors::InvalidArgument("delta must be a scalar, not shape ",
                                         delta_in_shape.DebugString()));
     xla::Literal start, limit, delta;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
-                            0, &start, xla::ValueInferenceMode::kLowerBound));
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
-                            1, &limit, xla::ValueInferenceMode::kUpperBound));
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(2, &delta));
+    // Size the output from the bounds of start and limit that give the longest
+    // range: the lowest start and highest limit when counting up, and the
+    // highest start and lowest limit when counting down.
+    const xla::PrimitiveType delta_type = delta.shape().element_type();
+    const bool count_down =
+        xla::primitive_util::IsFloatingPointType(delta_type)
+            ? delta.GetAsDouble({}).value_or(0) < 0
+            : xla::primitive_util::IsSignedIntegralType(delta_type) &&
+                  delta.GetIntegralAsS64({}).value_or(0) < 0;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
+                            0, &start,
+                            count_down ? xla::ValueInferenceMode::kUpperBound
+                                       : xla::ValueInferenceMode::kLowerBound));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput(
+                            1, &limit,
+                            count_down ? xla::ValueInferenceMode::kLowerBound
+                                       : xla::ValueInferenceMode::kUpperBound));
 
     DataType type = input_type(0);
     absl::StatusOr<xla::XlaOp> output;
@@ -165,6 +178,10 @@ class RangeOp : public XlaOpKernel {
     bool limit_is_dynamic = false;
     OP_REQUIRES_OK(ctx,
                    ctx->ResolveInputDynamismIntoPred(1, &limit_is_dynamic));
+    // If start is dynamic, its literal is a bound, so add the input instead.
+    output = (start_is_dynamic ? ctx->Input(0)
+                               : xla::ConstantLiteral(ctx->builder(), start)) +
+             output.value();
 
     if (start_is_dynamic || limit_is_dynamic) {
       xla::XlaOp delta = ctx->Input(2);
