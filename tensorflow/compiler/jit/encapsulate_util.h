@@ -94,7 +94,7 @@ struct XlaClusterInfo {
   // TODO(klimek): In c++17 we'll be able to initialize host_compute_core
   // without losing aggregate initialization, which allows us to get rid of
   // the constructor definitions again.
-  XlaClusterInfo() {}
+  XlaClusterInfo() = default;
   XlaClusterInfo(const std::string& cluster_name,
                  const NameAttrList& func_name_attrs, Node* node,
                  const std::map<std::string, int>& host_compute_core)
