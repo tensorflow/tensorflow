@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
@@ -70,6 +71,29 @@ using ::testing::Not;
 using ::testing::Optional;
 using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
+
+// Returns the default platform.
+se::Platform* GetDefaultPlatform() {
+  absl::StatusOr<se::Platform*> platform = PlatformUtil::GetDefaultPlatform();
+  CHECK_OK(platform.status());
+  return *platform;
+}
+
+// Returns the compiler registered for `platform`.
+std::unique_ptr<Compiler> GetCompilerForPlatform(se::Platform* platform) {
+  absl::StatusOr<std::unique_ptr<Compiler>> compiler =
+      Compiler::GetForPlatform(platform->id());
+  CHECK_OK(compiler.status());
+  return *std::move(compiler);
+}
+
+// Returns the first device executor of `platform`.
+se::StreamExecutor* GetStreamExecutor(se::Platform* platform) {
+  absl::StatusOr<se::StreamExecutor*> stream_executor =
+      platform->ExecutorForDevice(0);
+  CHECK_OK(stream_executor.status());
+  return *stream_executor;
+}
 
 const char kHlo[] = R"(
   HloModule module
@@ -133,11 +157,11 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
   TritonBackendTest()
       : debug_options_(
             HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
-        platform_(PlatformUtil::GetDefaultPlatform().value()),
-        stream_executor_(platform_->ExecutorForDevice(0).value()),
+        platform_(GetDefaultPlatform()),
+        stream_executor_(GetStreamExecutor(platform_)),
         target_config_(stream_executor_),
         alias_info_(stream_executor_->GetDeviceDescription()),
-        compiler_(Compiler::GetForPlatform(platform_->id()).value()),
+        compiler_(GetCompilerForPlatform(platform_)),
         backend_(&debug_options_, compiler_.get(), &target_config_,
                  &alias_info_, &mlir_context_pool_) {}
 
