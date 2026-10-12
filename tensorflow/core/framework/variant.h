@@ -166,28 +166,28 @@ class Variant {
   // Make sure that the type is CopyConstructible and not a
   // tensorflow::Variant object itself. We want the copy constructor to be
   // chosen for the tensorflow::Variant case.
-  template <typename T, typename VT = typename std::decay<T>::type,
-            typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                        std::is_move_constructible<VT>::value,
-                                    void>::type* = nullptr>
+  template <typename T, typename VT = std::decay_t<T>,
+            std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                                 std::is_move_constructible_v<VT>,
+                             void>* = nullptr>
   Variant(T&& value);
 
-  template <typename T, typename VT = typename std::decay<T>::type,
-            typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                        std::is_copy_constructible<VT>::value,
-                                    void>::type* = nullptr>
+  template <typename T, typename VT = std::decay_t<T>,
+            std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                                 std::is_copy_constructible_v<VT>,
+                             void>* = nullptr>
   Variant(const T& value);
 
-  template <typename T, typename VT = typename std::decay<T>::type,
-            typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                        std::is_copy_constructible<VT>::value,
-                                    void>::type* = nullptr>
+  template <typename T, typename VT = std::decay_t<T>,
+            std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                                 std::is_copy_constructible_v<VT>,
+                             void>* = nullptr>
   Variant& operator=(const T& value);
 
-  template <typename T, typename VT = typename std::decay<T>::type,
-            typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                        std::is_move_constructible<VT>::value,
-                                    void>::type* = nullptr>
+  template <typename T, typename VT = std::decay_t<T>,
+            std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                                 std::is_move_constructible_v<VT>,
+                             void>* = nullptr>
   Variant& operator=(T&& value);
 
   Variant& operator=(const Variant& rhs) {
@@ -343,8 +343,7 @@ class Variant {
     ~Value() final = default;
 
     TypeIndex TypeId() const final {
-      const TypeIndex value_type_index =
-          TypeIndex::Make<typename std::decay<T>::type>();
+      const TypeIndex value_type_index = TypeIndex::Make<std::decay_t<T>>();
       return value_type_index;
     }
 
@@ -551,25 +550,25 @@ inline Variant::Variant(Variant&& other) noexcept
 }
 
 template <typename T, typename VT,
-          typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                      std::is_move_constructible<VT>::value,
-                                  void>::type*>
+          std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                               std::is_move_constructible_v<VT>,
+                           void>*>
 inline Variant::Variant(T&& value) : is_inline_(CanInlineType<VT>()) {
   InsertValue<VT>(std::forward<T>(value));
 }
 
 template <typename T, typename VT,
-          typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                      std::is_copy_constructible<VT>::value,
-                                  void>::type*>
+          std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                               std::is_copy_constructible_v<VT>,
+                           void>*>
 inline Variant::Variant(const T& value) : is_inline_(CanInlineType<VT>()) {
   InsertValue<VT>(value);
 }
 
 template <typename T, typename VT,
-          typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                      std::is_move_constructible<VT>::value,
-                                  void>::type*>
+          std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                               std::is_move_constructible_v<VT>,
+                           void>*>
 inline Variant& Variant::operator=(T&& value) {
   ResetMemory();
   is_inline_ = CanInlineType<VT>();
@@ -578,9 +577,9 @@ inline Variant& Variant::operator=(T&& value) {
 }
 
 template <typename T, typename VT,
-          typename std::enable_if<!std::is_same<Variant, VT>::value &&
-                                      std::is_copy_constructible<VT>::value,
-                                  void>::type*>
+          std::enable_if_t<!std::is_same_v<Variant, VT> &&
+                               std::is_copy_constructible_v<VT>,
+                           void>*>
 inline Variant& Variant::operator=(const T& value) {
   ResetMemory();
   is_inline_ = CanInlineType<VT>();
