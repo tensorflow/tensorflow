@@ -160,7 +160,7 @@ module @module_1 {
   // CHECK-SAME: -> tensor<32xi32> {
   func.func @inlined_mesh(
     %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"},
-    %arg1: tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}
+    %arg1: tensor<32xi32> {mhlo.sharding = "{single_device[device_id=5]}"}
   ) -> tensor<32xi32> {
     // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh_0, [{"a", "b"}]> : tensor<32xi32>
     // CHECK-NEXT: return %[[SHARDING]]
