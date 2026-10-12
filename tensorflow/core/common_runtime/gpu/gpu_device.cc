@@ -168,7 +168,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
         semaphore_(nullptr),
         context_(nullptr),
         device_(this) {}
-  ~EigenGpuStreamDevice() override {}
+  ~EigenGpuStreamDevice() override = default;
 
   void Reinitialize(OpKernelContext* context, gpuStream_t gpu_stream,
                     tsl::PlatformDeviceId platform_device_id,

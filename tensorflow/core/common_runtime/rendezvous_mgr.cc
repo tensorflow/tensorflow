@@ -209,7 +209,7 @@ PrivateIntraProcessRendezvous::PrivateIntraProcessRendezvous(
     : device_mgr_(device_mgr),
       local_(nullptr, /* num_shards= */ device_mgr->NumDevices()) {}
 
-PrivateIntraProcessRendezvous::~PrivateIntraProcessRendezvous() {}
+PrivateIntraProcessRendezvous::~PrivateIntraProcessRendezvous() = default;
 
 absl::Status PrivateIntraProcessRendezvous::Send(const ParsedKey& key,
                                                  const Rendezvous::Args& args,

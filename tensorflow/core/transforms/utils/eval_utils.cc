@@ -64,7 +64,7 @@ SimpleDevice::SimpleDevice() : DeviceBase(tensorflow::Env::Default()) {
   set_eigen_cpu_device(eigen_device_.get());
 }
 
-SimpleDevice::~SimpleDevice() {}
+SimpleDevice::~SimpleDevice() = default;
 
 tensorflow::Allocator *SimpleDevice::GetAllocator(
     tensorflow::AllocatorAttributes attr) {

@@ -250,23 +250,20 @@ class alignas(alignof(T) * N) AlignedVector {
   // Note: This is required for T=Eigen::half because it only supports explicit
   // conversions from other types and its template constructor is too relaxed
   // to be able to use std::is_constructible.
-  template <typename U, typename std::enable_if<std::is_arithmetic<U>::value,
-                                                int>::type = 0>
+  template <typename U, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
   __host__ __device__ explicit AlignedVector(U uniform_u) {
     value_type uniform(uniform_u);
     UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = uniform; }
   }
   // Implicit conversion.
-  template <typename U, typename std::enable_if<
-                            std::is_convertible<U, T>::value, int>::type = 0>
+  template <typename U, std::enable_if_t<std::is_convertible_v<U, T>, int> = 0>
   __host__ __device__ AlignedVector(const AlignedVector<U, N>& other) {
     UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = other[i]; }
   }
   // Explicit conversion.
-  template <typename U,
-            typename std::enable_if<!std::is_convertible<U, T>::value &&
-                                        std::is_constructible<T, U>::value,
-                                    int>::type = 0>
+  template <typename U, std::enable_if_t<!std::is_convertible_v<U, T> &&
+                                             std::is_constructible_v<T, U>,
+                                         int> = 0>
   __host__ __device__ explicit AlignedVector(const AlignedVector<U, N>& other) {
     UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) {
       values_[i] = T(other[i]);
