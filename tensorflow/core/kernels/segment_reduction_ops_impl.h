@@ -737,15 +737,11 @@ class SparseSegmentReductionOpBase : public OpKernel {
   const DataType dtidx_;
 
   template <typename Tin>
-  using EnableIfBfloat16OrHalf =
-      typename std::enable_if<std::is_same<Tin, bfloat16>::value ||
-                                  std::is_same<Tin, Eigen::half>::value,
-                              int>::type;
+  using EnableIfBfloat16OrHalf = std::enable_if_t<
+      std::is_same_v<Tin, bfloat16> || std::is_same_v<Tin, Eigen::half>, int>;
   template <typename Tin>
-  using EnableIfNotBfloat16OrHalf =
-      typename std::enable_if<!std::is_same<Tin, bfloat16>::value &&
-                                  !std::is_same<Tin, Eigen::half>::value,
-                              int>::type;
+  using EnableIfNotBfloat16OrHalf = std::enable_if_t<
+      !std::is_same_v<Tin, bfloat16> && !std::is_same_v<Tin, Eigen::half>, int>;
 
   template <typename Tin, typename Tindex, EnableIfNotBfloat16OrHalf<Tin> = 0>
   EIGEN_ALWAYS_INLINE auto fetch_val(
@@ -1171,15 +1167,11 @@ struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
 
  private:
   template <typename Tin>
-  using EnableIfBfloat16OrHalf =
-      typename std::enable_if<std::is_same<Tin, bfloat16>::value ||
-                                  std::is_same<Tin, Eigen::half>::value,
-                              int>::type;
+  using EnableIfBfloat16OrHalf = std::enable_if_t<
+      std::is_same_v<Tin, bfloat16> || std::is_same_v<Tin, Eigen::half>, int>;
   template <typename Tin>
-  using EnableIfNotBfloat16OrHalf =
-      typename std::enable_if<!std::is_same<Tin, bfloat16>::value &&
-                                  !std::is_same<Tin, Eigen::half>::value,
-                              int>::type;
+  using EnableIfNotBfloat16OrHalf = std::enable_if_t<
+      !std::is_same_v<Tin, bfloat16> && !std::is_same_v<Tin, Eigen::half>, int>;
 
   template <typename Tin, EnableIfNotBfloat16OrHalf<Tin> = 0>
   void Accumulate(

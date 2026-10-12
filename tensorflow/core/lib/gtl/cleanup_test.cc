@@ -28,7 +28,7 @@ using AnyCleanup = gtl::Cleanup<std::function<void()>>;
 
 template <typename T1, typename T2>
 void AssertTypeEq() {
-  static_assert(std::is_same<T1, T2>::value, "unexpected type");
+  static_assert(std::is_same_v<T1, T2>, "unexpected type");
 }
 
 TEST(CleanupTest, BasicLambda) {

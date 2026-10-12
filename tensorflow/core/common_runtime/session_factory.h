@@ -65,7 +65,7 @@ class SessionFactory {
     return absl::UnimplementedError("Reset()");
   }
 
-  virtual ~SessionFactory() {}
+  virtual ~SessionFactory() = default;
   static void Register(const std::string& runtime_type,
                        SessionFactory* factory);
   static absl::Status GetFactory(const SessionOptions& options,

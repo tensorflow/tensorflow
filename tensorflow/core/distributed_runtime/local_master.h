@@ -38,7 +38,7 @@ class Master;
 // for cancellation.
 class LocalMaster : public MasterInterface {
  public:
-  ~LocalMaster() override {}
+  ~LocalMaster() override = default;
 
   absl::Status CreateSession(CallOptions* call_options,
                              const CreateSessionRequest* request,

@@ -53,7 +53,7 @@ class PruneRewrite {
   PruneRewrite(const std::string* endpoint_name,
                const DeviceAttributes* device_info)
       : endpoint_name_(endpoint_name), device_info_(device_info) {}
-  virtual ~PruneRewrite() {}
+  virtual ~PruneRewrite() = default;
 
   // Creates a new node whose output replaces the given `tensor` in graph `g`.
   // The node will be assigned to the device named in `device_info`.
