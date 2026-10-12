@@ -107,7 +107,7 @@ class SparseSoftmaxCrossEntropyWithLogitsGradientFunction
     grad_inputs[1] = nullptr;
     return absl::OkStatus();
   }
-  ~SparseSoftmaxCrossEntropyWithLogitsGradientFunction() override {}
+  ~SparseSoftmaxCrossEntropyWithLogitsGradientFunction() override = default;
 
  private:
   vector<AbstractTensorHandle*> forward_outputs_;
@@ -146,7 +146,7 @@ class BiasAddGradientFunction : public GradientFunction {
 
     return absl::OkStatus();
   }
-  ~BiasAddGradientFunction() override {}
+  ~BiasAddGradientFunction() override = default;
 
  private:
   AttrBuilder forward_attrs_;

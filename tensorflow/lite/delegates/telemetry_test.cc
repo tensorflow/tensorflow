@@ -49,7 +49,7 @@ TEST(TelemetryTest, StatusConversion) {
 // Dummy profiler to test delegate reporting.
 class DelegateProfiler : public Profiler {
  public:
-  DelegateProfiler() {}
+  DelegateProfiler() = default;
   ~DelegateProfiler() override = default;
 
   uint32_t BeginEvent(const char* tag, EventType event_type,
