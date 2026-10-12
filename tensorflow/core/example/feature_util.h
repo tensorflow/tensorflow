@@ -178,24 +178,21 @@ template <typename ValueType, class Enable = void>
 struct FeatureTrait;
 
 template <typename ValueType>
-struct FeatureTrait<ValueType, typename std::enable_if<
-                                   std::is_integral<ValueType>::value>::type> {
+struct FeatureTrait<ValueType,
+                    std::enable_if_t<std::is_integral_v<ValueType>>> {
   using Type = protobuf_int64;
 };
 
 template <typename ValueType>
-struct FeatureTrait<
-    ValueType,
-    typename std::enable_if<std::is_floating_point<ValueType>::value>::type> {
+struct FeatureTrait<ValueType,
+                    std::enable_if_t<std::is_floating_point_v<ValueType>>> {
   using Type = float;
 };
 
 template <typename T>
-struct is_string
-    : public std::integral_constant<
-          bool,
-          std::is_same<char*, typename std::decay<T>::type>::value ||
-              std::is_same<const char*, typename std::decay<T>::type>::value> {
+struct is_string : public std::integral_constant<
+                       bool, std::is_same_v<char*, std::decay_t<T>> ||
+                                 std::is_same_v<const char*, std::decay_t<T>>> {
 };
 
 template <>
@@ -208,15 +205,14 @@ template <>
 struct is_string<tstring> : std::true_type {};
 
 template <typename ValueType>
-struct FeatureTrait<
-    ValueType, typename std::enable_if<is_string<ValueType>::value>::type> {
+struct FeatureTrait<ValueType, std::enable_if_t<is_string<ValueType>::value>> {
   using Type = std::string;
 };
 
 // Port of the C++20 `requires` expressions.
 template <typename... T, typename F>
 constexpr bool Requires(F) {
-  return std::is_invocable<F, T...>::value;
+  return std::is_invocable_v<F, T...>;
 }
 
 struct NoneSuch {};
@@ -281,8 +277,8 @@ struct TypeHasFeatures<Features> : std::true_type {};
 // A family of template functions to return mutable Features proto from a
 // container proto. Supported ProtoTypes: SequenceExample, Example, Features.
 template <typename ProtoType>
-typename std::enable_if<TypeHasFeatures<ProtoType>::value, Features*>::type
-GetFeatures(ProtoType* proto);
+std::enable_if_t<TypeHasFeatures<ProtoType>::value, Features*> GetFeatures(
+    ProtoType* proto);
 
 template <>
 Features* GetFeatures<Features>(Features* proto);
@@ -292,8 +288,7 @@ template <>
 Features* GetFeatures<SequenceExample>(SequenceExample* proto);
 
 template <typename ProtoType>
-typename std::enable_if<TypeHasFeatures<ProtoType>::value,
-                        const Features&>::type
+std::enable_if_t<TypeHasFeatures<ProtoType>::value, const Features&>
 GetFeatures(const ProtoType& proto);
 
 template <>

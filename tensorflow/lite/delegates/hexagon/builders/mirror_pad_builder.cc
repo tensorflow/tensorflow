@@ -89,7 +89,7 @@ TfLiteStatus MirrorPadOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
   return kTfLiteOk;
 }
 
-MirrorPadOpBuilder::~MirrorPadOpBuilder() {}
+MirrorPadOpBuilder::~MirrorPadOpBuilder() = default;
 
 OpBuilder* CreateMirrorPadBuilder(GraphBuilder* graph_builder, int op_type) {
   return new MirrorPadOpBuilder(graph_builder, op_type);

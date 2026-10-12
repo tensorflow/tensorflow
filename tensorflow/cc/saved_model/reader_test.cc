@@ -51,7 +51,7 @@ string NonChunkedSavedModel() {
 
 class ReaderTest : public ::testing::Test {
  protected:
-  ReaderTest() {}
+  ReaderTest() = default;
 
   void CheckMetaGraphDef(const MetaGraphDef& meta_graph_def) {
     const auto& tags = meta_graph_def.meta_info_def().tags();

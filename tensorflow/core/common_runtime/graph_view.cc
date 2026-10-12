@@ -51,9 +51,9 @@ std::string NodeItem::DebugString() const {
 }
 
 GraphView::~GraphView() {
-  static_assert(std::is_trivially_destructible<AllocatorAttributes>::value,
+  static_assert(std::is_trivially_destructible_v<AllocatorAttributes>,
                 "Update code if AllocatorAttributes gains a destructor");
-  static_assert(std::is_trivially_destructible<EdgeInfo>::value,
+  static_assert(std::is_trivially_destructible_v<EdgeInfo>,
                 "Update code if EdgeInfo gains a destructor");
   for (int i = 0; i < num_nodes_; i++) {
     NodeItem* n = node(i);

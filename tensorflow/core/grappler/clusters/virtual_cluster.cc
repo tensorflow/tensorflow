@@ -67,7 +67,7 @@ VirtualCluster::VirtualCluster(const DeviceSet* device_set)
   }
 }
 
-VirtualCluster::~VirtualCluster() {}
+VirtualCluster::~VirtualCluster() = default;
 
 absl::Status VirtualCluster::Provision() { return absl::OkStatus(); }
 

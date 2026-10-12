@@ -69,7 +69,7 @@ class AdjustContrastOp : public OpKernel {
         absl::InvalidArgumentError(absl::StrCat(
             "max_value must be scalar: ", max_value.shape().DebugString())));
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(
           context, !OpDeterminismRequired(),
           absl::UnimplementedError(
