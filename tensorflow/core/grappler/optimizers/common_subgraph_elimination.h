@@ -35,12 +35,12 @@ struct GrapplerItem;
 
 class CommonSubgraphElimination : public GraphOptimizer {
  public:
-  CommonSubgraphElimination() {}
+  CommonSubgraphElimination() = default;
 
   explicit CommonSubgraphElimination(RewriterConfig::Toggle opt_level)
       : opt_level_(opt_level) {}
 
-  ~CommonSubgraphElimination() override {}
+  ~CommonSubgraphElimination() override = default;
 
   std::string name() const override { return "common_subgraph_elimination"; };
 

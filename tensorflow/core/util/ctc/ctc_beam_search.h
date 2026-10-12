@@ -96,7 +96,7 @@ class CTCBeamSearchDecoder : public CTCDecoder<T> {
     Reset();
   }
 
-  ~CTCBeamSearchDecoder() override {}
+  ~CTCBeamSearchDecoder() override = default;
 
   // Run the hibernating beam search algorithm on the given input.
   absl::Status Decode(const typename CTCDecoder<T>::SequenceLength& seq_len,
