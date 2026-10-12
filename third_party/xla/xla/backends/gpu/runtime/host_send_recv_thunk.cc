@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_async_thunk.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/device_id.h"
@@ -78,10 +78,10 @@ static absl::StatusOr<bool> ShouldSkip(
 absl::Status HostSendRecvAsyncEvents::Emplace(
     se::StreamExecutor* executor, int32_t channel_id,
     tsl::AsyncValueRef<std::unique_ptr<se::Event>> event) {
-  Key key = {executor, channel_id};
-
-  absl::MutexLock lock(mutex_);
-  if (auto it = events_.try_emplace(key, std::move(event)); it.second) {
+  ABSL_ASSIGN_OR_RETURN(DeviceEvents * device_events,
+                   device_events_.GetOrCreate(executor->device_ordinal()));
+  if (auto it = device_events->events.try_emplace(channel_id, std::move(event));
+      it.second) {
     return absl::OkStatus();
   }
 
@@ -92,10 +92,12 @@ absl::Status HostSendRecvAsyncEvents::Emplace(
 absl::StatusOr<AsyncValueRef<std::unique_ptr<se::Event>>>
 HostSendRecvAsyncEvents::Extract(se::StreamExecutor* executor,
                                  int32_t channel_id) {
-  Key key = {executor, channel_id};
-
-  absl::MutexLock lock(mutex_);
-  if (auto event = events_.extract(key)) {
+  DeviceEvents* device_events = device_events_.Find(executor->device_ordinal());
+  if (device_events == nullptr) {
+    return absl::InternalError(absl::StrFormat(
+        "Async send/recv event was not found (channel_id==%d)", channel_id));
+  }
+  if (auto event = device_events->events.extract(channel_id)) {
     return std::move(event.mapped());
   }
 
@@ -145,7 +147,7 @@ absl::StatusOr<ThunkProto> HostSendThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<HostSendThunk>> HostSendThunk::FromProto(
     ThunkInfo thunk_info, const HostSendThunkProto& proto,
     absl::Span<const BufferAllocation> allocations,
-    HostSendRecvAsyncEventsMap& async_events_map) {
+    HostSendRecvAsyncEventsMap& async_events_map, int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   ABSL_ASSIGN_OR_RETURN(
       BufferAllocation::Slice buffer,
@@ -157,9 +159,12 @@ absl::StatusOr<std::unique_ptr<HostSendThunk>> HostSendThunk::FromProto(
   absl::flat_hash_map<std::string, std::string> frontend_attrs(
       proto.frontend_attrs().begin(), proto.frontend_attrs().end());
 
-  auto [async_event_it, _] = async_events_map.try_emplace(
-      AsyncEventsUniqueId(proto.async_events_unique_id()),
-      std::make_shared<HostSendRecvAsyncEvents>());
+  auto [async_event_it, inserted] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()), nullptr);
+  if (inserted) {
+    async_event_it->second =
+        std::make_shared<HostSendRecvAsyncEvents>(devices_per_host);
+  }
   return std::make_unique<HostSendThunk>(
       thunk_info, ShapedSlice{buffer, shape}, proto.channel_id(),
       async_event_it->second, std::move(frontend_attrs), device_constraint);
@@ -250,15 +255,18 @@ absl::StatusOr<ThunkProto> HostSendDoneThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<HostSendDoneThunk>> HostSendDoneThunk::FromProto(
     ThunkInfo thunk_info, const HostSendDoneThunkProto& proto,
     absl::Span<const BufferAllocation> allocations,
-    HostSendRecvAsyncEventsMap& async_events_map) {
+    HostSendRecvAsyncEventsMap& async_events_map, int devices_per_host) {
   std::optional<GlobalDeviceId> device_constraint;
   if (proto.has_device_constraint()) {
     device_constraint = GlobalDeviceId(proto.device_constraint());
   }
 
-  auto [async_event_it, _] = async_events_map.try_emplace(
-      AsyncEventsUniqueId(proto.async_events_unique_id()),
-      std::make_shared<HostSendRecvAsyncEvents>());
+  auto [async_event_it, inserted] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()), nullptr);
+  if (inserted) {
+    async_event_it->second =
+        std::make_shared<HostSendRecvAsyncEvents>(devices_per_host);
+  }
 
   std::optional<ShapedSlice> slice;
   if (proto.has_buffer()) {
@@ -349,7 +357,7 @@ absl::StatusOr<ThunkProto> HostRecvThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<HostRecvThunk>> HostRecvThunk::FromProto(
     ThunkInfo thunk_info, const HostRecvThunkProto& proto,
     absl::Span<const BufferAllocation> allocations,
-    HostSendRecvAsyncEventsMap& async_events_map) {
+    HostSendRecvAsyncEventsMap& async_events_map, int devices_per_host) {
   ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   ABSL_ASSIGN_OR_RETURN(
       BufferAllocation::Slice buffer,
@@ -361,9 +369,12 @@ absl::StatusOr<std::unique_ptr<HostRecvThunk>> HostRecvThunk::FromProto(
   absl::flat_hash_map<std::string, std::string> frontend_attrs(
       proto.frontend_attrs().begin(), proto.frontend_attrs().end());
 
-  auto [async_event_it, _] = async_events_map.try_emplace(
-      AsyncEventsUniqueId(proto.async_events_unique_id()),
-      std::make_shared<HostSendRecvAsyncEvents>());
+  auto [async_event_it, inserted] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()), nullptr);
+  if (inserted) {
+    async_event_it->second =
+        std::make_shared<HostSendRecvAsyncEvents>(devices_per_host);
+  }
   return std::make_unique<HostRecvThunk>(
       thunk_info, std::move(shape), buffer, proto.channel_id(),
       async_event_it->second, std::move(frontend_attrs), device_constraint);
@@ -456,15 +467,18 @@ absl::StatusOr<ThunkProto> HostRecvDoneThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<HostRecvDoneThunk>> HostRecvDoneThunk::FromProto(
     ThunkInfo thunk_info, const HostRecvDoneThunkProto& proto,
     absl::Span<const BufferAllocation> allocations,
-    HostSendRecvAsyncEventsMap& async_events_map) {
+    HostSendRecvAsyncEventsMap& async_events_map, int devices_per_host) {
   std::optional<GlobalDeviceId> device_constraint;
   if (proto.has_device_constraint()) {
     device_constraint = GlobalDeviceId(proto.device_constraint());
   }
 
-  auto [async_event_it, _] = async_events_map.try_emplace(
-      AsyncEventsUniqueId(proto.async_events_unique_id()),
-      std::make_shared<HostSendRecvAsyncEvents>());
+  auto [async_event_it, inserted] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()), nullptr);
+  if (inserted) {
+    async_event_it->second =
+        std::make_shared<HostSendRecvAsyncEvents>(devices_per_host);
+  }
 
   std::optional<ShapedSlice> slice;
   if (proto.has_buffer()) {

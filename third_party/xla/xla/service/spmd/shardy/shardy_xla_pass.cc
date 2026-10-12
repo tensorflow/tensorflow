@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
+#include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
 #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "shardy/dialect/sdy/transforms/export/utils.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
@@ -73,7 +74,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -426,7 +426,14 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.enableNativeNonFlatSupport = enableNativeNonFlatSupport;
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
 
+  bool shardyGeneratesDeviceCode =
+      !options.avoidExportForPartitioning &&
+      !options.enablePerInstructionPartitioning &&
+      options.partitionerStage ==
+          mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
+  stablehloExportPipelineOptions.addMissingShardingToControlFlow =
+      !shardyGeneratesDeviceCode;
   stablehloExportPipelineOptions.enableHloShardingV3 = enableHloShardingV3;
   stablehloExportPipelineOptions.exportAllReduceScatter =
       debugOptions.xla_sdy_export_all_reduce_scatter();
