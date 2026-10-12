@@ -360,11 +360,12 @@ class MatrixDiagOp : public XlaOpKernel {
                         context->builder()->GetShape(output));
       const auto fix_size = [&](int64_t dim, bool inferred, int64_t size) {
         if (inferred) {
-          output = xla::SetDimensionSize(
-              output,
-              xla::Add(diag_len,
-                       xla::ScalarLike(diag_len, size - max_diag_len)),
-              dim);
+          xla::XlaOp dim_size = diag_len;
+          if (size != max_diag_len) {
+            dim_size = xla::Add(diag_len,
+                                xla::ScalarLike(diag_len, size - max_diag_len));
+          }
+          output = xla::SetDimensionSize(output, dim_size, dim);
         } else if (output_xla_shape.is_dynamic_dimension(dim)) {
           output = xla::RemoveDynamicDimension(output, dim);
         }
