@@ -2233,6 +2233,7 @@ xla_test(
         ":hlo_test_base",
         ":literal_test_util",
         ":xla_internal_test_main",
+        ":xla_test_backend_predicates",
         "//xla:array2d",
         "//xla:error_spec",
         "//xla:literal",
