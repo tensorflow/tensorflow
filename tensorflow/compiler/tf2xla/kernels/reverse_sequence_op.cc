@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -129,8 +130,19 @@ class ReverseSequenceOp : public XlaOpKernel {
     slice_sizes[batch_dim_] = 1;
     slice_sizes[seq_dim_] = 1;
 
-    context->SetOutput(0,
-                       xla::Gather(input, start_indices, dnums, slice_sizes));
+    xla::XlaOp output = xla::Gather(input, start_indices, dnums, slice_sizes);
+    // The gather indices and slice sizes come from each dimension's static
+    // bound, so the output drops the input's dynamic sizes. Its dimensions are
+    // the input's, in the same order, so give them the input's sizes.
+    xla::Shape input_xla_shape;
+    OP_REQUIRES_VALUE(input_xla_shape, context, context->InputXlaShape(0));
+    for (int i = 0; i < input_shape.dims(); ++i) {
+      if (input_xla_shape.is_dynamic_dimension(i)) {
+        output =
+            xla::SetDimensionSize(output, xla::GetDimensionSize(input, i), i);
+      }
+    }
+    context->SetOutput(0, output);
   }
 
  private:

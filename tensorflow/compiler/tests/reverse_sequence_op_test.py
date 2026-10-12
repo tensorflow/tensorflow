@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -83,6 +84,50 @@ class ReverseSequenceTest(xla_test.XLATestCase):
     for dtype in self.all_types:
       for seq_dtype in self.all_types & {np.int32, np.int64}:
         self._testBasic(dtype, seq_dtype)
+
+  def _reverseSelected(self, x, seq_lengths, axis, seq_axis, batch_axis):
+    # Gathers the entries of x along axis where mask is true, which gives that
+    # dimension a size only known at run time, and reverses the result.
+    @def_function.function(jit_compile=True)
+    def f(x, seq_lengths, mask):
+      indices = array_ops.reshape(array_ops.where(mask), [-1])
+      x = array_ops.gather(x, indices, axis=axis)
+      if axis == batch_axis:
+        seq_lengths = array_ops.gather(seq_lengths, indices)
+      return array_ops.reverse_sequence(
+          x, seq_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
+
+    x = np.array(x, dtype=np.int32)
+    seq_lengths = np.array(seq_lengths, dtype=np.int32)
+    with self.session() as session:
+      with self.device_scope():
+        x_ph = array_ops.placeholder(dtypes.int32, x.shape)
+        seq_lengths_ph = array_ops.placeholder(dtypes.int32, seq_lengths.shape)
+        mask_ph = array_ops.placeholder(dtypes.bool, [4])
+        output = f(x_ph, seq_lengths_ph, mask_ph)
+      return session.run(output, {
+          x_ph: x,
+          seq_lengths_ph: seq_lengths,
+          mask_ph: [True, False, True, True]
+      })
+
+  def testDynamicDimensions(self):
+    # Regression test for GitHub issue 128953: the output had the bound of a
+    # dynamic input dimension instead of its size. The mask selects 3 of 4
+    # entries, so the selected dimension has size 3 and bound 4.
+    self.assertAllEqual(
+        self._reverseSelected([[1, 2, 3, 4], [5, 6, 7, 8]], [3, 2],
+                              axis=1, seq_axis=1, batch_axis=0),
+        [[4, 3, 1], [7, 5, 8]])
+    self.assertAllEqual(
+        self._reverseSelected([[1, 5], [2, 6], [3, 7], [4, 8]], [3, 2],
+                              axis=0, seq_axis=0, batch_axis=1),
+        [[4, 7], [3, 5], [1, 8]])
+    self.assertAllEqual(
+        self._reverseSelected([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+                              [3, 1, 2, 3],
+                              axis=0, seq_axis=1, batch_axis=0),
+        [[3, 2, 1], [8, 7, 9], [12, 11, 10]])
 
 
 if __name__ == "__main__":
