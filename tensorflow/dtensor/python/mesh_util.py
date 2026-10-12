@@ -155,7 +155,7 @@ def create_distributed_mesh(
   For CPU and GPU meshes, users can choose to use fewer local devices than what
   is available `local_devices`.
 
-  For TPU, only meshes that use all TPU cores is supported by the DTensor
+  For TPU, only meshes that use all TPU cores are supported by the DTensor
   runtime.
 
   Args:
