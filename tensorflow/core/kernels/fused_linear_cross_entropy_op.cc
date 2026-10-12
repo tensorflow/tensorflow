@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/framework/register_types.h"
@@ -64,6 +65,8 @@ class FusedLinearCrossEntropyOp : public OpKernel {
     auto labels_flat = labels.matrix<T>();
     auto loss_flat = loss_output->flat<T>();
 
+    using AccT = std::conditional_t<std::is_same_v<T, bfloat16>, float, T>;
+
     // Hoisted outside the batch loop to prevent allocation thrashing
     std::vector<T> logits(num_classes);
 
@@ -79,16 +82,16 @@ class FusedLinearCrossEntropyOp : public OpKernel {
         if (logit > max_logit) max_logit = logit;
       }
 
-      float sum_exp = 0.0f;
+      AccT sum_exp = static_cast<AccT>(0);
       for (int64_t j = 0; j < num_classes; ++j) {
-        sum_exp += std::exp(static_cast<float>(logits[j] - max_logit));
+        sum_exp += std::exp(static_cast<AccT>(logits[j] - max_logit));
       }
 
-      float log_sum_exp = static_cast<float>(max_logit) + std::log(sum_exp);
-      float sample_loss = 0.0f;
+      AccT log_sum_exp = static_cast<AccT>(max_logit) + std::log(sum_exp);
+      AccT sample_loss = static_cast<AccT>(0);
 
       for (int64_t j = 0; j < num_classes; ++j) {
-        sample_loss -= static_cast<float>(labels_flat(i, j)) * (static_cast<float>(logits[j]) - log_sum_exp);
+        sample_loss -= static_cast<AccT>(labels_flat(i, j)) * (static_cast<AccT>(logits[j]) - log_sum_exp);
       }
       loss_flat(i) = static_cast<T>(sample_loss);
     }
