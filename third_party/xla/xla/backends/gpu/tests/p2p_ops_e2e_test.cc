@@ -39,6 +39,14 @@ class P2POps : public CollectiveOpsWithFlagsBase,
             /*enable_symmetric_buffer=*/GetParam(),
             /*memory_size=*/32 * kMB,
             /*collectives_memory_size=*/0) {}
+
+ protected:
+  void SetUp() override {
+    CollectiveOpsWithFlagsBase::SetUp();
+    if (!IsHopperAndHigher() && enable_symmetric_buffer_) {
+      GTEST_SKIP() << "Test requires Hopper or higher";
+    }
+  }
 };
 
 TEST_P(P2POps, CollectivePermute) {
