@@ -94,7 +94,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
     Reset();
   }
 
-  ~CTCBeamSearchDecoder() override {}
+  ~CTCBeamSearchDecoder() override = default;
 
   // Run the hibernating beam search algorithm on the given input.
   bool Decode(const CTCDecoder::SequenceLength& seq_len,
