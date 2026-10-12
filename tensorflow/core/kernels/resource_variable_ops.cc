@@ -765,12 +765,7 @@ class ResourceGatherOp : public OpKernel {
     // reference count greater than one and make a copy of the
     // (potentially very large) tensor buffer.
     tf_shared_lock ml(*v->mu());
-    OP_REQUIRES(
-        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
-        absl::InvalidArgumentError(absl::StrCat(
-            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
-            " but got ", DataTypeString(v->tensor()->dtype()),
-            " (resource variable dtype)")));
+    OP_REQUIRES_OK(c, ValidateVariableDtype<T>(v.get()));
     const Tensor& params = *v->tensor();
     const Tensor& indices = c->input(1);
 
@@ -958,12 +953,7 @@ class ResourceGatherNdOp : public OpKernel {
     // reference count greater than one and make a copy of the
     // (potentially very large) tensor buffer.
     tf_shared_lock ml(*v->mu());
-    OP_REQUIRES(
-        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
-        absl::InvalidArgumentError(absl::StrCat(
-            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
-            " but got ", DataTypeString(v->tensor()->dtype()),
-            " (resource variable dtype)")));
+    OP_REQUIRES_OK(c, ValidateVariableDtype<T>(v.get()));
     const Tensor& params = *v->tensor();
     const Tensor& indices = c->input(1);
 
