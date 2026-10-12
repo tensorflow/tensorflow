@@ -26,8 +26,8 @@ namespace tensorflow {
 // A profile handler collects event stats from a running step.
 class ProfileHandler {
  public:
-  ProfileHandler() {}
-  virtual ~ProfileHandler() {}
+  ProfileHandler() = default;
+  virtual ~ProfileHandler() = default;
 
   // Records that a single Op was executed in the current step.
   //

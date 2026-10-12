@@ -649,7 +649,7 @@ class ResourceDeleter {
 
 template <typename T>
 void CheckDeriveFromResourceBase() {
-  static_assert(std::is_base_of<ResourceBase, T>::value,
+  static_assert(std::is_base_of_v<ResourceBase, T>,
                 "T must derive from ResourceBase");
 }
 

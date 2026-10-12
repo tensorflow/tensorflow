@@ -131,7 +131,9 @@ ENTRY %entry (lhs: bf16[4,4], rhs: bf16[4,4], lhs_scale: bf16[1,1], rhs_scale: b
 class TritonBackendTest : public HloHardwareIndependentTestBase {
  protected:
   TritonBackendTest()
-      : platform_(PlatformUtil::GetDefaultPlatform().value()),
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        platform_(PlatformUtil::GetDefaultPlatform().value()),
         stream_executor_(platform_->ExecutorForDevice(0).value()),
         target_config_(stream_executor_),
         alias_info_(stream_executor_->GetDeviceDescription()),
@@ -599,11 +601,8 @@ TEST_F(TritonBackendTest, WarpSpecializationConfigsDoNotHaveNumStagesTwo) {
       true);
   debug_options_.set_xla_gpu_exhaustive_tiling_search(true);
 
-  HloModuleConfig config;
-  config.set_debug_options(debug_options_);
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
 
   ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
                        backend_.GetSupportedConfigs(

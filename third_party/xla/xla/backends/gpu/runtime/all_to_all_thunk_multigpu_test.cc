@@ -70,7 +70,8 @@ static std::vector<BufferAllocation> MakeThunkBufferAllocations() {
   return allocations;
 }
 
-static AllToAllThunk MakeThunk(absl::Span<const BufferAllocation> allocations) {
+static AllToAllThunk MakeThunk(absl::Span<const BufferAllocation> allocations,
+                               bool p2p_memcpy_enabled = false) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(kNumBuffers);
   for (int i = 0; i < kNumBuffers; ++i) {
@@ -88,8 +89,8 @@ static AllToAllThunk MakeThunk(absl::Span<const BufferAllocation> allocations) {
   }
 
   return AllToAllThunk(Thunk::ThunkInfo(), MakeAllToAllConfig(),
-                       std::move(buffers),
-                       /*p2p_memcpy_enabled=*/false);
+                       std::move(buffers), p2p_memcpy_enabled,
+                       /*devices_per_host=*/kNumDevices);
 }
 
 using DeviceTestSlot = CollectiveThunkMultiGpuTestState;
@@ -251,6 +252,40 @@ TEST(AllToAllThunkMultiGpuTest, ExecuteOnStream) {
         ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
         return RunExecuteOnStreamPhase(slots[d], thunk, d,
                                        /*phase=*/1);
+      }));
+}
+
+TEST(AllToAllThunkMultiGpuTest, ExecuteOnStreamP2PMemcpy) {
+  if (!HasEnoughGpus(kNumDevices)) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
+  std::vector<BufferAllocation> buffer_allocations =
+      MakeThunkBufferAllocations();
+  AllToAllThunk thunk =
+      MakeThunk(buffer_allocations, /*p2p_memcpy_enabled=*/true);
+  std::vector<DeviceTestSlot> slots(kNumDevices);
+
+  ASSERT_OK(RunOnDevices(
+      kNumDevices, "alltoall_p2p_execute", [&](int d) -> absl::Status {
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        ABSL_RETURN_IF_ERROR(
+            RunExecuteOnStreamPhase(slots[d], thunk, d, /*phase=*/1));
+
+        BufferAllocations allocations =
+            MakeBufferAllocations(slots[d], slots[d].create_buffers);
+        Thunk::InitializeParams init_params;
+        init_params.executor = slots[d].executor;
+        init_params.stream = slots[d].stream.get();
+        init_params.command_buffer_trace_stream = slots[d].stream.get();
+        init_params.buffer_allocations = &allocations;
+        init_params.collective_params = &*slots[d].collective_params;
+        init_params.collective_cliques = &slots[d].collective_cliques;
+        init_params.local_device_count = kNumDevices;
+        ABSL_RETURN_IF_ERROR(thunk.Initialize(init_params));
+
+        return RunExecuteOnStreamPhase(slots[d], thunk, d, /*phase=*/2);
       }));
 }
 

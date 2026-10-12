@@ -108,7 +108,7 @@ class PackOp : public OpKernel {
     // required: Eigen device() assignments must be compiled with
     // EIGEN_USE_GPU defined (i.e. by NVCC/hipcc), otherwise Eigen fires a
     // static assertion even inside discarded if-constexpr branches.
-    if (std::is_same<Device, GPUDevice>::value && first_input.dims() == 0) {
+    if (std::is_same_v<Device, GPUDevice> && first_input.dims() == 0) {
       PackScalarsOnGPU<T>(c, num, output);
       return;
     }
@@ -146,7 +146,7 @@ class PackOp : public OpKernel {
     }
     if (output_size > 0) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      if (std::is_same<Device, GPUDevice>::value) {
+      if (std::is_same_v<Device, GPUDevice>) {
         ConcatGPU<T>(c, inputs_flat, output, &output_flat);
         return;
       }

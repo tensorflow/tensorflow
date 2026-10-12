@@ -107,7 +107,9 @@ class HipblasLtBackendTest : public HloHardwareIndependentTestBase {
   HipblasLtBackend backend_;
 
   HipblasLtBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        stream_executor_(PlatformUtil::GetDefaultPlatform()
                              .value()
                              ->ExecutorForDevice(0)
                              .value()),

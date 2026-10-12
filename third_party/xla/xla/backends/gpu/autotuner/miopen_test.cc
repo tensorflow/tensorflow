@@ -81,7 +81,9 @@ class MIOpenBackendTest : public HloHardwareIndependentTestBase {
   MIOpenBackend backend_;
 
   MIOpenBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+      : debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
+        stream_executor_(PlatformUtil::GetDefaultPlatform()
                              .value()
                              ->ExecutorForDevice(0)
                              .value()),

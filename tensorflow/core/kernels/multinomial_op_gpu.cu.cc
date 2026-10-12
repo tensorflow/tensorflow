@@ -47,7 +47,7 @@ __global__ void MultinomialKernel(int32_t nthreads, const int32_t num_classes,
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     const int maxima_idx = index / num_classes;
     if (ldg(maxima + maxima_idx) == ldg(scores + index)) {
-      using UnsignedOutputType = typename std::make_unsigned<OutputType>::type;
+      using UnsignedOutputType = std::make_unsigned_t<OutputType>;
       GpuAtomicMax(reinterpret_cast<UnsignedOutputType*>(output + maxima_idx),
                    static_cast<UnsignedOutputType>(index % num_classes));
     }
