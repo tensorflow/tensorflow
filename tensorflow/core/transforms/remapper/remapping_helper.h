@@ -223,10 +223,10 @@ class OpPropertyHelper : public OpCatHelper {
   template <typename Pattern>
   bool IsDeviceCompatible(const Pattern& pattern) const {
     // Currently, this function is used by contraction based fussion.
-    if constexpr (!std::is_same<Pattern, ContractionBiasAdd>::value &&
-                  !std::is_same<Pattern, ContractionBiasAddActivation>::value &&
-                  !std::is_same<Pattern, ContractionBiasAddAdd>::value &&
-                  !std::is_same<Pattern, ContractionBiasAddActivation>::value) {
+    if constexpr (!std::is_same_v<Pattern, ContractionBiasAdd> &&
+                  !std::is_same_v<Pattern, ContractionBiasAddActivation> &&
+                  !std::is_same_v<Pattern, ContractionBiasAddAdd> &&
+                  !std::is_same_v<Pattern, ContractionBiasAddActivation>) {
       return false;
     }
     return IsGpuCompatible(pattern) || IsCpuCompatible(pattern.contraction);
