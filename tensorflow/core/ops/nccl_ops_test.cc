@@ -57,6 +57,7 @@ TEST(NcclOpsTest, NcclBroadcastRecv_ShapeFn_Int64) {
   BuildNcclBroadcastRecv(DT_INT64, &op);
 
   INFER_OK(op, "[3]", "[?,?,?]");
+  INFER_ERROR("Shape must be rank 1", op, "[1,2]");
 
   // A dimension that does not fit in int32 must be preserved.
   Tensor shape_t = test::AsTensor<int64_t>({int64_t{1} << 32, 2});
