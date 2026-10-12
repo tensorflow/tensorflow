@@ -993,6 +993,16 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=1, keepdims=True)
     run_test([1.0j, 2.0, 3.0j], ddof=1)
     run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(0, 2), ddof=1)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(-1, 0), ddof=1)
+    # A range of axes is static too.
+    self.match(
+        np_array_ops.var(np.arange(8.0).reshape((2, 2, 2)), axis=range(2),
+                         ddof=1),
+        np.var(np.arange(8.0).reshape((2, 2, 2)), axis=(0, 1), ddof=1))
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(), ddof=1)
+    run_test(5.0, ddof=1)
+    run_test(5.0, axis=(), ddof=1)
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(0, 2), keepdims=True)
@@ -1000,6 +1010,38 @@ class ArrayMethodsTest(test.TestCase):
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
     self.assertRaises(ValueError, np_array_ops.var, np.ones([2, 2]), out=[])
+    out_of_bounds = 'out of bounds|not in|Invalid reduction dimension'
+    for axis in (-3, (-3, 0), 3, (0, 3)):
+      with self.assertRaisesRegex(
+          (ValueError, errors_impl.InvalidArgumentError), out_of_bounds):
+        np_array_ops.var(np.ones([2, 2]), axis=axis, ddof=1)
+
+    # With an unknown rank, the axis is only checked at run time.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    def var_fn(a):
+      return np_array_ops.var(a, axis=-3, ddof=1)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    def var_fn_tuple(a):
+      return np_array_ops.var(a, axis=(-3, 0), ddof=1)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), out_of_bounds):
+      var_fn(np.ones([2, 2], dtype=np.float32))
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError), out_of_bounds):
+      var_fn_tuple(np.ones([2, 2], dtype=np.float32))
+
+    # In-bounds negative axes with an unknown rank are normalized at run time.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    def var_fn_tuple_in_bounds(a):
+      return np_array_ops.var(a, axis=(-1, 0), ddof=1)
+
+    x = np.arange(24, dtype=np.float32).reshape((2, 3, 4))
+    self.match(var_fn_tuple_in_bounds(x), np.var(x, axis=(-1, 0), ddof=1))
 
   def testProd(self):
 
