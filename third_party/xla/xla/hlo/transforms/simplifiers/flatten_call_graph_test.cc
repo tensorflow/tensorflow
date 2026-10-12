@@ -1809,5 +1809,263 @@ ENTRY main {
   EXPECT_NE(inner_call0->to_apply(), inner_call1->to_apply());
 }
 
+TEST_F(FlattenCallGraphTest, SkipCloningIfDoesNotContain_DirectMatch) {
+  absl::string_view hlo_string = R"hlo(
+HloModule DirectMatch
+
+// CHECK-NOT: %skip_comp.clone
+%skip_comp (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+// CHECK: %clone_comp (
+// CHECK: %clone_comp.clone (
+%clone_comp (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %custom = f32[] custom-call(%param), custom_call_target="must_clone"
+}
+
+// CHECK: ENTRY %main
+// CHECK: %call_skip0 = f32[] call({{.*}}), to_apply=%skip_comp
+// CHECK: %call_skip1 = f32[] call({{.*}}), to_apply=%skip_comp
+// CHECK: %call_clone0 = f32[] call({{.*}}), to_apply=%clone_comp
+// CHECK: %call_clone1 = f32[] call({{.*}}), to_apply=%clone_comp.clone
+ENTRY %main (param: f32[]) -> (f32[], f32[], f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call_skip0 = f32[] call(%param), to_apply=%skip_comp
+  %call_skip1 = f32[] call(%param), to_apply=%skip_comp
+  %call_clone0 = f32[] call(%param), to_apply=%clone_comp
+  %call_clone1 = f32[] call(%param), to_apply=%clone_comp
+  ROOT %tuple = (f32[], f32[], f32[], f32[]) tuple(%call_skip0, %call_skip1, %call_clone0, %call_clone1)
+}
+)hlo";
+
+  FlattenCallGraph pass([](const HloComputation&) { return false; },
+                        [](const HloInstruction& inst) {
+                          return inst.IsCustomCall("must_clone");
+                        });
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass));
+}
+
+TEST_F(FlattenCallGraphTest, SkipCloningIfDoesNotContain_TransitiveMatch) {
+  absl::string_view hlo_string = R"hlo(
+HloModule TransitiveMatch
+
+// CHECK-NOT: %leaf_skip.clone (
+%leaf_skip (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+// CHECK: %leaf_clone.clone (
+%leaf_clone (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %custom = f32[] custom-call(%param), custom_call_target="must_clone"
+}
+
+// CHECK: %mid_clone (
+// CHECK-NEXT: %param.2 = f32[] parameter(0)
+// CHECK-NEXT: %s0_ = f32[] call(%param.2), to_apply=%leaf_skip
+// CHECK-NEXT: %s1_ = f32[] call(%s0_), to_apply=%leaf_skip
+// CHECK-NEXT: %c0 = f32[] call(%s1_), to_apply=%leaf_clone
+// CHECK-NEXT: ROOT %c1 = f32[] call(%c0), to_apply=%leaf_clone.clone
+//
+
+// CHECK: %leaf_clone.clone.1 (
+// CHECK: %leaf_clone.clone.clone (
+// 
+// CHECK: %mid_clone.clone (
+// CHECK-NEXT: %param.5 = f32[] parameter(0)
+// CHECK-NEXT: %s0_.1 = f32[] call(%param.5), to_apply=%leaf_skip
+// CHECK-NEXT: %s1_.1 = f32[] call(%s0_.1), to_apply=%leaf_skip
+// CHECK-NEXT: %c0.1 = f32[] call(%s1_.1), to_apply=%leaf_clone.clone.1
+// CHECK-NEXT: ROOT %c1.1 = f32[] call(%c0.1), to_apply=%leaf_clone.clone.clone
+%mid_clone (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %s0_ = f32[] call(%param), to_apply=%leaf_skip
+  %s1_ = f32[] call(%s0_), to_apply=%leaf_skip
+  %c0 = f32[] call(%s1_), to_apply=%leaf_clone
+  ROOT %c1 = f32[] call(%c0), to_apply=%leaf_clone
+}
+
+// CHECK: ENTRY %main (
+// CHECK-NEXT: %param.3 = f32[] parameter(0)
+// CHECK-NEXT: %call0 = f32[] call(%param.3), to_apply=%mid_clone
+// CHECK-NEXT: %call1 = f32[] call(%param.3), to_apply=%mid_clone.clone
+// CHECK-NEXT: ROOT %tuple = (f32[], f32[]) tuple(%call0, %call1)
+ENTRY %main (param: f32[]) -> (f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%mid_clone
+  %call1 = f32[] call(%param), to_apply=%mid_clone
+  ROOT %tuple = (f32[], f32[]) tuple(%call0, %call1)
+}
+)hlo";
+
+  FlattenCallGraph pass([](const HloComputation&) { return false; },
+                        [](const HloInstruction& inst) {
+                          return inst.IsCustomCall("must_clone");
+                        });
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass));
+}
+
+TEST_F(FlattenCallGraphTest,
+       SkipCloningIfDoesNotContain_TransitiveSingleCallToBar) {
+  absl::string_view hlo_string = R"hlo(
+HloModule TransitiveSingleCallToBar
+
+// CHECK-NOT: %bar.clone (
+%bar (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %add = f32[] add(%param, %param)
+}
+
+// CHECK: %foo (
+// CHECK: ROOT %call_bar = f32[] call(%custom), to_apply=%bar
+//
+// CHECK: %foo.clone (
+// CHECK: ROOT %call_bar.1 = f32[] call(%custom.1), to_apply=%bar
+%foo (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  %custom = f32[] custom-call(%param), custom_call_target="must_clone"
+  ROOT %call_bar = f32[] call(%custom), to_apply=%bar
+}
+
+// CHECK: ENTRY %main (
+// CHECK: %call0 = f32[] call(%param.2), to_apply=%foo
+// CHECK: %call1 = f32[] call(%param.2), to_apply=%foo.clone
+ENTRY %main (param: f32[]) -> (f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%foo
+  %call1 = f32[] call(%param), to_apply=%foo
+  ROOT %tuple = (f32[], f32[]) tuple(%call0, %call1)
+}
+)hlo";
+
+  FlattenCallGraph pass([](const HloComputation&) { return false; },
+                        [](const HloInstruction& inst) {
+                          return inst.IsCustomCall("must_clone");
+                        });
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass));
+}
+
+TEST_F(FlattenCallGraphTest, SkipCloningIfDoesNotContain_CombinedWithHandler) {
+  absl::string_view hlo_string = R"hlo(
+HloModule CombinedWithHandler
+
+// CHECK-NOT: %skip_by_inst.clone
+%skip_by_inst (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+// CHECK-NOT: %skip_by_comp.clone
+%skip_by_comp (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %custom = f32[] custom-call(%param), custom_call_target="must_clone"
+}
+
+// CHECK: %clone_comp (
+// CHECK: ROOT %call_comp = f32[] call({{.*}}), to_apply=%skip_by_comp
+
+// CHECK: %clone_comp.clone (
+// CHECK: ROOT %call_comp{{.*}} = f32[] call({{.*}}), to_apply=%skip_by_comp
+%clone_comp (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %call_comp = f32[] call(%param), to_apply=%skip_by_comp
+}
+
+// CHECK: ENTRY %main
+// CHECK: %call_clone0 = f32[] call({{.*}}), to_apply=%clone_comp
+// CHECK: %call_clone1 = f32[] call({{.*}}), to_apply=%clone_comp.clone
+// CHECK: %call_inst0 = f32[] call({{.*}}), to_apply=%skip_by_inst
+// CHECK: %call_inst1 = f32[] call({{.*}}), to_apply=%skip_by_inst
+ENTRY %main (param: f32[]) -> (f32[], f32[], f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call_clone0 = f32[] call(%param), to_apply=%clone_comp
+  %call_clone1 = f32[] call(%param), to_apply=%clone_comp
+  %call_inst0 = f32[] call(%param), to_apply=%skip_by_inst
+  %call_inst1 = f32[] call(%param), to_apply=%skip_by_inst
+  ROOT %tuple = (f32[], f32[], f32[], f32[]) tuple(%call_clone0, %call_clone1, %call_inst0, %call_inst1)
+}
+)hlo";
+
+  FlattenCallGraph combined_pass(
+      [](const HloComputation& comp) { return comp.name() == "skip_by_comp"; },
+      [](const HloInstruction& inst) {
+        return inst.IsCustomCall("must_clone");
+      });
+  RunAndFilecheckHloRewrite(hlo_string, std::move(combined_pass));
+}
+
+TEST_F(FlattenCallGraphTest,
+       SkipCloningIfDoesNotContain_EmptyComputation_AllFalse) {
+  absl::string_view hlo_string = R"hlo(
+HloModule EmptyComputation
+
+%empty_comp (param: f32[]) -> f32[] {
+  ROOT %param = f32[] parameter(0)
+}
+
+ENTRY %main (param: f32[]) -> (f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%empty_comp
+  %call1 = f32[] call(%param), to_apply=%empty_comp
+  ROOT %tuple = (f32[], f32[]) tuple(%call0, %call1)
+}
+)hlo";
+
+  FlattenCallGraph pass([](const HloComputation&) { return false; },
+                        [](const HloInstruction& inst) { return false; });
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass), std::nullopt);
+}
+
+TEST_F(FlattenCallGraphTest,
+       SkipCloningIfDoesNotContain_EmptyComputation_AllTrue) {
+  absl::string_view hlo_string = R"hlo(
+HloModule EmptyComputation
+
+// CHECK: %empty_comp.clone
+%empty_comp (param: f32[]) -> f32[] {
+  ROOT %param = f32[] parameter(0)
+}
+
+ENTRY %main (param: f32[]) -> (f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%empty_comp
+  %call1 = f32[] call(%param), to_apply=%empty_comp
+  ROOT %tuple = (f32[], f32[]) tuple(%call0, %call1)
+}
+)hlo";
+
+  FlattenCallGraph pass([](const HloComputation&) { return false; },
+                        [](const HloInstruction& inst) { return true; });
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass));
+}
+
+TEST_F(FlattenCallGraphTest,
+       SkipCloningIfDoesNotContain_EmptyComputation_NullOpt) {
+  absl::string_view hlo_string = R"hlo(
+HloModule EmptyComputation
+
+// CHECK: %empty_comp.clone
+%empty_comp (param: f32[]) -> f32[] {
+  ROOT %param = f32[] parameter(0)
+}
+
+ENTRY %main (param: f32[]) -> (f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %call0 = f32[] call(%param), to_apply=%empty_comp
+  %call1 = f32[] call(%param), to_apply=%empty_comp
+  ROOT %tuple = (f32[], f32[]) tuple(%call0, %call1)
+}
+)hlo";
+
+  FlattenCallGraph pass(
+      [](const HloComputation&) { return false; },
+      /*skip_cloning_if_does_not_contain_handler_=*/std::nullopt);
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass));
+}
+
 }  // namespace
 }  // namespace xla

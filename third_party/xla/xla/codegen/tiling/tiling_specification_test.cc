@@ -51,6 +51,10 @@ class TilingSpecificationTest : public HloHardwareIndependentTestBase {
  public:
   TilingSpecificationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
 
+  void SetUp() override {
+    GTEST_SKIP() << "Legacy symbolic tile analysis is disallowed.";
+  }
+
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =

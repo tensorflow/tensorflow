@@ -115,6 +115,7 @@ int64_t NumElements(const TensorObjectDef& def) {
   const auto& d = def.dimensions;
   switch (def.object_def.data_layout) {
     case DataLayout::BHWC:
+    case DataLayout::HWBC:
       return d.product();
     case DataLayout::HWDC4:
     case DataLayout::HDWC4:

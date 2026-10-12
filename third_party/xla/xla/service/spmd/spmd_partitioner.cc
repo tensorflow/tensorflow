@@ -879,14 +879,17 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
           ? HloSharding::V3ToV2Sharding(raw_target.named_sharding())
           : raw_target;
   for (auto& entry : cache) {
-    if (std::get<0>(entry) == target &&
-        protobuf_util::HaveSameSerialization(std::get<1>(entry), window)) {
-      return std::get<2>(entry);
+    if (entry.mask_invalid_region == mask_invalid_region &&
+        entry.force_mask_in_compact == force_mask_in_compact &&
+        entry.sharding == target && entry.pad_value->Identical(*pad_value) &&
+        protobuf_util::HaveSameSerialization(entry.window, window)) {
+      return entry.result;
     }
   }
   auto update_cache = [&](WindowedInputShardReturnValue result) {
-    cache.emplace_back(target, window, std::move(result));
-    return std::get<2>(cache.back());
+    cache.push_back({target, window, pad_value, mask_invalid_region,
+                     force_mask_in_compact, std::move(result)});
+    return cache.back().result;
   };
   VLOG(2) << "ReshardAsWindowedInput()\n"
           << "\twindow:" << window_util::ToString(window)
@@ -1262,7 +1265,8 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   }
   if (target != sharding() &&
       sharding_with_windowed_dims_replicated != sharding()) {
-    return Reshard(target).ReshardAsWindowedInput(window, target, pad_value);
+    return Reshard(target).ReshardAsWindowedInput(
+        window, target, pad_value, mask_invalid_region, force_mask_in_compact);
   }
   if (Product(trimmed_target_sharding_tile_shape) == 1) {
     // The trimmed sharding may have just one shard left. We can simply return
@@ -1370,7 +1374,8 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
         return handle_all_windowed_dimensions_are_replicated();
       }
       return Reshard(sharding_with_windowed_dims_replicated)
-          .ReshardAsWindowedInput(window, target, pad_value);
+          .ReshardAsWindowedInput(window, target, pad_value,
+                                  mask_invalid_region, force_mask_in_compact);
     }
     visiting_hlo = *resharded;
   }
