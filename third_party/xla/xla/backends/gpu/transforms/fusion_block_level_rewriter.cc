@@ -254,6 +254,16 @@ absl::StatusOr<bool> ProcessFusionInstruction(
                    fusion_instruction->backend_config<GpuBackendConfig>());
 
   if (backend_config.has_fusion_backend_config() &&
+      backend_config.fusion_backend_config().kind() == kTensorIrFusionKind) {
+    // The fusion was explicitly assigned to the TensorIR emitter (by the
+    // autotuner or by hand). Rewriting it into a Triton block-level fusion
+    // would silently discard that assignment.
+    VLOG(2) << "Not rewriting fusion " << fusion_instruction->name()
+            << " because it is assigned to the TensorIR emitter.";
+    return false;
+  }
+
+  if (backend_config.has_fusion_backend_config() &&
       backend_config.fusion_backend_config().has_block_level_fusion_config()) {
     // Fusion is already block-level! Skip.
     return false;
