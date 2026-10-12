@@ -635,7 +635,7 @@ class FusedMatMulOp : public OpKernel {
     std::vector<FusedComputationPattern> patterns;
 
     using FCT = FusedComputationType;
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       patterns = {
           {FCT::kBiasAdd, {"BiasAdd"}},
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
@@ -645,7 +645,7 @@ class FusedMatMulOp : public OpKernel {
           {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
           {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
       };
-    } else if (std::is_same<Device, GPUDevice>::value) {
+    } else if (std::is_same_v<Device, GPUDevice>) {
       patterns = {
           {FCT::kBiasAdd, {"BiasAdd"}},
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
@@ -658,7 +658,7 @@ class FusedMatMulOp : public OpKernel {
     OP_REQUIRES_OK(context, InitializeFusedComputation(
                                 context, "MatMul", patterns,
                                 &fused_computation_, &fused_computation_args_));
-    if (std::is_same<Device, GPUDevice>::value &&
+    if (std::is_same_v<Device, GPUDevice> &&
         (fused_computation_ == FCT::kBiasAddWithGeluExact ||
          fused_computation_ == FCT::kBiasAddWithTanh ||
          fused_computation_ == FCT::kBiasAddWithSigmoid)) {
