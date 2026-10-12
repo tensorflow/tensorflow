@@ -218,7 +218,7 @@ Placer::Placer(Graph* graph, const std::string& function_name,
                const DeviceSet* devices)
     : Placer(graph, function_name, flib_def, devices, nullptr, true, false) {}
 
-Placer::~Placer() {}
+Placer::~Placer() = default;
 
 absl::Status Placer::Run() {
   GraphOptimizationPassOptions options;
