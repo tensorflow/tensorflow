@@ -79,7 +79,7 @@ TfLiteStatus CastOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
   return kTfLiteOk;
 }
 
-CastOpBuilder::~CastOpBuilder() {}
+CastOpBuilder::~CastOpBuilder() = default;
 
 OpBuilder* CreateCastBuilder(GraphBuilder* graph_builder, int op_type) {
   return new CastOpBuilder(graph_builder, op_type);
