@@ -378,20 +378,40 @@ int64_t GetNumWarps(int64_t largest_live_tile_size) {
   return 8;
 }
 
+// Holds dot launch resource footprints and compute/runtime estimates.
+struct DotEstimates {
+  absl::Duration compute_time = absl::ZeroDuration();
+  absl::Duration exec_time = absl::ZeroDuration();
+  int64_t shared_memory_per_block_bytes = 0;
+  int registers_per_thread = 0;
+};
+
+// Combines two dot estimates within the same fusion by summing sequential
+// compute work and taking the maximum of per-block resource footprints.
+DotEstimates MergeDotEstimates(DotEstimates dst, const DotEstimates& src) {
+  dst.compute_time += src.compute_time;
+  // TODO: b/495346904 - integrate the dot stats more completely.
+  dst.exec_time = std::max(dst.exec_time, src.exec_time);
+  dst.shared_memory_per_block_bytes = std::max(
+      dst.shared_memory_per_block_bytes, src.shared_memory_per_block_bytes);
+  dst.registers_per_thread =
+      std::max(dst.registers_per_thread, src.registers_per_thread);
+  return dst;
+}
+
+// Computes block launch resource footprints and dot runtime estimates.
 template <typename TiledHloInstructionType>
-absl::StatusOr<EstimateRunTimeData> GetDotEstimates(
+absl::StatusOr<DotEstimates> BuildDotEstimates(
     const TiledHloInstructionType* tiled_hlo,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_params) {
-  const auto* dot_instr = Cast<const HloDotInstruction>(tiled_hlo->hlo());
+  const HloDotInstruction* dot_instr =
+      Cast<HloDotInstruction>(tiled_hlo->hlo());
   ABSL_RETURN_IF_ERROR(gpu_dot_fusion_cost_model::IsSupported(dot_instr));
 
-  int64_t block_k = 0;
-  if (!tiled_hlo->operands().empty()) {
-    int64_t lhs_contracting_dim =
-        dot_instr->dot_dimension_numbers().lhs_contracting_dimensions(0);
-    block_k = tiled_hlo->operand(0)->tile_size(lhs_contracting_dim);
-  }
+  int64_t lhs_contracting_dim =
+      dot_instr->dot_dimension_numbers().lhs_contracting_dimensions(0);
+  int64_t block_k = tiled_hlo->operand(0)->tile_size(lhs_contracting_dim);
 
   // Use the provided block parameters which contain num_stages and num_warps.
   // The output_tile_sizes from the block parameters represent the fusion roots,
@@ -403,9 +423,18 @@ absl::StatusOr<EstimateRunTimeData> GetDotEstimates(
   const llvm::SmallVector<int64_t>& tile_sizes = tiled_hlo->tile_sizes();
   dot_block_params.output_tile_sizes.emplace_back(tile_sizes.begin(),
                                                   tile_sizes.end());
+  ABSL_ASSIGN_OR_RETURN(
+      EstimateRunTimeData dot_perf_stats,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot_instr, dot_block_params, device_info, block_k));
 
-  return gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
-      dot_instr, dot_block_params, device_info, block_k);
+  return DotEstimates{
+      /*compute_time=*/dot_perf_stats.compute_time,
+      /*exec_time=*/dot_perf_stats.exec_time,
+      /*shared_memory_per_block_bytes=*/
+      dot_perf_stats.shared_memory_per_block_bytes,
+      /*registers_per_thread=*/dot_perf_stats.registers_per_thread,
+  };
 }
 
 int64_t GetShapeSizeRecursive(
@@ -438,8 +467,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   int64_t bytes_read = 0;
   int64_t num_blocks = tiled_hlo_computation.num_output_tiles();
 
-  absl::Duration dot_compute_time = absl::ZeroDuration();
-  absl::Duration dot_exec_time = absl::ZeroDuration();
+  DotEstimates dot_estimates;
 
   // Check if the computation is too large to fit in registers and would result
   // in spilling.
@@ -467,24 +495,20 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
           int64_t num_elements = num_blocks_cur_hlo * padded_tile_size;
 
           if (hlo->opcode() == HloOpcode::kDot) {
-            absl::StatusOr<EstimateRunTimeData> dot_perf_stats =
-                GetDotEstimates(tiled_hlo, device_info, block_level_parameters);
-            if (dot_perf_stats.ok()) {
-              // We're only using compute time for now - memory and L2 access
-              // data needs to be adjusted more carefully so that the model
-              // doesn't overlap their counting.
-              // TODO: b/495346904 - integrate the dot stats more completely.
-              dot_compute_time += dot_perf_stats->compute_time;
-              dot_exec_time =
-                  std::max(dot_exec_time, dot_perf_stats->exec_time);
+            if (absl::StatusOr<DotEstimates> cur_dot_estimates =
+                    BuildDotEstimates(tiled_hlo, device_info,
+                                      block_level_parameters);
+                cur_dot_estimates.ok()) {
+              dot_estimates =
+                  MergeDotEstimates(dot_estimates, *cur_dot_estimates);
 
               // The dot cost model operates on the tile- and wave- quantized
               // FLOPS which is more accurate for performance estimates but
               // the flops reported by the indexing model are naive algorithm
               // flops.
               // Since the compute time for these flops is already accounted
-              // for in dot_compute_time, we're accumulating it separately
-              // from `flops`.
+              // for in dot_estimates.compute_time, we're accumulating it
+              // separately from `flops`.
               dot_flops += flops_per_element_fn(hlo) * num_elements;
               return;
             }
@@ -551,7 +575,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
       GpuPerformanceModelBase::ComputeTime(
           device_info, flops, num_blocks,
           block_level_parameters.num_warps * WarpSize(device_info)) +
-      dot_compute_time;
+      dot_estimates.compute_time;
 
   absl::Duration memory_access_time = read_time + write_time;
   absl::Duration exec_time =
@@ -563,15 +587,20 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   // accounting for any work in the epilogue or prologue properly. We are
   // planning to do it in the future but the cost model will need to be
   // significantly more complex for that.
-  exec_time = std::max(exec_time, dot_exec_time);
+  exec_time = std::max(exec_time, dot_estimates.exec_time);
 
-  return EstimateRunTimeData{/*flops=*/flops + dot_flops,
-                             /*bytes_read=*/bytes_read,
-                             /*bytes_written=*/bytes_written,
-                             /*read_time=*/read_time,
-                             /*write_time=*/write_time,
-                             /*compute_time=*/compute_time,
-                             /*exec_time=*/exec_time};
+  return EstimateRunTimeData{
+      /*flops=*/flops + dot_flops,
+      /*bytes_read=*/bytes_read,
+      /*bytes_written=*/bytes_written,
+      /*read_time=*/read_time,
+      /*write_time=*/write_time,
+      /*compute_time=*/compute_time,
+      /*exec_time=*/exec_time,
+      /*l2_bytes_read=*/0,
+      /*shared_memory_per_block_bytes=*/
+      dot_estimates.shared_memory_per_block_bytes,
+      /*registers_per_thread=*/dot_estimates.registers_per_thread};
 }
 
 template <typename TiledHloComputationType>
