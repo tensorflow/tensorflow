@@ -526,14 +526,10 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     // The thresholds' type, T_threshold, can differ from T, the type of boxes
     // and scores. Compare in T, as the TensorFlow kernels do, since XLA
     // doesn't mix floating-point types in one operation.
-    xla::XlaOp score_thresh = context->Input("score_threshold");
-    if (context->InputXlaType("score_threshold") != scores_xla_type) {
-      score_thresh = xla::ConvertElementType(score_thresh, scores_xla_type);
-    }
-    xla::XlaOp iou_thresh = context->Input("iou_threshold");
-    if (context->InputXlaType("iou_threshold") != boxes_xla_type) {
-      iou_thresh = xla::ConvertElementType(iou_thresh, boxes_xla_type);
-    }
+    const xla::XlaOp score_thresh = xla::ConvertElementType(
+        context->Input("score_threshold"), scores_xla_type);
+    const xla::XlaOp iou_thresh = xla::ConvertElementType(
+        context->Input("iou_threshold"), boxes_xla_type);
 
     // Choose a more convenient layout.
     const xla::XlaOp boxes = xla::Transpose(boxes_input, {1, 0});
