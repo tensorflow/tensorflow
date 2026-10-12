@@ -48,10 +48,8 @@ class VariantTensorData {
   const std::string& type_name() const { return type_name_; }
   void set_type_name(const std::string& type_name) { type_name_ = type_name; }
 
-  template <
-      typename T,
-      bool = std::is_trivially_copyable<typename std::decay<T>::type>::value &&
-             !std::is_pointer<typename std::decay<T>::type>::value>
+  template <typename T, bool = std::is_trivially_copyable_v<std::decay_t<T>> &&
+                               !std::is_pointer_v<std::decay_t<T>>>
   struct PODResolver {};
 
   // Portions of the object that are not Tensors.
@@ -136,14 +134,14 @@ class VariantTensorData {
   template <typename T>
   void SetMetadata(const T& value, PODResolver<T, false /* is_pod */>) {
     static_assert(
-        std::is_pointer<typename std::decay<T>::type>::value,
+        std::is_pointer_v<std::decay_t<T>>,
         "Only strings and pointers are supported for non-POD SetMetadata");
   }
 
   template <typename T>
   bool GetMetadata(T* value, PODResolver<T, false /* is_pod */>) const {
     static_assert(
-        std::is_pointer<typename std::decay<T>::type>::value,
+        std::is_pointer_v<std::decay_t<T>>,
         "Only strings and pointers are supported for non-POD GetMetadata");
     return false;
   }
