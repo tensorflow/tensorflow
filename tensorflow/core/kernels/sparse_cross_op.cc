@@ -51,7 +51,7 @@ class ColumnInterface {
   virtual InternalType Feature(int64_t batch, int64_t n,
                                bool strong_hash) const = 0;
 
-  virtual ~ColumnInterface() {}
+  virtual ~ColumnInterface() = default;
 };
 
 // A column that is backed by a sparse tensor.
@@ -73,7 +73,7 @@ class SparseTensorColumn : public ColumnInterface<InternalType> {
   InternalType Feature(int64_t batch, int64_t n,
                        bool strong_hash) const override;
 
-  ~SparseTensorColumn() override {}
+  ~SparseTensorColumn() override = default;
 
  private:
   const Tensor& values_;
@@ -103,7 +103,7 @@ class KeyedSparseTensorColumn : public ColumnInterface<InternalType> {
   InternalType Feature(int64_t batch, int64_t n,
                        bool strong_hash) const override;
 
-  ~KeyedSparseTensorColumn() override {}
+  ~KeyedSparseTensorColumn() override = default;
 
  private:
   const Tensor& values_;
@@ -188,7 +188,7 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
   InternalType Feature(int64_t batch, int64_t n,
                        bool strong_hash) const override;
 
-  ~DenseTensorColumn() override {}
+  ~DenseTensorColumn() override = default;
 
  private:
   const Tensor& tensor_;
@@ -211,7 +211,7 @@ class KeyedDenseTensorColumn : public ColumnInterface<InternalType> {
   InternalType Feature(int64_t batch, int64_t n,
                        bool strong_hash) const override;
 
-  ~KeyedDenseTensorColumn() override {}
+  ~KeyedDenseTensorColumn() override = default;
 
  private:
   const Tensor& tensor_;

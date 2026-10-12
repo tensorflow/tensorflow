@@ -531,7 +531,7 @@ TfLiteStatus Conv2dOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
   return kTfLiteOk;
 }
 
-Conv2dOpBuilder::~Conv2dOpBuilder() {}
+Conv2dOpBuilder::~Conv2dOpBuilder() = default;
 
 OpBuilder* CreateConv2DBuilder(GraphBuilder* graph_builder, int op_type) {
   return new Conv2dOpBuilder(graph_builder, op_type);

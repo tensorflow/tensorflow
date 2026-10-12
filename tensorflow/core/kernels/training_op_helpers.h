@@ -84,7 +84,7 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
     return absl::OkStatus();
   }
   Tensor tmp;
-  if (std::is_same<T, Variant>::value) {
+  if (std::is_same_v<T, Variant>) {
     tsl::AllocatorAttributes attr;
     attr.set_on_host(true);
     TF_RETURN_IF_ERROR(ctx->allocate_temp(var->tensor()->dtype(),
@@ -246,7 +246,7 @@ absl::Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
     // Tensor's buffer is in use by some read, so we need to copy before
     // updating.
     Tensor tmp;
-    if (std::is_same<T, Variant>::value) {
+    if (std::is_same_v<T, Variant>) {
       tsl::AllocatorAttributes attr;
       attr.set_on_host(true);
       TF_RETURN_IF_ERROR(

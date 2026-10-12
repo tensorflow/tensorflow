@@ -132,7 +132,7 @@ class Predicate {
   virtual absl::Span<Predicate* const> GetOperands() const = 0;
 
   virtual Kind kind() const = 0;
-  virtual ~Predicate() {}
+  virtual ~Predicate() = default;
 
   // Invokes func on p and on all of its operands recursively.  Does not invoke
   // `func` on the same Predicate instance twice.  Aborts the search if `func`
@@ -1566,7 +1566,7 @@ void DeadnessAnalysisImpl::Print() const {
 
 }  // namespace
 
-DeadnessAnalysis::~DeadnessAnalysis() {}
+DeadnessAnalysis::~DeadnessAnalysis() = default;
 
 /*static*/ absl::Status DeadnessAnalysis::Run(
     const Graph& graph, std::unique_ptr<DeadnessAnalysis>* result) {
