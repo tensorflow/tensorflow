@@ -9657,9 +9657,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   const Window& window = reduce_window->window();
 
   // Optimize cumsum-like reduce-window on broadcasted constants.
+  //
+  // A bitcast that changes the element type reinterprets bits, and may change
+  // the element count when the bit widths differ. It does not preserve values,
+  // so we do not look through it.
+  auto is_same_type_bitcast = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kBitcast &&
+           instr->shape().element_type() ==
+               instr->operand(0)->shape().element_type();
+  };
   HloInstruction* real_operand = operand;
   while (real_operand->opcode() == HloOpcode::kReshape ||
-         real_operand->opcode() == HloOpcode::kBitcast ||
+         is_same_type_bitcast(real_operand) ||
          real_operand->opcode() == HloOpcode::kConvert ||
          real_operand->opcode() == HloOpcode::kSlice ||
          real_operand->opcode() == HloOpcode::kCopy) {
@@ -9674,21 +9683,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     HloInstruction* val_const = real_operand->mutable_operand(0);
     while (val_const->opcode() == HloOpcode::kConvert ||
            val_const->opcode() == HloOpcode::kReshape ||
-           val_const->opcode() == HloOpcode::kBitcast) {
+           is_same_type_bitcast(val_const)) {
       val_const = val_const->mutable_operand(0);
     }
 
     if (!val_const->IsConstant()) {
       return absl::OkStatus();
-    }
-
-    // In case the source operand is not a scalar, we reshape it to a scalar
-    // before we attempt to broadcast it.
-    if (!ShapeUtil::IsScalar(val_const->shape())) {
-      TF_RET_CHECK(ShapeUtil::IsEffectiveScalar(val_const->shape()));
-      val_const = reduce_window->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeScalarShape(val_const->shape().element_type()),
-          val_const));
     }
 
     int64_t reduction_dim = -1;
@@ -9726,13 +9726,23 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     }
 
     if (valid_pattern && reduction_dim != -1) {
-      if (val_const->shape().element_type() !=
-          reduce_window->shape().element_type()) {
-        ABSL_ASSIGN_OR_RETURN(Literal dest_literal,
-                         val_const->literal().Convert(
-                             reduce_window->shape().element_type()));
+      TF_RET_CHECK(ShapeUtil::IsEffectiveScalar(val_const->shape()));
+      absl::InlinedVector<PrimitiveType, 4> convert_types;
+      for (const HloInstruction* i = operand; i != val_const;
+           i = i->operand(0)) {
+        if (i->opcode() == HloOpcode::kConvert) {
+          convert_types.push_back(i->shape().element_type());
+        }
+      }
+      if (!ShapeUtil::IsScalar(val_const->shape()) || !convert_types.empty()) {
+        Literal scalar =
+            LiteralUtil::GetFirstScalarLiteral(val_const->literal());
+        for (auto it = convert_types.rbegin(); it != convert_types.rend();
+             ++it) {
+          ABSL_ASSIGN_OR_RETURN(scalar, scalar.Convert(*it));
+        }
         val_const = reduce_window->AddInstruction(
-            HloInstruction::CreateConstant(std::move(dest_literal)));
+            HloInstruction::CreateConstant(std::move(scalar)));
       }
 
       // Create iota for the reduction dimension.
