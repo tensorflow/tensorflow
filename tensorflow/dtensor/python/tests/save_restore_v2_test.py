@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
+from tensorflow.python.trackable import base as trackable
 
 Mesh = layout_lib.Mesh
 Layout = layout_lib.Layout
@@ -121,6 +122,36 @@ class DTensorSaveRestoreV2Test(test_util.DTensorBaseTest):
 
     self.assertDTensorEqual(tensor_a, layout, dvariable_a.read_value())
     self.assertDTensorEqual(tensor_b, layout, dvariable_b.read_value())
+
+  def test_checkpoint_deferred_restore_scalar_dvariable(self):
+    layout = layout_lib.Layout.replicated(self.mesh, rank=0)
+    v_save = d_variable.DVariable(
+        api.pack(
+            [constant_op.constant(42.0)] * self.mesh.num_local_devices(),
+            layout,
+        )
+    )
+    ckpt = checkpoint.Checkpoint(v=v_save)
+    saved_path = ckpt.save(self.get_temp_dir())
+
+    # Re-create checkpoint on an empty container to test deferred restoration
+    root = trackable.SimpleTrackable()
+    restore_ckpt = checkpoint.Checkpoint(root=root)
+    restore_ckpt.restore(saved_path)
+
+    # Preload simple restoration produces a CheckpointInitialValueCallable
+    init_callable = root._preload_simple_restoration('v')
+    self.assertIsInstance(
+        init_callable, trackable.CheckpointInitialValueCallable
+    )
+
+    # Creating scalar DVariable with shape=() must succeed without ValueError
+    v_restored = d_variable.DVariable(
+        init_callable, shape=(), layout=layout, dtype=dtypes.float32
+    )
+    self.assertDTensorEqual(
+        constant_op.constant(42.0), layout, v_restored.read_value()
+    )
 
   @parameterized.named_parameters(
       ('x_unsharded', [_MESH_DIM_X, UNSHARDED]),
