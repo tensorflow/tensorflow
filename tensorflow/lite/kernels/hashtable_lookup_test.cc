@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -61,6 +63,13 @@ class HashtableLookupOpModel : public SingleOpModel {
 
   void SetHashtableValue(const std::vector<string>& content) {
     PopulateStringTensor(value_, content);
+  }
+
+  void SetStringOffsets(int index, int32_t start_offset, int32_t end_offset) {
+    TfLiteTensor* tensor = interpreter_->tensor(value_);
+    int32_t* offsets = reinterpret_cast<int32_t*>(tensor->data.raw);
+    offsets[index + 1] = start_offset;
+    offsets[index + 2] = end_offset;
   }
 
   void SetHashtableValue(const std::function<float(int)>& function) {
@@ -173,6 +182,80 @@ TEST(HashtableLookupOpTest, TestString) {
                               1,
                               1,
                           }));
+}
+
+TEST(HashtableLookupOpTest, TestExtremeInt32KeysWithoutOverflow) {
+  constexpr int kMin = std::numeric_limits<int32_t>::min();
+  constexpr int kMax = std::numeric_limits<int32_t>::max();
+  HashtableLookupOpModel m({5}, {3}, {3}, TensorType_FLOAT32);
+
+  m.SetLookup({kMax, kMin, 42, 0, kMin + 1});
+  m.SetHashtableKey({kMin, 0, kMax});
+  m.SetHashtableValue([](int i) { return static_cast<float>(i + 1); });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({3.0f, 1.0f, 0.0f, 2.0f, 0.0f})));
+  EXPECT_THAT(m.GetHit(), ElementsAreArray({1, 1, 0, 1, 0}));
+}
+
+TEST(HashtableLookupOpTest, EmptyTensorBoundaryCases) {
+  // Empty lookup [0] with non-empty float table [3, 2] succeeds.
+  {
+    HashtableLookupOpModel m({0}, {3}, {3, 2}, TensorType_FLOAT32);
+    m.SetHashtableKey({-11, 0, 1234});
+    m.SetHashtableValue([](int i, int j) { return i + j / 10.0f; });
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_TRUE(m.GetOutput().empty());
+    EXPECT_TRUE(m.GetHit().empty());
+  }
+
+  // Empty lookup [0] with non-empty string table [3] succeeds.
+  {
+    HashtableLookupOpModel m({0}, {3}, {3}, TensorType_STRING);
+    m.SetHashtableKey({-11, 0, 1234});
+    m.SetHashtableValue({"Hello", "", "Hi"});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_TRUE(m.GetStringOutput().empty());
+    EXPECT_TRUE(m.GetHit().empty());
+  }
+
+  // Empty table [0, 2] with non-empty lookup [1] fails cleanly.
+  {
+    HashtableLookupOpModel m({1}, {0}, {0, 2}, TensorType_FLOAT32);
+    m.SetLookup({0});
+    EXPECT_EQ(m.Invoke(), kTfLiteError);
+  }
+
+  // Zero-feature table [3, 0] with both hit and miss succeeds without UB.
+  {
+    HashtableLookupOpModel m({2}, {3}, {3, 0}, TensorType_FLOAT32);
+    m.SetLookup({1234, 999});
+    m.SetHashtableKey({-11, 0, 1234});
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_TRUE(m.GetOutput().empty());
+    EXPECT_THAT(m.GetHit(), ElementsAreArray({1, 0}));
+  }
+}
+
+TEST(HashtableLookupOpTest, CorruptedStringTensorOffsetsRejected) {
+  HashtableLookupOpModel m({1}, {1}, {1}, TensorType_STRING);
+  m.SetLookup({10});
+  m.SetHashtableKey({10});
+  m.SetHashtableValue({"ok"});
+
+  // Out-of-bounds end_offset (> value.bytes).
+  m.SetStringOffsets(0, /*start_offset=*/12, /*end_offset=*/999);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+
+  // Inverted offsets (end_offset < start_offset).
+  m.SetStringOffsets(0, /*start_offset=*/12, /*end_offset=*/8);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+
+  // Negative start_offset.
+  m.SetStringOffsets(0, /*start_offset=*/-4, /*end_offset=*/12);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 }  // namespace
