@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -310,6 +311,8 @@ class MatrixDiagOp : public XlaOpKernel {
 
     // Infers num_rows and num_cols. If both are unknown, assume that the output
     // is square. Otherwise, use smallest possible values.
+    const bool infer_num_rows = num_rows == -1;
+    const bool infer_num_cols = num_cols == -1;
     if (num_rows == -1 && num_cols == -1) {
       num_rows = std::max(min_num_rows, min_num_cols);
       num_cols = num_rows;
@@ -334,11 +337,43 @@ class MatrixDiagOp : public XlaOpKernel {
     output_shape.AddDim(num_cols);
     xla::XlaOp output = xla::Broadcast(padding_value, output_shape.dim_sizes());
     xla::XlaOp diag = context->Input(0);
-    context->SetOutput(
-        0, SetMatrixDiag(output, diag, output_shape, diag_rank, num_diags,
-                         lower_diag_index, upper_diag_index, max_diag_len,
-                         num_rows, num_cols, left_align_superdiagonal_,
-                         left_align_subdiagonal_));
+    output = SetMatrixDiag(output, diag, output_shape, diag_rank, num_diags,
+                           lower_diag_index, upper_diag_index, max_diag_len,
+                           num_rows, num_cols, left_align_superdiagonal_,
+                           left_align_subdiagonal_);
+
+    // If the diagonals have a dynamic length, max_diag_len is its bound, and so
+    // are num_rows and num_cols where they're inferred from it. Give those
+    // dimensions the size the actual length gives them. A dimension set by
+    // num_rows or num_cols is static, but broadcasting a diagonal along it can
+    // make it dynamic, so make it static again. This is only right for a
+    // single diagonal or when both dimensions are inferred: in a band with one
+    // of them set, SetMatrixDiag pads shorter diagonals that are right-aligned
+    // against that dimension by an amount it computes from the bound.
+    xla::Shape diag_xla_shape;
+    OP_REQUIRES_VALUE(diag_xla_shape, context, context->InputXlaShape(0));
+    if (diag_xla_shape.is_dynamic_dimension(diag_rank - 1) &&
+        (num_diags == 1 || (infer_num_rows && infer_num_cols))) {
+      const xla::XlaOp diag_len = xla::GetDimensionSize(diag, diag_rank - 1);
+      xla::Shape output_xla_shape;
+      OP_REQUIRES_VALUE(output_xla_shape, context,
+                        context->builder()->GetShape(output));
+      const auto fix_size = [&](int64_t dim, bool inferred, int64_t size) {
+        if (inferred) {
+          output = xla::SetDimensionSize(
+              output,
+              xla::Add(diag_len,
+                       xla::ScalarLike(diag_len, size - max_diag_len)),
+              dim);
+        } else if (output_xla_shape.is_dynamic_dimension(dim)) {
+          output = xla::RemoveDynamicDimension(output, dim);
+        }
+      };
+      const int64_t output_rank = output_shape.dims();
+      fix_size(output_rank - 2, infer_num_rows, num_rows);
+      fix_size(output_rank - 1, infer_num_cols, num_cols);
+    }
+    context->SetOutput(0, output);
   }
 
  private:

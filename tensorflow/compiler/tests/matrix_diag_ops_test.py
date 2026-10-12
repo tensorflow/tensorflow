@@ -17,6 +17,8 @@
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import googletest
@@ -528,6 +530,44 @@ class MatrixDiagTest(xla_test.XLATestCase):
                   "padding_value": padding_value,
                   "align": align
               }, solution)
+
+  def _matrixDiagOfSelected(self, x, **params):
+    # Takes the entries of x's last dimension where mask is true, which gives
+    # the diagonals a length only known at run time, and builds matrices from
+    # them.
+    @def_function.function(jit_compile=True)
+    def f(x, mask):
+      diagonal = array_ops.gather(
+          x, array_ops.reshape(array_ops.where(mask), [-1]), axis=-1)
+      return array_ops.matrix_diag(diagonal, **params)
+
+    x = np.array(x, dtype=np.int32)
+    with self.session() as session:
+      with self.device_scope():
+        x_ph = array_ops.placeholder(dtypes.int32, x.shape)
+        mask_ph = array_ops.placeholder(dtypes.bool, [x.shape[-1]])
+        output = f(x_ph, mask_ph)
+      return session.run(output, {
+          x_ph: x,
+          mask_ph: [True, False, True, False]
+      })
+
+  def testDynamicDiagonalLength(self):
+    # Regression test for GitHub issue 128954: the output's matrix dimensions
+    # took the bound of the diagonals' length instead of its value. The mask
+    # selects 2 of 4 entries, so the diagonals have length 2 and bound 4.
+    x = [1, 5, 2, 7]
+    self.assertAllEqual(self._matrixDiagOfSelected(x), [[1, 0], [0, 2]])
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, k=1), [[0, 1, 0], [0, 0, 2], [0, 0, 0]])
+    # A dimension set by num_rows keeps that size.
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(x, k=1, num_rows=5, align="LEFT_RIGHT"),
+        [[0, 1, 0], [0, 0, 2], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+    self.assertAllEqual(
+        self._matrixDiagOfSelected(
+            [[10, 11, 12, 13], [20, 21, 22, 23], [30, 31, 32, 33]],
+            k=(-1, 1)), [[20, 12], [30, 22]])
 
 
 class MatrixSetDiagTest(xla_test.XLATestCase):
