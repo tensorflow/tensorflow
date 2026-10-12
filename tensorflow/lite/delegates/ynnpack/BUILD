@@ -21,6 +21,8 @@ cc_library(
         "dot.h",
         "elementwise.cc",
         "elementwise.h",
+        "fused_sdpa_cache_update.cc",
+        "fused_sdpa_cache_update.h",
         "moe.cc",
         "moe.h",
         "pooling.cc",
@@ -93,6 +95,53 @@ cc_test(
         ":ynnpack_delegate",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fused_sdpa_cache_update_test",
+    srcs = ["fused_sdpa_cache_update_test.cc"],
+    copts = tflite_copts(),
+    deps = [
+        ":ynnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_binary(
+    name = "sdpa_transposed_bench",
+    testonly = True,
+    srcs = ["sdpa_transposed_bench.cc"],
+    copts = tflite_copts(),
+    deps = [
+        ":ynnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_benchmark//:benchmark_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_binary(
+    name = "fused_sdpa_cache_update_bench",
+    testonly = True,
+    srcs = ["fused_sdpa_cache_update_bench.cc"],
+    copts = tflite_copts(),
+    deps = [
+        ":ynnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_benchmark//:benchmark_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 

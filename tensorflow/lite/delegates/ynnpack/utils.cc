@@ -760,16 +760,15 @@ flexbuffers::Map GetFlexBufferMap(const NodeInfo& node) {
 
 // Find a dummy input we can use for a particular runtime_bmm op. Often, many
 // runtime_bmm ops use the same params tensor, which can share a dummy input.
-TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
-                                   ynn_subgraph_t subgraph,
-                                   uint32_t& next_external_id,
-                                   std::vector<DummyInputInfo>& dummy_inputs,
-                                   int param_tensor_index, int seq_axis,
-                                   size_t rank, const size_t* full_dims,
-                                   ynn_type type, uint32_t* dummy_val_id_out) {
+TfLiteStatus GetOrCreateDummyInput(
+    TfLiteContext* context, ynn_subgraph_t subgraph, uint32_t& next_external_id,
+    std::vector<DummyInputInfo>& dummy_inputs, int param_tensor_index,
+    int seq_axis, size_t rank, const size_t* full_dims, ynn_type type,
+    uint32_t* dummy_val_id_out, DummyExtent extent) {
   for (const auto& dummy : dummy_inputs) {
     if (dummy.param_tensor_index == param_tensor_index &&
-        dummy.seq_axis == seq_axis && dummy.rank == rank) {
+        dummy.seq_axis == seq_axis && dummy.rank == rank &&
+        dummy.extent == extent) {
       bool dims_match = true;
       for (size_t i = 0; i < rank; ++i) {
         if (dummy.full_dims[i] != full_dims[i]) {
@@ -794,6 +793,7 @@ TfLiteStatus GetOrCreateDummyInput(TfLiteContext* context,
   dummy_info.dummy_val_id = dummy_val_id;
   dummy_info.seq_axis = seq_axis;
   dummy_info.rank = rank;
+  dummy_info.extent = extent;
   std::copy_n(full_dims, rank, dummy_info.full_dims);
   dummy_inputs.push_back(dummy_info);
 
