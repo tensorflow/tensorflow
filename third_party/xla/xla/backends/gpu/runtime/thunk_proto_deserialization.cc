@@ -291,9 +291,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                                            thunk_proto.reduce_scatter_thunk(),
                                            buffer_allocations);
     case ThunkProto::kAllToAllThunk:
-      return AllToAllThunk::FromProto(std::move(thunk_info),
-                                      thunk_proto.all_to_all_thunk(),
-                                      buffer_allocations);
+      return AllToAllThunk::FromProto(
+          std::move(thunk_info), thunk_proto.all_to_all_thunk(),
+          buffer_allocations,
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0);
     case ThunkProto::kRaggedAllToAllThunk:
       return RaggedAllToAllThunk::FromProto(
           std::move(thunk_info), thunk_proto.ragged_all_to_all_thunk(),
