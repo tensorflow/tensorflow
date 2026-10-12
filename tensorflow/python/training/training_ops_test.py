@@ -748,6 +748,77 @@ class TrainingOpsTest(TensorFlowTestCase):
           )
       )
 
+  @test_util.run_v2_only
+  def testResourceVariableUninitialized(self):
+    from tensorflow.python.eager import context
+    from tensorflow.python.ops import gen_resource_variable_ops
+
+    shared_name = (
+        context.anonymous_name() if context.executing_eagerly() else ""
+    )
+    var_uninit_f32 = gen_resource_variable_ops.var_handle_op(
+        dtype=dtypes.float32, shape=[1, 2], shared_name=shared_name
+    )
+    var_uninit_f16 = gen_resource_variable_ops.var_handle_op(
+        dtype=dtypes.float16, shape=[1, 2], shared_name=shared_name
+    )
+    accum_uninit_f16 = gen_resource_variable_ops.var_handle_op(
+        dtype=dtypes.float16, shape=[1, 2], shared_name=shared_name
+    )
+    lr = constant_op.constant(0.1, dtype=dtypes.float16)
+    grad = constant_op.constant([[0.1, 0.2]], dtype=dtypes.float16)
+    indices = constant_op.constant([0], dtype=dtypes.int32)
+
+    # Mismatched dtype should raise InvalidArgumentError
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "dtype mismatch"
+    ):
+      self.evaluate(
+          gen_training_ops.resource_apply_gradient_descent(
+              var=var_uninit_f32,
+              alpha=lr,
+              delta=grad,
+          )
+      )
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "dtype mismatch"
+    ):
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_adagrad(
+              var=var_uninit_f32,
+              accum=accum_uninit_f16,
+              lr=lr,
+              grad=grad,
+              indices=indices,
+          )
+      )
+
+    # Matched dtype should raise FailedPreconditionError
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "uninitialized"
+    ):
+      self.evaluate(
+          gen_training_ops.resource_apply_gradient_descent(
+              var=var_uninit_f16,
+              alpha=lr,
+              delta=grad,
+          )
+      )
+
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "uninitialized"
+    ):
+      self.evaluate(
+          gen_training_ops.resource_sparse_apply_adagrad(
+              var=var_uninit_f16,
+              accum=accum_uninit_f16,
+              lr=lr,
+              grad=grad,
+              indices=indices,
+          )
+      )
+
 
 if __name__ == '__main__':
   googletest.main()

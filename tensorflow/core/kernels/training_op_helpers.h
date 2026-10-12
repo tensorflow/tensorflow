@@ -76,6 +76,10 @@ absl::Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
         " (resource variable dtype)"));
   }
 
+  if (!var->tensor()->IsInitialized()) {
+    return absl::OkStatus();
+  }
+
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
   // also happen if there are no concurrent reads of the variable and
   // copy-on-read mode is false.
@@ -242,10 +246,13 @@ void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,
 template <typename Device, typename T>
 absl::Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
                                      bool copy_on_read_mode) {
-  if (tensor->IsInitialized() && tensor->dtype() != DataTypeToEnum<T>::v()) {
+  if (tensor->dtype() != DataTypeToEnum<T>::v()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
         " but got ", DataTypeString(tensor->dtype())));
+  }
+  if (!tensor->IsInitialized()) {
+    return absl::OkStatus();
   }
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before
@@ -298,8 +305,7 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
     ResourceHandle handle;
     TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
-    if ((var->is_initialized || var->tensor()->IsInitialized()) &&
-        var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
+    if (var->tensor()->dtype() != DataTypeToEnum<T>::v()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
           " but got ", DataTypeString(var->tensor()->dtype()),
