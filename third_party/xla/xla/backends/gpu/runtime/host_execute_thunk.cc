@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -35,10 +36,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/host_offloading/gpu_host_offloading_allocator.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/host_async_thunk.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/host_offloading/host_offloading_allocator.h"
@@ -410,9 +412,9 @@ HostExecuteAsyncEvents::CreateEvent(se::StreamExecutor* executor,
   auto event = tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
       std::move(host_to_device_stream_event));
 
-  absl::MutexLock lock(events_mu_);
-  auto [it, inserted] =
-      events_.emplace(std::make_pair(executor, run_id), event);
+  ABSL_ASSIGN_OR_RETURN(DeviceEvents * device_events,
+                   device_events_.GetOrCreate(executor->device_ordinal()));
+  auto [it, inserted] = device_events->events.emplace(run_id, event);
 
   if (!inserted) {
     return FailedPrecondition(
@@ -429,15 +431,20 @@ HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
   VLOG(6) << "Extracting event for executor at address " << executor
           << " and event id " << run_id.ToInt();
 
-  absl::MutexLock lock(events_mu_);
-  auto it = events_.find(std::make_pair(executor, run_id));
-  if (it == events_.end()) {
+  DeviceEvents* device_events = device_events_.Find(executor->device_ordinal());
+  if (device_events == nullptr) {
+    return FailedPrecondition(
+        "Event does not exist for executor at address %p and event id %d",
+        executor, run_id.ToInt());
+  }
+  auto it = device_events->events.find(run_id);
+  if (it == device_events->events.end()) {
     return FailedPrecondition(
         "Event does not exist for executor at address %p and event id %d",
         executor, run_id.ToInt());
   }
   auto event = std::move(it->second);
-  events_.erase(it);
+  device_events->events.erase(it);
   return event;
 }
 
@@ -446,10 +453,10 @@ HostExecuteStartThunk::Create(
     Thunk::ThunkInfo thunk_info,
     const HostOffloadingExecutableProto& host_offloading_executable_proto,
     absl::InlinedVector<ShapedSlice, 4> args,
-    absl::InlinedVector<ShapedSlice, 4> results) {
+    absl::InlinedVector<ShapedSlice, 4> results, int devices_per_host) {
   auto thunk = std::make_unique<HostExecuteStartThunk>(
       std::move(thunk_info), host_offloading_executable_proto, std::move(args),
-      std::move(results));
+      std::move(results), /*async_events=*/nullptr, devices_per_host);
   if (host_offloading_executable_proto.has_aot_compilation_result()) {
     ABSL_RETURN_IF_ERROR(thunk->LoadExecutable());
   }
@@ -474,11 +481,12 @@ absl::Status HostExecuteStartThunk::LoadExecutable() {
 HostExecuteStartThunk::HostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
     absl::InlinedVector<ShapedSlice, 4> args,
-    absl::InlinedVector<ShapedSlice, 4> results)
+    absl::InlinedVector<ShapedSlice, 4> results, int devices_per_host)
     : Command(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
       results_(std::move(results)),
-      async_events_(std::make_shared<HostExecuteAsyncEvents>()) {
+      async_events_(
+          std::make_shared<HostExecuteAsyncEvents>(devices_per_host)) {
   HostOffloadingExecutableProto host_offloading_executable_proto;
   *host_offloading_executable_proto.mutable_hlo_module() = hlo_module.ToProto();
   host_offloading_executable_proto.set_executable_type(
@@ -491,13 +499,14 @@ HostExecuteStartThunk::HostExecuteStartThunk(
     const HostOffloadingExecutableProto& host_offloading_executable_proto,
     absl::InlinedVector<ShapedSlice, 4> args,
     absl::InlinedVector<ShapedSlice, 4> results,
-    std::shared_ptr<HostExecuteAsyncEvents> async_events)
+    std::shared_ptr<HostExecuteAsyncEvents> async_events, int devices_per_host)
     : Command(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
       results_(std::move(results)),
       executable_proto_(host_offloading_executable_proto) {
   async_events_ =
-      async_events ? async_events : std::make_shared<HostExecuteAsyncEvents>();
+      async_events ? std::move(async_events)
+                   : std::make_shared<HostExecuteAsyncEvents>(devices_per_host);
 }
 
 std::string HostExecuteStartThunk::ToString(int indent) const { return ""; }
@@ -536,7 +545,7 @@ absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
 HostExecuteStartThunk::FromProto(
     ThunkInfo thunk_info, const HostExecuteStartThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    HostExecuteAsyncEventsMap& async_events_map) {
+    HostExecuteAsyncEventsMap& async_events_map, int devices_per_host) {
   absl::InlinedVector<ShapedSlice, 4> args, results;
 
   for (const ShapedSliceProto& proto : proto.args()) {
@@ -553,9 +562,12 @@ HostExecuteStartThunk::FromProto(
   // If async_events_map already contains an entry for the given unique id,
   // that means that the pairing done thunk is already serialized and we reuse
   // the id to connect them. Otherwise, create a new entry.
-  auto [async_event_it, _] = async_events_map.try_emplace(
-      AsyncEventsUniqueId(proto.async_events_unique_id()),
-      std::make_shared<HostExecuteAsyncEvents>());
+  auto [async_event_it, inserted] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()), nullptr);
+  if (inserted) {
+    async_event_it->second =
+        std::make_shared<HostExecuteAsyncEvents>(devices_per_host);
+  }
   return std::make_unique<HostExecuteStartThunk>(
       thunk_info, proto.executable_proto(), std::move(args), std::move(results),
       async_event_it->second);
@@ -793,13 +805,16 @@ absl::StatusOr<std::unique_ptr<HostExecuteDoneThunk>>
 HostExecuteDoneThunk::FromProto(
     ThunkInfo thunk_info, const HostExecuteDoneThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    HostExecuteAsyncEventsMap& async_events_map) {
+    HostExecuteAsyncEventsMap& async_events_map, int devices_per_host) {
   // If async_events_map already contains an entry for the given unique id,
   // that means that the pairing start thunk is already serialized and we reuse
   // the id to connect them. Otherwise, create a new entry.
-  auto [async_event_it, _] = async_events_map.try_emplace(
-      AsyncEventsUniqueId(proto.async_events_unique_id()),
-      std::make_shared<HostExecuteAsyncEvents>());
+  auto [async_event_it, inserted] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()), nullptr);
+  if (inserted) {
+    async_event_it->second =
+        std::make_shared<HostExecuteAsyncEvents>(devices_per_host);
+  }
 
   absl::InlinedVector<ShapedSlice, 4> results;
   results.reserve(proto.results().size());

@@ -44,7 +44,7 @@ class EagerClusterFunctionLibraryRuntime
         ctx_(ctx),
         remote_device_mgr_(remote_device_mgr) {}
 
-  ~EagerClusterFunctionLibraryRuntime() override{};
+  ~EagerClusterFunctionLibraryRuntime() override = default;
 
   // Register a partition (i.e., component function) of a multi-device function
   // on the remote target specified in `options.target`. This should be

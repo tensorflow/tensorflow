@@ -29,7 +29,7 @@ Scope::Scope(Impl* impl) : impl_(impl) {}
 
 Scope::Scope(const Scope& other) : impl_(new Impl(*other.impl())) {}
 
-Scope::~Scope() {}
+Scope::~Scope() = default;
 
 Scope& Scope::operator=(const Scope& other) {
   // We can't copy Impls because of the const members, use copy ctor instead

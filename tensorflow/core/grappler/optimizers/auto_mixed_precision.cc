@@ -286,7 +286,7 @@ std::vector<int> NonControlInputs(const NodeDef& node) {
 // input/output port mappings.
 class NodeTypeAttrMap {
  public:
-  NodeTypeAttrMap() {}
+  NodeTypeAttrMap() = default;
 
   explicit NodeTypeAttrMap(const GraphDef& graph) { TF_CHECK_OK(Init(graph)); }
 

@@ -37,7 +37,7 @@ namespace ctc {
 template <typename T, typename CTCBeamState>
 class BaseBeamScorer {
  public:
-  virtual ~BaseBeamScorer() {}
+  virtual ~BaseBeamScorer() = default;
   // State initialization.
   virtual void InitializeState(CTCBeamState* root) const {}
   // ExpandState is called when expanding a beam to one of its children.

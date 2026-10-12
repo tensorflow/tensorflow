@@ -29,7 +29,7 @@ namespace tensorflow {
 template <typename Ta, typename Tb>
 EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC bool FastBoundsCheck(const Ta index,
                                                            const Tb limit) {
-  static_assert(std::is_integral<Ta>::value && std::is_integral<Tb>::value,
+  static_assert(std::is_integral_v<Ta> && std::is_integral_v<Tb>,
                 "FastBoundsCheck can only be used on integer types.");
   typedef typename std::make_unsigned<decltype(index + limit)>::type UIndex;
   return TF_PREDICT_TRUE(static_cast<UIndex>(index) <
@@ -43,7 +43,7 @@ namespace internal {
 // etc).  It does not guarantee any atomicity or barriers.
 template <typename T>
 EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC const T SubtleMustCopy(const T &x) {
-  static_assert(std::is_integral<T>::value,
+  static_assert(std::is_integral_v<T>,
                 "SubtleMustCopy can only be used on integer types.");
   auto *to_x = reinterpret_cast<const volatile T *>(&x);
   return *to_x;

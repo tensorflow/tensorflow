@@ -275,8 +275,8 @@ class Tensor {
 
   // Explicitly delete constructor that take a pointer (except char*)
   // so that the pointer doesn't get implicitly cast to bool.
-  template <typename T, typename std::enable_if<!std::is_same<T, char>::value,
-                                                T>::type* = nullptr>
+  template <typename T,
+            std::enable_if_t<!std::is_same_v<T, char>, T>* = nullptr>
   explicit Tensor(T* t) = delete;
 
   ~Tensor();
@@ -988,7 +988,7 @@ typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
 template <typename T>
 typename TTypes<T>::Scalar Tensor::scalar() {
   static_assert(
-      !std::is_same<T, std::string>::value,
+      !std::is_same_v<T, std::string>,
       "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::Scalar(base<T>());
@@ -997,7 +997,7 @@ typename TTypes<T>::Scalar Tensor::scalar() {
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
   static_assert(
-      !std::is_same<T, std::string>::value,
+      !std::is_same_v<T, std::string>,
       "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::ConstScalar(base<T>());
