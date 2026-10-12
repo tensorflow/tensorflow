@@ -1298,6 +1298,55 @@ ENTRY main {
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       CollectiveStreamAnnotatedCallUsesOneResource) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule test, is_scheduled=true
+
+body {
+  p0 = f32[1] parameter(0)
+  ag-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+  ROOT ag-done = f32[1] all-gather-done(ag-start)
+}
+
+ENTRY main {
+  p0 = f32[1] parameter(0)
+  call-start = ((f32[1]), f32[1]) call-start(p0), to_apply=body,
+    frontend_attributes={_xla_stream_annotation="collective"}
+  ROOT call-done = f32[1] call-done(call-start),
+    frontend_attributes={_xla_stream_annotation="collective"}
+})";
+
+  HloModuleConfig config = GetModuleConfig(/*fdo_profile=*/"");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+  HloInstruction* call_start = FindInstruction(module.get(), "call-start");
+  HloInstruction* call_done = FindInstruction(module.get(), "call-done");
+  ASSERT_NE(call_start, nullptr);
+  ASSERT_NE(call_done, nullptr);
+
+  SchedulerConfig sched_config;
+  GpuAsyncTracker async_tracker(sched_config);
+  const int64_t collective_resource =
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives);
+
+  EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
+                                                        *call_start),
+            0);
+  EXPECT_EQ(async_tracker.GetNumResourcesPerInstruction(collective_resource,
+                                                        *call_done),
+            1);
+
+  auto start_resource_counts =
+      async_tracker.GetNumResourcesPerInstruction(*call_start);
+  EXPECT_TRUE(start_resource_counts.empty());
+
+  auto done_resource_counts =
+      async_tracker.GetNumResourcesPerInstruction(*call_done);
+  ASSERT_EQ(done_resource_counts.size(), 1);
+  EXPECT_EQ(done_resource_counts.at(collective_resource), 1);
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
        ExplicitCollectivesGroupSerializesWithNativeCollective) {
   absl::string_view kFdoProfile = R"pb(
     costs { name: "add" cost_us: 100000.0 }
@@ -2319,6 +2368,36 @@ ENTRY main {
   // native collectives.
   EXPECT_TRUE(GetIndexByName(instruction_sequence, "call-done") <
               GetIndexByName(instruction_sequence, "ar_0"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       CollectiveStreamAnnotatedCallOverlapsNativeCollective) {
+  absl::string_view kHloModule = R"(
+HloModule m
+
+body {
+  p0 = f32[2] parameter(0)
+  ag-start = (f32[2], f32[2]) all-gather-start(p0), dimensions={0}
+  ROOT ag-done = f32[2] all-gather-done(ag-start)
+}
+
+ENTRY main {
+  p0 = f32[2] parameter(0)
+  native-start = (f32[2], f32[2]) all-gather-start(p0), dimensions={0}
+  call-start = ((f32[2]), f32[2]) call-start(p0), to_apply=body,
+    frontend_attributes={_xla_stream_annotation="collective"}
+  call-done = f32[2] call-done(call-start),
+    frontend_attributes={_xla_stream_annotation="collective"}
+  native-done = f32[2] all-gather-done(native-start)
+  ROOT result = (f32[2], f32[2]) tuple(call-done, native-done)
+}
+)";
+
+  auto config = GetModuleConfig(/*fdo_profile=*/"");
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
+
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest, LargeIndependentFillsAreForcedEarly) {

@@ -29,7 +29,7 @@ class AutoParallel : public GraphOptimizer {
   AutoParallel(int num_replicas) : num_replicas_(num_replicas) {
     CHECK(num_replicas_ >= 2);
   }
-  ~AutoParallel() override {}
+  ~AutoParallel() override = default;
 
   std::string name() const override { return "autoparallel"; };
 

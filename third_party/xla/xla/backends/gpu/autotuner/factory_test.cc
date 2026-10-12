@@ -97,6 +97,8 @@ class FactoryTest : public xla::HloHardwareIndependentTestBase,
         compiler_(GetCompilerForPlatform(platform_)),
         stream_executor_(GetStreamExecutor(platform_)),
         target_config_(stream_executor_),
+        debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()),
         allocator_(stream_executor_) {}
 };
 
