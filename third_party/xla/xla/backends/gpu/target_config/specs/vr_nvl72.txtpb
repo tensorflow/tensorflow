@@ -248,6 +248,7 @@ gpu_device_info {
   reserved_shared_memory_per_block: 1024
   max_blocks_per_multiprocessor: 16
   collective_memory_granularity: 2097152
+  oversized_shared_memory_per_block: 334848
 }
 platform_name: "CUDA"
 dnn_version_info {

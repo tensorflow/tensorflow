@@ -35,6 +35,7 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 constexpr stream_executor::SemanticVersion kCubVersion1_15_0{1, 15, 0};
 constexpr stream_executor::SemanticVersion kCubVersion1_16_0{1, 16, 0};
+constexpr stream_executor::SemanticVersion kCubVersion3_2_0{3, 2, 0};
 
 TEST(CubScratchSizeDevicelessLookupTest, LookupExactMatch) {
   ASSERT_OK_AND_ASSIGN(auto lookup,
@@ -309,6 +310,17 @@ TEST(CubScratchSizeDevicelessLookupTest, CanBeLoadedFromBundledData) {
   absl::StatusOr<const CubScratchSizeDevicelessLookup&> lookup =
       CubScratchSizeDevicelessLookup::GetInstance();
   ASSERT_OK(lookup) << lookup.status().message();
+}
+
+TEST(CubScratchSizeDevicelessLookupTest, BundledDataContainsVrNvl72) {
+  absl::StatusOr<const CubScratchSizeDevicelessLookup&> lookup =
+      CubScratchSizeDevicelessLookup::GetInstance();
+  ASSERT_OK(lookup) << lookup.status().message();
+
+  EXPECT_TRUE(lookup->CanLookup(kCubVersion3_2_0, "NVIDIA VR NVL72",
+                                /*key_type_size=*/1,
+                                /*value_type_size=*/std::nullopt,
+                                /*num_items=*/4860, /*batch_size=*/1));
 }
 
 }  // namespace

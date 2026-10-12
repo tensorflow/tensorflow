@@ -53,6 +53,10 @@ class TiledEmitterConstraintsTest : public HloHardwareIndependentTestBase {
 
  public:
   TiledEmitterConstraintsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
+  void SetUp() override {
+    GTEST_SKIP() << "Legacy symbolic tile analysis is disallowed.";
+  }
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module, bool with_tiled_emitter_specific_constraints = true) {
     EmitterSpecificConstraintsBuilder constraints_builder = nullptr;

@@ -111,40 +111,37 @@ void RunInputOutputLayoutTest(const std::vector<int>& input_shape,
   }
 }
 
-TEST(InputOutputLayoutTest, DISABLED_FourChannelOutputPreservesLayout) {
+TEST(InputOutputLayoutTest, FourChannelOutputPreservesLayout) {
   RunInputOutputLayoutTest(/*input_shape=*/{32, 8},
                            /*output_shape=*/{32, 2, 4});
 }
 
-TEST(InputOutputLayoutTest, DISABLED_TwoChannelOutputPreservesLayout) {
+TEST(InputOutputLayoutTest, TwoChannelOutputPreservesLayout) {
   RunInputOutputLayoutTest(/*input_shape=*/{32, 8},
                            /*output_shape=*/{32, 4, 2});
 }
 
-TEST(InputOutputLayoutTest, DISABLED_TwoChannelInputPreservesLayout) {
+TEST(InputOutputLayoutTest, TwoChannelInputPreservesLayout) {
   RunInputOutputLayoutTest(/*input_shape=*/{32, 4, 2},
                            /*output_shape=*/{32, 8});
 }
 
-TEST(InputOutputLayoutTest, DISABLED_OneChannelImageBatchInputPreservesLayout) {
+TEST(InputOutputLayoutTest, OneChannelImageBatchInputPreservesLayout) {
   RunInputOutputLayoutTest(/*input_shape=*/{4, 8, 8, 1},
                            /*output_shape=*/{4, 64});
 }
 
-TEST(InputOutputLayoutTest,
-     DISABLED_OneChannelImageBatchOutputPreservesLayout) {
+TEST(InputOutputLayoutTest, OneChannelImageBatchOutputPreservesLayout) {
   RunInputOutputLayoutTest(/*input_shape=*/{4, 64},
                            /*output_shape=*/{4, 8, 8, 1});
 }
 
-TEST(InputOutputLayoutTest,
-     DISABLED_TwoChannelHeightOnlyOutputPreservesLayout) {
+TEST(InputOutputLayoutTest, TwoChannelHeightOnlyOutputPreservesLayout) {
   RunInputOutputLayoutTest(/*input_shape=*/{32, 8},
                            /*output_shape=*/{32, 4, 1, 2});
 }
 
-TEST(InputOutputLayoutTest,
-     DISABLED_ThreeChannelImageBatchInputPreservesLayout) {
+TEST(InputOutputLayoutTest, ThreeChannelImageBatchInputPreservesLayout) {
   RunInputOutputLayoutTest(/*input_shape=*/{4, 8, 8, 3},
                            /*output_shape=*/{4, 192});
 }
