@@ -330,9 +330,8 @@ class TensorShapeBase : public TensorShapeRep {
   absl::Status InitDims(absl::Span<const int64_t> dim_sizes);
 
   // True for PartialTensorShape, false for TensorShape
-  static constexpr bool kIsPartial =
-      std::is_same<Shape, PartialTensorShape>::value;
-  static_assert(kIsPartial || std::is_same<Shape, TensorShape>::value,
+  static constexpr bool kIsPartial = std::is_same_v<Shape, PartialTensorShape>;
+  static_assert(kIsPartial || std::is_same_v<Shape, TensorShape>,
                 "Shape is neither TensorShape nor PartialTensorShape");
 
   // Used by AddDim and MakeShapeHelper.  Does no error checking.

@@ -43,7 +43,7 @@ enum RunType {
 
 class BenchmarkResults {
  public:
-  BenchmarkResults() {}
+  BenchmarkResults() = default;
   BenchmarkResults(double model_size_mb, int64_t startup_latency_us,
                    uint64_t input_bytes,
                    tensorflow::StatWithPercentiles<int64_t> warmup_time_us,
@@ -110,7 +110,7 @@ class BenchmarkListener {
   virtual void OnSingleRunEnd() {}
   // Called after the (outer) inference loop begins.
   virtual void OnBenchmarkEnd(const BenchmarkResults& results) {}
-  virtual ~BenchmarkListener() {}
+  virtual ~BenchmarkListener() = default;
 };
 
 // A listener that forwards its method calls to a collection of listeners.
@@ -156,7 +156,7 @@ class BenchmarkListeners : public BenchmarkListener {
     }
   }
 
-  ~BenchmarkListeners() override {}
+  ~BenchmarkListeners() override = default;
 
  private:
   // Use vector so listeners are invoked in the order they are added.
@@ -190,7 +190,7 @@ class BenchmarkModel {
   BenchmarkModel();
   explicit BenchmarkModel(BenchmarkParams params)
       : params_(std::move(params)) {}
-  virtual ~BenchmarkModel() {}
+  virtual ~BenchmarkModel() = default;
   virtual TfLiteStatus Init() = 0;
   virtual TfLiteStatus Run(int argc, char** argv);
   virtual TfLiteStatus Run();

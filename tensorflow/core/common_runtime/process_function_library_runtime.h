@@ -46,7 +46,7 @@ namespace tensorflow {
 
 class FunctionArgsInterface {
  public:
-  virtual ~FunctionArgsInterface() {}
+  virtual ~FunctionArgsInterface() = default;
 
   virtual bool HasRemoteOrPackedInputs() const = 0;
 

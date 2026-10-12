@@ -974,6 +974,11 @@ class BufferAssigner {
     // If set and returns > 0, the returned limit is used instead of the
     // default module config's device memory size.
     std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
+
+    // Whether a buffer color supports fast buffer assignment (FAST_MERGE /
+    // FAST_SPLIT); unsupported colors use the DEFAULT algorithm.
+    std::function<bool(LogicalBuffer::Color)> supports_fast_buffer_assignment =
+        [](LogicalBuffer::Color) { return true; };
   };
 
   static std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>

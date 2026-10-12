@@ -17,7 +17,6 @@
 
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
-load("@bazel_skylib//rules:write_file.bzl", "write_file")
 
 options_substitions = {
     "#cmakedefine NVSHMEM_COMPLEX_SUPPORT": "/* #undef NVSHMEM_COMPLEX_SUPPORT */",
@@ -101,25 +100,5 @@ cc_library(
     include_prefix = "third_party/nvshmem",
     includes = ["src/include"],
     strip_include_prefix = "src/include",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@xla//xla/tsl/cuda:nvshmem_stub",
-    ],
-)
-
-# This additional header allows us to determine the configured NVSHMEM version
-# without including the rest of NVSHMEM.
-write_file(
-    name = "nvshmem_config_header",
-    out = "nvshmem_config.h",
-    content = [
-        "constexpr static char XLA_NVSHMEM_VERSION[] = \"{}\";".format(NVSHMEM_MAJOR),
-    ],
-)
-
-cc_library(
-    name = "nvshmem_config",
-    hdrs = ["nvshmem_config.h"],
-    include_prefix = "third_party/nvshmem",
     visibility = ["//visibility:public"],
 )

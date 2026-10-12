@@ -1675,7 +1675,7 @@ inline TensorValue OpKernelContext::release_output(int index) {
 
 template <typename T>
 T* OpKernelContext::op_device_context() {
-  static_assert(std::is_base_of<DeviceContext, T>::value,
+  static_assert(std::is_base_of_v<DeviceContext, T>,
                 "T is not a subclass of DeviceContext");
   return static_cast<T*>(op_device_context());
 }
