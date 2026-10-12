@@ -430,8 +430,7 @@ struct ResizeBilinear<GPUDevice, T> {
       // access.
       constexpr int max_num_threads_per_pixel = 8;
       constexpr int channels_per_thread = 16 / sizeof(T);
-      if (channels % channels_per_thread == 0 &&
-          std::is_same<float, T>::value) {
+      if (channels % channels_per_thread == 0 && std::is_same_v<float, T>) {
         const int64_t num_threads_per_pixel = std::min<int64_t>(
             max_num_threads_per_pixel, channels / channels_per_thread);
         config = GetGpuLaunchConfig64(static_cast<int64_t>(out_height) *
