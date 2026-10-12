@@ -40,7 +40,7 @@ constexpr char kDelegateFlag[] = "delegate";
 class InferenceDiff : public TaskExecutor {
  public:
   InferenceDiff() : num_runs_(50), num_interpreter_threads_(1) {}
-  ~InferenceDiff() override {}
+  ~InferenceDiff() override = default;
 
  protected:
   std::vector<Flag> GetFlags() final;

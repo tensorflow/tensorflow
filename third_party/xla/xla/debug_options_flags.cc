@@ -629,6 +629,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
   opts.set_xla_gpu_cudnn_deviceless_compilation_mode(
       DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED);
+  opts.set_xla_gpu_experimental_deterministic_ops_triton(
+      DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF);
   // Pre-populate all default autotune backends so that modifier flags (e.g.
   // +cudnn, -triton) can apply to the full default set.
   for (int i = 0; i < autotuner::Backend_descriptor()->value_count(); ++i) {
@@ -3998,6 +4000,28 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       /*default_value_for_display=*/"",
       "Whitespace-separated extra flags to pass to the ptxas compiler, e.g. "
       "'--maxregcount=32'."));
+  auto setter_for_xla_gpu_experimental_deterministic_ops_triton =
+      [debug_options](absl::string_view input) {
+        DebugOptions::DeterministicOpsTritonMode mode;
+        if (!DebugOptions::DeterministicOpsTritonMode_Parse(
+                absl::StrCat("DETERMINISTIC_OPS_TRITON_MODE_",
+                             absl::AsciiStrToUpper(input)),
+                &mode) ||
+            mode == DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_UNSET) {
+          return false;
+        }
+        debug_options->set_xla_gpu_experimental_deterministic_ops_triton(mode);
+        return true;
+      };
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_deterministic_ops_triton",
+      setter_for_xla_gpu_experimental_deterministic_ops_triton,
+      /*default_value_for_display=*/"off",
+      "Controls whether Triton is enabled when deterministic ops are requested "
+      "(--xla_gpu_deterministic_ops or "
+      "--xla_gpu_exclude_nondeterministic_ops). "
+      "Supported modes: 'off' (default) and 'unchecked' (enables Triton and "
+      "skips correctness checks)."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

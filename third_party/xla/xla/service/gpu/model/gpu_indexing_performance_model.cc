@@ -691,7 +691,12 @@ FilterAndSortCandidates(
   return candidates;
 }
 
-// Evaluates a single tiling candidate: clones `base_tiling_space`, assigns
+struct BaseTilingSpace {
+  PooledOrFallbackMlirContext context;
+  std::unique_ptr<experimental::TilingSpace> tiling_space;
+};
+
+// Evaluates a single tiling candidate: clones `base->tiling_space`, assigns
 // `padded_tile_sizes` to the clone, tiles the fusion and estimates its run
 // time. Returns std::nullopt if the candidate cannot be tiled or if it
 // violates Triton constraints.
@@ -701,7 +706,7 @@ FilterAndSortCandidates(
 // single mlir::MLIRContext.
 absl::StatusOr<std::optional<TiledRunTimeData>> EvaluateCandidate(
     const HloFusionAdaptor& fusion_adaptor,
-    const experimental::TilingSpace& base_tiling_space,
+    std::shared_ptr<const BaseTilingSpace> base,
     absl::Span<const int64_t> padded_tile_sizes,
     MlirContextPool* mlir_context_pool,
     const se::DeviceDescription& device_info,
@@ -709,11 +714,11 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EvaluateCandidate(
     absl::FunctionRef<int64_t(const HloInstruction*)> flops_fn) {
   // Cloning is faster than calling TilingSpace::Create() for each tiling
   // candidate.
-  ABSL_ASSIGN_OR_RETURN(
-      PooledOrFallbackMlirContext context,
-      BorrowMlirContextOr(mlir_context_pool, base_tiling_space.mlir_context()));
+  ABSL_ASSIGN_OR_RETURN(PooledOrFallbackMlirContext context,
+                   BorrowMlirContextOr(mlir_context_pool,
+                                       base->tiling_space->mlir_context()));
   std::unique_ptr<experimental::TilingSpace> tiling_space =
-      base_tiling_space.Clone(context.get());
+      base->tiling_space->Clone(context.get());
   ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(padded_tile_sizes));
   VLOG(3) << "Trying tile sizes " << absl::StrJoin(padded_tile_sizes, ",");
 
@@ -765,10 +770,6 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
   // single-threaded `mlir_context`. Candidates clone from the base TilingSpace
   // asynchronously, so the context stays borrowed until the last candidate
   // releases `base`.
-  struct BaseTilingSpace {
-    PooledOrFallbackMlirContext context;
-    std::unique_ptr<experimental::TilingSpace> tiling_space;
-  };
   ABSL_ASSIGN_OR_RETURN(PooledOrFallbackMlirContext context,
                    BorrowMlirContextOr(mlir_context_pool, mlir_context));
   auto base = std::make_shared<BaseTilingSpace>(
@@ -808,10 +809,11 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
     }
 
     candidate_futures.push_back(tsl::MakeFutureOn(
-        *executor, [base, &fusion_adaptor, device_info = &device_info,
-                    shape_size, flops_fn, mlir_context_pool,
-                    padded_tile_sizes = std::move(padded_tile_sizes)]() {
-          return EvaluateCandidate(fusion_adaptor, *base->tiling_space,
+        *executor,
+        [base, &fusion_adaptor, device_info = &device_info, shape_size,
+         flops_fn, mlir_context_pool,
+         padded_tile_sizes = std::move(padded_tile_sizes)]() mutable {
+          return EvaluateCandidate(fusion_adaptor, std::move(base),
                                    padded_tile_sizes, mlir_context_pool,
                                    *device_info, shape_size, flops_fn);
         }));
