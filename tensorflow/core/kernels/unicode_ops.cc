@@ -164,7 +164,7 @@ void IterateUnicodeString(const std::string& str, UConverter* converter,
 // create a specialized fast code path for UTF8.
 class WrappedConverter {
  public:
-  WrappedConverter() {}
+  WrappedConverter() = default;
 
   ~WrappedConverter() {
     if (converter_) {
