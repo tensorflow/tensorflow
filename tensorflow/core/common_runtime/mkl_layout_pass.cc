@@ -1593,7 +1593,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     string data_format_str;
     TensorFormat data_format;
-    std::vector<int32> ksize, strides;
+    // Read `ksize` and `strides` as int64_t, the type attributes are stored
+    // in, so that a value outside the int32 range reaches the kernel, which
+    // rejects it, instead of aborting here.
+    std::vector<int64_t> ksize, strides;
     TF_CHECK_OK(GetNodeAttr(n->def(), "ksize", &ksize));
     TF_CHECK_OK(GetNodeAttr(n->def(), "strides", &strides));
     TF_CHECK_OK(GetNodeAttr(n->def(), "data_format", &data_format_str));
