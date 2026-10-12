@@ -1538,6 +1538,40 @@ TEST_F(CombinedNonMaxSuppressionOpTest, TestNegativeScoresBelowPaddingScore) {
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
 }
 
+TEST_F(CombinedNonMaxSuppressionOpTest, TestSignedZeroScoresTieByIndex) {
+  MakeOp();
+  // +0.0 and -0.0 compare equal, so the three scores tie and the boxes come
+  // out in index order, with each score keeping its own sign.
+  AddInputFromArray<float>(TensorShape({1, 3, 1, 4}),
+                           {0, 0, 0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4, 0.5,
+                            0.5});
+  AddInputFromArray<float>(TensorShape({1, 3, 1}), {0.0f, -0.0f, 0.0f});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {-1e30f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // boxes
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 3, 4}));
+  test::FillValues<float>(
+      &expected_boxes,
+      {0, 0, 0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4, 0.5, 0.5});
+  test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
+  // scores
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_scores, {0.0f, -0.0f, 0.0f});
+  test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
+  // classes
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_classes, {0, 0, 0});
+  test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
+  // valid
+  Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
+  test::FillValues<int>(&expected_valid_d, {3});
+  test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
+}
+
 TEST_F(CombinedNonMaxSuppressionOpTest,
        TestEqualScoresTieBrokenByClassThenIndex) {
   MakeOp();
