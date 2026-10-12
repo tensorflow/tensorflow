@@ -4784,10 +4784,7 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     }
     auto* broadcast =
         computation->AddInstruction(HloInstruction::CreateBroadcast(
-            padded_out_shape,
-            computation->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::Zero(out->shape().element_type()))),
-            {}));
+            padded_out_shape, out->mutable_operand(1), {}));
     new_operands.push_back(broadcast);
   }
 
