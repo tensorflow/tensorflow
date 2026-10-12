@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <optional>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseSet.h"
@@ -42,7 +43,9 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/emitters/implicit_arith_op_builder.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/hlo/analysis/interval.h"
 
 namespace xla::xtile {
 
@@ -81,13 +84,27 @@ static llvm::SmallVector<mlir::OpFoldResult> GetClampedTileSize(
       }
       continue;
     }
+    // Tiling guarantees 0 <= offset < buffer_size, so a unit-size tile
+    // is always in-bounds.
+    if (full_tile_size == 1) {
+      tile_size.emplace_back(builder.getIndexAttr(1));
+      continue;
+    }
+    // The stride can be 0 for single element tiles.
+    // TODO(willfroom): Fix tile analysis so this never happens.
+    int64_t clamped_stride = std::max<int64_t>(stride, 1);
+    int64_t max_tile_offset = (full_tile_size - 1) * clamped_stride;
+    std::optional<Interval> offset_range = GetRange(offset);
+    if (offset_range.has_value() && offset_range->IsFeasible() &&
+        offset_range->lower >= 0 &&
+        offset_range->upper < buffer_size - max_tile_offset) {
+      tile_size.emplace_back(builder.getIndexAttr(full_tile_size));
+      continue;
+    }
     emitters::ImplicitArithOpBuilder arith_builder(
         mlir::arith::ConstantIndexOp::create(builder, (buffer_size - 1)),
         &builder);
     auto numerator = arith_builder - offset;
-    // The stride can be 0 for single element tiles.
-    // TODO(willfroom): Fix tile analysis so this never happens.
-    auto clamped_stride = std::max<int64_t>(stride, 1);
     auto bound = numerator / clamped_stride + 1;
     tile_size.emplace_back(bound.min(full_tile_size));
   }
@@ -105,8 +122,16 @@ static mlir::TypedValue<mlir::MemRefType> GetClampedSubView(
   auto strides = GetStaticFoldResult(builder, op.getStrides());
 
   mlir::RankedTensorType tile_type = op.getTile().getType();
-  llvm::SmallVector<int64_t> output_shape(tile_type.getRank(),
-                                          mlir::ShapedType::kDynamic);
+  llvm::SmallDenseSet<unsigned> reduced_dims = op.getReducedDimensions();
+  llvm::SmallVector<int64_t> output_shape;
+  output_shape.reserve(tile_type.getRank());
+  for (auto [idx, size] : llvm::enumerate(tile_size)) {
+    if (!reduced_dims.contains(idx)) {
+      auto attr = size.dyn_cast<mlir::Attribute>();
+      output_shape.push_back(attr ? mlir::cast<mlir::IntegerAttr>(attr).getInt()
+                                  : mlir::ShapedType::kDynamic);
+    }
+  }
   mlir::MemRefType subview_type =
       mlir::memref::SubViewOp::inferRankReducedResultType(
           output_shape, op.getBuffer().getType(), offsets, tile_size, strides);
@@ -168,20 +193,23 @@ static mlir::TypedValue<mlir::RankedTensorType> GetTensorSlice(
                                               tile_size, strides);
 }
 
-static mlir::Value TileIsFullSize(mlir::ImplicitLocOpBuilder& builder,
-                                  TiledBufferInterface op) {
+// Returns the dynamic condition checking whether the tile is full size, or
+// std::nullopt if the tile is statically known to be full size.
+static std::optional<mlir::Value> TileIsFullSize(
+    mlir::ImplicitLocOpBuilder& builder, TiledBufferInterface op) {
   llvm::SmallVector<mlir::OpFoldResult> clamped_tile_size =
       GetClampedTileSize(builder, op, false);
-  mlir::Value is_full_size =
-      mlir::arith::ConstantIntOp::create(builder, builder.getI1Type(), true);
+  std::optional<mlir::Value> is_full_size;
   for (auto [dim_idx, tile_dim_size] : llvm::enumerate(clamped_tile_size)) {
     if (auto value = tile_dim_size.dyn_cast<mlir::Value>()) {
       mlir::Value is_full_size_dim = mlir::arith::CmpIOp::create(
           builder, mlir::arith::CmpIPredicate::eq, value,
           mlir::arith::ConstantIndexOp::create(
               builder, op.getTile().getType().getDimSize(dim_idx)));
-      is_full_size =
-          mlir::arith::AndIOp::create(builder, is_full_size, is_full_size_dim);
+      is_full_size = is_full_size.has_value()
+                         ? mlir::arith::AndIOp::create(builder, *is_full_size,
+                                                       is_full_size_dim)
+                         : is_full_size_dim;
     }
   }
   return is_full_size;
@@ -249,33 +277,39 @@ llvm::LogicalResult ExtractTileOp::bufferize(
     mlir::bufferization::BufferizationState& state) {
   mlir::ImplicitLocOpBuilder builder(getLoc(), rewriter);
 
-  mlir::Value is_full_size = TileIsFullSize(builder, *this);
+  auto emit_full_tile = [&](mlir::ImplicitLocOpBuilder& b) -> mlir::Value {
+    auto buffer = GetFullTileSubView(b, *this);
+    if (buffer.getType().getLayout().isIdentity()) {
+      return mlir::bufferization::ToTensorOp::create(b, getType(), buffer);
+    }
+    // If the buffer doesn't have an identity layout, we can get a
+    // miscompile during bufferization as some ops don't support
+    // non-identity layouts. So we allocate a new buffer with the same
+    // shape but default layout.
+    // TODO(willfroom): Look into how we can remove this constraint.
+    mlir::MemRefType default_buffer_type =
+        mlir::MemRefType::Builder(buffer.getType()).setLayout(nullptr);
+    auto default_buffer = mlir::memref::AllocOp::create(b, default_buffer_type);
+    mlir::memref::CopyOp::create(b, buffer, default_buffer);
+    auto to_tensor_op =
+        mlir::bufferization::ToTensorOp::create(b, getType(), default_buffer);
+    to_tensor_op.setWritable(true);
+    to_tensor_op.setRestrict(true);
+    return to_tensor_op;
+  };
+
+  std::optional<mlir::Value> is_full_size = TileIsFullSize(builder, *this);
+  if (!is_full_size.has_value()) {
+    rewriter.replaceOp(getOperation(), emit_full_tile(builder));
+    return mlir::success();
+  }
+
   auto if_op = mlir::scf::IfOp::create(
-      builder, is_full_size,
+      builder, *is_full_size,
       [&](mlir::OpBuilder& builder, mlir::Location loc) {
         mlir::ImplicitLocOpBuilder then_builder(loc, builder);
-        auto buffer = GetFullTileSubView(then_builder, *this);
-        if (buffer.getType().getLayout().isIdentity()) {
-          auto to_tensor_op = mlir::bufferization::ToTensorOp::create(
-              then_builder, getType(), buffer);
-          mlir::scf::YieldOp::create(then_builder, {to_tensor_op});
-        } else {
-          // If the buffer doesn't have an identity layout, we can get a
-          // miscompile during bufferization as some ops don't support
-          // non-identity layouts. So we allocate a new buffer with the same
-          // shape but default layout.
-          // TODO(willfroom): Look into how we can remove this constraint.
-          mlir::MemRefType default_buffer_type =
-              mlir::MemRefType::Builder(buffer.getType()).setLayout(nullptr);
-          auto default_buffer =
-              mlir::memref::AllocOp::create(then_builder, default_buffer_type);
-          mlir::memref::CopyOp::create(then_builder, buffer, default_buffer);
-          auto to_tensor_op = mlir::bufferization::ToTensorOp::create(
-              then_builder, getType(), default_buffer);
-          to_tensor_op.setWritable(true);
-          to_tensor_op.setRestrict(true);
-          mlir::scf::YieldOp::create(then_builder, {to_tensor_op});
-        }
+        mlir::scf::YieldOp::create(then_builder,
+                                   {emit_full_tile(then_builder)});
       },
       [&](mlir::OpBuilder& builder, mlir::Location loc) {
         mlir::ImplicitLocOpBuilder else_builder(loc, builder);
@@ -335,16 +369,26 @@ llvm::LogicalResult InsertTileOp::bufferize(
     mlir::bufferization::BufferizationState& state) {
   mlir::ImplicitLocOpBuilder builder(getLoc(), rewriter);
 
-  mlir::Value is_full_size = TileIsFullSize(builder, *this);
+  auto emit_full_tile = [&](mlir::ImplicitLocOpBuilder& b) {
+    auto target_buffer_subview = GetFullTileSubView(b, *this);
+    auto materialize_op =
+        mlir::bufferization::MaterializeInDestinationOp::create(
+            b, getSource(), target_buffer_subview);
+    materialize_op.setWritable(true);
+  };
+
+  std::optional<mlir::Value> is_full_size = TileIsFullSize(builder, *this);
+  if (!is_full_size.has_value()) {
+    emit_full_tile(builder);
+    rewriter.eraseOp(getOperation());
+    return mlir::success();
+  }
+
   mlir::scf::IfOp::create(
-      builder, is_full_size,
+      builder, *is_full_size,
       [&](mlir::OpBuilder& builder, mlir::Location loc) {
         mlir::ImplicitLocOpBuilder then_builder(loc, builder);
-        auto target_buffer_subview = GetFullTileSubView(then_builder, *this);
-        auto materialize_op =
-            mlir::bufferization::MaterializeInDestinationOp::create(
-                then_builder, getSource(), target_buffer_subview);
-        materialize_op.setWritable(true);
+        emit_full_tile(then_builder);
         mlir::scf::YieldOp::create(then_builder);
       },
       [&](mlir::OpBuilder& builder, mlir::Location loc) {

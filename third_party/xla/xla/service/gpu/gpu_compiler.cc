@@ -247,7 +247,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_inliner.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/collective_utils.h"
@@ -2429,132 +2428,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-namespace {
-
-bool UsesCollectiveMemorySpaceFrontendAttr(const HloUse& use) {
-  if (use.instruction->opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  auto attr =
-      use.instruction->get_frontend_attribute(kOperandsMemorySpacesAttr);
-  if (!attr.has_value()) {
-    return false;
-  }
-  auto pairs = ParseIndexMemorySpacePairs(*attr);
-  if (!pairs.ok()) {
-    return false;
-  }
-  for (auto [index, memory_space] : *pairs) {
-    if (index == use.operand_number &&
-        memory_space == MemorySpaceColor::kCollective) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool DefinesCollectiveMemorySpaceFrontendAttr(const HloValue* value) {
-  const HloInstruction* def = value->defining_instruction();
-  if (def->opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-
-  auto attr = def->get_frontend_attribute(kResultsMemorySpacesAttr);
-  if (!attr.has_value()) {
-    return false;
-  }
-
-  auto pairs = ParseIndexMemorySpacePairs(*attr);
-  if (!pairs.ok()) {
-    return false;
-  }
-
-  // Determine the logical result index. If the custom call returns a tuple,
-  // we look at the top-level index (e.g., element 0 or 1 of the tuple).
-  int64_t result_index = 0;
-  if (def->shape().IsTuple()) {
-    if (value->defining_index().empty()) {
-      // The buffer for the tuple pointer array itself is not S1.
-      return false;
-    }
-    result_index = value->defining_index()[0];
-  }
-
-  for (auto [index, memory_space] : *pairs) {
-    if (index == result_index &&
-        memory_space == MemorySpaceColor::kCollective) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
-  HloInstruction* user = use.instruction;
-
-  // Handle standard non-fusion/fusion collectives under NCCL user buffers
-  if (IsCollective(user) &&
-      (opts.xla_gpu_enable_nccl_user_buffers() ||
-       IsNcclSymmetricBuffersEnabledForCollective(user, opts))) {
-    return true;
-  }
-  // Handle one-shot RaggedAllToAll with NCCL enabled.
-  if (IsOneShotRaggedAllToAllWithNcclEnabled(opts)) {
-    // User is RA2A or AsyncStart(RA2A). Used by operand 1 (output).
-    if ((IsRaggedAllToAllOrAsyncStartRaggedAllToAll(user)) &&
-        use.operand_number == 1) {
-      return true;
-    }
-  }
-
-  // Device-initiated and one-sided collectives require S1 memory for all
-  // buffers.
-  if (RequiresCollectiveSymmetricMemorySpace(user)) {
-    return true;
-  }
-
-  // Check custom calls with operands_memory_spaces attribute
-  if (UsesCollectiveMemorySpaceFrontendAttr(use)) {
-    return true;
-  }
-
-  return false;
-}
-
-bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
-  HloInstruction* def = value->defining_instruction();
-
-  // Handle standard non-fusion/fusion collectives under NCCL user buffers
-  if (IsCollective(def) &&
-      (opts.xla_gpu_enable_nccl_user_buffers() ||
-       IsNcclSymmetricBuffersEnabledForCollective(def, opts))) {
-    return true;
-  }
-  // Handle one-shot RaggedAllToAll with NCCL enabled.
-  if (IsOneShotRaggedAllToAllWithNcclEnabled(opts)) {
-    // Defining Instruction is RA2A or AsyncDone(RA2A)
-    if (IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(def)) {
-      return true;
-    }
-  }
-
-  // If the instruction requires symmetric memory, its output value is S1.
-  // If the output value is live-out of the module, we must convert is to S0.
-  if (RequiresCollectiveSymmetricMemorySpace(def)) {
-    return true;
-  }
-
-  // Check custom calls with results_memory_spaces attribute
-  if (DefinesCollectiveMemorySpaceFrontendAttr(value)) {
-    return true;
-  }
-
-  return false;
-}
-
-}  // namespace
-
 void GpuCollectiveBufferAnalysis(
     HloModule* module, const HloAliasAnalysis& alias_analysis,
     std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
@@ -2606,7 +2479,7 @@ void GpuCollectiveBufferAnalysis(
         live_out_values.push_back(value);
       }
 
-      if (RequiresCollectiveOutput(value, opts)) {
+      if (RequiresCollectiveOutput(*value, opts)) {
         defined_by_collective = true;
       }
     }
