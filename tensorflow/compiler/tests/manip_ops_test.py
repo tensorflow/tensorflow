@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import manip_ops
@@ -58,6 +59,46 @@ class ManipOpsTest(xla_test.XLATestCase):
       self._testRoll(x + 1j * x, [1, 2], [1, 0])
       x = np.random.rand(3, 2, 1, 1).astype(t)
       self._testRoll(x + 1j * x, [2, 1, 1, 0], [0, 3, 1, 2])
+
+  def _rollSelected(self, x, masks, shift, axis):
+    # Keeps the entries of x where masks[d] is true along each dimension d with
+    # a mask, which gives that dimension a size only known at run time, and
+    # rolls the result.
+    dims = sorted(masks)
+
+    @def_function.function(jit_compile=True)
+    def f(x, *mask_args):
+      for d, mask in zip(dims, mask_args):
+        x = array_ops.gather(
+            x, array_ops.reshape(array_ops.where(mask), [-1]), axis=d)
+      return manip_ops.roll(x, shift, axis)
+
+    x = np.array(x, dtype=np.int32)
+    with self.session() as session:
+      with self.device_scope():
+        x_ph = array_ops.placeholder(dtypes.int32, x.shape)
+        mask_phs = [
+            array_ops.placeholder(dtypes.bool, [x.shape[d]]) for d in dims
+        ]
+        output = f(x_ph, *mask_phs)
+      feed_dict = {x_ph: x}
+      feed_dict.update({ph: masks[d] for ph, d in zip(mask_phs, dims)})
+      return session.run(output, feed_dict)
+
+  def testDynamicDimensions(self):
+    # Regression test for GitHub issue 128951: a dynamic dimension was rolled
+    # over its bound instead of its size, and the output had the bound.
+    x = [1, 5, 2, 7, 3]
+    masks = {0: [True, False, True, True, False]}  # Keeps [1, 2, 7].
+    self.assertAllEqual(self._rollSelected(x, masks, 1, 0), [7, 1, 2])
+    self.assertAllEqual(self._rollSelected(x, masks, -1, 0), [2, 7, 1])
+    self.assertAllEqual(self._rollSelected(x, masks, 4, 0), [7, 1, 2])
+    # Both dimensions dynamic, rolled together.
+    x = np.arange(20).reshape(4, 5)
+    masks = {0: [True, False, True, True], 1: [False, True, True, False, True]}
+    self.assertAllEqual(
+        self._rollSelected(x, masks, [1, 2], [0, 1]),
+        [[17, 19, 16], [2, 4, 1], [12, 14, 11]])
 
 
 if __name__ == "__main__":

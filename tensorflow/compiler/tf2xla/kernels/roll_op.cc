@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -60,7 +61,17 @@ class RollOp : public XlaOpKernel {
     xla::Literal axis;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(2, &axis));
 
-    xla::XlaOp output = ctx->Input(0);
+    const xla::XlaOp input = ctx->Input(0);
+    xla::Shape input_xla_shape;
+    OP_REQUIRES_VALUE(input_xla_shape, ctx, ctx->InputXlaShape(0));
+    // Roll at the bounds of dynamic dimensions, since XLA can't slice part of a
+    // dynamic dimension, and give them their sizes back at the end.
+    xla::XlaOp output = input;
+    for (int64_t d = 0; d < input_dims; ++d) {
+      if (input_xla_shape.is_dynamic_dimension(d)) {
+        output = xla::RemoveDynamicDimension(output, d);
+      }
+    }
     xla::PrimitiveType shift_type = ctx->input_xla_type(1);
     int64_t num_axes = axis_shape.dims() == 0 ? 1 : axis_shape.dim_size(0);
     for (int64_t i = 0; i != num_axes; ++i) {
@@ -81,8 +92,14 @@ class RollOp : public XlaOpKernel {
                                              /*limit_index=*/i + 1,
                                              /*stride=*/1, /*dimno=*/0),
                              {});
-      xla::XlaOp axis_size = xla::ConstantR0WithType(
-          ctx->builder(), shift_type, input_shape.dim_size(cur_axis));
+      // A dynamic dimension rolls over its size, not its bound.
+      const bool dynamic_axis = input_xla_shape.is_dynamic_dimension(cur_axis);
+      xla::XlaOp axis_size =
+          dynamic_axis
+              ? xla::ConvertElementType(xla::GetDimensionSize(input, cur_axis),
+                                        shift_type)
+              : xla::ConstantR0WithType(ctx->builder(), shift_type,
+                                        input_shape.dim_size(cur_axis));
       // Adjust large offsets into [0, axis_size). This also makes negative
       // offsets positive.
       offset = ((offset % axis_size) + axis_size) % axis_size;
@@ -93,9 +110,21 @@ class RollOp : public XlaOpKernel {
           xla::ConcatInDim(ctx->builder(), {output, output}, cur_axis);
       std::vector<xla::XlaOp> start_indices(
           input_shape.dims(), xla::Zero(ctx->builder(), shift_type));
+      if (dynamic_axis) {
+        // Start the second copy right after the first one's size, so that the
+        // copies are adjacent.
+        start_indices[cur_axis] = axis_size;
+        concat = xla::DynamicUpdateSlice(concat, output, start_indices);
+      }
       start_indices[cur_axis] = axis_size - offset;
       output =
           xla::DynamicSlice(concat, start_indices, input_shape.dim_sizes());
+    }
+    for (int64_t d = 0; d < input_dims; ++d) {
+      if (input_xla_shape.is_dynamic_dimension(d)) {
+        output =
+            xla::SetDimensionSize(output, xla::GetDimensionSize(input, d), d);
+      }
     }
     ctx->SetOutput(0, output);
   }
