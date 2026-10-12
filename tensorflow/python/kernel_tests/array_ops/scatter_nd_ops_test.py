@@ -259,6 +259,7 @@ class StatefulScatterNdTest(test.TestCase):
             )
         )
 
+  @test_util.run_in_graph_and_eager_modes
   def testResourceScatterNdUpdateRejectsVariableOfAnotherDtype(self):
     # The op takes its type from the updates, so it can be given a variable of
     # another dtype. Once the variable is in copy-on-read mode, which a gather

@@ -591,6 +591,7 @@ class TrainingOpsTest(TensorFlowTestCase):
             )
         )
 
+  @test_util.run_in_graph_and_eager_modes
   def testResourceApplyOpsRejectVariableOfAnotherDtype(self):
     # Regression test for #113074 and #113145: these ops take their type from
     # the learning rate and gradient, so they could be given a variable of
