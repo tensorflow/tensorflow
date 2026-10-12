@@ -188,7 +188,7 @@ TEST_P(NoOpMultipleEliminationTest, EliminateMultipleNoOpNode) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  static_assert(std::tuple_size<NodesTypes>::value == 2,
+  static_assert(std::tuple_size_v<NodesTypes> == 2,
                 "Make sure to include everything in the test");
   const std::vector<std::pair<std::string, std::vector<int>>> noop_nodes = {
       std::get<0>(GetParam()), std::get<1>(GetParam())};
@@ -249,7 +249,7 @@ TEST_P(NoOpPlaceholdersTest, NonConstNoOpNode) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  static_assert(std::tuple_size<NodesTypes>::value == 2,
+  static_assert(std::tuple_size_v<NodesTypes> == 2,
                 "Make sure to include everything in the test");
   const std::vector<std::pair<std::string, std::vector<DataType>>> noop_nodes =
       {std::get<0>(GetParam()), std::get<1>(GetParam())};
