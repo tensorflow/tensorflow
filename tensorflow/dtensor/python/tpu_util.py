@@ -445,7 +445,7 @@ def _enumerate_core_locations(
 
   # Reorder ring_bounds and validate it's element-wise >= host_bounds.
   ring_bounds = [ring_bounds[i] for i in axes]  # pyrefly: ignore[bad-index]
-  if ring_bounds < host_bounds:
+  if any(r < h for r, h in zip(ring_bounds, host_bounds)):
     raise ValueError(
         "ring_bounds %s should be >= host_bounds %s"
         % (ring_bounds, host_bounds)
@@ -713,7 +713,7 @@ def create_tpu_mesh(
     ring_bounds = topology_shape
   elif len(ring_bounds) != 4:
     raise ValueError("Expected 4 elements in ring_bounds, got %s" % ring_bounds)
-  elif ring_bounds > topology_shape:
+  elif any(r > t for r, t in zip(ring_bounds, topology_shape)):
     raise ValueError(
         "ring_bounds %s should be <= topology sizes %s"
         % (ring_bounds, topology_shape)
